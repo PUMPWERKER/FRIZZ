@@ -78,6 +78,8 @@ namespace daisy
             {
                 input_env_dec = .001f;
                 AlignWriteHead();
+                if(!printing_)
+                    ram_buff.StartUndoTake(); // the bake's undo covers it
             }
             else if(!recording) // falling edge
             {
@@ -196,7 +198,7 @@ namespace daisy
                         loop_env += loop_env_dec;
                         const bool ote = ram_buff.GetReadFromStart(reverse_) < 50;
                         // pending first, or it waits a pass near the start
-                        if(loop_env < 0.f && (ram_buff.ApplyPendingLength() || ote))
+                        if(loop_env < 0.f && (ram_buff.ApplyPendingLength() || StartUndo() || ote))
                         {
                             loop_env = 0.f;
                             loop_env_dec = loop_env_dec_val;
@@ -325,8 +327,17 @@ namespace daisy
 
         void ApplyPendingNow()
         {
-            if(ram_buff.ApplyPendingLength())
+            const bool length = ram_buff.ApplyPendingLength();
+            if(StartUndo() || length)
                 loop_env_dec = loop_env_dec_val;
+        }
+
+        bool Undo()
+        {
+            if(!ram_buff.RequestUndo())
+                return false;
+            loop_env_dec = -loop_env_dec_val;
+            return true;
         }
 
         void StepLoop(int8_t dir)
@@ -350,6 +361,7 @@ namespace daisy
         void StartPrint(int32_t block_adv)
         {
             printing_ = true;
+            ram_buff.StartUndoTake();
             print_shift_ = reverse_ ? block_adv : -block_adv;
             print_left_ = print_write_left_ = ram_buff.LoopLength();
             AlignWriteHead();
@@ -365,6 +377,14 @@ namespace daisy
 
         inline bool IsPrinting() { return printing_; }
         inline bool PrintPassDone() { return print_left_ <= std::abs(print_shift_); }
+
+        bool StartUndo()
+        {
+            if(!ram_buff.StartUndo(reverse_))
+                return false;
+            input_env = 0.f; // no overdub tail over the restored audio
+            return true;
+        }
 
         void AlignWriteHead()
         {

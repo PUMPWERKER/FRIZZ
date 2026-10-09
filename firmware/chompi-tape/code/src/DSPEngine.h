@@ -1416,6 +1416,7 @@ namespace daisy
         inline void LooperStep(int8_t dir) { looper.RequestStep(dir); }
         inline void LooperMakeLengthBase() { looper.RequestLengthBase(); }
         inline size_t GetLooperSection() { return looper.GetSection(); }
+        inline bool LooperUndo() { return looper.RequestUndo(); }
 
         inline int GetBank() { return bank[int(voice_mode)];}
         inline size_t GetVoiceBank() 

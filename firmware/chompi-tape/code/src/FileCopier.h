@@ -36,10 +36,11 @@ class FileCopier
 
         bool CopyProcess()
         {
-            // looper jobs wait for copy, bake and pending change
+            // looper jobs wait for copy, bake, pending change and undo
             if(!copying_ && !req_fifo.IsEmpty()
                 && (req_fifo.Front().is_looper == CopyRequest::RamDir::NONE
-                    || (!looper_ram.IsCopying() && !looper_ram.IsPending() && !fx_->IsLooperPrinting())))
+                    || (!looper_ram.IsCopying() && !looper_ram.IsPending() && !fx_->IsLooperPrinting()
+                        && !looper_ram.IsUndoing())))
             {
                 copying_ = true;
                 req = req_fifo.PopFront();

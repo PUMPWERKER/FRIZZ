@@ -29,6 +29,7 @@ chompi::InterpolatedDelayLine::AudioSample DSY_SDRAM_BSS del_mem[kMaxDelayTime];
 
 RamBufferMemory loop_buff;
 int16_t DSY_SDRAM_BSS loop_mem[kMaxRamBuffSize]; 
+UndoMemory DSY_DTCMRAM_BSS loop_undo;
 
 RamBufferMemory chompi_buff;
 int16_t DSY_SDRAM_BSS chompi_mem[kMaxRamBuffSize]; 
@@ -359,7 +360,7 @@ int main(void)
 
     // meter.Init(hw.seed.AudioSampleRate(), hw.seed.AudioBlockSize());
 
-    loop_buff.Init(&loop_mem[0]);
+    loop_buff.Init(&loop_mem[0], &loop_undo);
     chompi_buff.Init(&chompi_mem[0]);
     engine.Init(hw.seed.AudioSampleRate(), &reverb, &del_mem[0], 
                 &loop_buff, &chompi_buff, 

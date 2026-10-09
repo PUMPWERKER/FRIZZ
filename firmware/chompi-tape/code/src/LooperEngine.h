@@ -50,17 +50,24 @@ namespace daisy
 
             // looper.PerBlock(playing);
 
+            const bool undoing = looper.ram_buff.IsUndoing();
             if(length_req)
             {
-                if(!first_record && !IsPrinting())
+                if(!first_record && !IsPrinting() && !undoing)
                     looper.ChangeLength(length_req);
                 length_req = 0;
             }
             if(step_req)
             {
-                if(!first_record && !IsPrinting())
+                if(!first_record && !IsPrinting() && !undoing)
                     looper.StepLoop(step_req);
                 step_req = 0;
+            }
+            if(undo_req)
+            {
+                if(CanUndo() && looper.Undo())
+                    record = record_target = false;
+                undo_req = false;
             }
             if(!playing)
                 looper.ApplyPendingNow();
@@ -72,6 +79,8 @@ namespace daisy
             }
             if(looper.ram_buff.IsCopying())
                 looper.ram_buff.CopyStep();
+            if(looper.ram_buff.IsUndoing())
+                looper.ram_buff.UndoStep();
 
             if(fx_env_ < .01f)
                 fx_env_target_ = 1.f;
@@ -88,7 +97,8 @@ namespace daisy
 
                     const int16_t inl = f2s16(print ? print_l_[i] : out_l[i] * fx_env_);
                     const int16_t inr = f2s16(print ? print_r_[i] : out_r[i] * fx_env_);
-                    looper.PopStereoSamps(inl, inr, &aol, &aor, record, playing);
+                    // an overdub waits for an undo to finish
+                    looper.PopStereoSamps(inl, inr, &aol, &aor, record && !looper.ram_buff.IsUndoing(), playing);
 
                     out_l[i] += s162f(aol) * fx_env_;
                     out_r[i] += s162f(aor) * fx_env_;
@@ -109,7 +119,7 @@ namespace daisy
         bool StartPrint()
         {
             if(first_record || !SteadyPlayback() || IsPrinting() || looper.ram_buff.IsCopying()
-               || looper.ram_buff.IsPending())
+               || looper.ram_buff.IsPending() || looper.ram_buff.IsUndoing())
                 return false;
 
             print_state_ = PrintState::STARTING;
@@ -319,6 +329,20 @@ namespace daisy
 
         inline size_t GetSection() { return looper.ram_buff.Section(); }
 
+        bool RequestUndo()
+        {
+            if(!CanUndo())
+                return false;
+            undo_req = true;
+            return true;
+        }
+
+        inline bool CanUndo()
+        {
+            return !first_record && !IsPrinting() && looper.ram_buff.HasUndo()
+                   && !looper.ram_buff.IsUndoing() && !looper.ram_buff.IsCopying();
+        }
+
         inline void RequestLengthBase()
         {
             if(!first_record)
@@ -382,6 +406,7 @@ namespace daisy
         volatile int8_t length_req = 0;
         volatile int8_t step_req = 0;
         volatile bool base_req = false;
+        volatile bool undo_req = false;
 
         // PRINTING writes each block a block later
         enum class PrintState { OFF, STARTING, PRINTING };

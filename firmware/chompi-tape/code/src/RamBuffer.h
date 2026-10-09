@@ -19,15 +19,32 @@ namespace daisy
     static const int32_t kOnsetMinLevel = 33;    // -60dBFS
     static const int32_t kOnsetMaxFloor = 328;   // -40dBFS
     static const size_t kCopyStepSize = 512;
+    // undo audio is kept at the end of the buffer
+    static const size_t kUndoChunk = kCopyStepSize;
+    static const size_t kUndoMaxChunks = kMaxRamBuffSize / 2 / kUndoChunk + 1;
+    static const size_t kUndoScan = 64;
     // total size = 31694848, which goes evenly into 8K, which means SDRAM page alignment
+
+    struct UndoMemory
+    {
+        uint32_t saved[kUndoMaxChunks / 32 + 1];
+        size_t lo, store;
+        size_t chunks;
+        bool taking;
+        bool pending;
+        size_t next, from, loop_lo, loop_n;
+        bool rev;
+    };
 
     // just a buffer with its length
     struct RamBufferMemory
     {
-        // pointer to array of size kMaxRamBuffSize
-        void Init(int16_t* m)
+        void Init(int16_t* m, UndoMemory* u = nullptr)
         {
             mem = m;
+            undo = u;
+            if(undo)
+                *undo = UndoMemory(); // not cleared at startup
         }
 
         int16_t* mem;
@@ -39,10 +56,11 @@ namespace daisy
 
         size_t halve_len[12];
         uint8_t halve_count = 0;
+        int8_t length_exp = 0;
 
         size_t pending_len = 0, pending_start = 0;
 
-        int8_t length_exp = 0;
+        UndoMemory* undo = nullptr;
 
         void Clear()
         {
@@ -115,6 +133,8 @@ namespace daisy
                 const size_t new_write_head = write_head + 2;
                 if(new_write_head <= kMaxRamBuffSize)
                 {
+                    if(buff->undo && buff->undo->taking)
+                        SaveForUndo(write_head);
                     buff->mem[write_head] = l;
                     buff->mem[write_head + 1] = r;
                     write_head = new_write_head;
@@ -124,6 +144,8 @@ namespace daisy
             }
             else if(write_head >= buff->start + 2)
             {
+                if(buff->undo && buff->undo->taking)
+                    SaveForUndo(write_head - 2);
                 buff->mem[write_head - 2] = l;
                 buff->mem[write_head - 1] = r;
                 write_head -= 2;
@@ -197,6 +219,7 @@ namespace daisy
         }
         inline void ClearLengthChanges()
         {
+            DropUndo();
             if(buff->pending_len)
             {
                 buff->start = buff->pending_start;
@@ -267,6 +290,9 @@ namespace daisy
             }
             else if(steps > 0)
             {
+                // may overwrite the undo audio
+                DropUndo();
+
                 FadeSeam(&buff->mem[End() - 2], -2);
 
                 buff->copy_lo = 0;
@@ -367,6 +393,84 @@ namespace daisy
             write_head = buff->start + ((pos < 0 ? pos + len : pos) & ~1);
         }
 
+        void StartUndoTake()
+        {
+            if(!buff->undo)
+                return;
+            UndoMemory& u = *buff->undo;
+
+            DropUndo();
+            const size_t len = CanRestore() ? buff->halve_len[0] : buff->length;
+            const size_t chunks = (len + kUndoChunk - 1) / kUndoChunk;
+            const size_t store = kMaxRamBuffSize - chunks * kUndoChunk;
+            if(buff->base + chunks * kUndoChunk > store)
+                return;
+
+            std::fill(u.saved, u.saved + (chunks + 31) / 32, 0);
+            u.lo = buff->base;
+            u.store = store;
+            u.chunks = u.next = chunks;
+            u.taking = true;
+        }
+
+        inline void DropUndo()
+        {
+            if(!buff->undo)
+                return;
+            UndoMemory& u = *buff->undo;
+            u.chunks = u.next = 0;
+            u.taking = u.pending = false;
+        }
+
+        inline bool HasUndo() const { return buff->undo->chunks; }
+        inline bool IsUndoing() const { return buff->undo->pending || buff->undo->next < buff->undo->chunks; }
+
+        bool RequestUndo()
+        {
+            if(!HasUndo() || IsUndoing() || IsCopying())
+                return false;
+            buff->undo->pending = true;
+            return true;
+        }
+
+        bool StartUndo(bool rev)
+        {
+            UndoMemory& u = *buff->undo;
+            if(!u.pending)
+                return false;
+            u.pending = u.taking = false;
+
+            const size_t lo = u.lo, end = lo + u.chunks * kUndoChunk;
+            u.loop_lo = u.loop_n = 0;
+            if(buff->start >= lo && End() <= end && buff->length)
+            {
+                u.loop_lo = (buff->start - lo) / kUndoChunk;
+                u.loop_n = (End() - 1 - lo) / kUndoChunk + 1 - u.loop_lo;
+            }
+            const size_t head = std::min(std::max(read_head, buff->start), End() - 1);
+            u.from = head >= lo ? (head - lo) / kUndoChunk - u.loop_lo : 0;
+            u.rev = rev;
+            u.next = 0;
+            UndoStep();
+            UndoStep();
+            return true;
+        }
+
+        void UndoStep()
+        {
+            UndoMemory& u = *buff->undo;
+            for(size_t scan = 0; scan < kUndoScan && u.next < u.chunks; scan++)
+            {
+                const size_t c = UndoChunkAt(u.next++);
+                if(u.saved[c / 32] & (1u << (c % 32)))
+                {
+                    int16_t* const loop = &buff->mem[u.lo + c * kUndoChunk];
+                    std::swap_ranges(loop, loop + kUndoChunk, &buff->mem[u.store + c * kUndoChunk]);
+                    return;
+                }
+            }
+        }
+
         void FadeJoin(size_t pos)
         {
             if(pos < buff->start + kLoopFadeSize || pos + kLoopFadeSize > End())
@@ -390,6 +494,34 @@ namespace daisy
                 buff->pending_start = buff->start;
                 buff->pending_len = len;
             }
+        }
+
+        void SaveForUndo(size_t pos) __attribute__((noinline))
+        {
+            UndoMemory& u = *buff->undo;
+            const size_t c = (pos - u.lo) / kUndoChunk; // wraps if before lo
+            if(c >= u.chunks)
+            {
+                DropUndo();
+                return;
+            }
+            uint32_t& word = u.saved[c / 32];
+            const uint32_t bit = 1u << (c % 32);
+            if(word & bit)
+                return;
+            word |= bit;
+            memcpy(&buff->mem[u.store + c * kUndoChunk], &buff->mem[u.lo + c * kUndoChunk],
+                   kUndoChunk * sizeof(int16_t));
+        }
+
+        size_t UndoChunkAt(size_t i) const
+        {
+            UndoMemory& u = *buff->undo;
+            const size_t lo = u.loop_lo, n = u.loop_n;
+            if(i < n)
+                return lo + (u.rev ? u.from + n - i : u.from + i) % n;
+            i -= n;
+            return i < lo ? i : i + n;
         }
 
         size_t WrapInto(size_t head) const

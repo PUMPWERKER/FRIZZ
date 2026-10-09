@@ -75,6 +75,11 @@ namespace chompi
             {
                 if(long_press_key == static_cast<uint16_t>(Hardware::SwId::KEY_19))
                     fx_->CycleLineMode();
+                else if(long_press_key == static_cast<uint16_t>(Hardware::SwId::KEY_27))
+                {
+                    undo_ok = !copier_->IsCopying() && fx_->LooperUndo();
+                    undo_flash = now;
+                }
                 else if(copier_->IsCopying())
                     bake_refused = now;
                 else
@@ -116,7 +121,11 @@ namespace chompi
             if(preset_mode == PresetMode::NONE)
             {
                 const float gain = fx_->GetLooperDubGain();
-                SetPthLedFloat(7, gain, gain, gain);
+                if(now - undo_flash < 300)
+                    SetPthLedFloat(7, !undo_ok, undo_ok, 0.f);
+                else
+                    SetPthLedFloat(7, gain, gain, gain);
+
                 if(fx_->IsLooperPrinting())
                     SetPthLedFloat(8, magenta[0], magenta[1], magenta[2]);
                 else if(now - bake_refused < 300)
@@ -961,9 +970,9 @@ namespace chompi
             default:
                 if((buttonID == 33 || buttonID == 34) && preset_mode == PresetMode::NONE)
                 {
-                    if(rising && buttonID == 34)
+                    if(rising)
                         StartLongPress(buttonID);
-                    else if(!rising && (buttonID == 33 || long_press_key == buttonID))
+                    else if(long_press_key == buttonID)
                     {
                         long_press_key = kNoKey;
                         fx_->IncrementLooperDubGain(buttonID == 33 ? -.1f : .1f);
@@ -1180,6 +1189,8 @@ namespace chompi
         uint16_t long_press_key = kNoKey;
         uint32_t long_press_down = 0;
         uint32_t bake_refused = 0;
+        uint32_t undo_flash = 0;
+        bool undo_ok = false;
 
         void StartLongPress(uint16_t key)
         {
