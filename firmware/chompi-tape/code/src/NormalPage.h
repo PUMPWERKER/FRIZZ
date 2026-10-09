@@ -11,6 +11,7 @@ namespace chompi
             {20, 21, 22, 23, 24, 25},
             {28, 29, 30, 31, 0, 32},
             {0, 0, 0, 33, 0, 0}};
+        static const uint8_t kThresholdCC = 34;
 
         static const uint8_t key_map[40] = {
             0x01, /**< ENC_1_SW  page */
@@ -291,9 +292,12 @@ namespace chompi
                 {
                 case 0: // speed, gain, pan
                 {
-                    if(!switch_state)
+                    if(!switch_state) // recording threshold, red while the input is above it
                     {
-                        r = g = b = 0.f;
+                        const float t = enc_values[2][0];
+                        r = g = b = t;
+                        if(t > 0.f && fx_->GetVUSample(VUTarget::VU_INPUT) >= t * t * t)
+                            g = b = 0.f;
                     }
                     else if(page == 0) // speed
                     {
@@ -680,11 +684,15 @@ namespace chompi
                         r = g = b = 0.f;
                     }
                 }
-                else if (fx_->Recording())
+                else if (fx_->Recording() && !fx_->IsRecordWaiting())
                 {
                     r = red[0];
                     g = red[1];
                     b = red[2];
+                }
+                else if(fx_->IsRecordWaiting() && (now / 150) % 2) // waiting for the threshold, blinking
+                {
+                    r = g = b = 0.f;
                 }
                 else
                 {
@@ -849,12 +857,14 @@ namespace chompi
                 // chompi mode
                 if(!switch_state)
                 {
-                    bool latch = fx_->GetRecordLatch();
+                    // with a threshold, tap to arm and tap again to stop
+                    bool latch = fx_->GetRecordLatch() || enc_values[2][0] > 0.f;
                     bool rec = fx_->Recording();
 
                     if (rising && !rec)
                     {
-                        fx_->StartNewRecording(0);
+                        const float t = enc_values[2][0];
+                        fx_->StartNewRecording(0, t * t * t);
                         last_record_blink = System::GetNow();
                         record_blink = false;
                     }
@@ -969,6 +979,14 @@ namespace chompi
         {
             if (init_ignore || copier_->IsCopying())
                 return false;
+
+            // sampling: the left encoder sets the recording threshold, off all the way down
+            if(encoderID == 0 && !switch_state && stepsPerRevolution == 0)
+            {
+                enc_values[2][0] = fclamp(enc_values[2][0] + turns * kEncoderCoarseStep, 0.f, 1.f);
+                hw_->SendCC(midi_channel, kThresholdCC, enc_values[2][0] * 127);
+                return true;
+            }
 
             const TransportMode transport = fx_->GetTransportMode();
             if(encoderID == 4 && transport != TransportMode::OFF && stepsPerRevolution == 0)
@@ -1113,14 +1131,15 @@ namespace chompi
 
         void StopVoiceRecording()
         {
+            if(!fx_->StopRecording())
+                return;
+
             enc_values[0][0] = enc_defaults[0][0];
             enc_values[0][1] = enc_defaults[0][1];
             enc_values[0][2] = enc_defaults[0][2];
             enc_values[1][0] = enc_defaults[1][0];
             enc_values[1][1] = enc_defaults[1][1];
             enc_values[1][2] = enc_defaults[1][2];
-
-            fx_->StopRecording();
         }
 
         inline void SetInitIgnore(bool ignore) { init_ignore = ignore; }

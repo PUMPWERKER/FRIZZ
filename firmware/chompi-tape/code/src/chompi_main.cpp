@@ -32,7 +32,8 @@ int16_t DSY_SDRAM_BSS loop_mem[kMaxRamBuffSize];
 UndoMemory DSY_DTCMRAM_BSS loop_undo;
 
 RamBufferMemory chompi_buff;
-int16_t DSY_SDRAM_BSS chompi_mem[kMaxRamBuffSize]; 
+// the pre-roll lives behind the buffer, 8K keeps the next one aligned
+int16_t DSY_SDRAM_BSS chompi_mem[kMaxRamBuffSize + 4096]; 
 
 daisysp::Oscillator osc;
 

@@ -11,6 +11,9 @@ namespace daisy
     static const size_t kLoopFadeSize = 480;
     static constexpr float kLoopFadeStep = .00464f;
     static const size_t kCopyStepSize = 512;
+    // a recording waiting for its threshold keeps ~6ms before it, and ignores ~100ms of key noise
+    static const size_t kRecPreRoll = 576;
+    static const uint8_t kRecIgnoreWraps = 17;
     // undo audio is kept at the end of the buffer
     static const size_t kUndoChunk = kCopyStepSize;
     static const size_t kUndoMaxChunks = kMaxRamBuffSize / 2 / kUndoChunk + 1;
@@ -373,6 +376,24 @@ namespace daisy
             const float keep = 1.f - daisysp::fclamp(std::min(fade_in, fade_out), 0.f, 1.f);
             *l = buff->mem[pos] * keep;
             *r = buff->mem[pos + 1] * keep;
+        }
+
+        // the pre-roll loops behind the buffer, so the old sample stays until the threshold
+        bool PreRollWrite(int16_t l, int16_t r)
+        {
+            buff->mem[kMaxRamBuffSize + write_head] = l;
+            buff->mem[kMaxRamBuffSize + write_head + 1] = r;
+            write_head = (write_head + 2) % kRecPreRoll;
+            return !write_head;
+        }
+
+        void EndPreRoll()
+        {
+            const int16_t* const ring = &buff->mem[kMaxRamBuffSize];
+            const size_t head = write_head;
+            Reset();
+            std::rotate_copy(ring, ring + head, ring + kRecPreRoll, &buff->mem[0]);
+            write_head = buff->length = kRecPreRoll;
         }
 
         void ShiftWriteHead(int32_t offset)

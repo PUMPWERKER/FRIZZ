@@ -612,12 +612,23 @@ namespace daisy
             /** voice write */
             if (record)
             {
+                // the input level meter crossing the threshold starts a waiting recording
+                if(rec_wait_ > 0.f && rec_wraps_ >= kRecIgnoreWraps && GetVUSample(VUTarget::VU_INPUT) >= rec_wait_)
+                {
+                    StopLooperRecording();
+                    chompi_writer.EndPreRoll();
+                    rec_wait_ = 0.f;
+                }
+
                 for (size_t i = 0; i < size; i++)
                 {
                     const int16_t inl = f2s16(monitor[0][i]);
                     const int16_t inr = f2s16(monitor[1][i]);
 
-                    chompi_writer.StereoWrite(inl, inr, false, true);
+                    if(rec_wait_ > 0.f)
+                        rec_wraps_ += chompi_writer.PreRollWrite(inl, inr) && rec_wraps_ < 255;
+                    else
+                        chompi_writer.StereoWrite(inl, inr, false, true);
                 }
             }
 
@@ -676,7 +687,8 @@ namespace daisy
          *
          *  @todo add delay/preprocessing for declicking
          */
-        void StartNewRecording(int slot)
+        // a waiting recording leaves the looper alone until the threshold
+        void StopLooperRecording() __attribute__((noinline))
         {
             /** if the looper is overdubbing, stop it */
             if(looper.IsRecording())
@@ -685,6 +697,12 @@ namespace daisy
             /** if it was the first recording, stop it overdubbing :\ */
             if(looper.IsRecording())
                 looper.ToggleRecord();
+        }
+
+        void StartNewRecording(int slot, float threshold)
+        {
+            if(threshold <= 0.f)
+                StopLooperRecording();
 
             /** Send open file request and toggle record flag */
             char name_buffer[32];
@@ -696,15 +714,32 @@ namespace daisy
             /** For now we only need to record to the first-voices file..
              *  since all voices will be using the same file for playback
              */
-            chompi_writer.Reset();
+            if(threshold > 0.f)
+                chompi_writer.SetWriteHead(0);
+            else
+                chompi_writer.Reset();
+            rec_wait_ = threshold;
+            rec_wraps_ = 0;
+            __DMB(); // the audio thread must not see record before the write head
             record = true;
         }
+
+        inline bool IsRecordWaiting() const { return record && rec_wait_ > 0.f; }
 
         /** @brief stops recording, and syncs file
          *  @todo add delay/preprocessing for declicking (fade, etc.)
          */
-        void StopRecording()
+        bool StopRecording()
         {
+            record = false;
+            __DMB(); // the audio thread is done with rec_wait_
+            // stopped before the threshold: the old sample stays
+            if(rec_wait_ > 0.f)
+            {
+                rec_wait_ = 0.f;
+                return false;
+            }
+
             for(size_t i = 0; i < kMaxPoly; i++)
             {
                 chompi_voice[i].RestoreDefaults();
@@ -715,7 +750,7 @@ namespace daisy
                 SetVoiceSlot(15, false);
             }
 
-            record = false;
+            return true;
         }
         inline bool Recording() const { return record; }
 
@@ -1688,6 +1723,8 @@ namespace daisy
 
         bool record, record_latch;
         bool input_monitor;
+        uint8_t rec_wraps_ = 0;
+        float rec_wait_ = 0.f; // threshold, 0 once recording
         int playing_key[kMaxPoly];
 
         VoiceMode voice_mode;
