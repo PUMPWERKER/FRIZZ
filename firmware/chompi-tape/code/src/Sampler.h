@@ -28,15 +28,15 @@ namespace daisy
         void ReadJumpStart()
         {
             ram_buff.ApplyPendingLength(); // in case the wrap came before the fade out
-            ReadJump(reverse_ ? ram_buff.GetSize() : 0);
+            ReadJump(reverse_ ? ram_buff.End() : ram_buff.GetStart());
         }
 
         void WriteJumpStart()
         {
             if(reverse_)
-                WriteJump(ram_buff.GetSize());
+                WriteJump(ram_buff.End());
             else
-                WriteJump(0);
+                WriteJump(ram_buff.GetStart());
         }
 
         inline void ReadJump(uint32_t pos = 0) { ram_buff.SetReadHead(pos); }
@@ -194,9 +194,9 @@ namespace daisy
                         rev_pushback = false;
 
                         loop_env += loop_env_dec;
-                        const bool ote = (reverse_ && ram_buff.GetReadHead() > (ram_buff.GetSize() - 50))
-                                         || (!reverse_ && ram_buff.GetReadHead() < 50);
-                        if(loop_env < 0.f && (ote || ram_buff.ApplyPendingLength()))
+                        const bool ote = ram_buff.GetReadFromStart(reverse_) < 50;
+                        // pending first, or it waits a pass near the start
+                        if(loop_env < 0.f && (ram_buff.ApplyPendingLength() || ote))
                         {
                             loop_env = 0.f;
                             loop_env_dec = loop_env_dec_val;
@@ -306,7 +306,8 @@ namespace daisy
         inline void SetScrub(float addl) { turn_count_ += addl; }
         inline float GetScrub() { return scrub_; }
 
-        inline uint32_t GetReadTell() { return ram_buff.GetReadHead(); }
+        // a step can move the loop under the UI
+        inline uint32_t GetReadTell() { return std::min(ram_buff.GetReadFromStart(false), ram_buff.GetSize()); }
         inline uint32_t GetReadSize() { return ram_buff.GetSize(); }
 
         inline bool WriteFullLength() { return ram_buff.WriteFullLength(); }
@@ -316,10 +317,22 @@ namespace daisy
             if(!ram_buff.ChangeLength(steps, reverse_))
                 return;
 
-            if(ram_buff.LoopLength() < ram_buff.GetSize())
+            if(ram_buff.IsPending())
                 loop_env_dec = -loop_env_dec_val;
             else if(ram_buff.GetRemainingRead(reverse_) > kLoopFadeSize)
                 loop_env_dec = loop_env_dec_val;
+        }
+
+        void ApplyPendingNow()
+        {
+            if(ram_buff.ApplyPendingLength())
+                loop_env_dec = loop_env_dec_val;
+        }
+
+        void StepLoop(int8_t dir)
+        {
+            if(ram_buff.Step(dir))
+                loop_env_dec = -loop_env_dec_val;
         }
 
         void IncrementDubGain(float increment, bool force)

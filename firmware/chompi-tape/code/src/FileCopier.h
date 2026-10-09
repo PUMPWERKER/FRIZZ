@@ -36,10 +36,10 @@ class FileCopier
 
         bool CopyProcess()
         {
-            // looper jobs wait for copy and bake
+            // looper jobs wait for copy, bake and pending change
             if(!copying_ && !req_fifo.IsEmpty()
                 && (req_fifo.Front().is_looper == CopyRequest::RamDir::NONE
-                    || (!looper_ram.IsCopying() && !fx_->IsLooperPrinting())))
+                    || (!looper_ram.IsCopying() && !looper_ram.IsPending() && !fx_->IsLooperPrinting())))
             {
                 copying_ = true;
                 req = req_fifo.PopFront();
@@ -50,13 +50,15 @@ class FileCopier
                 chompi_ram.SetReadHead(0);
                 chompi_ram.SetWriteHead(0);
 
-                looper_ram.SetReadHead(0);
-                looper_ram.SetWriteHead(0);
+                looper_ram.SetReadHead(looper_ram.LoopStart()); // a save stores what the loop plays
                 if(is_looper_ram == CopyRequest::RamDir::TO)
                 {
-                    looper_append_at = req.append ? looper_ram.LoopLength() : 0;
+                    if(req.append)
+                        looper_ram.ClearLengthChanges();
+                    else
+                        looper_ram.Reset();
+                    looper_append_at = req.append ? looper_ram.End() : 0;
                     looper_ram.SetWriteHead(looper_append_at);
-                    looper_ram.ClearLengthChanges();
                 }
 
                 CopyStart(req.src, req.src_bank, req.src_mode, req.dest, req.dest_bank, req.dest_mode);

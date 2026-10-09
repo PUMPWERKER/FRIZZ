@@ -221,6 +221,13 @@ namespace chompi
         {
             uint32_t now = System::GetNow();
 
+            if(transport_held && now - transport_down >= kTransportHold)
+            {
+                fx_->LooperMakeLengthBase();
+                transport_held = false;
+                transport_flash = now;
+            }
+
             if(fx_->CheckReset())
             {
                 enc_values[0][4] = enc_defaults[0][4];
@@ -419,23 +426,33 @@ namespace chompi
                         SetPthLedFloat(5, 0.f, 0.f, 0.f);
                         SetPthLedFloat(6, 0.f, 0.f, 0.f);
                     }
-                    else if(fx_->GetTransportMode())
+                    else if(fx_->GetTransportMode() != TransportMode::OFF)
                     {
                         static const float* const kLengthColors[] = {med_blue, green, yellow, orange, red};
+                        const bool step = fx_->GetTransportMode() == TransportMode::STEP;
                         const int length_exp = fx_->GetLooperLengthExp();
-                        const float* c = kLengthColors[std::min(abs(length_exp), 4)];
+                        const float* c = step ? purple : kLengthColors[std::min(abs(length_exp), 4)];
 
                         float ramp = 1.f;
                         if(!fx_->IsLooperFirstRecording())
                         {
-                            ramp = fx_->GetLooperPosition() * (length_exp > 0 ? 1 << length_exp : 1);
+                            const float pos = fx_->GetLooperPosition();
+                            if(step)
+                                ramp = (fx_->GetLooperSection() + pos) / (length_exp < 0 ? 1 << -length_exp : 1);
+                            else
+                                ramp = pos * (length_exp > 0 ? 1 << length_exp : 1);
                             ramp = 1.f - (ramp - static_cast<int>(ramp));
                         }
                         if(!switch_state)
                             ramp *= kRecDim;
 
-                        const float left = length_exp > 0 ? 0.f : ramp;
-                        const float right = length_exp < 0 ? 0.f : ramp;
+                        float left = !step && length_exp > 0 ? 0.f : ramp;
+                        float right = !step && length_exp < 0 ? 0.f : ramp;
+                        if(now - transport_flash < 200)
+                        {
+                            c = white;
+                            left = right = 1.f;
+                        }
                         SetPthLedFloat(5, c[0] * left, c[1] * left, c[2] * left);
                         SetPthLedFloat(6, c[0] * right, c[1] * right, c[2] * right);
                     }
@@ -749,10 +766,13 @@ namespace chompi
 
             case ENC_5_SW:
             {
-                if(fx_->GetTransportMode())
+                if(fx_->GetTransportMode() != TransportMode::OFF)
                 {
-                    if(!rising)
+                    if(rising)
+                        transport_down = System::GetNow();
+                    else if(transport_held)
                         fx_->LooperResetLength();
+                    transport_held = rising;
                     break;
                 }
 
@@ -950,12 +970,16 @@ namespace chompi
             if (init_ignore || copier_->IsCopying())
                 return false;
 
-            if(encoderID == 4 && fx_->GetTransportMode() && stepsPerRevolution == 0)
+            const TransportMode transport = fx_->GetTransportMode();
+            if(encoderID == 4 && transport != TransportMode::OFF && stepsPerRevolution == 0)
             {
                 transport_turns += turns > 0 ? 1 : -1;
                 if(transport_turns == 2 || transport_turns == -2)
                 {
-                    fx_->LooperLengthChange(transport_turns / 2);
+                    if(transport == TransportMode::STEP)
+                        fx_->LooperStep(transport_turns / 2);
+                    else
+                        fx_->LooperLengthChange(transport_turns / 2);
                     transport_turns = 0;
                 }
                 return true;
@@ -1106,6 +1130,9 @@ namespace chompi
 
         inline void SetInitIgnore(bool ignore) { init_ignore = ignore; }
 
+        // the click's release goes to the shift menu
+        void OnFocusLost() override { transport_held = false; }
+
     private:
         Hardware *hw_;
         Engine *fx_;
@@ -1122,6 +1149,10 @@ namespace chompi
         bool switch_state = false;
         bool chompi_key_pressed = false;
         int8_t transport_turns = 0;
+        static const uint32_t kTransportHold = 500; // ms
+        bool transport_held = false;
+        uint32_t transport_down = 0;
+        uint32_t transport_flash = 0;
         uint8_t* knob_page;
         bool quantized_pitch_;
         bool split_delay_;

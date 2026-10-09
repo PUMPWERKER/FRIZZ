@@ -52,9 +52,23 @@ namespace daisy
 
             if(length_req)
             {
-                if(!first_record)
+                if(!first_record && !IsPrinting())
                     looper.ChangeLength(length_req);
                 length_req = 0;
+            }
+            if(step_req)
+            {
+                if(!first_record && !IsPrinting())
+                    looper.StepLoop(step_req);
+                step_req = 0;
+            }
+            if(!playing)
+                looper.ApplyPendingNow();
+            if(base_req && !looper.ram_buff.IsPending()) // waits for a pending change
+            {
+                if(!first_record)
+                    looper.ram_buff.MakeLengthBase();
+                base_req = false;
             }
             if(looper.ram_buff.IsCopying())
                 looper.ram_buff.CopyStep();
@@ -95,7 +109,7 @@ namespace daisy
         bool StartPrint()
         {
             if(first_record || !SteadyPlayback() || IsPrinting() || looper.ram_buff.IsCopying()
-               || looper.ram_buff.LoopLength() != looper.ram_buff.GetSize())
+               || looper.ram_buff.IsPending())
                 return false;
 
             print_state_ = PrintState::STARTING;
@@ -297,6 +311,20 @@ namespace daisy
 
         inline int8_t GetLengthExp() { return looper.ram_buff.LengthExp(); }
 
+        void RequestStep(int8_t dir)
+        {
+            if(!first_record && !step_req && !IsPrinting())
+                step_req = dir;
+        }
+
+        inline size_t GetSection() { return looper.ram_buff.Section(); }
+
+        inline void RequestLengthBase()
+        {
+            if(!first_record)
+                base_req = true;
+        }
+
         inline bool GetRecordArm() { return record_arm; }
         inline bool GetIsEmpty() { return !record && first_record; }
         
@@ -352,6 +380,8 @@ namespace daisy
         bool record_arm;
         bool reset, jump_to_start;
         volatile int8_t length_req = 0;
+        volatile int8_t step_req = 0;
+        volatile bool base_req = false;
 
         // PRINTING writes each block a block later
         enum class PrintState { OFF, STARTING, PRINTING };

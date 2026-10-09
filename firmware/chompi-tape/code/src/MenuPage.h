@@ -695,7 +695,7 @@ namespace chompi
 
             case ENC_5_SW:
                 if(!rising)
-                    fx_->ToggleTransportMode();
+                    fx_->CycleTransportMode();
             break;
 
             case static_cast<uint16_t>(Hardware::SwId::ENC_1_SW): // attack knob

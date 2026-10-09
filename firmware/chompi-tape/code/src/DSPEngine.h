@@ -49,6 +49,14 @@ namespace daisy
         LAST,
     };
 
+    enum class TransportMode
+    {
+        OFF = 0,
+        LENGTH,
+        STEP,
+        LAST,
+    };
+
     enum class LineMode
     {
         DETECTING = 0,
@@ -1403,8 +1411,11 @@ namespace daisy
         inline void LooperLengthChange(int8_t steps) { looper.RequestLengthChange(steps); }
         inline void LooperResetLength() { looper.RequestLengthChange(-looper.GetLengthExp()); }
         inline int8_t GetLooperLengthExp() { return looper.GetLengthExp(); }
-        inline void ToggleTransportMode() { transport_mode = !transport_mode; }
-        inline bool GetTransportMode() { return transport_mode; }
+        inline void CycleTransportMode() { transport_mode = TransportMode((int(transport_mode) + 1) % int(TransportMode::LAST)); }
+        inline TransportMode GetTransportMode() { return transport_mode; }
+        inline void LooperStep(int8_t dir) { looper.RequestStep(dir); }
+        inline void LooperMakeLengthBase() { looper.RequestLengthBase(); }
+        inline size_t GetLooperSection() { return looper.GetSection(); }
 
         inline int GetBank() { return bank[int(voice_mode)];}
         inline size_t GetVoiceBank() 
@@ -1660,7 +1671,7 @@ namespace daisy
 
         /** the looper */
         LooperEngine looper;
-        bool transport_mode = false;
+        TransportMode transport_mode = TransportMode::OFF;
 
         float encoder_chunk = 0.f; // chunk up the quantized pitch controls
         float looper_encoder_chunk = 0.f;

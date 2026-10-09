@@ -33,12 +33,14 @@ namespace daisy
         int16_t* mem;
         size_t length;
 
+        size_t start = 0, base = 0;
+
         volatile size_t copy_lo = 0, copy_hi = 0;
 
         size_t halve_len[12];
         uint8_t halve_count = 0;
 
-        size_t pending_len = 0;
+        size_t pending_len = 0, pending_start = 0;
 
         int8_t length_exp = 0;
 
@@ -60,14 +62,14 @@ namespace daisy
 
         void Reset()
         {
-            buff->length = read_head = write_head = 0;
+            ClearLengthChanges(); // first, it applies a pending change
+            buff->length = buff->start = buff->base = read_head = write_head = 0;
             buff->copy_lo = buff->copy_hi = 0;
-            ClearLengthChanges();
         }
 
         void BlockRead(int16_t* copy_buff, size_t size)
         {
-            const size_t end = std::min(buff->length, kMaxRamBuffSize);
+            const size_t end = std::min(LoopEnd(), kMaxRamBuffSize);
             size = read_head < end ? std::min(size, end - read_head) : 0;
 
             std::copy(&buff->mem[read_head], &buff->mem[read_head + size], copy_buff);
@@ -77,13 +79,13 @@ namespace daisy
         void StereoRead(int16_t* l, int16_t* r, bool rev)
         {
             const size_t new_read_head = read_head + 2;
-            if(!rev && new_read_head <= buff->length && new_read_head <= kMaxRamBuffSize)
+            if(!rev && new_read_head <= End() && new_read_head <= kMaxRamBuffSize)
             {
                 *l = buff->mem[read_head];
                 *r = buff->mem[read_head + 1];
                 read_head = new_read_head;
             }
-            else if(rev && read_head >= 2)
+            else if(rev && read_head >= buff->start + 2)
             {
                 *l = buff->mem[read_head - 2];
                 *r = buff->mem[read_head - 1];
@@ -102,7 +104,7 @@ namespace daisy
 
             std::copy(copy_buff, &copy_buff[size], &buff->mem[write_head]);
             write_head += size;
-            buff->length = write_head;
+            buff->length = write_head - buff->start;
             buff->length -= buff->length % 2;
         }
 
@@ -117,10 +119,10 @@ namespace daisy
                     buff->mem[write_head + 1] = r;
                     write_head = new_write_head;
                     if(set_len)
-                        buff->length = write_head;
+                        buff->length = write_head - buff->start;
                 }
             }
-            else if(write_head >= 2)
+            else if(write_head >= buff->start + 2)
             {
                 buff->mem[write_head - 2] = l;
                 buff->mem[write_head - 1] = r;
@@ -129,64 +131,79 @@ namespace daisy
         }
 
         inline size_t GetSize() { return buff->length; }
+        inline size_t GetStart() const { return buff->start; }
+        inline size_t End() const { return buff->start + buff->length; }
 
         inline size_t GetReadHead() { return read_head; }
-        inline bool ReadEOF() { return read_head >= buff->length || read_head >= kMaxRamBuffSize; }
-        inline bool ReadLoop(bool rev) { return (rev && read_head == 0) || (!rev && ReadEOF()); }
+        inline bool ReadEOF() { return read_head >= End() || read_head >= kMaxRamBuffSize; }
+        inline bool ReadLoop(bool rev) { return (rev && read_head <= buff->start) || (!rev && ReadEOF()); }
 
         void SetReadHead(size_t pos) 
         { 
-            if(pos <= kMaxRamBuffSize && pos <= buff->length)
+            if(pos <= kMaxRamBuffSize && pos <= LoopEnd())
                 read_head = pos;
         }
         
         size_t GetRemainingRead(bool rev)
         {
             if(!rev && !ReadEOF())
-                return buff->length - read_head;
+                return End() - read_head;
             else if(rev)
-                return read_head;
+                return read_head - buff->start;
 
             return 0;
         }
 
+        inline size_t GetReadFromStart(bool rev) { return rev ? End() - read_head : read_head - buff->start; }
+
         inline size_t GetWriteHead() { return write_head; }
-        inline bool WriteEOF() { return write_head >= buff->length || write_head >= kMaxRamBuffSize; }
+        inline bool WriteEOF() { return write_head >= End() || write_head >= kMaxRamBuffSize; }
         inline bool WriteFullLength() { return write_head >= kMaxRamBuffSize; }
-        inline bool WriteLoop(bool rev) { return (rev && write_head == 0) || (!rev && WriteEOF()); }
+        inline bool WriteLoop(bool rev) { return (rev && write_head <= buff->start) || (!rev && WriteEOF()); }
 
         void SetWriteHead(size_t pos) 
         {
-            if(pos <= kMaxRamBuffSize && pos <= buff->length)
+            if(pos <= kMaxRamBuffSize && pos <= LoopEnd())
                 write_head = pos;
         }
 
         size_t GetRemainingWrite(bool rev)
         {
             if(!rev && !WriteEOF())
-                return buff->length - write_head;
+                return End() - write_head;
             else if(rev)
-                return write_head;
+                return write_head - buff->start;
 
             return 0;            
         }
 
         void AdvanceWrite(bool rev)
         {
-            if(rev && write_head >= 2)
+            if(rev && write_head >= buff->start + 2)
                 write_head -= 2;
-            else if(!rev && write_head + 2 <= buff->length && write_head + 2 < kMaxRamBuffSize)
+            else if(!rev && write_head + 2 <= End() && write_head + 2 < kMaxRamBuffSize)
                 write_head += 2;
         }
 
         inline bool IsCopying() const { return buff->copy_lo != buff->copy_hi; }
 
         inline bool CanRestore() const { return buff->halve_count; }
-        inline void ClearLengthChanges()
+
+        void MakeLengthBase()
         {
-            buff->pending_len = 0;
             buff->halve_count = 0;
             buff->length_exp = 0;
+            buff->base = buff->start;
+        }
+        inline void ClearLengthChanges()
+        {
+            if(buff->pending_len)
+            {
+                buff->start = buff->pending_start;
+                buff->length = buff->pending_len;
+            }
+            buff->pending_len = 0;
+            MakeLengthBase();
         }
 
         bool ApplyPendingLength()
@@ -194,26 +211,42 @@ namespace daisy
             if(!buff->pending_len)
                 return false;
 
+            read_head = WrapInto(read_head);
+            write_head = WrapInto(write_head);
+            buff->start = buff->pending_start;
             buff->length = buff->pending_len;
             buff->pending_len = 0;
-            read_head %= buff->length;
-            write_head %= buff->length;
             return true;
         }
 
+        inline bool IsPending() const { return buff->pending_len; }
         inline int8_t LengthExp() const { return buff->length_exp; }
 
         inline size_t LoopLength() const { return buff->pending_len ? buff->pending_len : buff->length; }
+        inline size_t LoopStart() const { return buff->pending_len ? buff->pending_start : buff->start; }
 
         bool CanChangeLength(int8_t steps) const
         {
-            const size_t len = LoopLength();
-            if(IsCopying() || !steps)
+            const size_t len = buff->length;
+            if(IsCopying() || !steps || buff->pending_len)
                 return false;
             if(steps > 0)
                 return buff->halve_count >= steps
-                       || (steps == 1 && !CanRestore() && !buff->pending_len && len >= kMinLoopSize && len * 2 <= kMaxRamBuffSize);
+                       || (steps == 1 && !CanRestore() && len >= kMinLoopSize && End() + len <= kMaxRamBuffSize);
             return (len >> -steps) >= kMinLoopSize && buff->halve_count - steps <= int(sizeof(buff->halve_len) / sizeof(size_t));
+        }
+
+        inline size_t Section() const { return buff->length ? (buff->start - buff->base) / buff->length : 0; }
+
+        bool Step(int8_t dir)
+        {
+            if(IsCopying() || buff->pending_len || buff->length_exp >= 0)
+                return false;
+
+            const size_t sections = size_t(1) << -buff->length_exp;
+            buff->pending_start = buff->base + (Section() + sections + dir) % sections * buff->length;
+            buff->pending_len = buff->length;
+            return true;
         }
 
         // steps > 0 doubles, < 0 halves
@@ -222,15 +255,19 @@ namespace daisy
             if(!CanChangeLength(steps))
                 return false;
 
-            size_t len = LoopLength();
+            size_t len = buff->length;
             if(steps > 0 && CanRestore())
             {
                 buff->halve_count -= steps;
-                SetLoopLength(buff->halve_len[buff->halve_count], rev);
+                len = buff->halve_len[buff->halve_count];
+                // halving rounds down, so go by the section's middle
+                const size_t mid = buff->start - buff->base + buff->length / 2;
+                buff->start = buff->base + mid - mid % len;
+                SetLoopLength(len, rev);
             }
             else if(steps > 0)
             {
-                FadeSeam(&buff->mem[len - 2], -2);
+                FadeSeam(&buff->mem[End() - 2], -2);
 
                 buff->copy_lo = 0;
                 buff->copy_hi = len;
@@ -253,16 +290,17 @@ namespace daisy
         {
             size_t lo = buff->copy_lo, hi = buff->copy_hi;
             const size_t len = buff->length / 2;
+            int16_t* const mem = &buff->mem[buff->start];
 
             size_t n = std::min(kCopyStepSize, hi - lo);
-            memcpy(&buff->mem[lo + len], &buff->mem[lo], n * sizeof(int16_t));
+            memcpy(&mem[lo + len], &mem[lo], n * sizeof(int16_t));
             if(lo == 0)
-                FadeSeam(&buff->mem[len], 2);
+                FadeSeam(&mem[len], 2);
             lo += n;
 
             n = std::min(kCopyStepSize, hi - lo);
             hi -= n;
-            memcpy(&buff->mem[hi + len], &buff->mem[hi], n * sizeof(int16_t));
+            memcpy(&mem[hi + len], &mem[hi], n * sizeof(int16_t));
 
             buff->copy_lo = lo;
             buff->copy_hi = hi;
@@ -271,12 +309,12 @@ namespace daisy
         void LoopFadeAudio(int32_t* l, int32_t* r, bool rev) const
         {
             *l = *r = 0;
-            if((rev && write_head < 2) || (!rev && write_head + 2 > buff->length))
+            if((rev && write_head < buff->start + 2) || (!rev && write_head + 2 > End()))
                 return;
 
             const size_t pos = rev ? write_head - 2 : write_head;
-            const size_t from_start = rev ? buff->length - pos : pos;
-            const size_t to_end = rev ? pos : buff->length - pos;
+            const size_t from_start = rev ? End() - pos : pos - buff->start;
+            const size_t to_end = rev ? pos - buff->start : End() - pos;
             if(from_start >= kLoopFadeSize && to_end >= kLoopFadeSize)
                 return;
 
@@ -325,28 +363,39 @@ namespace daisy
             if(len == 0)
                 return;
 
-            int32_t pos = (static_cast<int32_t>(write_head) + offset) % len;
-            write_head = (pos < 0 ? pos + len : pos) & ~1;
+            int32_t pos = (static_cast<int32_t>(write_head - buff->start) + offset) % len;
+            write_head = buff->start + ((pos < 0 ? pos + len : pos) & ~1);
         }
 
         void FadeJoin(size_t pos)
         {
-            if(pos < kLoopFadeSize || pos + kLoopFadeSize > buff->length)
+            if(pos < buff->start + kLoopFadeSize || pos + kLoopFadeSize > End())
                 return;
             FadeSeam(&buff->mem[pos - 2], -2);
             FadeSeam(&buff->mem[pos], 2);
         }
 
     private:
+        inline size_t LoopEnd() const { return LoopStart() + LoopLength(); }
+
         void SetLoopLength(size_t len, bool rev)
         {
-            if(len >= buff->length || read_head + (rev ? 0 : kLoopFadeSize) < len)
+            if(len >= buff->length || read_head - buff->start + (rev ? 0 : kLoopFadeSize) < len)
             {
                 buff->length = len;
                 buff->pending_len = 0;
             }
             else
+            {
+                buff->pending_start = buff->start;
                 buff->pending_len = len;
+            }
+        }
+
+        size_t WrapInto(size_t head) const
+        {
+            const size_t rel = head > buff->start ? head - buff->start : 0;
+            return buff->pending_start + rel % buff->pending_len;
         }
 
         static void FadeSeam(int16_t* seam, int step) __attribute__((noinline, optimize("Os")))
