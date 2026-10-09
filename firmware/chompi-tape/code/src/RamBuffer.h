@@ -10,6 +10,14 @@ namespace daisy
     static const size_t kMinLoopSize = 4800;
     static const size_t kLoopFadeSize = 480;
     static constexpr float kLoopFadeStep = .00464f;
+    static const size_t kOnsetSkip = 9600;
+    static const size_t kOnsetSearchSize = 960000;
+    static const size_t kOnsetWindow = 96;
+    static const size_t kOnsetFloorWindows = 10;
+    static const size_t kOnsetHoldWindows = 3;
+    static const size_t kOnsetPreRoll = 1440;
+    static const int32_t kOnsetMinLevel = 33;    // -60dBFS
+    static const int32_t kOnsetMaxFloor = 328;   // -40dBFS
     static const size_t kCopyStepSize = 512;
     // total size = 31694848, which goes evenly into 8K, which means SDRAM page alignment
 
@@ -278,6 +286,37 @@ namespace daisy
             const float keep = 1.f - daisysp::fclamp(std::min(fade_in, fade_out), 0.f, 1.f);
             *l = buff->mem[pos] * keep;
             *r = buff->mem[pos + 1] * keep;
+        }
+
+        size_t FindOnset() const
+        {
+            const size_t end = std::min(buff->length, kOnsetSearchSize);
+            if(end < kOnsetSkip + kOnsetFloorWindows * kOnsetWindow)
+                return 0;
+
+            int32_t floor = INT32_MAX;
+            for(size_t w = 0; w < kOnsetFloorWindows; w++)
+                floor = std::min(floor, WindowLevel(kOnsetSkip + w * kOnsetWindow));
+            if(floor > kOnsetMaxFloor)
+                return 0;
+
+            const int32_t threshold = std::max(floor * 4, kOnsetMinLevel);
+            size_t run = 0;
+            for(size_t win = kOnsetSkip; win + kOnsetWindow <= end; win += kOnsetWindow)
+            {
+                run = WindowLevel(win) > threshold ? run + 1 : 0;
+                if(run == kOnsetHoldWindows)
+                    return win - (kOnsetHoldWindows - 1) * kOnsetWindow - kOnsetPreRoll;
+            }
+            return 0;
+        }
+
+        int32_t WindowLevel(size_t pos) const
+        {
+            int32_t level = 0;
+            for(size_t i = pos; i < pos + kOnsetWindow; i++)
+                level = std::max(level, std::abs(int32_t(buff->mem[i])));
+            return level;
         }
 
         void ShiftWriteHead(int32_t offset)

@@ -711,6 +711,15 @@ namespace daisy
         }
         inline bool Recording() const { return record; }
 
+        float GetRecordingOnset()
+        {
+            const size_t size = chompi_writer.GetSize();
+            size_t onset = chompi_writer.FindOnset();
+            if(onset + 4 * kMinLoopLen > size)
+                onset = 0;
+            return size ? static_cast<float>(onset) / size : 0.f;
+        }
+
         /**
          * @brief Resets the assignment of keyboard keys to voices used in voice stealing algorithm.
          *        Call this when we change voice modes, banks, or slots 
