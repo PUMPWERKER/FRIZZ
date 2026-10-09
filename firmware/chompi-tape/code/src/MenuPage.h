@@ -967,8 +967,7 @@ namespace chompi
 
             // white keys and play/pause
             default:
-                // play pause, overdub gain setting
-                if((buttonID == 33 || buttonID == 34) && preset_mode == PresetMode::NONE)
+                if((buttonID == 33 || buttonID == 34) && preset_mode == PresetMode::NONE && !rising)
                 {
                     const float gain = buttonID == 33 ? -.1f : .1f;
                     fx_->IncrementLooperDubGain(gain);
