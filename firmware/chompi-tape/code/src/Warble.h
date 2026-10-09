@@ -51,6 +51,8 @@ class Warble
         *out_right = mix_ * (del_r_.Read() - in_right) + in_right;
     }
 
+    void SnapMix() { mix_ = mix_target_; }
+
     /** adjusts how often warbles happen. Should be above 0 */
     void SetFreq(float val) 
     {

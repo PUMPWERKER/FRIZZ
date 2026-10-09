@@ -525,18 +525,33 @@ namespace daisy
 
 
             /** looper read + write */
+            if(bake_ == BakeState::REQUESTED)
+                bake_ = !fx_pre_loop && looper.StartPrint() ? BakeState::PRINTING : BakeState::REFUSED;
             looper.CheckRecordReady();
             if(looper.CheckReset())
                 looper_reset = true;
 
+            // FX off until the UI reset them after a bake
+            if(bake_ == BakeState::FX_RESET)
+            {
+                SnapFx();
+                bake_ = BakeState::OFF;
+            }
+            const bool fx_on = bake_ != BakeState::RESET_FX;
+
             //fx_xfade_pre
-            if(fx_pre_loop)
+            if(fx_pre_loop && fx_on)
                 ApplyFx(out[0], out[1], size);
 
             looper.Process(out[0], out[1], size);
 
-            if(!fx_pre_loop)
+            if(!fx_pre_loop && fx_on)
                 ApplyFx(out[0], out[1], size);
+
+            if(looper.CapturePrint(out[0], out[1], size))
+                bake_ = BakeState::RESET_FX;
+            else if(bake_ == BakeState::PRINTING && !looper.IsPrinting())
+                bake_ = BakeState::OFF;
 
             if(fx_env_ < .01f)
             {
@@ -1331,6 +1346,42 @@ namespace daisy
 
         inline bool IsLooperPlaying() { return looper.IsPlaying(); };
         inline bool IsLooperRecording() { return looper.IsRecording(); };
+        inline bool IsLooperPrinting() { return looper.IsPrinting(); }
+
+        inline void BakeFx()
+        {
+            if(bake_ == BakeState::OFF)
+                bake_ = BakeState::REQUESTED;
+        }
+
+        bool TakeBakeRefused()
+        {
+            if(bake_ != BakeState::REFUSED)
+                return false;
+            bake_ = BakeState::OFF;
+            return true;
+        }
+
+        inline bool IsFxResetDue() { return bake_ == BakeState::RESET_FX; }
+
+        void FxResetDone()
+        {
+            __DMB(); // FX targets before the audio thread snaps to them
+            bake_ = BakeState::FX_RESET;
+        }
+
+        void SnapFx()
+        {
+            cutoff_ = cutoff_target_;
+            res_ = res_target_;
+            saturate_amt_ = saturate_amt_target_;
+            dly_time_ = dly_time_target_;
+            dly_feedback_ = dly_feedback_target_;
+            dly_amt_ = dly_amt_target_;
+            reverb_amt_ = reverb_amt_target_;
+            reverb_time_ = reverb_time_target_;
+            warble_.SnapMix();
+        }
         inline bool IsLooperFirstRecording() { return looper.IsFirstRecording(); };
         inline bool IsLooperRecordArmed() { return looper.GetRecordArm(); };
 
@@ -1675,6 +1726,9 @@ namespace daisy
         
         bool fx_pre_loop;
         float fx_env_, fx_env_target_;
+        // UI writes OFF, REFUSED and RESET_FX, the audio thread the rest
+        enum class BakeState { OFF, REQUESTED, REFUSED, PRINTING, RESET_FX, FX_RESET };
+        volatile BakeState bake_ = BakeState::OFF;
 
         int bank[int(VoiceMode::LAST)];
 

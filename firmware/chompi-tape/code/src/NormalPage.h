@@ -116,6 +116,7 @@ namespace chompi
     static const float blue[3] = {0.f, 0.f, 1.f};
     static const float purple[3] = {.58f, .05f, 1.f};
     static const float pink[3] = {1.f, .36f, .62f};
+    static const float magenta[3] = {1.f, 0.f, 1.f};
     static const float dark_orange[3] = {.77f, .38f, .06f};
     static const float yellow_green[3] = {.706f, 1.f, 0.f};
 
@@ -608,6 +609,13 @@ namespace chompi
                 r = red[0];
                 g = red[1];
                 b = red[2];
+            }
+            else if(fx_->IsLooperPrinting())
+            {
+                float position = fx_->GetLooperPosition();
+                r = magenta[0] * position;
+                g = magenta[1] * position;
+                b = magenta[2] * position;
             }
             else if(fx_->IsLooperRecording()) // overdub
             {

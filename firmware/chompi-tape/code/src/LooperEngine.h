@@ -64,6 +64,7 @@ namespace daisy
 
             for(size_t i = 0; i < size; i++)
             {
+                const bool print = looper.IsPrinting();
                 daisysp::fonepole(fx_env_, fx_env_target_, .001f);
 
                 if(!first_record || looper.IsResetting())
@@ -71,7 +72,9 @@ namespace daisy
                     int16_t aol = 0;
                     int16_t aor = 0;
 
-                    looper.PopStereoSamps(f2s16(out_l[i] * fx_env_), f2s16(out_r[i] * fx_env_), &aol, &aor, record, playing);
+                    const int16_t inl = f2s16(print ? print_l_[i] : out_l[i] * fx_env_);
+                    const int16_t inr = f2s16(print ? print_r_[i] : out_r[i] * fx_env_);
+                    looper.PopStereoSamps(inl, inr, &aol, &aor, record, playing);
 
                     out_l[i] += s162f(aol) * fx_env_;
                     out_r[i] += s162f(aor) * fx_env_;
@@ -88,6 +91,52 @@ namespace daisy
                 }
             }
         }
+
+        bool StartPrint()
+        {
+            if(first_record || !SteadyPlayback() || IsPrinting() || looper.ram_buff.IsCopying()
+               || looper.ram_buff.LoopLength() != looper.ram_buff.GetSize())
+                return false;
+
+            print_state_ = PrintState::STARTING;
+            return true;
+        }
+
+        inline bool SteadyPlayback()
+        {
+            return playing && fabsf(looper.GetScrub() - looper.GetVarispeed()) <= .01f;
+        }
+
+        bool CapturePrint(const float* l, const float* r, size_t size)
+        {
+            if(!IsPrinting())
+                return false;
+
+            if(!SteadyPlayback() || (print_state_ == PrintState::PRINTING && !looper.IsPrinting()))
+            {
+                looper.StopPrint();
+                print_state_ = PrintState::OFF;
+                return false;
+            }
+
+            size = size < kMaxPrintBlock ? size : kMaxPrintBlock; // audio blocks are 24
+            std::copy(l, l + size, print_l_);
+            std::copy(r, r + size, print_r_);
+
+            if(print_state_ == PrintState::STARTING)
+            {
+                looper.StartPrint(static_cast<int32_t>(fabsf(looper.GetScrub()) * size) * 2);
+                print_state_ = PrintState::PRINTING;
+            }
+            else if(print_state_ == PrintState::PRINTING && looper.PrintPassDone())
+            {
+                print_state_ = PrintState::OFF;
+                return true;
+            }
+            return false;
+        }
+
+        inline bool IsPrinting() { return print_state_ != PrintState::OFF || looper.IsPrinting(); }
 
         inline bool IsPlaying() { return playing && !first_record; }
         inline bool IsFirstRecording() { return first_record; }
@@ -242,7 +291,7 @@ namespace daisy
 
         void RequestLengthChange(int8_t steps)
         {
-            if(!first_record && !length_req)
+            if(!first_record && !length_req && !IsPrinting())
                 length_req = steps;
         }
 
@@ -268,6 +317,9 @@ namespace daisy
         {
             looper.Reset();
             reset = true;
+
+            looper.StopPrint();
+            print_state_ = PrintState::OFF;
 
             record = false;
             first_record = true;
@@ -300,6 +352,12 @@ namespace daisy
         bool record_arm;
         bool reset, jump_to_start;
         volatile int8_t length_req = 0;
+
+        // PRINTING writes each block a block later
+        enum class PrintState { OFF, STARTING, PRINTING };
+        PrintState print_state_ = PrintState::OFF;
+        static const size_t kMaxPrintBlock = 48;
+        float print_l_[kMaxPrintBlock], print_r_[kMaxPrintBlock];
 
         float fx_env_, fx_env_target_;
     };

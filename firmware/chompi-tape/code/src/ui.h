@@ -378,7 +378,15 @@ namespace chompi
 
         }
 
-        void DoEvents() { ui.Process(); }
+        void DoEvents()
+        {
+            if(fx_->IsFxResetDue())
+            {
+                menu_page_.ResetFx();
+                fx_->FxResetDone();
+            }
+            ui.Process();
+        }
 
         uint32_t file_len = 0;
         uint8_t write_stage = 0;

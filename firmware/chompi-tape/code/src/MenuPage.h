@@ -71,11 +71,18 @@ namespace chompi
                 last_blink = now;
             }
 
-            if(line_key_held && now - line_key_down >= kLongPress)
+            if(long_press_key != kNoKey && now - long_press_down >= kLongPress)
             {
-                fx_->CycleLineMode();
-                line_key_held = false;
+                if(long_press_key == static_cast<uint16_t>(Hardware::SwId::KEY_19))
+                    fx_->CycleLineMode();
+                else if(copier_->IsCopying())
+                    bake_refused = now;
+                else
+                    fx_->BakeFx();
+                long_press_key = kNoKey;
             }
+            if(fx_->TakeBakeRefused())
+                bake_refused = now;
 
             // chompi key
             if (chompi_key_pressed && preset_mode == PresetMode::NONE)
@@ -110,7 +117,12 @@ namespace chompi
             {
                 const float gain = fx_->GetLooperDubGain();
                 SetPthLedFloat(7, gain, gain, gain);
-                SetPthLedFloat(8, gain, gain, gain);
+                if(fx_->IsLooperPrinting())
+                    SetPthLedFloat(8, magenta[0], magenta[1], magenta[2]);
+                else if(now - bake_refused < 300)
+                    SetPthLedFloat(8, red[0], red[1], red[2]);
+                else
+                    SetPthLedFloat(8, gain, gain, gain);
 
                 if(!fx_->GetLooperIsEmpty())
                 {
@@ -186,7 +198,7 @@ namespace chompi
                 SetPthLedFloat(6, 0.f, 0.f, 0.f);                
 
                 SetPthLedFloat(7, 0.f, 0.f, 0.f);
-                SetPthLedFloat(8, 0.f, 0.f, 0.f);                
+                SetPthLedFloat(8, 0.f, 0.f, 0.f);
             }
 
             // shift encoder display
@@ -718,28 +730,7 @@ namespace chompi
             {
                 fx_reset = rising;
                 if(rising)
-                {
-                    enc_values[0][3] = enc_defaults[0][3];
-                    enc_values[1][3] = enc_defaults[1][3];
-                    enc_values[2][3] = enc_defaults[2][3];
-
-                    fx_->SetReverb(enc_values[0][3]);
-                    fx_->SetDelayFeedback(enc_values[0][3]);
-                    fx_->SetSaturate(enc_values[1][3]);
-                    fx_->SetFilter(enc_values[2][3]);
-
-                    delay_time = .5f;
-                    resonance = 0.f;
-                    warble = 0.f;
-
-                    fx_->SetFilterResonance(resonance);
-                    fx_->SetDelayTime(delay_time);
-                    fx_->SetWarble(warble);
-
-                    if (split_delay_) {
-                        enc_values[0][3] = .5f;
-                    }
-                }
+                    ResetFx();
             }
 
             case static_cast<uint16_t>(Hardware::SwId::SW_TOG): // toggle (no longer used, here for safety)
@@ -867,12 +858,13 @@ namespace chompi
                         source = InputSource::RESAMPLE;
 
                     fx_->SetInputSource(source);
-                    line_key_held = source == InputSource::LINE_IN;
-                    line_key_down = System::GetNow();
+                    if(source == InputSource::LINE_IN)
+                        StartLongPress(buttonID);
                 }
                 else
                 {
-                    line_key_held = false;
+                    if(long_press_key == buttonID)
+                        long_press_key = kNoKey;
                     return false; // note off falls through
                 }
 
@@ -967,10 +959,15 @@ namespace chompi
 
             // white keys and play/pause
             default:
-                if((buttonID == 33 || buttonID == 34) && preset_mode == PresetMode::NONE && !rising)
+                if((buttonID == 33 || buttonID == 34) && preset_mode == PresetMode::NONE)
                 {
-                    const float gain = buttonID == 33 ? -.1f : .1f;
-                    fx_->IncrementLooperDubGain(gain);
+                    if(rising && buttonID == 34)
+                        StartLongPress(buttonID);
+                    else if(!rising && (buttonID == 33 || long_press_key == buttonID))
+                    {
+                        long_press_key = kNoKey;
+                        fx_->IncrementLooperDubGain(buttonID == 33 ? -.1f : .1f);
+                    }
                 }
 
                 if (rising)
@@ -1056,12 +1053,36 @@ namespace chompi
             return true;
         }
 
+        void ResetFx()
+        {
+            enc_values[0][3] = enc_defaults[0][3];
+            enc_values[1][3] = enc_defaults[1][3];
+            enc_values[2][3] = enc_defaults[2][3];
+
+            fx_->SetReverb(enc_values[0][3]);
+            fx_->SetDelayFeedback(enc_values[0][3]);
+            fx_->SetSaturate(enc_values[1][3]);
+            fx_->SetFilter(enc_values[2][3]);
+
+            delay_time = .5f;
+            resonance = 0.f;
+            warble = 0.f;
+
+            fx_->SetFilterResonance(resonance);
+            fx_->SetDelayTime(delay_time);
+            fx_->SetWarble(warble);
+
+            if (split_delay_) {
+                enc_values[0][3] = .5f;
+            }
+        }
+
         void OnFocusGained() override
         {
             fx_reset = false;
             pitch_reset = false;
             chompi_key_pressed = true;
-            line_key_held = false; // its release may have gone to the page below
+            long_press_key = kNoKey; // its release may have gone to the page below
 
             if(quantized_pitch_)
             {
@@ -1154,9 +1175,17 @@ namespace chompi
         VoiceMode ss_mode = VoiceMode::LAST;
         uint8_t copy_src = kSlotNone;
         bool looper_append = false;
-        bool line_key_held = false;
-        uint32_t line_key_down = 0;
+        static const uint16_t kNoKey = 0xffff;
         static const uint32_t kLongPress = 500; // ms
+        uint16_t long_press_key = kNoKey;
+        uint32_t long_press_down = 0;
+        uint32_t bake_refused = 0;
+
+        void StartLongPress(uint16_t key)
+        {
+            long_press_key = key;
+            long_press_down = System::GetNow();
+        }
         uint8_t cs_bank = kSlotNone;
         VoiceMode cs_mode = VoiceMode::LAST;
         bool switch_state;

@@ -77,10 +77,7 @@ namespace daisy
             if(!old_rec && recording) // rising edge
             {
                 input_env_dec = .001f;
-                old_samps_l.Clear();
-                old_samps_r.Clear();
-                rev_pushback = true; // poorly named var imo
-                ram_buff.SetWriteHead(ram_buff.GetReadHead());
+                AlignWriteHead();
             }
             else if(!recording) // falling edge
             {
@@ -176,6 +173,8 @@ namespace daisy
                         al = bl;
                         ar = br;
                         ram_buff.StereoRead(&bl, &br, reverse_);
+                        if(printing_)
+                            print_left_ -= 2;
 
                         if(ram_buff.ReadLoop(reverse_))
                         {
@@ -212,22 +211,30 @@ namespace daisy
                         int32_t write_left = old_samps_l.PopFront() * dub_gain_;
                         int32_t write_right = old_samps_r.PopFront() * dub_gain_;
 
+                        // keep what the loop fade hid
+                        if(printing_)
+                            ram_buff.LoopFadeAudio(&write_left, &write_right, reverse_);
+
                         input_env += input_env_dec;
                         input_env = daisysp::fclamp(input_env, 0.f, 1.f);
 
-                        if(recording || input_env > .01f)
+                        if(recording || input_env > .01f || printing_)
                         {
                             daisysp::fonepole(dub_gain_, dub_gain_target_, .0001f);
 
                             const float lerp_val = pos * delta;
-                            write_left += (old_inl + (inl - old_inl) * lerp_val) * input_env;
-                            write_right += (old_inr + (inr - old_inr) * lerp_val) * input_env;
+                            const float in_gain = printing_ ? 1.f : input_env;
+                            write_left += (old_inl + (inl - old_inl) * lerp_val) * in_gain;
+                            write_right += (old_inr + (inr - old_inr) * lerp_val) * in_gain;
 
                             write_left  = f2s16(lim_l_.ProcessHard(s162f(write_left)));
                             write_right = f2s16(lim_r_.ProcessHard(s162f(write_right)));
 
                             pos += 1.f;
                             ram_buff.StereoWrite(write_left, write_right, reverse_, false);
+
+                            if(printing_ && (print_write_left_ -= 2) <= 0)
+                                StopPrint();
 
                             if(ram_buff.WriteLoop(reverse_))
                             {
@@ -285,13 +292,9 @@ namespace daisy
             const bool change = rev != reverse_;
             if(change)
             {
-                old_samps_l.Clear();
-                old_samps_r.Clear();
-                
-                rev_pushback = true;
-                WriteJump(ram_buff.GetReadHead());
-    
+                StopPrint();
                 reverse_ = rev;
+                AlignWriteHead();
             }
 
             return change;
@@ -331,8 +334,38 @@ namespace daisy
 
         void ResetRamBuff() { ram_buff.Reset(); }
 
+        void StartPrint(int32_t block_adv)
+        {
+            printing_ = true;
+            print_shift_ = reverse_ ? block_adv : -block_adv;
+            print_left_ = print_write_left_ = ram_buff.LoopLength();
+            AlignWriteHead();
+        }
+
+        void StopPrint()
+        {
+            if(!printing_)
+                return;
+            printing_ = false;
+            ram_buff.ShiftWriteHead(-print_shift_);
+        }
+
+        inline bool IsPrinting() { return printing_; }
+        inline bool PrintPassDone() { return print_left_ <= std::abs(print_shift_); }
+
+        void AlignWriteHead()
+        {
+            old_samps_l.Clear();
+            old_samps_r.Clear();
+            rev_pushback = true; // poorly named var imo
+            ram_buff.SetWriteHead(ram_buff.GetReadHead());
+            if(printing_)
+                ram_buff.ShiftWriteHead(print_shift_);
+        }
+
         RamBuffer ram_buff;
         volatile bool reset;
+
         float reset_env = 1.f;
 
         /** Compression for overdub feedback loop */
@@ -365,7 +398,7 @@ namespace daisy
 
         /** Envelope to avoid clicking over the end */
         float loop_env = 0.f;
-        const float loop_env_dec_val = .00464f;
+        const float loop_env_dec_val = kLoopFadeStep;
         float loop_env_dec = loop_env_dec_val;
 
         float input_env;
@@ -373,6 +406,11 @@ namespace daisy
 
         float rev_env = 1.f;
         float rev_env_dec = .001f;
+
+        bool printing_ = false;
+        int32_t print_shift_ = 0;
+        int32_t print_left_ = 0;
+        int32_t print_write_left_ = 0;
         float rev_pushback = true;
 
         float dub_gain_ = 1.f;

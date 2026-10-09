@@ -9,6 +9,7 @@ namespace daisy
     // ~50ms
     static const size_t kMinLoopSize = 4800;
     static const size_t kLoopFadeSize = 480;
+    static constexpr float kLoopFadeStep = .00464f;
     static const size_t kCopyStepSize = 512;
     // total size = 31694848, which goes evenly into 8K, which means SDRAM page alignment
 
@@ -257,6 +258,36 @@ namespace daisy
 
             buff->copy_lo = lo;
             buff->copy_hi = hi;
+        }
+
+        void LoopFadeAudio(int32_t* l, int32_t* r, bool rev) const
+        {
+            *l = *r = 0;
+            if((rev && write_head < 2) || (!rev && write_head + 2 > buff->length))
+                return;
+
+            const size_t pos = rev ? write_head - 2 : write_head;
+            const size_t from_start = rev ? buff->length - pos : pos;
+            const size_t to_end = rev ? pos : buff->length - pos;
+            if(from_start >= kLoopFadeSize && to_end >= kLoopFadeSize)
+                return;
+
+            const float step = kLoopFadeStep * .5f;
+            const float fade_in = from_start * step;
+            const float fade_out = 1.f - (kLoopFadeSize - std::min(to_end, kLoopFadeSize)) * step;
+            const float keep = 1.f - daisysp::fclamp(std::min(fade_in, fade_out), 0.f, 1.f);
+            *l = buff->mem[pos] * keep;
+            *r = buff->mem[pos + 1] * keep;
+        }
+
+        void ShiftWriteHead(int32_t offset)
+        {
+            const int32_t len = buff->length;
+            if(len == 0)
+                return;
+
+            int32_t pos = (static_cast<int32_t>(write_head) + offset) % len;
+            write_head = (pos < 0 ? pos + len : pos) & ~1;
         }
 
         void FadeJoin(size_t pos)
