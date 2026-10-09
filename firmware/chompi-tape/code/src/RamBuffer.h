@@ -6,6 +6,10 @@ namespace daisy
 {
 
     static const size_t kMaxRamBuffSize = 31694848 / 2;
+    // ~50ms
+    static const size_t kMinLoopSize = 4800;
+    static const size_t kLoopFadeSize = 480;
+    static const size_t kCopyStepSize = 512;
     // total size = 31694848, which goes evenly into 8K, which means SDRAM page alignment
 
     // just a buffer with its length
@@ -19,6 +23,15 @@ namespace daisy
 
         int16_t* mem;
         size_t length;
+
+        volatile size_t copy_lo = 0, copy_hi = 0;
+
+        size_t halve_len[12];
+        uint8_t halve_count = 0;
+
+        size_t pending_len = 0;
+
+        int8_t length_exp = 0;
 
         void Clear()
         {
@@ -39,14 +52,14 @@ namespace daisy
         void Reset()
         {
             buff->length = read_head = write_head = 0;
+            buff->copy_lo = buff->copy_hi = 0;
+            ClearLengthChanges();
         }
 
         void BlockRead(int16_t* copy_buff, size_t size)
         {
-            if(read_head + size > kMaxRamBuffSize)
-                size = kMaxRamBuffSize - read_head;
-            if(read_head + size > buff->length)
-                size = buff->length - read_head;
+            const size_t end = std::min(buff->length, kMaxRamBuffSize);
+            size = read_head < end ? std::min(size, end - read_head) : 0;
 
             std::copy(&buff->mem[read_head], &buff->mem[read_head + size], copy_buff);
             read_head += size;
@@ -157,7 +170,117 @@ namespace daisy
                 write_head += 2;
         }
 
+        inline bool IsCopying() const { return buff->copy_lo != buff->copy_hi; }
+
+        inline bool CanRestore() const { return buff->halve_count; }
+        inline void ClearLengthChanges()
+        {
+            buff->pending_len = 0;
+            buff->halve_count = 0;
+            buff->length_exp = 0;
+        }
+
+        bool ApplyPendingLength()
+        {
+            if(!buff->pending_len)
+                return false;
+
+            buff->length = buff->pending_len;
+            buff->pending_len = 0;
+            read_head %= buff->length;
+            write_head %= buff->length;
+            return true;
+        }
+
+        inline int8_t LengthExp() const { return buff->length_exp; }
+
+        inline size_t LoopLength() const { return buff->pending_len ? buff->pending_len : buff->length; }
+
+        bool CanChangeLength(int8_t steps) const
+        {
+            const size_t len = LoopLength();
+            if(IsCopying() || !steps)
+                return false;
+            if(steps > 0)
+                return buff->halve_count >= steps
+                       || (steps == 1 && !CanRestore() && !buff->pending_len && len >= kMinLoopSize && len * 2 <= kMaxRamBuffSize);
+            return (len >> -steps) >= kMinLoopSize && buff->halve_count - steps <= int(sizeof(buff->halve_len) / sizeof(size_t));
+        }
+
+        // steps > 0 doubles, < 0 halves
+        bool ChangeLength(int8_t steps, bool rev) __attribute__((optimize("Os"))) // saves code space
+        {
+            if(!CanChangeLength(steps))
+                return false;
+
+            size_t len = LoopLength();
+            if(steps > 0 && CanRestore())
+            {
+                buff->halve_count -= steps;
+                SetLoopLength(buff->halve_len[buff->halve_count], rev);
+            }
+            else if(steps > 0)
+            {
+                FadeSeam(&buff->mem[len - 2], -2);
+
+                buff->copy_lo = 0;
+                buff->copy_hi = len;
+                buff->length = len * 2;
+            }
+            else
+            {
+                for(int8_t i = steps; i < 0; i++)
+                {
+                    buff->halve_len[buff->halve_count++] = len;
+                    len = (len / 2) & ~size_t(1);
+                }
+                SetLoopLength(len, rev);
+            }
+            buff->length_exp += steps;
+            return true;
+        }
+
+        void CopyStep()
+        {
+            size_t lo = buff->copy_lo, hi = buff->copy_hi;
+            const size_t len = buff->length / 2;
+
+            size_t n = std::min(kCopyStepSize, hi - lo);
+            memcpy(&buff->mem[lo + len], &buff->mem[lo], n * sizeof(int16_t));
+            if(lo == 0)
+                FadeSeam(&buff->mem[len], 2);
+            lo += n;
+
+            n = std::min(kCopyStepSize, hi - lo);
+            hi -= n;
+            memcpy(&buff->mem[hi + len], &buff->mem[hi], n * sizeof(int16_t));
+
+            buff->copy_lo = lo;
+            buff->copy_hi = hi;
+        }
+
     private:
+        void SetLoopLength(size_t len, bool rev)
+        {
+            if(len >= buff->length || read_head + (rev ? 0 : kLoopFadeSize) < len)
+            {
+                buff->length = len;
+                buff->pending_len = 0;
+            }
+            else
+                buff->pending_len = len;
+        }
+
+        static void FadeSeam(int16_t* seam, int step) __attribute__((noinline, optimize("Os")))
+        {
+            for(size_t i = 0; i < kLoopFadeSize; i += 2, seam += step)
+            {
+                const float gain = i / static_cast<float>(kLoopFadeSize);
+                seam[0] *= gain;
+                seam[1] *= gain;
+            }
+        }
+
         RamBufferMemory* buff;
         size_t read_head, write_head;
     };

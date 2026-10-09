@@ -669,9 +669,10 @@ namespace chompi
             break;
             }
 
-            // reset the looper pitch via fall through
             case ENC_5_SW:
-                return false;
+                if(!rising)
+                    fx_->ToggleTransportMode();
+            break;
 
             case static_cast<uint16_t>(Hardware::SwId::ENC_1_SW): // attack knob
                 if(rising)

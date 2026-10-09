@@ -36,7 +36,9 @@ class FileCopier
 
         bool CopyProcess()
         {
-            if(!copying_ && !req_fifo.IsEmpty())
+            // looper jobs wait for the doubling copy
+            if(!copying_ && !req_fifo.IsEmpty()
+                && (req_fifo.Front().is_looper == CopyRequest::RamDir::NONE || !looper_ram.IsCopying()))
             {
                 copying_ = true;
                 req = req_fifo.PopFront();
@@ -49,6 +51,8 @@ class FileCopier
 
                 looper_ram.SetReadHead(0);
                 looper_ram.SetWriteHead(0);
+                if(is_looper_ram == CopyRequest::RamDir::TO)
+                    looper_ram.ClearLengthChanges();
 
                 CopyStart(req.src, req.src_bank, req.src_mode, req.dest, req.dest_bank, req.dest_mode);
             }
@@ -268,7 +272,7 @@ class FileCopier
             }
             else if(is_looper_ram == CopyRequest::RamDir::FROM)
             {
-                copysize = looper_ram.GetSize() * 2;
+                copysize = looper_ram.LoopLength() * 2;
                 src_bank = 0;
                 src_mode = VoiceMode::CUBBI;
             }

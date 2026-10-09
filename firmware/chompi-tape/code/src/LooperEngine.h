@@ -50,6 +50,15 @@ namespace daisy
 
             // looper.PerBlock(playing);
 
+            if(length_req)
+            {
+                if(!first_record)
+                    looper.ChangeLength(length_req);
+                length_req = 0;
+            }
+            if(looper.ram_buff.IsCopying())
+                looper.ram_buff.CopyStep();
+
             if(fx_env_ < .01f)
                 fx_env_target_ = 1.f;
 
@@ -231,6 +240,14 @@ namespace daisy
             }
         }
 
+        void RequestLengthChange(int8_t steps)
+        {
+            if(!first_record && !length_req)
+                length_req = steps;
+        }
+
+        inline int8_t GetLengthExp() { return looper.ram_buff.LengthExp(); }
+
         inline bool GetRecordArm() { return record_arm; }
         inline bool GetIsEmpty() { return !record && first_record; }
         
@@ -268,7 +285,7 @@ namespace daisy
             record_target = false;
 
             looper.SetVarispeed(1.f, true);
-            looper.JumpTo(0);
+            looper.JumpToStart();
             looper.ForceSetScrub(0.f);
         }
 
@@ -282,6 +299,7 @@ namespace daisy
         bool toggle_record, toggle_play;
         bool record_arm;
         bool reset, jump_to_start;
+        volatile int8_t length_req = 0;
 
         float fx_env_, fx_env_target_;
     };

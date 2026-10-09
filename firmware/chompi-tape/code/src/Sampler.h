@@ -27,6 +27,7 @@ namespace daisy
 
         void ReadJumpStart()
         {
+            ram_buff.ApplyPendingLength(); // in case the wrap came before the fade out
             ReadJump(reverse_ ? ram_buff.GetSize() : 0);
         }
 
@@ -180,7 +181,7 @@ namespace daisy
                         {
                             ReadJumpStart();
                         }
-                        else if(ram_buff.GetRemainingRead(reverse_) <= 480 && loop_env_dec > 0.f)
+                        else if(ram_buff.GetRemainingRead(reverse_) <= kLoopFadeSize && loop_env_dec > 0.f)
                         {
                             loop_env_dec = -1.f * loop_env_dec_val;
                         }                    
@@ -196,7 +197,7 @@ namespace daisy
                         loop_env += loop_env_dec;
                         const bool ote = (reverse_ && ram_buff.GetReadHead() > (ram_buff.GetSize() - 50))
                                          || (!reverse_ && ram_buff.GetReadHead() < 50);
-                        if(loop_env < 0.f && ote)
+                        if(loop_env < 0.f && (ote || ram_buff.ApplyPendingLength()))
                         {
                             loop_env = 0.f;
                             loop_env_dec = loop_env_dec_val;
@@ -306,6 +307,17 @@ namespace daisy
         inline uint32_t GetReadSize() { return ram_buff.GetSize(); }
 
         inline bool WriteFullLength() { return ram_buff.WriteFullLength(); }
+
+        void ChangeLength(int8_t steps)
+        {
+            if(!ram_buff.ChangeLength(steps, reverse_))
+                return;
+
+            if(ram_buff.LoopLength() < ram_buff.GetSize())
+                loop_env_dec = -loop_env_dec_val;
+            else if(ram_buff.GetRemainingRead(reverse_) > kLoopFadeSize)
+                loop_env_dec = loop_env_dec_val;
+        }
 
         void IncrementDubGain(float increment, bool force)
         {

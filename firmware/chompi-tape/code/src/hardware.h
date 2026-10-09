@@ -252,7 +252,7 @@ namespace chompi
 
         uint32_t batt_level_checkt;
         uint32_t batt_fullt;
-        void LowBatteryLockoutCheck()
+        void LowBatteryLockoutCheck() __attribute__((noinline)) // saves code space
         {
             #if NO_BATT
                 return;

@@ -1276,6 +1276,11 @@ namespace daisy
         inline float GetLooperDubGain() { return looper.GetDubGain(); }
 
         inline void LooperOpenFile() { looper.OpenFile(); }
+        inline void LooperLengthChange(int8_t steps) { looper.RequestLengthChange(steps); }
+        inline void LooperResetLength() { looper.RequestLengthChange(-looper.GetLengthExp()); }
+        inline int8_t GetLooperLengthExp() { return looper.GetLengthExp(); }
+        inline void ToggleTransportMode() { transport_mode = !transport_mode; }
+        inline bool GetTransportMode() { return transport_mode; }
 
         inline int GetBank() { return bank[int(voice_mode)];}
         inline size_t GetVoiceBank() 
@@ -1531,6 +1536,7 @@ namespace daisy
 
         /** the looper */
         LooperEngine looper;
+        bool transport_mode = false;
 
         float encoder_chunk = 0.f; // chunk up the quantized pitch controls
         float looper_encoder_chunk = 0.f;

@@ -216,7 +216,7 @@ namespace chompi
             std::copy(&led_smt_cache[0][0], &led_smt_cache[0][0] + kNumSmtLeds * 3, &led_smt_data[0][0]);
         }
 
-        void Draw(const daisy::UiCanvasDescriptor &canvasDescriptor) override
+        void Draw(const daisy::UiCanvasDescriptor &canvasDescriptor) override __attribute__((optimize("Os")))
         {
             uint32_t now = System::GetNow();
 
@@ -417,6 +417,26 @@ namespace chompi
                     {
                         SetPthLedFloat(5, 0.f, 0.f, 0.f);
                         SetPthLedFloat(6, 0.f, 0.f, 0.f);
+                    }
+                    else if(fx_->GetTransportMode())
+                    {
+                        static const float* const kLengthColors[] = {med_blue, green, yellow, orange, red};
+                        const int length_exp = fx_->GetLooperLengthExp();
+                        const float* c = kLengthColors[std::min(abs(length_exp), 4)];
+
+                        float ramp = 1.f;
+                        if(!fx_->IsLooperFirstRecording())
+                        {
+                            ramp = fx_->GetLooperPosition() * (length_exp > 0 ? 1 << length_exp : 1);
+                            ramp = 1.f - (ramp - static_cast<int>(ramp));
+                        }
+                        if(!switch_state)
+                            ramp *= kRecDim;
+
+                        const float left = length_exp > 0 ? 0.f : ramp;
+                        const float right = length_exp < 0 ? 0.f : ramp;
+                        SetPthLedFloat(5, c[0] * left, c[1] * left, c[2] * left);
+                        SetPthLedFloat(6, c[0] * right, c[1] * right, c[2] * right);
                     }
                     else if(fx_->IsLooperPlaying())
                     {
@@ -719,9 +739,15 @@ namespace chompi
                 break;
             }
 
-            // reset the looper pitch
             case ENC_5_SW:
             {
+                if(fx_->GetTransportMode())
+                {
+                    if(!rising)
+                        fx_->LooperResetLength();
+                    break;
+                }
+
                 if (!rising)
                 {
                     enc_values[0][4] = enc_defaults[0][4];
@@ -916,6 +942,17 @@ namespace chompi
             if (init_ignore || copier_->IsCopying())
                 return false;
 
+            if(encoderID == 4 && fx_->GetTransportMode() && stepsPerRevolution == 0)
+            {
+                transport_turns += turns > 0 ? 1 : -1;
+                if(transport_turns == 2 || transport_turns == -2)
+                {
+                    fx_->LooperLengthChange(transport_turns / 2);
+                    transport_turns = 0;
+                }
+                return true;
+            }
+
             uint8_t page = knob_page[encoderID];
             float old_val = enc_values[page][encoderID];
 
@@ -1071,12 +1108,14 @@ namespace chompi
         uint8_t midi_channel = 0;
         bool switch_state = false;
         bool chompi_key_pressed = false;
+        int8_t transport_turns = 0;
         uint8_t* knob_page;
         bool quantized_pitch_;
         bool split_delay_;
 
         bool batt_display;
         uint32_t batt_hold;
+
     };
 
 } // namespace chompi

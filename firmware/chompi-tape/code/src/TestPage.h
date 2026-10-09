@@ -29,7 +29,7 @@ namespace chompi
             init_time = System::GetNow();
         }
 
-        void Draw(const daisy::UiCanvasDescriptor &canvasDescriptor) override
+        void Draw(const daisy::UiCanvasDescriptor &canvasDescriptor) override __attribute__((optimize("Os"))) // saves code space
         {
             /** PTH leds */
             float r, g, b;
