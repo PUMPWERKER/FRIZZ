@@ -83,7 +83,10 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
     if(hw.jack_detect.Read() != line_in_state)
     {
         if(hw.jack_detect.Read())
+        {
             engine.SetInputSource(InputSource::LINE_IN);
+            engine.ResetLineMono();
+        }
         else
             engine.SetInputSource(InputSource::MIC);
     }

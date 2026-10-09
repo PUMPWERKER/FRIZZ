@@ -25,6 +25,11 @@ static constexpr float kLineOutGain = .3f;
 static constexpr float kHpGain = .2f;
 static constexpr float kMicGain = 5.f;
 static constexpr float kLineInGain = 3.f;
+static constexpr float kLineMonoFloor = .001f;     // -60dBFS
+static constexpr float kLineMonoSignal = .01f;     // -40dBFS
+static constexpr uint32_t kLineMonoTime = 24000;   // .5s
+static constexpr uint32_t kLineSettleTime = 72000; // 1.5s
+static constexpr uint32_t kLineStereoTime = 2400;  // 50ms
 static constexpr size_t kMaxPoly = 7;
 
 namespace daisy
@@ -42,6 +47,14 @@ namespace daisy
         LINE_IN,
         RESAMPLE,
         LAST,
+    };
+
+    enum class LineMode
+    {
+        DETECTING = 0,
+        MONO,
+        STEREO,
+        MONO_RIGHT,
     };
 
     enum class MonitorMode
@@ -376,12 +389,17 @@ namespace daisy
         /** add the line in monitor into both outputs, 
             also add it to the monitor buffer, which will be used to feed the env follower at the end
         */
-        void ApplyLineMonitor(const float* const* in, float **out, size_t size, float* monitor)
+        void ApplyLineMonitor(const float* line_l, const float* line_r, float **out, size_t size, float* monitor) __attribute__((noinline)) // saves code space
         {
+            const float mono_target = line_mode_ == LineMode::MONO         ? 1.f
+                                      : line_mode_ == LineMode::MONO_RIGHT ? -1.f
+                                                                           : 0.f;
             for (size_t i = 0; i < size; i++)
             {
-                const float sigl = dcblock_line_in_l_.Process(in[2][i] * ingain_ * kLineInGain);
-                const float sigr = dcblock_line_in_r_.Process(in[3][i] * ingain_ * kLineInGain);
+                daisysp::fonepole(line_mono_, mono_target, .001f);
+                const float to_right = fmaxf(line_mono_, 0.f), to_left = fmaxf(-line_mono_, 0.f);
+                const float sigl = (line_l[i] + (line_r[i] - line_l[i]) * to_left) * ingain_ * kLineInGain;
+                const float sigr = (line_r[i] + (line_l[i] - line_r[i]) * to_right) * ingain_ * kLineInGain;
 
                 monitor[i] += sigl;
                 monitor[size + i] += sigr;
@@ -389,6 +407,50 @@ namespace daisy
                 out[0][i] += sigl;
                 out[1][i] += sigr;
             }
+        }
+
+        void ReadLineIn(const float* const* in, float* line_l, float* line_r, size_t size) __attribute__((noinline))
+        {
+            float peak_l = 0.f, peak_r = 0.f;
+            for (size_t i = 0; i < size; i++)
+            {
+                line_l[i] = dcblock_line_in_l_.Process(in[2][i]);
+                line_r[i] = dcblock_line_in_r_.Process(in[3][i]);
+                peak_l = fmaxf(peak_l, fabsf(line_l[i]));
+                peak_r = fmaxf(peak_r, fabsf(line_r[i]));
+            }
+
+            if(line_mode_manual_ || line_mode_ == LineMode::STEREO)
+                return;
+
+            if(line_settle_ < kLineSettleTime)
+                line_settle_ += size;
+            else if(peak_r > kLineMonoFloor)
+            {
+                if((line_right_ += size) >= kLineStereoTime)
+                    line_mode_ = LineMode::STEREO;
+            }
+            else if(line_mode_ == LineMode::DETECTING && peak_l > kLineMonoSignal
+                    && (line_left_only_ += size) >= kLineMonoTime)
+                line_mode_ = LineMode::MONO;
+        }
+
+        void ResetLineMono()
+        {
+            line_mono_ = 0.f;
+            line_left_only_ = line_right_ = line_settle_ = 0;
+            line_mode_manual_ = false;
+            line_mode_ = LineMode::DETECTING;
+        }
+
+        inline LineMode GetLineMode() { return line_mode_; }
+
+        void CycleLineMode()
+        {
+            line_mode_manual_ = true; // first, before the audio thread detects
+            line_mode_ = line_mode_ == LineMode::MONO         ? LineMode::MONO_RIGHT
+                       : line_mode_ == LineMode::MONO_RIGHT   ? LineMode::STEREO
+                                                              : LineMode::MONO;
         }
 
         bool looper_reset = false;
@@ -446,13 +508,15 @@ namespace daisy
             // add the monitor to the working space pre-FX
             float monitor[2][size];
             std::fill(&monitor[0][0], &monitor[1][size], 0.f);
+            float line[2][size];
+            ReadLineIn(in, line[0], line[1], size);
 
             if(monitor_mode == MonitorMode::BOTH)
             {
                 if(in_source == InputSource::MIC)
                     ApplyMicMonitor(in, out, size, &monitor[0][0]);
                 else if(in_source == InputSource::LINE_IN)
-                    ApplyLineMonitor(in, out, size, &monitor[0][0]);
+                    ApplyLineMonitor(line[0], line[1], out, size, &monitor[0][0]);
             }
             else if (monitor_mode == MonitorMode::SEND_RET && input_monitor && in_source == InputSource::MIC)
             {
@@ -490,11 +554,11 @@ namespace daisy
                 if (in_source == InputSource::MIC)
                     ApplyMicMonitor(in, out, size, &monitor[0][0]);
                 if (in_source == InputSource::LINE_IN)
-                    ApplyLineMonitor(in, out, size, &monitor[0][0]);
+                    ApplyLineMonitor(line[0], line[1], out, size, &monitor[0][0]);
             }
             else if (monitor_mode == MonitorMode::SEND_RET)
             {
-                ApplyLineMonitor(in, out, size, &monitor[0][0]);
+                ApplyLineMonitor(line[0], line[1], out, size, &monitor[0][0]);
             }
 
             // apply resample gain as appropriate (and envelope in/out of that situation)
@@ -1588,6 +1652,13 @@ namespace daisy
         daisysp::DcBlock dcblock_mic_in_;
         daisysp::DcBlock dcblock_line_in_l_;
         daisysp::DcBlock dcblock_line_in_r_;
+        float line_mono_ = 0.f;
+        uint32_t line_left_only_ = 0;
+        uint32_t line_right_ = 0;
+        uint32_t line_settle_ = 0;
+        // volatile: the UI thread can set these by hand
+        volatile LineMode line_mode_ = LineMode::DETECTING;
+        volatile bool line_mode_manual_ = false;
         daisysp::DcBlock dcblock_fx_l_;
         daisysp::DcBlock dcblock_fx_r_;
 

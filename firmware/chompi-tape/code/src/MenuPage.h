@@ -71,6 +71,12 @@ namespace chompi
                 last_blink = now;
             }
 
+            if(line_key_held && now - line_key_down >= kLongPress)
+            {
+                fx_->CycleLineMode();
+                line_key_held = false;
+            }
+
             // chompi key
             if (chompi_key_pressed && preset_mode == PresetMode::NONE)
             {
@@ -320,7 +326,13 @@ namespace chompi
             SetSmtLedFloat(2, 0.f, 0.f, 0.f);
             SetSmtLedFloat(3, 0.f, 0.f, 0.f);
             SetSmtLedFloat(4, 0.f, 0.f, 0.f);
-            SetSmtLedFloat(led_sel, pink[0], .7f * pink[1], .7f * pink[2]);
+            const LineMode line = fx_->GetInputSource() == InputSource::LINE_IN ? fx_->GetLineMode() : LineMode::STEREO;
+            if(line == LineMode::MONO)
+                SetSmtLedFloat(led_sel, red[0], red[1], red[2]);
+            else if(line == LineMode::MONO_RIGHT)
+                SetSmtLedFloat(led_sel, green[0], green[1], green[2]);
+            else
+                SetSmtLedFloat(led_sel, pink[0], .7f * pink[1], .7f * pink[2]);
 
             // white keys
             for (uint8_t i = 1; i < 16; i++)
@@ -855,9 +867,14 @@ namespace chompi
                         source = InputSource::RESAMPLE;
 
                     fx_->SetInputSource(source);
+                    line_key_held = source == InputSource::LINE_IN;
+                    line_key_down = System::GetNow();
                 }
-                else if(!rising)
+                else
+                {
+                    line_key_held = false;
                     return false; // note off falls through
+                }
 
                 break;
             }
@@ -1045,6 +1062,7 @@ namespace chompi
             fx_reset = false;
             pitch_reset = false;
             chompi_key_pressed = true;
+            line_key_held = false; // its release may have gone to the page below
 
             if(quantized_pitch_)
             {
@@ -1137,6 +1155,9 @@ namespace chompi
         VoiceMode ss_mode = VoiceMode::LAST;
         uint8_t copy_src = kSlotNone;
         bool looper_append = false;
+        bool line_key_held = false;
+        uint32_t line_key_down = 0;
+        static const uint32_t kLongPress = 500; // ms
         uint8_t cs_bank = kSlotNone;
         VoiceMode cs_mode = VoiceMode::LAST;
         bool switch_state;
