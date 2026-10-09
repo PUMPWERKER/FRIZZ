@@ -143,8 +143,8 @@ namespace chompi
 
                 if(selected_slot == 16)
                 {
-                    SetPthLedFloat(7, blue[0], blue[1], blue[2]);
-                    SetPthLedFloat(8, blue[0], blue[1], blue[2]);
+                    SetPthLedFloat(looper_append ? 8 : 7, blue[0], blue[1], blue[2]);
+                    SetPthLedFloat(looper_append ? 7 : 8, 0.f, 0.f, 0.f);
                 }
                 else if(copy_src == 16)
                 {
@@ -779,6 +779,7 @@ namespace chompi
                         FileCopier::CopyRequest req( copy_src, cs_bank, cs_mode,
                             selected_slot, ss_bank, ss_mode, set_slot,
                             chompi, looper);
+                        req.append = looper_append && !fx_->IsLooperFirstRecording();
 
                         copier_->req_fifo.PushBack(req);
 
@@ -970,6 +971,7 @@ namespace chompi
                     {
                         if (preset_mode == PresetMode::COPY_DEST && copy_src != 16)
                         {
+                            looper_append = buttonID == 34;
                             selected_slot = slot_req;
                             ss_bank = fx_->GetBank();
                             ss_mode = fx_->GetVoiceMode();
@@ -1134,6 +1136,7 @@ namespace chompi
         uint8_t ss_bank = kSlotNone;
         VoiceMode ss_mode = VoiceMode::LAST;
         uint8_t copy_src = kSlotNone;
+        bool looper_append = false;
         uint8_t cs_bank = kSlotNone;
         VoiceMode cs_mode = VoiceMode::LAST;
         bool switch_state;

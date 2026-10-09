@@ -52,7 +52,11 @@ class FileCopier
                 looper_ram.SetReadHead(0);
                 looper_ram.SetWriteHead(0);
                 if(is_looper_ram == CopyRequest::RamDir::TO)
+                {
+                    looper_append_at = req.append ? looper_ram.LoopLength() : 0;
+                    looper_ram.SetWriteHead(looper_append_at);
                     looper_ram.ClearLengthChanges();
+                }
 
                 CopyStart(req.src, req.src_bank, req.src_mode, req.dest, req.dest_bank, req.dest_mode);
             }
@@ -237,6 +241,7 @@ class FileCopier
             bool set;
             RamDir is_chompi;
             RamDir is_looper;
+            bool append = false;
         };
 
         FIFO<CopyRequest, 16> req_fifo;
@@ -334,6 +339,9 @@ class FileCopier
             if(is_chompi_ram != CopyRequest::RamDir::FROM && is_looper_ram != CopyRequest::RamDir::FROM)
                 CloseFile(&fptr_read);
 
+            if(is_looper_ram == CopyRequest::RamDir::TO && looper_append_at)
+                looper_ram.FadeJoin(looper_append_at);
+
             fptr_read.obj.objsize = 0;
             fptr_write.obj.objsize = 0;
             fptr_write_double.obj.objsize = 0;
@@ -427,6 +435,7 @@ class FileCopier
         CopyRequest::RamDir is_looper_ram;        
         RamBuffer chompi_ram;
         RamBuffer looper_ram;        
+        size_t looper_append_at = 0;
 
         CopyRequest req;
 

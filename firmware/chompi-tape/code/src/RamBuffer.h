@@ -259,6 +259,14 @@ namespace daisy
             buff->copy_hi = hi;
         }
 
+        void FadeJoin(size_t pos)
+        {
+            if(pos < kLoopFadeSize || pos + kLoopFadeSize > buff->length)
+                return;
+            FadeSeam(&buff->mem[pos - 2], -2);
+            FadeSeam(&buff->mem[pos], 2);
+        }
+
     private:
         void SetLoopLength(size_t len, bool rev)
         {
