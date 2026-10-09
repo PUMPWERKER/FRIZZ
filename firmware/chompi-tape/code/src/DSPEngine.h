@@ -1116,7 +1116,7 @@ namespace daisy
             *  .33f - .66f = .5x - 1x
             *  .66f - 1.f = 1x - 2x
         */
-        void SetGlobalPitchFree(float val)
+        void SetGlobalPitchFree(float val) __attribute__((optimize("Os")))
         {
             val = val < .5f ? (.5f - val) * -2.f : (val - .5f) * 2.f; // 1 - 0 - 1
 
