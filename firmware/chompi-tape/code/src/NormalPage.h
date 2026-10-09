@@ -1121,11 +1121,6 @@ namespace chompi
             enc_values[1][2] = enc_defaults[1][2];
 
             fx_->StopRecording();
-
-            // forced, voices may still play the old sample
-            enc_values[0][1] = std::min(fx_->GetRecordingOnset(), enc_values[0][2] - .02f);
-            fx_->SetStartPointForce(enc_values[0][1]);
-            DumpValuePresets();
         }
 
         inline void SetInitIgnore(bool ignore) { init_ignore = ignore; }
