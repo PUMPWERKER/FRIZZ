@@ -10,6 +10,22 @@ TAPE is a 7-voice sampler and varispeed tape looper. Samples stream from the mic
 looper and sample buffer record into SDRAM. Seven streaming voices, varispeed playback,
 tape-style looper, delay and reverb, and MIDI in and out over TRS and USB.
 
+## Additional features
+
+This fork adds:
+
+- Transport modes: shift + click on the wheel switches between speed, length and step
+- Length mode: the wheel doubles or halves the loop
+- Step mode: the wheel steps through the sections of a halved loop
+- Bake FX: shift + hold loop records the FX into the loop
+- Undo: shift + hold play undoes or redoes the last overdub or bake
+- Line in mono: mono cables are detected, shift + hold line in switches between mono left,
+  mono right and stereo
+- Copy onto the loop: in copy mode the loop key adds to the loop, the play key replaces it
+- Overdub volume changes when shift + play / loop is released
+
+See the [feature reference](docs/tape-new-tricks.pdf).
+
 ## Building
 
 Toolchain: GNU Arm Embedded 10.3-2021.10. Newer compilers overflow the firmware's SRAM region
