@@ -1,0 +1,58 @@
+name: TAPE firmware
+
+on:
+  push:
+    paths:
+      - 'firmware/chompi-tape/**'
+      - '.github/workflows/tape-firmware.yml'
+  pull_request:
+    paths:
+      - 'firmware/chompi-tape/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # libDaisy only supports this version, newer ones overflow SRAM
+      - uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '10.3-2021.10'
+
+      - name: Build, and release every pushed commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          commits=$GITHUB_SHA
+          if [ "$EVENT" = push ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            commits=$(git rev-list --reverse "$BEFORE..$GITHUB_SHA")
+          fi
+
+          mkdir -p out
+          for c in $commits; do
+            git checkout -q "$c"
+            make -C firmware/chompi-tape/code/src clean
+            make -C firmware/chompi-tape/code/src -j"$(nproc)"
+
+            short=$(git rev-parse --short "$c")
+            bin="out/CHOMPI_TAPE_$short.bin"
+            cp firmware/chompi-tape/code/src/build/CHOMPI.bin "$bin"
+
+            if [ "$EVENT" = push ] && ! gh release view "tape-$short" >/dev/null 2>&1; then
+              gh release create "tape-$short" "$bin" --target "$c" --prerelease \
+                --title "TAPE $short" --notes "$(git log -1 --format=%s "$c")"
+            fi
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tape-firmware
+          path: out/*.bin
