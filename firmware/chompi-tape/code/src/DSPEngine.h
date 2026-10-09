@@ -397,7 +397,7 @@ namespace daisy
         /** add the line in monitor into both outputs, 
             also add it to the monitor buffer, which will be used to feed the env follower at the end
         */
-        void ApplyLineMonitor(const float* line_l, const float* line_r, float **out, size_t size, float* monitor) __attribute__((noinline)) // saves code space
+        void ApplyLineMonitor(const float* line_l, const float* line_r, float **out, size_t size, float* monitor) __attribute__((noinline))
         {
             const float mono_target = line_mode_ == LineMode::MONO         ? 1.f
                                       : line_mode_ == LineMode::MONO_RIGHT ? -1.f
@@ -1407,7 +1407,8 @@ namespace daisy
         inline void IncrementLooperDubGain(float gain) { looper.IncrementDubGain(gain); }
         inline float GetLooperDubGain() { return looper.GetDubGain(); }
 
-        inline void LooperOpenFile() { looper.OpenFile(); }
+        inline void LooperOpenFile(bool play) { looper.OpenFile(play); }
+        inline void LooperStop(bool play = false) { looper.Stop(play); }
         inline void LooperLengthChange(int8_t steps) { looper.RequestLengthChange(steps); }
         inline void LooperResetLength() { looper.RequestLengthChange(-looper.GetLengthExp()); }
         inline int8_t GetLooperLengthExp() { return looper.GetLengthExp(); }

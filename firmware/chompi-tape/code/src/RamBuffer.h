@@ -57,6 +57,8 @@ namespace daisy
         size_t halve_len[12];
         uint8_t halve_count = 0;
         int8_t length_exp = 0;
+        // a loaded loop waits for the loop point, see FinishLoad()
+        bool pending_restart = false, loading = false;
 
         size_t pending_len = 0, pending_start = 0;
 
@@ -115,15 +117,18 @@ namespace daisy
             }
         }
 
-        void BlockWrite(int16_t* copy_buff, size_t size)
+        void BlockWrite(int16_t* copy_buff, size_t size, bool set_len = true)
         {
             if(write_head + size > kMaxRamBuffSize)
                 size = kMaxRamBuffSize - write_head;
 
             std::copy(copy_buff, &copy_buff[size], &buff->mem[write_head]);
             write_head += size;
-            buff->length = write_head - buff->start;
-            buff->length -= buff->length % 2;
+            if(set_len)
+            {
+                buff->length = write_head - buff->start;
+                buff->length -= buff->length % 2;
+            }
         }
 
         void StereoWrite(int16_t l, int16_t r, bool rev, bool set_len)
@@ -226,19 +231,45 @@ namespace daisy
                 buff->length = buff->pending_len;
             }
             buff->pending_len = 0;
+            buff->pending_restart = buff->loading = false;
             MakeLengthBase();
         }
 
-        bool ApplyPendingLength()
+        // load next to the playing loop without touching it
+        inline void StartLoad() { ClearLengthChanges(); buff->loading = true; }
+        inline bool IsLoading() const { return buff->loading; }
+
+        // the loaded loop takes over at the loop point
+        void FinishLoad(size_t start, size_t len)
+        {
+            len &= ~size_t(1);
+            if(len)
+            {
+                buff->pending_start = start;
+                buff->pending_restart = true;
+                __DMB();
+                buff->pending_len = len;
+            }
+            buff->loading = false;
+        }
+
+        bool ApplyPendingLength(bool wrap = false)
         {
             if(!buff->pending_len)
                 return false;
+            __DMB(); // FinishLoad() sets restart first
+            const bool restart = buff->pending_restart;
+            if(restart && !wrap)
+                return false;
 
-            read_head = WrapInto(read_head);
-            write_head = WrapInto(write_head);
+            read_head = restart ? buff->pending_start : WrapInto(read_head);
+            write_head = restart ? buff->pending_start : WrapInto(write_head);
             buff->start = buff->pending_start;
             buff->length = buff->pending_len;
             buff->pending_len = 0;
+            if(restart)
+                MakeLengthBase();
+            buff->pending_restart = false;
             return true;
         }
 
@@ -251,7 +282,7 @@ namespace daisy
         bool CanChangeLength(int8_t steps) const
         {
             const size_t len = buff->length;
-            if(IsCopying() || !steps || buff->pending_len)
+            if(IsCopying() || !steps || buff->pending_len || buff->loading)
                 return false;
             if(steps > 0)
                 return buff->halve_count >= steps
@@ -263,7 +294,7 @@ namespace daisy
 
         bool Step(int8_t dir)
         {
-            if(IsCopying() || buff->pending_len || buff->length_exp >= 0)
+            if(IsCopying() || buff->pending_len || buff->loading || buff->length_exp >= 0)
                 return false;
 
             const size_t sections = size_t(1) << -buff->length_exp;
@@ -273,7 +304,7 @@ namespace daisy
         }
 
         // steps > 0 doubles, < 0 halves
-        bool ChangeLength(int8_t steps, bool rev) __attribute__((optimize("Os"))) // saves code space
+        bool ChangeLength(int8_t steps, bool rev) __attribute__((optimize("Os")))
         {
             if(!CanChangeLength(steps))
                 return false;
@@ -395,7 +426,7 @@ namespace daisy
 
         void StartUndoTake()
         {
-            if(!buff->undo)
+            if(!buff->undo || buff->loading || buff->pending_restart) // may overwrite the loaded loop
                 return;
             UndoMemory& u = *buff->undo;
 
@@ -471,9 +502,9 @@ namespace daisy
             }
         }
 
-        void FadeJoin(size_t pos)
+        void FadeJoin(size_t pos, size_t end)
         {
-            if(pos < buff->start + kLoopFadeSize || pos + kLoopFadeSize > End())
+            if(pos < buff->start + kLoopFadeSize || pos + kLoopFadeSize > end)
                 return;
             FadeSeam(&buff->mem[pos - 2], -2);
             FadeSeam(&buff->mem[pos], 2);

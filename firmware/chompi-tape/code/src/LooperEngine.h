@@ -380,10 +380,13 @@ namespace daisy
             playing = false;
         }
 
-        void OpenFile()
+        // while a loop is loaded over this one
+        inline void Stop(bool play) { playing = play; record = record_target = false; }
+
+        void OpenFile(bool play)
         {
             first_record = false;
-            playing = false;
+            playing = play;
             record = false;
             record_arm = false;
             record_target = false;

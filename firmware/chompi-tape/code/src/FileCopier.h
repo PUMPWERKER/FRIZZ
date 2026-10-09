@@ -52,17 +52,10 @@ class FileCopier
                 chompi_ram.SetWriteHead(0);
 
                 looper_ram.SetReadHead(looper_ram.LoopStart()); // a save stores what the loop plays
-                if(is_looper_ram == CopyRequest::RamDir::TO)
-                {
-                    if(req.append)
-                        looper_ram.ClearLengthChanges();
-                    else
-                        looper_ram.Reset();
-                    looper_append_at = req.append ? looper_ram.End() : 0;
-                    looper_ram.SetWriteHead(looper_append_at);
-                }
 
                 CopyStart(req.src, req.src_bank, req.src_mode, req.dest, req.dest_bank, req.dest_mode);
+                if(is_looper_ram == CopyRequest::RamDir::TO)
+                    StartLooperLoad();
             }
 
             if(!copying_)
@@ -101,7 +94,8 @@ class FileCopier
                 }
                 else if(is_looper_ram == CopyRequest::RamDir::TO)
                 {
-                    looper_ram.BlockWrite((int16_t*)buff, read_num / 2);
+                    if(!looper_staged || looper_ram.IsLoading()) // not after a reset
+                        looper_ram.BlockWrite((int16_t*)buff, read_num / 2, !looper_staged);
                 }
                 else
                 {
@@ -149,6 +143,8 @@ class FileCopier
         }
 
         inline bool IsCopying()  { return copying_ || !req_fifo.IsEmpty(); }
+        inline bool IsLooperStaged() { return looper_staged; }
+        inline bool LooperWasPlaying() { return looper_was_playing; }
 
         bool FileExists(size_t idx, VoiceMode mode, size_t bank, bool dbl = false)
         {
@@ -251,7 +247,7 @@ class FileCopier
         FIFO<CopyRequest, 16> req_fifo;
 
     private:
-        void CopyStart(size_t src, size_t src_bank, VoiceMode src_mode, size_t dest, size_t dest_bank, VoiceMode dest_mode)
+        void CopyStart(size_t src, size_t src_bank, VoiceMode src_mode, size_t dest, size_t dest_bank, VoiceMode dest_mode) __attribute__((optimize("Os")))
         {
 
             if(dest < 16)
@@ -305,6 +301,29 @@ class FileCopier
             copying_ = true;
         }
 
+        void StartLooperLoad() __attribute__((optimize("Os")))
+        {
+            const size_t len = copysize / 2;
+            looper_staged = false;
+            if(!fx_->IsLooperFirstRecording())
+            {
+                // replace below the playing loop if it fits there, else after it
+                looper_ram.StartLoad();
+                fx_->LooperStop(fx_->IsLooperPlaying()); // ends an overdub, it would go on over the new loop
+                const size_t start = looper_ram.GetStart(), end = looper_ram.End();
+                looper_at = !req.append && len <= start ? 0 : end;
+                looper_staged = req.append || (len && looper_at + len <= kMaxRamBuffSize);
+            }
+            if(!looper_staged)
+            {
+                looper_was_playing = fx_->IsLooperPlaying();
+                fx_->LooperStop();
+                looper_ram.Reset();
+                looper_at = 0;
+            }
+            looper_ram.SetWriteHead(looper_at);
+        }
+
         void WriteHeader(FIL* fil)
         {
             // write header
@@ -326,7 +345,7 @@ class FileCopier
             }
         }
 
-        void CopyDone()
+        void CopyDone() __attribute__((optimize("Os")))
         {
             if(is_chompi_ram != CopyRequest::RamDir::TO && is_looper_ram != CopyRequest::RamDir::TO)
             {
@@ -343,8 +362,14 @@ class FileCopier
             if(is_chompi_ram != CopyRequest::RamDir::FROM && is_looper_ram != CopyRequest::RamDir::FROM)
                 CloseFile(&fptr_read);
 
-            if(is_looper_ram == CopyRequest::RamDir::TO && looper_append_at)
-                looper_ram.FadeJoin(looper_append_at);
+            if(is_looper_ram == CopyRequest::RamDir::TO && looper_staged && looper_ram.IsLoading()) // not reset meanwhile
+            {
+                const size_t end = looper_ram.GetWriteHead();
+                const size_t start = req.append ? looper_ram.GetStart() : looper_at;
+                if(req.append)
+                    looper_ram.FadeJoin(looper_at, end);
+                looper_ram.FinishLoad(start, end - start);
+            }
 
             fptr_read.obj.objsize = 0;
             fptr_write.obj.objsize = 0;
@@ -430,6 +455,9 @@ class FileCopier
         FIL fptr_write;
         FIL fptr_write_double;
         bool copying_;
+        // loading next to the playing loop, which keeps playing until the loop point
+        bool looper_staged = false;
+        bool looper_was_playing = false;
         uint32_t copysize = 0;
         uint32_t copyread = 0;
         WAV_FormatTypeDef file_header;
@@ -439,7 +467,7 @@ class FileCopier
         CopyRequest::RamDir is_looper_ram;        
         RamBuffer chompi_ram;
         RamBuffer looper_ram;        
-        size_t looper_append_at = 0;
+        size_t looper_at = 0;
 
         CopyRequest req;
 

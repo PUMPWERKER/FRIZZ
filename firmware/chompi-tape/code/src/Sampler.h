@@ -27,7 +27,7 @@ namespace daisy
 
         void ReadJumpStart()
         {
-            ram_buff.ApplyPendingLength(); // in case the wrap came before the fade out
+            ram_buff.ApplyPendingLength(true); // in case the wrap came before the fade out
             ReadJump(reverse_ ? ram_buff.End() : ram_buff.GetStart());
         }
 
@@ -327,7 +327,7 @@ namespace daisy
 
         void ApplyPendingNow()
         {
-            const bool length = ram_buff.ApplyPendingLength();
+            const bool length = ram_buff.ApplyPendingLength(true);
             if(StartUndo() || length)
                 loop_env_dec = loop_env_dec_val;
         }

@@ -125,7 +125,7 @@ class OptionsManager
     }
 
     /** loads the JSON file, storing in name/value pairs for all keys */
-    void Parse() __attribute__((optimize("Os"))) // saves code space
+    void Parse() __attribute__((optimize("Os")))
     {
         JSONStatus_t json_res;
 

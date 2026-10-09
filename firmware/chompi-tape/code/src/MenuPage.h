@@ -1123,8 +1123,12 @@ namespace chompi
             {
                 if((preset_mode == PresetMode::SAVING || preset_mode == PresetMode::COPYING) && selected_slot == 16)
                 {
-                    fx_->LooperOpenFile();
-                    enc_values[0][4] = enc_defaults[0][4];
+                    // a staged load switches over by itself
+                    if(!copier_->IsLooperStaged())
+                    {
+                        fx_->LooperOpenFile(copier_->LooperWasPlaying());
+                        enc_values[0][4] = enc_defaults[0][4];
+                    }
                 }
                 else if((preset_mode == PresetMode::COPYING || preset_mode == PresetMode::SAVING) && ss_mode != VoiceMode::CUBBI)
                 {
