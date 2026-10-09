@@ -917,7 +917,7 @@ namespace daisy
 
         void SetAttack(float val)
         {
-            val = powf(val, 3.f) + .01f;
+            val = powf(val, 3.f);
 
             if(voice_mode == VoiceMode::CUBBI)
             {

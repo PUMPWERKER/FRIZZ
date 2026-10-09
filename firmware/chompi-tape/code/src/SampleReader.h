@@ -242,7 +242,7 @@ namespace daisy
             SetStartPoint(0.f);
             SetEndPoint(1.f);
 
-            SetAttack(.01f);
+            SetAttack(0.f);
             SetDecay(.01f);
 
             // force gain and pan
