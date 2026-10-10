@@ -21,6 +21,8 @@ MEMORY
 	ITCMRAM (RWX) : ORIGIN = 0x00000000, LENGTH = 64K
 	SDRAM (RWX)   : ORIGIN = 0xc0000000, LENGTH = 64M
   QSPIFLASH (RX)  : ORIGIN = 0x90000000, LENGTH = 8M
+	/* libDaisy's boot_info lives here, where the bootloader writes the version it reads at start */
+	BACKUP_SRAM (RWX) : ORIGIN = 0x38800000, LENGTH = 4K
 }
 
 _estack = 0x20020000;
@@ -217,6 +219,14 @@ SECTIONS
 	} > SDRAM AT >FLASH
 	_sisdram_text = LOADADDR(.sdram_text);
 	*/
+
+	.backup_sram (NOLOAD) :
+	{
+		. = ALIGN(4);
+		*(.backup_sram)
+		*(.backup_sram*)
+		. = ALIGN(4);
+	} > BACKUP_SRAM
 
 	.sdram_bss (NOLOAD) :
 	{

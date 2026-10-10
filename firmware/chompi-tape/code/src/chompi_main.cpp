@@ -344,6 +344,9 @@ int main(void)
     sdmmc.Init(sd_cfg);
     fsi.Init(FatFSInterface::Config::MEDIA_SD);
     f_mount(&fsi.GetSDFileSystem(), fsi.GetSDPath(), 1);
+    // our own folder on a multi-firmware card, else the one shared with TAPE, else the root
+    if(f_chdir("/MIXTAPE") != FR_OK)
+        f_chdir("/TAPE");
 
     // delete the battery log if it exists
     char filename[32];
