@@ -34,6 +34,30 @@ SECTIONS
 		. = ALIGN(4);
 	} > SRAM_EXEC
 
+	/* Cold code, run from QSPI: the bootloader puts the .bin at 0x90040000 and copies
+	 * only the SRAM_EXEC part to SRAM. Must come before .text (first match wins). */
+	.qspiflash_text 0x90040000 + LENGTH(SRAM_EXEC) : AT(ORIGIN(SRAM_EXEC) + LENGTH(SRAM_EXEC))
+	{
+		. = ALIGN(4);
+		_sqspiflash_text = .;
+
+		PROVIDE(__qspiflash_text_start = _sqspiflash_text);
+		*(.qspiflash_text)
+		*(.qspiflash_text*)
+		*core_json.o(.text .text* .rodata .rodata*)
+		*ccsbcs.o(.text .text* .rodata .rodata*)
+		*libc_nano.a:lib_a-strtod.o(.text .text* .rodata .rodata*)
+		*libc_nano.a:lib_a-mprec.o(.text .text* .rodata .rodata*)
+		*libc_nano.a:lib_a-gdtoa-gethex.o(.text .text* .rodata .rodata*)
+		*libc_nano.a:lib_a-gdtoa-hexnan.o(.text .text* .rodata .rodata*)
+		*libc_nano.a:lib_a-strtol.o(.text .text* .rodata .rodata*)
+		*libc_nano.a:lib_a-atoi.o(.text .text* .rodata .rodata*)
+		. = ALIGN(4);
+		_eqspiflash_text = .;
+
+		PROVIDE(__qspiflash_text_end = _eqspiflash_text);
+	}
+
 	.text :
 	{
 		. = ALIGN(4);
@@ -232,20 +256,6 @@ SECTIONS
 		PROVIDE(__sdram_bss_end = _esdram_bss);
 	} > SDRAM
 
-
-    .qspiflash_text :
-	{
-		. = ALIGN(4);
-		_sqspiflash_text = .;
-
-		PROVIDE(__qspiflash_text_start = _sqspiflash_text);
-		*(.qspiflash_text)
-		*(.qspiflash_text*)
-		. = ALIGN(4);
-		_eqspiflash_text = .;
-
-		PROVIDE(__qspiflash_text_end = _eqspiflash_text);
-	} > QSPIFLASH
 
 	.qspiflash_data :
 	{
