@@ -198,6 +198,7 @@ namespace chompi
 
         uint32_t last_record_blink;
         bool record_blink = false;
+        bool arm_on_release = false; // the CHOMPI key arms the threshold when it comes up
 
         void ResetSmtLeds()
         {
@@ -875,15 +876,22 @@ namespace chompi
                 if(!switch_state)
                 {
                     // with a threshold, tap to arm and tap again to stop
-                    bool latch = fx_->GetRecordLatch() || enc_values[2][0] > 0.f;
+                    const float t = enc_values[2][0];
+                    bool latch = fx_->GetRecordLatch() || t > 0.f;
                     bool rec = fx_->Recording();
 
                     if (rising && !rec)
                     {
-                        const float t = enc_values[2][0];
-                        fx_->StartNewRecording(0, t * t * t);
-                        last_record_blink = System::GetNow();
-                        record_blink = false;
+                        // the mic would hear the key coming up, so the threshold waits for it
+                        arm_on_release = t > 0.f && fx_->GetInputSource() == InputSource::MIC;
+                        if(!arm_on_release)
+                            StartChompiRecording(t);
+                    }
+                    else if(!rising && arm_on_release)
+                    {
+                        arm_on_release = false;
+                        if(!rec && t > 0.f)
+                            StartChompiRecording(t);
                     }
                     else if(!rising && !latch && rec)
                         StopVoiceRecording();
@@ -1152,6 +1160,13 @@ namespace chompi
             }
 
             switch_state = state; 
+        }
+
+        void StartChompiRecording(float threshold)
+        {
+            fx_->StartNewRecording(0, threshold * threshold * threshold);
+            last_record_blink = System::GetNow();
+            record_blink = false;
         }
 
         void StopVoiceRecording()
