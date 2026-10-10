@@ -5,16 +5,24 @@
 
 namespace chompi
 {
-    // MIDI clock as a beat grid.
+    // The beat grid: MIDI clock while it runs, else the metronome.
     // MIDI comes in the receive interrupts, at the audio callback's priority, so only lower priority code needs the lock.
     // The MIDI grid starts with Start or Song Position, joining a running clock would be off the beat.
     class Clock
     {
     public:
         static constexpr uint32_t kTicksPerBeat = 24;
+        static constexpr int kMinTempo = 40;
+        static constexpr int kMaxTempo = 240;
+        static constexpr float kBeepLevel = .2f; // the beep's peak
 
         void Init()
         {
+            metro_on_ = had_grid_ = false;
+            tempo_ = 120;
+            metro_beat_ = last_beat_ = 0;
+            metro_phase_ = beep_env_ = beep_ph_ = beep_inc_ = 0.f;
+            SetSampleRate(48000.f);
             source_ = nullptr;
             started_ = running_ = false;
             spp_ = spp_lsb_ = 0;
@@ -75,8 +83,80 @@ namespace chompi
             }
         }
 
+        void SetSampleRate(float sr)
+        {
+            sr_ = sr;
+            beep_decay_ = expf(-1.f / (.012f * sr));
+        }
+
+        void SetMetronome(bool on)
+        {
+            daisy::ScopedIrqBlocker block;
+            metro_on_ = on;
+            metro_beat_ = 0;
+            metro_phase_ = 0.f;
+            had_grid_ = false;
+        }
+        bool Metronome() const { return metro_on_; }
+
+        void ChangeTempo(int bpm)
+        {
+            bpm += tempo_;
+            tempo_ = bpm < kMinTempo ? kMinTempo : bpm > kMaxTempo ? kMaxTempo : bpm;
+        }
+
         // beats since the start and the phase within the current one, false without a grid
-        bool Get(uint32_t &beat, float &phase) const { return MidiGrid(beat, phase); }
+        bool Get(uint32_t &beat, float &phase) const
+        {
+            if(MidiGrid(beat, phase))
+                return true;
+            if(!metro_on_)
+                return false;
+            beat = metro_beat_;
+            phase = metro_phase_;
+            return true;
+        }
+
+        // once per audio block: runs the metronome and adds its beep to all outputs
+        void Process(float **out, size_t size, float hp_gain, float line_gain)
+        {
+            if(metro_on_)
+            {
+                metro_phase_ += size * tempo_ / (60.f * sr_);
+                while(metro_phase_ >= 1.f)
+                {
+                    metro_phase_ -= 1.f;
+                    metro_beat_++;
+                }
+            }
+
+            // a beep on every beat, a higher one on the first of four
+            uint32_t beat;
+            float phase;
+            const bool grid = metro_on_ && Get(beat, phase);
+            if(grid && (!had_grid_ || beat != last_beat_) && phase < .25f)
+            {
+                beep_env_ = kBeepLevel;
+                beep_ph_ = 0.f;
+                beep_inc_ = (beat % 4 ? 1000.f : 1500.f) / sr_;
+            }
+            had_grid_ = grid;
+            if(grid)
+                last_beat_ = beat;
+
+            for(size_t i = 0; i < size && beep_env_ > .001f; i++)
+            {
+                const float b = sinf(beep_ph_ * 6.2831853f) * beep_env_;
+                out[0][i] += b * hp_gain;
+                out[1][i] += b * hp_gain;
+                out[2][i] += b * line_gain;
+                out[3][i] += b * line_gain;
+                beep_ph_ += beep_inc_;
+                if(beep_ph_ >= 1.f)
+                    beep_ph_ -= 1.f;
+                beep_env_ *= beep_decay_;
+            }
+        }
 
     private:
         bool MidiGrid(uint32_t &beat, float &phase) const
@@ -158,6 +238,15 @@ namespace chompi
         uint32_t last_;      // last tick, raw
         uint32_t t_;         // last tick, smoothed
         uint32_t period_;    // smoothed tick length, 0 while unknown
+
+        bool metro_on_;
+        bool had_grid_;      // a grid that just appeared beeps at once
+        int tempo_;          // BPM
+        uint32_t metro_beat_;
+        uint32_t last_beat_;
+        float metro_phase_;
+        float sr_;
+        float beep_env_, beep_ph_, beep_inc_, beep_decay_;
     };
 
     extern Clock beat_clock;

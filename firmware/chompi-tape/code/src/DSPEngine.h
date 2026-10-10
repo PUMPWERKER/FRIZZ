@@ -16,6 +16,7 @@
 #include "RamBuffer.h"
 #include "limiter.h"
 #include "InterpolatedDelayLine.h"
+#include "Clock.h"
 #include <algorithm>
 
 using namespace daisy;
@@ -203,6 +204,7 @@ namespace daisy
             SetSaturate(0.f);
 
             mgain_ = mgain_target_ = .8f;
+            chompi::beat_clock.SetSampleRate(samplerate);
 
             warble_.Init(samplerate);
             warble_.SetFreq(.1f);
@@ -662,6 +664,11 @@ namespace daisy
 
                 output_env_follower.Process((out[0][i] + out[1][i]));
             }
+
+            // after the looper, so the beep isn't recorded
+            if(chompi::beat_clock.Metronome() && !looper.IsFirstRecording())
+                chompi::beat_clock.SetMetronome(false);
+            chompi::beat_clock.Process(out, size, .5f * kHpGain * mgain_, .5f * kLineOutGain * mgain_);
         }
 
         inline void SetInputMonitor(bool monitor) 

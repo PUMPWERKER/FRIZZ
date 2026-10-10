@@ -4,6 +4,7 @@
 #include "DSPEngine.h"
 #include "temp_led_stuff.h"
 #include "FileCopier.h"
+#include "Clock.h"
 
 namespace chompi
 {
@@ -229,9 +230,12 @@ namespace chompi
                 transport_flash = now;
             }
 
+            // back to 1x, the wheel can't do it while the looper is empty
             if(fx_->CheckReset())
             {
                 enc_values[0][4] = enc_defaults[0][4];
+                hw_->SendCC(midi_channel, cc_map[0][4], enc_values[0][4] * 127.f);
+                fx_->SetLooperPitch(1.f);
                 fx_->ResetLooperPitchQuant();
             }
 
@@ -424,11 +428,16 @@ namespace chompi
                     break;
                 }
                 case 4: // transport
-                {                    
-                    if(fx_->GetLooperIsEmpty())
+                {
+                    // no loop yet: the beats, white on the first of four
+                    uint32_t beat;
+                    float phase;
+                    const bool beats = fx_->IsLooperFirstRecording() && beat_clock.Get(beat, phase);
+                    if(fx_->GetLooperIsEmpty() || beats)
                     {
-                        SetPthLedFloat(5, 0.f, 0.f, 0.f);
-                        SetPthLedFloat(6, 0.f, 0.f, 0.f);
+                        const float c = beats && phase < .25f ? (beat % 4 ? .3f : 1.f) : 0.f;
+                        SetPthLedFloat(5, c, c, c);
+                        SetPthLedFloat(6, c, c, c);
                     }
                     else if(fx_->GetTransportMode() != TransportMode::OFF)
                     {
@@ -774,6 +783,14 @@ namespace chompi
 
             case ENC_5_SW:
             {
+                // no loop yet: metronome on/off
+                if(fx_->IsLooperFirstRecording())
+                {
+                    if(!rising && fx_->GetLooperIsEmpty())
+                        beat_clock.SetMetronome(!beat_clock.Metronome());
+                    break;
+                }
+
                 if(fx_->GetTransportMode() != TransportMode::OFF)
                 {
                     if(rising)
@@ -985,6 +1002,14 @@ namespace chompi
             {
                 enc_values[2][0] = fclamp(enc_values[2][0] + turns * kEncoderCoarseStep, 0.f, 1.f);
                 hw_->SendCC(midi_channel, kThresholdCC, enc_values[2][0] * 127);
+                return true;
+            }
+
+            // no loop yet: tempo, locked while the first loop records
+            if(encoderID == 4 && stepsPerRevolution == 0 && fx_->IsLooperFirstRecording())
+            {
+                if(fx_->GetLooperIsEmpty())
+                    beat_clock.ChangeTempo(turns);
                 return true;
             }
 
