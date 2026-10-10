@@ -386,6 +386,21 @@ namespace daisy
             return true;
         }
 
+        // moves playback within the loop, a start on the beat skips what it missed
+        void SkipRead(int32_t frames)
+        {
+            const int32_t len = ram_buff.LoopLength();
+            if(len <= 0)
+                return;
+            int32_t pos = (static_cast<int32_t>(ram_buff.GetReadHead() - ram_buff.LoopStart()) + frames * 2) % len;
+            if(pos < 0)
+                pos += len;
+            ram_buff.SetReadHead(ram_buff.LoopStart() + (pos & ~1));
+        }
+
+        // frames the speed ramp after a start falls behind
+        float StartLag() const { return (varispeed_factor - scrub_) / (tape_slew_ ? .0001f : .01f); }
+
         void AlignWriteHead()
         {
             old_samps_l.Clear();

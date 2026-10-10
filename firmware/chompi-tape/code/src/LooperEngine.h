@@ -16,8 +16,8 @@ namespace daisy
     {
         void Init()
         {
-            filling = synced = stop_play = loading = trigger_req = false;
-            trigger_press = 0;
+            filling = synced = stop_play = loading = play_wait = play_armed = trigger_req = false;
+            play_press = play_at = trigger_press = 0;
             fill_from = start = start_at = stop_at = 0;
         }
 
@@ -25,8 +25,10 @@ namespace daisy
         bool synced = false;           // the recording started on beat start
         bool stop_play = false;        // the waiting stop goes to play, not overdub
         volatile bool loading = false; // the copier writes the buffer
+        volatile bool play_wait = false; // play was pressed at play_press (ms), the audio callback places it
+        bool play_armed = false;         // playback starts on beat play_at
         volatile bool trigger_req = false; // a key triggered the armed recording at trigger_press (ms)
-        uint32_t trigger_press = 0;
+        uint32_t play_press = 0, play_at = 0, trigger_press = 0;
         uint32_t fill_from = 0, start = 0;
         uint32_t start_at = 0, stop_at = 0; // beats of a waiting start or stop, 0 = none
     };
@@ -72,7 +74,11 @@ namespace daisy
                     return;
             }
             else
+            {
                 loop_sync.filling = false;
+                if(!first_record)
+                    PlayBlock();
+            }
 
             // looper.PerBlock(playing);
 
@@ -354,7 +360,7 @@ namespace daisy
                 if(!ToggleRecordOnGrid(true, last_button_press))
                     ToggleRecord(true);
             }
-            else
+            else if(playing || !PlayOnGrid())
             {
                 playing = !playing;
             }
@@ -430,8 +436,13 @@ namespace daisy
             playing = false;
         }
 
-        // while a loop is loaded over this one
-        inline void Stop(bool play) { playing = play; record = record_target = false; }
+        // while a loop is loaded over this one: that also drops a playback waiting for the beat
+        inline void Stop(bool play)
+        {
+            playing = play;
+            record = record_target = false;
+            loop_sync.play_wait = loop_sync.play_armed = false;
+        }
 
         void OpenFile(bool play)
         {
@@ -526,6 +537,55 @@ namespace daisy
                 looper.PushStereoSamps(f2s16(out_l[i] * fx_env_), f2s16(out_r[i] * fx_env_));
             }
             return true;
+        }
+
+        // with a clock, play starts on the beat nearest to the key press
+        bool PlayOnGrid()
+        {
+            uint32_t beat;
+            float phase;
+            if(!chompi::beat_clock.Get(beat, phase))
+                return false;
+            loop_sync.play_press = last_button_press;
+            __DMB();
+            loop_sync.play_wait = true;
+            return true;
+        }
+
+        void PlayBlock()
+        {
+            LoopSync& s = loop_sync;
+            if(playing) // started some other way meanwhile
+                s.play_wait = s.play_armed = false;
+            if(!s.play_wait && !s.play_armed)
+                return;
+
+            uint32_t beat;
+            float phase, len;
+            if(!chompi::beat_clock.Get(beat, phase, &len))
+            {
+                s.play_wait = s.play_armed = false;
+                playing = true;
+                return;
+            }
+
+            if(s.play_wait)
+            {
+                // play starts on release, the press is what counts
+                const float pressed = phase - (System::GetNow() - s.play_press) * chompi::beat_clock.SampleRate() * .001f / len;
+                const int32_t k = static_cast<int32_t>(floorf(pressed + .5f));
+                s.play_at = k < 0 && beat < static_cast<uint32_t>(-k) ? 0 : beat + k;
+                s.play_wait = false;
+                s.play_armed = true;
+            }
+
+            const float past = static_cast<int32_t>(beat - s.play_at) + phase;
+            if(past >= 0.f)
+            {
+                looper.SkipRead(static_cast<int32_t>(past * len * looper.GetVarispeed() + looper.StartLag()));
+                s.play_armed = false;
+                playing = true;
+            }
         }
 
         // the buffer already holds the loop from that beat on
