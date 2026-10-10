@@ -1,11 +1,11 @@
 ---
-// The small drawing under a panel: a row of steps, the length LEDs, the step sections or the line in modes
+// The small drawing under a panel: a row of steps, the length LEDs, the step sections, the line in modes or the beats
 import Arrow from './Arrow.astro';
 import { LED, SANS, MONO, CW, FS, SM, r } from '../lib/drawing.js';
 
 const { type, steps = [], back = false, blink = false } = Astro.props;
 const y = 30;
-const heights = { flow: back ? 108 : 84, length: 120, sections: 112, mono: 150 };
+const heights = { flow: back ? 108 : 84, length: 120, sections: 112, mono: 150, beats: 160 };
 
 // flow: three boxes with arrows, an LED in some; back: a dashed line back to the first; blink: the first LED blinks
 const bw = (CW - 2 * 56) / 3;
@@ -16,6 +16,10 @@ const lengths = [['÷8', 'orange', 1, 0], ['÷4', 'yellow', 1, 0], ['÷2', 'gree
 const step = CW / lengths.length;
 
 const sw = CW / 4;
+
+// beats: one bar, the loop from 1 to the next 1, and a late rec and an early stop that snap to them
+const bx = (i) => 30 + i * (CW - 60) / 4;
+const presses = [['rec', bx(0) + 90], ['stop', bx(4) - 90]];
 const monoModes = [['Stereo', LED.pink], ['Mono from left channel', LED.red], ['Mono from right channel', LED.green]];
 ---
 <svg viewBox={`-4 0 ${CW + 8} ${heights[type] + 34}`} role="img">
@@ -79,6 +83,29 @@ const monoModes = [['Stereo', LED.pink], ['Mono from left channel', LED.red], ['
       })}
       <text class="dim" x={r(sw * 0.5)} y={y + 6} text-anchor="middle" font-family={SANS} font-size={SM}>left</text>
       <text class="dim" x={r(sw * 2.5)} y={y + 6} text-anchor="middle" font-family={SANS} font-size={SM}>right</text>
+    </>
+  )}
+  {type === 'beats' && (
+    <>
+      <rect class="box sel" x={r(bx(0))} y={y + 70} width={r(bx(4) - bx(0))} height="40" stroke-width="2" />
+      <text class="acc" x={r((bx(0) + bx(1)) / 2)} y={y + 99} text-anchor="middle" font-family={MONO} font-size={SM} font-weight="500">loop</text>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <>
+          <line class="arrow" x1={r(bx(i))} y1={y + (i % 4 ? 70 : 62)} x2={r(bx(i))} y2={y + 118} stroke-width={i % 4 ? 2 : 4} />
+          <text x={r(bx(i))} y={y + 150} text-anchor="middle" font-family={MONO} font-size={SM} font-weight="500">{i % 4 + 1}</text>
+        </>
+      ))}
+      {presses.map(([label, px], i) => {
+        const to = bx(i * 4);
+        return (
+          <g class="callout">
+            <circle cx={r(px)} cy={y + 26} r="5" />
+            <polyline class="arrow" points={`${r(px)},${y + 26} ${r(to)},${y + 26} ${r(to)},${y + 54}`} stroke-width="2" />
+            <path class="arrow" d={`M${r(to - 7)} ${y + 45} L${r(to)} ${y + 55} L${r(to + 7)} ${y + 45}`} stroke-width="2" />
+            <text x={r(px)} y={y + 8} text-anchor="middle" font-family={MONO} font-size={SM} font-weight="500">{label}</text>
+          </g>
+        );
+      })}
     </>
   )}
   {type === 'mono' && monoModes.map(([text, c], i) => (

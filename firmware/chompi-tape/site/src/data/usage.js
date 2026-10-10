@@ -53,6 +53,15 @@ export const usage = [
       '<b>LOOP</b> adds it to the end of the looper’s loop'],
   },
   {
+    id: 'tempo', title: 'Metronome and MIDI clock', colour: 'pink', keys: ['WHEEL', '_click or turn'],
+    panel: { hl: ['wheel'], labels: { wheel: ['click / turn', 0, -90] } },
+    diagram: { type: 'beats' },
+    items: ['<b>Click</b>: metronome on/off, before the first loop',
+      '<b>Turn</b>: tempo',
+      'Syncs to MIDI clock (TRS or USB)',
+      'First loop snaps to the beat'],
+  },
+  {
     id: 'threshold', title: 'Recording threshold', colour: 'yellow', keys: ['LEFT KNOB', '_turn', '→', 'CHOMPI', '_tap'],
     panel: { hl: ['knob0', 'shift'], leds: { knob0: LED.red }, labels: { shift: ['tap', -1, -90], knob0: ['turn', 0, -90] } },
     diagram: { type: 'flow', steps: [['WAITING', 'vu'], ['LOUD'], ['RECORDING', LED.red]], blink: true },
