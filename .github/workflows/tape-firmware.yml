@@ -73,6 +73,28 @@ jobs:
         with:
           path: firmware/chompi-tape/site/dist
 
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mixtape-firmware
+          path: out
+
+      - name: Release the pushed commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          bin=$(ls out/CHOMPI_MIXTAPE_"${GITHUB_SHA::7}"*.bin)
+          day=$(date -u +%Y%m%d)
+          gh release create "mixtape-$day-${GITHUB_SHA::7}" "$bin" --target "$GITHUB_SHA" \
+            --title "MIXTAPE $day ${GITHUB_SHA::7}" --notes "Built from $GITHUB_SHA."
+
   pages:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build
