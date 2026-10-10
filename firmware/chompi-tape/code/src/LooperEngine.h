@@ -17,6 +17,7 @@ namespace daisy
         void Init()
         {
             filling = synced = stop_play = loading = play_wait = play_armed = trigger_req = false;
+            midi_grid = play_midi = false;
             play_press = play_at = trigger_press = 0;
             fill_from = start = start_at = stop_at = 0;
             pre_frames = 0;
@@ -29,6 +30,8 @@ namespace daisy
         volatile bool loading = false; // the copier writes the buffer
         volatile bool play_wait = false; // play was pressed at play_press (ms), the audio callback places it
         bool play_armed = false;         // playback starts on beat play_at
+        bool midi_grid = false;          // the recording's grid is the MIDI one, not the metronome's
+        bool play_midi = false;          // the same for a waiting playback start
         volatile bool trigger_req = false; // a key triggered the armed recording at trigger_press (ms)
         uint32_t play_press = 0, play_at = 0, trigger_press = 0;
         uint32_t fill_from = 0, start = 0;
@@ -478,18 +481,20 @@ namespace daisy
             uint32_t beat = 0;
             float phase = 0.f;
             float len = 0.f;
-            const bool grid = chompi::beat_clock.Get(beat, phase, &len);
+            bool midi = false;
+            const bool grid = chompi::beat_clock.Get(beat, phase, &len, &midi);
 
             if(record)
             {
                 // beats past the stop, relative: a float of the whole count loses precision
                 const float past = static_cast<int32_t>(beat - s.stop_at) + phase;
-                const bool lost = !grid || beat < s.start; // gone, or went back: stop as is
+                // gone, swapped for the other grid, or went back: stop as is
+                const bool lost = !grid || midi != s.midi_grid || beat < s.start;
                 if(s.stop_at && (lost || past >= 0.f))
                 {
                     if(!lost)
                     {
-                        const size_t late = static_cast<size_t>(past * len);
+                        const size_t late = std::min(static_cast<size_t>(past * len), looper.ram_buff.GetSize() / 2);
                         looper.ram_buff.Trim(looper.ram_buff.GetSize() - 2 * late);
                         WrapOverlays(late);
                     }
@@ -528,6 +533,11 @@ namespace daisy
 
             if(s.start_at)
             {
+                if(midi != s.midi_grid) // another grid counts its own beats
+                {
+                    s.midi_grid = midi;
+                    s.start_at = beat + 1;
+                }
                 if(beat + 1 < s.start_at) // the clock went back
                     s.start_at = beat + 1;
                 if(s.filling && s.fill_from >= s.start_at)
@@ -553,8 +563,10 @@ namespace daisy
         {
             uint32_t beat;
             float phase;
-            if(!chompi::beat_clock.Get(beat, phase))
+            bool midi;
+            if(!chompi::beat_clock.Get(beat, phase, nullptr, &midi))
                 return false;
+            loop_sync.play_midi = midi;
             loop_sync.play_press = last_button_press;
             __DMB();
             loop_sync.play_wait = true;
@@ -571,9 +583,10 @@ namespace daisy
 
             uint32_t beat;
             float phase, len;
-            if(!chompi::beat_clock.Get(beat, phase, &len))
+            bool midi;
+            if(!chompi::beat_clock.Get(beat, phase, &len, &midi) || midi != s.play_midi)
             {
-                s.play_wait = s.play_armed = false;
+                s.play_wait = s.play_armed = false; // no grid, or not the one it was waiting on: now
                 playing = true;
                 return;
             }
@@ -666,7 +679,8 @@ namespace daisy
             LoopSync& s = loop_sync;
             uint32_t beat;
             float phase, len;
-            if(!first_record || (record && !s.synced) || !chompi::beat_clock.Get(beat, phase, &len))
+            bool midi;
+            if(!first_record || (record && !s.synced) || !chompi::beat_clock.Get(beat, phase, &len, &midi))
                 return false;
 
             toggle_record = true;
@@ -683,6 +697,7 @@ namespace daisy
 
             if(!record)
             {
+                s.midi_grid = midi;
                 // an early press plays into the loop before it starts, that goes to its end
                 s.pre_frames = nearest > beat ? static_cast<uint32_t>((1.f - pressed) * len) : 0;
                 if(nearest <= beat && s.filling && s.fill_from == beat)

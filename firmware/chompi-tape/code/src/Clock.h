@@ -106,14 +106,17 @@ namespace chompi
             tempo_ = bpm < kMinTempo ? kMinTempo : bpm > kMaxTempo ? kMaxTempo : bpm;
         }
 
-        // beats since the start, the phase within the current one and samples per beat, false without a grid
-        bool Get(uint32_t &beat, float &phase, float *length = nullptr) const
+        // Beats since the start, the phase within the current one and samples per beat, false without a grid.
+        // midi tells the two grids apart: they count from their own starts, so their beats are not the same beats.
+        bool Get(uint32_t &beat, float &phase, float *length = nullptr, bool *midi = nullptr) const
         {
             uint32_t period;
             if(MidiGrid(beat, phase, period))
             {
                 if(length)
                     *length = float(period) * kTicksPerBeat * sr_ / daisy::System::GetTickFreq();
+                if(midi)
+                    *midi = true;
                 return true;
             }
             if(!metro_on_)
@@ -122,6 +125,8 @@ namespace chompi
             phase = metro_phase_;
             if(length)
                 *length = 60.f * sr_ / tempo_;
+            if(midi)
+                *midi = false;
             return true;
         }
 
