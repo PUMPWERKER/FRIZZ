@@ -1,6 +1,9 @@
-# CHOMPI — TAPE v2.0 Firmware
+# MIXTAPE, a fork of the CHOMPI TAPE v2.0 Firmware
 
-The flagship sampler firmware for **CHOMPI**: the main firmware every CHOMPI ships with.
+TAPE is the flagship sampler firmware for **CHOMPI**: the main firmware every CHOMPI ships with.
+MIXTAPE is a fork of it.
+
+Download and usage: https://lost-tty.github.io/CHOMPI/
 
 ---
 
@@ -23,8 +26,9 @@ This fork adds:
   mono right and stereo
 - Copy onto the loop: in copy mode the loop key adds to the loop, the play key replaces it
 - Overdub volume changes when shift + play / loop is released
+- Recording threshold: the left knob sets the input level that starts a recording
 
-See the [feature reference](docs/tape-new-tricks.pdf).
+See the [usage page](https://lost-tty.github.io/CHOMPI/#f1).
 
 ## Building
 

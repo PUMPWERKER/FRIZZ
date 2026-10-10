@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.astro/
+# the firmware is copied in by CI
+public/*.bin

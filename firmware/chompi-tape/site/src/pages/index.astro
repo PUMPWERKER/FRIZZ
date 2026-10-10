@@ -1,0 +1,71 @@
+---
+import fs from 'node:fs';
+import Panel from '../components/Panel.astro';
+import UsageCard from '../components/UsageCard.astro';
+import { usage } from '../data/usage.js';
+import { LED } from '../lib/drawing.js';
+import '../styles/site.css';
+
+// CI copies the firmware into public/ and passes its commit and date
+const sha = process.env.FIRMWARE_SHA ?? 'dev';
+const date = process.env.FIRMWARE_DATE ?? '';
+const file = `CHOMPI_MIXTAPE_${sha}.bin`;
+const kb = fs.existsSync(`public/${file}`) ? Math.round(fs.statSync(`public/${file}`).size / 1024) : 0;
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MIXTAPE</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=DM+Mono:wght@400;500&display=swap">
+</head>
+<body>
+  <div class="stripes" aria-hidden="true"></div>
+  <main>
+    <section class="top">
+      <div>
+        <h1 aria-label="MIXTAPE">{[...'MIXTAPE'].map((ch) => <span>{ch}</span>)}</h1>
+        <p class="sub">Fork of TAPE 2.0 for CHOMPI.</p>
+        <a class="download" href={file} download>Download firmware</a>
+        <p class="facts">{kb} KB, built {date}<br><a href="https://github.com/lost-tty/CHOMPI">Source</a></p>
+      </div>
+      <div class="hero"><Panel leds={{ wheel_l: LED.blue, wheel_r: LED.blue, loop: LED.magenta, line: LED.pink }} /></div>
+    </section>
+
+    <section class="block features">
+      <h2>Features</h2>
+      <div class="overview">
+        <p>This fork adds ways to keep working on a loop after it is recorded: changing its length, picking out a part,
+          undoing an overdub and recording the effects into it.
+          Saved CUBBI loops can be <a href="#copy">queued</a> while the looper plays, a bit like launching clips.</p>
+        <ul>
+          <li><a href="#threshold">Recording threshold for sampling</a></li>
+          <li><a href="#mono">Sampling mono signals</a></li>
+          <li><a href="#copy">Appending saved CUBBI loops to the looper</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="block install">
+      <h2>Install</h2>
+      <div>
+        <p>Delete any other <code>.bin</code> file on the SD card, copy this one onto it and power on. CHOMPI writes the new firmware while the LEDs show a slow rainbow.</p>
+        <p>To go back, do the same with <code>CHOMPI_TAPEv2_0.bin</code>.</p>
+      </div>
+    </section>
+
+    <section class="usage" aria-label="Usage">
+      <div class="feats">
+        {usage.map((card) => <UsageCard {...card} />)}
+      </div>
+    </section>
+
+    <footer>Not an official CHOMPI Club release. CHOMPI is a trademark of CHOMPI Club.</footer>
+  </main>
+  <script>
+    import '../scripts/masonry.js';
+  </script>
+</body>
+</html>

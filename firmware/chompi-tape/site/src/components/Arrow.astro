@@ -1,0 +1,9 @@
+---
+import { r } from '../lib/drawing.js';
+
+const { x, y, n = 24 } = Astro.props;
+---
+<g class="arrow">
+  <line x1={r(x)} y1={r(y)} x2={r(x + n)} y2={r(y)} stroke-width="2.5" />
+  <path d={`M${r(x + n - 9)} ${r(y - 6)} L${r(x + n)} ${r(y)} L${r(x + n - 9)} ${r(y + 6)}`} stroke-width="2.5" />
+</g>

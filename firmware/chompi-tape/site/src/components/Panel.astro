@@ -1,0 +1,58 @@
+---
+// The top panel. hl: controls drawn in the section colour, leds: led -> colour,
+// labels: control -> [text, dx, dy], a callout above (dy < 0) or below the panel
+import { PW, PH, KNOBS, KNOB_LEDS, SMALL_LEDS, WHEEL, WHITE, BLACK, KEYS, POS, CW, SM, MONO, r } from '../lib/drawing.js';
+
+const { hl = [], leds = {}, labels = {} } = Astro.props;
+const s = CW / PW;
+const lw = 2.2;
+const callouts = Object.entries(labels);
+const top = callouts.some(([, l]) => l[2] < 0) ? 60 : 10;
+const height = top + (PH + 1) * s + (callouts.some(([, l]) => l[2] > 0) ? 70 : 10);
+
+const X = (x) => r(x * s);
+const Y = (y) => r(top + (PH - y + 1) * s);
+const on = (name) => hl.includes(name);
+const sw = (name) => r(lw * (on(name) ? 1.8 : 1));
+
+const keys = [
+  ...WHITE.map((x) => ({ x, y: 19.5, size: 17 })),
+  ...Object.entries(BLACK).map(([n, x]) => ({ x, y: 39.5, size: 15, black: true, name: { 19: 'line', 24: 'copy' }[n] })),
+  ...['shift', 'play', 'loop'].map((name) => ({ x: KEYS[name][0], y: KEYS[name][1], size: KEYS[name][2], name })),
+];
+const ledList = [
+  ...KNOB_LEDS.map((x, i) => ({ x, y: 92.2, c: leds[`knob${i - 1}`] })),
+  ...Object.entries(SMALL_LEDS).map(([n, x]) => ({ x, y: 94.5, c: leds[n] })),
+];
+const [wx, wy, wr] = WHEEL;
+---
+<svg viewBox={`-4 0 ${CW + 8} ${r(height)}`} role="img">
+  <rect class="frame" x={X(0)} y={Y(105)} width={r(PW * s)} height={r(PH * s)} rx={r(3 * s)} stroke-width={r(lw * 1.4)} />
+  {KNOBS.map((k, i) => (
+    <>
+      <circle class:list={['knob', { hl: on(`knob${i}`) }]} cx={X(k)} cy={Y(71.36)} r={r(6.5 * s)} stroke-width={sw(`knob${i}`)} />
+      <line class:list={['mark', { hl: on(`knob${i}`) }]} x1={X(k)} y1={Y(71.36)} x2={X(k)} y2={r(Y(71.36) - 5 * s)} stroke-width={lw} />
+    </>
+  ))}
+  {ledList.map(({ x, y, c }) => (
+    <circle class={c ? 'dot' : 'led'} cx={X(x)} cy={Y(y)} r={r((c ? 3 : 2.2) * s)} style={c && `fill: ${c}`} stroke-width={r(lw * 0.7)} />
+  ))}
+  <circle class:list={['knob', { hl: on('wheel') }]} cx={X(wx)} cy={Y(wy)} r={r(wr * s)} stroke-width={sw('wheel')} />
+  {keys.map(({ x, y, size, black, name }) => (
+    <rect class:list={['key', { black, hl: on(name) }]} x={r(X(x) - size * s / 2)} y={r(Y(y) - size * s / 2)}
+          width={r(size * s)} height={r(size * s)} rx={r(1.5 * s)} stroke-width={sw(name)} />
+  ))}
+  {leds.line && <circle class="dot" cx={X(BLACK[19])} cy={r(Y(39.5) + 4.2 * s)} r={r(1.8 * s)} style={`fill: ${leds.line}`} stroke-width="1.2" />}
+  {callouts.map(([name, [text, dx, dy]]) => {
+    const px = X(POS[name][0]), py = Y(POS[name][1]);
+    const ly = dy < 0 ? r(Y(105) - 40) : r(Y(0) + 44);
+    return (
+      <g class="callout">
+        <circle cx={px} cy={py} r="4" />
+        <polyline points={`${px},${py} ${px},${ly} ${r(px + dx)},${ly}`} stroke-width="2" />
+        <text x={r(px + dx + (dx >= 0 ? 8 : -8))} y={r(ly + SM * 0.35)} text-anchor={dx >= 0 ? 'start' : 'end'}
+              font-family={MONO} font-size={SM} font-weight="500">{text}</text>
+      </g>
+    );
+  })}
+</svg>

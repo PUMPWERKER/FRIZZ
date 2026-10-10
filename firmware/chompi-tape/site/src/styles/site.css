@@ -1,0 +1,96 @@
+/* layout: a bright J-card; LED-coloured stripes, a big title, the panel drawing, then colour-coded usage cards */
+:root {
+  /* Reala Ace-like: one lightness and chroma for every hue, only yellow and orange lighter so they read as such */
+  --paper: oklch(0.975 0 0); --surface: oklch(0.95 0 0); --key: oklch(0.93 0 0);
+  --ink: oklch(0.22 0 0); --dim: oklch(0.50 0 0); --line: oklch(0.70 0 0); --on-bright: oklch(0.22 0 0);
+  --red: oklch(0.60 0.16 28); --orange: oklch(0.70 0.15 55); --yellow: oklch(0.82 0.14 85);
+  --green: oklch(0.62 0.13 145); --teal: oklch(0.63 0.10 185); --blue: oklch(0.58 0.12 245);
+  --purple: oklch(0.53 0.13 290); --magenta: oklch(0.57 0.15 345);
+  --c: var(--orange);
+  --display: "Bricolage Grotesque", "Arial Rounded MT Bold", Arial, sans-serif;
+  --body: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+  --mono: "DM Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: oklch(0.19 0 0); --ink: oklch(0.94 0 0); --dim: oklch(0.72 0 0); --line: oklch(0.50 0 0); --key: oklch(0.27 0 0); --surface: oklch(0.22 0 0); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --paper: oklch(0.19 0 0); --ink: oklch(0.94 0 0); --dim: oklch(0.72 0 0); --line: oklch(0.50 0 0); --key: oklch(0.27 0 0); --surface: oklch(0.22 0 0); color-scheme: dark }
+* { box-sizing: border-box }
+html { overflow-x: clip }
+body { background: var(--paper); color: var(--ink); font: 400 17px/1.55 var(--body); font-optical-sizing: auto }
+.stripes { height: 14px; background: linear-gradient(90deg,
+  var(--red) 0 12.5%, var(--orange) 0 25%, var(--yellow) 0 37.5%, var(--green) 0 50%,
+  var(--teal) 0 62.5%, var(--blue) 0 75%, var(--purple) 0 87.5%, var(--magenta) 0) }
+main { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px }
+a { color: inherit; text-underline-offset: 3px }
+a:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 4px }
+
+.top { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 32px 56px; align-items: center; padding-bottom: 40px }
+h1 { font: 800 clamp(60px, 10vw, 128px)/.9 var(--display); letter-spacing: -.04em; margin: 0 0 12px }
+h1 span:nth-child(1) { color: var(--red) } h1 span:nth-child(2) { color: var(--orange) } h1 span:nth-child(3) { color: var(--yellow) }
+h1 span:nth-child(4) { color: var(--green) } h1 span:nth-child(5) { color: var(--teal) } h1 span:nth-child(6) { color: var(--blue) }
+h1 span:nth-child(7) { color: var(--purple) }
+.sub { color: var(--dim); margin: 0 0 26px; font-size: 19px }
+.download { display: inline-block; font: 700 20px/1.2 var(--display); text-decoration: none; color: var(--on-bright);
+  background: var(--yellow); padding: 14px 24px; border-radius: 999px; border: 2px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink); transition: transform .1s, box-shadow .1s }
+.download:hover { transform: translateY(2px); box-shadow: 0 2px 0 var(--ink) }
+.download:active { transform: translateY(4px); box-shadow: none }
+.facts { font: 13px/1.6 var(--mono); color: var(--dim); margin: 16px 0 0 }
+.hero svg { display: block; width: 100%; height: auto }
+
+.block { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 8px 56px;
+  margin-inline: calc(50% - 50vw); padding-block: 36px; padding-inline: max(20px, calc(50vw - 570px)) }
+.block.features { background: color-mix(in oklab, var(--blue) 11%, var(--paper)); grid-template-columns: minmax(0, 1fr); gap: 14px }
+.block.features p { max-width: none; font-size: 19px }
+.block.install { background: color-mix(in oklab, var(--purple) 9%, var(--paper)) }
+h2 { font: 800 32px/1.05 var(--display); letter-spacing: -.02em; margin: 0 }
+.block p { margin: 0 0 10px; max-width: 62ch }
+.overview ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px }
+.overview li a { display: inline-block; text-decoration: none; background: var(--paper); border: 2px solid var(--ink);
+  border-radius: 999px; padding: 4px 14px; font-weight: 600; font-size: 15px }
+.overview li a:hover { background: var(--yellow); color: var(--on-bright) }
+code { font: .85em var(--mono); background: var(--paper); border-radius: 4px; padding: 1px 5px }
+
+.usage { padding-top: 24px; margin-inline: calc(50% - 50vw); padding-inline: 24px }
+.feats { columns: 2 440px; column-gap: 24px }
+.feats.masonry { columns: auto; display: flex; gap: 24px; align-items: flex-start }
+.feats.masonry > .col { flex: 1 1 0; min-width: 0 }
+.feat { break-inside: avoid; margin-bottom: 24px; padding: 22px 24px 18px; border-radius: 20px;
+  background: color-mix(in oklab, var(--c) 15%, var(--paper)); border: 2px solid color-mix(in oklab, var(--c) 55%, var(--paper)) }
+h3 { font: 800 25px/1.1 var(--display); letter-spacing: -.01em; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; text-wrap: balance }
+h3::before { content: ""; flex: none; width: 14px; height: 14px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 4px color-mix(in oklab, var(--c) 25%, transparent) }
+.combo svg { height: 28px; width: auto; max-width: 100%; display: block }
+.fig { margin: 16px 0 0 }
+.fig svg { display: block; width: 100%; height: auto }
+.feat ul { margin: 14px 0 0; padding-left: 18px }
+.feat li { margin-bottom: 4px }
+.feat li::marker { color: var(--c) }
+
+/* the drawings */
+svg text { fill: var(--ink) }
+svg .dim { fill: var(--dim) }
+.frame, .knob, .key, .box, .dot { fill: var(--paper); stroke: var(--ink) }
+.key.black { fill: var(--key) }
+.mark { stroke: var(--ink) }
+.led { fill: var(--paper); stroke: var(--line) }
+.arrow, .back { fill: none; stroke: var(--ink) }
+.back { stroke: var(--line) }
+.feat { --c-line: color-mix(in oklab, var(--c) 75%, var(--ink)); --c-text: color-mix(in oklab, var(--c) 70%, var(--ink)) }
+.hl, .key.hl, .box.sel { fill: var(--c); fill-opacity: .14 }
+.hl, .key.hl { stroke: var(--c-line) }
+svg .acc, .callout text { fill: var(--c-text) }
+.callout circle { fill: var(--c) }
+.callout polyline { fill: none; stroke: var(--c-line) }
+
+footer { margin-top: 24px; margin-inline: calc(50% - 50vw); padding: 20px 24px; color: var(--dim); font-size: 14px;
+  border-top: 1px solid color-mix(in oklab, var(--line) 40%, var(--paper)) }
+
+@media (max-width: 800px) {
+  .top, .block { grid-template-columns: minmax(0, 1fr) }
+  main { padding-inline: 16px }
+  .usage, footer { padding-inline: 16px }
+  .block { padding: 26px 16px }
+}
+@media (prefers-reduced-motion: reduce) { .download { transition: none } }

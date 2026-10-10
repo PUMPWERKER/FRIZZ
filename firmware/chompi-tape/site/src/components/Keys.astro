@@ -1,0 +1,28 @@
+---
+// A key combination: key names as keycaps, '+' and '→' between them, '_text' as a grey note
+import Arrow from './Arrow.astro';
+import { SANS, MONO, FS, SM, r } from '../lib/drawing.js';
+
+const { keys } = Astro.props;
+let cx = 2;
+const parts = keys.map((p) => {
+  const x = cx;
+  if (p === '+') { cx += 38; return { type: 'plus', x }; }
+  if (p === '→') { cx += 50; return { type: 'arrow', x }; }
+  if (p.startsWith('_')) { cx += p.length * SM * 0.5 + 18; return { type: 'note', x, text: p.slice(1) }; }
+  const w = p.length * SM * 0.6 + 24;
+  cx += w + 10;
+  return { type: 'key', x, w, text: p };
+});
+---
+<svg viewBox={`0 0 ${r(cx + 2)} 50`} role="img" aria-label={keys.join(' ').replaceAll('_', '')}>
+  {parts.map((p) =>
+    p.type === 'plus' ? <text x={r(p.x + 6)} y="34" font-family={SANS} font-size={FS} font-weight="300">+</text>
+    : p.type === 'arrow' ? <Arrow x={p.x + 8} y={24} n={26} />
+    : p.type === 'note' ? <text class="dim" x={r(p.x + 4)} y="33" font-family={SANS} font-size={SM}>{p.text}</text>
+    : <>
+        <rect class="key" x={r(p.x)} y="2" width={r(p.w)} height="44" rx="5" stroke-width="2" />
+        <text x={r(p.x + p.w / 2)} y="33" text-anchor="middle" font-family={MONO} font-size={SM} font-weight="500">{p.text}</text>
+      </>
+  )}
+</svg>

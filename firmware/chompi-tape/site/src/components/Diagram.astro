@@ -1,0 +1,90 @@
+---
+// The small drawing under a panel: a row of steps, the length LEDs, the step sections or the line in modes
+import Arrow from './Arrow.astro';
+import { LED, SANS, MONO, CW, FS, SM, r } from '../lib/drawing.js';
+
+const { type, steps = [], back = false, blink = false } = Astro.props;
+const y = 30;
+const heights = { flow: back ? 108 : 84, length: 120, sections: 112, mono: 150 };
+
+// flow: three boxes with arrows, an LED in some; back: a dashed line back to the first; blink: the first LED blinks
+const bw = (CW - 2 * 56) / 3;
+const boxes = steps.map(([text, c], i) => ({ x: i * (bw + 56), text, c, i }));
+
+const lengths = [['÷8', 'orange', 1, 0], ['÷4', 'yellow', 1, 0], ['÷2', 'green', 1, 0], ['1×', 'blue', 1, 1],
+  ['×2', 'green', 0, 1], ['×4', 'yellow', 0, 1], ['×8', 'orange', 0, 1]];
+const step = CW / lengths.length;
+
+const sw = CW / 4;
+const monoModes = [['Stereo', LED.pink], ['Mono from left channel', LED.red], ['Mono from right channel', LED.green]];
+---
+<svg viewBox={`-4 0 ${CW + 8} ${heights[type] + 34}`} role="img">
+  {type === 'flow' && (
+    <>
+      {steps.some(([, c]) => c === 'vu') && (
+        <defs>
+          <linearGradient id="vu" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0" stop-color={LED.green} /><stop offset=".5" stop-color={LED.yellow} /><stop offset="1" stop-color={LED.pink} />
+          </linearGradient>
+        </defs>
+      )}
+      {boxes.map(({ x, text, c, i }) => (
+        <>
+          <rect class="box" x={r(x)} y={y} width={r(bw)} height="60" stroke-width="2" />
+          <text x={r(x + bw / 2 + (c ? 14 : 0))} y={y + 40} text-anchor="middle" font-family={MONO} font-size={SM} font-weight="500">{text}</text>
+          {c && <circle class="dot" cx={r(x + 26)} cy={y + 30} r="8" style={`fill: ${c === 'vu' ? 'url(#vu)' : c}`} stroke-width="1.8" />}
+          {c && blink && i === 0 && <circle class="back" cx={r(x + 26)} cy={y + 30} r="14" stroke-width="2" stroke-dasharray="4 4" />}
+          {i < 2 && <Arrow x={x + bw + 14} y={y + 30} n={28} />}
+        </>
+      ))}
+      {back && (
+        <g class="back" stroke-width="2">
+          <polyline points={`${r(CW - bw / 2)},${y + 60} ${r(CW - bw / 2)},${y + 88} ${r(bw / 2)},${y + 88} ${r(bw / 2)},${y + 68}`} stroke-dasharray="6 6" />
+          <path d={`M${r(bw / 2 - 7)} ${y + 76} L${r(bw / 2)} ${y + 66} L${r(bw / 2 + 7)} ${y + 76}`} />
+        </g>
+      )}
+    </>
+  )}
+  {type === 'length' && (
+    <>
+      {lengths.map(([label, c, left, right], i) => {
+        const cx = step * i + step / 2;
+        return (
+          <>
+            <circle class="dot" cx={r(cx - 13)} cy={y + 14} r="9" style={left ? `fill: ${LED[c]}` : undefined} stroke-width="1.8" />
+            <circle class="dot" cx={r(cx + 13)} cy={y + 14} r="9" style={right ? `fill: ${LED[c]}` : undefined} stroke-width="1.8" />
+            <text x={r(cx)} y={y + 60} text-anchor="middle" font-family={MONO} font-size={SM} font-weight="500">{label}</text>
+          </>
+        );
+      })}
+      <text class="dim" x="0" y={y + 100} font-family={SANS} font-size={SM}>Wheel LEDs</text>
+    </>
+  )}
+  {type === 'sections' && (
+    <>
+      {[0, 1, 2, 3].map((i) => (
+        <>
+          <rect class:list={['box', { sel: i === 1 }]} x={r(i * sw)} y={y + 40} width={r(sw)} height="50" stroke-width="2" />
+          <text class:list={{ acc: i === 1 }} x={r(i * sw + sw / 2)} y={y + 74} text-anchor="middle" font-family={MONO} font-size={SM} font-weight="500">{i + 1}</text>
+        </>
+      ))}
+      {[sw * 0.5, sw * 2.5].map((xx) => {
+        const d = xx < sw * 1.5 ? -1 : 1;
+        return (
+          <g class="arrow">
+            <path d={`M${r(sw * 1.5)} ${y + 34} Q${r((sw * 1.5 + xx) / 2)} ${y - 4} ${r(xx)} ${y + 34}`} stroke-width="2" />
+            <path d={`M${r(xx - d * 2)} ${y + 22} L${r(xx)} ${y + 34} L${r(xx - d * 12)} ${y + 30}`} stroke-width="2.5" stroke-linejoin="round" />
+          </g>
+        );
+      })}
+      <text class="dim" x={r(sw * 0.5)} y={y + 6} text-anchor="middle" font-family={SANS} font-size={SM}>left</text>
+      <text class="dim" x={r(sw * 2.5)} y={y + 6} text-anchor="middle" font-family={SANS} font-size={SM}>right</text>
+    </>
+  )}
+  {type === 'mono' && monoModes.map(([text, c], i) => (
+    <>
+      <circle class="dot" cx="12" cy={y + i * 46 + 20} r="10" style={`fill: ${c}`} stroke-width="1.8" />
+      <text x="36" y={y + i * 46 + 30} font-family={SANS} font-size={FS}>{text}</text>
+    </>
+  ))}
+</svg>
