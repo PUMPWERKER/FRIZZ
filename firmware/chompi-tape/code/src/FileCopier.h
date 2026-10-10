@@ -55,9 +55,18 @@ class FileCopier
 
                 looper_ram.SetReadHead(looper_ram.LoopStart()); // a save stores what the loop plays
 
+                if(Engine::IsKitSlot(req.src, req.src_bank, req.src_mode))
+                {
+                    if(!CopyKitStart())
+                        return false;
+                }
+                else
+                {
+
                 CopyStart(req.src, req.src_bank, req.src_mode, req.dest, req.dest_bank, req.dest_mode);
                 if(is_looper_ram == CopyRequest::RamDir::TO)
                     StartLooperLoad();
+                }
             }
 
             if(!copying_)
@@ -116,7 +125,7 @@ class FileCopier
                 copyread += read_num;
 
                 // double speed write
-                if(is_chompi_ram != CopyRequest::RamDir::TO && is_looper_ram != CopyRequest::RamDir::TO)
+                if(is_chompi_ram != CopyRequest::RamDir::TO && is_looper_ram != CopyRequest::RamDir::TO && !kit_phase_)
                 {
                     size_t write = 0;
                     size_t read = 0;
@@ -249,8 +258,83 @@ class FileCopier
         FIFO<CopyRequest, 16> req_fifo;
 
     private:
+        // A kit copies as files, the .aif and then its sidecar, and only to another JAMMI slot on the card.
+        // Both go through the normal loop as raw copies: no WAV header, no double.
+        bool CopyKitStart() __attribute__((optimize("Os")))
+        {
+            if(req.dest_mode != VoiceMode::JAMMI || req.dest < 1 || req.dest > 14)
+            {
+                copying_ = false;
+                return false;
+            }
+
+            char from[32], to[32];
+            Engine::GetFileNameForSlot(req.src, req.src_bank, req.src_mode, from);
+            Engine::KitName(from);
+            if(f_stat(from, nullptr) != FR_OK)
+            {
+                copying_ = false;
+                return false;
+            }
+
+            Engine::GetFileNameForSlot(req.dest, req.dest_bank, req.dest_mode, to);
+            f_unlink(to);
+            Engine::GetFileNameForSlot(req.dest, req.dest_bank, req.dest_mode, to, true);
+            f_unlink(to);
+            Engine::GetFileNameForSlot(req.dest, req.dest_bank, req.dest_mode, to);
+            Engine::KitName(to);
+            chompi::kit_loader.Remove(to);
+            fx_->SetFileExists(req.dest - 1, req.dest_bank, req.dest_mode, true);
+            chompi::kit_slots[req.dest_bank] |= 1 << req.dest;
+
+            kit_phase_ = 1;
+            if(CopyRaw(from, to))
+                return true;
+            kit_phase_ = 0;
+            copying_ = false;
+            return false;
+        }
+
+        // after the .aif comes the sidecar, if there is one
+        bool CopyKitNext() __attribute__((optimize("Os")))
+        {
+            if(kit_phase_ != 1)
+                return false;
+            CloseFile(&fptr_read);
+            CloseFile(&fptr_write);
+            char from[32], to[32];
+            Engine::GetFileNameForSlot(req.src, req.src_bank, req.src_mode, from);
+            Engine::GetFileNameForSlot(req.dest, req.dest_bank, req.dest_mode, to);
+            chompi::KitFileName(from, from, ".json");
+            chompi::KitFileName(to, to, ".json");
+            kit_phase_ = 2;
+            return CopyRaw(from, to);
+        }
+
+        bool CopyRaw(const char* from, const char* to)
+        {
+            copyread = copysize = 0;
+            misalign = 0;
+            if(f_open(&fptr_read, from, FA_READ) != FR_OK)
+                return false;
+            if(f_open(&fptr_write, to, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+            {
+                CloseFile(&fptr_read);
+                return false;
+            }
+            copysize = f_size(&fptr_read);
+            return true;
+        }
+
         void CopyStart(size_t src, size_t src_bank, VoiceMode src_mode, size_t dest, size_t dest_bank, VoiceMode dest_mode) __attribute__((optimize("Os")))
         {
+            if(dest < 15 && Engine::IsKitSlot(dest, dest_bank, dest_mode)) // a sample replaces the kit
+            {
+                char kit[32];
+                Engine::GetFileNameForSlot(dest, dest_bank, dest_mode, kit);
+                Engine::KitName(kit);
+                chompi::kit_loader.Remove(kit);
+            }
 
             if(dest < 16)
                 fx_->SetFileExists(dest - 1, dest_bank, dest_mode, true);
@@ -350,7 +434,15 @@ class FileCopier
 
         void CopyDone() __attribute__((optimize("Os")))
         {
-            if(is_chompi_ram != CopyRequest::RamDir::TO && is_looper_ram != CopyRequest::RamDir::TO)
+            if(kit_phase_ && CopyKitNext())
+                return;
+
+            if(kit_phase_)
+            {
+                kit_phase_ = 0;
+                CloseFile(&fptr_write);
+            }
+            else if(is_chompi_ram != CopyRequest::RamDir::TO && is_looper_ram != CopyRequest::RamDir::TO)
             {
                 f_truncate(&fptr_write);
                 f_truncate(&fptr_write_double);
@@ -461,6 +553,7 @@ class FileCopier
         // loading next to the playing loop, which keeps playing until the loop point
         bool looper_staged = false;
         bool looper_was_playing = false;
+        uint8_t kit_phase_ = 0; // copying a kit: 1 the .aif, 2 its sidecar
         uint32_t copysize = 0;
         uint32_t copyread = 0;
         WAV_FormatTypeDef file_header;

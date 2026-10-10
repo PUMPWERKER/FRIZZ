@@ -24,7 +24,7 @@ export const BLACK = { 16: 35.555, 17: 55.666, 18: 95.889, 19: 116.0, 20: 136.11
   22: 196.444, 23: 236.667, 24: 256.778, 25: 276.889 };
 export const KEYS = { shift: [45.6, 68.8, 22], play: [246.8, 68.8, 15], loop: [266.9, 68.8, 15],
   line: [BLACK[19], 39.5, 15], copy: [BLACK[24], 39.5, 15] };
-export const POS = { ...KEYS, wheel: WHEEL, knob0: [KNOBS[0], 71.36] };
+export const POS = { ...KEYS, wheel: WHEEL, ...Object.fromEntries(KNOBS.map((k, i) => [`knob${i}`, [k, 71.36]])) };
 
 // one decimal is plenty
 export const r = (n) => Math.round(n * 10) / 10;

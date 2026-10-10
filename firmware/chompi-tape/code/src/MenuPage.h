@@ -388,7 +388,10 @@ namespace chompi
                 else if(i == 15 && fx_->GetFileExists(i - 1))
                         SetSmtLedFloat(25 - i, pink[0], pink[1], pink[2]);
                 else if(fx_->GetFileExists(i - 1))
-                        SetSmtLedFloat(25 - i, key_color[0], key_color[1], key_color[2]);
+                {
+                    const float k = Engine::IsKitSlot(i, fx_->GetBank(), fx_->GetVoiceMode()) ? .3f : 1.f; // a kit dim
+                    SetSmtLedFloat(25 - i, k * key_color[0], k * key_color[1], k * key_color[2]);
+                }
                 else
                     SetSmtLedFloat(25 - i, 0.f, 0.f, 0.f);
             }

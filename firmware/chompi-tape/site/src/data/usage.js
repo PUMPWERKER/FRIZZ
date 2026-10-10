@@ -73,4 +73,12 @@ export const usage = [
       'Knob LED <b>red</b>: input above it',
       'Above zero, CHOMPI latches: <b>tap again</b> to stop'],
   },
+  {
+    id: 'kits', title: 'OP-1 drum kits', colour: 'teal', keys: ['START', '/', 'END', '_turn'],
+    panel: { hl: ['knob1', 'knob2'], labels: { knob1: ['start', 0, -90], knob2: ['end', 0, -90] } },
+    items: ['Copy an OP-1 drum kit <code>.aif</code> onto the card as <code>jammi_a1.aif</code>, … (no <code>.wav</code> with the same name)',
+      'Each key plays one slice, from the lowest key up',
+      '<b>START / END</b>: trim the last played slice',
+      'Keys blink while loading, red if the file can\'t play'],
+  },
 ];

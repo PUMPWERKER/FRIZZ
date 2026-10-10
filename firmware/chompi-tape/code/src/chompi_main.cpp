@@ -28,6 +28,13 @@ OptionsManager options;
 daisysp::Reverb DSY_DTCMRAM_BSS reverb;
 Clock DSY_DTCMRAM_BSS chompi::beat_clock;
 LoopSync DSY_DTCMRAM_BSS daisy::loop_sync;
+AiffInfo DSY_DTCMRAM_BSS chompi::slot_aiff;
+uint16_t DSY_DTCMRAM_BSS chompi::kit_slots[5];
+RamBufferMemory DSY_DTCMRAM_BSS chompi::kit_buff;
+KitLoader DSY_DTCMRAM_BSS chompi::kit_loader;
+int16_t DSY_SDRAM_BSS kit_mem[kKitMaxFrames * 2];
+FIL DSY_SDRAM_BSS kit_fil; // the SD DMA can't reach DTCM
+uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) kit_bounce[kKitBounce];
 chompi::InterpolatedDelayLine::AudioSample DSY_SDRAM_BSS del_mem[kMaxDelayTime];
 
 RamBufferMemory loop_buff;
@@ -162,12 +169,14 @@ void SDCallback(void* data)
         return;
     }
 
+    kit_loader.Step();
     engine.ProcessFileRequests();
 
     if(now - pret > 50 && !engine.AnyVoicesPlaying())
     {
         pret = now;
         ui.WritePresets();
+        kit_loader.Save(now);
     }    
 }
 
@@ -323,6 +332,11 @@ int main(void)
 {
     beat_clock.Init(); // DTCM isn't zeroed, and hw.Init starts MIDI
     loop_sync.Init();
+    slot_aiff = AiffInfo();
+    std::fill(kit_slots, kit_slots + 5, 0);
+    kit_buff = RamBufferMemory();
+    kit_buff.Init(kit_mem);
+    kit_loader.Init(&kit_fil, kit_bounce);
     hw.Init();
     // System::Delay(100);
 

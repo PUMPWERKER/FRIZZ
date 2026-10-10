@@ -5,6 +5,7 @@
 #include "FileStreamingManager.h"
 #include "Control/adsr.h"
 #include "RamBuffer.h"
+#include "AiffKit.h"
 
 namespace daisy
 {
@@ -50,9 +51,20 @@ namespace daisy
 
         void SetVelocity(float vel) { velocity = vel * 0.00787401f; }
 
+        // RAM playback: the recorded sample, or an .aif at its own sample rate
+        void SetRamSource(RamBufferMemory* buff, bool aiff)
+        {
+            if(ram_buff.Memory() != buff)
+                ram_buff.Bind(buff);
+            aiff_ = aiff;
+        }
+
         void SetAutoLoop (bool loop) { auto_loop = loop; }
         void ToggleAutoLoop () { auto_loop = !auto_loop; }
         bool GetAutoLoop() { return auto_loop; }
+        bool Loops() const { return auto_loop && !IsKit(); } // a kit slice plays once
+        bool IsAiff() const { return aiff_; }
+        bool IsKit() const { return aiff_ && chompi::slot_aiff.kit; }
 
         void SetSustainActive(bool sus) { sustain = sus; }
         bool GetSustainActive() { return sustain; }
@@ -437,7 +449,7 @@ namespace daisy
             else
             {
                 /** handle with varispeed (positive only) */
-                float inc = varispeed_factor * global_pitch;
+                float inc = varispeed_factor * global_pitch * (aiff_ ? chompi::slot_aiff.rate / sr_ : 1.f);
 
                 if(double_speed_ctr > 0 && click_clear > 0)
                     inc = old_speed;
@@ -509,7 +521,7 @@ namespace daisy
                                 loop_env = 0.f;
                                 loop_env_dec = fabsf(loop_env_dec);
 
-                                if(using_ram && auto_loop)
+                                if(using_ram && Loops())
                                     JumpToStart();
                             }
                         }
@@ -568,7 +580,7 @@ namespace daisy
             }
 
             // Stop playing if we're not auto-looping
-            if(OTE() && !auto_loop && env_.IsRunning() && seek_requests_ == 0) 
+            if(OTE() && !Loops() && env_.IsRunning() && seek_requests_ == 0) 
             {
                 ResetEnv();
             }
@@ -603,7 +615,7 @@ namespace daisy
                         // PASSED THE EXIT, JUMP NOW!!
                         if(new_pos <= int(GetStartPoint()))
                         {
-                            if(auto_loop)
+                            if(Loops())
                             {
                                 JumpTo(GetEndPoint());
                                 last_read_size_ = 0;
@@ -636,7 +648,7 @@ namespace daisy
                         // PASSED THE EXIT, JUMP NOW!!
                         if(f_tell(&fptr_read) >= GetEndPoint())
                         {
-                            if(auto_loop)
+                            if(Loops())
                                 JumpTo(GetStartPoint());
                             return;
                         }
@@ -679,12 +691,12 @@ namespace daisy
                         loop_env_dec = -1.f / float(total);
                     }                    
 
-                    if(reverse_ && auto_loop)
+                    if(reverse_ && Loops())
                     {
                         JumpTo(GetEndPoint());
                         last_read_size_ = 0;
                     }
-                    else if(auto_loop)
+                    else if(Loops())
                     {
                         JumpTo(GetStartPoint());
                     }                
@@ -1031,6 +1043,7 @@ namespace daisy
 
         /** 2x speed file */
         bool double_speed;
+        bool aiff_ = false;
         uint32_t double_speed_ctr;
         float old_speed;
         bool note_changed, pitch_changed;

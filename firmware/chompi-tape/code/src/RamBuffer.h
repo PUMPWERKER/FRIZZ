@@ -79,6 +79,14 @@ namespace daisy
 
         inline void Reset() { FillFrom(0); }
 
+        // play other memory, without clearing it
+        void Bind(RamBufferMemory* b)
+        {
+            buff = b;
+            read_head = write_head = 0;
+        }
+        inline RamBufferMemory* Memory() const { return buff; }
+
         // the loop starts here: what sits below stays, it is the audio before the loop point
         void FillFrom(size_t pos)
         {
