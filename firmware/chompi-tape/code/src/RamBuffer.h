@@ -13,6 +13,8 @@ namespace daisy
     static const size_t kCopyStepSize = 512;
     // a recording waiting for its threshold keeps ~6ms before it, and ignores ~100ms of key noise
     static const size_t kRecPreRoll = 576;
+    // the fills before a snapped start walk up the buffer, keeping the loop's lead-in below it
+    static const size_t kMaxSyncFill = 48000 * 2 * 8;
     static const uint8_t kRecIgnoreWraps = 17;
     // undo audio is kept at the end of the buffer
     static const size_t kUndoChunk = kCopyStepSize;
@@ -75,10 +77,14 @@ namespace daisy
             buff->Clear();
         }
 
-        void Reset()
+        inline void Reset() { FillFrom(0); }
+
+        // the loop starts here: what sits below stays, it is the audio before the loop point
+        void FillFrom(size_t pos)
         {
             ClearLengthChanges(); // first, it applies a pending change
-            buff->length = buff->start = buff->base = read_head = write_head = 0;
+            buff->length = 0;
+            buff->start = buff->base = read_head = write_head = pos;
             buff->copy_lo = buff->copy_hi = 0;
         }
 
@@ -360,6 +366,25 @@ namespace daisy
 
             buff->copy_lo = lo;
             buff->copy_hi = hi;
+        }
+
+        // Audio from the other side of the loop point: samples [k, k + n) of a run of total at from are
+        // added into the loop at to, faded in at the run's start or, with fade_out, out at its end.
+        void Overlay(size_t from, size_t to, size_t k, size_t n, size_t total, bool fade_out)
+            __attribute__((noinline, optimize("Os")))
+        {
+            if(from + total > kMaxRamBuffSize || to + total > kMaxRamBuffSize)
+                return;
+
+            const size_t ramp = std::min(kLoopFadeSize, total);
+            for(size_t i = k; i < k + n; i += 2)
+            {
+                const size_t edge = fade_out ? total - 2 - i : i;
+                const float gain = edge < ramp ? edge / static_cast<float>(ramp) : 1.f;
+                for(size_t c = 0; c < 2; c++)
+                    buff->mem[to + i + c]
+                        = f2s16(s162f(buff->mem[to + i + c]) + s162f(buff->mem[from + i + c]) * gain);
+            }
         }
 
         void LoopFadeAudio(int32_t* l, int32_t* r, bool rev) const

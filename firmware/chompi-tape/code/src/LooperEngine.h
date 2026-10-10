@@ -19,6 +19,8 @@ namespace daisy
             filling = synced = stop_play = loading = play_wait = play_armed = trigger_req = false;
             play_press = play_at = trigger_press = 0;
             fill_from = start = start_at = stop_at = 0;
+            pre_frames = 0;
+            lead = tail = Fold();
         }
 
         bool filling = false;          // the buffer holds the input since beat fill_from
@@ -31,6 +33,13 @@ namespace daisy
         uint32_t play_press = 0, play_at = 0, trigger_press = 0;
         uint32_t fill_from = 0, start = 0;
         uint32_t start_at = 0, stop_at = 0; // beats of a waiting start or stop, 0 = none
+        uint32_t pre_frames = 0;           // input frames between an early press and the start beat
+        // audio folded across the loop point a chunk per block, up to half a beat is too long for one
+        struct Fold
+        {
+            size_t from = 0, to = 0, done = 0, total = 0;
+            bool fade_out = false;
+        } lead, tail;
     };
     extern LoopSync loop_sync;
 
@@ -68,6 +77,8 @@ namespace daisy
 
         void Process(float* out_l, float* out_r, size_t size)
         {
+            OverlayStep();
+
             if(first_record && !looper.IsResetting())
             {
                 if(SyncBlock(out_l, out_r, size))
@@ -142,7 +153,7 @@ namespace daisy
 
                 if(looper.WriteFullLength())
                 {
-                    loop_sync.stop_at = 0;
+                    loop_sync.stop_at = loop_sync.pre_frames = 0; // no loop point to wrap around
                     ToggleRecord(); // overdub mode
                     ToggleRecord(); // play mode
                 }
@@ -477,8 +488,12 @@ namespace daisy
                 if(s.stop_at && (lost || past >= 0.f))
                 {
                     if(!lost)
-                        looper.ram_buff.Trim(looper.ram_buff.GetSize() - 2 * static_cast<size_t>(past * len));
-                    s.stop_at = 0;
+                    {
+                        const size_t late = static_cast<size_t>(past * len);
+                        looper.ram_buff.Trim(looper.ram_buff.GetSize() - 2 * late);
+                        WrapOverlays(late);
+                    }
+                    s.stop_at = s.pre_frames = 0;
                     ToggleRecord(s.stop_play);
                 }
                 return false;
@@ -487,7 +502,7 @@ namespace daisy
             if(s.loading)
             {
                 s.filling = false;
-                s.start_at = 0;
+                s.start_at = s.pre_frames = 0;
                 return true;
             }
 
@@ -496,7 +511,7 @@ namespace daisy
                 s.filling = false;
                 if(s.start_at) // the clock went away, start now
                 {
-                    s.start_at = 0;
+                    s.start_at = s.pre_frames = 0;
                     ToggleRecord();
                 }
                 return true;
@@ -505,12 +520,10 @@ namespace daisy
             // the fill follows the clock's beat, also when it jumps (start, song position, early tick)
             if(!s.filling || s.fill_from != beat)
             {
-                s.filling = phase * len < size; // a beat that began less than a block ago starts one now
-                if(s.filling)
-                {
-                    looper.ResetRamBuff();
-                    s.fill_from = beat;
-                }
+                if(phase * len < size) // a beat that began less than a block ago starts one now
+                    NextFill(beat);
+                else
+                    s.filling = false;
             }
 
             if(s.start_at)
@@ -528,11 +541,7 @@ namespace daisy
             for(size_t i = 0; i < size; i++)
             {
                 if(i == next)
-                {
-                    looper.ResetRamBuff();
-                    s.fill_from = beat + 1;
-                    s.filling = true;
-                }
+                    NextFill(beat + 1);
                 daisysp::fonepole(fx_env_, fx_env_target_, .001f);
                 looper.PushStereoSamps(f2s16(out_l[i] * fx_env_), f2s16(out_r[i] * fx_env_));
             }
@@ -588,6 +597,58 @@ namespace daisy
             }
         }
 
+        // The fill for the next beat goes above the last one, which stays as the lead-in below the loop.
+        // A broken run starts again at 0, so all below the loop start is one stretch of input.
+        void NextFill(uint32_t beat)
+        {
+            LoopSync& s = loop_sync;
+            const size_t end = looper.ram_buff.End();
+            looper.ram_buff.FillFrom(s.filling && end <= kMaxSyncFill ? end : 0);
+            s.fill_from = beat;
+            s.filling = true;
+        }
+
+        // the audio across the loop point belongs on its other side: an early start's lead-in at the
+        // end, a late stop's tail at the beginning. Both still sit next to the loop, untrimmed.
+        void WrapOverlays(size_t late)
+        {
+            const size_t len = looper.ram_buff.GetSize(), start = looper.ram_buff.GetStart();
+            LoopSync& s = loop_sync;
+
+            size_t n = 2 * late;
+            if(n && n <= len)
+            {
+                s.tail = {start + len, start, 0, n, true};
+                FoldStep(s.tail); // playback starts at the loop point in this block
+            }
+
+            n = std::min<size_t>(2 * s.pre_frames, start); // only what the fill kept below the loop
+            if(n && n <= len)
+                s.lead = {start - n, start + len - n, 0, n, false};
+        }
+
+        // a chunk per block stays well ahead of playback, which moves a block's worth
+        void OverlayStep()
+        {
+            FoldStep(loop_sync.lead);
+            FoldStep(loop_sync.tail);
+        }
+
+        void FoldStep(LoopSync::Fold& f)
+        {
+            if(f.done >= f.total)
+                return;
+            if(f.to + f.total > looper.ram_buff.End()) // the loop moved under it
+            {
+                f.done = f.total;
+                return;
+            }
+
+            const size_t n = std::min<size_t>(f.total - f.done, kCopyStepSize);
+            looper.ram_buff.Overlay(f.from, f.to, f.done, n, f.total, f.fade_out);
+            f.done += n;
+        }
+
         // the buffer already holds the loop from that beat on
         void StartOnGrid(uint32_t beat)
         {
@@ -622,6 +683,8 @@ namespace daisy
 
             if(!record)
             {
+                // an early press plays into the loop before it starts, that goes to its end
+                s.pre_frames = nearest > beat ? static_cast<uint32_t>((1.f - pressed) * len) : 0;
                 if(nearest <= beat && s.filling && s.fill_from == beat)
                     StartOnGrid(beat);
                 else
