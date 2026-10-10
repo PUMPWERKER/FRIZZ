@@ -61,7 +61,9 @@ export const usage = [
       '<b>Hold</b>: time signature, 4/4, 3/4, 6/8, 5/4, 7/4',
       '<b>Turn</b>: tempo',
       'Syncs to MIDI clock (TRS or USB)',
-      'First loop snaps to the beat'],
+      'First loop snaps to the beat',
+      'Delay syncs to the beat once either is on',
+      '<b>SHIFT + FX knob</b>: note values, 1/16 to 1/2'],
   },
   {
     id: 'threshold', title: 'Recording threshold', colour: 'yellow', keys: ['LEFT KNOB', '_turn', '→', 'CHOMPI', '_tap'],

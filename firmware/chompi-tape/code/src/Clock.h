@@ -21,6 +21,9 @@ namespace chompi
             metro_on_ = beep_on_ = had_grid_ = false;
             tempo_ = 120;
             sig_ = 0;
+            delay_note_ = -1;
+            delay_quarter_ = 0.f;
+            delay_touched_ = false;
             metro_beat_ = last_pulse_ = 0;
             metro_phase_ = beep_env_ = beep_ph_ = beep_inc_ = 0.f;
             SetSampleRate(48000.f);
@@ -104,6 +107,31 @@ namespace chompi
         float SampleRate() const { return sr_; }
 
         // /8 signatures count their eighths in threes: 6/8 is two dotted-quarter beats
+        float QuartersPerBeat() const { return TicksPerBeat() / static_cast<float>(kTicksPerQuarter); }
+
+        // false without a grid
+        bool Quarter(float &samples, bool midi_only = false) const
+        {
+            uint32_t beat;
+            float phase;
+            bool midi;
+            if(!Get(beat, phase, &samples, &midi) || (midi_only && !midi))
+                return false;
+            samples /= QuartersPerBeat();
+            return true;
+        }
+
+        // delay sync state, here because the engine's SRAM is full; note -1 is free time
+        int DelayNote() const { return delay_note_; }
+        void SetDelayNote(int note)
+        {
+            delay_note_ = note;
+            __DMB(); // before the caller writes the delay time
+        }
+        float &DelayQuarter() { return delay_quarter_; }
+        bool DelayTouched() const { return delay_touched_; }
+        void TouchDelay() { delay_touched_ = true; }
+
         int BeatsPerBar() const { return Sig().compound() ? Sig().top / 3 : Sig().top; }
 
         // the next time signature, the metronome restarts on the one
@@ -292,6 +320,9 @@ namespace chompi
         bool had_grid_;      // a grid that just appeared beeps at once
         int tempo_;          // BPM in quarters
         uint8_t sig_;        // time signature, see Sig()
+        volatile int8_t delay_note_;
+        float delay_quarter_;
+        bool delay_touched_;
         uint32_t metro_beat_;
         uint32_t last_pulse_;
         float metro_phase_;

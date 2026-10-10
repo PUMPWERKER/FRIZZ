@@ -21,6 +21,7 @@ namespace daisy
             play_press = play_at = trigger_press = 0;
             fill_from = start = start_at = stop_at = 0;
             pre_frames = 0;
+            quarter = 0.f;
             lead = tail = Fold();
         }
 
@@ -37,6 +38,7 @@ namespace daisy
         uint32_t fill_from = 0, start = 0;
         uint32_t start_at = 0, stop_at = 0; // beats of a waiting start or stop, 0 = none
         uint32_t pre_frames = 0;           // input frames between an early press and the start beat
+        float quarter = 0.f;               // samples per quarter of a snapped loop, 0 = unknown
         // audio folded across the loop point a chunk per block, up to half a beat is too long for one
         struct Fold
         {
@@ -452,6 +454,7 @@ namespace daisy
             // an empty looper is where the metronome is switched, so clearing leaves it off and one
             // click starts it. Its grid outlives the first loop, it must not outlive the loop itself.
             chompi::beat_clock.SetMetronome(false);
+            chompi::beat_clock.SetDelayNote(-1);
         }
 
         // while a loop is loaded over this one: that also drops a playback waiting for the beat
@@ -460,6 +463,7 @@ namespace daisy
             playing = play;
             record = record_target = false;
             loop_sync.play_wait = loop_sync.play_armed = false;
+            loop_sync.quarter = 0.f;
         }
 
         void OpenFile(bool play)
@@ -500,6 +504,8 @@ namespace daisy
                     {
                         const size_t late = std::min(static_cast<size_t>(past * len), looper.ram_buff.GetSize() / 2);
                         looper.ram_buff.Trim(looper.ram_buff.GetSize() - 2 * late);
+                        s.quarter = looper.ram_buff.GetSize() / 2
+                                    / ((s.stop_at - s.start) * chompi::beat_clock.QuartersPerBeat());
                         WrapOverlays(late);
                     }
                     s.stop_at = s.pre_frames = 0;

@@ -50,12 +50,11 @@ namespace chompi
             input_toggled = false;
 
             final_comp = 0.f;
-            delay_time = .5f;
             resonance = 0.f;
             warble = 0.f;
             fx_->SetFinalComp(final_comp);
             fx_->SetFilterResonance(resonance);
-            fx_->SetDelayTime(delay_time);
+            fx_->SetDelayTime(.5f);
             fx_->SetWarble(warble);
 
             ss_bank = fx_->GetBank();
@@ -200,7 +199,13 @@ namespace chompi
                 }
                 else if(knob_page[3] == 0) // magic
                 {
-                    SetPthLedFloat(4, delay_time, delay_time, delay_time);
+                    static const float* const kNoteColors[] = {red, orange, yellow, green, med_blue, purple};
+                    const int note = beat_clock.DelayNote();
+                    const float knob = fx_->DelayKnob();
+                    if(note >= 0 && fx_->DelayQuarter() > 0.f)
+                        SetPthLedFloat(4, kNoteColors[note][0], kNoteColors[note][1], kNoteColors[note][2]);
+                    else
+                        SetPthLedFloat(4, knob, knob, knob);
                 }
                 else if(knob_page[3] == 1) // lofi
                 {
@@ -510,9 +515,11 @@ namespace chompi
                 {
                     if(page == 0) // magic
                     {
-                        delay_time += inc;
-                        delay_time = fclamp(delay_time, 0.f, 1.f);
-                        fx_->SetDelayTime(delay_time);
+                        beat_clock.TouchDelay();
+                        if(!fx_->StepDelayNote(turns))
+                        {
+                            fx_->SetDelayTime(fclamp(fx_->DelayKnob() + inc, 0.f, 1.f));
+                        }
                     }
                     else if (page == 1) // lofi
                     {
@@ -1053,12 +1060,11 @@ namespace chompi
             fx_->SetSaturate(enc_values[1][3]);
             fx_->SetFilter(enc_values[2][3]);
 
-            delay_time = .5f;
             resonance = 0.f;
             warble = 0.f;
 
             fx_->SetFilterResonance(resonance);
-            fx_->SetDelayTime(delay_time);
+            fx_->SetDelayTime(.5f);
             fx_->SetWarble(warble);
 
             if (split_delay_) {
@@ -1157,7 +1163,7 @@ namespace chompi
         uint32_t blink_startt;
         uint32_t last_blink;
 
-        float delay_time, resonance, warble;
+        float resonance, warble;
         float final_comp;
 
         bool fx_reset = false;

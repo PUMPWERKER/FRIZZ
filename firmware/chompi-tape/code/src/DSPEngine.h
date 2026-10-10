@@ -553,6 +553,8 @@ namespace daisy
             if(fx_pre_loop && fx_on)
                 ApplyFx(out[0], out[1], size);
 
+            FollowDelay(size);
+
             looper.Process(out[0], out[1], size);
 
             if(!fx_pre_loop && fx_on)
@@ -1268,12 +1270,115 @@ namespace daisy
         inline float GetFinalComp() { return final_lim_target_; }
 
         inline void SetReverb(float val) { dly_amt_target_ = reverb_amt_target_ = 1.3f * logf(val + 1.f); }
+        // samples per quarter, 0 when the tempo is unknown
+        float DelayQuarter()
+        {
+            float q;
+            if(!looper.IsFirstRecording())
+            {
+                const float speed = fabsf(looper.GetPitch());
+                if(loop_sync.quarter > 0.f)
+                    return speed >= .25f ? loop_sync.quarter / speed : 0.f; // too slow to mean a tempo
+                return chompi::beat_clock.Quarter(q, true) ? q : 0.f;
+            }
+            return chompi::beat_clock.Quarter(q) ? q : 0.f;
+        }
+
+        static constexpr int kDelayNotes = 6;
+        static float DelayNoteQuarters(int note)
+        {
+            static const float quarters[kDelayNotes] = {.25f, .5f, .75f, 1.f, 1.5f, 2.f};
+            return quarters[note];
+        }
+        // the FX knob, 0..1, and the delay time it sets
+        static float KnobDelay(float knob) { return .99f * knob * knob * knob * kMaxDelayTime + 450; }
+        static float DelayKnob(float time) { return cbrtf(std::max(0.f, time - 450.f) / (.99f * kMaxDelayTime)); }
+        float DelayKnob() const { return DelayKnob(dly_time_target_); }
+        static float MaxDelay() { return KnobDelay(1.f); }
+        // the knob sets the reverb too
+        void SetKnobReverb(float knob) { reverb_time_target_ = fclamp(knob, .05f, .97f); }
+        // 1% slack, so 1/2 at 60 BPM fits
+        static int TopNote(float q)
+        {
+            int note = kDelayNotes - 1;
+            while(note > 0 && DelayNoteQuarters(note) * q > MaxDelay() * 1.01f)
+                note--;
+            return note;
+        }
+
+        // False when the turn is free time: near a note it joins the notes, past either end it leaves them.
+        bool StepDelayNote(int turns)
+        {
+            const float q = DelayQuarter();
+            if(q <= 0.f)
+                return false;
+            const int top = TopNote(q);
+            int note = chompi::beat_clock.DelayNote();
+            if(note < 0)
+            {
+                const float t = dly_time_target_;
+                note = turns > 0 ? 0 : top;
+                while(turns > 0 && note <= top && DelayNoteQuarters(note) * q <= t * 1.001f)
+                    note++;
+                while(turns < 0 && note >= 0 && DelayNoteQuarters(note) * q >= t * .999f)
+                    note--;
+                const float next = note >= 0 && note <= top ? DelayNoteQuarters(note) * q : 0.f;
+                if(!next || (turns > 0 ? next > t * 1.5f : next < t / 1.5f)) // not reached yet
+                    return false;
+            }
+            else
+            {
+                note += turns > 0 ? 1 : -1;
+                if(note < 0 || note > top)
+                {
+                    chompi::beat_clock.SetDelayNote(-1);
+                    return false;
+                }
+            }
+            chompi::beat_clock.SetDelayNote(note);
+            return true;
+        }
+
+        // Audio thread. Smoothed so MIDI clock jitter doesn't warble the repeats; snaps once if the knob is untouched.
+        void FollowDelay(size_t size)
+        {
+            chompi::Clock &c = chompi::beat_clock;
+            float &smooth = c.DelayQuarter();
+            const float q = DelayQuarter();
+            if(q <= 0.f)
+            {
+                smooth = 0.f;
+                return;
+            }
+            if(smooth <= 0.f || fabsf(q - smooth) > smooth * .1f) // a new tempo, not jitter
+                smooth = q;
+            else
+                smooth += (q - smooth) * size / c.SampleRate();
+
+            int note = c.DelayNote();
+            if(note < 0 && !c.DelayTouched())
+            {
+                c.TouchDelay();
+                note = 0;
+                for(int i = 1; i < kDelayNotes; i++)
+                    if(fabsf(logf(DelayNoteQuarters(i) * smooth / dly_time_target_))
+                       < fabsf(logf(DelayNoteQuarters(note) * smooth / dly_time_target_)))
+                        note = i;
+            }
+            if(note < 0)
+                return;
+            note = std::min(note, TopNote(smooth));
+            if(note != c.DelayNote())
+                c.SetDelayNote(note);
+            dly_time_target_ = std::min(DelayNoteQuarters(note) * smooth, MaxDelay());
+            SetKnobReverb(DelayKnob());
+        }
+
         inline void SetDelayFeedback(float val) { dly_feedback_target_ = val * .9f; }
         inline void SetDelayTime(float val) {
-            dly_time_target_ = .99f * powf(val, 3.f) * kMaxDelayTime + 450;
-
-            reverb_time_target_ = val;
-            reverb_time_target_ = fclamp(reverb_time_target_, .05, .97);
+            chompi::beat_clock.SetDelayNote(-1); // first, the audio thread would rewrite the time
+            dly_time_target_ = KnobDelay(val);
+            SetKnobReverb(val);
         }
 
         inline void SetWarble(float val) { warble_.SetFreq(val); }
