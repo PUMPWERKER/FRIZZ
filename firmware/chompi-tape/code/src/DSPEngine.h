@@ -1296,7 +1296,7 @@ namespace daisy
         inline void LooperRecordButton(bool rising) { looper.RecordButton(rising); }
         inline void LooperPlayButton(bool rising) { looper.PlayButton(rising); }
 
-        inline void ToggleLooperRecord() { looper.ToggleRecord(); }
+        inline void ToggleLooperRecord() { looper.TriggerRecord(); }
         inline void ToggleLooperPlaying() { looper.TogglePlaying(); }
         inline bool GetLooperReverse() { return looper.GetReverse(); }
 

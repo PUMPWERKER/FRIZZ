@@ -316,6 +316,7 @@ class FileCopier
             }
             if(!looper_staged)
             {
+                loop_sync.loading = true; // the empty looper stops filling until OpenFile
                 looper_was_playing = fx_->IsLooperPlaying();
                 fx_->LooperStop();
                 looper_ram.Reset();

@@ -98,6 +98,7 @@ namespace chompi
             had_grid_ = false;
         }
         bool Metronome() const { return metro_on_; }
+        float SampleRate() const { return sr_; }
 
         void ChangeTempo(int bpm)
         {
@@ -105,15 +106,22 @@ namespace chompi
             tempo_ = bpm < kMinTempo ? kMinTempo : bpm > kMaxTempo ? kMaxTempo : bpm;
         }
 
-        // beats since the start and the phase within the current one, false without a grid
-        bool Get(uint32_t &beat, float &phase) const
+        // beats since the start, the phase within the current one and samples per beat, false without a grid
+        bool Get(uint32_t &beat, float &phase, float *length = nullptr) const
         {
-            if(MidiGrid(beat, phase))
+            uint32_t period;
+            if(MidiGrid(beat, phase, period))
+            {
+                if(length)
+                    *length = float(period) * kTicksPerBeat * sr_ / daisy::System::GetTickFreq();
                 return true;
+            }
             if(!metro_on_)
                 return false;
             beat = metro_beat_;
             phase = metro_phase_;
+            if(length)
+                *length = 60.f * sr_ / tempo_;
             return true;
         }
 
@@ -159,10 +167,11 @@ namespace chompi
         }
 
     private:
-        bool MidiGrid(uint32_t &beat, float &phase) const
+        bool MidiGrid(uint32_t &beat, float &phase, uint32_t &period) const
         {
             daisy::ScopedIrqBlocker block;
             const int32_t since = daisy::System::GetTick() - t_;
+            period = period_;
             if(!running_ || !period_ || !count_ || since > int32_t(2 * period_))
                 return false;
 

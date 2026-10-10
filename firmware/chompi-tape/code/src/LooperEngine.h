@@ -4,12 +4,33 @@
 #pragma once
 #include "Sampler.h"
 #include "RamBuffer.h"
+#include "Clock.h"
 using namespace daisy;
 
 static const uint32_t kRecordClearTimeout = 2000;
 static const uint32_t kButtonTimeout = 10;
 namespace daisy
 {
+    // the first loop on the beat grid, in DTCM because the SRAM is full
+    struct LoopSync
+    {
+        void Init()
+        {
+            filling = synced = stop_play = loading = trigger_req = false;
+            trigger_press = 0;
+            fill_from = start = start_at = stop_at = 0;
+        }
+
+        bool filling = false;          // the buffer holds the input since beat fill_from
+        bool synced = false;           // the recording started on beat start
+        bool stop_play = false;        // the waiting stop goes to play, not overdub
+        volatile bool loading = false; // the copier writes the buffer
+        volatile bool trigger_req = false; // a key triggered the armed recording at trigger_press (ms)
+        uint32_t trigger_press = 0;
+        uint32_t fill_from = 0, start = 0;
+        uint32_t start_at = 0, stop_at = 0; // beats of a waiting start or stop, 0 = none
+    };
+    extern LoopSync loop_sync;
 
     /** @brief Logic for main looper engine */
     class LooperEngine
@@ -45,8 +66,13 @@ namespace daisy
 
         void Process(float* out_l, float* out_r, size_t size)
         {
-            if(IsFirstRecording() && !IsRecording() && !looper.IsResetting())
-                return;
+            if(first_record && !looper.IsResetting())
+            {
+                if(SyncBlock(out_l, out_r, size))
+                    return;
+            }
+            else
+                loop_sync.filling = false;
 
             // looper.PerBlock(playing);
 
@@ -110,6 +136,7 @@ namespace daisy
 
                 if(looper.WriteFullLength())
                 {
+                    loop_sync.stop_at = 0;
                     ToggleRecord(); // overdub mode
                     ToggleRecord(); // play mode
                 }
@@ -178,8 +205,8 @@ namespace daisy
             {
                 if(play_btn && !record_btn && !reset && !toggle_play && (record || IsPlaying())) // rising edge and recording or playing
                     TogglePlaying();
-                if(record_btn && !play_btn && !reset && !toggle_record)
-                    ToggleRecord();            
+                if(record_btn && !play_btn && !reset && !toggle_record && !ToggleRecordOnGrid(false, last_button_press))
+                    ToggleRecord();
             }
             if(elapsed >= kRecordClearTimeout)
             {
@@ -201,6 +228,17 @@ namespace daisy
 
         void CheckRecordReady()
         {
+            if(loop_sync.trigger_req) // here, so only this thread touches the grid state
+            {
+                const uint32_t press = loop_sync.trigger_press;
+                loop_sync.trigger_req = false;
+                if(record_arm)
+                {
+                    if(!ToggleRecordOnGrid(false, press))
+                        ToggleRecord();
+                }
+            }
+
             if(record_target)
             {
                 record = true;
@@ -296,6 +334,14 @@ namespace daisy
             }
         }
 
+        // a key triggers the armed recording, the audio thread runs it on the grid
+        void TriggerRecord()
+        {
+            loop_sync.trigger_press = System::GetNow();
+            __DMB(); // the audio thread must not see the request before the time
+            loop_sync.trigger_req = true;
+        }
+
         void TogglePlaying()
         {
             toggle_play = true;
@@ -305,7 +351,8 @@ namespace daisy
 
             if(record)
             {
-                ToggleRecord(true);
+                if(!ToggleRecordOnGrid(true, last_button_press))
+                    ToggleRecord(true);
             }
             else
             {
@@ -369,6 +416,9 @@ namespace daisy
         {
             looper.Reset();
             reset = true;
+            const bool loading = loop_sync.loading; // the copier goes on until OpenFile
+            loop_sync.Init();
+            loop_sync.loading = loading;
 
             looper.StopPrint();
             print_state_ = PrintState::OFF;
@@ -385,6 +435,7 @@ namespace daisy
 
         void OpenFile(bool play)
         {
+            loop_sync.Init();
             first_record = false;
             playing = play;
             record = false;
@@ -397,6 +448,133 @@ namespace daisy
         }
 
     private:
+        // Empty with a grid, the input fills the buffer from the last beat, so a start just after it can
+        // begin on it. Also runs waiting starts and stops. True when there is nothing else to do.
+        bool SyncBlock(float* out_l, float* out_r, size_t size)
+        {
+            LoopSync& s = loop_sync;
+            uint32_t beat = 0;
+            float phase = 0.f;
+            float len = 0.f;
+            const bool grid = chompi::beat_clock.Get(beat, phase, &len);
+
+            if(record)
+            {
+                // beats past the stop, relative: a float of the whole count loses precision
+                const float past = static_cast<int32_t>(beat - s.stop_at) + phase;
+                const bool lost = !grid || beat < s.start; // gone, or went back: stop as is
+                if(s.stop_at && (lost || past >= 0.f))
+                {
+                    if(!lost)
+                        looper.ram_buff.Trim(looper.ram_buff.GetSize() - 2 * static_cast<size_t>(past * len));
+                    s.stop_at = 0;
+                    ToggleRecord(s.stop_play);
+                }
+                return false;
+            }
+
+            if(s.loading)
+            {
+                s.filling = false;
+                s.start_at = 0;
+                return true;
+            }
+
+            if(!grid)
+            {
+                s.filling = false;
+                if(s.start_at) // the clock went away, start now
+                {
+                    s.start_at = 0;
+                    ToggleRecord();
+                }
+                return true;
+            }
+
+            // the fill follows the clock's beat, also when it jumps (start, song position, early tick)
+            if(!s.filling || s.fill_from != beat)
+            {
+                s.filling = phase * len < size; // a beat that began less than a block ago starts one now
+                if(s.filling)
+                {
+                    looper.ResetRamBuff();
+                    s.fill_from = beat;
+                }
+            }
+
+            if(s.start_at)
+            {
+                if(beat + 1 < s.start_at) // the clock went back
+                    s.start_at = beat + 1;
+                if(s.filling && s.fill_from >= s.start_at)
+                {
+                    StartOnGrid(s.fill_from);
+                    return false;
+                }
+            }
+
+            const size_t next = static_cast<size_t>((1.f - phase) * len);
+            for(size_t i = 0; i < size; i++)
+            {
+                if(i == next)
+                {
+                    looper.ResetRamBuff();
+                    s.fill_from = beat + 1;
+                    s.filling = true;
+                }
+                daisysp::fonepole(fx_env_, fx_env_target_, .001f);
+                looper.PushStereoSamps(f2s16(out_l[i] * fx_env_), f2s16(out_r[i] * fx_env_));
+            }
+            return true;
+        }
+
+        // the buffer already holds the loop from that beat on
+        void StartOnGrid(uint32_t beat)
+        {
+            loop_sync.start = beat;
+            loop_sync.start_at = 0;
+            loop_sync.synced = true;
+            record = true;
+            record_target = false;
+            looper.ReadyToRecord();
+        }
+
+        // the first loop starts and ends on the beat nearest to the key press
+        bool ToggleRecordOnGrid(bool play_pressed, uint32_t press)
+        {
+            LoopSync& s = loop_sync;
+            uint32_t beat;
+            float phase, len;
+            if(!first_record || (record && !s.synced) || !chompi::beat_clock.Get(beat, phase, &len))
+                return false;
+
+            toggle_record = true;
+            record_arm = false;
+            if(s.stop_at) // play while waiting to stop still goes to play
+                s.stop_play |= play_pressed;
+            if(s.start_at || s.stop_at)
+                return true;
+
+            // the toggle comes after the press: kButtonTimeout for a key, a block for a trigger
+            const float late = (System::GetNow() - press) * chompi::beat_clock.SampleRate() * .001f / len;
+            const float pressed = phase - late; // relative to this beat
+            const uint32_t nearest = pressed >= .5f ? beat + 1 : pressed < -.5f && beat ? beat - 1 : beat;
+
+            if(!record)
+            {
+                if(nearest <= beat && s.filling && s.fill_from == beat)
+                    StartOnGrid(beat);
+                else
+                    s.start_at = beat + 1;
+            }
+            else
+            {
+                s.stop_at = nearest > s.start ? nearest : s.start + 1;
+                s.stop_play = play_pressed;
+            }
+            return true;
+        }
+
         FileSampler looper;
         bool record, first_record, record_target;
         bool playing, play_target;

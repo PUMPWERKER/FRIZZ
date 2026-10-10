@@ -27,6 +27,7 @@ OptionsManager options;
 
 daisysp::Reverb DSY_DTCMRAM_BSS reverb;
 Clock DSY_DTCMRAM_BSS chompi::beat_clock;
+LoopSync DSY_DTCMRAM_BSS daisy::loop_sync;
 chompi::InterpolatedDelayLine::AudioSample DSY_SDRAM_BSS del_mem[kMaxDelayTime];
 
 RamBufferMemory loop_buff;
@@ -321,6 +322,7 @@ void daisy::MidiRxByte(uint8_t byte, const void* source) { beat_clock.Byte(byte,
 int main(void)
 {
     beat_clock.Init(); // DTCM isn't zeroed, and hw.Init starts MIDI
+    loop_sync.Init();
     hw.Init();
     // System::Delay(100);
 

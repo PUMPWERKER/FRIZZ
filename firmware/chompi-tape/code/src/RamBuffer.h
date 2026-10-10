@@ -153,6 +153,7 @@ namespace daisy
         }
 
         inline size_t GetSize() { return buff->length; }
+        inline void Trim(size_t len) { buff->length = std::min(len & ~size_t(1), buff->length); }
         inline size_t GetStart() const { return buff->start; }
         inline size_t End() const { return buff->start + buff->length; }
 
