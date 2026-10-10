@@ -20,7 +20,7 @@ const sw = CW / 4;
 // beats: one bar, the loop from 1 to the next 1, and a late rec and an early stop that snap to them
 const bx = (i) => 30 + i * (CW - 60) / 4;
 const presses = [['rec', bx(0) + 90], ['stop', bx(4) - 90]];
-const monoModes = [['Stereo', LED.pink], ['Mono from left channel', LED.red], ['Mono from right channel', LED.green]];
+const monoModes = [['Stereo', LED.pink], ['Mono, left channel', LED.red], ['Mono, right channel', LED.green]];
 ---
 <svg viewBox={`-4 0 ${CW + 8} ${heights[type] + 34}`} role="img">
   {type === 'flow' && (

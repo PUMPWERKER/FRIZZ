@@ -37,6 +37,11 @@ h1 span:nth-child(7) { color: var(--purple) }
   box-shadow: 0 4px 0 var(--ink); transition: transform .1s, box-shadow .1s }
 .download:hover { transform: translateY(2px); box-shadow: 0 2px 0 var(--ink) }
 .download:active { transform: translateY(4px); box-shadow: none }
+.ghost { display: inline-block; margin-left: 12px; font: 700 20px/1.2 var(--display); text-decoration: none;
+  color: var(--ink); background: var(--paper); padding: 14px 24px; border-radius: 999px; border: 2px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink); transition: transform .1s, box-shadow .1s }
+.ghost:hover { transform: translateY(2px); box-shadow: 0 2px 0 var(--ink) }
+.ghost:active { transform: translateY(4px); box-shadow: none }
 .facts { font: 13px/1.6 var(--mono); color: var(--dim); margin: 16px 0 0 }
 .hero svg { display: block; width: 100%; height: auto }
 
@@ -47,10 +52,11 @@ h1 span:nth-child(7) { color: var(--purple) }
 .block.install { background: color-mix(in oklab, var(--purple) 9%, var(--paper)) }
 h2 { font: 800 32px/1.05 var(--display); letter-spacing: -.02em; margin: 0 }
 .block p { margin: 0 0 10px; max-width: 62ch }
-.overview ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px }
-.overview li a { display: inline-block; text-decoration: none; background: var(--paper); border: 2px solid var(--ink);
-  border-radius: 999px; padding: 4px 14px; font-weight: 600; font-size: 15px }
-.overview li a:hover { background: var(--yellow); color: var(--on-bright) }
+.overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 48px }
+.overview h3 { margin: 0 0 6px }
+.overview h3::before { content: none }
+.overview ul { margin: 0; padding-left: 18px }
+.overview li { margin-bottom: 4px }
 code { font: .85em var(--mono); background: var(--paper); border-radius: 4px; padding: 1px 5px }
 
 .usage { padding-top: 24px; margin-inline: calc(50% - 50vw); padding-inline: 24px }
@@ -77,12 +83,37 @@ svg .dim { fill: var(--dim) }
 .led { fill: var(--paper); stroke: var(--line) }
 .arrow, .back { fill: none; stroke: var(--ink) }
 .back { stroke: var(--line) }
-.feat { --c-line: color-mix(in oklab, var(--c) 75%, var(--ink)); --c-text: color-mix(in oklab, var(--c) 70%, var(--ink)) }
+.feat, .step { --c-line: color-mix(in oklab, var(--c) 75%, var(--ink)); --c-text: color-mix(in oklab, var(--c) 70%, var(--ink)) }
 .hl, .key.hl, .box.sel { fill: var(--c); fill-opacity: .14 }
 .hl, .key.hl { stroke: var(--c-line) }
 svg .acc, .callout text { fill: var(--c-text) }
 .callout circle { fill: var(--c) }
 .callout polyline { fill: none; stroke: var(--c-line) }
+
+/* the tutorial: numbered steps, what to do on the left, what it looks like on the right */
+.lead { align-items: start; padding-bottom: 24px }
+.crumb { font: 700 15px/1 var(--mono); letter-spacing: .08em; margin: 0 0 18px }
+.crumb a { color: var(--dim); text-decoration: none }
+.crumb a:hover { color: var(--ink) }
+h1.small { font: 800 clamp(38px, 6vw, 68px)/.95 var(--display); letter-spacing: -.03em; margin: 0 0 14px }
+.part { padding-top: 34px }
+.part + .block { margin-top: 34px }
+.part > h2 { margin-bottom: 16px }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px }
+.step { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 32px; align-items: start;
+  padding: 20px 24px 18px; border-radius: 20px;
+  background: color-mix(in oklab, var(--c) 15%, var(--paper)); border: 2px solid color-mix(in oklab, var(--c) 55%, var(--paper)) }
+.step:has(.show) { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr) }
+.step h3 { margin-bottom: 0 }
+.step h3::before { content: none }
+.step .n { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--c); color: var(--on-bright); font: 700 18px/1 var(--mono) }
+.step .combo { margin-top: 12px }
+.step p { margin: 10px 0 0; max-width: 56ch }
+.step ul { margin: 10px 0 0; padding-left: 18px; color: var(--dim) }
+.step li { margin-bottom: 4px }
+.step li::marker { color: var(--c) }
+.show .fig { margin-top: 4px }
 
 footer { margin-top: 24px; margin-inline: calc(50% - 50vw); padding: 20px 24px; color: var(--dim); font-size: 14px;
   border-top: 1px solid color-mix(in oklab, var(--line) 40%, var(--paper)) }
@@ -92,5 +123,7 @@ footer { margin-top: 24px; margin-inline: calc(50% - 50vw); padding: 20px 24px; 
   main { padding-inline: 16px }
   .usage, footer { padding-inline: 16px }
   .block { padding: 26px 16px }
+  .step:has(.show) { grid-template-columns: minmax(0, 1fr) }
+  .ghost { margin: 12px 0 0 }
 }
-@media (prefers-reduced-motion: reduce) { .download { transition: none } }
+@media (prefers-reduced-motion: reduce) { .download, .ghost { transition: none } }

@@ -1,0 +1,69 @@
+---
+import Keys from '../components/Keys.astro';
+import Panel from '../components/Panel.astro';
+import Diagram from '../components/Diagram.astro';
+import { tutorial } from '../data/tutorial.js';
+import '../styles/site.css';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+// numbered across the parts, not within them
+let n = 0;
+const parts = tutorial.map((part) => ({ ...part, steps: part.steps.map((step) => ({ ...step, n: ++n })) }));
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MIXTAPE tutorial</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=DM+Mono:wght@400;500&display=swap">
+</head>
+<body>
+  <div class="stripes" aria-hidden="true"></div>
+  <main>
+    <section class="top lead">
+      <div>
+        <p class="crumb"><a href={`${base}/`}>MIXTAPE</a></p>
+        <h1 class="small">First loop,<br>start to finish</h1>
+        <p class="sub">Sample a clap, loop a beat, add a bass and a melody, keep it.</p>
+        <p class="facts">{n} steps<br><a href={`${base}/`}>All features</a></p>
+      </div>
+      <div class="hero"><Diagram type="beats" /></div>
+    </section>
+
+    {parts.map((part) => (
+      <section class="part">
+        <h2>{part.part}</h2>
+        <ol class="steps">
+          {part.steps.map((step) => (
+            <li class="step" style={`--c: var(--${step.colour})`}>
+              <div class="say">
+                <h3><span class="n">{step.n}</span>{step.title}</h3>
+                {step.keys && <div class="combo"><Keys keys={step.keys} /></div>}
+                <p set:html={step.text} />
+                {step.notes && <ul>{step.notes.map((note) => <li set:html={note} />)}</ul>}
+              </div>
+              {(step.panel || step.diagram) && (
+                <div class="show">
+                  {step.panel && <figure class="fig"><Panel {...step.panel} /></figure>}
+                  {step.diagram && <figure class="fig"><Diagram {...step.diagram} /></figure>}
+                </div>
+              )}
+            </li>
+          ))}
+        </ol>
+      </section>
+    ))}
+
+    <section class="block install">
+      <h2>From here</h2>
+      <div>
+        <p>Next, <a href={`${base}/#bake`}>bake the FX in</a>, <a href={`${base}/#step`}>step through a halved loop</a> or <a href={`${base}/#copy`}>queue a saved loop</a> while this one plays.</p>
+      </div>
+    </section>
+
+    <footer>Not an official CHOMPI Club release. CHOMPI is a trademark of CHOMPI Club.</footer>
+  </main>
+</body>
+</html>

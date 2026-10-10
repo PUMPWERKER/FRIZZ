@@ -27,8 +27,9 @@ const kb = fs.existsSync(`public/${file}`) ? Math.round(fs.statSync(`public/${fi
     <section class="top">
       <div>
         <h1 aria-label="MIXTAPE">{[...'MIXTAPE'].map((ch) => <span>{ch}</span>)}</h1>
-        <p class="sub">Fork of TAPE 2.0 for CHOMPI.</p>
+        <p class="sub">TAPE 2.0 for CHOMPI, with a few features I found useful.</p>
         <a class="download" href={file} download>Download firmware</a>
+        <a class="ghost" href="tutorial/">Tutorial</a>
         <p class="facts">{kb} KB, built {date}<br><a href="https://github.com/lost-tty/CHOMPI">Source</a></p>
       </div>
       <div class="hero"><Panel leds={{ wheel_l: LED.blue, wheel_r: LED.blue, loop: LED.magenta, line: LED.pink }} /></div>
@@ -37,22 +38,31 @@ const kb = fs.existsSync(`public/${file}`) ? Math.round(fs.statSync(`public/${fi
     <section class="block features">
       <h2>Features</h2>
       <div class="overview">
-        <p>This fork adds ways to keep working on a loop after it is recorded: changing its length, picking out a part,
-          undoing an overdub and recording the effects into it.
-          Saved CUBBI loops can be <a href="#copy">queued</a> while the looper plays, a bit like launching clips.
-          With a <a href="#tempo">metronome or MIDI clock</a>, the first loop starts and ends on the beat.</p>
-        <ul>
-          <li><a href="#threshold">Recording threshold for sampling</a></li>
-          <li><a href="#mono">Sampling mono signals</a></li>
-          <li><a href="#copy">Appending saved CUBBI loops to the looper</a></li>
-        </ul>
+        <div>
+          <h3>Looper</h3>
+          <ul>
+            <li><a href="#length">Double or halve the loop length</a></li>
+            <li><a href="#step">Step through the sections of a halved loop</a></li>
+            <li><a href="#undo">Undo and redo the last overdub or FX bake</a></li>
+            <li><a href="#bake">Bake the FX into the loop</a></li>
+            <li><a href="#copy">Queue a saved loop to start at the end of the current pass, or append it</a></li>
+            <li><a href="#tempo">Snap the first loop and playback to the beat, from MIDI clock or the metronome</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Sampling</h3>
+          <ul>
+            <li><a href="#threshold">Recording threshold: sampling starts when the input gets loud enough</a></li>
+            <li><a href="#mono">Mono line in: a mono cable plays on both channels</a></li>
+          </ul>
+        </div>
       </div>
     </section>
 
     <section class="block install">
       <h2>Install</h2>
       <div>
-        <p>Delete any other <code>.bin</code> file on the SD card, copy this one onto it and power on. CHOMPI writes the new firmware while the LEDs show a slow rainbow.</p>
+        <p>Copy the file onto the SD card, remove any other <code>.bin</code> and power on. The LEDs show a slow rainbow while it installs.</p>
         <p>To go back, do the same with <code>CHOMPI_TAPEv2_0.bin</code>.</p>
       </div>
     </section>
