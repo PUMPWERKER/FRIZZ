@@ -1,3 +1,5 @@
+#pragma GCC push_options
+#pragma GCC optimize ("Os") // cold code, built for size so all of it fits in SRAM
 #pragma once
 #include "daisy.h"
 #include "fatfs.h"
@@ -479,3 +481,4 @@ class FileCopier
         Engine* fx_;
 };
 } // namespace daisy
+#pragma GCC pop_options

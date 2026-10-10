@@ -1,3 +1,5 @@
+#pragma GCC push_options
+#pragma GCC optimize ("Os") // cold code, built for size so all of it fits in SRAM
 #pragma once
 #include "FileStreamingManager.h"
 #include "core_json.h"
@@ -237,3 +239,4 @@ class OptionsManager
         char opt_file[kOptFileSize];
 };
 } // namespace chompi
+#pragma GCC pop_options

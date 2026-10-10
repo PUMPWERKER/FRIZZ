@@ -1,3 +1,5 @@
+#pragma GCC push_options
+#pragma GCC optimize ("Os") // cold code, built for size so all of it fits in SRAM
 #include "hardware.h"
 #include "DSPEngine.h"
 #include "temp_led_stuff.h"
@@ -77,3 +79,5 @@ namespace chompi
         float bright_inc = .01f;
     };
 } // namespace chompi
+
+#pragma GCC pop_options
