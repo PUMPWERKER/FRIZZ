@@ -1,27 +1,26 @@
-/* layout: a bright J-card; LED-coloured stripes, a big title, the panel drawing, then colour-coded usage cards */
+/* layout: like a printed manual; a big title in the LED colours, the panel drawing, then entries marked by a colour rule */
 :root {
-  /* Reala Ace-like: one lightness and chroma for every hue, only yellow and orange lighter so they read as such */
-  --paper: oklch(0.975 0 0); --surface: oklch(0.95 0 0); --key: oklch(0.93 0 0);
-  --ink: oklch(0.22 0 0); --dim: oklch(0.50 0 0); --line: oklch(0.70 0 0); --on-bright: oklch(0.22 0 0);
+  /* Reala Ace-like: one lightness and chroma for every hue, only yellow and orange lighter so they read as such;
+     the greys lean a little warm */
+  --paper: oklch(0.955 0.01 75); --surface: oklch(0.93 0.01 75); --key: oklch(0.91 0.01 75);
+  --ink: oklch(0.37 0.008 75); --dim: oklch(0.56 0.008 75); --line: oklch(0.72 0.008 75); --on-bright: oklch(0.22 0.01 75);
   --red: oklch(0.60 0.16 28); --orange: oklch(0.70 0.15 55); --yellow: oklch(0.82 0.14 85);
   --green: oklch(0.62 0.13 145); --teal: oklch(0.63 0.10 185); --blue: oklch(0.58 0.12 245);
   --purple: oklch(0.53 0.13 290); --magenta: oklch(0.57 0.15 345); --pink: oklch(0.72 0.13 5);
   --c: var(--orange);
   --display: "Bricolage Grotesque", "Arial Rounded MT Bold", Arial, sans-serif;
-  --body: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+  --body: "Rubik", "Helvetica Neue", Arial, sans-serif;
   --mono: "DM Mono", Menlo, Consolas, monospace;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --paper: oklch(0.19 0 0); --ink: oklch(0.94 0 0); --dim: oklch(0.72 0 0); --line: oklch(0.50 0 0); --key: oklch(0.27 0 0); --surface: oklch(0.22 0 0); color-scheme: dark } }
+  --paper: oklch(0.24 0.01 75); --ink: oklch(0.80 0.008 75); --dim: oklch(0.63 0.008 75); --line: oklch(0.47 0.008 75); --key: oklch(0.30 0.01 75); --surface: oklch(0.27 0.01 75); color-scheme: dark } }
 :root[data-theme="dark"] {
-  --paper: oklch(0.19 0 0); --ink: oklch(0.94 0 0); --dim: oklch(0.72 0 0); --line: oklch(0.50 0 0); --key: oklch(0.27 0 0); --surface: oklch(0.22 0 0); color-scheme: dark }
+  --paper: oklch(0.24 0.01 75); --ink: oklch(0.80 0.008 75); --dim: oklch(0.63 0.008 75); --line: oklch(0.47 0.008 75); --key: oklch(0.30 0.01 75); --surface: oklch(0.27 0.01 75); color-scheme: dark }
+:root { --rule: color-mix(in oklab, var(--line) 45%, var(--paper)) }
 * { box-sizing: border-box }
 html { overflow-x: clip }
-body { background: var(--paper); color: var(--ink); font: 400 17px/1.55 var(--body); font-optical-sizing: auto }
-.stripes { height: 14px; background: linear-gradient(90deg,
-  var(--red) 0 12.5%, var(--orange) 0 25%, var(--yellow) 0 37.5%, var(--green) 0 50%,
-  var(--teal) 0 62.5%, var(--blue) 0 75%, var(--purple) 0 87.5%, var(--magenta) 0) }
+body { background: var(--paper); color: var(--ink); font: 400 17px/1.55 var(--body) }
 main { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px }
 a { color: inherit; text-underline-offset: 3px }
 a:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 4px }
@@ -32,47 +31,41 @@ h1 span:nth-child(1) { color: var(--red) } h1 span:nth-child(2) { color: var(--o
 h1 span:nth-child(4) { color: var(--green) } h1 span:nth-child(5) { color: var(--teal) } h1 span:nth-child(6) { color: var(--blue) }
 h1 span:nth-child(7) { color: var(--purple) }
 .sub { color: var(--dim); margin: 0 0 26px; font-size: 19px }
-.download { display: inline-block; font: 700 20px/1.2 var(--display); text-decoration: none; color: var(--on-bright);
-  background: var(--yellow); padding: 14px 24px; border-radius: 999px; border: 2px solid var(--ink);
-  box-shadow: 0 4px 0 var(--ink); transition: transform .1s, box-shadow .1s }
-.download:hover { transform: translateY(2px); box-shadow: 0 2px 0 var(--ink) }
-.download:active { transform: translateY(4px); box-shadow: none }
-.ghost { display: inline-block; margin-left: 12px; font: 700 20px/1.2 var(--display); text-decoration: none;
-  color: var(--ink); background: var(--paper); padding: 14px 24px; border-radius: 999px; border: 2px solid var(--ink);
-  box-shadow: 0 4px 0 var(--ink); transition: transform .1s, box-shadow .1s }
-.ghost:hover { transform: translateY(2px); box-shadow: 0 2px 0 var(--ink) }
-.ghost:active { transform: translateY(4px); box-shadow: none }
+.download, .ghost { display: inline-block; font: 700 17px/1.2 var(--body); text-decoration: none; padding: 12px 20px;
+  border: 2px solid var(--ink); border-radius: 3px }
+.download { color: var(--paper); background: var(--ink); border-color: var(--ink) }
+.ghost { border-color: var(--line) }
+.ghost { margin-left: 10px; color: var(--ink) }
+.download:hover, .ghost:hover { background: var(--yellow); color: var(--on-bright); border-color: var(--yellow) }
 .facts { font: 13px/1.6 var(--mono); color: var(--dim); margin: 16px 0 0 }
 .hero svg { display: block; width: 100%; height: auto }
 
 .block { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 8px 56px;
   margin-inline: calc(50% - 50vw); padding-block: 36px; padding-inline: max(20px, calc(50vw - 570px)) }
-.block.features { background: color-mix(in oklab, var(--blue) 11%, var(--paper)); grid-template-columns: minmax(0, 1fr); gap: 14px }
-.block.features p { max-width: none; font-size: 19px }
-.block.install { background: color-mix(in oklab, var(--purple) 9%, var(--paper)) }
-h2 { font: 800 32px/1.05 var(--display); letter-spacing: -.02em; margin: 0 }
+.block { border-top: 1px solid var(--rule) }
+.block.features { grid-template-columns: minmax(0, 1fr); gap: 14px }
+h2 { font: 700 28px/1.1 var(--body); letter-spacing: -.01em; margin: 0 }
 .block p { margin: 0 0 10px; max-width: 62ch }
-.overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 48px }
-.overview h3 { margin: 0 0 6px }
-.overview h3::before { content: none }
+.overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 48px }
+.overview h3 { margin: 0 0 6px; font-size: 19px }
 .overview ul { margin: 0; padding-left: 18px }
 .overview li { margin-bottom: 4px }
-code { font: .85em var(--mono); background: var(--paper); border-radius: 4px; padding: 1px 5px }
+.overview a { text-decoration: none }
+.overview a:hover { text-decoration: underline }
+code { font: .85em var(--mono); background: var(--surface); border-radius: 3px; padding: 1px 5px }
 
-.usage { padding-top: 24px; margin-inline: calc(50% - 50vw); padding-inline: 24px }
-.feats { columns: 2 440px; column-gap: 24px }
-.feats.masonry { columns: auto; display: flex; gap: 24px; align-items: flex-start }
+.usage { padding-top: 32px; border-top: 1px solid var(--rule); margin-inline: calc(50% - 50vw); padding-inline: 24px }
+.feats { columns: 2 440px; column-gap: 56px }
+.feats.masonry { columns: auto; display: flex; gap: 56px; align-items: flex-start }
 .feats.masonry > .col { flex: 1 1 0; min-width: 0 }
-.feat { break-inside: avoid; margin-bottom: 24px; padding: 22px 24px 18px; border-radius: 20px;
-  background: color-mix(in oklab, var(--c) 15%, var(--paper)); border: 2px solid color-mix(in oklab, var(--c) 55%, var(--paper)) }
-h3 { font: 800 25px/1.1 var(--display); letter-spacing: -.01em; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; text-wrap: balance }
-h3::before { content: ""; flex: none; width: 14px; height: 14px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 4px color-mix(in oklab, var(--c) 25%, transparent) }
+.feat { break-inside: avoid; margin-bottom: 48px; padding-top: 14px; border-top: 3px solid var(--c) }
+h3 { font: 700 22px/1.15 var(--body); letter-spacing: -.01em; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; text-wrap: balance }
 .combo svg { height: 28px; width: auto; max-width: 100%; display: block }
 .fig { margin: 16px 0 0 }
 .fig svg { display: block; width: 100%; height: auto }
 .feat ul { margin: 14px 0 0; padding-left: 18px }
 .feat li { margin-bottom: 4px }
-.feat li::marker { color: var(--c) }
+.feat li::marker { color: var(--dim) }
 
 /* the drawings */
 svg text { fill: var(--ink) }
@@ -92,31 +85,28 @@ svg .acc, .callout text { fill: var(--c-text) }
 
 /* the tutorial: numbered steps, what to do on the left, what it looks like on the right */
 .lead { align-items: start; padding-bottom: 24px }
-.crumb { font: 700 15px/1 var(--mono); letter-spacing: .08em; margin: 0 0 18px }
+.crumb { font: 500 14px/1 var(--mono); letter-spacing: .06em; margin: 0 0 18px }
 .crumb a { color: var(--dim); text-decoration: none }
 .crumb a:hover { color: var(--ink) }
-h1.small { font: 800 clamp(38px, 6vw, 68px)/.95 var(--display); letter-spacing: -.03em; margin: 0 0 14px }
+h1.small { font: 700 clamp(36px, 5.5vw, 60px)/1 var(--body); letter-spacing: -.02em; margin: 0 0 14px }
 .part { padding-top: 34px }
 .part + .block { margin-top: 34px }
 .part > h2 { margin-bottom: 16px }
-.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px }
-.step { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 32px; align-items: start;
-  padding: 20px 24px 18px; border-radius: 20px;
-  background: color-mix(in oklab, var(--c) 15%, var(--paper)); border: 2px solid color-mix(in oklab, var(--c) 55%, var(--paper)) }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 40px }
+.step { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 48px; align-items: start;
+  padding: 14px 0 6px; border-top: 3px solid var(--c) }
 .step:has(.show) { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr) }
 .step h3 { margin-bottom: 0 }
-.step h3::before { content: none }
-.step .n { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
-  background: var(--c); color: var(--on-bright); font: 700 18px/1 var(--mono) }
+.step .n { flex: none; color: var(--c-text); font: 500 20px/1 var(--mono) }
 .step .combo { margin-top: 12px }
 .step p { margin: 10px 0 0; max-width: 56ch }
 .step ul { margin: 10px 0 0; padding-left: 18px; color: var(--dim) }
 .step li { margin-bottom: 4px }
-.step li::marker { color: var(--c) }
+.step li::marker { color: var(--dim) }
 .show .fig { margin-top: 4px }
 
 footer { margin-top: 24px; margin-inline: calc(50% - 50vw); padding: 20px 24px; color: var(--dim); font-size: 14px;
-  border-top: 1px solid color-mix(in oklab, var(--line) 40%, var(--paper)) }
+  border-top: 1px solid var(--rule) }
 
 @media (max-width: 800px) {
   .top, .block { grid-template-columns: minmax(0, 1fr) }
@@ -126,4 +116,4 @@ footer { margin-top: 24px; margin-inline: calc(50% - 50vw); padding: 20px 24px; 
   .step:has(.show) { grid-template-columns: minmax(0, 1fr) }
   .ghost { margin: 12px 0 0 }
 }
-@media (prefers-reduced-motion: reduce) { .download, .ghost { transition: none } }
+
