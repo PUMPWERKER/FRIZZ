@@ -292,8 +292,11 @@ namespace daisy
             if(IsCopying() || buff->pending_len || buff->loading || buff->length_exp >= 0)
                 return false;
 
-            const size_t sections = size_t(1) << -buff->length_exp;
-            buff->pending_start = buff->base + (Section() + sections + dir) % sections * buff->length;
+            // stops at the first and last section
+            const size_t next = Section() + dir;
+            if(next >= size_t(1) << -buff->length_exp)
+                return false;
+            buff->pending_start = buff->base + next * buff->length;
             buff->pending_len = buff->length;
             return true;
         }
