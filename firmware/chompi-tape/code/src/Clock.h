@@ -11,7 +11,7 @@ namespace chompi
     class Clock
     {
     public:
-        static constexpr uint32_t kTicksPerBeat = 24;
+        static constexpr uint32_t kTicksPerQuarter = 24;
         static constexpr int kMinTempo = 40;
         static constexpr int kMaxTempo = 240;
         static constexpr float kBeepLevel = .2f; // the beep's peak
@@ -20,7 +20,8 @@ namespace chompi
         {
             metro_on_ = beep_on_ = had_grid_ = false;
             tempo_ = 120;
-            metro_beat_ = last_beat_ = 0;
+            sig_ = 0;
+            metro_beat_ = last_pulse_ = 0;
             metro_phase_ = beep_env_ = beep_ph_ = beep_inc_ = 0.f;
             SetSampleRate(48000.f);
             source_ = nullptr;
@@ -102,6 +103,16 @@ namespace chompi
         void SetBeep(bool on) { beep_on_ = on; }
         float SampleRate() const { return sr_; }
 
+        // /8 signatures count their eighths in threes: 6/8 is two dotted-quarter beats
+        int BeatsPerBar() const { return Sig().compound() ? Sig().top / 3 : Sig().top; }
+
+        // the next time signature, the metronome restarts on the one
+        void NextBar()
+        {
+            sig_ = (sig_ + 1) % kSigs;
+            SetMetronome(true);
+        }
+
         void ChangeTempo(int bpm)
         {
             bpm += tempo_;
@@ -116,7 +127,7 @@ namespace chompi
             if(MidiGrid(beat, phase, period))
             {
                 if(length)
-                    *length = float(period) * kTicksPerBeat * sr_ / daisy::System::GetTickFreq();
+                    *length = float(period) * TicksPerBeat() * sr_ / daisy::System::GetTickFreq();
                 if(midi)
                     *midi = true;
                 return true;
@@ -126,7 +137,7 @@ namespace chompi
             beat = metro_beat_;
             phase = metro_phase_;
             if(length)
-                *length = 60.f * sr_ / tempo_;
+                *length = BeatSamples();
             if(midi)
                 *midi = false;
             return true;
@@ -137,7 +148,7 @@ namespace chompi
         {
             if(metro_on_)
             {
-                metro_phase_ += size * tempo_ / (60.f * sr_);
+                metro_phase_ += size / BeatSamples();
                 while(metro_phase_ >= 1.f)
                 {
                     metro_phase_ -= 1.f;
@@ -145,19 +156,22 @@ namespace chompi
                 }
             }
 
-            // a beep on every beat, a higher one on the first of four
+            // a beep on every beat, a higher one on the one; 6/8 also clicks the eighths between, quieter
             uint32_t beat;
             float phase;
             const bool grid = metro_on_ && beep_on_ && Get(beat, phase);
-            if(grid && (!had_grid_ || beat != last_beat_) && phase < .25f)
+            const uint32_t subs = Sig().compound() ? 3 : 1;
+            const uint32_t sub = static_cast<uint32_t>(phase * subs);
+            const uint32_t pulse = beat * subs + sub;
+            if(grid && (!had_grid_ || pulse != last_pulse_) && phase * subs - sub < .25f)
             {
-                beep_env_ = kBeepLevel;
+                beep_env_ = sub ? kBeepLevel * .5f : kBeepLevel;
                 beep_ph_ = 0.f;
-                beep_inc_ = (beat % 4 ? 1000.f : 1500.f) / sr_;
+                beep_inc_ = (sub ? 800.f : beat % BeatsPerBar() ? 1000.f : 1500.f) / sr_;
             }
             had_grid_ = grid;
             if(grid)
-                last_beat_ = beat;
+                last_pulse_ = pulse;
 
             for(size_t i = 0; i < size && beep_env_ > .001f; i++)
             {
@@ -184,16 +198,34 @@ namespace chompi
 
             // runs on past a late tick instead of waiting for it
             const uint32_t tick = count_ - 1;
-            float into = tick % kTicksPerBeat + (since > 0 ? float(since) / period_ : 0.f);
-            beat = tick / kTicksPerBeat;
-            if(into >= kTicksPerBeat)
+            const uint32_t per_beat = TicksPerBeat();
+            float into = tick % per_beat + (since > 0 ? float(since) / period_ : 0.f);
+            beat = tick / per_beat;
+            if(into >= per_beat)
             {
-                into -= kTicksPerBeat;
+                into -= per_beat;
                 beat++;
             }
-            phase = into / kTicksPerBeat;
+            phase = into / per_beat;
             return true;
         }
+
+        struct Signature
+        {
+            uint8_t top, bottom;
+            bool compound() const { return bottom == 8; }
+        };
+        static constexpr uint8_t kSigs = 5;
+        // the order the wheel steps through, most used first
+        const Signature& Sig() const
+        {
+            static const Signature sigs[kSigs] = {{4, 4}, {3, 4}, {6, 8}, {5, 4}, {7, 4}};
+            return sigs[sig_];
+        }
+        uint32_t TicksPerBeat() const { return Sig().compound() ? kTicksPerQuarter * 3 / 2 : kTicksPerQuarter; }
+
+        // the tempo counts quarters, a 6/8 beat lasts one and a half
+        float BeatSamples() const { return 60.f * sr_ / tempo_ * TicksPerBeat() / kTicksPerQuarter; }
 
         static bool IsTransport(uint8_t byte)
         {
@@ -258,9 +290,10 @@ namespace chompi
         bool metro_on_;
         bool beep_on_;      // the beep, off once the first loop is down
         bool had_grid_;      // a grid that just appeared beeps at once
-        int tempo_;          // BPM
+        int tempo_;          // BPM in quarters
+        uint8_t sig_;        // time signature, see Sig()
         uint32_t metro_beat_;
-        uint32_t last_beat_;
+        uint32_t last_pulse_;
         float metro_phase_;
         float sr_;
         float beep_env_, beep_ph_, beep_inc_, beep_decay_;

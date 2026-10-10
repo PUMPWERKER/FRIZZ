@@ -226,7 +226,10 @@ namespace chompi
 
             if(transport_held && now - transport_down >= kTransportHold)
             {
-                fx_->LooperMakeLengthBase();
+                if(fx_->GetLooperIsEmpty())
+                    beat_clock.NextBar();
+                else if(!fx_->IsLooperFirstRecording()) // not while the first loop records
+                    fx_->LooperMakeLengthBase();
                 transport_held = false;
                 transport_flash = now;
             }
@@ -430,13 +433,13 @@ namespace chompi
                 }
                 case 4: // transport
                 {
-                    // no loop yet: the beats, white on the first of four
+                    // no loop yet: the beats, white on the one
                     uint32_t beat;
                     float phase;
                     const bool beats = fx_->IsLooperFirstRecording() && beat_clock.Get(beat, phase);
                     if(fx_->GetLooperIsEmpty() || beats)
                     {
-                        const float c = beats && phase < .25f ? (beat % 4 ? .3f : 1.f) : 0.f;
+                        const float c = beats && phase < .25f ? (beat % beat_clock.BeatsPerBar() ? .3f : 1.f) : 0.f;
                         SetPthLedFloat(5, c, c, c);
                         SetPthLedFloat(6, c, c, c);
                     }
@@ -784,11 +787,17 @@ namespace chompi
 
             case ENC_5_SW:
             {
-                // no loop yet: metronome on/off
+                // no loop yet: click for the metronome, hold for the next time signature
                 if(fx_->IsLooperFirstRecording())
                 {
-                    if(!rising && fx_->GetLooperIsEmpty())
-                        beat_clock.SetMetronome(!beat_clock.Metronome());
+                    if(fx_->GetLooperIsEmpty())
+                    {
+                        if(rising)
+                            transport_down = System::GetNow();
+                        else if(transport_held)
+                            beat_clock.SetMetronome(!beat_clock.Metronome());
+                        transport_held = rising;
+                    }
                     break;
                 }
 
