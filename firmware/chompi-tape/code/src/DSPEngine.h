@@ -665,9 +665,9 @@ namespace daisy
                 output_env_follower.Process((out[0][i] + out[1][i]));
             }
 
-            // after the looper, so the beep isn't recorded
-            if(chompi::beat_clock.Metronome() && !looper.IsFirstRecording())
-                chompi::beat_clock.SetMetronome(false);
+            // after the looper, so the beep isn't recorded. Only the first loop gets it, its grid stays on
+            // for what snaps to the beat later, and it comes back with an empty looper
+            chompi::beat_clock.SetBeep(looper.IsFirstRecording());
             chompi::beat_clock.Process(out, size, .5f * kHpGain * mgain_, .5f * kLineOutGain * mgain_);
         }
 

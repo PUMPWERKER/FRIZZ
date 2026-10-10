@@ -18,7 +18,7 @@ namespace chompi
 
         void Init()
         {
-            metro_on_ = had_grid_ = false;
+            metro_on_ = beep_on_ = had_grid_ = false;
             tempo_ = 120;
             metro_beat_ = last_beat_ = 0;
             metro_phase_ = beep_env_ = beep_ph_ = beep_inc_ = 0.f;
@@ -92,12 +92,14 @@ namespace chompi
         void SetMetronome(bool on)
         {
             daisy::ScopedIrqBlocker block;
-            metro_on_ = on;
+            metro_on_ = beep_on_ = on;
             metro_beat_ = 0;
             metro_phase_ = 0.f;
             had_grid_ = false;
         }
         bool Metronome() const { return metro_on_; }
+        // the beep is an aid for the first loop, the grid it rides on outlives it
+        void SetBeep(bool on) { beep_on_ = on; }
         float SampleRate() const { return sr_; }
 
         void ChangeTempo(int bpm)
@@ -146,7 +148,7 @@ namespace chompi
             // a beep on every beat, a higher one on the first of four
             uint32_t beat;
             float phase;
-            const bool grid = metro_on_ && Get(beat, phase);
+            const bool grid = metro_on_ && beep_on_ && Get(beat, phase);
             if(grid && (!had_grid_ || beat != last_beat_) && phase < .25f)
             {
                 beep_env_ = kBeepLevel;
@@ -254,6 +256,7 @@ namespace chompi
         uint32_t period_;    // smoothed tick length, 0 while unknown
 
         bool metro_on_;
+        bool beep_on_;      // the beep, off once the first loop is down
         bool had_grid_;      // a grid that just appeared beeps at once
         int tempo_;          // BPM
         uint32_t metro_beat_;

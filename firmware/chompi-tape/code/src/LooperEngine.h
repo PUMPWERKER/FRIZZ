@@ -448,6 +448,10 @@ namespace daisy
             record_target = false;
             record_arm = false;
             playing = false;
+
+            // an empty looper is where the metronome is switched, so clearing leaves it off and one
+            // click starts it. Its grid outlives the first loop, it must not outlive the loop itself.
+            chompi::beat_clock.SetMetronome(false);
         }
 
         // while a loop is loaded over this one: that also drops a playback waiting for the beat
