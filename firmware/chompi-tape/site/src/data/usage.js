@@ -54,10 +54,11 @@ export const usage = [
       '<b>LOOP</b>: add to its end'],
   },
   {
-    id: 'tempo', title: 'Metronome and MIDI clock', colour: 'pink', keys: ['WHEEL', '_click or turn'],
+    id: 'tempo', title: 'Metronome and MIDI clock', colour: 'pink', keys: ['WHEEL', '_click, hold or turn'],
     panel: { hl: ['wheel'], labels: { wheel: ['click / turn', 0, -90] } },
     diagram: { type: 'beats' },
     items: ['<b>Click</b>: metronome on/off, before the first loop',
+      '<b>Hold</b>: time signature, 4/4, 3/4, 6/8, 5/4, 7/4',
       '<b>Turn</b>: tempo',
       'Syncs to MIDI clock (TRS or USB)',
       'First loop snaps to the beat'],
