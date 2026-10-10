@@ -133,33 +133,11 @@ namespace chompi
                 else
                     SetPthLedFloat(8, gain, gain, gain);
 
-                if(!fx_->GetLooperIsEmpty())
-                {
-                    float idx = enc_values[0][4] < .5f ? enc_values[0][4] * 2.f : (1.f - enc_values[0][4]) * 2.f; // 0 - 1 - 0
-                    int led_on = enc_values[0][4] > .5f ? 6 : 5;
-                    int led_off = enc_values[0][4] > .5f ? 5 : 6;
-
-                    r = color_quad_xfade(med_blue[0], green[0], yellow[0], red[0], idx);
-                    g = color_quad_xfade(med_blue[1], green[1], yellow[1], red[1], idx);
-                    b = color_quad_xfade(med_blue[2], green[2], yellow[2], red[2], idx);
-
-                    SetPthLedFloat(led_on, r, g, b);
-
-                    if (idx > .8f)
-                    {
-                        float dim = (idx - .8f) * 5.f;
-
-                        r = color_xfade(0.f, red[0], dim);
-                        g = color_xfade(0.f, red[1], dim);
-                        b = color_xfade(0.f, red[2], dim);
-
-                        SetPthLedFloat(led_off, r, g, b);
-                    }
-                    else
-                    {
-                        SetPthLedFloat(led_off, 0.f, 0.f, 0.f);
-                    }
-                }
+                // the wheel shows the transport mode SHIFT + click switches to
+                const TransportMode mode = fx_->GetTransportMode();
+                const float* c = mode == TransportMode::LENGTH ? med_blue : mode == TransportMode::STEP ? purple : green;
+                SetPthLedFloat(5, c[0], c[1], c[2]);
+                SetPthLedFloat(6, c[0], c[1], c[2]);
             }
 
             else if (preset_mode == PresetMode::COPY_SRC
