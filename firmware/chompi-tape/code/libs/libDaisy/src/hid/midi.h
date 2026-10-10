@@ -142,6 +142,10 @@ class MidiUartTransport
     }
 };
 
+/** Defined by the application, called from the receive interrupt with every byte
+    before parsing. source is the handler it came in on. */
+void MidiRxByte(uint8_t byte, const void* source);
+
 /**
     @brief Simple MIDI Handler \n
     Parses bytes from an input into valid MidiEvents. \n
@@ -241,6 +245,12 @@ class MidiHandler
     */
     void Parse(uint8_t byte)
     {
+        MidiRxByte(byte, this);
+
+        // real-time bytes can come inside other messages, the parser would drop those
+        if(byte >= 0xF8)
+            return;
+
         MidiEvent event;
         if(parser_.Parse(byte, &event))
         {
