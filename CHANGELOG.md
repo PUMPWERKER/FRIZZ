@@ -109,6 +109,14 @@ what FRIZZ does.
   300 BPM) and between two whole BPM (say 120.4), it used to flip between neighbouring
   BPM many times a second, moving the delay time with it. It's now measured over the last
   few seconds; a jump in tempo is still followed at once.
+- **A CHOMPI tap no longer ends a morph that MIDI's crossfader (CC 118) holds.** It used to
+  freeze it where it was, so CC 118 had no effect after, or, with CC 118 at 0, take it back
+  to the scene it started from. Now only your own crossfader (the transport knob with SHIFT
+  held) ends where you let go of SHIFT; CC 118's stays CC 118's.
+- **VOLUME held through the boot animation** no longer switches VOLUME's page when it's let
+  go on the play page.
+- **A scene sent over SysEx into the active slot** marks it as edited (its key pulses), as
+  COPY onto it does, since what plays is no longer what the slot holds.
 - **A DAW's RPN no longer moves an effect's knob:** after an NRPN, the pitch-bend range a
   DAW sets (RPN 0, CC 101/100, then CC 6) went to the parameter the last NRPN chose. Now
   CC 101/100 end the NRPN, and CC 6/38 after them do nothing. A new NRPN also starts its

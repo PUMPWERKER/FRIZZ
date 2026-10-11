@@ -11,6 +11,11 @@
 #pragma once
 #include "FxControls.h"
 
+// the play page's logic, a key or a frame now and then and never per sample: built for size,
+// as FRIZZ's code space is tight (SRAM_EXEC, docs/CAPACITY.md)
+#pragma GCC push_options
+#pragma GCC optimize("Os")
+
 namespace chompi
 {
 
@@ -286,3 +291,5 @@ private:
 };
 
 } // namespace chompi
+
+#pragma GCC pop_options
