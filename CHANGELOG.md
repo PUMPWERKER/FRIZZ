@@ -102,8 +102,8 @@ what FRIZZ does.
   and the VOLUME knob pressed for 2 seconds. SHIFT + press the transport knob on the play page
   does nothing now, so a report can't be written by accident while playing. See MANUAL.md,
   "Bug reports".
-- **FRIZZ starts up a little faster:** it no longer clears the loop's 32 MB of memory at
-  power-on, which a loop never plays before it has recorded it.
+- **FRIZZ starts up a quarter of a second faster:** it no longer clears the loop's 32 MB of
+  memory at power-on, which a loop never plays before it has recorded it.
 
 ### Fixed
 
