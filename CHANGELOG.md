@@ -40,8 +40,11 @@ what FRIZZ does.
   pattern. Chance decides only when your effects act, never how they sound. Over MIDI it's
   channel 14, its latch CC 115 on the global channel. See MANUAL.md, "Chaos key".
 - **A second page for the FX knobs:** press any of knobs 1-4 and all four turn over to the
-  selected effect's page 2, with their LEDs pulsing; press again for page 1. Every effect but
-  the chaos key has one. Pressing or
+  selected effect's page 2, and its number blinks on their LEDs, twice (#117); press again
+  for page 1, which blinks once, as VOLUME's pages do. On page 2, knob 4's LED is a VU meter
+  of the effect's output, in VOLUME's colours and as bright as its Level, so you see the page
+  whenever the effect sounds; on the delay and reverb (knob 4 their ducking) it shows their
+  return. Every effect but the chaos key has one. Pressing or
   selecting another effect, or the compressor, brings page 1 back; pressing the key of the
   one already on the knobs (an effect's or the compressor's) keeps page 2. Scenes, recalls and morphs
   carry page 2 along; scene files from v0.11 load with page 2 on its defaults. Over MIDI,
@@ -129,6 +132,8 @@ what FRIZZ does.
   crusher and filter): knob 4 is the effect's own setting now, the one you play (see Added).
   Scenes saved before load with every value where its knob went; over MIDI, CC 17 on an
   effect's channel is that setting, CC 19 stereo.
+- **Page 2's knob LEDs no longer pulse** (since v0.12-beta.1, #117): turning the page blinks
+  its number instead, and on page 2 knob 4's LED is the effect's output VU (see Added).
 - **The MIDI map is new** (#97): everything a DAW automates is a plain CC (DAWs automate NRPN
   poorly, Ableton Live not at all), effects have channels of their own, and nothing collides
   with what hosts and keyboards send by themselves. A setup made for v0.11 needs its numbers

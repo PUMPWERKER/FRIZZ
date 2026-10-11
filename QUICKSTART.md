@@ -73,16 +73,19 @@ effects you've latched out at random and scrambles the loop's steps (see
   before you punch it in. The key flashes.
 - **Knobs 1-4:** shape the effect whose key you pressed or picked last. Their LEDs show the
   settings; a dark knob does nothing for that effect. The knobs follow one pattern: 1 is the
-  main control, 2 the feedback, 3 the tone or colour, 4 the stereo width or level (where an
-  effect has no such setting, it puts another one there).
+  main control, 2 the feedback, 3 the tone or colour, 4 a setting of the effect's own, or a
+  send's level (where an effect has no such setting, it puts another one there).
 - **SHIFT + turn a knob:** jump in big steps: notes, octaves or musical intervals where the
   setting has them, 10% otherwise.
 - **SHIFT + press a knob:** reset that setting.
-- **Press a knob:** all four knobs turn to the effect's second page (their LEDs pulse) and
-  back. Picking another effect brings page 1 back. Page 2 is laid out the same on every
-  effect but the chaos key, which has none: knob 1 the mix (dry against the effect), knob 2
-  a setting of the effect's own, knob 3 the band (the effect only on the lows or only on the highs), knob 4 the effect's level. Nothing evens out the level by itself:
-  an effect that gets louder as you drive it, like the folder, is set back with knob 4.
+- **Press a knob:** all four knobs turn to the effect's second page and back, the page's
+  number blinking on their LEDs (twice for page 2, once for page 1). Picking another effect
+  brings page 1 back. Page 2 holds what you set and leave, laid out the same on every effect
+  but the chaos key, which has none: knob 1 the mix (dry against the effect), knob 2 the
+  stereo width, knob 3 the band (the effect only on the lows or only on the highs), knob 4
+  the effect's level, its LED a meter of what the effect puts out. Nothing evens out the
+  level by itself: an effect that gets louder as you drive it, like the folder, is set back
+  with knob 4.
 
 Every effect starts silent or nearly so: one knob brings it in. That's knob 1 on most, knob 2
 (feedback) on the resonator, knob 3 (amount, depth) on the flanger and the phaser and knob 4

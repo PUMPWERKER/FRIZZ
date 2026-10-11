@@ -20,9 +20,9 @@
  *  had only the shifter's Mix, which it keeps, and the rest of its page 2 values (zeros for
  *  knobs nothing used) load as defaults. "layout 3" adds page 2's own knobs and moves three
  *  of page 1's knob 4 there (UpgradeTo3). "layout 4" swaps stereo, page 1's knob 4 until then,
- *  with the effect's own on page 2's knob 2 (#117, SwapStereo). Millionths because a coarse grid's points must come
- *  back on the grid: the resonator's pitch grid is .0157 apart and counts a value within
- *  1.6e-4 as on a point.
+ *  with the effect's own on page 2's knob 2 (#117, SwapStereo). Millionths because a coarse
+ *  grid's points must come back on the grid: the resonator's pitch grid is .0157 apart and
+ *  counts a value within 1.6e-4 as on a point.
  */
 #pragma once
 #include <stdint.h>

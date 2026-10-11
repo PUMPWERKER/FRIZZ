@@ -633,7 +633,8 @@ int main()
     }});
 
     // the knob LEDs: white only at a neutral point. A knob with a centre (the shifter's shift)
-    // white there, blue below, orange above; Level the same around 0dB; others no white
+    // white there, blue below, orange above; page 2's Band the same around its centre; others
+    // no white
     cases.push_back({"knob-colors", [] {
         RunMs(kReadyMs);
         Tap("KEY_2"); // the shifter
@@ -651,22 +652,16 @@ int main()
         printf("      shift down %02x%02x%02x, up %02x%02x%02x\n", down.r, down.g, down.b, up.r, up.g, up.b);
         Check(blue(down) && orange(up), "knob-colors: turned down blue, up orange");
         Check(!white(PthLedFull(kKnob1Led + 1)), "knob-colors: the feedback (no centre) never white");
-        Tap("ENC_4_SW"); // page 2: Level at 0dB, white
-        RunMs(300);
-        bool lvl_white = false;
-        for (int i = 0; i < 700 && !lvl_white; i++)
-        {
-            RunMs(1);
-            lvl_white = white(PthLedFull(kKnob1Led + 3)); // pulsing: white at its brightest
-        }
-        Check(lvl_white, "knob-colors: page 2's Level at 0dB, white");
+        Tap("ENC_4_SW"); // page 2: Band at its centre, white, once its number has blinked
+        RunMs(500);
+        Check(white(PthLedFull(kKnob1Led + 2)), "knob-colors: page 2's Band at its centre, white");
     }});
 
-    // FX page 2 (#35): a plain knob press turns all four knobs over, and back; their LEDs
-    // pulse there. Another FX or the compressor goes back to page 1
+    // FX page 2 (#35): a plain knob press turns all four knobs over, and back. Another FX or
+    // the compressor goes back to page 1. The LEDs there: knob-page-blink, fx-vu
     cases.push_back({"fx-page2", [] {
         RunMs(kReadyMs);
-        // how far knob 1's LED swings over 700 ms: steady on page 1, a pulse on page 2
+        // how far knob 1's LED swings over 700 ms: steady once the page's number has blinked
         auto swing = [] {
             const std::vector<int> seen = Watch(true, kKnob1Led, 700);
             return *std::max_element(seen.begin(), seen.end())
@@ -687,7 +682,7 @@ int main()
         Tap("ENC_4_SW"); // knob 1 pressed
         RunMs(100);
         Check(page() == 1, "fx-page2: a plain knob press turns to page 2");
-        Check(swing() > 100, "fx-page2: page 2's LEDs pulse");
+        RunMs(400);
         Check(Max(PthLedFull(kKnob1Led + 1)) > 0 && Max(PthLedFull(kKnob1Led + 2)) > 0
                   && Max(PthLedFull(kKnob1Led + 3)) > 0,
               "fx-page2: the shifter's page 2: all four knobs lit");
@@ -706,7 +701,7 @@ int main()
         Turn(kKnob1Encoder, -50);
         RunMs(600);
         Tap("ENC_1_SW"); // knob 2: any of the four turns the page
-        RunMs(100);
+        RunMs(300);
         Check(page() == 0 && swing() < 10, "fx-page2: a press on another knob turns back to page 1");
         Tap("ENC_4_SW");
         RunMs(100);
@@ -720,7 +715,7 @@ int main()
         RunMs(100);
         Tap("ENC_4_SW");
         RunMs(100);
-        Check(page() == 1 && swing() > 100, "fx-page2: the tape stop has a page 2 too");
+        Check(page() == 1, "fx-page2: the tape stop has a page 2 too");
         Tap("KEY_2");
         RunMs(100);
         Check(page() == 0, "fx-page2: and another FX (the shifter) brings page 1 back");
@@ -731,7 +726,7 @@ int main()
         Check(page() == 0, "fx-page2: the compressor's key goes back to page 1");
         Tap("ENC_4_SW");
         RunMs(100);
-        Check(page() == 1 && swing() > 100, "fx-page2: the compressor has a page 2 too");
+        Check(page() == 1, "fx-page2: the compressor has a page 2 too");
         // a page-2 value is part of a scene: saved with it, the blank scene puts it back
         Tap("KEY_2");
         RunMs(100);
@@ -3702,6 +3697,116 @@ int main()
         const std::string st = Ask({0x20});
         Check(st.size() > 9 && ((static_cast<uint8_t>(st[8]) << 7 | static_cast<uint8_t>(st[9])) == 1u << 13),
               "phaser: KEY_14 latches the chaos key (FxId 13), the phaser off");
+    }});
+
+    // ======== #117: stereo on page 2, the page's number blinked, Level's LED a VU ========
+
+    // turning the FX knobs' page blinks its number on all four knob LEDs in white, as VOLUME's
+    // pages do: twice for page 2, once for page 1; then they're steady, page 2 no longer pulses
+    cases.push_back({"knob-page-blink", [] {
+        RunMs(kReadyMs);
+        Tap("KEY_2"); // the shifter: knob 2 blue on both pages (feedback, stereo at 0)
+        RunMs(300);
+        auto white = [](const Rgb& c) { return std::min(c.r, std::min(c.g, c.b)) > 200; };
+        int all_white = 0;
+        // a knob press: the white blinks on knob 2's LED over 600 ms, and how many of the
+        // four are white 30 ms in
+        auto turn = [&](bool shift) {
+            if (shift)
+            {
+                Press("KEY_26", true);
+                RunMs(50);
+            }
+            Press("ENC_4_SW", true);
+            int blinks = 0;
+            bool was = false;
+            all_white = 0;
+            for (int t = 0; t < 600; t++)
+            {
+                if (t == 60)
+                    Press("ENC_4_SW", false);
+                RunMs(1);
+                if (t == 30)
+                    for (int k = 0; k < 4; k++)
+                        all_white += white(PthLedFull(kKnob1Led + k));
+                const bool w = white(PthLedFull(kKnob1Led + 1));
+                blinks += w && !was;
+                was = w;
+            }
+            if (shift)
+                Press("KEY_26", false);
+            return blinks;
+        };
+        auto swing = [] {
+            const std::vector<int> seen = Watch(true, kKnob1Led + 1, 700);
+            return *std::max_element(seen.begin(), seen.end())
+                   - *std::min_element(seen.begin(), seen.end());
+        };
+        const int to2 = turn(false);
+        printf("      page 2: %d blinks, %d knobs white\n", to2, all_white);
+        Check(to2 == 2 && all_white == 4, "knob-page-blink: page 2 blinks twice, on all four knobs");
+        Check(swing() < 10, "knob-page-blink: then page 2's LEDs are steady, no pulse");
+        const int to1 = turn(false);
+        Check(to1 == 1 && all_white == 4, "knob-page-blink: page 1 blinks once");
+        Check(turn(true) == 0, "knob-page-blink: SHIFT + press resets, turns no page and blinks nothing");
+        Tap("KEY_15"); // the compressor's page 2 too
+        RunMs(300);
+        Check(turn(false) == 2, "knob-page-blink: the compressor's page 2 blinks twice too");
+    }});
+
+    // page 2's knob 4 (Level) shows the effect's output as a VU meter in VOLUME's colours, as
+    // bright as Level turns it; a send's (Ducking there) shows its return at full brightness
+    cases.push_back({"fx-vu", [] {
+        RunMs(kReadyMs);
+        Latch("KEY_2"); // the shifter at 0 semitones: the input through it
+        Tap("ENC_4_SW");
+        RunMs(800);
+        const Rgb on = PthLedFull(kKnob1Led + 3);
+        Turn(3, -40); // Level from 0dB (.75) to .35
+        RunMs(800);
+        const Rgb down = PthLedFull(kKnob1Led + 3);
+        Turn(3, 40);
+        Press("KEY_2", true); // off again
+        RunMs(80);
+        Press("KEY_2", false);
+        RunMs(800);
+        const Rgb off = PthLedFull(kKnob1Led + 3);
+        printf("      shifter's VU: on %02x%02x%02x, Level down %02x%02x%02x, off %02x%02x%02x\n",
+               on.r, on.g, on.b, down.r, down.g, down.b, off.r, off.g, off.b);
+        Check(Max(on) > 120 && on.b < Max(on) / 2, "fx-vu: on page 2, knob 4 is the output's VU, not Level's white");
+        Check(Max(down) < Max(on) / 2, "fx-vu: Level turned down, it dims");
+        Check(Max(off) < 40, "fx-vu: the effect off: down to the floor");
+        Latch("KEY_12"); // the delay, its level (page 1's knob 4) up
+        Turn(3, 60); // 8 ms a detent
+        RunMs(600);
+        Tap("ENC_4_SW");
+        RunMs(1500);
+        const Rgb echoes = PthLedFull(kKnob1Led + 3);
+        amp = 0.f; // the input stops: the echoes die away
+        RunMs(4000);
+        const Rgb gone = PthLedFull(kKnob1Led + 3);
+        amp = .3f;
+        printf("      delay's return: %02x%02x%02x, gone %02x%02x%02x\n", echoes.r, echoes.g,
+               echoes.b, gone.r, gone.g, gone.b);
+        Check(Max(echoes) > 120 && Max(gone) < 40,
+              "fx-vu: the delay's knob 4 there (Ducking at 0): its return, at full brightness");
+    }});
+
+    // the MIDI map follows the knobs: CC 17 on an effect's channel is page 1's knob 4, its own
+    // setting (the shifter's grain, the centre at first), CC 19 page 2's knob 2, stereo
+    cases.push_back({"cc-stereo", [] {
+        RunMs(kReadyMs);
+        auto param = [](int i) {
+            const std::string p = Ask({0x21, 1}); // the shifter's knobs
+            return p.size() == 17 ? KnobOf(p[1 + 2 * i], p[2 + 2 * i]) : -1.f;
+        };
+        Check(param(3) == .5f && param(5) == 0.f, "cc-stereo: the shifter's grain on knob 4 (at its centre), stereo on page 2's knob 2");
+        Trs({0xB1, 19, 127}); // channel 2, the shifter's
+        RunMs(50);
+        Check(param(5) == 1.f && param(3) == .5f, "cc-stereo: CC 19 turns stereo");
+        Trs({0xB1, 17, 0});
+        RunMs(50);
+        Check(param(3) == 0.f && param(5) == 1.f, "cc-stereo: CC 17 turns the grain");
     }});
 
     // every scenario of ../twin/scenarios played from power-on, its expect lines holding
