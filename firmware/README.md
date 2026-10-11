@@ -165,6 +165,13 @@ and go by it: `flash.py` waits after sending a FRIZZ (or the bench) until it ans
 started unless it's the one running, and never take the bench for FRIZZ. A slot started by
 hand isn't noted (`hold` without a command forgets the note).
 
+**Garbled USB names** (#88): now and then (2 in ~310 starts) FRIZZ comes up with its USB
+names one string off (product `Љ`, maker `FrizZ`); the tools find it by the Daisy's USB id
+then, and say so. A tool that starts FRIZZ, FRIZZ-TEST or the bench (`flash.py`, `--run`,
+`card.py --then`, `remote.py`) and finds it so starts the slot again from the launcher, twice
+at most, sending nothing, then asks for the power switch. `tools/chompi.py fix-name [SLOT]`
+does it for one found running so: it starts the slot noted as running (10, 11 or 12) again.
+
 Sending replaces whatever is in that slot, so set yours (`FRIZZ_SLOT=4 ./flash.py`,
 `BENCH_SLOT`, `TEST_SLOT`, or `--slot`) if FRIZZ isn't on key 10. Without `--slot`, it
 refuses a key that holds another firmware than FRIZZ (`--slot` replaces it anyway). Linux only (ALSA), Python 3, no
@@ -207,7 +214,9 @@ minutes). Mounting needs udisks, as any desktop has.
 (`code/src/MidiControl.h`): `state`, `leds`, `load [--every S]`, `settings`, `channel N`,
 `transport on|off`, `source auto|trs|usb|internal`, `out off|trs|all`, `scene get|put SLOT FILE`, and `play SCRIPT [--cpu]`, which plays a twin
 script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over SysEx at the
-script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs.
+script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs, at the
+brightness the card's `led_brightness` sets (100, 75 or 50 %: the one level that fits every
+line, said when it isn't 100 %).
 With `--cpu` it reports the worst load FRIZZ.bin itself had, measured in the audio callback as
 the bench does, so a scenario can be tried for crackles on the build that plays, not the
 bench's (it says how many readings went unanswered, if any). Whatever ends a script (an

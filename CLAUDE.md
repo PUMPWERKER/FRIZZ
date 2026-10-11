@@ -176,13 +176,16 @@ holds it for the whole sequence, so nothing slips in between:
 ```bash
 cd firmware && tools/builds.py && tools/chompi.py hold sh -c '
   ./flash.py --bench --no-build && sleep 150 && ./card.py --then none get &&
-  ./flash.py --test --no-build && ./remote.py play twin/scenarios/fx-each.txt --cpu
+  ./flash.py --test --no-build && {
+    ./remote.py play twin/scenarios/fx-each.txt --cpu; echo "play: $?"; }
   ./flash.py --run 10' && tools/builds.py cpu
 ```
 
 (it builds before taking the CHOMPI; the bench runs ~100 s by itself; `card.py get` fetches
 its `cpu.txt` into `card/`, and `builds.py cpu` files that as `bin/cpu.txt`), and leaves FRIZZ
-on key 10 running at the end. Stage 2 plays no scenario that uses the settings
+on key 10 running at the end. Each `play` (several go in the `{ }`, the `--test` build's)
+ends in `;`, not `&&`: a failed `expect led` (exit 1) is judged from its output, and stops
+neither the next scenario nor `--run 10`. Stage 2 plays no scenario that uses the settings
 page (`settings.txt`): what it changes is saved to the card key 10 shares, so `remote.py play`
 refuses it without `--force` (#58). The user takes the CHOMPI for playing with
 `tools/chompi.py hold` (until Ctrl-C), or by telling a session, which then runs it for them.

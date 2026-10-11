@@ -145,6 +145,7 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
     {
         if(!main_loop_running)
             ui.DoEvents(false);
+        midi_out.Skip();
 
         for(size_t i = 0; i < size; i++)
         {
