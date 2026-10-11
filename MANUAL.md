@@ -219,8 +219,7 @@ others, and the 15th, the last, is the [master compressor](#master-compressor)'s
 phaser moved the resonator, slicer, wow & flutter and tape stop one key to the right: in
 v0.11 they were on the 7th to 10th keys. The delay and reverb used to sit on the 11th and
 12th keys, the compressor on the 14th, and the last key was the randomizer's, which is gone;
-the chaos key takes up its idea. In test builds before the phaser, the chaos key was on the
-11th.)
+the chaos key takes up its idea.)
 
 - **Inserts** (freezer, shifter, folder, crusher, filter, flanger, phaser, slicer): replace
   the signal while on and stop the moment they're off. The freezer comes first, so it

@@ -43,8 +43,8 @@ written before they're read, they aren't cleared at boot, so `ZeroSDRAM` clears 
 instead of 43.9.
 
 The phaser (#68, 2026-10-11), a 14th effect, took 2.4 KB of code and 0.8 KB of data
-(1.0 KB in the bench build): `FRIZZ.bin` at 219,436 B of code (~58 KB free) and 224,216 B
-of data (~21 KB free), the bench build at 235,692 B (~42 KB) and 232,348 B (**~13 KB
+(1.0 KB in the bench build): `FRIZZ.bin` at 219,444 B of code (~58 KB free) and 224,216 B
+of data (~21 KB free), the bench build at 235,708 B (~42 KB) and 232,348 B (**~13 KB
 free**), from 217,076 / 223,440 and 233,252 / 231,348 on `main` (56685b0). The data is the
 14th effect's share of every per-effect table (page 2's `FxOutput`, the meters, the knobs,
 the scenes and the morph's plan), the phaser itself (~150 B, no SDRAM), and 128 B more for
