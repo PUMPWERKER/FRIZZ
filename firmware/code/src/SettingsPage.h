@@ -26,9 +26,11 @@
  *    SHIFT + VOLUME press, both held 2 s     a bug report (EventLog.h), once per hold;
  *                                            the transport LEDs blink as on the play page
  *
- *  Each key acts on its press. A key that went down on the play page stays the play page's
- *  until it's let go, and the other way round (ui.h), so flipping the switch with a key held
- *  doesn't let go of it. A scene mode (SAVE, COPY, DELETE) is left as the switch goes up.
+ *  The CHOMPI key is lit white while SHIFT is held, as on the play page. Each key acts on its
+ *  press. A setting the card can't take blinks the key changed last red 3 times (LedSignal.h),
+ *  again with each retry. A key that went down on the play page stays the play page's until
+ *  it's let go, and the other way round (ui.h), so flipping the switch with a key held doesn't
+ *  let go of it. A scene mode (SAVE, COPY, DELETE) is left as the switch goes up.
  *  VOLUME's LED shows the battery's level throughout (Hardware's
  *  BatteryLevel: white while the charging cable is in, green above 3.3 V, yellow below, red
  *  below 3 V); the transport LEDs are purple, so the page is never taken for the play page.
@@ -38,6 +40,7 @@
 #pragma once
 #include "hardware.h"
 #include "LedColors.h"
+#include "LedSignal.h"
 #include "MasterSettings.h"
 #include "MidiClock.h"
 #include "MidiControl.h"
@@ -75,6 +78,25 @@ public:
 
     /** A key going down on the page. True if it changed a setting, which then goes to the card */
     bool Key(int key)
+    {
+        if (!Apply(key))
+            return false;
+        unsaved_key_ = key;
+        return true;
+    }
+
+    /** The settings' write went through: no key waits for it any more */
+    inline void Saved() { unsaved_key_ = kNoKey; }
+    /** It failed: the key changed last blinks red, if one is waiting for it */
+    void SaveFailed(uint32_t now)
+    {
+        if (unsaved_key_ != kNoKey)
+            refused_.Start(now);
+    }
+
+private:
+    /** Key's setting: true if it changed */
+    bool Apply(int key)
     {
         using S = Hardware::SwId;
         for (uint8_t ch = 0; ch < kNumChannelKeys; ch++)
@@ -124,6 +146,7 @@ public:
         return false;
     }
 
+public:
     /** A key going down or up on the page: SHIFT (CHOMPI) and VOLUME's press are watched
      *  for the bug report's hold */
     void Held(int key, bool down, uint32_t now)
@@ -175,8 +198,8 @@ public:
         master.led_brightness = quarters_ * 25;
     }
 
-    /** Every LED; the panel's were cleared */
-    void Draw()
+    /** Every LED; the panel's were cleared. shift: SHIFT held from the play page */
+    void Draw(uint32_t now, bool shift)
     {
         SmtLedsOff();
 
@@ -200,6 +223,10 @@ public:
         PthLed(kVolumeLed, battery, 1.f);
         PthLed(kTransportLedRev, purple, 1.f);
         PthLed(kTransportLedFwd, purple, 1.f);
+        PthLed(kChompiKeyLed, white, shift || (held_ & kShiftHeld) ? 1.f : 0.f);
+        if (refused_.Active(now))
+            SmtLed(KeyLedOf(static_cast<Hardware::SwId>(unsaved_key_)), red,
+                   refused_.BlinkLit(now) ? 1.f : 0.f);
     }
 
 private:
@@ -233,7 +260,8 @@ private:
 
     static const uint8_t kNumChannelKeys = 14; // white keys 1-14; the 15th is 15 and 16
     static const Hardware::SwId kChannel15Key = Hardware::SwId::KEY_15;
-    static const uint8_t kBothHeld = 3;          // Held's bits: SHIFT 1, VOLUME 2
+    static const uint8_t kShiftHeld = 1, kBothHeld = 3; // Held's bits: SHIFT 1, VOLUME 2
+    static const int kNoKey = -1;
     static const uint32_t kBugReportHoldMs = 2000;
 
     // G# and A# of the lower octave
@@ -270,6 +298,8 @@ private:
     uint8_t held_ = 0;          // SHIFT and VOLUME's press down on the page, by Held's bits
     uint32_t held_since_ = 0;   // since when both are
     bool reported_ = false;     // this hold has asked for its bug report
+    int unsaved_key_ = kNoKey;  // the key that changed a setting last, not yet on the card
+    LedSignal refused_;         // its write failed: 3 red blinks on it
 };
 
 constexpr const float* SettingsPage::kFactorColors[];

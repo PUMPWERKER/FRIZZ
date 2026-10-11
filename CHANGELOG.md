@@ -28,7 +28,8 @@ what FRIZZ does.
 - **A second page for the FX knobs:** press any of knobs 1-4 and all four turn over to the
   selected effect's page 2, with their LEDs pulsing; press again for page 1. Every effect but
   the chaos key has one. Pressing or
-  selecting another effect, or the compressor, brings page 1 back. Scenes, recalls and morphs
+  selecting another effect, or the compressor, brings page 1 back; pressing the key of the
+  one already on the knobs (an effect's or the compressor's) keeps page 2. Scenes, recalls and morphs
   carry page 2 along; scene files from v0.11 load with page 2 on its defaults. Over MIDI,
   page 2 is NRPN MSB 1 with the page-1 CC as LSB. See MANUAL.md, "Page 2".
 - **Mix, Band and Level on every effect's page 2,** on the same knobs everywhere (#40):
@@ -54,6 +55,11 @@ what FRIZZ does.
 - **A page 2 for the master compressor:** Mix, a sidechain highpass (off, or 20 to 500 Hz,
   so the bass doesn't pump the rest) and Makeup (0 to +24 dB), on the knobs an effect has
   its Mix, Band and Level on (#38).
+- **A setting the card can't take shows on the settings page** (#81): when a change there
+  (channel, transport following, mono, clock factor, clock source, MIDI out, brightness)
+  can't be written, because there's no card or a full one, the key you changed blinks red 3
+  times, and again with each of the 3 retries. Before, only the compressor's key on the play
+  page blinked.
 - **The safety limiter shows:** the compressor's key turns red while it limits the outputs,
   so you know when to turn something down.
 - **Clock source** on the settings page (G# of the upper octave): Auto (the default, as
@@ -107,6 +113,9 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The CHOMPI key lights white while you hold it on the settings page** (#81), as SHIFT on
+  the play page and as the manual says, also through the 2 s SHIFT + VOLUME hold for a bug
+  report. It stayed dark there.
 - **The effects' tempo holds still on a MIDI clock** (#19): at fast tempos (around 174 and
   300 BPM) and between two whole BPM (say 120.4), it used to flip between neighbouring
   BPM many times a second, moving the delay time with it. It's now measured over the last

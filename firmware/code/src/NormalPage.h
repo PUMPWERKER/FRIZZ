@@ -234,7 +234,7 @@ namespace chompi
                 // SHIFT + VOLUME held there: a bug report, its blink over the transport LEDs
                 if (settings_.BugReportHeld(now))
                     log_->RequestWrite();
-                settings_.Draw();
+                settings_.Draw(now, Shift());
                 DrawLogLeds(now);
                 fill_led_data();
                 return;
@@ -747,15 +747,23 @@ namespace chompi
             // the compressor's knobs to the card, once they've been left alone a while
             if (fx_.TakeCompChanged())
                 MasterChanged(now);
-            // a failed write: the compressor's key blinks red, and it's tried again a few times
+            // a failed write: the compressor's key blinks red, and the settings page's key
+            // changed last, and it's tried again a few times
             if (scenes_->TakeMasterFailed())
             {
                 master_refused_.Start(now);
+                settings_.SaveFailed(now);
+                master_saving_ = false;
                 if (++master_tries_ <= kMasterSaveTries)
                 {
                     master_unsaved_ = true;
                     master_changed_at_ = now;
                 }
+            }
+            else if (master_saving_ && !scenes_->Busy())
+            {
+                settings_.Saved();
+                master_saving_ = false;
             }
             if (master_unsaved_ && now - master_changed_at_ > kMasterSaveDelayMs)
             {
@@ -763,6 +771,7 @@ namespace chompi
                     scenes_->master.comp[p] = fx_.CompParam(p);
                 settings_.Store(scenes_->master);
                 scenes_->RequestMasterSave();
+                master_saving_ = true;
                 master_unsaved_ = false;
             }
         }
@@ -1266,6 +1275,7 @@ namespace chompi
         uint32_t master_changed_at_ = 0;  // when they last changed
         bool master_hurried_ = false;     // a restart pulled the save forward (MasterSettled)
         uint32_t master_tries_ = 0;       // failed writes since
+        bool master_saving_ = false;      // a write asked for, its outcome not yet seen
         LedSignal master_refused_;        // a failed write, on the compressor's key
 
         FxControls<PassthroughEngine> fx_;
