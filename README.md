@@ -6,8 +6,8 @@ box and looper for whatever you plug into its AUX input.
 - **A looper:** free-length loops, or loops locked to whole bars of an incoming MIDI clock.
   Varispeed in semitones (fifths and octaves with SHIFT), reverse and scrub on the big
   transport knob.
-- **Twelve punch-in effects on the white keys:** freezer, pitch shifter, wavefolder, bitcrusher,
-  DJ filter, flanger, resonator, slicer, wow & flutter, tape stop, tempo-synced delay and reverb. Hold a key to play an effect,
+- **Thirteen punch-in effects on the white keys:** freezer, pitch shifter, wavefolder, bitcrusher,
+  DJ filter, flanger, phaser, resonator, slicer, wow & flutter, tape stop, tempo-synced delay and reverb. Hold a key to play an effect,
   hold it and press SHIFT to latch it. Knobs 1-4 shape the last effect you touched. A chaos
   key next to them drops latched effects out at random and scrambles the loop's steps.
 - **Four FX scenes on the dark keys:** save every effect's settings and latches, recall them

@@ -17,7 +17,21 @@ what FRIZZ does.
   stays there, as SHIFT + PLAY leaves a morph. The two scene keys light in their mix, the
   transport LEDs show where it is. Over MIDI, CC 118 does the same for any running morph.
   See MANUAL.md, "Crossfading by hand".
-- **The chaos key** on the 11th white key (#65), after the Red Panda Tensor's RAND and the
+- **A phaser** on the 7th white key, next to the flanger (#68), after the SP-404MK2's and the
+  Elektron Tonverk's: six allpass stages in a row with feedback, sweeping three notches
+  through the sound, inside the resonator's loop, so with the resonator on the sweep moves
+  through its ringing. Knob 1 is its rate, in two halves: turned
+  left of the centre it runs free, .02 to 50 Hz (its LED in the phaser's colours, violet to
+  orange); right of the centre it follows the effects' tempo, 1/16 at the centre, then 1/8,
+  1/4, 1/2, a bar, 2 bars and 4 bars at the top (its LED green to yellow), a step every 3
+  detents, and with SHIFT a step every detent. Knob 2 is feedback (the resonance), knob 3
+  depth (at 0 the phaser is dry; turning it up brings the notches in and widens the sweep, up
+  to 2.5 octaves either way), knob 4 stereo (the right channel's sweep up to half a cycle
+  behind). Page 2: Mix, the centre the sweep moves around (100 Hz to 6.4 kHz, 800 Hz in the
+  middle), Band and Level. Its key is violet. Over MIDI, NRPN 0/64-67 set its page-1 knobs and
+  NRPN 1/64-67 its page 2; it has no latch CC yet. Scene files from before it load with the
+  phaser off, on its defaults. See MANUAL.md, "Phaser".
+- **The chaos key** on the 14th white key (#65), after the Red Panda Tensor's RAND and the
   Chase Bliss Blooper's Scrambler: an effect slot like any other (hold, latch, scenes) that
   makes no sound of its own. Knob 1 lets the effects you've latched drop out and come back on
   random steps (their keys dim while they're out); knob 2 plays random steps of the loop from
@@ -80,8 +94,13 @@ what FRIZZ does.
 
 ### Changed
 
-- **`remote.py` and FRIZZ's SysEx** count the chaos key as effect 12, so the compressor's
-  knobs are asked for as 13, and a scene travels with 4 effects to a part instead of 3. A
+- **The resonator, slicer, wow & flutter and tape stop are one key to the right** (#68): the
+  8th, 9th, 10th and 11th white keys, making room for the phaser on the 7th, next to the
+  flanger. Their MIDI CCs (latches 26-29, knobs 94-109) stay as they were; MIDI notes press
+  the keys, so the notes for them move with the keys.
+- **`remote.py` and FRIZZ's SysEx** count the phaser as effect 12 and the chaos key as 13,
+  so the compressor's knobs are asked for as 14, and a scene travels with 4 effects to a part
+  instead of 3. A
   `remote.py` from before can't send or fetch scenes from this version; scene files saved by
   it load, with the chaos key off.
 - **The knob LEDs use white only for a neutral point:** a knob with a centre (shift, cutoff,

@@ -19,7 +19,7 @@ using namespace twin;
 static const char* const kSegments[] = {
     "idle",       "freezer",   "shifter",      "folder",      "crusher",
     "filter",     "flanger",   "resonator",    "slicer",      "warble",
-    "tapestop",   "compressor", "inserts",     "recording",   "loop",
+    "tapestop",   "phaser",    "compressor", "inserts",     "recording",   "loop",
     "loop+inserts", "loop+delay", "loop+scene4+delay", "loop+reverb", "everything",
     "stress",     "loop+everything", "loop+inserts+chaos", "loop+everything+page2",
 };
@@ -60,7 +60,7 @@ int main()
     }
 
     Boot();
-    // the boot animation, about 10 s for the delay to rest, then 24 segments of 3 s with the
+    // the boot animation, about 10 s for the delay to rest, then 25 segments of 3 s with the
     // 4 s recording among them and the pauses for tails between them, until cpu.txt is
     // written; the input is the bench's own tune, so none is fed here
     std::vector<float> rms; // the master out's level every 3 s from when the bench starts
@@ -141,11 +141,13 @@ int main()
         panel &= PthLedFull(i).g > 200 && PthLedFull(i).r == 0;
     Check(panel, "bench: at the end the panel is green");
 
-    // the tune goes through: every 3 s after the boot something comes out, but for the tape
-    // stop's segment (the windows don't line up with the segments exactly)
+    // the tune goes through: every 3 s after the boot something comes out (above -60dBFS), but
+    // for the tape stop's segment (the windows don't line up with the segments exactly). With
+    // every effect on, the compressor down hard, it comes out at about -50dBFS here, a few dB
+    // lower since the phaser joined them (a phaser takes 3dB of a broadband sound in its notches)
     int quiet = 0;
     for (size_t w = 1; w < rms.size(); w++)
-        quiet += rms[w] < .002f;
+        quiet += rms[w] < .001f;
     Check(rms.size() >= kNum && quiet <= 2, "bench: its tune reaches the master out throughout");
 
     // it answers FRIZZ's SysEx as FRIZZ does: the tools can't tell the two apart by asking, and

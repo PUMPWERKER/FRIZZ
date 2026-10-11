@@ -114,6 +114,10 @@ namespace chompi
     // A bipolar knob's LED (KnobColor): blue below its neutral point, white on it, orange above
     static constexpr const float* kBipolarLow = blue;
     static constexpr const float* kBipolarHigh = orange;
+    // A split knob's upper, stepped half (FxParams::split, the phaser's rate synced to the
+    // tempo): green on its first step to yellow on its last, the same on every effect
+    static constexpr const float* kSplitLow = green;
+    static constexpr const float* kSplitHigh = yellow;
     // The safety limiter on the compressor's key: red from kLimStartDb of limiting, fully red
     // at kLimFullDb, held kLimHoldMs so a short peak is seen
     static constexpr float kLimStartDb = 1.f, kLimFullDb = 3.f;
@@ -474,6 +478,8 @@ namespace chompi
                 fx_.SetComp(ctl - kCompCC + bank * kNumFxKnobs, value);
             else if (ctl >= kChaosNrpn && ctl < kChaosNrpn + kNumFxKnobs)
                 fx_.SetParamTo(FX_CHAOS, ctl - kChaosNrpn + bank * kNumFxKnobs, value);
+            else if (ctl >= kPhaserNrpn && ctl < kPhaserNrpn + kNumFxKnobs)
+                fx_.SetParamTo(FX_PHASER, ctl - kPhaserNrpn + bank * kNumFxKnobs, value);
             else if (bank)
                 return;
             else if (cc >= kLatchCC && cc < kLatchCC + kMidiFx)
@@ -511,6 +517,10 @@ namespace chompi
             if (result != SceneControls<PassthroughEngine>::Slot::REFUSED && !Shift())
                 ReleaseMorph();
         }
+
+        // the latches and keys on go out in 14 bits (Put14), a scene's latches too
+        static_assert(kNumFx <= 14, "an effect's bit in 14");
+        static_assert(kFxPerPart * kFxParts >= kNumFx, "a scene's parts hold every effect");
 
         /** A SysEx query, answered over USB (MidiControl.h has the commands) */
         MIDI_CONTROL_ONCE void Answer(const MidiControl::Query& q)
@@ -1207,8 +1217,10 @@ namespace chompi
                 rgb[c] = color_xfade(a[c], b[c], t);
         }
         /** A knob's LED. White only at a neutral point: a bipolar knob (FxParams::bipolar) is
-         *  white at its default, blue below and orange above, the same on every effect; any
-         *  other goes from the effect's first colour to its last */
+         *  white at its default, blue below and orange above, the same on every effect; a
+         *  split one (FxParams::split) goes from the effect's first colour to its last in its
+         *  lower half, and green to yellow in its upper; any other goes from the effect's
+         *  first colour to its last */
         static void KnobColor(const FxParams& knobs, size_t param, float val,
                               const float* const* colors, float* rgb)
         {
@@ -1219,6 +1231,18 @@ namespace chompi
                                          : .5f + .5f * (val - n) / (1.f - n);
                 Xfade3(kBipolarLow, white, kBipolarHigh, t, rgb);
                 return;
+            }
+            if ((knobs.split >> param) & 1)
+            {
+                if (SplitUpper(val))
+                {
+                    const float t = static_cast<float>(SplitStep(val, knobs.steps[param]))
+                                    / static_cast<float>(knobs.steps[param] - 1);
+                    for (int i = 0; i < 3; i++)
+                        rgb[i] = kSplitLow[i] + t * (kSplitHigh[i] - kSplitLow[i]);
+                    return;
+                }
+                val = SplitLower(val);
             }
             for (int i = 0; i < 3; i++)
                 rgb[i] = colors[0][i] + val * (colors[2][i] - colors[0][i]);

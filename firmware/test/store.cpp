@@ -3,6 +3,7 @@
 // next to a .tmp), a card that couldn't be read at boot, which that session never writes, and
 // frizz_master.txt's text and what each of its settings refuses.
 // Exits 0 when everything passes. Run by unit.sh store.
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include "check.h"
@@ -231,9 +232,53 @@ static void TestMasterFormat()
           "master: the highest allowed values are read, a longer name isn't its setting");
 }
 
+/** A file from before the phaser (#68): its scenes load with the phaser off on its defaults,
+ *  everything else as it was, the chaos key's latch too, though its FxId moved; the next save
+ *  writes the phaser's lines */
+static void TestBeforePhaser()
+{
+    // scene 1: the filter and the chaos key latched, the phaser's line taken out
+    FxScene scenes[kNumScenes];
+    for (size_t s = 0; s < kNumScenes; s++)
+    {
+        scenes[s].used = s == 0;
+        scenes[s].latched = s == 0 ? (1u << FX_FILTER) | (1u << FX_CHAOS) : 0;
+        for (size_t fx = 0; fx < kNumFx; fx++)
+            for (size_t p = 0; p < kNumFxParams; p++)
+                scenes[s].params[fx][p] = kFxParams[fx].defaults[p];
+    }
+    scenes[0].params[FX_FILTER][0] = .3f;
+    scenes[0].params[FX_CHAOS][0] = .7f;
+    static char buf[kSceneFileMax];
+    std::string text(buf, FormatScenes(scenes, buf, sizeof(buf))), old;
+    for (size_t at = 0, next; at < text.size(); at = next)
+    {
+        next = text.find('\n', at) + 1;
+        if (text.compare(at, 7, "phaser ") != 0)
+            old += text.substr(at, next - at);
+    }
+    NewCard(true);
+    card.dirs["/FRIZZ"] = true;
+    card.files[kScenes] = old;
+    SceneStore store;
+    store.Init(&fs, "");
+    const FxScene& s1 = store.scenes[1];
+    bool defaults = true;
+    for (size_t p = 0; p < kNumFxParams; p++)
+        defaults &= s1.params[FX_PHASER][p] == kFxParams[FX_PHASER].defaults[p];
+    Check(old.find("phaser") == std::string::npos && s1.used && !(s1.latched >> FX_PHASER & 1) && defaults,
+          "before the phaser: a scene file without it loads, the phaser off on its defaults");
+    Check(s1.latched == ((1u << FX_FILTER) | (1u << FX_CHAOS)) && fabsf(s1.params[FX_FILTER][0] - .3f) < 1e-6f
+              && fabsf(s1.params[FX_CHAOS][0] - .7f) < 1e-6f,
+          "before the phaser: the rest as it was, the chaos key latched with its knobs");
+    Check(Saves(store) && card.files[kScenes].find("\nphaser 0 ") != std::string::npos,
+          "before the phaser: the next save writes its lines");
+}
+
 int main()
 {
     TestBoot();
+    TestBeforePhaser();
     TestUnreadable();
     TestNotRead();
     TestMasterFormat();

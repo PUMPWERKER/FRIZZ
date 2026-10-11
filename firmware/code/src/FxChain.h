@@ -6,17 +6,18 @@
  *
  *  The order follows a pedalboard's: source, pitch, dirt, filter, modulation, gate, tape,
  *  space. The keys follow it too, left to right:
- *   freezer -> shifter -> folder -> crusher -> filter -> flanger -> slicer -> wow & flutter
- *              |<-------------- resonator loop --------------->|
- *     -> tape stop -> delay -> reverb
+ *   freezer -> shifter -> folder -> crusher -> filter -> flanger -> phaser -> slicer
+ *              |<------------------ resonator loop ------------------>|
+ *     -> wow & flutter -> tape stop -> delay -> reverb
  *  The freezer comes first so it captures the clean sound and everything after it works on
  *  the repeats. The folder comes before the crusher, so it folds the clean signal and the
- *  crusher grinds the folds. The filter sweeps the dirt, and the flanger the harmonics it
- *  made. The slicer is the last insert, the final gate: it chops everything including the
- *  resonator's ringing, and the sends get the chopped sound. Wow & flutter and the tape stop
- *  come after it, so they bend everything before them; the sends after them, so a tape stop
- *  leaves the echoes and the reverb ringing. The delay's echoes feed the reverb as well as the
- *  output.
+ *  crusher grinds the folds. The filter sweeps the dirt, and the flanger and the phaser (#68),
+ *  the two modulations side by side, the harmonics it made; both are in the resonator's loop,
+ *  so its ringing is swept on every trip. The slicer is the last insert before the tape, the
+ *  final gate: it chops everything including the resonator's ringing, and what comes after it
+ *  gets the chopped sound. Wow & flutter and the tape stop come after it, so they bend
+ *  everything before them; the sends after them, so a tape stop leaves the echoes and the
+ *  reverb ringing. The delay's echoes feed the reverb as well as the output.
  *
  *  Three kinds:
  *   - insert: replaces the signal while its key is on; only the wet amount is faded. Page 2's
@@ -24,12 +25,11 @@
  *   - send (delay, reverb): the key fades what goes into the effect, and its return is added
  *     to the signal, so tails ring out after the key is released. Page 2's Band filters what
  *     goes in; the rest of their page 2 is their own.
- *   - loop (resonator): a comb feedback loop from after the flanger back to after the
- *     freezer, so the filter is in the loop and the slicer outside it. Page 2's Band filters
+ *   - loop (resonator): a comb feedback loop from after the phaser back to after the
+ *     freezer, so the filter, flanger and phaser are in the loop and the slicer outside it. Page 2's Band filters
  *     what goes into the loop, its Level is the return's (FxResonator.h).
  *
- *  And the chaos key (FxChaos.h), last of the FxIds though its key sits between the tape stop
- *  and the delay: no sound and no place in the chain, it gates the others. The keys reach the
+ *  And the chaos key (FxChaos.h), last of the FxIds, its key the 14th, after the sends: no sound and no place in the chain, it gates the others. The keys reach the
  *  effects a block after they're set, together with what chaos drops (Block), so a key set
  *  from MainLoop and one chaos changes in the audio callback never cross.
  */
@@ -45,6 +45,7 @@
 #include "FxFolder.h"
 #include "FxFreezer.h"
 #include "FxOutput.h"
+#include "FxPhaser.h"
 #include "FxResonator.h"
 #include "FxReverb.h"
 #include "FxShifter.h"
@@ -55,7 +56,10 @@
 namespace chompi
 {
 
-/** The effects, in the order of their keys, left to right (FxSlots.h) */
+/** The effects, in the order of their keys before the phaser (FxSlots.h), the two that
+ *  came later numbered last, so the others keep their numbers (MIDI): the phaser on the 7th
+ *  white key, which moved the resonator, slicer, wow & flutter and tape stop to the 8th-11th,
+ *  and the chaos key on the 14th */
 enum FxId
 {
     FX_FREEZER,
@@ -70,10 +74,11 @@ enum FxId
     FX_TAPESTOP,
     FX_DELAY,
     FX_REVERB,
-    FX_CHAOS, // the 11th white key, but last here so the others keep their numbers (MIDI)
+    FX_PHASER, // the 7th white key
+    FX_CHAOS,  // the 14th, and last: no sound of its own
     kNumFx,
 };
-// The effects in the chain, with a sound of their own: all but the chaos key
+// The effects in the chain, with a sound of their own: all but the chaos key, the last
 static const size_t kNumSoundFx = FX_CHAOS;
 #if FRIZZ_BENCH
 static_assert(BenchProfile::COMP - BenchProfile::FX0 == kNumSoundFx, "a bench part per effect");
@@ -84,7 +89,7 @@ static_assert(BenchProfile::COMP - BenchProfile::FX0 == kNumSoundFx, "a bench pa
 static constexpr const char* kFxNames[] = {
     "freezer", "shifter", "folder", "crusher", "filter",
     "flanger", "resonator", "slicer", "warble", "tapestop",
-    "delay", "reverb", "chaos",
+    "delay", "reverb", "phaser", "chaos",
 };
 static_assert(sizeof(kFxNames) / sizeof(kFxNames[0]) == kNumFx, "one per FxId");
 
@@ -119,6 +124,7 @@ public:
         resonator_.Init(sample_rate);
         warble_.Init(sample_rate);
         tapestop_.Init(sample_rate, tapestop_mem_l, tapestop_mem_r, tapestop_frames);
+        phaser_.Init(sample_rate);
         chaos_.Init();
 
         fx_[FX_FILTER] = &filter_;
@@ -133,6 +139,7 @@ public:
         fx_[FX_TAPESTOP] = &tapestop_;
         fx_[FX_DELAY] = &delay_;
         fx_[FX_REVERB] = &reverb_;
+        fx_[FX_PHASER] = &phaser_;
         fx_[FX_CHAOS] = &chaos_;
 
         for (size_t fx = 0; fx < kNumFx; fx++)
@@ -151,6 +158,7 @@ public:
     {
         delay_.SetTempo(bpm);
         filter_.SetPulseSamples(pulse_samples);
+        phaser_.SetPulseSamples(pulse_samples);
         slicer_.SetPulseSamples(pulse_samples);
         freezer_.SetTempo(bpm);
         tapestop_.SetTempo(bpm);
@@ -160,6 +168,7 @@ public:
     {
         delay_.ClockPulse(pos);
         filter_.ClockPulse(pos, reverse);
+        phaser_.ClockPulse(pos, reverse);
         freezer_.ClockPulse(pos);
         slicer_.ClockPulse(pos);
         chaos_.ClockPulse(pos);
@@ -212,7 +221,7 @@ public:
             FxSlew::coeff = kFxParamCoeff;
 
         Insert(FX_FREEZER, freezer_, l, r);
-        // the resonator's loop wraps everything from here to the flanger
+        // the resonator's loop wraps everything from here to the phaser
         resonator_.Feed(l, r);
         if (!resonator_.Idle())
             Meter(FX_RESONATOR, resonator_.Return());
@@ -222,6 +231,7 @@ public:
         Insert(FX_CRUSHER, crusher_, l, r);
         Insert(FX_FILTER, filter_, l, r);
         Insert(FX_FLANGER, flanger_, l, r);
+        Insert(FX_PHASER, phaser_, l, r);
         {
             float tl = *l, tr = *r;
             SendBand(FX_RESONATOR, resonator_.Idle(), &tl, &tr);
@@ -372,7 +382,7 @@ private:
             out_[fx].Rest();
         // an insert's or the resonator's meter stood still while it was idle: from nothing,
         // so its key doesn't flash at the old level. A send's runs on with its tail
-        if (fx < FX_DELAY && fx_[fx]->Idle())
+        if (fx != FX_DELAY && fx != FX_REVERB && fx_[fx]->Idle())
             meter_[fx].Init();
         if (out_[fx].Busy())
             out_busy_.fetch_or(static_cast<uint16_t>(1u << fx), std::memory_order_relaxed);
@@ -388,6 +398,7 @@ private:
     Resonator resonator_;
     Warble warble_;
     TapeStop tapestop_;
+    Phaser phaser_;
     DelaySend delay_;
     ReverbSend reverb_;
     Chaos chaos_;

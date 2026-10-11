@@ -92,7 +92,7 @@ public:
         }
     }
 
-    /** After the flanger: into the loop through the clipper and filters */
+    /** After the phaser: into the loop through the clipper and filters */
     void Tap(float l, float r)
     {
         const float in[2] = {l, r};

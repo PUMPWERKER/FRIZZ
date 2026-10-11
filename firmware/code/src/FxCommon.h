@@ -237,6 +237,24 @@ inline size_t StepIndex(float val, size_t steps)
     return static_cast<size_t>(val * static_cast<float>(steps - 1) + .5f);
 }
 
+/** A knob split in two (FxParams::split, the phaser's rate): continuous below kSplitKnob,
+ *  stepped from it up to 1, its first step on kSplitKnob (a MIDI value's centre, 64 or 8192).
+ *  The effect, its controls and its LED all ask these */
+static constexpr float kSplitKnob = .5f;
+inline bool SplitUpper(float val) { return val >= kSplitKnob; }
+/** The lower half as 0..1 */
+inline float SplitLower(float val) { return val / kSplitKnob; }
+/** The upper half's step, 0..steps - 1 */
+inline size_t SplitStep(float val, size_t steps)
+{
+    return StepIndex((val - kSplitKnob) / (1.f - kSplitKnob), steps);
+}
+/** And its knob value */
+inline float SplitStepValue(float idx, size_t steps)
+{
+    return kSplitKnob + idx * (1.f - kSplitKnob) / static_cast<float>(steps - 1);
+}
+
 /** A one-pole follower's coefficient for a time constant of seconds */
 inline float TimeCoeff(float seconds, float sample_rate)
 {

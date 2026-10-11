@@ -1,5 +1,5 @@
 /** @file FxChaos.h
- *  @brief The chaos key (#65), on the 11th white key: an FX slot like any other (held, latched,
+ *  @brief The chaos key (#65), on the 14th white key: an FX slot like any other (held, latched,
  *  part of scenes) that makes no sound of its own but plays with what's there, on a grid of the
  *  FX clock (TempoClock.h), in two ways:
  *   - FX gates, after the Red Panda Tensor's RAND: the effects latched (its pool, sent by

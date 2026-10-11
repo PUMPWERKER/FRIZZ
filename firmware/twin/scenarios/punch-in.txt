@@ -53,20 +53,20 @@ tap KEY_5 700
 wait 700
 tap KEY_5 900
 wait 700
-# KEY_7
-down KEY_7
+# KEY_8
+down KEY_8
 wait 100
 turn 1 100
 wait 850
-up KEY_7
+up KEY_8
 wait 1000
-tap KEY_7 300
+tap KEY_8 300
 wait 700
-tap KEY_7 500
+tap KEY_8 500
 wait 700
-tap KEY_7 700
+tap KEY_8 700
 wait 700
-tap KEY_7 900
+tap KEY_8 900
 wait 700
 wait 1000
 expect on
