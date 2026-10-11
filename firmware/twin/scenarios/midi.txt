@@ -1,27 +1,31 @@
-# MIDI control on channel 16 (MidiControl.h): notes as keys, CCs, NRPN, a program change, a morph
+# MIDI control (MidiControl.h, #97): notes as keys and the global CCs on channel 16, an
+# effect's CCs on its own channel, a program change, a morph
 input sine 220 0.3
 at 6000
-# a note holds the filter, CC 86 closes it, the note lets go
+# the global channel 16, whatever the device's card says (in RAM while remote.py plays)
+usb F0 7D 43 48 13 00 10 F7
+# a note holds the filter, CC 14 on its channel, 5, closes it, the note lets go
 midi 9F 37 64
-midi BF 56 10
+midi B4 0E 10
 wait 1500
-# a note holds the filter: its knobs on the panel, CC 86 closing knob 1
+# a note holds the filter: its knobs on the panel, CC 14 closing knob 1
 expect led pth 1 3737fd
 expect led pth 2 798fc6
 midi 8F 37 00
 wait 500
-# CC 24 latches the filter, NRPN 86 sweeps its cutoff in 14 bits, CC 24 unlatches it
-midi BF 18 7F
-midi BF 63 00 BF 62 56 BF 06 20 BF 26 00
+# CC 106 latches the filter, CC 14 on its channel sweeps its cutoff, CC 106 unlatches it
+midi BF 6A 7F
+midi B4 0E 20
 wait 1000
-midi BF 06 60 BF 26 40
+midi B4 0E 60
 wait 1000
-midi BF 18 00
+midi BF 6A 00
 wait 500
-# the delay latched, its level and division set outright; CC 14 turns knob 1 (the freezer's)
-midi BF 1E 7F BF 71 60 BF 6E 40
+# the delay latched (CC 113), its knobs 4 and 1 set on its channel, 12; CC 23 puts the
+# freezer in focus, and the global CC 14 sets its knob 1
+midi BF 71 7F BB 11 60 BB 0E 40
 wait 1500
-midi BF 0E 03
+midi BF 17 01 BF 0E 03
 wait 500
 # the blank scene by program change: every effect off
 midi CF 00
@@ -41,7 +45,7 @@ wait 60
 expect led pth 6 79f200
 midi 8F 2F 00
 wait 1500
-# morph to the blank scene over 2 bars
-midi BF 1C 7F BF 3D 02 BF 3E 00
+# the wow & flutter latched (CC 111), then a morph to the blank scene over 2 bars
+midi BF 6F 7F BF 09 02 BF 03 00
 wait 5000
 expect on

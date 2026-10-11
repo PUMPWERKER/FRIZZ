@@ -8,8 +8,8 @@
     ./remote.py channel N             listen on channel N (1-16), 0 for all
     ./remote.py transport on|off      MIDI Start / Continue / Stop play and pause the loop
     ./remote.py source auto|trs|usb|internal
-                                      whose MIDI clock counts (the settings page's upper G#)
-    ./remote.py out off|trs|all       MIDI out: off, the jack, the jack and USB (upper D#)
+                                      whose MIDI clock counts (the settings page's lower A#)
+    ./remote.py out off|trs|all       MIDI out: off, the jack, the jack and USB (upper C#)
     ./remote.py switch up|down|hand   the mode switch: up (settings page), down (play page),
                                       or the real one again; until power-off
     ./remote.py scene get SLOT [FILE] a scene (1-4, 0 the blank one) as JSON
@@ -52,8 +52,8 @@ written as FRIZZ writes it. A FRIZZ from before PERSIST, or --save, gets the old
 shares, naming the line and the file (card_use). /FRIZZ/frizz_master.txt, saved 2 s after the
 last change, with no .bak to go back to: the settings page (twin/scenarios/settings.txt, most
 bug reports, which end with SHIFT + VOLUME held there), a key or knob while the mode switch is
-up, or a settings SysEx (#58); knobs 1-4 turned with the compressor selected (comp.txt), its
-knobs or mono over MIDI. /FRIZZ/frizz_scenes.txt, whose .bak keeps only the one before: SAVE /
+up, or a settings SysEx (#58); knobs 1-4 turned with the compressor selected (comp.txt, or
+in focus by CC 23); MIDI's CCs never (#97). /FRIZZ/frizz_scenes.txt, whose .bak keeps only the one before: SAVE /
 COPY / DELETE confirmed with CHOMPI once a slot is picked (scenes.txt), or a scene put over
 SysEx (#78). It reads where the device stands before it decides (the page, what the knobs edit,
 the scene mode); --force plays it anyway.
@@ -107,7 +107,7 @@ GROUP_COMP, GROUP_LATCH, GROUP_VOLUME, GROUP_SETTINGS = 0x20, 0x21, 0x22, 0x23
 GROUPS = dict({n: i for i, n in enumerate(FX_NAMES)}, comp=GROUP_COMP, latch=GROUP_LATCH,
               volume=GROUP_VOLUME, settings=GROUP_SETTINGS)
 SETTING_NAMES = ["mono", "midi_channel", "midi_transport", "clock_factor", "clock_source",
-                 "midi_out", "led_brightness"]
+                 "midi_out", "led_brightness", "midi_block_trs"]
 VOLUME_NAMES = ["out", "in", "mix", "headphones"]
 LOOPER = ["empty", "recording", "playing", "paused"]
 MODES = ["none", "save", "copy", "delete"]
@@ -121,11 +121,8 @@ COMP_KEY = "KEY_15"
 FX_KEYS = {"KEY_%d" % k for k in range(1, 15)}
 SLOT_KEYS = {"KEY_%d" % k for k in range(16, 21)}
 MODE_KEYS = {"KEY_25": 1, "KEY_24": 2, "KEY_23": 3}
-# MidiControl.h's midimap: the compressor's knobs (CC, or NRPN in bank 0 or 1), mono, the
-# morph to a scene, the relative turns of knobs 1-4, the notes
-COMP_CC, MONO_CC, MORPH_CC, TURN_CC = 52, 60, 62, 14
-NRPN_MSB_CC, NRPN_LSB_CC, DATA_MSB_CC, DATA_LSB_CC = 99, 98, 6, 38
-RPN_CCS = (101, 100)
+# MidiControl.h's midimap: the morph to a scene, the focus (15 the compressor), the notes
+MORPH_CC, FOCUS_CC, COMP_FOCUS = 3, 23, 15
 BASE_NOTE, CHOMPI_NOTE = 48, 45
 
 PAGES = ["output gain", "input gain", "headphone feed"]
@@ -523,14 +520,13 @@ def card_use(path, up, comp, mode):
     as picked.
 
     The settings page: a key or a knob while the mode switch is up, or a setting over SysEx
-    (frizz_master.txt, #58). The play page: knobs 1-4 turned with the compressor selected, its
-    knobs or mono over MIDI (frizz_master.txt), SAVE / COPY / DELETE confirmed with the CHOMPI
+    (frizz_master.txt, #58). The play page: knobs 1-4 turned with the compressor selected, by
+    its key or MIDI's focus (frizz_master.txt), SAVE / COPY / DELETE confirmed with the CHOMPI
     key once a slot is picked, or a scene put over SysEx (frizz_scenes.txt, #78). The hand's
     and SysEx's keys and knobs reach the page the switch shows, MIDI's notes and controllers
     the play page always"""
     by_toggle = up
     picked = mode != 0
-    nrpn = [0, 0]  # MSB, LSB
 
     def key(name, what):
         nonlocal comp, mode, picked
@@ -582,25 +578,13 @@ def card_use(path, up, comp, mode):
                 elif kind == 0xC0 and mode:
                     picked = True  # a program change is its scene key, pressed
                 elif kind == 0xB0 and len(m) == 3:
+                    # MIDI's CCs never reach the card (#97); CC 3 picks a slot in a mode, as
+                    # its scene key, and CC 23 what the hand's knobs edit
                     cc, v = m[1], m[2]
-                    if cc == MORPH_CC and mode:
-                        picked = True  # likewise in a mode
-                    elif COMP_CC <= cc < COMP_CC + 4:
-                        used = "the compressor's knob over MIDI (CC %d)" % cc, MASTER
-                    elif cc == MONO_CC:
-                        used = "mono over MIDI (CC %d)" % cc, MASTER
-                    elif TURN_CC <= cc < TURN_CC + 4 and comp and v not in (0, 64):
-                        used = "knob %d turned over MIDI with the compressor selected" % (
-                            cc - TURN_CC + 1), MASTER
-                    elif cc == NRPN_MSB_CC:
-                        nrpn[0] = v
-                    elif cc == NRPN_LSB_CC:
-                        nrpn[1] = v
-                    elif cc in RPN_CCS:
-                        nrpn[0] = 0x7F
-                    elif cc in (DATA_MSB_CC, DATA_LSB_CC) and nrpn[0] in (0, 1) \
-                            and COMP_CC <= nrpn[1] < COMP_CC + 4:
-                        used = "the compressor's knob over MIDI (NRPN %d)" % nrpn[1], MASTER
+                    if cc == MORPH_CC and mode and v < 5:
+                        picked = True
+                    elif cc == FOCUS_CC and 1 <= v <= COMP_FOCUS:
+                        comp = v == COMP_FOCUS
                 if used:
                     break
         if used:

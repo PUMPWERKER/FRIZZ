@@ -114,6 +114,52 @@ public:
         speed_reset_.store(true);
     }
 
+    /** The speed in semitones outright, -48 (1/16x) to 12 (2x), in the direction it runs:
+     *  MIDI's (CC 90). Taken up at the next audio block, like the steps */
+    void SetSemitones(int semis) { semis_to_.store(semis); }
+
+    /** MIDI's transport, while following it (MidiControl.h, MANUAL.md "Start and Stop"): from
+     *  the audio callback, before Process. msg is the status byte: 0xFA Start, 0xFB Continue,
+     *  0xFC Stop, 0xF2 Song Position (spp 16ths). tick: MidiClock::GetLastTick as it came.
+     *  A loop recorded to the clock (GetBeats) is kept in step: Start takes it back to its
+     *  start, and it plays from the first tick after Start or Continue; paused, Song Position
+     *  moves it there, by its length in the sender's 16ths. A free loop plays and pauses as PLAY does */
+    void Follow(uint8_t msg, uint16_t spp, uint32_t tick)
+    {
+        if (erasing_ || (state_ != State::PLAYING && state_ != State::PAUSED))
+            return;
+        const bool clocked = beats_ > 0;
+        if (msg == 0xFC)
+        {
+            cue_ = false;
+            if (state_ == State::PLAYING)
+                Pause();
+        }
+        else if (msg == 0xF2)
+        {
+            // the sender's 16ths: the loop's beats are FRIZZ's, by the clock factor
+            const ClockFactor factor = midi_clock_->Factor();
+            const uint32_t sixteenths = factor == ClockFactor::HALF     ? beats_ * 8
+                                        : factor == ClockFactor::DOUBLE ? beats_ * 2
+                                                                        : beats_ * 4;
+            if (clocked && state_ == State::PAUSED)
+                JumpTo(static_cast<size_t>(static_cast<uint64_t>(spp % sixteenths) * length_ / sixteenths));
+        }
+        else if (clocked && (msg == 0xFA || state_ == State::PAUSED))
+        {
+            // from the next tick: Start from the loop's start (playing, it jumps there then)
+            cue_ = true;
+            cue_tick_ = tick;
+            cue_start_ = msg == 0xFA;
+        }
+        else if (state_ == State::PAUSED)
+            Play();
+    }
+
+    /** How many times Follow's Start took the playing loop back to its start: for MIDI out,
+     *  which sends Start then too */
+    inline uint32_t Rewinds() const { return rewinds_; }
+
     /** Transport turns while paused, in encoder detents */
     void Scrub(int turns) { scrub_turns_.fetch_add(turns); }
 
@@ -173,6 +219,8 @@ public:
     {
         HandleCommand();
         HandleSpeed();
+        if (__builtin_expect(cue_, 0))
+            HandleCue();
 
         if (state_ == State::RECORDING)
             TrackRecordingClock();
@@ -325,6 +373,9 @@ private:
     {
         if (speed_reset_.exchange(false))
             ApplyResetSpeed();
+        const int to = semis_to_.exchange(kNoSemis);
+        if (to != kNoSemis)
+            SetSemis(to < kSpeedMinSemis ? kSpeedMinSemis : (to > kSpeedMaxSemis ? kSpeedMaxSemis : to));
         int semis = semi_steps_.exchange(0);
         for (; semis > 0; semis--)
             ApplySemitone(1);
@@ -395,20 +446,11 @@ private:
         case Command::TOGGLE_PLAY:
             if (erasing_)
                 break;
-            // a scrub left over from the last pause mustn't carry into the next one
-            scrub_turns_.store(0);
-            scrub_ = scrub_target_ = 0.f;
-            scrub_count_ = 0;
+            cue_ = false;
             if (state_ == State::PLAYING)
-            {
-                state_ = State::PAUSED;
-                fading_out_ = true;
-            }
+                Pause();
             else if (state_ == State::PAUSED)
-            {
-                state_ = State::PLAYING;
-                fading_out_ = false;
-            }
+                Play();
             break;
 
         case Command::ERASE:
@@ -432,6 +474,64 @@ private:
         case Command::NONE:
         default:
             break;
+        }
+    }
+
+    void Pause()
+    {
+        ResetScrub();
+        state_ = State::PAUSED;
+        fading_out_ = true;
+    }
+    void Play()
+    {
+        ResetScrub();
+        state_ = State::PLAYING;
+        fading_out_ = false;
+    }
+    /** A scrub left over from the last pause mustn't carry into the next one */
+    void ResetScrub()
+    {
+        scrub_turns_.store(0);
+        scrub_ = scrub_target_ = 0.f;
+        scrub_count_ = 0;
+    }
+
+    /** Follow's cue: the first tick after it (or none coming any more) plays the loop, from
+     *  its start for a Start */
+    __attribute__((noinline, cold)) void HandleCue()
+    {
+        if (erasing_ || state_ == State::EMPTY)
+        {
+            cue_ = false;
+            return;
+        }
+        if (midi_clock_->HasClock() && midi_clock_->GetLastTick() == cue_tick_)
+            return;
+        cue_ = false;
+        if (cue_start_)
+        {
+            if (state_ == State::PLAYING)
+                rewinds_++;
+            JumpTo(0);
+        }
+        if (state_ == State::PAUSED)
+            Play();
+    }
+
+    /** The read head to frame pos. While it's heard, the scramble's crossfade glides from
+     *  where it was, so the jump doesn't click */
+    void JumpTo(size_t pos)
+    {
+        if (pos >= length_)
+            pos = 0;
+        const size_t heard = Shifted(offset_);
+        play_pos_ = pos;
+        play_frac_ = 0.f;
+        if (fade_ > .0001f)
+        {
+            from_offset_ = heard >= pos ? heard - pos : heard + length_ - pos;
+            jump_left_ = kXfadeFrames;
         }
     }
 
@@ -607,7 +707,9 @@ private:
         ApplyResetSpeed();
         speed_steps_.store(0);
         semi_steps_.store(0);
+        semis_to_.store(kNoSemis);
         speed_reset_.store(false);
+        cue_ = false;
         speed_ = 1.f;
         scrub_ = scrub_target_ = 0.f;
         scrub_turns_.store(0);
@@ -749,6 +851,10 @@ private:
     bool closing_;
     bool erasing_;
     volatile bool erase_at_end_ = false; // an EraseAtEnd waiting for the loop point
+    bool cue_ = false;       // Follow's: plays at the first tick after cue_tick_
+    bool cue_start_ = false; // and from the start
+    uint32_t cue_tick_ = 0;
+    uint32_t rewinds_ = 0;
     bool fading_out_ = false; // fading out after a pause or erase, still at play speed
 
     size_t length_;        // loop length in frames, once closed
@@ -765,6 +871,8 @@ private:
     std::atomic<int> speed_steps_{0};
     std::atomic<int> semi_steps_{0};
     std::atomic<bool> speed_reset_{false};
+    static const int kNoSemis = -1000;
+    std::atomic<int> semis_to_{kNoSemis}; // SetSemitones', kNoSemis for none
     int semis_ = 0;
     bool reverse_ = false;
     volatile float speed_target_ = 1.f;

@@ -2,8 +2,9 @@
 // FX's tempo stays under a real sender's jitter (a hardware sequencer on the jack, a DAW over
 // USB), how close a quantized loop comes to the bars it should hold and how far it drifts from
 // the clock afterwards (nothing pulls it back), what happens when the clock stops, changes or
-// switches during a recording, the 2:45 limit, and tap tempo from the panel. Each case on a
-// fresh device, its numbers printed under it. Run by unit.sh sync.
+// switches during a recording, the 2:45 limit, tap tempo from the panel, and the loop following
+// a DAW's Start, Continue, Stop and Song Position. Each case on a fresh device, its numbers
+// printed under it. Run by unit.sh sync.
 #include "timing.h"
 #include "twin.h"
 
@@ -238,6 +239,30 @@ static void RecordFree(double ms)
     RunMs(ms - 60);
     Tap("KEY_28");
     RunMs(600); // LOOP doesn't erase for 500 ms after a stop
+}
+
+// ======== MIDI's transport, followed (MANUAL.md "Start and Stop", #97 D4) ========
+
+static void Usb(std::initializer_list<int> bytes)
+{
+    for (int b : bytes)
+        UsbMidi(static_cast<uint8_t>(b));
+}
+/** Runs until the next tick of the clock has come, at most a beat */
+static void NextTick()
+{
+    const uint32_t t = Probe().ticks;
+    RunUntil([t] { return Probe().ticks != t; }, 500.);
+}
+/** Transport following on, and a loop recorded to a DAW's clock at 120 BPM over USB: 2 bars,
+ *  4 s, 32 16ths */
+static void ClockedLoop()
+{
+    StartUsb(Clock(120., 0., true));
+    RunMs(kReadyMs);
+    Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 1, 1, 0xF7});
+    StopAt(StartQuantized(), 1.5 * 2000.);
+    RunUntil([] { return Probe().loop_state == 2; }, 2500.);
 }
 
 /** SHIFT (CHOMPI held) + LOOP n times, every ms */
@@ -527,6 +552,144 @@ int main()
         Report("a free 2.5 s loop: guessed %d BPM, after taps at 120 BPM: %d", guessed, Probe().tempo);
         Check(guessed == 96, "tap: a free 2.5 s loop with no tempo set is guessed at 4 beats, 96 BPM");
         Check(Probe().tempo == 120, "tap: taps at 120 BPM refit it to 5 beats, 120 BPM");
+    }});
+
+    // Start: a loop recorded to the clock plays on until the next tick, then from its start
+    cases.push_back({"follow-start", [] {
+        ClockedLoop();
+        RunMs(2600);
+        NextTick();
+        Usb({0xFA});
+        RunMs(3);
+        const float waiting = Probe().loop_pos;
+        NextTick();
+        const ClockState c = Probe();
+        Report("follow-start: at %.4f when Start came, %.4f at the next tick", waiting, c.loop_pos);
+        Check(c.loop_beats == 8 && waiting > .6f && c.loop_state == 2 && c.loop_pos < .001f,
+              "follow: Start takes a clocked loop back to its start, from the next tick");
+        // paused, Start waits for a tick too
+        Usb({0xFC});
+        RunMs(500);
+        NextTick();
+        Usb({0xFA});
+        RunMs(3);
+        const ClockState wait = Probe();
+        NextTick();
+        const ClockState go = Probe();
+        Check(wait.loop_state == 3 && go.loop_state == 2 && go.loop_pos < .001f,
+              "follow: paused by Stop, Start plays it from its start on the next tick");
+        // the clock stopped with the DAW: Start plays it at once, from its start
+        Usb({0xFC});
+        usb.Stop();
+        RunMs(1500);
+        Usb({0xFA});
+        RunMs(5);
+        const ClockState alone = Probe();
+        Check(alone.loop_state == 2 && alone.loop_pos < .002f,
+              "follow: without a clock, Start plays it from its start at once");
+    }});
+    // the jump back to the start crossfades, as the scramble's do: no click
+    cases.push_back({"follow-click", [] {
+        sine_amp = .3f;
+        ClockedLoop();
+        RunMs(2600);
+        max_step = 0.f;
+        RunMs(1000);
+        const float playing = max_step;
+        NextTick();
+        max_step = 0.f;
+        Usb({0xFA});
+        RunMs(100);
+        const float jump = max_step;
+        Report("follow-click: largest step %.4f playing, %.4f over the jump back", playing, jump);
+        Check(Probe().loop_pos < .03f && jump < playing * 1.5f,
+              "follow: Start's jump back to the loop's start doesn't click");
+    }});
+    // Stop pauses, Continue plays on from there, on the next tick
+    cases.push_back({"follow-continue", [] {
+        ClockedLoop();
+        RunMs(1000);
+        Usb({0xFC});
+        RunMs(300);
+        const ClockState stopped = Probe();
+        NextTick();
+        Usb({0xFB});
+        RunMs(3);
+        const ClockState wait = Probe();
+        NextTick();
+        const ClockState go = Probe();
+        Report("follow-continue: paused at %.4f, playing from %.4f", stopped.loop_pos, go.loop_pos);
+        Check(stopped.loop_state == 3 && wait.loop_state == 3 && go.loop_state == 2
+                  && fabsf(go.loop_pos - stopped.loop_pos) < .002f,
+              "follow: Stop pauses, Continue plays on from there on the next tick");
+    }});
+    // Song Position while stopped moves a clocked loop there, by its length; playing, it's ignored
+    cases.push_back({"follow-spp", [] {
+        ClockedLoop();
+        RunMs(1000);
+        Usb({0xFC});
+        RunMs(300);
+        Usb({0xF2, 36, 0}); // 36 16ths: 4 into the 32 of 2 bars
+        RunMs(20);
+        const ClockState moved = Probe();
+        NextTick();
+        Usb({0xFB});
+        NextTick();
+        const ClockState go = Probe();
+        Report("follow-spp: at %.4f after Song Position 36, playing from %.4f", moved.loop_pos, go.loop_pos);
+        Check(moved.loop_state == 3 && fabsf(moved.loop_pos - .125f) < .001f,
+              "follow: Song Position while stopped sets the position, modulo the loop's 16ths");
+        Check(go.loop_state == 2 && fabsf(go.loop_pos - .125f) < .002f, "follow: and Continue plays from there");
+        Usb({0xF2, 0, 0});
+        RunMs(20);
+        Check(Probe().loop_pos > .125f, "follow: playing, Song Position is ignored");
+    }});
+    // Song Position counts the sender's 16ths: with the clock factor at half, a loop's bar is
+    // two of the sender's, so a 1-bar loop is 32 of its 16ths
+    cases.push_back({"follow-spp-half", [] {
+        StartUsb(Clock(120., 0., true));
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(200);
+        Tap("KEY_19"); // the factor: x2
+        RunMs(200);
+        Tap("KEY_19"); // x1/2
+        SetToggle(false);
+        RunMs(1000);
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 1, 1, 0xF7});
+        StopAt(StartQuantized(), 2500.); // a bar at half: 4 s, 2 of the sender's
+        RunUntil([] { return Probe().loop_state == 2; }, 5000.);
+        RunMs(1000);
+        Usb({0xFC});
+        RunMs(300);
+        Usb({0xF2, 36, 0}); // 36 of the sender's 16ths: 4 into the loop's 32
+        RunMs(20);
+        const ClockState c = Probe();
+        Report("follow-spp-half: %u beats, at %.4f after Song Position 36", c.loop_beats, c.loop_pos);
+        Check(c.loop_beats == 4 && c.loop_state == 3 && fabsf(c.loop_pos - 4.f / 32.f) < .001f,
+              "follow: at half the clock's tempo, Song Position in the sender's 16ths");
+    }});
+    // a free loop plays on through Start, and isn't moved by Song Position
+    cases.push_back({"follow-free", [] {
+        RunMs(kReadyMs);
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 1, 1, 0xF7});
+        RecordFree(2500.);
+        RunMs(1000);
+        Usb({0xFA});
+        RunMs(20);
+        const ClockState c = Probe();
+        Usb({0xFC});
+        RunMs(300);
+        const float paused = Probe().loop_pos;
+        Usb({0xF2, 8, 0});
+        RunMs(20);
+        const float after_spp = Probe().loop_pos;
+        Usb({0xFA});
+        RunMs(20);
+        Check(c.loop_beats == 0 && c.loop_state == 2 && c.loop_pos > .3f,
+              "follow: a free loop plays on through Start, not from its start");
+        Check(after_spp == paused && Probe().loop_state == 2,
+              "follow: Song Position doesn't move a free loop; Start plays it at once");
     }});
 
     return RunCases([](const std::map<std::string, std::vector<double>>& r) {

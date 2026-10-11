@@ -33,7 +33,7 @@ Each press blinks the page's number in white: once for output, twice for input, 
 for the headphones.
 
 A mono cable (TS) in AUX? Flip the mode switch **up** to the settings page and press F# of the
-lower octave (a dark key, dimly white) so it lights fully: mono. Flip back down to play. The settings page also sets the MIDI channel and shows the battery on VOLUME's LED
+upper octave (a dark key, dimly white) so it lights fully: mono. Flip back down to play. The settings page also sets the MIDI channel and shows the battery on VOLUME's LED
 (MANUAL.md, "Settings page").
 
 ## 2. Record a loop

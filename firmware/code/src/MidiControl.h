@@ -1,18 +1,33 @@
 /** @file MidiControl.h
  *  @brief FRIZZ played and inspected over MIDI (MANUAL.md, "MIDI"): notes press the keys,
- *  CCs turn the knobs or set a parameter outright, program changes recall scenes, and FRIZZ's
- *  own SysEx presses keys, turns knobs and asks what the device shows, for a computer to
- *  test it (firmware/remote.py).
+ *  CCs set a knob or a latch outright, program changes recall scenes, the transport plays the
+ *  loop, and FRIZZ's own SysEx presses keys, turns knobs and asks what the device shows, for a
+ *  computer to test it (firmware/remote.py).
+ *
+ *  Channels (#97): the one set (MasterSettings::midi_channel, 16 at first) is the global
+ *  channel, with the notes, program changes, the looper, the scenes, the gains, every latch
+ *  and the knobs of the effect they edit (the focus). Channels 1-15 are the effect block, one
+ *  per white key, left to right (FxSlots.h: 14 the chaos key, 15 the compressor), the same CCs
+ *  on each: a DAW's track per effect. On the global channel its own map wins; on all channels
+ *  (0) only the global map counts, and the block is off. Over the jack the block is a setting
+ *  (BlockTrs, the settings page's), since a chain of gear shares that cable's channels.
  *
  *  MidiClock.h reads both inputs in the audio callback and hands every message but the clock
- *  to Event(), which only notes what came: the keys MIDI holds (Keys(), merged with the hand's
- *  in ui.h, so a key held by both is pressed once), detents (TakeTurn(), ui.h), and for the
- *  play page, which takes them in MainLoop (NormalPage::Remote): the latest value of every
- *  absolute controller, marked as changed (so a DAW's dense automation is a table, never a
- *  queue that fills), a program change, the transport and a query to answer. The answer goes
- *  out over USB from MainLoop (Reply), never from the interrupt.
+ *  to Receive(), which only notes what came:
+ *  - the notes, as keys in the order they came (TakeKeys, merged with the hand's in ui.h, so a
+ *    key held by both is pressed once);
+ *  - the transport, for the looper in the same callback (TakeSync);
+ *  - for the play page, which takes them in MainLoop (NormalPage::Remote): the latest value of
+ *    every knob, gain and fader, every latch and the focus, marked as changed (so a DAW's dense
+ *    automation is a table, never a queue that fills), and in the order they came, what acts
+ *    once: a morph, its stop, a tap, a program change. Latches and those act as they change,
+ *    not on every message, so an automation lane sending its value again doesn't fire them
+ *    again; one that doesn't fit the queue isn't taken as sent, so the next message tries
+ *    again;
+ *  - a query to answer, which goes out over USB from MainLoop (Reply), never from the
+ *    interrupt.
+ *  Nothing that comes in by CC is written to the card (#97 D6).
  *
- *  Channel messages count on the channel set (MasterSettings::midi_channel, 0 for all).
  *  Every message that changes something is logged for a bug report (EventLog.h) as it came, so
  *  the replay plays it in again; a scene sent over SysEx isn't, so a replay starts from the
  *  card's scenes.
@@ -43,42 +58,51 @@ namespace chompi
 
 namespace midimap
 {
-// Notes: the 25 keys as a keyboard from kBaseNote, CHOMPI, PLAY and LOOP below it, the knob
-// presses below those
+// Notes, on the global channel: the 25 keys as a keyboard from kBaseNote, CHOMPI, PLAY and
+// LOOP below it, the knob presses below those
 static const uint8_t kBaseNote = 48;   // KEY_1, the lowest white key
 static const uint8_t kChompiNote = 45; // then PLAY 46, LOOP 47
 static const uint8_t kKnobNote = 36;   // knobs 1-4, the transport, VOLUME: 36-41
 static const uint8_t kNumKnobs = 6;
 
-// Controllers
-static const uint8_t kTurnCC = 14;   // 14-19: knobs 1-4, transport, VOLUME, relative
-static const uint8_t kLatchCC = 20;  // 20-31: an effect's latch, by its key, left to right
-static const uint8_t kCompCC = 52;   // 52-55: the master compressor's knobs 1-4
-static const uint8_t kOutGainCC = 56;
-static const uint8_t kInGainCC = 57;
-static const uint8_t kMixCC = 58;
-static const uint8_t kHpCueCC = 59;
-static const uint8_t kMonoCC = 60;
-static const uint8_t kMorphBarsCC = 61; // how many bars a morph over MIDI takes, 1-8
-static const uint8_t kMorphCC = 62;     // morph to the scene 0-4
-static const uint8_t kStopMorphCC = 63; // stops a morph where it is
-static const uint8_t kParamCC = 70;     // 70-117: effect FX's knob P at 70 + 4 FX + P
-static const uint8_t kFaderCC = 118;    // the crossfader: a running morph from its start to its scene
-// the effects with CCs: the first 12 FxIds; the chaos key (FX_CHAOS) has CC 119 for its
-// latch and its knobs on NRPN alone (bank 0, 122-125), since 118-121 are taken or reserved.
-// The phaser (FX_PHASER) has its knobs on NRPN alone, page 1 in bank 0 and page 2 in bank 1,
-// both at 64-67, and no latch, until the MIDI map is reworked (#97)
-static const size_t kMidiFx = 12;
-static const uint8_t kChaosLatchCC = 119;
-static const uint8_t kChaosNrpn = 122;
-static const uint8_t kPhaserNrpn = 64;
+// The effect block: channel k is white key k's
+static const uint8_t kBlockChannels = 15;
+static const uint8_t kKeyParams = 8; // an effect's knobs, both pages (kNumFxParams)
+
+// On an effect channel, and on the global one for the effect in focus
+static const uint8_t kKnobCC = 14;  // 14-17 page 1's knobs 1-4, 18-21 page 2's
+static const uint8_t kLatchCC = 22; // 64 and up on, below off: acts as it crosses 64
+// The global channel's
+static const uint8_t kMorphCC = 3;      // morph to the scene 0-4, as the value changes
+static const uint8_t kMorphBarsCC = 9;  // over how many bars, 1-8 (kMaxMorphBars)
+static const uint8_t kFocusCC = 23;     // 1-15: the white key whose knobs 14-22 reach
+static const uint8_t kCompCC = 24;      // 24-31: the compressor's knobs, as channel 15's 14-21
+static const uint8_t kFaderCC = 80;     // the crossfader: a running morph from its start to its scene
+static const uint8_t kStopMorphCC = 81; // stops a morph where it is, crossing 64 upward
+static const uint8_t kTapCC = 82;       // a tempo tap, crossing 64 upward
+static const uint8_t kOutGainCC = 85, kInGainCC = 86, kMixCC = 87;
+static const uint8_t kHpCueCC = 89;     // the headphone feed as VOLUME's knob: 0 the input, 127 the master
+static const uint8_t kSpeedCC = 90;     // the loop's speed in semitones: 0 1/16x, 64 1x, 127 2x
+static const uint8_t kKeyLatchCC = 102; // 102-115: white key 1-14's latch, as 22
 static const uint8_t kAllSoundOffCC = 120, kAllNotesOffCC = 123;
-// NRPN: in bank (MSB) 0, parameter number = the CC above, its value in 14 bits; in bank 1,
-// page 2 of the FX knobs and the compressor's (FxControls.h), numbered as page 1's CCs
-// (kParamCC, kCompCC). No CCs are left for page 2
-static const uint8_t kNrpnMsbCC = 99, kNrpnLsbCC = 98, kDataMsbCC = 6, kDataLsbCC = 38;
-static const uint8_t kRpnMsbCC = 101, kRpnLsbCC = 100;
-static const uint8_t kPage2Bank = 1;
+static const uint8_t kMorphBarsMax = 8;
+// Free on purpose, so what hosts and keyboards send by themselves reaches nothing: 0/32, 1,
+// 2, 4, 7, 10, 11 and 64-79; 6/38 and 96-101, an (N)RPN's data and selects (a DAW's
+// pitch-bend range); 88; 91-95; 121 (Reset All Controllers) and the channel modes. 46-53, the
+// LSBs of 14-21, stay free for a 14-bit mode later
+
+/** What TakeValue gives: white key k's knob p (both pages) as k * kKeyParams + p, the
+ *  compressor's as the 15th key's, then the rest */
+enum Value : uint8_t
+{
+    kOutGain = kBlockChannels * kKeyParams,
+    kInGain,
+    kMix,
+    kHpCue,
+    kSpeed,
+    kFader,
+    kNumValues,
+};
 } // namespace midimap
 
 // FRIZZ's SysEx commands (after F0 7D 43 48)
@@ -191,6 +215,26 @@ public:
         uint8_t sub, seq, len;
         uint8_t arg[5];
     };
+    /** What acts once, for the play page, in the order it came (TakeEvent) */
+    struct Event
+    {
+        enum Kind : uint8_t
+        {
+            MORPH,      // arg: the scene 0-4 | the bars (1-8) << 3
+            STOP_MORPH, //
+            TAP,        // at ms
+            PROGRAM,    // arg: the scene 0-4
+        };
+        uint8_t kind, arg;
+        uint16_t ms; // when it came, System::GetNow()'s lower 16 bits
+    };
+    /** The transport, for the looper (Looper::Follow) */
+    struct Sync
+    {
+        uint8_t msg;   // 0xFA Start, 0xFB Continue, 0xFC Stop, 0xF2 Song Position
+        uint16_t spp;  // Song Position's, in 16ths
+        uint32_t tick; // the clock's last tick as it came (MidiClock::GetLastTick)
+    };
 
     void Init(MidiClock* clock, EventLog* log, uint8_t channel, bool transport, float tick_freq,
               float block_seconds)
@@ -206,20 +250,45 @@ public:
 
     // ---- from the audio callback ----
 
-    /** The keys MIDI's notes hold, by Hardware::SwId: always the play page's */
-    inline uint64_t Keys() const { return keys_; }
+    /** The keys MIDI's notes hold for this block, by Hardware::SwId: always the play page's.
+     *  The notes are taken in the order they came, up to one that would change a key a second
+     *  time; it waits for the next block, so a key tapped faster than a block is still pressed
+     *  and let go */
+    uint64_t TakeKeys()
+    {
+        uint64_t changed = 0;
+        while (note_read_ != note_write_)
+        {
+            const uint8_t n = notes_[note_read_ % kNoteQueue];
+            const uint64_t bit = n == kAllKeysUp ? keys_ : 1ull << (n & kNoteKey);
+            if (changed & bit)
+                break;
+            changed |= bit;
+            ApplyNote(n);
+            note_read_++;
+        }
+        return keys_;
+    }
     /** The keys FRIZZ's SysEx holds (kCmdKey): the panel's, as the hand's, so they reach the
      *  settings page too (ui.h) */
     inline uint64_t PanelKeys() const { return panel_keys_; }
     /** The mode switch as SysEx set it (kCmdSwitch): 0 as it stands, 1 down, 2 up */
     inline uint8_t Switch() const { return switch_; }
 
-    /** A detent MIDI turned knob 0-5 (the knobs' order: 1-4, transport, VOLUME), taken: +-1,
-     *  or 0. One a block, as a hand's come: the play page counts stepped knobs and the
-     *  transport's speed steps detent by detent */
-    inline int TakeTurn(size_t knob) { return TakeOne(turns_[knob]); }
-    /** The same for FRIZZ's SysEx detents (kCmdTurn): the panel's, as the hand's */
+    /** A detent FRIZZ's SysEx turned knob 0-5 (the knobs' order: 1-4, transport, VOLUME,
+     *  kCmdTurn), taken: +-1, or 0. One a block, as a hand's come: the play page counts stepped
+     *  knobs and the transport's speed steps detent by detent */
     inline int TakePanelTurn(size_t knob) { return TakeOne(panel_turns_[knob]); }
+
+    /** The transport that came, taken in order: for the looper, before the engine runs */
+    inline bool TakeSync(Sync& s)
+    {
+        if (sync_read_ == sync_write_)
+            return false;
+        s = syncs_[sync_read_ % kSyncQueue];
+        sync_read_++;
+        return true;
+    }
 
     /** The callback's own time in system ticks, for kCmdLoad */
     inline void BlockTime(uint32_t ticks)
@@ -233,10 +302,9 @@ public:
 
     // ---- from MainLoop (the play page) ----
 
-    /** The next controller changed since it was last taken: its CC number (128 + it for page
-     *  2's, NRPN bank 1), its value as a knob's 0-1 and in 7 bits (raw); false when there's
-     *  none */
-    MIDI_CONTROL_ONCE bool TakeValue(uint16_t& cc, float& value, uint8_t& raw)
+    /** The next value changed since it was last taken (midimap::Value) and its 7 bits; false
+     *  when there's none */
+    MIDI_CONTROL_ONCE bool TakeValue(uint8_t& id, uint8_t& raw)
     {
         daisy::ScopedIrqBlocker irq;
         for (size_t w = 0; w < kValueWords; w++)
@@ -245,33 +313,50 @@ public:
                 continue;
             const uint32_t bit = changed_[w] & (~changed_[w] + 1);
             changed_[w] &= ~bit;
-            cc = static_cast<uint16_t>(w * 32 + __builtin_ctz(bit));
-            const bool fine = fine_[w] & bit;
-            fine_[w] &= ~bit;
-            value = MidiToKnob(values_[cc], fine);
-            raw = static_cast<uint8_t>(fine ? values_[cc] >> 7 : values_[cc]);
+            id = static_cast<uint8_t>(w * 32 + __builtin_ctz(bit));
+            raw = values_[id];
             return true;
         }
         return false;
     }
 
-    /** A program change, taken: its number, or -1 */
-    inline int TakeProgram()
+    /** The next thing that acts once, in the order they came */
+    inline bool TakeEvent(Event& e)
     {
         daisy::ScopedIrqBlocker irq;
-        const int p = program_;
-        program_ = -1;
-        return p;
+        if (event_read_ == event_write_)
+            return false;
+        e = events_[event_read_ % kEventQueue];
+        event_read_++;
+        return true;
     }
 
-    /** MIDI Start or Continue (1), Stop (-1), or nothing (0), taken; only while following */
-    inline int TakeTransport()
+    /** A latch MIDI changed since it was last taken: its white key 0-13 and whether it's on */
+    inline bool TakeLatch(uint8_t& key, bool& on)
     {
         daisy::ScopedIrqBlocker irq;
-        const int t = transport_cmd_;
-        transport_cmd_ = 0;
-        return t;
+        if (!latch_changed_)
+            return false;
+        key = static_cast<uint8_t>(__builtin_ctz(latch_changed_));
+        latch_changed_ &= latch_changed_ - 1;
+        on = (latch_on_ >> key) & 1;
+        return true;
     }
+
+    /** The white key 0-14 CC 23 put in focus since last asked, for the knobs to edit */
+    inline bool TakeFocus(uint8_t& key)
+    {
+        daisy::ScopedIrqBlocker irq;
+        if (!focus_changed_)
+            return false;
+        focus_changed_ = false;
+        key = focus_;
+        return true;
+    }
+
+    /** The white key 0-14 whose knobs the global channel's 14-22 reach: the play page's, as
+     *  the hand selects, and CC 23's at once, so a knob right after it goes to the new one */
+    inline void SetFocus(uint8_t key) { focus_ = key; }
 
     /** A SysEx asking for an answer, taken */
     inline bool TakeQuery(Query& q)
@@ -306,11 +391,13 @@ public:
 
     inline uint8_t Channel() const { return channel_; }
     inline bool Transport() const { return transport_; }
+    inline bool BlockTrs() const { return block_trs_; }
 
-    /** The settings page's (SettingsPage.h): the channel (0 all), transport following, and
-     *  how the clock is followed and from where */
+    /** The settings page's (SettingsPage.h): the channel (0 all), transport following, the
+     *  effect block over the jack too, and how the clock is followed and from where */
     inline void SetChannel(uint8_t channel) { channel_ = channel; }
     inline void SetTransport(bool on) { transport_ = on; }
+    inline void SetBlockTrs(bool on) { block_trs_ = on; }
     inline void SetClockFactor(ClockFactor factor) { clock_->SetFactor(factor); }
     inline void SetClockSource(ClockSource source) { clock_->SetSource(source); }
     inline ClockSource GetClockSource() const { return clock_->GetSource(); }
@@ -358,10 +445,10 @@ public:
 private:
     static void Listen(void* self, const MidiEvent& e, bool usb)
     {
-        static_cast<MidiControl*>(self)->Event(e, usb);
+        static_cast<MidiControl*>(self)->Receive(e, usb);
     }
 
-    MIDI_CONTROL_ONCE void Event(const MidiEvent& e, bool usb)
+    MIDI_CONTROL_ONCE void Receive(const MidiEvent& e, bool usb)
     {
         using namespace midimap;
         if (e.type == SystemCommon && e.sc_type == SystemExclusive)
@@ -369,23 +456,33 @@ private:
             SysEx(e.sysex_data, e.sysex_message_len, usb);
             return;
         }
-        if (e.type == SystemRealTime)
+        if (e.type == SystemRealTime || (e.type == SystemCommon && e.sc_type == SongPositionPointer))
         {
-            // Start and Stop from the clock source's input only, from both in Auto and internal
+            // the transport from the clock source's input only, from both in Auto and internal
             if (!transport_ || !FromSource(clock_->GetSource(), usb))
                 return;
-            const uint8_t t = TransportByte(e);
-            if (t)
+            const uint8_t t = e.type == SystemCommon ? 0xF2 : TransportByte(e);
+            if (!t)
+                return;
+            const uint16_t spp = t == 0xF2 ? static_cast<uint16_t>(e.data[0] | e.data[1] << 7) : 0;
+            if (static_cast<uint8_t>(sync_write_ - sync_read_) < kSyncQueue)
             {
-                transport_cmd_ = t == 0xFC ? -1 : 1;
-                Log(t, 0, 0, usb);
+                syncs_[sync_write_ % kSyncQueue] = {t, spp, clock_->GetLastTick()};
+                sync_write_++;
             }
+            Log(t, t == 0xF2 ? e.data[0] : 0, t == 0xF2 ? e.data[1] : 0, usb);
             return;
         }
         // libDaisy calls CC 120-127 channel mode messages, and then a CC after them in
         // running status too: they're all controllers here
         const MidiMessageType type = e.type == ChannelMode ? ControlChange : e.type;
-        if (type > PitchBend || (channel_ && e.channel != channel_ - 1))
+        if (type > PitchBend)
+            return;
+        // the global channel's map, or on all of them; else the effect block's, over USB or
+        // the jack if it's let
+        const uint8_t channel = static_cast<uint8_t>(e.channel + 1);
+        const bool global = !channel_ || channel == channel_;
+        if (!global && (channel > kBlockChannels || !(usb || block_trs_)))
             return;
 
         const uint8_t status = static_cast<uint8_t>(0x80 | (type << 4) | e.channel);
@@ -396,23 +493,19 @@ private:
         case NoteOn:
         {
             const int key = NoteKey(d0);
-            if (key < 0)
+            if (!global || key < 0)
                 return;
-            const uint64_t bit = 1ull << key;
-            if (type == NoteOn && d1 > 0)
-                keys_ |= bit;
-            else
-                keys_ &= ~bit;
+            PushNote(static_cast<uint8_t>(key | (type == NoteOn && d1 > 0 ? kNoteDown : 0)));
             break;
         }
         case ControlChange:
-            if (!ControlChanged(d0, d1))
+            if (!(global ? GlobalControl(d0, d1) : KeyControl(channel - 1, d0, d1)))
                 return;
             break;
         case ProgramChange:
-            if (d0 >= kNumSlots)
+            if (!global || d0 >= kNumSlots)
                 return;
-            program_ = d0;
+            Push(Event::PROGRAM, d0);
             break;
         default:
             return;
@@ -420,85 +513,150 @@ private:
         Log(status, d0, d1, usb);
     }
 
-    /** False for a controller FRIZZ doesn't use */
-    bool ControlChanged(uint8_t cc, uint8_t v)
+    /** A controller on white key key's channel, or the focus's: false for one it doesn't
+     *  use or a latch that didn't cross. latch: its source for Crosses */
+    bool KeyControl(uint8_t key, uint8_t cc, uint8_t v, uint8_t latch)
     {
         using namespace midimap;
-        if (cc >= kTurnCC && cc < kTurnCC + kNumKnobs)
+        if (cc >= kKnobCC && cc < kKnobCC + kKeyParams)
         {
-            // relative, two's complement: 1-63 up, 65-127 down
-            if (v == 0 || v == 64)
-                return false;
-            // taken one a block: a DAW's fast turns would pile up and run on for seconds
-            const int t = turns_[cc - kTurnCC] + (v < 64 ? v : static_cast<int>(v) - 128);
-            turns_[cc - kTurnCC] = t > kMaxTurns ? kMaxTurns : (t < -kMaxTurns ? -kMaxTurns : t);
+            Set(static_cast<uint8_t>(key * kKeyParams + cc - kKnobCC), v);
             return true;
         }
-        if (cc == kAllSoundOffCC || cc == kAllNotesOffCC)
+        // the compressor's channel has no latch
+        if (cc != kLatchCC || key >= kBlockChannels - 1)
+            return false;
+        return Latch(latch, key, v);
+    }
+    inline bool KeyControl(uint8_t key, uint8_t cc, uint8_t v) { return KeyControl(key, cc, v, key); }
+
+    /** A controller on the global channel: false for one it doesn't use, or a switch that
+     *  didn't cross */
+    bool GlobalControl(uint8_t cc, uint8_t v)
+    {
+        using namespace midimap;
+        if (cc >= kKnobCC && cc <= kLatchCC)
+            return KeyControl(focus_, cc, v, kFocusLatch);
+        if (cc >= kCompCC && cc < kCompCC + kKeyParams)
+            return KeyControl(kBlockChannels - 1, static_cast<uint8_t>(cc - kCompCC + kKnobCC), v);
+        if (cc >= kKeyLatchCC && cc < kKeyLatchCC + kBlockChannels - 1)
+            return Latch(static_cast<uint8_t>(kKeyLatches + cc - kKeyLatchCC), cc - kKeyLatchCC, v);
+        bool on;
+        switch (cc)
         {
-            keys_ = 0;
+        case kFocusCC:
+            if (v < 1 || v > kBlockChannels)
+                return false;
+            focus_ = v - 1;
+            focus_changed_ = true;
+            return true;
+        case kMorphCC:
+            // taken as sent only once it's queued, so a dropped one acts on the next
+            if (v == morph_last_
+                || (v < kNumSlots && !Push(Event::MORPH, static_cast<uint8_t>(v | morph_bars_ << 3))))
+                return false;
+            morph_last_ = v;
+            return v < kNumSlots;
+        case kMorphBarsCC:
+            morph_bars_ = v < 1 ? 1 : (v > kMorphBarsMax ? kMorphBarsMax : v);
+            return true;
+        case kStopMorphCC:
+        case kTapCC:
+        {
+            // a crossing either way changes what the next does, so both are logged; one
+            // upward is taken only once it's queued
+            const uint8_t source = cc == kTapCC ? kTapSwitch : kStopSwitch;
+            if (!Crosses(source, v, on) || (on && !Push(cc == kTapCC ? Event::TAP : Event::STOP_MORPH, 0)))
+                return false;
+            Side(source, on);
+            return true;
+        }
+        case kAllSoundOffCC:
+        case kAllNotesOffCC:
+            PushNote(kAllKeysUp);
             panel_keys_ = 0;
             return true;
-        }
-        if (cc == kNrpnMsbCC)
-        {
-            nrpn_msb_ = v;
-            data_msb_ = 0; // a new parameter's value starts afresh
+        case kOutGainCC:
+            Set(kOutGain, v);
             return true;
-        }
-        if (cc == kNrpnLsbCC)
-        {
-            nrpn_lsb_ = v;
-            data_msb_ = 0;
+        case kInGainCC:
+            Set(kInGain, v);
             return true;
-        }
-        // an RPN chosen (a DAW's pitch-bend range): CC 6 and 38 are its, no NRPN's. CC 100
-        // and 101 are the slicer's knobs 3 and 4 too, so they go on to Absolute
-        if (cc == kRpnMsbCC || cc == kRpnLsbCC)
-            nrpn_msb_ = 0xFF;
-        if (cc == kDataMsbCC || cc == kDataLsbCC)
-        {
-            // bank 0: an absolute controller; bank 1: page 2 of an effect's or the
-            // compressor's knobs
-            const bool phaser = nrpn_lsb_ >= kPhaserNrpn && nrpn_lsb_ < kPhaserNrpn + kNumFxKnobs;
-            const bool page2 = nrpn_msb_ == kPage2Bank
-                               && ((nrpn_lsb_ >= kParamCC && nrpn_lsb_ < kParamCC + kMidiFx * kNumFxKnobs)
-                                   || (nrpn_lsb_ >= kCompCC && nrpn_lsb_ < kCompCC + kNumFxKnobs)
-                                   || phaser);
-            const bool page1 = nrpn_msb_ == 0
-                               && (Absolute(nrpn_lsb_) || phaser
-                                   || (nrpn_lsb_ >= kChaosNrpn && nrpn_lsb_ < kChaosNrpn + kNumFxKnobs));
-            if (!page1 && !page2)
-                return false;
-            if (cc == kDataMsbCC)
-                data_msb_ = v;
-            Set(static_cast<uint16_t>(nrpn_msb_ * 128 + nrpn_lsb_),
-                static_cast<uint16_t>((data_msb_ << 7) | (cc == kDataLsbCC ? v : 0)), true);
+        case kMixCC:
+            Set(kMix, v);
             return true;
-        }
-        if (!Absolute(cc))
+        case kHpCueCC:
+            Set(kHpCue, v);
+            return true;
+        case kSpeedCC:
+            Set(kSpeed, v);
+            return true;
+        case kFaderCC:
+            Set(kFader, v);
+            return true;
+        default:
             return false;
-        Set(cc, v, false);
+        }
+    }
+
+    /** A latch from switch source, for white key key, as it crosses 64 */
+    bool Latch(uint8_t source, uint8_t key, uint8_t v)
+    {
+        bool on;
+        if (!Crosses(source, v, on))
+            return false;
+        Side(source, on);
+        const uint16_t bit = static_cast<uint16_t>(1u << key);
+        latch_on_ = on ? latch_on_ | bit : latch_on_ & ~bit;
+        latch_changed_ |= bit;
         return true;
     }
 
-    static bool Absolute(uint8_t cc)
+    /** Whether switch source changes side of 64 with v (on: to 64 and up); its first value
+     *  is a change */
+    bool Crosses(uint8_t source, uint8_t v, bool& on) const
     {
-        using namespace midimap;
-        return (cc >= kLatchCC && cc < kLatchCC + kMidiFx) || cc == kChaosLatchCC
-               || (cc >= kCompCC && cc <= kStopMorphCC) || cc == kFaderCC
-               || (cc >= kParamCC && cc < kParamCC + kMidiFx * kNumFxKnobs);
+        const uint32_t bit = 1u << source;
+        on = v >= 64;
+        return !(known_ & bit) || ((high_ & bit) != 0) != on;
+    }
+    /** And it did */
+    void Side(uint8_t source, bool on)
+    {
+        const uint32_t bit = 1u << source;
+        known_ |= bit;
+        high_ = on ? high_ | bit : high_ & ~bit;
     }
 
-    void Set(uint16_t cc, uint16_t v, bool fine)
+    void Set(uint8_t id, uint8_t v)
     {
-        values_[cc] = v;
-        const uint32_t bit = 1u << (cc % 32);
-        changed_[cc / 32] |= bit;
-        if (fine)
-            fine_[cc / 32] |= bit;
-        else
-            fine_[cc / 32] &= ~bit;
+        values_[id] = v;
+        changed_[id / 32] |= 1u << (id % 32);
+    }
+
+    /** Something that acts once, for MainLoop; false, dropped, if MainLoop is that far behind */
+    bool Push(uint8_t kind, uint8_t arg)
+    {
+        if (static_cast<uint8_t>(event_write_ - event_read_) >= kEventQueue)
+            return false;
+        events_[event_write_ % kEventQueue] = {kind, arg, static_cast<uint16_t>(daisy::System::GetNow())};
+        event_write_ = event_write_ + 1;
+        return true;
+    }
+
+    /** A note for TakeKeys; with the queue full, the oldest is applied without its block, so
+     *  only a tap can be lost, never a key's state */
+    void PushNote(uint8_t n)
+    {
+        if (static_cast<uint8_t>(note_write_ - note_read_) >= kNoteQueue)
+            ApplyNote(notes_[note_read_++ % kNoteQueue]);
+        notes_[note_write_ % kNoteQueue] = n;
+        note_write_++;
+    }
+    void ApplyNote(uint8_t n)
+    {
+        const uint64_t bit = 1ull << (n & kNoteKey);
+        keys_ = n == kAllKeysUp ? 0 : (n & kNoteDown ? keys_ | bit : keys_ & ~bit);
     }
 
     /** The key a note plays, by Hardware::SwId, or -1 */
@@ -635,20 +793,45 @@ private:
         return one;
     }
 
-    volatile uint64_t keys_ = 0;       // notes'
+    // the notes, in the order they came: a key's SwId, | kNoteDown for a press, or kAllKeysUp
+    static const uint8_t kNoteKey = 0x3F, kNoteDown = 0x40, kAllKeysUp = 0x80;
+    static const size_t kNoteQueue = 32;
+    uint8_t notes_[kNoteQueue];
+    uint8_t note_write_ = 0, note_read_ = 0;
+    uint64_t keys_ = 0;                // what TakeKeys has taken of them
     volatile uint64_t panel_keys_ = 0; // SysEx's
-    static const int kMaxTurns = 64; // detents waiting, at most: 32 ms of them
-    volatile int turns_[midimap::kNumKnobs] = {};       // CCs'
     volatile int panel_turns_[midimap::kNumKnobs] = {}; // SysEx's
     volatile uint8_t switch_ = 0;
+    volatile bool block_trs_ = true;
 
-    // by CC number, and 128 + it for page 2's NRPN (bank 1)
-    static const size_t kValueWords = 256 / 32;
-    uint16_t values_[256] = {};
-    uint32_t changed_[kValueWords] = {}, fine_[kValueWords] = {};
-    uint8_t nrpn_msb_ = 0xFF, nrpn_lsb_ = 0xFF, data_msb_ = 0; // 0xFF: none yet
-    volatile int program_ = -1;
-    volatile int transport_cmd_ = 0;
+    // by midimap::Value
+    static const size_t kValueWords = (midimap::kNumValues + 31) / 32;
+    uint8_t values_[midimap::kNumValues] = {};
+    uint32_t changed_[kValueWords] = {};
+    // what acts once, for MainLoop
+    static const size_t kEventQueue = 16;
+    Event events_[kEventQueue];
+    volatile uint8_t event_write_ = 0, event_read_ = 0;
+    // the transport, for the looper
+    static const size_t kSyncQueue = 4;
+    Sync syncs_[kSyncQueue];
+    uint8_t sync_write_ = 0, sync_read_ = 0;
+
+    uint8_t focus_ = 0; // the white key the global channel's 14-22 reach
+    volatile bool focus_changed_ = false; // by CC 23
+    // the latches by white key, and which changed since MainLoop took them
+    uint16_t latch_on_ = 0;
+    volatile uint16_t latch_changed_ = 0;
+    // the switches' sides (Crosses), a bit each: the effect channels' latches (their key),
+    // the focus's, the global latches (kKeyLatches + key), stop morph and tap
+    static const uint8_t kFocusLatch = midimap::kBlockChannels;
+    static const uint8_t kKeyLatches = kFocusLatch + 1;
+    static const uint8_t kStopSwitch = kKeyLatches + midimap::kBlockChannels - 1;
+    static const uint8_t kTapSwitch = kStopSwitch + 1;
+    static_assert(kTapSwitch < 32, "a bit per switch");
+    uint32_t known_ = 0, high_ = 0; // sent a value yet; it was 64 or more
+    uint8_t morph_last_ = 0xFF;     // CC 3's last value, 0xFF for none yet
+    uint8_t morph_bars_ = 1;
 
     Query query_;
     volatile bool query_pending_ = false;

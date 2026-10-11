@@ -1,6 +1,6 @@
 /** @file MidiOut.h
  *  @brief MIDI clock, Start, Stop, Continue and Song Position out of the MIDI jack, and over
- *  USB if asked (the settings page's upper D#, MANUAL.md "MIDI out"; decided in #60). Off at
+ *  USB if asked (the settings page's upper C#, MANUAL.md "MIDI out"; decided in #60). Off at
  *  first: then nothing goes out.
  *
  *  While it's on, the clock always runs, at the tempo FRIZZ thinks in, the beat on the
@@ -17,7 +17,9 @@
  *    plays from a Start passed on: the ticks then just carry on (a quantized loop starts on
  *    the clock's bar line, and a Start would throw longer patterns back to their bar 1);
  *  - a pause sends Stop; playing on sends Song Position at the next 16th right away, then
- *    Continue with that 16th's tick, so gear that ignores Song Position resumes in step too.
+ *    Continue with that 16th's tick, so gear that ignores Song Position resumes in step too;
+ *  - a playing loop taken back to its start by MIDI's Start (Looper::Follow) sends Start with
+ *    its first tick again.
  *  Erasing the loop sends nothing: the out passes the incoming clock on again, or runs on at
  *  the loop's tempo.
  *
@@ -63,6 +65,8 @@ public:
             // the loop's transport
             if (loop && !was_loop_)
                 start_ = !paused && !(was_passing_ && playing_);
+            else if (loop && engine.looper.Rewinds() != rewinds_)
+                start_ = true; // back to its start by MIDI's Start (Looper::Follow)
             else if (loop && paused && !was_paused_)
             {
                 Send(kStop, back);
@@ -143,6 +147,7 @@ public:
         }
 
         last_ticks_ = ticks;
+        rewinds_ = engine.looper.Rewinds();
         was_loop_ = loop;
         was_paused_ = paused;
         was_passing_ = passing;
@@ -170,6 +175,7 @@ public:
 private:
     static const uint8_t kTick = 0xF8, kStart = 0xFA, kContinue = 0xFB, kStop = 0xFC;
     static const uint32_t kNone = 0xFFFFFFFF;
+    uint32_t rewinds_ = 0; // the looper's Rewinds() as last seen
     static const uint32_t kMaxBunch = 4; // ticks passed on in one block, at most
 
     /** A byte ring, filled by the audio callback; read by it (the jack's) or by MainLoop

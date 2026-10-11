@@ -113,7 +113,7 @@ namespace chompi
             if (settings_)
                 settings_keys_ |= panel & ~panel_;
             panel_ = panel;
-            Tell((panel & ~settings_keys_) | midi_->Keys(), told_, 0);
+            Tell((panel & ~settings_keys_) | midi_->TakeKeys(), told_, 0);
             Tell(panel & settings_keys_, told_settings_, kSettingsKeyBase);
             settings_keys_ &= panel;
 
@@ -129,13 +129,9 @@ namespace chompi
                     log_->Add(EventLog::TURN, i + 1, inc);
                 }
             }
-            // MIDI's, in the knobs' order already, one detent a block: CCs always, SysEx's as
-            // the hand's
+            // FRIZZ's SysEx detents, in the knobs' order already, one a block, as the hand's
             for (uint16_t knob = 0; knob < midimap::kNumKnobs; knob++)
             {
-                const int turn = midi_->TakeTurn(knob);
-                if (turn)
-                    event_queue.AddEncoderTurned(knob, static_cast<int16_t>(turn), 0);
                 const int panel_turn = midi_->TakePanelTurn(knob);
                 if (panel_turn && !settings_)
                     event_queue.AddEncoderTurned(knob, static_cast<int16_t>(panel_turn), 0);

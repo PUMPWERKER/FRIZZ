@@ -8,20 +8,24 @@
  *
  *    white keys 1-14     MIDI channel 1-14                   light blue, the one in force lit
  *    white key 15        channel 15, again 16, again 15 ...  light blue for 15, white for 16
+ *  The dark keys by topic (#97): the lower octave MIDI in, the upper the rest.
+ *
  *    C# (lower octave)   all channels                        light blue
- *    D#                  MIDI transport following, on / off  green, lit when on
- *    F#                  mono input, on / off                white, lit when on
+ *    D#                  the effect channels (1-15) over the jack too, on / off
+ *                                                            light blue, lit when on
+ *    F#                  MIDI transport following, on / off  green, lit when on
  *    G#                  the clock's tempo factor, each press the next: x1, x2, x1/2
  *                                                            yellow, red, light blue,
  *                        lit for the first half of every beat the effects follow, else dim
- *    A#                  the LEDs' brightness, each press the next: 100, 75, 50 %
- *                                                            purple, dimmed as all are
- *    D# (upper octave)   MIDI out, each press the next: off, the jack, the jack and USB
- *                                                            dim, orange, white
- *    G# (upper octave)   the clock source, each press the next: Auto, TRS, USB, internal
+ *    A#                  the clock source, each press the next: Auto, TRS, USB, internal
  *                                                            white, orange, blue, pink
+ *    C# (upper octave)   MIDI out, each press the next: off, the jack, the jack and USB
+ *                                                            dim, orange, white
+ *    F# (upper octave)   mono input, on / off                white, lit when on
+ *    G# (upper octave)   the LEDs' brightness, each press the next: 100, 75, 50 %
+ *                                                            purple, dimmed as all are
  *
- *  The upper octave's other dark keys are free.
+ *  The upper octave's D# and A# are free.
  *
  *    SHIFT + VOLUME press, both held 2 s     a bug report (EventLog.h), once per hold;
  *                                            the transport LEDs blink as on the play page
@@ -72,6 +76,7 @@ public:
         midi_->SetClockFactor(factor_);
         midi_->SetClockSource(static_cast<ClockSource>(master.clock_source));
         midi_->SetMidiOut(static_cast<MidiOutPorts>(master.midi_out));
+        midi_->SetBlockTrs(master.midi_block_trs);
         quarters_ = master.led_brightness / 25;
         SetLedQuarters(quarters_);
     }
@@ -108,12 +113,12 @@ private:
             return SetChannel(midi_->Channel() == 15 ? 16 : 15); // 15 first, then 16, 15 ...
         if (key == static_cast<int>(S::KEY_16))
             return SetChannel(0);
-        if (key == static_cast<int>(S::KEY_17))
+        if (key == static_cast<int>(kTransportKey))
         {
             midi_->SetTransport(!midi_->Transport());
             return true;
         }
-        if (key == static_cast<int>(S::KEY_18))
+        if (key == static_cast<int>(kMonoKey))
             return SetMono(!mono_);
         if (key == static_cast<int>(kFactorKey))
         {
@@ -127,6 +132,11 @@ private:
             // Auto, TRS, USB, internal, Auto ...
             const uint8_t next = (static_cast<uint8_t>(midi_->GetClockSource()) + 1) % kNumClockSources;
             midi_->SetClockSource(static_cast<ClockSource>(next));
+            return true;
+        }
+        if (key == static_cast<int>(kBlockTrsKey))
+        {
+            midi_->SetBlockTrs(!midi_->BlockTrs());
             return true;
         }
         if (key == static_cast<int>(kMidiOutKey))
@@ -173,7 +183,7 @@ public:
         return true;
     }
 
-    /** The mono input, from its key or MIDI (CC 60). True if it changed */
+    /** The mono input, from its key. True if it changed */
     bool SetMono(bool mono)
     {
         if (mono == mono_)
@@ -212,6 +222,7 @@ public:
                                                                : 100;
         master.clock_source = static_cast<uint8_t>(midi_->GetClockSource());
         master.midi_out = static_cast<uint8_t>(midi_->GetMidiOut());
+        master.midi_block_trs = midi_->BlockTrs();
         master.led_brightness = quarters_ * 25;
     }
 
@@ -225,14 +236,15 @@ public:
             KeyLed(kWhiteKeys[ch], med_blue, channel == ch + 1);
         KeyLed(kChannel15Key, channel == 16 ? white : med_blue, channel >= 15);
         KeyLed(Hardware::SwId::KEY_16, med_blue, channel == 0);
-        KeyLed(Hardware::SwId::KEY_17, green, midi_->Transport());
-        KeyLed(Hardware::SwId::KEY_18, white, mono_);
+        KeyLed(kTransportKey, green, midi_->Transport());
+        KeyLed(kMonoKey, white, mono_);
         // the factor's colour, on the beats of the tempo the effects follow (TempoClock.h)
         const bool beat = engine_->FxClockPosition() % kPulsesPerBeat < kPulsesPerBeat / 2;
         KeyLed(kFactorKey, kFactorColors[static_cast<uint8_t>(factor_)], beat);
         KeyLed(kSourceKey, kSourceColors[static_cast<uint8_t>(midi_->GetClockSource())], true);
         const MidiOutPorts out = midi_->GetMidiOut();
         KeyLed(kMidiOutKey, out == MidiOutPorts::TRS ? orange : white, out != MidiOutPorts::OFF);
+        KeyLed(kBlockTrsKey, med_blue, midi_->BlockTrs());
         KeyLed(kBrightnessKey, purple, true); // dimmed with every LED: it shows itself
 
         const unsigned level = hw_->GetBatteryLevel();
@@ -281,13 +293,15 @@ private:
     static const int kNoKey = -1;
     static const uint32_t kBugReportHoldMs = 2000;
 
-    // G# and A# of the lower octave
+    // the dark keys by topic (#97): MIDI in on the lower octave, from all channels (KEY_16)
+    // on; the rest on the upper
+    static const Hardware::SwId kBlockTrsKey = Hardware::SwId::KEY_17;
+    static const Hardware::SwId kTransportKey = Hardware::SwId::KEY_18;
     static const Hardware::SwId kFactorKey = Hardware::SwId::KEY_19;
-    static const Hardware::SwId kBrightnessKey = Hardware::SwId::KEY_20;
-    // G# of the upper octave, where the factor's is in the lower
-    static const Hardware::SwId kSourceKey = Hardware::SwId::KEY_24;
-    // D# of the upper octave, where transport following's is in the lower
-    static const Hardware::SwId kMidiOutKey = Hardware::SwId::KEY_22;
+    static const Hardware::SwId kSourceKey = Hardware::SwId::KEY_20;
+    static const Hardware::SwId kMidiOutKey = Hardware::SwId::KEY_21;
+    static const Hardware::SwId kMonoKey = Hardware::SwId::KEY_23;
+    static const Hardware::SwId kBrightnessKey = Hardware::SwId::KEY_24;
     // the factor's hue, by ClockFactor: x1/2 light blue, x1 yellow, x2 red
     static constexpr const float* kFactorColors[3] = {med_blue, yellow, red};
     // the source's, by ClockSource: Auto white, TRS orange, USB blue, internal pink

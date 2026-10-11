@@ -1,8 +1,8 @@
 // midi.cpp: FRIZZ's MIDI input (MidiClock.h, behind libDaisy's parser and handlers) on the
 // virtual CHOMPI: clock ticks among other messages and inside them, the messages it ignores,
 // rubbish, and the two inputs, the jack and USB: which one locks, and when the other takes
-// over; and what MidiControl.h makes of controllers: NRPN against a DAW's RPN, relative CCs
-// sent fast, FRIZZ's SysEx in a bug report. Each case on a fresh device. Run by unit.sh midi.
+// over; and what MidiControl.h makes of what comes: (N)RPN turning no knob, a key tapped within
+// a block, a Song Position after a program change, FRIZZ's SysEx in a bug report. Each case on a fresh device. Run by unit.sh midi.
 #include "timing.h"
 #include "twin.h"
 
@@ -58,6 +58,19 @@ static void FilterKnobs(int& k1, int& k2)
         return;
     k1 = out[6] << 7 | out[7];
     k2 = out[8] << 7 | out[9];
+}
+
+/** What the play page shows (kCmdState), the answer's data; empty when none came */
+static std::string Ask(std::initializer_list<int> query)
+{
+    TakeUsbOut();
+    Usb({0xF0, 0x7D, 0x43, 0x48});
+    for (int b : query)
+        UsbMidi(static_cast<uint8_t>(b));
+    Usb({0xF7});
+    RunMs(20);
+    const std::string out = TakeUsbOut();
+    return out.size() > 6 ? out.substr(5, out.size() - 6) : std::string();
 }
 
 /** The ticks the firmware counted from the clock it locked to while bytes went in */
@@ -134,7 +147,7 @@ int main()
             if (k % 4 == 0)
                 return std::vector<uint8_t>{0xF0, 0x7E, 0x00, 0xF8, 0x06, 0x01, 0xF7};
             return std::vector<uint8_t>{0xF8};
-        }, true, "inside SysEx: a tick in the middle of a SysEx counted (#18)");
+        }, false, "inside SysEx: a tick in the middle of a SysEx counted (#18)");
     }});
 
     cases.push_back({"restart-tick", [] {
@@ -144,7 +157,7 @@ int main()
         for (uint8_t b : {0xF0, 0x7D, 0x43, 0xF8, 0x48, 0x10, 0xF7})
             Midi(b);
         RunMs(50);
-        Known(Restarted(), "restart: FRIZZ's restart SysEx with a clock tick inside it still restarts (#18)");
+        Check(Restarted(), "restart: FRIZZ's restart SysEx with a clock tick inside it still restarts (#18)");
     }});
 
     // Start, Stop, Continue and Song Position are ignored (LOOPER.md 1.4): they don't reset or
@@ -290,48 +303,49 @@ int main()
                   "a lone late tick doesn't move the tempo");
         }});
 
-    // NRPN (MidiControl.h): a DAW's RPN after it, its pitch-bend range (RPN 0/0 and CC 6),
-    // goes to the RPN, not to the last NRPN
+    // (N)RPN (#97): no path any more, so what a DAW sends by itself, its pitch-bend range (RPN
+    // 0/0 and CC 6/38), data increment and the null RPN, on the global channel or an effect's,
+    // turns no knob; nor does v0.11's NRPN for the cutoff
     cases.push_back({"rpn", [] {
         RunMs(kReadyMs);
-        Trs({kCC, 99, 0, kCC, 98, 86, kCC, 6, 64, kCC, 38, 0}); // the cutoff, at its centre
+        Trs({0xB4, 14, 64}); // the filter's channel, 5: its cutoff at the centre
         RunMs(50);
+        int before, b2;
+        FilterKnobs(before, b2);
+        for (int st : {kCC, 0xB4})
+            Trs({st, 101, 0, st, 100, 0, st, 6, 2, st, 38, 0, st, 96, 0, st, 97, 0,
+                 st, 101, 127, st, 100, 127, st, 99, 0, st, 98, 86, st, 6, 10, st, 38, 0});
+        RunMs(50);
+        int after, a2;
+        FilterKnobs(after, a2);
+        Report("rpn: the cutoff %d before, %d after", before, after);
+        Check(before == 8192 && after == 8192 && a2 == b2,
+              "rpn: (N)RPN selects, data entry and increment turn no knob");
+    }});
+
+    // notes go in the order they came: a key pressed and let go within one block still presses
+    cases.push_back({"fast-tap", [] {
+        RunMs(kReadyMs);
+        Usb({0x9F, 47, 100, 0x8F, 47, 0}); // LOOP, tapped in one USB packet
+        RunMs(100);
+        Report("fast-tap: the looper's state %d", Probe().loop_state);
+        Check(Probe().loop_state == 1, "fast-tap: LOOP tapped within a block records");
+    }});
+
+    // the parser (THIRD_PARTY.md): a Song Position after a program change is three bytes, not
+    // one and a program change of its second
+    cases.push_back({"spp-after-pc", [] {
+        RunMs(kReadyMs);
+        Trs({kCC, 106, 127}); // the filter latched
+        RunMs(100);
         int before, k2;
         FilterKnobs(before, k2);
-        Trs({kCC, 101, 0, kCC, 100, 0, kCC, 6, 2, kCC, 38, 0}); // pitch-bend range 2
-        RunMs(50);
-        int after;
-        FilterKnobs(after, k2);
-        Report("rpn: the cutoff %d before the RPN, %d after", before, after);
-        Check(before == 8192 && after == 8192, "rpn: CC 6 after an RPN's CC 101/100 leaves the last NRPN's parameter alone");
-    }});
-
-    // a new NRPN's value starts from MSB 0: an LSB alone sets only the low 7 bits
-    cases.push_back({"nrpn-lsb", [] {
-        RunMs(kReadyMs);
-        Trs({kCC, 99, 0, kCC, 98, 86, kCC, 6, 64, kCC, 38, 0});
-        Trs({kCC, 99, 0, kCC, 98, 87, kCC, 38, 5}); // knob 2, an LSB alone
-        RunMs(50);
-        int k1, k2;
-        FilterKnobs(k1, k2);
-        Report("nrpn-lsb: knob 1 %d, knob 2 %d", k1, k2);
-        Check(k1 == 8192 && k2 == 5, "nrpn-lsb: an LSB alone after a new NRPN doesn't take the last one's MSB");
-    }});
-
-    // relative CCs (14-19) a DAW sends fast: the knob stops when they stop, it doesn't run on
-    cases.push_back({"turn-backlog", [] {
-        RunMs(kReadyMs);
-        Tap("KEY_5"); // the filter: knob 1 its cutoff
-        RunMs(200);
-        for (int i = 0; i < 10; i++)
-            Trs({kCC, 14, 63}); // 630 detents up, in a few ms
-        RunMs(50);
-        Trs({kCC, 86, 0}); // then the cutoff to 0 outright
-        RunMs(1000);
-        int k1, k2;
-        FilterKnobs(k1, k2);
-        Report("turn-backlog: the cutoff %d a second after it was set to 0", k1);
-        Check(k1 == 0, "turn-backlog: relative CCs don't pile up: the knob stops turning soon after they stop");
+        const std::string latched = Ask({0x20});
+        Trs({0xCF, 3, 0xF2, 0x00, 0x00}); // an empty slot, then Song Position 0
+        RunMs(300);
+        const std::string st = Ask({0x20});
+        Check(latched.size() > 9 && st.size() > 9 && st[9] == latched[9] && (st[9] & (1 << 4)),
+              "spp-after-pc: the filter stays latched: no program change 0 came of it");
     }});
 
     // FRIZZ's SysEx in a bug report as it came: the mode switch has one data byte, and the

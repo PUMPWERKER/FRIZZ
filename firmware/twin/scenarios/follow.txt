@@ -1,0 +1,32 @@
+# The loop following a DAW's transport over USB (MANUAL.md "Start and Stop", #97): channel 16,
+# transport following on and the clock source Auto by SysEx, a 2-bar loop recorded to a clock
+# at 120 BPM; Stop, Song Position 36 (4 into its 32 16ths), Continue; Start while playing takes
+# it back to its start; then Stop and Song Position 36 again: it ends paused at 1/8. From an
+# empty looper: on the device, right after FRIZZ starts
+input sine 220 0.3
+clock 120 usb
+at 6000
+usb F0 7D 43 48 13 00 10 F7
+usb F0 7D 43 48 13 01 01 F7
+usb F0 7D 43 48 13 02 00 F7
+wait 500
+down KEY_27
+tap KEY_28
+up KEY_27
+wait 2500
+tap KEY_28
+wait 3000
+# playing
+expect led pth 6 79f200
+usb FC
+wait 500
+usb F2 24 00
+wait 500
+usb FB
+wait 1500
+usb FA
+wait 1500
+usb FC
+wait 300
+usb F2 24 00
+wait 300

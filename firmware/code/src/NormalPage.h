@@ -28,13 +28,15 @@
  *  SHIFT + PLAY stops a morph where it is; without one, PLAY works as ever. The transport knob
  *  turned while SHIFT still holds a morph is its crossfader (#66, SceneControls::FaderTurned):
  *  the glide in the hand, until SHIFT is let go (ReleaseMorph); the transport LEDs show it.
- *  A morph on MIDI's crossfader (CC 118) stays MIDI's: letting go of SHIFT doesn't end it.
+ *  A morph on MIDI's crossfader (CC 80) stays MIDI's: letting go of SHIFT doesn't end it.
  *  The card is written from MainLoop (SceneStore::Process), never here.
  *
  *  MIDI (MidiControl.h): notes and FRIZZ's SysEx keys and detents come as the hand's do (ui.h);
- *  the rest, Remote() takes from MainLoop: a controller sets a parameter, a latch, a gain or
- *  the mix outright, as its knob or key would, a program change is a scene key, a morph over
- *  MIDI glides at once over the bars set. It answers SysEx queries over USB.
+ *  the rest, Remote() takes from MainLoop: a controller sets a parameter, a latch, a gain, the
+ *  mix or the loop's speed outright, as its knob or key would, a program change is a scene key,
+ *  a morph over MIDI glides at once over the bars set; the compressor's CCs aren't kept on the
+ *  card. The loop follows MIDI's transport in the audio callback (Looper::Follow). It answers
+ *  SysEx queries over USB.
  */
 #pragma once
 
@@ -435,27 +437,35 @@ namespace chompi
             return true;
         }
 
-        /** What came over MIDI for the page, from MainLoop: controllers, a program change, the
-         *  transport, settings to keep and a query to answer */
+        /** What came over MIDI for the page, from MainLoop: the focus, what acts once in the
+         *  order it came, the latches, then the knobs' and gains' latest values, settings to
+         *  keep and a query to answer */
         MIDI_CONTROL_ONCE void Remote()
         {
             const uint32_t now = System::GetNow();
-            uint16_t cc;
-            uint8_t raw;
-            float value;
-            while (midi_->TakeValue(cc, value, raw))
-                RemoteValue(cc, value, raw);
-
-            // a program change is its scene key, pressed
-            const int program = midi_->TakeProgram();
-            if (program >= 0)
-                ScenePressed(static_cast<size_t>(program), false);
-
-            // MIDI Start / Continue plays the loop, Stop pauses it
-            const int transport = midi_->TakeTransport();
-            if (transport && LoopExists()
-                && (transport > 0) != (LooperState() == Looper::State::PLAYING))
-                engine_->looper.TogglePlay();
+            uint8_t key;
+            if (midi_->TakeFocus(key))
+            {
+                const size_t fx = FxOnWhiteKey(key);
+                fx_.Select(fx < kNumFx ? fx : kCompSelected);
+            }
+            MidiControl::Event event;
+            while (midi_->TakeEvent(event))
+                RemoteEvent(event, now);
+            bool on;
+            while (midi_->TakeLatch(key, on))
+                if (FxOnWhiteKey(key) < kNumFx)
+                    fx_.SetLatch(FxOnWhiteKey(key), on);
+            uint8_t id, raw;
+            while (midi_->TakeValue(id, raw))
+                RemoteValue(id, raw);
+            // the focus as the hand or MIDI left it, for the global channel's knobs
+            const uint8_t focus = static_cast<uint8_t>(WhiteKeyOfFx(fx_.Selected()));
+            if (focus != told_focus_)
+            {
+                told_focus_ = focus;
+                midi_->SetFocus(focus);
+            }
 
             if (midi_->TakeSettingsChanged())
                 MasterChanged(now);
@@ -470,43 +480,59 @@ namespace chompi
         }
 
     private:
-        MIDI_CONTROL_ONCE void RemoteValue(uint16_t cc, float value, uint8_t raw)
+        /** What acts once: a morph or its stop, a tap, a program change (a scene key pressed) */
+        MIDI_CONTROL_ONCE void RemoteEvent(const MidiControl::Event& e, uint32_t now)
+        {
+            using Event = MidiControl::Event;
+            switch (e.kind)
+            {
+            case Event::MORPH:
+                RemoteMorph(e.arg & 7, e.arg >> 3);
+                break;
+            case Event::STOP_MORPH:
+                FreezeMorph();
+                break;
+            case Event::TAP:
+                // when it came: MainLoop may have been held up by the card meanwhile
+                Tap(now - static_cast<uint16_t>(static_cast<uint16_t>(now) - e.ms));
+                break;
+            case Event::PROGRAM:
+                ScenePressed(e.arg, false);
+                break;
+            }
+        }
+
+        /** A controller's value (midimap::Value): a knob, the compressor's too, which the card
+         *  doesn't get (#97 D6), a gain, the loop's speed or the crossfader */
+        MIDI_CONTROL_ONCE void RemoteValue(uint8_t id, uint8_t raw)
         {
             using namespace midimap;
-            // page 1's from the CC, page 2's from its NRPN in bank 1 (MidiControl.h)
-            const size_t bank = cc / 128, ctl = cc % 128;
-            if (ctl >= kParamCC && ctl < kParamCC + kMidiFx * kNumFxKnobs)
-                fx_.SetParamTo((ctl - kParamCC) / kNumFxKnobs,
-                               (ctl - kParamCC) % kNumFxKnobs + bank * kNumFxKnobs, value);
-            else if (ctl >= kCompCC && ctl < kCompCC + kNumFxKnobs)
-                fx_.SetComp(ctl - kCompCC + bank * kNumFxKnobs, value);
-            else if (ctl >= kChaosNrpn && ctl < kChaosNrpn + kNumFxKnobs)
-                fx_.SetParamTo(FX_CHAOS, ctl - kChaosNrpn + bank * kNumFxKnobs, value);
-            else if (ctl >= kPhaserNrpn && ctl < kPhaserNrpn + kNumFxKnobs)
-                fx_.SetParamTo(FX_PHASER, ctl - kPhaserNrpn + bank * kNumFxKnobs, value);
-            else if (bank)
-                return;
-            else if (cc >= kLatchCC && cc < kLatchCC + kMidiFx)
-                fx_.SetLatch(cc - kLatchCC, raw >= 64);
-            else if (cc == kChaosLatchCC)
-                fx_.SetLatch(FX_CHAOS, raw >= 64);
-            else if (cc == kOutGainCC)
+            static_assert(kKeyParams == kNumFxParams, "a CC per parameter");
+            const float value = MidiToKnob(raw, false);
+            if (id < kOutGain)
+            {
+                const size_t fx = FxOnWhiteKey(id / kKeyParams), param = id % kKeyParams;
+                if (fx < kNumFx)
+                    fx_.SetParamTo(fx, param, value);
+                else
+                    fx_.SetComp(param, value, false);
+            }
+            else if (id == kOutGain)
                 SetOutGain(value);
-            else if (cc == kInGainCC)
+            else if (id == kInGain)
                 SetInGain(value);
-            else if (cc == kMixCC)
+            else if (id == kMix)
                 SetMix(value);
-            else if (cc == kHpCueCC)
-                SetHpCue(value);
-            else if (cc == kMonoCC && settings_.SetMono(raw >= 64))
-                MasterChanged(System::GetNow());
-            else if (cc == kMorphBarsCC)
-                morph_bars_ = raw < 1 ? 1 : (raw > kMaxMorphBars ? kMaxMorphBars : raw);
-            else if (cc == kMorphCC && raw < kNumSlots)
-                RemoteMorph(raw);
-            else if (cc == kStopMorphCC && raw >= 64)
-                FreezeMorph();
-            else if (cc == kFaderCC)
+            else if (id == kHpCue)
+                SetHpCue(1.f - value); // as VOLUME's knob: up towards the master
+            else if (id == kSpeed)
+            {
+                // semitones: 0 is 1/16x, 64 1x, 127 2x
+                const int semis = raw <= 64 ? (raw * 48 + 32) / 64 - 48 : ((raw - 64) * 12 + 31) / 63;
+                if (LoopExists())
+                    engine_->looper.SetSemitones(semis);
+            }
+            else if (id == kFader)
             {
                 ScopedIrqBlocker irq;
                 scene_ctl_.FaderTo(value);
@@ -515,9 +541,10 @@ namespace chompi
 
         /** A morph over MIDI: as SHIFT + the scene key, tapped once per bar, and SHIFT let go,
          *  unless the hand holds it, whose release then lets it glide */
-        void RemoteMorph(size_t slot)
+        void RemoteMorph(size_t slot, uint8_t bars)
         {
-            const auto result = ScenePressed(slot, true, morph_bars_);
+            static_assert(midimap::kMorphBarsMax == kMaxMorphBars, "MIDI's bars, the morph's");
+            const auto result = ScenePressed(slot, true, bars);
             if (result != SceneControls<PassthroughEngine>::Slot::REFUSED && !Shift())
                 ReleaseMorph();
         }
@@ -870,7 +897,7 @@ namespace chompi
         }
         /** SHIFT let go: a morph started with it glides now (FxMorph::Release), or the hand's
          *  crossfader ends where it is (SceneControls::EndFade). One on MIDI's crossfader
-         *  (CC 118) stays MIDI's */
+         *  (CC 80) stays MIDI's */
         void ReleaseMorph()
         {
             ScopedIrqBlocker irq;
@@ -932,9 +959,15 @@ namespace chompi
                 scene_flash_signal_.Start(now);
             }
 
-            // the compressor's knobs to the card, once they've been left alone a while
-            if (fx_.TakeCompChanged())
+            // the compressor's knobs to the card, once they've been left alone a while: those
+            // the hand or SysEx set, not MIDI's CCs (#97 D6)
+            if (const uint8_t comp = fx_.TakeCompChanged())
+            {
+                for (size_t p = 0; p < kNumFxParams; p++)
+                    if ((comp >> p) & 1)
+                        scenes_->master.comp[p] = fx_.CompParam(p);
                 MasterChanged(now);
+            }
             // a failed write: the compressor's key blinks red, and the settings page's key
             // changed last, and it's tried again a few times
             if (scenes_->TakeMasterFailed())
@@ -955,8 +988,6 @@ namespace chompi
             }
             if (master_unsaved_ && now - master_changed_at_ > kMasterSaveDelayMs)
             {
-                for (size_t p = 0; p < kNumFxParams; p++)
-                    scenes_->master.comp[p] = fx_.CompParam(p);
                 settings_.Store(scenes_->master);
                 scenes_->RequestMasterSave();
                 master_saving_ = true;
@@ -979,10 +1010,9 @@ namespace chompi
         }
 
         /** A tempo tap: with a loop, it refits the loop's beats; without one, it sets the
-         *  tempo, unless MIDI clock runs (TempoClock.h) */
-        void Tap()
+         *  tempo, unless MIDI clock runs (TempoClock.h). now: when it was tapped */
+        void Tap(uint32_t now = System::GetNow())
         {
-            const uint32_t now = System::GetNow();
             if (!engine_->CanTap())
             {
                 Refused();
@@ -1443,7 +1473,7 @@ namespace chompi
         SceneStore *scenes_;
         EventLog *log_;
         MidiControl *midi_ = nullptr;
-        uint8_t morph_bars_ = 1;       // a morph over MIDI's bars (midimap::kMorphBarsCC)
+        uint8_t told_focus_ = 0;       // the white key MIDI's focus was told (Remote)
         FxScene put_scene_;            // a scene coming over SysEx (kCmdScenePut),
         int put_slot_ = kNoScene;      // for this slot,
         uint32_t put_parts_ = 0;       // with these parts so far

@@ -157,6 +157,10 @@ public:
      *  meaningful: the looper snapshots it at the record press and counts from there. */
     inline uint32_t GetTicks() const { return ticks_; }
 
+    /** Sample count of the last tick that came from the locked source, counted or not: a
+     *  change is a tick (Looper::Follow) */
+    inline uint32_t GetLastTick() const { return last_tick_; }
+
     /** Sample count of the most recent tick counted */
     inline uint32_t GetLastTickTime() const { return counted_at_; }
 
