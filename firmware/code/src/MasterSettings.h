@@ -18,12 +18,14 @@
  *    midi_out 0
  *    led_brightness 100
  *    midi_block_trs 1
+ *    midi_feedback 0
  *
  *  clock_factor is how FRIZZ follows a MIDI clock, in percent of its tempo: 50, 100 or 200;
  *  clock_source whose clock it follows (ClockSource, MidiClock.h): 0 Auto, 1 TRS, 2 USB, 3
  *  internal; midi_out where MIDI out goes (MidiOutPorts): 0 off, 1 the jack, 2 the jack and
  *  USB; led_brightness the LEDs' in percent of FRIZZ's full: 100, 75 or 50; midi_block_trs
- *  whether the effect channels 1-15 count over the jack too, not only USB (MidiControl.h). Another
+ *  whether the effect channels 1-15 count over the jack too, not only USB (MidiControl.h);
+ *  midi_feedback whether the panel's changes go out as CCs (MidiFeedback.h). Another
  *  value keeps the default. compressor2 has the compressor's eight parameters, both pages
  *  (MasterComp.h); a file from before has "compressor" with four, threshold, ratio, speed and
  *  mix, which loads with the speed as both attack and release and the makeup at 0dB (it was
@@ -54,6 +56,7 @@ struct MasterSettings
     uint8_t midi_out;       // where MIDI out goes: 0 off, 1 the jack, 2 and USB (MidiOutPorts)
     uint8_t led_brightness; // percent: 100, 75, 50
     bool midi_block_trs;    // the effect channels over the jack too (MidiControl.h)
+    bool midi_feedback;     // the panel's changes out as CCs (MidiFeedback.h)
 
     /** Every setting on its default */
     void Reset()
@@ -68,6 +71,7 @@ struct MasterSettings
         midi_out = 0;
         led_brightness = 100;
         midi_block_trs = true;
+        midi_feedback = false;
     }
 
     // the last channel, which a setup sending notes to other instruments uses least
@@ -110,6 +114,7 @@ static const Line kLines[] = {
     {"led_brightness", offsetof(MasterSettings, led_brightness), Line::CHOICE, 50, 75, 100},
     // last, so kCmdDev's indices stay
     {"midi_block_trs", offsetof(MasterSettings, midi_block_trs), Line::SWITCH, 0, 0, 1},
+    {"midi_feedback", offsetof(MasterSettings, midi_feedback), Line::SWITCH, 0, 0, 1},
 };
 
 inline uint8_t* Field(MasterSettings& settings, const Line& line)

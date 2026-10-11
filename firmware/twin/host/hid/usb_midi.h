@@ -32,6 +32,8 @@ public:
     }
     bool RxActive() { return active_; }
     void FlushRx() {}
+    /** A host has it configured, and the last transfer is done (no transfer waits here) */
+    bool Ready() const { return twin::UsbHost(); }
     bool Tx(uint8_t* data, size_t size)
     {
         twin::UsbTx(data, size);

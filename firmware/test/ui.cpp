@@ -10,6 +10,7 @@
 #include <cstring>
 #include <fstream>
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <map>
 #include <sstream>
@@ -34,6 +35,7 @@ static const int kChannel1Led = 24, kChannel3Led = 22, kChannel11Led = 14, kChan
                  kChannel1516Led = 10, kBlockTrsKeyLed = 1, kTransportKeyLed = 2, kFactorKeyLed = 3,
                  kSourceKeyLed = 4, kMidiOutKeyLed = 5, kMonoKeyLed = 7, kBrightnessKeyLed = 8;
 static const int kNumFxProbe = 15; // kCmdParams' effects and the compressor
+static const int kFeedbackKeyLed = 6; // the settings page's upper D#: MIDI feedback
 static const int kSaveKeyLed = 9; // KEY_25, the play page's SAVE
 static const int kChompiKeyLed = 0; // PanelLeds.h
 
@@ -259,12 +261,79 @@ static std::string Ask(const std::vector<int>& query)
     Usb(query);
     Usb({0xF7});
     RunMs(20);
+    // the answer, among MIDI feedback's CCs if it's on
     const std::string out = TakeUsbOut();
-    if (out.size() < 7 || out.compare(0, 4, "\xF0\x7D\x43\x48") != 0
-        || static_cast<uint8_t>(out[4]) != (*query.begin() | 0x40))
+    const std::string head = std::string("\xF0\x7D\x43\x48") + static_cast<char>(*query.begin() | 0x40);
+    const size_t at = out.find(head), end = out.find('\xF7', at);
+    if (at == std::string::npos || end == std::string::npos)
         return "";
-    return out.substr(5, out.size() - 6);
+    return out.substr(at + 5, end - at - 5);
 }
+
+/** The CCs that went out of the jack since last asked, real-time bytes left out */
+static std::vector<std::array<int, 3>> TrsCcs()
+{
+    std::vector<std::array<int, 3>> out;
+    std::vector<int> m;
+    for (const MidiOutByte& b : TakeMidiOut())
+    {
+        if (b.usb || b.byte >= 0xF8)
+            continue;
+        if (b.byte & 0x80)
+            m.clear();
+        m.push_back(b.byte);
+        if (m.size() == 3 && (m[0] & 0xF0) == 0xB0)
+        {
+            out.push_back({m[0], m[1], m[2]});
+            m.clear();
+        }
+    }
+    return out;
+}
+/** The same over USB, its SysEx answers and real-time bytes left out */
+static std::vector<std::array<int, 3>> UsbCcs()
+{
+    std::vector<std::array<int, 3>> out;
+    std::vector<int> m;
+    bool sysex = false;
+    for (unsigned char c : TakeUsbOut())
+    {
+        if (c == 0xF0)
+            sysex = true;
+        if (sysex || c >= 0xF8)
+        {
+            sysex = sysex && c != 0xF7;
+            continue;
+        }
+        if (c & 0x80)
+            m.clear();
+        m.push_back(c);
+        if (m.size() == 3 && (m[0] & 0xF0) == 0xB0)
+        {
+            out.push_back({m[0], m[1], m[2]});
+            m.clear();
+        }
+    }
+    return out;
+}
+static bool HasCc(const std::vector<std::array<int, 3>>& v, int status, int cc, int value)
+{
+    for (const std::array<int, 3>& m : v)
+        if (m[0] == status && m[1] == cc && m[2] == value)
+            return true;
+    return false;
+}
+/** The last value a CC was sent with, -1 if it wasn't */
+static int LastCc(const std::vector<std::array<int, 3>>& v, int status, int cc)
+{
+    int last = -1;
+    for (const std::array<int, 3>& m : v)
+        if (m[0] == status && m[1] == cc)
+            last = m[2];
+    return last;
+}
+/** A knob's 0-1 as MIDI feedback's 7 bits (MidiFeedback.h's KnobTo7) */
+static int Knob7(float k) { return k <= .5f ? static_cast<int>(k * 128.f + .5f) : static_cast<int>(64.f + (k - .5f) * 126.f + .5f); }
 
 int main()
 {
@@ -2495,6 +2564,14 @@ int main()
         RunMs(50);
         comp = Ask({0x21, 14});
         Check(comp.size() == 17 && comp[1] == 0, "midi cc: and CC 14 on its channel, 15");
+        // the last latches by key: 114 the reverb's (key 13, FxId 11), 115 the chaos key's
+        // (key 14, FxId 13)
+        Trs({kCC, 114, 127, kCC, 115, 127});
+        RunMs(100);
+        const std::string last = Ask({0x20});
+        const int latched = last.size() > 9 ? static_cast<uint8_t>(last[8]) << 7 | static_cast<uint8_t>(last[9]) : 0;
+        Check((latched >> 11 & 1) && (latched >> 13 & 1) && !(latched >> 12 & 1),
+              "midi cc: CC 114 latches the reverb, CC 115 the chaos key");
         Trs({kCC, 85, 0}); // output gain
         RunMs(300);
         Check(RunMs(300) < .001f, "midi cc: CC 85 sets the output gain");
@@ -2582,6 +2659,146 @@ int main()
         const int want = 0x3f | 1 << 12;
         printf("      latched %04x, want %04x\n", latched, want);
         Check(latched == want, "midi-latch-burst: 41 latch messages in one packet, each latch as its last said");
+    }});
+
+    // MIDI feedback (#104, MidiFeedback.h): the hand's changes out as the CCs that set them
+    cases.push_back({"midi-feedback", [] {
+        RunMs(kReadyMs);
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 3, 2, 0xF7}); // MIDI out: the jack and USB
+        RunMs(100);
+        TrsCcs();
+        UsbCcs();
+        Turn(kKnob1Encoder, -10);
+        RunMs(300);
+        Check(TrsCcs().empty() && UsbCcs().empty(), "midi-feedback: off at first: a knob turned sends no CC");
+        SetToggle(true);
+        RunMs(300);
+        const bool dim = Max(SmtLedFull(kFeedbackKeyLed)) < 80;
+        Tap("KEY_22");
+        RunMs(100);
+        Check(dim && Max(SmtLedFull(kFeedbackKeyLed)) > 80, "midi-feedback: the upper D# switches it on, lit");
+        SetToggle(false);
+        RunMs(300);
+        TrsCcs();
+        UsbCcs();
+        Tap("KEY_5"); // the filter, in focus
+        RunMs(100);
+        Check(HasCc(TrsCcs(), 0xBF, 23, 5), "midi-feedback: a key picking the filter sends CC 23 at 5");
+        UsbCcs();
+        Turn(kKnob1Encoder, -20);
+        RunMs(500);
+        const std::vector<std::array<int, 3>> trs = TrsCcs(), usb = UsbCcs();
+        const std::string p = Ask({0x21, 4});
+        const int want = p.size() == 17 ? Knob7(KnobOf(p[1], p[2])) : -1;
+        printf("      the cutoff at %d: the jack's last %d and %d, USB's %d\n", want, LastCc(trs, 0xB4, 14),
+               LastCc(trs, 0xBF, 14), LastCc(usb, 0xB4, 14));
+        Check(want >= 0 && LastCc(trs, 0xB4, 14) == want && LastCc(trs, 0xBF, 14) == want
+                  && LastCc(usb, 0xB4, 14) == want && LastCc(usb, 0xBF, 14) == want,
+              "midi-feedback: knob 1 by hand: CC 14 on the filter's channel and the global one, where it stopped, on both ports");
+        // a value goes once a 10 ms sweep at most: the gaps between CC 14's on its channel
+        Turn(kKnob1Encoder, 60);
+        RunMs(1000);
+        std::vector<double> at;
+        std::vector<int> m;
+        for (const MidiOutByte& b : TakeMidiOut())
+        {
+            if (b.usb || b.byte >= 0xF8)
+                continue;
+            if (b.byte & 0x80)
+                m.clear();
+            m.push_back(b.byte);
+            if (m.size() == 3 && m[0] == 0xB4 && m[1] == 14)
+                at.push_back(b.ms);
+        }
+        double gap = 1e9;
+        for (size_t i = 1; i < at.size(); i++)
+            gap = std::min(gap, at[i] - at[i - 1]);
+        printf("      60 detents: CC 14 sent %zu times, %.1f ms apart at least\n", at.size(), gap);
+        Check(at.size() > 3 && gap >= 9., "midi-feedback: a value goes at most once a 10 ms sweep");
+        // what came in isn't sent back
+        UsbCcs();
+        Usb({0xB4, 14, 30, kCC, 14, 90, kCC, 106, 127, kCC, 85, 100});
+        RunMs(200);
+        const std::vector<std::array<int, 3>> echo = TrsCcs(), echo_usb = UsbCcs();
+        for (const std::array<int, 3>& e : echo)
+            printf("      echo %02X %d %d\n", e[0], e[1], e[2]);
+        Check(echo.empty() && echo_usb.empty(), "midi-feedback: CCs that came in by MIDI aren't sent back");
+        Latch("KEY_5"); // by hand: off again
+        RunMs(100);
+        const std::vector<std::array<int, 3>> latch = TrsCcs();
+        Check(HasCc(latch, 0xB4, 22, 0) && HasCc(latch, 0xBF, 106, 0),
+              "midi-feedback: a latch by hand: CC 22 on its channel and CC 106");
+        Turn(kVolumeEncoder, -5);
+        RunMs(100);
+        Check(LastCc(TrsCcs(), 0xBF, 85) >= 0, "midi-feedback: VOLUME by hand: CC 85");
+        // on a battery, no host: nothing tried over USB (#84), the jack's as ever
+        SetUsbHost(false);
+        TrsCcs();
+        TakeUsbOut();
+        Turn(kKnob1Encoder, 10);
+        RunMs(500);
+        const std::vector<std::array<int, 3>> no_host = TrsCcs();
+        Check(LastCc(no_host, 0xB4, 14) >= 0 && TakeUsbOut().empty(),
+              "midi-feedback: without a USB host, nothing goes to USB, the jack's CCs still do");
+        SetUsbHost(true);
+        RunMs(2500);
+        Check(Card("/FRIZZ/frizz_master.txt").find("midi_feedback 1") != std::string::npos,
+              "midi-feedback: kept on the card");
+    }});
+
+    // a scene's recall sends what changed, once; a morph only where it lands; the effect
+    // channels not on the jack when they don't count there
+    cases.push_back({"midi-feedback-scenes", [] {
+        RunMs(kReadyMs);
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 3, 1, 0xF7});           // MIDI out: the jack
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x3E, 3, 1, 0x23, 8, 0, 1, 0xF7}); // midi_feedback 1
+        RunMs(100);
+        Latch("KEY_5");
+        Turn(kKnob1Encoder, -40);
+        RunMs(300);
+        Save(1);
+        RunMs(500);
+        TrsCcs();
+        Tap("KEY_16"); // the blank scene: the filter off, its cutoff back
+        RunMs(500);
+        std::map<int, int> count;
+        bool latch_off = false;
+        for (const std::array<int, 3>& m : TrsCcs())
+        {
+            count[m[0] << 8 | m[1]]++;
+            latch_off = latch_off || (m[0] == 0xB4 && m[1] == 22 && m[2] == 0);
+        }
+        bool once = !count.empty();
+        for (const auto& c : count)
+            once = once && c.second == 1;
+        Check(latch_off && once, "midi-feedback-scenes: a recall sends what changed, each once");
+        // a morph to scene 1: nothing of the filter's while it glides, where it lands after
+        Press("KEY_26", true);
+        RunMs(60);
+        Tap("KEY_17");
+        Press("KEY_26", false);
+        RunMs(800);
+        int gliding = 0;
+        for (const std::array<int, 3>& m : TrsCcs())
+            gliding += m[0] == 0xB4;
+        RunMs(4000);
+        const std::vector<std::array<int, 3>> landed = TrsCcs();
+        const std::string p = Ask({0x21, 4});
+        Check(gliding == 0 && HasCc(landed, 0xB4, 22, 127)
+                  && p.size() == 17 && LastCc(landed, 0xB4, 14) == Knob7(KnobOf(p[1], p[2])),
+              "midi-feedback-scenes: a morph sends nothing while it glides, then where it landed");
+        // the effect channels off on the jack: only the global channel's there
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_17");
+        SetToggle(false);
+        RunMs(300);
+        TrsCcs();
+        Turn(kKnob1Encoder, -10);
+        RunMs(100);
+        const std::vector<std::array<int, 3>> global_only = TrsCcs();
+        Check(LastCc(global_only, 0xBF, 14) >= 0 && LastCc(global_only, 0xB4, 14) < 0,
+              "midi-feedback-scenes: with the effect channels off on the jack, only channel 16's go there");
     }});
 
     // what hosts send by themselves reaches nothing: an RPN (a DAW's pitch-bend range) with its
@@ -2712,10 +2929,10 @@ int main()
         const std::string settings = Ask({0x3E, 2, 14, 0x23});
         Check(factor.size() == 5 && factor[2] == 0 && dim.size() == 5 && dim[2] == 1,
               "midi dev: SET a setting, a value it doesn't take refused");
-        Check(settings.size() == 5 + 16 && settings[4] == 8 && settings[11] == 1 && settings[12] == 200 - 128
+        Check(settings.size() == 5 + 18 && settings[4] == 9 && settings[11] == 1 && settings[12] == 200 - 128
                   && settings[17] == 0 && settings[18] == 100 && settings[7] == 0 && settings[8] == 16
-                  && settings[19] == 0 && settings[20] == 1,
-              "midi dev: GET the settings: the clock factor x2, the LEDs at 100 %, channel 16, the effect channels over the jack");
+                  && settings[19] == 0 && settings[20] == 1 && settings[21] == 0 && settings[22] == 0,
+              "midi dev: GET the settings: the clock factor x2, the LEDs at 100 %, channel 16, the effect channels over the jack, no feedback");
         Check(Ask({0x3E, 3, 15, 0x23, 9, 0, 1})[2] == 1 && Ask({0x3E, 2, 16, 0x30})[2] == 1
                   && Ask({0x3E, 9, 17})[2] == 1,
               "midi dev: no such setting, group or sub-command: refused, answered");

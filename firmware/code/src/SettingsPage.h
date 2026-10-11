@@ -21,11 +21,12 @@
  *                                                            white, orange, blue, pink
  *    C# (upper octave)   MIDI out, each press the next: off, the jack, the jack and USB
  *                                                            dim, orange, white
+ *    D# (upper octave)   MIDI feedback, on / off             light blue, lit when on
  *    F# (upper octave)   mono input, on / off                white, lit when on
  *    G# (upper octave)   the LEDs' brightness, each press the next: 100, 75, 50 %
  *                                                            purple, dimmed as all are
  *
- *  The upper octave's D# and A# are free.
+ *  The upper octave's A# is free.
  *
  *    SHIFT + VOLUME press, both held 2 s     a bug report (EventLog.h), once per hold;
  *                                            the transport LEDs blink as on the play page
@@ -77,6 +78,7 @@ public:
         midi_->SetClockSource(static_cast<ClockSource>(master.clock_source));
         midi_->SetMidiOut(static_cast<MidiOutPorts>(master.midi_out));
         midi_->SetBlockTrs(master.midi_block_trs);
+        midi_->SetFeedback(master.midi_feedback);
         quarters_ = master.led_brightness / 25;
         SetLedQuarters(quarters_);
     }
@@ -137,6 +139,11 @@ private:
         if (key == static_cast<int>(kBlockTrsKey))
         {
             midi_->SetBlockTrs(!midi_->BlockTrs());
+            return true;
+        }
+        if (key == static_cast<int>(kFeedbackKey))
+        {
+            midi_->SetFeedback(!midi_->Feedback());
             return true;
         }
         if (key == static_cast<int>(kMidiOutKey))
@@ -223,6 +230,7 @@ public:
         master.clock_source = static_cast<uint8_t>(midi_->GetClockSource());
         master.midi_out = static_cast<uint8_t>(midi_->GetMidiOut());
         master.midi_block_trs = midi_->BlockTrs();
+        master.midi_feedback = midi_->Feedback();
         master.led_brightness = quarters_ * 25;
     }
 
@@ -245,6 +253,7 @@ public:
         const MidiOutPorts out = midi_->GetMidiOut();
         KeyLed(kMidiOutKey, out == MidiOutPorts::TRS ? orange : white, out != MidiOutPorts::OFF);
         KeyLed(kBlockTrsKey, med_blue, midi_->BlockTrs());
+        KeyLed(kFeedbackKey, med_blue, midi_->Feedback());
         KeyLed(kBrightnessKey, purple, true); // dimmed with every LED: it shows itself
 
         const unsigned level = hw_->GetBatteryLevel();
@@ -300,6 +309,7 @@ private:
     static const Hardware::SwId kFactorKey = Hardware::SwId::KEY_19;
     static const Hardware::SwId kSourceKey = Hardware::SwId::KEY_20;
     static const Hardware::SwId kMidiOutKey = Hardware::SwId::KEY_21;
+    static const Hardware::SwId kFeedbackKey = Hardware::SwId::KEY_22;
     static const Hardware::SwId kMonoKey = Hardware::SwId::KEY_23;
     static const Hardware::SwId kBrightnessKey = Hardware::SwId::KEY_24;
     // the factor's hue, by ClockFactor: x1/2 light blue, x1 yellow, x2 red

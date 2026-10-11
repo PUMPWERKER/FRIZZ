@@ -311,6 +311,65 @@ int main()
               "follow-start: paused, Start: Song Position 1, Continue a 16th after, on the loop's 16th 1");
     }});
 
+    // MIDI feedback on the jack (#104): its CCs fill the gaps, the clock keeps its time, a
+    // tick even between a CC's bytes
+    cases.push_back({"feedback", [] {
+        StartUsb(Clock(120., 0., true));
+        RunMs(kReadyMs);
+        SetOut(1);
+        RunMs(500);
+        TakeSent();
+        RunMs(2000); // without feedback: the clock as passed on over USB's 1 ms frames
+        double base_mean, base_worst;
+        Gaps(TakeSent().trs, base_mean, base_worst);
+        for (uint8_t b : {0xF0, 0x7D, 0x43, 0x48, 0x3E, 0x03, 0x01, 0x23, 0x08, 0x00, 0x01, 0xF7})
+            UsbMidi(b); // kCmdDev SET: midi_feedback 1
+        RunMs(100);
+        TakeSent();
+        // every effect picked and two knobs turned: the focus's values, and theirs, in a rush
+        for (int key = 1; key <= 13; key++)
+        {
+            Tap(("KEY_" + std::to_string(key)).c_str(), 20);
+            Turn(4, 30);
+            Turn(1, -30);
+            RunMs(40);
+        }
+        RunMs(1500);
+        const Sent s = TakeSent();
+        int ccs = 0;
+        for (const MidiOutByte& b : s.trs)
+            ccs += (b.byte & 0xF0) == 0xB0;
+        double mean, worst;
+        Gaps(s.trs, mean, worst);
+        Report("feedback: %d CCs on the jack; a tick every %.3f ms (+-%.2f), without them +-%.2f", ccs,
+               mean, worst, base_worst);
+        Check(ccs > 100, "feedback: the hand's changes go out of the jack as CCs");
+        Check(fabs(mean - kTick120) < .05 && worst <= base_worst + .05,
+              "feedback: the clock's ticks keep their time through them, as without feedback");
+    }});
+
+    // on a battery, no USB host: MIDI out's USB messages aren't tried, nor kept for later
+    // (#84); the jack's clock as ever
+    cases.push_back({"no-host", [] {
+        RunMs(kReadyMs);
+        SetOut(2);
+        RunMs(500);
+        SetUsbHost(false);
+        TakeSent();
+        TakeUsbOut();
+        RunMs(2000);
+        const Sent s = TakeSent();
+        const bool none = s.usb.empty() && TakeUsbOut().empty();
+        SetUsbHost(true);
+        RunMs(500);
+        const Sent back = TakeSent();
+        Report("no-host: %zu ticks on the jack, %zu bytes over USB; with a host again %zu", s.trs.size(),
+               s.usb.size(), back.usb.size());
+        Check(Count(s.trs, 0xF8) > 80 && none, "no-host: without a USB host nothing goes to USB, the jack's clock runs");
+        Check(Count(back.usb, 0xF8) > 15 && Count(back.usb, 0xF8) < 30,
+              "no-host: with a host again, USB's clock goes on, without the ticks from meanwhile");
+    }});
+
     // a DAW's Start was passed on, then a quantized loop: no second Start, and the ticks carry
     // on, its start on the clock's bar line
     cases.push_back({"handover", [] {

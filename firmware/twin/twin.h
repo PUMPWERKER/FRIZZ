@@ -66,6 +66,8 @@ void Midi(uint8_t byte);
 
 /** A byte into USB MIDI, as a computer sends it */
 void UsbMidi(uint8_t byte);
+/** Whether a host has USB configured: true at first; false as on a battery, no cable */
+void SetUsbHost(bool host);
 
 /** What the firmware sent out over USB MIDI since the last call, taken */
 std::string TakeUsbOut();

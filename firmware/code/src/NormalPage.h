@@ -448,6 +448,7 @@ namespace chompi
             {
                 const size_t fx = FxOnWhiteKey(key);
                 fx_.Select(fx < kNumFx ? fx : kCompSelected);
+                Heard(feedback::kFocus);
             }
             MidiControl::Event event;
             while (midi_->TakeEvent(event))
@@ -455,7 +456,10 @@ namespace chompi
             bool on;
             while (midi_->TakeLatch(key, on))
                 if (FxOnWhiteKey(key) < kNumFx)
+                {
                     fx_.SetLatch(FxOnWhiteKey(key), on);
+                    HeardKey(key, feedback::kLatchSlot);
+                }
             uint8_t id, raw;
             while (midi_->TakeValue(id, raw))
                 RemoteValue(id, raw);
@@ -470,13 +474,22 @@ namespace chompi
             if (midi_->TakeSettingsChanged())
                 MasterChanged(now);
 
-            // one answer a pass (every 2 ms), so USB has sent the last before the next goes
+            // MIDI feedback switched on (or MIDI out): what stands now isn't sent
+            const bool feedback = midi_->Feedback() && midi_->GetMidiOut() != MidiOutPorts::OFF;
+            if (feedback && !feedback_on_)
+                feedback_.Reset([this](uint8_t item, uint8_t& v) { return FeedbackValue(item, v); });
+            feedback_on_ = feedback;
+
+            // one answer a pass (every 2 ms), so USB has sent the last before the next goes,
+            // or else MIDI feedback's
             MidiControl::Query query;
             MidiControl::DevQuery dev;
             if (midi_->TakeQuery(query))
                 Answer(query);
             else if (midi_->TakeDev(dev))
                 DevAnswer(dev);
+            else if (feedback)
+                Feedback(now);
         }
 
     private:
@@ -516,27 +529,152 @@ namespace chompi
                     fx_.SetParamTo(fx, param, value);
                 else
                     fx_.SetComp(param, value, false);
+                HeardKey(id / kKeyParams, param);
             }
-            else if (id == kOutGain)
-                SetOutGain(value);
-            else if (id == kInGain)
-                SetInGain(value);
-            else if (id == kMix)
-                SetMix(value);
-            else if (id == kHpCue)
-                SetHpCue(1.f - value); // as VOLUME's knob: up towards the master
+            else if (id <= kHpCue)
+            {
+                if (id == kOutGain)
+                    SetOutGain(value);
+                else if (id == kInGain)
+                    SetInGain(value);
+                else if (id == kMix)
+                    SetMix(value);
+                else
+                    SetHpCue(1.f - value); // as VOLUME's knob: up towards the master
+                Heard(static_cast<uint8_t>(feedback::kOutGain + id - kOutGain));
+            }
             else if (id == kSpeed)
             {
                 // semitones: 0 is 1/16x, 64 1x, 127 2x
                 const int semis = raw <= 64 ? (raw * 48 + 32) / 64 - 48 : ((raw - 64) * 12 + 31) / 63;
                 if (LoopExists())
+                {
                     engine_->looper.SetSemitones(semis);
+                    feedback_.Heard(feedback::kSpeed, feedback::SemisTo7(semis));
+                }
             }
             else if (id == kFader)
             {
                 ScopedIrqBlocker irq;
                 scene_ctl_.FaderTo(value);
             }
+        }
+
+        // ---- MIDI feedback (MidiFeedback.h) ----
+
+        /** A feedback item's value now: false for nothing to send (an effect's while a morph
+         *  runs, an unused knob, a channel the global one hides) */
+        bool FeedbackValue(uint8_t item, uint8_t& v)
+        {
+            using namespace feedback;
+            const uint8_t channel = midi_->Channel();
+            if (item < kGlobalLatches)
+            {
+                // an effect's channel: none on all channels, nor where the global one is
+                const uint8_t key = item / kKeySlots;
+                return channel && key + 1 != channel && KeyValue(key, item % kKeySlots, v);
+            }
+            if (item < kFocusItems)
+                return KeyValue(item - kGlobalLatches, kLatchSlot, v);
+            if (item < kCompItems)
+                return KeyValue(WhiteKeyOfFx(fx_.Selected()), item - kFocusItems, v);
+            if (item < kFocus)
+                return KeyValue(WhiteKeyOfFx(kNumFx), item - kCompItems, v);
+            switch (item)
+            {
+            case kFocus:
+                v = static_cast<uint8_t>(WhiteKeyOfFx(fx_.Selected()) + 1);
+                return true;
+            case kOutGain:
+                v = KnobTo7(out_gain_);
+                return true;
+            case kInGain:
+                v = KnobTo7(in_gain_);
+                return true;
+            case kMix:
+                v = KnobTo7(mix_);
+                return true;
+            case kHpCue:
+                v = KnobTo7(1.f - hp_cue_);
+                return true;
+            case kSpeed:
+                v = SemisTo7(engine_->looper.GetSemitones());
+                return LoopExists();
+            case kFader:
+                v = KnobTo7(scene_ctl_.FaderPos());
+                return hand_fader_;
+            }
+            return false;
+        }
+
+        /** White key key's knob 0-7 or latch (feedback::kLatchSlot) */
+        bool KeyValue(size_t key, size_t slot, uint8_t& v)
+        {
+            const size_t fx = FxOnWhiteKey(key);
+            if (fx == kNumFx)
+            {
+                v = feedback::KnobTo7(fx_.CompParam(slot < kNumFxParams ? slot : 0));
+                return slot < kNumFxParams && ((kCompParams.knobs >> slot) & 1);
+            }
+            // a morph: where it lands goes out, once it has
+            if (fx_.Morphing() || hand_fader_)
+                return false;
+            if (slot == feedback::kLatchSlot)
+            {
+                v = fx_.IsLatched(fx) ? 127 : 0;
+                return true;
+            }
+            v = feedback::KnobTo7(fx_.Param(fx, slot));
+            return (kFxParams[fx].knobs >> slot) & 1;
+        }
+
+        /** item as it stands came in by MIDI or SysEx: not sent back */
+        void Heard(uint8_t item)
+        {
+            feedback_.Heard(item, [this](uint8_t i, uint8_t& v) { return FeedbackValue(i, v); });
+        }
+        /** White key key's knob or latch, every CC it goes out on */
+        void HeardKey(size_t key, size_t slot)
+        {
+            using namespace feedback;
+            Heard(static_cast<uint8_t>(key * kKeySlots + slot));
+            if (slot == kLatchSlot && key < kKeys - 1)
+                Heard(static_cast<uint8_t>(kGlobalLatches + key));
+            if (key == WhiteKeyOfFx(fx_.Selected()))
+                Heard(static_cast<uint8_t>(kFocusItems + slot));
+            if (FxOnWhiteKey(key) == kNumFx && slot < kNumFxParams)
+                Heard(static_cast<uint8_t>(kCompItems + slot));
+        }
+
+        /** A pass of MIDI feedback's sweep: over USB if MIDI out goes there, into the jack's
+         *  ring, without the effect channels if they don't count on the jack */
+        void Feedback(uint32_t now)
+        {
+            const uint8_t global = midi_->Channel() ? midi_->Channel() : 16;
+            const bool usb = midi_->GetMidiOut() == MidiOutPorts::TRS_USB;
+            const bool block_trs = midi_->BlockTrs();
+            feedback_.Pass(now, global, [this](uint8_t item, uint8_t& v) { return FeedbackValue(item, v); },
+                           [&](uint8_t* msg, size_t n) {
+                               uint8_t trs[MidiFeedback::kPerPass * 3];
+                               size_t m = 0;
+                               for (size_t i = 0; i < 3 * n; i += 3)
+                                   if (block_trs || (msg[i] & 0x0F) == global - 1)
+                                   {
+                                       trs[m++] = msg[i];
+                                       trs[m++] = msg[i + 1];
+                                       trs[m++] = msg[i + 2];
+                                   }
+                               if (midi_->feedback_trs.Room() < m)
+                                   return false;
+                               // USB busy: again at the next pass, a few times, then without
+                               // it; without a host, not at all (#84)
+                               if (usb && midi_->UsbHost() && !midi_->TrySendUsb(msg, 3 * n)
+                                   && ++feedback_usb_tries_ < kFeedbackUsbTries)
+                                   return false;
+                               feedback_usb_tries_ = 0;
+                               midi_->feedback_trs.Push(trs, m);
+                               return true;
+                           });
         }
 
         /** A morph over MIDI: as SHIFT + the scene key, tapped once per bar, and SHIFT let go,
@@ -790,11 +928,20 @@ namespace chompi
             using namespace dev;
             const float value = MidiToKnob(raw, true);
             if (group < kNumFx && index < kNumFxParams)
+            {
                 fx_.SetParamTo(group, index, value);
+                HeardKey(WhiteKeyOfFx(group), index);
+            }
             else if (group == kGroupComp && index < kNumFxParams)
+            {
                 fx_.SetComp(index, value);
+                HeardKey(WhiteKeyOfFx(kNumFx), index);
+            }
             else if (group == kGroupLatch && index < kNumFx && raw <= 1)
+            {
                 fx_.SetLatch(index, raw != 0);
+                HeardKey(WhiteKeyOfFx(index), feedback::kLatchSlot);
+            }
             else if (group == kGroupVolume && index < 4)
             {
                 if (index == 0)
@@ -805,6 +952,7 @@ namespace chompi
                     SetMix(value);
                 else
                     SetHpCue(value);
+                Heard(static_cast<uint8_t>(feedback::kOutGain + index));
             }
             else if (group == kGroupSettings && settings_.Set(index, raw))
                 MasterChanged(System::GetNow());
@@ -1474,6 +1622,10 @@ namespace chompi
         EventLog *log_;
         MidiControl *midi_ = nullptr;
         uint8_t told_focus_ = 0;       // the white key MIDI's focus was told (Remote)
+        MidiFeedback feedback_;        // MIDI feedback's sweep (MidiFeedback.h)
+        bool feedback_on_ = false;     // it's on, and MIDI out
+        uint8_t feedback_usb_tries_ = 0;
+        static const uint8_t kFeedbackUsbTries = 5;
         FxScene put_scene_;            // a scene coming over SysEx (kCmdScenePut),
         int put_slot_ = kNoScene;      // for this slot,
         uint32_t put_parts_ = 0;       // with these parts so far

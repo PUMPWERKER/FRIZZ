@@ -35,6 +35,9 @@ USE_FATFS = 1
 LIBDAISY_DIR = ../libs/libDaisy
 DAISYSP_DIR = ../libs/DaisySP
 
+# libDaisy's USB CDC class, for its transfer's state (MidiClock::UsbReady)
+C_INCLUDES = -I$(LIBDAISY_DIR)/Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc
+
 # Core location, and generic Makefile
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
 include $(SYSTEM_FILES_DIR)/Makefile

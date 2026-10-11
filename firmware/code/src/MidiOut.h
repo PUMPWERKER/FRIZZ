@@ -35,6 +35,7 @@
  */
 #pragma once
 #include "MidiClock.h"
+#include "MidiFeedback.h"
 #include "passthroughEngine.h"
 
 namespace chompi
@@ -43,7 +44,12 @@ namespace chompi
 class MidiOut
 {
 public:
-    void Init(MidiClock* clock) { clock_ = clock; }
+    /** feedback: MIDI feedback's bytes for the jack (MidiFeedback.h), sent after the clock's */
+    void Init(MidiClock* clock, FeedbackRing* feedback)
+    {
+        clock_ = clock;
+        feedback_ = feedback;
+    }
 
     /** Once per block from the audio callback, after the engine; ports is the setting
      *  (MidiControl's, from the settings page or a SysEx) */
@@ -144,6 +150,8 @@ public:
             start_ = false;
             continue_at_ = kNone;
             trs_.Clear();
+            feedback_->Clear();
+            feedback_sent_ = 0;
         }
 
         last_ticks_ = ticks;
@@ -163,19 +171,45 @@ public:
         last_ticks_ = clock_->GetTicks();
     }
 
-    /** From MainLoop, every pass: USB's bytes, a message at a time */
+    /** From MainLoop, every pass: USB's bytes, a message at a time, never waiting. Without
+     *  a host (on a battery) they're dropped unsent (#84); one USB can't take yet (the
+     *  transfer before still going, MIDI feedback's or an answer's) waits for the next pass,
+     *  for kUsbWaitMs at most */
     void FlushUsb()
     {
         uint8_t msg[3];
         size_t n;
-        while ((n = usb_.PopMessage(msg)) > 0)
-            clock_->SendUsb(msg, n);
+        while ((n = usb_.PeekMessage(msg)) > 0)
+        {
+            const uint32_t now = System::GetNow();
+            if (!clock_->UsbHost())
+            {
+                usb_.Clear();
+                usb_waiting_ = false;
+                return;
+            }
+            if (!clock_->TrySendUsb(msg, n))
+            {
+                if (!usb_waiting_)
+                    usb_waiting_since_ = now;
+                usb_waiting_ = true;
+                if (now - usb_waiting_since_ <= kUsbWaitMs)
+                    return;
+            }
+            usb_waiting_ = false;
+            usb_.Drop(n);
+        }
     }
 
 private:
     static const uint8_t kTick = 0xF8, kStart = 0xFA, kContinue = 0xFB, kStop = 0xFC;
     static const uint32_t kNone = 0xFFFFFFFF;
+    static const uint32_t kUsbWaitMs = 5;
+    FeedbackRing* feedback_ = nullptr;
+    uint32_t feedback_sent_ = 0; // its bytes the UART took
     uint32_t rewinds_ = 0; // the looper's Rewinds() as last seen
+    bool usb_waiting_ = false;        // USB didn't take the next message
+    uint32_t usb_waiting_since_ = 0;
     static const uint32_t kMaxBunch = 4; // ticks passed on in one block, at most
 
     /** A byte ring, filled by the audio callback; read by it (the jack's) or by MainLoop
@@ -196,19 +230,17 @@ private:
         inline uint8_t Front() const { return buf_[tail_ % kSize]; }
         inline void Pop() { tail_ = tail_ + 1; }
         inline void Clear() { tail_ = head_; }
-        /** The next message, its length (a Song Position's 3, else 1), 0 for none */
-        size_t PopMessage(uint8_t* msg)
+        /** The next message, left in: its length (a Song Position's 3, else 1), 0 for none */
+        size_t PeekMessage(uint8_t* msg) const
         {
             if (Empty())
                 return 0;
             const size_t n = Front() == 0xF2 ? 3 : 1;
             for (size_t i = 0; i < n; i++)
-            {
-                msg[i] = Front();
-                Pop();
-            }
+                msg[i] = buf_[(tail_ + i) % kSize];
             return n;
         }
+        inline void Drop(size_t n) { tail_ = tail_ + n; }
 
     private:
         static const uint32_t kSize = 32;
@@ -243,10 +275,33 @@ private:
         last_tick_at_ = now_;
     }
 
+    /** The clock's bytes first: a real-time one (a tick) goes at once, also between a
+     *  feedback message's bytes, as MIDI lets it; the others (Start, Stop, Song Position)
+     *  wait for the end of one. Then MIDI feedback's, one a block: the UART has sent it by
+     *  the next block (0.32 ms of 0.5), so a tick never waits behind feedback */
     void DrainTrs()
     {
-        while (!trs_.Empty() && clock_->TrsPut(trs_.Front()))
-            trs_.Pop();
+        bool fed = false;
+        for (;;)
+        {
+            const bool mid = feedback_sent_ % 3 != 0; // feedback's are 3-byte CCs
+            if (!trs_.Empty() && (trs_.Front() >= 0xF8 || !mid))
+            {
+                if (!clock_->TrsPut(trs_.Front()))
+                    return;
+                trs_.Pop();
+            }
+            else if (!fed && !feedback_->Empty() && (trs_.Empty() || mid))
+            {
+                if (!clock_->TrsPut(feedback_->Front()))
+                    return;
+                feedback_->Pop();
+                feedback_sent_++;
+                fed = true;
+            }
+            else
+                return;
+        }
     }
 
     MidiClock* clock_ = nullptr;
