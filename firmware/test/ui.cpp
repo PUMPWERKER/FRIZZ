@@ -852,12 +852,61 @@ int main()
         RunMs(kReadyMs);
         SetBattery(2.9f, false);
         RunMs(1000);
-        bool amber = true;
-        for (int i = 0; i < kNumPthLeds; i++)
-            amber &= PthLedFull(i).r > 100 || Max(PthLedFull(i)) == 0;
-        Check(Powered() && amber, "battery: below 3V, every panel LED flashes yellow");
+        // over a few flashes: the others lit yellow, VOLUME's red (#43), all dark in between
+        bool right = true, yellow = false, red = false;
+        for (int t = 0; t < 1000; t++)
+        {
+            RunMs(1);
+            for (int i = 0; i < kNumPthLeds; i++)
+            {
+                const Rgb c = PthLedFull(i);
+                if (Max(c) == 0)
+                    continue;
+                if (i == kVolumeLed)
+                {
+                    right &= c.r > 100 && c.g < 50 && c.b < 50;
+                    red = true;
+                }
+                else
+                {
+                    right &= c.r > 100 && c.g > 100 && c.b < 50;
+                    yellow = true;
+                }
+            }
+        }
+        Check(Powered() && right && yellow && red,
+              "battery: below 3V, the panel LEDs flash yellow, VOLUME's red");
         RunMs(16000);
         Check(!Powered(), "battery: 15 s later it switches itself off");
+    }});
+
+    // the countdown dims with the LEDs: at 50 %, VOLUME's red at half, still red
+    cases.push_back({"battery-dim", [] {
+        auto top = [] {
+            Rgb t{0, 0, 0};
+            for (int ms = 0; ms < 1000; ms++)
+            {
+                RunMs(1);
+                const Rgb c = PthLedFull(kVolumeLed);
+                if (c.r > t.r)
+                    t = c;
+            }
+            return t;
+        };
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(200);
+        Tap("KEY_24");
+        RunMs(100);
+        Tap("KEY_24"); // 50 %
+        SetToggle(false);
+        RunMs(300);
+        SetBattery(2.9f, false);
+        RunMs(500);
+        const Rgb half = top();
+        printf("      VOLUME's red at 50 %%: %d %d %d\n", half.r, half.g, half.b);
+        Check(half.r > 100 && half.r < 160 && half.g == 0 && half.b == 0,
+              "battery-dim: the countdown's red dims with the LEDs' brightness");
     }});
 
     cases.push_back({"charging", [] {
@@ -936,7 +985,7 @@ int main()
             const Rgb c = PthLedFull(kVolumeLed);
             red += c.r > 100 && c.g < 50;
         }
-        Known(red > 0, "battery-level: red below 3V, as MANUAL.md says (the yellow countdown comes first: #43)");
+        Check(red > 0, "battery-level: red below 3V, as MANUAL.md says (flashing, in the countdown)");
     }});
 
     // the compressor's knobs without a card: its key blinks red 3 times, and the save is tried

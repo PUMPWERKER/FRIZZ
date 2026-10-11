@@ -5,6 +5,7 @@
 #include "daisy_seed.h"
 #include "encoder.h"
 #include "temp_led_stuff.h"
+#include "PanelLeds.h"
 
 #define ENC_5_SW 4 // this one weird switch isn't on the SR
 
@@ -269,7 +270,8 @@ uint8_t DMA_BUFFER_MEM_SECTION mp_dma_buff[6];
 
             if(batt_low_bounce == 0xff && vin_gd_bounce == 0x00) // unplugged and low battery
             {
-                // 15 s amber warning before shutdown.
+                // 15 s amber warning before shutdown, VOLUME's LED red (the settings page's
+                // battery colour below 3V, #43).
                 // Deliberately BLOCKING (audio keeps running - it is interrupt-driven); flashes
                 // all PTH LEDs at 250 ms, re-checks battery each cycle, aborts if power returns.
                 uint32_t shutdown_time_ = System::GetNow();
@@ -290,7 +292,9 @@ uint8_t DMA_BUFFER_MEM_SECTION mp_dma_buff[6];
                         bool led_on = (now / 250) % 2 == 0;
                         for(size_t i = 0; i < kPthLeds; ++i)
                         {
-                            if(led_on)
+                            if(led_on && i == kVolumeLed)
+                                SetPthLedFloat(i, 1.f, 0.f, 0.f);
+                            else if(led_on)
                                 SetPthLedFloat(i, 1.f, .95f, .05f);
                             else
                                 SetPthLedFloat(i, 0.f, 0.f, 0.f);

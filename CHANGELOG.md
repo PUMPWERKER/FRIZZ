@@ -205,6 +205,10 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The low-battery countdown shows VOLUME red** (#43): in the 15 s before the CHOMPI
+  switches itself off on an empty battery, VOLUME's LED flashes red while the others flash
+  yellow, so the battery's red (MANUAL.md, Settings page) is seen exactly when it matters.
+  Before, VOLUME flashed yellow with the rest and its red was never shown.
 - **Song Position on a loop recorded to a clock** reads the sender's 16ths by the clock
   factor the loop was recorded at (#116): with the factor changed since, it moved the loop
   to the wrong place.

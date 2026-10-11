@@ -81,7 +81,8 @@ CHANGELOG.)
   play page shows it on PLAY too (see [Looper](#looper)).
 
 - **VOLUME's LED** shows the battery all the time: white while the charging cable is in,
-  green above 3.3 V, yellow below, red below 3 V (about to switch off unless charging). Pull
+  green above 3.3 V, yellow below. Below 3 V, on any page, the low-battery countdown starts
+  ([Power and battery](#power-and-battery)) and VOLUME's LED flashes red. Pull
   the cable and it shows the battery's colour within a few seconds; after that the level is
   read every 30 s.
 - The transport LEDs are purple, so the page can't be mistaken for the play page.
@@ -152,7 +153,7 @@ slot, the CHOMPI key ready to confirm); a refusal is 3 quick blinks.
 Throughout FRIZZ, 3 quick red blinks mean refused or not stored, and 3 white ones done.
 Besides the effects' own colours, red lit or blinking slowly means something else: LOOP recording or waiting to erase, the
 compressor's key while the safety limiter works, the input gain near 100% (VOLUME's page
-2), and on the settings page the clock factor on double and the battery below 3 V.
+2), on the settings page the clock factor on double, and VOLUME in the low-battery countdown.
 While a loop plays, PLAY and LOOP crossfade in white to show the position (dimmed when
 paused). The transport LEDs show speed and direction while it plays, the scrub speed in white
 while it's paused, and nothing without a loop.
@@ -1130,9 +1131,9 @@ did, key for key.
 
 ## Power and battery
 
-- **Low battery:** unplugged with the battery nearly empty, the knob, transport, VOLUME,
-  CHOMPI, PLAY and LOOP LEDs flash yellow for 15 s, then the CHOMPI switches itself off. Plugging in power
-  during those 15 s stops it.
+- **Low battery:** unplugged with the battery nearly empty (below 3 V), the knob, transport,
+  CHOMPI, PLAY and LOOP LEDs flash yellow for 15 s and VOLUME's red, on any page, then the
+  CHOMPI switches itself off. Plugging in power during those 15 s stops it.
   On a charger too weak to run it with a low battery, it goes dark until it has charged.
 - **Battery check:** the [settings page](#settings-page) shows the battery's level on VOLUME's
   LED.
