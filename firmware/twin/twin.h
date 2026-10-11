@@ -61,6 +61,10 @@ void Turn(int encoder, int detents);
 /** The mode switch, as the 4021 reads it (SW_TOG's raw level) */
 void SetToggle(bool raw_level);
 
+/** A cable in AUX's jack (true, as at first) or none: the jack detection the firmware reads.
+ *  Before Boot() too, for a power-on without one. The audio into the mic is Run()'s channel 0 */
+void SetJack(bool plugged);
+
 /** A byte into the MIDI jack (TRS, the UART) */
 void Midi(uint8_t byte);
 

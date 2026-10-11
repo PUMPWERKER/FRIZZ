@@ -111,10 +111,8 @@ namespace chompi
     static const float kSpeedStepPerTurn = .25f; // SHIFT: 4 detents per step of the ladder
 
     static const uint8_t kFxKnobLeds[kNumFxKnobs] = {1, 2, 3, 4}; // PTH LEDs of knobs 1-4
-    // Page 2 of the FX knobs: their LEDs pulse, from full down to kPage2Low and back, faster
-    // than an edited scene's key, so turning a knob never surprises
-    static const uint32_t kPage2PulseMs = 600;
-    static const float kPage2Low = .15f;
+    // page 2's knob 4, Level: its LED a VU meter of the effect's output (FxVu)
+    static const size_t kVuKnob = kNumFxKnobs - 1;
     // Knob 1-4 press switches, by ui.h's encoder_map
     static const Hardware::SwId kFxKnobSwitches[kNumFxKnobs] = {
         Hardware::SwId::ENC_4_SW,
@@ -429,8 +427,16 @@ namespace chompi
                 // a plain press turns the page; SHIFT + press resets, on a knob the page uses
                 if (buttonID == static_cast<uint16_t>(kFxKnobSwitches[knob]))
                 {
+                    const size_t page = fx_.Page();
                     if (fx_.KnobPressed(knob, Shift()))
                         keys_.Used();
+                    // the page turned: its number blinks on the knob LEDs, as VOLUME's do
+                    if (fx_.Page() != page)
+                    {
+                        knob_flash_page_ = fx_.Page();
+                        knob_page_flash_.Start(System::GetNow(),
+                                               (knob_flash_page_ + 1) * 2 * kSignalBlinkMs);
+                    }
                     return true;
                 }
             }
@@ -450,6 +456,7 @@ namespace chompi
                 if (fx_.KnobUsed(encoderID))
                     keys_.Used();
                 fx_.KnobTurned(encoderID, turns, Shift());
+                knob_page_flash_.Stop(); // a turn shows what it turns at once
             }
             else if (encoderID == kVolumeEncoder)
             {
@@ -1370,31 +1377,31 @@ namespace chompi
         void DrawFxLeds(uint32_t now)
         {
             // knob LEDs: the selected FX's parameters in its colours, or the compressor's; a
-            // knob the page doesn't use is dark, and page 2's pulse
+            // knob the page doesn't use is dark. On an effect's page 2, knob 4's is its output's
+            // VU meter (#117); a page just turned blinks its number on all four, white
             const size_t selected = fx_.Selected();
             const bool comp = selected == kCompSelected;
             const float* const* colors = comp ? kCompKnobColors : kFxSlots[selected].knob_colors;
-            float pulse = 1.f;
-            if (fx_.Page())
-            {
-                const float phase = static_cast<float>(now % kPage2PulseMs) / kPage2PulseMs;
-                pulse = kPage2Low + (1.f - kPage2Low) * .5f * (1.f + cosf(phase * TWOPI_F));
-            }
+            // the page it blinks for, so another effect's page 1 isn't blinked over
+            const bool flash = knob_page_flash_.Active(now) && fx_.Page() == knob_flash_page_;
+            const float lit = knob_page_flash_.BlinkLit(now) ? 1.f : 0.f;
             const FxParams& knobs = fx_.Knobs();
             for (size_t k = 0; k < kNumFxKnobs; k++)
             {
                 float rgb[3] = {0.f, 0.f, 0.f};
-                if (fx_.KnobUsed(k))
+                if (flash)
+                    rgb[0] = rgb[1] = rgb[2] = lit;
+                else if (fx_.KnobUsed(k) && fx_.Page() && !comp && k == kVuKnob)
+                    FxVu(selected, rgb);
+                else if (fx_.KnobUsed(k))
                     KnobColor(knobs, fx_.ParamOf(k), fx_.Knob(k), colors, rgb);
-                SetPthLedFloat(kFxKnobLeds[k], rgb[0] * pulse, rgb[1] * pulse, rgb[2] * pulse);
+                SetPthLedFloat(kFxKnobLeds[k], rgb[0], rgb[1], rgb[2]);
             }
 
             for (size_t fx = 0; fx < kNumFx; fx++)
             {
                 const float* color = kFxSlots[fx].key_color;
-                // the meter (about the output's amplitude) on a dB scale: 0 at the floor, 1 at 0 dBFS
-                const float db = 20.f * log10f(fmaxf(engine_->GetFxLevel(fx), 1e-6f));
-                const float meter = fclamp(1.f - db / kFxMeterFloorDb, 0.f, 1.f);
+                const float meter = FxMeter(fx);
                 float level = kFxOffLevel;
                 float whiten = 0.f; // how far towards white
                 // dropped from this step by the chaos key: dim, as if off
@@ -1439,6 +1446,28 @@ namespace chompi
                 SmtLed(kCompKeyLed, red, master_refused_.BlinkLit(now) ? 1.f : 0.f);
             else
                 SetSmtLedFloat(kCompKeyLed, rgb[0], rgb[1], rgb[2]);
+        }
+
+        /** fx's meter (about its output's amplitude, a send's return) on a dB scale: 0 at
+         *  kFxMeterFloorDb, 1 at 0 dBFS */
+        float FxMeter(size_t fx)
+        {
+            const float db = 20.f * log10f(fmaxf(engine_->GetFxLevel(fx), 1e-6f));
+            return fclamp(1.f - db / kFxMeterFloorDb, 0.f, 1.f);
+        }
+
+        /** Page 2's knob 4 of an effect: its output's VU meter, in VOLUME's colours, as bright
+         *  as its Level turns it, as VOLUME's is on its page 1. An effect that's off (or dropped
+         *  by the chaos key) shows nothing but the floor; a send shows its return, tails too,
+         *  at full brightness, as its knob 4 there is Ducking */
+        void FxVu(size_t fx, float* rgb)
+        {
+            const bool send = kFxSlots[fx].kind == FxKind::SEND;
+            const bool sounds = send || (fx_.IsOn(fx) && !(engine_->FxDropped() >> fx & 1));
+            Xfade4(kVuDim, green, yellow, pink, sounds ? FxMeter(fx) : 0.f, rgb);
+            if (!send)
+                for (int c = 0; c < 3; c++)
+                    rgb[c] *= fx_.Knob(kVuKnob);
         }
 
         void DrawLooperLeds(uint32_t now)
@@ -1767,6 +1796,8 @@ namespace chompi
         bool hand_fader_ = false;   // the transport knob has had the crossfader since SHIFT
                                     // went down (TransportTurned)
         LedSignal page_flash_;      // a page picked: its number in blinks
+        LedSignal knob_page_flash_; // the FX knobs' page turned: its number in blinks
+        size_t knob_flash_page_ = 0; // the page knob_page_flash_ blinks for
     };
 
 } // namespace chompi

@@ -170,6 +170,10 @@ static const int kEnc6A = PinId(daisy::seed::D15), kEnc6B = PinId(daisy::seed::D
 
 static bool pin_level[256];
 
+// AUX's jack detection: high with a cable in (hardware.h's jack_detect), as at first
+static const int kJackDetect = PinId(daisy::seed::D21);
+static bool jack_plugged = true;
+
 static void ChainWrite(Chain4021& c, int id, bool level)
 {
     if (id == c.latch && level)
@@ -451,6 +455,7 @@ void Boot()
     // every input pulled up: no key down, encoders at rest
     for (bool& l : pin_level)
         l = true;
+    pin_level[kJackDetect] = jack_plugged;
     for (bool& l : keys_sr.inputs)
         l = true;
     // the mode switch down, as it's played: the play page (SetToggle(true) puts it up)
@@ -557,6 +562,12 @@ void Turn(int encoder, int detents)
 void SetToggle(bool raw_level)
 {
     keys_sr.inputs[static_cast<int>(chompi::Hardware::SwId::SW_TOG)] = raw_level;
+}
+
+void SetJack(bool plugged)
+{
+    jack_plugged = plugged;
+    pin_level[kJackDetect] = plugged;
 }
 
 void Midi(uint8_t byte) { midi_in.push_back(byte); }

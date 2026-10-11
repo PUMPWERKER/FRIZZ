@@ -22,7 +22,7 @@ STRESS=1 ./run.sh work out.bin
 | `chaos` | the chaos key (`FxChaos.h`): its dice on the grid, the pattern that repeats and the press that rolls a new one, the gates on the engine's pool of latched effects, the loop's scramble (another part of the loop, crossfaded, its position running on) |
 | `scenes`, `store` | the scene and master files and the card: formats, a card not read at boot, backups (also of a file next to a cut save's `.tmp`) |
 | `controls`, `keys`, `looper`, `tempo` | the play page's logic classes on their own: FX keys and knobs, SHIFT and the confirm, the looper (its glides landing exactly, its memory not cleared at boot), the tempo clock |
-| `ui` | the whole firmware from power-on on the virtual CHOMPI: keys through the 4021s, LEDs, the headphones and the master out, the card (full too), bug reports, MIDI (notes, the effect channels and the global one, what hosts send by themselves, program changes, Start/Stop, the SysEx and its USB answers); each case on a fresh device |
+| `ui` | the whole firmware from power-on on the virtual CHOMPI: keys through the 4021s, LEDs, the headphones and the master out, the input (AUX's jack and the settings page's key picking AUX or the built-in mic, the mic's level, filter, loop and switch without a click), the card (full too), bug reports (the jack in them too), MIDI (notes, the effect channels and the global one, what hosts send by themselves, program changes, Start/Stop, the SysEx and its USB answers); each case on a fresh device |
 | `remote` | `../remote.py` itself against the virtual CHOMPI: the twin's USB MIDI on a pseudo-terminal, remote.py run as it is (`--device`) while the twin keeps the wall clock's pace: state, LEDs (PLAY's beat apart, #124), load, settings, scenes there and back, a script played with its `expect led` lines, at full brightness and at the card's 50 % (#94), one that uses the settings page refused without `--force` (#58), and one that turns the compressor's knobs (its key, or seeded from the device's state, or its CC) or saves a scene (#78), an effect's knobs played, one that breaks off or is interrupted leaving no key held and the switch with the hand; and the device tools with the CHOMPI stubbed (`Python()`, a lock of their own, never the CHOMPI's): the lock taken only when they reach for it, the slot noted and told apart (FRIZZ-TEST, the bench), `flash.py` waiting for the FRIZZ it sent, `card.py`'s eject after a failed mount, a CHOMPI with garbled USB names (#88) found, and started again (twice at most, `chompi.py fix-name`), `expect led`'s brightness fitting every line, `play --fresh` starting the slot again (#123) and key 10's FRIZZ started again after a RAM-only play (#134); needs `python3` |
 | `midisuite` | `../tools/midisuite.py` itself against the virtual CHOMPI, as `remote` does remote.py: USB and the TRS jack each on a pseudo-terminal, the jack wired both ways, only its out (A), only its in (B) or not at all, the twin at the wall clock's pace: every case passes on the firmware as it is (`--quick`), the wiring is found, what it can't show is a SKIP listed for the other wiring, MIDI out seen on TRS or over USB as the wiring has it. It checks the suite's logic, not the firmware's timing (`sync`, `midiout` and the device do): the pseudo-terminals' bytes reach the twin at the times they came, and a case that failed on `[timing]` checks alone isn't judged when the twin fell over 5 ms behind the wall clock (all.sh's load); `MIDISUITE="ARGS" ./unit.sh midisuite` runs it once with ARGS; needs `python3` |
 | `bench` | the CPU bench's firmware on the twin: it runs through and writes its file (the loads themselves need the device) |
@@ -298,7 +298,8 @@ behind the play page.
 ./unit.sh page2
 ```
 
-Each effect's own knob on page 2 and the stereo on page 1's knob 4, on the effects alone: the
+Each effect's own knob on page 1's knob 4 and the stereo on page 2's knob 2 (#117), on the
+effects alone: the
 freezer's gate leaves the start of each repeat and silences the rest, the shifter's grain
 changes the sound, the folder's, crusher's and filter's stereo are off with both sides alike
 and on make them differ, the flanger's negative polarity sounds different, the resonator's
@@ -308,9 +309,10 @@ flutter's age dips the level, the tape stop's depth slows it without stopping an
 darken takes the highs off, the delay's freeze holds its echoes at a steady level, its
 damping darkens or thins the repeats and its ducking turns them down under the input, the
 reverb's freeze holds the room, its pre-delay at the top starts it 250 ms later and its
-ducking turns it down. Then the scene file: v0.11's symmetry, XOR and LFO division move to
-page 2's knob 2 with stereo off, the tape stop's depth is a full stop, a send's page 2 from
-the first test builds goes back to its defaults (not frozen), and layout 3 round-trips.
+ducking turns it down. Then the scene file: v0.11's symmetry, XOR and LFO division stay on
+page 1's knob 4 with stereo off, the tape stop's depth is a full stop, a send's page 2 from
+the first test builds goes back to its defaults (not frozen), and layout 4 round-trips
+(`scenes` checks layout 1-3 files moving stereo to page 2's knob 2).
 
 ## Folder and slicer check
 

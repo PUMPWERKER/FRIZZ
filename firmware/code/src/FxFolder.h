@@ -22,8 +22,8 @@ namespace chompi
  *  quiet signal comes out at its own level whatever the shape; driven harder, the output stays near
  *  full scale whatever goes in, and page 2's Level (FxOutput.h) sets how loud that is. Nothing
  *  follows the input's level. Fully wet while on (page 2's Mix blends in the dry signal).
- *  Params: 0 drive, 1 shape (sine to triangle), 2 tone, 3 stereo (the right channel driven up
- *  to 2x harder); page 2's own, 5 symmetry. */
+ *  Params: 0 drive, 1 shape (sine to triangle), 2 tone, 3 symmetry; page 2: 5 stereo (the
+ *  right channel driven up to 2x harder). */
 class Folder : public FxBase
 {
 public:
@@ -32,8 +32,8 @@ public:
         DRIVE,
         SHAPE,
         TONE,
-        STEREO,
-        SYMMETRY = 5,
+        SYMMETRY,
+        STEREO = 5,
     };
 
     FX_ONCE void Init(float sample_rate)

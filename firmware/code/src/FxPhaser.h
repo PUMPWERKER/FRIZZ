@@ -22,9 +22,9 @@ namespace chompi
  *  Params: 0 rate (the left half free, .02-50Hz on the flanger's curve; the right half the
  *  filter LFO's divisions, 1/16 at the centre to 4 bars, kNumLfoDivisions steps), 1 feedback,
  *  2 depth (the sweep's width; it also blends the notches in, all of them from kFullWetDepth,
- *  so at 0 the phaser is dry and silent at its defaults), 3 stereo (the right LFO up to half a
- *  cycle behind, as the filter's); page 2's own, 5 centre: 100Hz to 6.4kHz in octaves, 800Hz
- *  in the middle.
+ *  so at 0 the phaser is dry and silent at its defaults), 3 centre: 100Hz to 6.4kHz in
+ *  octaves, 800Hz in the middle; page 2: 5 stereo (the right LFO up to half a cycle behind,
+ *  as the filter's).
  *
  *  The break frequency is worked out every kRetune samples and the allpasses' coefficient
  *  glides to it in between, so a sample costs 6 stages' 2 multiplies a channel and the
@@ -38,8 +38,8 @@ public:
         RATE,
         FEEDBACK,
         DEPTH,
-        STEREO,
-        CENTRE = 5,
+        CENTRE,
+        STEREO = 5,
     };
 
     static const size_t kStages = 6;

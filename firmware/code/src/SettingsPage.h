@@ -8,7 +8,7 @@
  *
  *    white keys 1-14     MIDI channel 1-14                   light blue, the one in force lit
  *    white key 15        channel 15, again 16, again 15 ...  light blue for 15, white for 16
- *  The dark keys by topic (#97): the lower octave MIDI in, the upper the rest.
+ *  The dark keys by topic (#97): the lower octave MIDI in, the upper MIDI out and the rest.
  *
  *    C# (lower octave)   all channels                        light blue
  *    D#                  the effect channels (1-15) over the jack too, on / off
@@ -26,8 +26,10 @@
  *    F# (upper octave)   mono input, on / off                white, lit when on
  *    G# (upper octave)   the LEDs' brightness, each press the next: 100, 75, 50 %
  *                                                            purple, dimmed as all are
+ *    A# (upper octave)   the input, AUX / the built-in mic   green (AUX), magenta (mic)
  *
- *  The upper octave's A# is free.
+ *  The input isn't saved: AUX's jack picks it at power-on and whenever a cable goes in or
+ *  out (chompi_main.cpp); its key picks the other until then.
  *
  *    SHIFT + VOLUME press, both held 2 s     a bug report (EventLog.h), once per hold;
  *                                            the transport LEDs blink as on the play page
@@ -87,6 +89,11 @@ public:
     /** A key going down on the page. True if it changed a setting, which then goes to the card */
     bool Key(int key)
     {
+        if (key == static_cast<int>(kInputKey))
+        {
+            engine_->SetMicInput(!engine_->MicInput()); // not for the card
+            return false;
+        }
         if (!Apply(key))
             return false;
         unsaved_key_ = key;
@@ -256,6 +263,7 @@ public:
         KeyLed(kBlockTrsKey, med_blue, midi_->BlockTrs());
         KeyLed(kFeedbackKey, med_blue, midi_->Feedback());
         KeyLed(kBrightnessKey, purple, true); // dimmed with every LED: it shows itself
+        KeyLed(kInputKey, engine_->MicInput() ? magenta : green, true);
 
         const unsigned level = hw_->GetBatteryLevel();
         const float* battery = level < 4 ? kBatteryColors[level] : green;
@@ -313,6 +321,7 @@ private:
     static const Hardware::SwId kFeedbackKey = Hardware::SwId::KEY_22;
     static const Hardware::SwId kMonoKey = Hardware::SwId::KEY_23;
     static const Hardware::SwId kBrightnessKey = Hardware::SwId::KEY_24;
+    static const Hardware::SwId kInputKey = Hardware::SwId::KEY_25;
     // the factor's hue, by ClockFactor: x1/2 light blue, x1 yellow, x2 red
     static constexpr const float* kFactorColors[3] = {med_blue, yellow, red};
     // the source's, by ClockSource: Auto white, TRS orange, USB blue, internal pink

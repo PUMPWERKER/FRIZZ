@@ -465,8 +465,8 @@ erase a stuck Seed, but the generic Daisy bootloader it offers is not CHOMPI's.
 ## Where things are in `code/src`
 
 ```
-chompi_main.cpp        entry point: audio callback, main loop, boot sequence
-passthroughEngine.h    the engine: input gain, the looper, input/loop mix ("dry/wet" in the code), punch-in FX,
+chompi_main.cpp        entry point: audio callback, main loop, boot sequence, AUX's jack picking the input
+passthroughEngine.h    the engine: the input (AUX or the built-in mic) and its gain, the looper, input/loop mix ("dry/wet" in the code), punch-in FX,
                        master compressor, output gain, headphone cue, safety limiter
 FxChain.h              the punch-in effects in their processing order, with a level meter each
 FxParams.h             each effect's knobs: how many, defaults, steps, coarse grids; the compressor's too
@@ -501,7 +501,8 @@ MidiOut.h              MIDI out: the clock and the loop's Start, Stop, Continue,
                        out of the jack and over USB, if the settings page asks
 NormalPage.h           the play page: routes the controls (VOLUME, PLAY/LOOP, transport, FX and scene keys) and draws the LEDs
 SettingsPage.h         the settings page (the mode switch up): MIDI channel and transport, mono,
-                       the clock factor, the LED brightness, the battery on VOLUME
+                       the clock factor, the LED brightness, the input (AUX or the mic), the
+                       battery on VOLUME
 LedSignal.h            the play page's short LED signals: 3 red or white blinks, a flash
 ui.h                   page plumbing: events, page switching
 EventLog.h             the bug report: every key, knob and MIDI event since power-on, written as
@@ -510,6 +511,7 @@ Bench.h, BenchProfile.h
                        the CPU bench (only in FRIZZ-bench.bin, `make BENCH=1`) and its cycle marks
 limiter.h, EnvFollower.h
                        the safety limiter and the VU meter
+MicFilter.h            the built-in mic's highpass, TAPE's (without its notches)
 hardware.h             the CHOMPI hardware: encoders, keys, switches, LEDs, battery
 encoder.h / .cpp       encoder driver
 temp_led_stuff.h       LED driver (ui_utils.h: LED flush/clear helpers)

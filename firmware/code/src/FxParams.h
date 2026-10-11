@@ -5,14 +5,15 @@
  *  The keys, LEDs and colours that go with each FX are in FxSlots.h.
  *
  *  Every effect's knobs follow one pattern, so they're guessable without labels: knob 1 is the
- *  main control, 2 feedback (or resonance), 3 tone or colour, 4 stereo or level. An effect
- *  without one of these puts its odd parameter there. Page 2 (parameters 4-7, a knob press
- *  away, FxControls.h) is laid out the same on every effect too (FxOutput.h): knob 1 Mix, knob
- *  2 a parameter of the effect's own (#40), knob 3 Band, knob 4 Level. The sends have freeze,
- *  their own, Band and ducking there (their level is page 1's knob 4), the resonator its env
- *  mod, Band into its loop and its return's level. Page 1's knob 4 is stereo on every insert
- *  but the tape stop (its depth). The compressor's page 2 has Mix, a sidechain highpass and
- *  Makeup on the knobs of Mix, Band and Level.
+ *  main control, 2 feedback (or resonance), 3 tone or colour, 4 a setting of the effect's own,
+ *  the one played (#117), or a send's level. An effect without one of these puts its odd
+ *  parameter there. Page 2 (parameters 4-7, a knob press away, FxControls.h) holds what is set
+ *  and left, laid out the same on every effect too (FxOutput.h): knob 1 Mix, knob 2 stereo,
+ *  knob 3 Band, knob 4 Level. The sends have freeze, their own, Band and ducking there (their
+ *  level is page 1's knob 4), the resonator stereo, Band into its loop and its return's level.
+ *  The tape stop has no stereo: its depth is on page 1's knob 4, its own (darken) on page 2's
+ *  knob 2 (HasStereo). The compressor's page 2 has Mix, a sidechain highpass and Makeup on the
+ *  knobs of Mix, Band and Level.
  *
  *  The defaults leave every effect silent or nearly so: the knob that brings it in (shift,
  *  drive, rate and bits, cutoff, amount, feedback, wow and flutter, level) starts neutral, the
@@ -124,6 +125,12 @@ struct FxParams
                                   // (the phaser's rate: free in Hz, then tempo divisions)
 };
 
+// Page 2's knob 2, stereo on the effects that have it, and page 1's knob 4, their own
+// setting: the other way round until #117 (FxScenes.h's layout 4)
+static const size_t kFxOwnKnob = kNumFxKnobs - 1, kFxStereoParam = kNumFxKnobs + 1;
+/** Whether fx has stereo: every insert but the tape stop, and the resonator */
+constexpr bool HasStereo(size_t fx) { return fx < FX_TAPESTOP || fx == FX_PHASER; }
+
 // page 2's shared knobs at their defaults (FxOutput.h): fully the effect's, all of the
 // spectrum, 0dB
 static constexpr float kP2Mix = FxOutput::kMixDefault, kP2Band = FxOutput::kBandDefault,
@@ -133,52 +140,52 @@ static const uint8_t kP2Bipolar = 0x40 | 0x80;
 
 static const FxParams kFxParams[] = {
     // freezer: length (1 bar: a tap shorter than that hears the live signal), feedback (pure
-    // repeat), roll (off), stereo (off); page 2's own: gate (each repeat whole)
+    // repeat), roll (off), gate (each repeat whole); page 2's stereo (off)
     {0xff, {1.f, 0.f, 0.f, 0.f, kP2Mix, 0.f, kP2Band, kP2Level}, {Freezer::kNumLengths, 0, Freezer::kNumRolls, 0},
      {GRID_FREEZER_LENGTH, GRID_10, GRID_FREEZER_ROLL, GRID_10, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
      0, kP2Bipolar},
-    // shifter: shift (0, off), feedback (off), swoop (off), stereo (off); page 2's own: grain
-    // (30ms, the centre). Coarse stereo: quarter semitones
-    {0xff, {.5f, 0.f, 0.f, 0.f, kP2Mix, .5f, kP2Band, kP2Level}, {Shifter::kNumShifts, 0, 0, 0},
-     {GRID_SHIFT, GRID_10, GRID_10, GRID_QUARTER, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
-     0, kP2Bipolar | 0x01 | 0x20},
-    // folder: drive (1x, barely folding), shape (sine), tone (open), stereo (off); page 2's
-    // own: symmetry (off: odd harmonics only). Coarse drive: doublings, 1x to 32x
+    // shifter: shift (0, off), feedback (off), swoop (off), grain (30ms, the centre); page
+    // 2's stereo (off). Coarse stereo: quarter semitones
+    {0xff, {.5f, 0.f, 0.f, .5f, kP2Mix, 0.f, kP2Band, kP2Level}, {Shifter::kNumShifts, 0, 0, 0},
+     {GRID_SHIFT, GRID_10, GRID_10, GRID_10, GRID_10, GRID_QUARTER, GRID_10, GRID_LEVEL},
+     0, kP2Bipolar | 0x01 | 0x08},
+    // folder: drive (1x, barely folding), shape (sine), tone (open), symmetry (off: odd
+    // harmonics only); page 2's stereo (off). Coarse drive: doublings, 1x to 32x
     {0xff, {0.f, 0.f, 1.f, 0.f, kP2Mix, 0.f, kP2Band, kP2Level}, {0, 0, 0, 0},
      {GRID_DRIVE, GRID_10, GRID_TONE, GRID_10, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
      0xaf, kP2Bipolar},
-    // crusher: rate (21.6kHz), bits (16), tone (open), stereo (off); page 2's own: XOR (off).
+    // crusher: rate (21.6kHz), bits (16), tone (open), XOR (off); page 2's stereo (off).
     // Coarse rate: 48kHz / 4, 8 ... 64, so 12k, 6k, 3k, 1.5k, 750Hz; coarse bits: whole bits
     {0xff, {0.f, 0.f, 1.f, 0.f, kP2Mix, 0.f, kP2Band, kP2Level}, {0, 0, 0, 0},
      {GRID_RATE, GRID_BITS, GRID_TONE, GRID_10, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
      0xaf, kP2Bipolar},
-    // filter: cutoff (centre, flat), resonance, LFO depth (off), stereo (off: both LFOs in
-    // step); page 2's own: LFO division (1 bar). The cutoff is a DJ filter's (lowpass below
-    // the centre, highpass above), not in Hz, so coarse is 10%
-    {0xff, {.5f, .5f, 0.f, 0.f, kP2Mix, .6667f, kP2Band, kP2Level}, {0, 0, 0, 0, 0, Filter::kNumLfoDivisions},
-     {GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_LFO_DIVISION, GRID_10, GRID_LEVEL},
+    // filter: cutoff (centre, flat), resonance, LFO depth (off), LFO division (1 bar); page
+    // 2's stereo (off: both LFOs in step). The cutoff is a DJ filter's (lowpass below the
+    // centre, highpass above), not in Hz, so coarse is 10%
+    {0xff, {.5f, .5f, 0.f, .6667f, kP2Mix, 0.f, kP2Band, kP2Level}, {0, 0, 0, Filter::kNumLfoDivisions},
+     {GRID_10, GRID_10, GRID_10, GRID_LFO_DIVISION, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
      0x87, kP2Bipolar | 0x01},
-    // flanger: rate (.55Hz), feedback, amount (off: dry), stereo (off); page 2's own: polarity
-    // (positive). No Mix on page 2: the amount is its mix
-    {0xef, {.45f, .5f, 0.f, 0.f, kP2Mix, 0.f, kP2Band, kP2Level}, {0, 0, 0, 0, 0, 2},
-     {GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_POLARITY, GRID_10, GRID_LEVEL},
+    // flanger: rate (.55Hz), feedback, amount (off: dry), polarity (positive); page 2's
+    // stereo (off). No Mix on page 2: the amount is its mix
+    {0xef, {.45f, .5f, 0.f, 0.f, kP2Mix, 0.f, kP2Band, kP2Level}, {0, 0, 0, 2},
+     {GRID_10, GRID_10, GRID_10, GRID_POLARITY, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
      0x84, kP2Bipolar},
-    // resonator: pitch (110Hz), feedback (off), tone (6.6kHz), stereo (off); page 2: env mod
+    // resonator: pitch (110Hz), feedback (off), tone (6.6kHz), env mod (off); page 2: stereo
     // (off), the band its loop rings in (all), its return's level (0dB). Coarse pitch: the
     // notes at A440, F#0 to A5; coarse tone: octaves down from 15kHz
     {0xef, {.4364f, 0.f, .7f, 0.f, kP2Mix, 0.f, kP2Band, kP2Level}, {0, 0, 0, 0},
      {GRID_PITCH, GRID_10, GRID_RES_TONE, GRID_10, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
      0x2, kP2Bipolar},
-    // slicer: pattern (xxxxxxxx), decay (1s: a slight pump), chance (off), stereo (off); page
-    // 2's own: shuffle (straight)
-    {0xff, {1.f, 1.f, 0.f, 0.f, kP2Mix, 0.f, kP2Band, kP2Level}, {Slicer::kNumPatterns, 0, 0, Slicer::kNumPatterns},
-     {GRID_SLICER_PATTERN, GRID_10, GRID_10, GRID_SLICER_PATTERN, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
+    // slicer: pattern (xxxxxxxx), decay (1s: a slight pump), chance (off), shuffle
+    // (straight); page 2's stereo (off)
+    {0xff, {1.f, 1.f, 0.f, 0.f, kP2Mix, 0.f, kP2Band, kP2Level}, {Slicer::kNumPatterns, 0, 0, 0, 0, Slicer::kNumPatterns},
+     {GRID_SLICER_PATTERN, GRID_10, GRID_10, GRID_10, GRID_10, GRID_SLICER_PATTERN, GRID_10, GRID_LEVEL},
      0, kP2Bipolar},
-    // wow & flutter: wow (off), flutter (off), tone (open), stereo (off); page 2's own: age
-    // (none: no dropouts)
+    // wow & flutter: wow (off), flutter (off), tone (open), age (none: no dropouts); page
+    // 2's stereo (off)
     {0xff, {0.f, 0.f, 1.f, 0.f, kP2Mix, 0.f, kP2Band, kP2Level}, {0, 0, 0, 0},
      {GRID_10, GRID_10, GRID_TONE, GRID_10, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
-     0xa3, kP2Bipolar},
+     0x8b, kP2Bipolar},
     // tape stop: stop (1/2 bar), spin-up (1/4 bar), curve (linear), depth (a full stop); page
     // 2's own: darken (off)
     {0xff, {.6f, .6f, 0.f, 1.f, kP2Mix, 0.f, kP2Band, kP2Level}, {TapeStop::kNumStops, TapeStop::kNumStarts, 0, 0},
@@ -194,11 +201,11 @@ static const FxParams kFxParams[] = {
     {0xff, {.6f, .6f, .6f, 0.f, 0.f, 0.f, kP2Band, 0.f}, {0, 0, 0, 0},
      {GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10},
      0x8, 0x40},
-    // phaser: rate (.7Hz, free), feedback, depth (off: dry), stereo (off); page 2's own:
-    // centre (800Hz). Rate is split: free on the left, the tempo's divisions on the right;
-    // coarse centre: octaves
-    {0xff, {.25f, .4f, 0.f, 0.f, kP2Mix, .5f, kP2Band, kP2Level}, {Phaser::kNumDivisions, 0, 0, 0},
-     {GRID_PHASER_RATE, GRID_10, GRID_10, GRID_10, GRID_10, GRID_OCTAVE6, GRID_10, GRID_LEVEL},
+    // phaser: rate (.7Hz, free), feedback, depth (off: dry), centre (800Hz); page 2's stereo
+    // (off). Rate is split: free on the left, the tempo's divisions on the right; coarse
+    // centre: octaves
+    {0xff, {.25f, .4f, 0.f, .5f, kP2Mix, 0.f, kP2Band, kP2Level}, {Phaser::kNumDivisions, 0, 0, 0},
+     {GRID_PHASER_RATE, GRID_10, GRID_10, GRID_OCTAVE6, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
      0x84, kP2Bipolar, 0x01},
     // chaos: FX chance (off), scramble chance (off), grid (1/8), random to pattern (random);
     // no page 2. Both chances fade it in and out
@@ -207,6 +214,12 @@ static const FxParams kFxParams[] = {
      0x3, 0},
 };
 static_assert(sizeof(kFxParams) / sizeof(kFxParams[0]) == kNumFx, "one per FxId");
+static_assert(Freezer::STEREO == kFxStereoParam && Shifter::STEREO == kFxStereoParam
+                  && Folder::STEREO == kFxStereoParam && Crusher::STEREO == kFxStereoParam
+                  && Filter::STEREO == kFxStereoParam && Flanger::STEREO == kFxStereoParam
+                  && Resonator::STEREO == kFxStereoParam && Slicer::STEREO == kFxStereoParam
+                  && Warble::STEREO == kFxStereoParam && Phaser::STEREO == kFxStereoParam,
+              "stereo on page 2's knob 2 (HasStereo)");
 static_assert(kNumFxParams <= 8, "a bit per parameter in knobs and fade");
 
 // The master compressor's knobs (MasterComp.h), edited like an FX's from its own key, but

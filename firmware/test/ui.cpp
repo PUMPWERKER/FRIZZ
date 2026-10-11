@@ -48,8 +48,10 @@ static float usb_clock_bpm = 0.f; // and one over USB
 static double usb_clock_next = 0.;
 static float last_out[2] = {0.f, 0.f}, max_step = 0.f; // the master out's largest step, L or R
 static float hp_rms = 0.f; // the headphones' (left) RMS over the last RunMs
+static float mic_amp = 0.f, mic_freq = 1000.f, mic_phase = 0.f; // a sine into the mic
 
-/** Runs ms with a sine (or silence) into AUX; the master out's RMS over the time */
+/** Runs ms with a sine (or silence) into AUX, and one into the mic while mic_amp > 0; the
+ *  master out's RMS over the time */
 static float RunMs(uint32_t ms)
 {
     float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
@@ -71,6 +73,8 @@ static float RunMs(uint32_t ms)
             const float s = sine ? amp * sinf(phase) : 0.f;
             phase = fmodf(phase + 2.f * float(M_PI) * freq / kSampleRate, 2.f * float(M_PI));
             in[i * kChannels + 2] = in[i * kChannels + 3] = s;
+            in[i * kChannels] = mic_amp * sinf(mic_phase);
+            mic_phase = fmodf(mic_phase + 2.f * float(M_PI) * mic_freq / kSampleRate, 2.f * float(M_PI));
         }
         Run(1, in, out);
         for (size_t i = 0; i < kBlockSize; i++)
@@ -633,7 +637,8 @@ int main()
     }});
 
     // the knob LEDs: white only at a neutral point. A knob with a centre (the shifter's shift)
-    // white there, blue below, orange above; Level the same around 0dB; others no white
+    // white there, blue below, orange above; page 2's Band the same around its centre; others
+    // no white
     cases.push_back({"knob-colors", [] {
         RunMs(kReadyMs);
         Tap("KEY_2"); // the shifter
@@ -651,22 +656,16 @@ int main()
         printf("      shift down %02x%02x%02x, up %02x%02x%02x\n", down.r, down.g, down.b, up.r, up.g, up.b);
         Check(blue(down) && orange(up), "knob-colors: turned down blue, up orange");
         Check(!white(PthLedFull(kKnob1Led + 1)), "knob-colors: the feedback (no centre) never white");
-        Tap("ENC_4_SW"); // page 2: Level at 0dB, white
-        RunMs(300);
-        bool lvl_white = false;
-        for (int i = 0; i < 700 && !lvl_white; i++)
-        {
-            RunMs(1);
-            lvl_white = white(PthLedFull(kKnob1Led + 3)); // pulsing: white at its brightest
-        }
-        Check(lvl_white, "knob-colors: page 2's Level at 0dB, white");
+        Tap("ENC_4_SW"); // page 2: Band at its centre, white, once its number has blinked
+        RunMs(500);
+        Check(white(PthLedFull(kKnob1Led + 2)), "knob-colors: page 2's Band at its centre, white");
     }});
 
-    // FX page 2 (#35): a plain knob press turns all four knobs over, and back; their LEDs
-    // pulse there. Another FX or the compressor goes back to page 1
+    // FX page 2 (#35): a plain knob press turns all four knobs over, and back. Another FX or
+    // the compressor goes back to page 1. The LEDs there: knob-page-blink, fx-vu
     cases.push_back({"fx-page2", [] {
         RunMs(kReadyMs);
-        // how far knob 1's LED swings over 700 ms: steady on page 1, a pulse on page 2
+        // how far knob 1's LED swings over 700 ms: steady once the page's number has blinked
         auto swing = [] {
             const std::vector<int> seen = Watch(true, kKnob1Led, 700);
             return *std::max_element(seen.begin(), seen.end())
@@ -687,7 +686,7 @@ int main()
         Tap("ENC_4_SW"); // knob 1 pressed
         RunMs(100);
         Check(page() == 1, "fx-page2: a plain knob press turns to page 2");
-        Check(swing() > 100, "fx-page2: page 2's LEDs pulse");
+        RunMs(400);
         Check(Max(PthLedFull(kKnob1Led + 1)) > 0 && Max(PthLedFull(kKnob1Led + 2)) > 0
                   && Max(PthLedFull(kKnob1Led + 3)) > 0,
               "fx-page2: the shifter's page 2: all four knobs lit");
@@ -706,7 +705,7 @@ int main()
         Turn(kKnob1Encoder, -50);
         RunMs(600);
         Tap("ENC_1_SW"); // knob 2: any of the four turns the page
-        RunMs(100);
+        RunMs(300);
         Check(page() == 0 && swing() < 10, "fx-page2: a press on another knob turns back to page 1");
         Tap("ENC_4_SW");
         RunMs(100);
@@ -720,7 +719,7 @@ int main()
         RunMs(100);
         Tap("ENC_4_SW");
         RunMs(100);
-        Check(page() == 1 && swing() > 100, "fx-page2: the tape stop has a page 2 too");
+        Check(page() == 1, "fx-page2: the tape stop has a page 2 too");
         Tap("KEY_2");
         RunMs(100);
         Check(page() == 0, "fx-page2: and another FX (the shifter) brings page 1 back");
@@ -731,15 +730,15 @@ int main()
         Check(page() == 0, "fx-page2: the compressor's key goes back to page 1");
         Tap("ENC_4_SW");
         RunMs(100);
-        Check(page() == 1 && swing() > 100, "fx-page2: the compressor has a page 2 too");
+        Check(page() == 1, "fx-page2: the compressor has a page 2 too");
         // a page-2 value is part of a scene: saved with it, the blank scene puts it back
         Tap("KEY_2");
         RunMs(100);
         Save(1);
         RunMs(2500);
         const std::string file = Card("/FRIZZ/frizz_scenes.txt");
-        Check(file.find("layout 3\n") != std::string::npos
-                  && file.find("shifter 0 500000 0 0 0 500000 500000 500000 750000") != std::string::npos,
+        Check(file.find("layout 4\n") != std::string::npos
+                  && file.find("shifter 0 500000 0 0 500000 500000 0 500000 750000") != std::string::npos,
               "fx-page2: a scene keeps page 2 on the card, after page 1's four");
         Tap("ENC_4_SW");
         RunMs(100);
@@ -2196,7 +2195,9 @@ int main()
         RunMs(kReadyMs);
         Latch("KEY_6");
         Turn(2, 60); // the amount up
-        RunMs(800);
+        RunMs(500);
+        Tap("ENC_4_SW"); // page 2: stereo on knob 2 (#117); the timing as before it (#130)
+        RunMs(240);
         Save(1); // stereo at 0
         // stereo up: the right LFO runs free and drifts; then a recall takes it back to 0 within
         // 25 ms (clicks.cpp's case, on the device). How far they drifted decides the jump, so
@@ -2204,7 +2205,7 @@ int main()
         max_step = 0.f; // over the presses too: the jump comes as the recall lands
         for (uint32_t drift : {6000, 1500, 2500, 3500, 4500})
         {
-            Turn(3, 50);
+            Turn(1, 50);
             RunMs(drift);
             Tap("KEY_17");
             RunMs(600);
@@ -2477,6 +2478,7 @@ int main()
                      || line.rfind("down ", 0) == 0 || line.rfind("up ", 0) == 0
                      || line.rfind("turn ", 0) == 0 || line.rfind("card file ", 0) == 0
                      || line.rfind("toggle ", 0) == 0 || line.rfind("input ", 0) == 0
+                     || line.rfind("mic ", 0) == 0 || line.rfind("jack ", 0) == 0
                      || line.rfind("midi ", 0) == 0
                      || line == "booted");
         Check(log.size() > 3 * 512 && bad == 0,
@@ -3704,6 +3706,388 @@ int main()
               "phaser: KEY_14 latches the chaos key (FxId 13), the phaser off");
     }});
 
+    // ======== #117: stereo on page 2, the page's number blinked, Level's LED a VU ========
+
+    // turning the FX knobs' page blinks its number on all four knob LEDs in white, as VOLUME's
+    // pages do: twice for page 2, once for page 1; then they're steady, page 2 no longer pulses
+    cases.push_back({"knob-page-blink", [] {
+        RunMs(kReadyMs);
+        Tap("KEY_2"); // the shifter: knob 2 blue on both pages (feedback, stereo at 0)
+        RunMs(300);
+        auto white = [](const Rgb& c) { return std::min(c.r, std::min(c.g, c.b)) > 200; };
+        int all_white = 0;
+        // a knob press: the white blinks on knob 2's LED over 600 ms, and how many of the
+        // four are white 30 ms in
+        auto turn = [&](bool shift) {
+            if (shift)
+            {
+                Press("KEY_26", true);
+                RunMs(50);
+            }
+            Press("ENC_4_SW", true);
+            int blinks = 0;
+            bool was = false;
+            all_white = 0;
+            for (int t = 0; t < 600; t++)
+            {
+                if (t == 60)
+                    Press("ENC_4_SW", false);
+                RunMs(1);
+                if (t == 30)
+                    for (int k = 0; k < 4; k++)
+                        all_white += white(PthLedFull(kKnob1Led + k));
+                const bool w = white(PthLedFull(kKnob1Led + 1));
+                blinks += w && !was;
+                was = w;
+            }
+            if (shift)
+                Press("KEY_26", false);
+            return blinks;
+        };
+        auto swing = [] {
+            const std::vector<int> seen = Watch(true, kKnob1Led + 1, 700);
+            return *std::max_element(seen.begin(), seen.end())
+                   - *std::min_element(seen.begin(), seen.end());
+        };
+        const int to2 = turn(false);
+        printf("      page 2: %d blinks, %d knobs white\n", to2, all_white);
+        Check(to2 == 2 && all_white == 4, "knob-page-blink: page 2 blinks twice, on all four knobs");
+        Check(swing() < 10, "knob-page-blink: then page 2's LEDs are steady, no pulse");
+        const int to1 = turn(false);
+        Check(to1 == 1 && all_white == 4, "knob-page-blink: page 1 blinks once");
+        Check(turn(true) == 0, "knob-page-blink: SHIFT + press resets, turns no page and blinks nothing");
+        Tap("KEY_15"); // the compressor's page 2 too
+        RunMs(300);
+        Check(turn(false) == 2, "knob-page-blink: the compressor's page 2 blinks twice too");
+    }});
+
+    // page 2's knob 4 (Level) shows the effect's output as a VU meter in VOLUME's colours, as
+    // bright as Level turns it; a send's (Ducking there) shows its return at full brightness
+    cases.push_back({"fx-vu", [] {
+        RunMs(kReadyMs);
+        Latch("KEY_2"); // the shifter at 0 semitones: the input through it
+        Tap("ENC_4_SW");
+        RunMs(800);
+        const Rgb on = PthLedFull(kKnob1Led + 3);
+        Turn(3, -40); // Level from 0dB (.75) to .35
+        RunMs(800);
+        const Rgb down = PthLedFull(kKnob1Led + 3);
+        Turn(3, 40);
+        Press("KEY_2", true); // off again
+        RunMs(80);
+        Press("KEY_2", false);
+        RunMs(800);
+        const Rgb off = PthLedFull(kKnob1Led + 3);
+        printf("      shifter's VU: on %02x%02x%02x, Level down %02x%02x%02x, off %02x%02x%02x\n",
+               on.r, on.g, on.b, down.r, down.g, down.b, off.r, off.g, off.b);
+        Check(Max(on) > 120 && on.b < Max(on) / 2, "fx-vu: on page 2, knob 4 is the output's VU, not Level's white");
+        Check(Max(down) < Max(on) / 2, "fx-vu: Level turned down, it dims");
+        Check(Max(off) < 40, "fx-vu: the effect off: down to the floor");
+        Latch("KEY_12"); // the delay, its level (page 1's knob 4) up
+        Turn(3, 60); // 8 ms a detent
+        RunMs(600);
+        Tap("ENC_4_SW");
+        RunMs(1500);
+        const Rgb echoes = PthLedFull(kKnob1Led + 3);
+        amp = 0.f; // the input stops: the echoes die away
+        RunMs(4000);
+        const Rgb gone = PthLedFull(kKnob1Led + 3);
+        amp = .3f;
+        printf("      delay's return: %02x%02x%02x, gone %02x%02x%02x\n", echoes.r, echoes.g,
+               echoes.b, gone.r, gone.g, gone.b);
+        Check(Max(echoes) > 120 && Max(gone) < 40,
+              "fx-vu: the delay's knob 4 there (Ducking at 0): its return, at full brightness");
+    }});
+
+    // the MIDI map follows the knobs: CC 17 on an effect's channel is page 1's knob 4, its own
+    // setting (the shifter's grain, the centre at first), CC 19 page 2's knob 2, stereo
+    cases.push_back({"cc-stereo", [] {
+        RunMs(kReadyMs);
+        auto param = [](int i) {
+            const std::string p = Ask({0x21, 1}); // the shifter's knobs
+            return p.size() == 17 ? KnobOf(p[1 + 2 * i], p[2 + 2 * i]) : -1.f;
+        };
+        Check(param(3) == .5f && param(5) == 0.f, "cc-stereo: the shifter's grain on knob 4 (at its centre), stereo on page 2's knob 2");
+        Trs({0xB1, 19, 127}); // channel 2, the shifter's
+        RunMs(50);
+        Check(param(5) == 1.f && param(3) == .5f, "cc-stereo: CC 19 turns stereo");
+        Trs({0xB1, 17, 0});
+        RunMs(50);
+        Check(param(3) == 0.f && param(5) == 1.f, "cc-stereo: CC 17 turns the grain");
+    }});
+
+    // ---- the built-in mic (#113): AUX's jack picks the input at power-on and on each change,
+    // the settings page's upper A# the other until the next; TAPE's gain and filter ----
+    static const int kInputKeyLed = 9; // the settings page's upper A# (the play page's SAVE)
+    static auto green_led = [](const Rgb& c) { return c.g > 150 && c.r < 40 && c.b < 40; };
+    static auto magenta_led = [](const Rgb& c) { return c.r > 150 && c.b > 150 && c.g < 40; };
+    // what the master out carries of AUX's sine on its own, then of the mic's on its own
+    static auto heard = [](float& aux, float& mic) {
+        const float a = amp, m = mic_amp;
+        mic_amp = 0.f;
+        RunMs(50);
+        aux = RunMs(200);
+        amp = 0.f;
+        mic_amp = m;
+        RunMs(50);
+        mic = RunMs(200);
+        amp = a;
+    };
+    static auto is_aux = [](const char* what) {
+        float aux, mic;
+        heard(aux, mic);
+        printf("      %s: AUX %.4f, the mic %.4f\n", what, aux, mic);
+        return aux > .03f && mic < aux * .02f;
+    };
+    static auto is_mic = [](const char* what) {
+        float aux, mic;
+        heard(aux, mic);
+        printf("      %s: AUX %.4f, the mic %.4f\n", what, aux, mic);
+        return mic > .03f && aux < mic * .02f;
+    };
+
+    cases.push_back({"mic-boot", [] {
+        SetJack(false); // no cable in AUX at power-on
+        mic_amp = .1f;
+        RunMs(kReadyMs);
+        Check(is_mic("no cable"), "mic-boot: no cable in AUX at power-on: the mic is the input, AUX unheard");
+        SetToggle(true);
+        RunMs(300);
+        Check(magenta_led(SmtLedFull(kInputKeyLed)), "mic-boot: the settings page's upper A# is magenta");
+    }});
+
+    cases.push_back({"mic-jack", [] {
+        mic_amp = .1f;
+        RunMs(kReadyMs);
+        Check(is_aux("a cable"), "mic-jack: a cable in AUX at power-on: AUX is the input, the mic unheard");
+        SetToggle(true);
+        RunMs(300);
+        Check(green_led(SmtLedFull(kInputKeyLed)), "mic-jack: the settings page's upper A# is green");
+        SetToggle(false);
+        RunMs(300);
+        // a bounce shorter than the debouncing (20 ms) changes nothing
+        SetJack(false);
+        RunMs(10);
+        SetJack(true);
+        RunMs(100);
+        Check(is_aux("a 10 ms bounce"), "mic-jack: the jack out for 10 ms: still AUX");
+        SetJack(false);
+        RunMs(100);
+        Check(is_mic("pulled"), "mic-jack: the cable pulled: the mic");
+        SetJack(true);
+        RunMs(100);
+        Check(is_aux("plugged again"), "mic-jack: plugged in again: AUX");
+    }});
+
+    cases.push_back({"mic-key", [] {
+        mic_amp = .1f;
+        RunMs(kReadyMs);
+        const std::string master = Card("/FRIZZ/frizz_master.txt");
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_25");
+        RunMs(100);
+        Check(magenta_led(SmtLedFull(kInputKeyLed)) && is_mic("the key, a cable in"),
+              "mic-key: the upper A# with a cable in: the mic, its key magenta");
+        Tap("KEY_25");
+        RunMs(100);
+        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("the key again"),
+              "mic-key: again: AUX, its key green");
+        Tap("KEY_25");
+        // nothing goes to the card, and nothing blinks red for it
+        bool red = false;
+        for (int t = 0; t < 3000; t++)
+        {
+            RunMs(1);
+            const Rgb c = SmtLedFull(kInputKeyLed);
+            red |= c.r > 150 && c.g < 40 && c.b < 40;
+        }
+        Check(Card("/FRIZZ/frizz_master.txt") == master && !red && magenta_led(SmtLedFull(kInputKeyLed)),
+              "mic-key: the input isn't saved: the card as it was, no red blink");
+        // the jack's next change decides again: pulled, the mic; plugged, AUX
+        SetJack(false);
+        RunMs(100);
+        Check(is_mic("the key, then pulled"), "mic-key: then the cable pulled: the mic still");
+        SetJack(true);
+        RunMs(100);
+        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("plugged again"),
+              "mic-key: plugged in again: AUX, over the key");
+        // on the play page the key is SAVE again, not the input
+        SetToggle(false);
+        RunMs(300);
+        Tap("KEY_25");
+        RunMs(100);
+        Tap("KEY_25");
+        RunMs(300);
+        Check(is_aux("SAVE on the play page"), "mic-key: on the play page the upper A# doesn't switch the input");
+    }});
+
+    cases.push_back({"mic-loop", [] {
+        SetJack(false);
+        amp = 0.f; // nothing into AUX
+        mic_amp = .1f;
+        RunMs(kReadyMs);
+        Tap("KEY_28"); // record
+        RunMs(2000);
+        Tap("KEY_28"); // play
+        RunMs(500);
+        mic_amp = 0.f;
+        RunMs(300);
+        const float loop = RunMs(500);
+        SetJack(true);
+        RunMs(300);
+        const float aux_loop = RunMs(500);
+        printf("      the loop recorded from the mic: %.4f, with a cable in AUX %.4f\n", loop, aux_loop);
+        Check(Probe().loop_state == 2 && loop > .03f,
+              "mic-loop: the looper records the mic, and plays it once it's silent");
+        Check(fabsf(aux_loop - loop) < loop * .1f, "mic-loop: and plays it on with AUX the input again");
+    }});
+
+    cases.push_back({"mic-level", [] {
+        SetJack(false);
+        amp = 0.f;
+        mic_amp = .05f;
+        RunMs(kReadyMs);
+        RunMs(100);
+        const float m1k = RunMs(500);
+        mic_freq = 50.f;
+        RunMs(100);
+        const float m50 = RunMs(500);
+        // above it nothing: TAPE's notches (4 kHz one of them) are left out (#127), so a quiet
+        // tone at 4 kHz is as loud as one beside it
+        mic_amp = .0005f;
+        mic_freq = 3600.f;
+        RunMs(100);
+        const float q3600 = RunMs(500);
+        mic_freq = 4000.f;
+        RunMs(300);
+        const float q4k = RunMs(500);
+        mic_freq = 1000.f;
+        mic_amp = .05f;
+        printf("      the mic at 1 kHz %.4f, 50 Hz %.4f; quietly at 3.6 kHz %.6f, 4 kHz %.6f\n", m1k, m50,
+               q3600, q4k);
+        Check(m50 < m1k * .3f, "mic-level: 50 Hz well below 1 kHz (the highpass at 150 Hz)");
+        Check(fabsf(q4k - q3600) < q3600 * .05f, "mic-level: a quiet tone at 4 kHz as loud as one at 3.6 kHz: no notch (#127)");
+        // as loud on both sides, and the mono input changes nothing
+        float l2 = 0.f, r2 = 0.f;
+        {
+            float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
+            for (int b = 0; b < 400; b++)
+            {
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    in[i * kChannels] = mic_amp * sinf(mic_phase);
+                    mic_phase = fmodf(mic_phase + 2.f * float(M_PI) * mic_freq / kSampleRate, 2.f * float(M_PI));
+                }
+                Run(1, in, out);
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    l2 += out[i * kChannels + 2] * out[i * kChannels + 2];
+                    r2 += out[i * kChannels + 3] * out[i * kChannels + 3];
+                }
+            }
+        }
+        Check(fabsf(l2 - r2) < l2 * .001f, "mic-level: the mic on both sides alike");
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23"); // mono
+        RunMs(300);
+        SetToggle(false);
+        RunMs(300);
+        const float mono = RunMs(500);
+        Check(fabsf(mono - m1k) < m1k * .02f, "mic-level: the mono input doesn't change the mic");
+        // TAPE's gains: the mic x5, AUX x3 (and both after the input gain)
+        mic_amp = 0.f;
+        amp = .05f;
+        freq = 1000.f;
+        SetJack(true);
+        RunMs(300);
+        const float a1k = RunMs(500);
+        printf("      AUX at 1 kHz %.4f: the mic %.2f times as loud\n", a1k, m1k / a1k);
+        Check(m1k / a1k > 1.4f && m1k / a1k < 1.95f, "mic-level: the mic about 5/3 as loud as AUX at the same level");
+        Turn(kVolumeEncoder, 0);
+        Tap("ENC_6_SW"); // VOLUME's page 2: the input gain
+        RunMs(300);
+        Turn(kVolumeEncoder, -20); // 75 % to 35 %
+        RunMs(500);
+        amp = 0.f;
+        mic_amp = .05f;
+        SetJack(false);
+        RunMs(300);
+        const float m_low = RunMs(500);
+        printf("      the mic at 35 %% input gain %.4f\n", m_low);
+        Check(m_low < m1k * .6f && m_low > m1k * .3f, "mic-level: the input gain turns the mic down too");
+        // the headphones' input on its own (VOLUME's page 3) carries the mic
+        Latch("KEY_11"); // the tape stop: silence on the master
+        RunMs(3000);
+        Usb({kCC, kHpCueCC, 0});
+        RunMs(300);
+        const float cued = RunMs(500);
+        printf("      the headphones' input alone: %.4f (the master %.4f)\n", hp_rms, cued);
+        Check(cued < .01f * m_low && hp_rms > .5f * m_low,
+              "mic-level: the headphones' input on its own is the mic");
+    }});
+
+    cases.push_back({"mic-click", [] {
+        mic_amp = 0.f;
+        RunMs(kReadyMs);
+        const float steady = StepMs(300);
+        SetJack(false); // AUX's sine to the silent mic
+        const float to_mic = StepMs(300);
+        mic_amp = .1f;
+        RunMs(300);
+        const float mic_steady = StepMs(300);
+        SetJack(true);
+        const float to_aux = StepMs(300);
+        printf("      largest steps: AUX %.4f, to the mic %.4f, the mic %.4f, back to AUX %.4f\n", steady,
+               to_mic, mic_steady, to_aux);
+        Check(to_mic < steady * 1.5f && to_aux < std::max(steady, mic_steady) * 1.5f,
+              "mic-click: switching between AUX and the mic crossfades, no click");
+    }});
+
+    // a bug report knows AUX's jack: as it was at power-on, and each change; its replay plays
+    // them, so it ends on the input the session had
+    cases.push_back({"mic-bug-log", [] {
+        SetJack(false);
+        RunMs(kReadyMs);
+        SetJack(true);
+        RunMs(500);
+        SetJack(false);
+        RunMs(500);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_25"); // AUX, by hand
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(2500);
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(1000);
+        const std::string log = Card("/FRIZZ/bug-1.txt");
+        const size_t booted = log.find("\nbooted\n"), in = log.find("\njack in\n", booted),
+                     out = log.find("\njack out\n", booted);
+        Check(booted != std::string::npos && log.rfind("\njack out\n", booted) != std::string::npos
+                  && log.find("\nmic sine ") < booted,
+              "mic-bug-log: no cable at power-on: the report's head says jack out, and plays a tone into the mic");
+        Check(in != std::string::npos && out != std::string::npos && in < out,
+              "mic-bug-log: the cable in, then out, among its events");
+        KeepCard();
+    }});
+    cases.push_back({"bug-replay-mic", [] {
+        TakeCard();
+        const std::string log = Card("/FRIZZ/bug-1.txt");
+        CardFiles().clear();
+        std::istringstream script(log + "\nwait 3000\n");
+        Check(PlayScript(script, nullptr, nullptr) == 0 && !log.empty(), "mic-bug-log: the twin plays it");
+        // no cable, a cable, none, the key: AUX, as in the session (without the jack's lines
+        // it would be the mic)
+        mic_amp = .1f;
+        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("replayed"),
+              "mic-bug-log: played back, it ends on AUX by the key, as the session did");
+    }});
+
     // ===== #116: the clock factor times every tempo the effects follow, not only a clock's =====
     {
         // SHIFT + LOOP, 5 taps ms apart
@@ -3876,6 +4260,7 @@ int main()
     Chain({"clock-source-log", "bug-replay-usb"});
     Chain({"card-1", "card-2", "card-3", "bug-log", "bug-full", "bug-replay"});
     Chain({"midi-transport", "midi-kept"});
+    Chain({"mic-bug-log", "bug-replay-mic"});
     // a replay boots by its script
     RunAllCases([](const Case& c) {
         return c.name.compare(0, 10, "bug-replay") != 0 && c.name.compare(0, 9, "scenario:") != 0;

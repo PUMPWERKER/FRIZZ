@@ -27,9 +27,9 @@ static const uint8_t kFreezerRollStages[] = {0, 8, 4, 2, 1};
  *  Pressed again while a release still fades the loop out, the loop plays on until the 16th
  *  that starts the new capture, and hands over to it in a short crossfade instead of
  *  dropping to the live signal at once.
- *  Params: 0 length (kNumLengths steps), 1 feedback, 2 roll (kNumRolls steps), 3 stereo;
- *  page 2's own, 5 gate: how much of each repeat is heard, all of it (0) down to its first
- *  eighth, a stutter (the rest silent, faded in and out over 2ms).
+ *  Params: 0 length (kNumLengths steps), 1 feedback, 2 roll (kNumRolls steps), 3 gate:
+ *  how much of each repeat is heard, all of it (0) down to its first eighth, a stutter (the
+ *  rest silent, faded in and out over 2ms); page 2: 5 stereo.
  *  The freezer's buffers are separate (SDRAM, chompi_main.cpp), kFreezerFrames per channel. */
 class Freezer : public FxBase
 {
@@ -39,8 +39,8 @@ public:
         LENGTH,
         FEEDBACK,
         ROLL,
-        STEREO,
-        GATE = 5,
+        GATE,
+        STEREO = 5,
     };
 
     static const size_t kNumLengths = sizeof(kFreezerBarDivisions);

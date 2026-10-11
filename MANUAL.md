@@ -9,20 +9,21 @@ did nothing, so if the keys don't play after updating, flip it down.
 
 ## Overview
 
-The stereo AUX input goes to the headphone and master outputs through a volume stage taken
-from TAPE's Volume Engine, with a looper on the wet side of a dry/wet mix. The looper can
-record free-length loops or loops quantized to whole bars of an incoming MIDI clock. The
-white keys punch in effects on the mixed signal, and four dark keys save and recall their
-settings as scenes, next to one that clears them. A master compressor, set from the last
-white key, sits after the effects. The built-in microphone is not used.
+The stereo AUX input, or the built-in microphone while no cable is in AUX (see
+[Input: AUX or the mic](#input-aux-or-the-mic)), goes to the headphone and master outputs
+through a volume stage taken from TAPE's Volume Engine, with a looper on the wet side of a
+dry/wet mix. The looper can record free-length loops or loops quantized to whole bars of an
+incoming MIDI clock. The white keys punch in effects on the mixed signal, and four dark keys
+save and recall their settings as scenes, next to one that clears them. A master compressor,
+set from the last white key, sits after the effects.
 
 ## VOLUME knob
 
 | Control | Function | LED |
 |---|---|---|
 | Turn (page 1, default) | Output gain, headphone + master (default 75%) | VU meter of the master, scaled by gain: dim when silent, then green, yellow, pink at the loudest |
-| Press, then turn (page 2) | Input gain, AUX (default 75%) | blue (0%) to red (100%) |
-| Press twice, then turn (page 3) | Headphone feed: left towards the AUX input on its own, right back to the master out (default: the master out) | white (master) to green (input) |
+| Press, then turn (page 2) | Input gain, AUX or the mic (default 75%) | blue (0%) to red (100%) |
+| Press twice, then turn (page 3) | Headphone feed: left towards the input on its own, right back to the master out (default: the master out) | white (master) to green (input) |
 | SHIFT + turn | Input/loop mix: input only to looper only | green (input) to purple (loop) |
 | SHIFT + press | Resets the mix: the loop only while there is one, otherwise the input only | |
 
@@ -36,7 +37,7 @@ when the loop is erased; SHIFT + press puts it back there. The punch-in FX come 
 so they act on the input as well as the loop.
 
 **Headphone feed (page 3):** the master out always carries the full signal. Turned left, the
-headphones carry the AUX input on its own instead, after input gain and VOLUME: no loop, no
+headphones carry the input (AUX or the mic) on its own instead, after input gain and VOLUME: no loop, no
 effects, no mix, no compressor. Use it when the master goes to a PA, mixer or recorder and the
 headphones are your monitor; with headphones alone, leave it at the master. It's back on the
 master at every power-on.
@@ -49,7 +50,8 @@ then on page 4. Mono and the battery check moved to the [settings page](#setting
 
 From v0.11. With the mode switch **up**, the keys set what you'd set once for a setup rather
 than play: the MIDI channel, MIDI transport following, the mono input, where FRIZZ takes a
-MIDI clock from and how it follows it, whether it sends one, and how bright its LEDs are. The loop, the effects
+MIDI clock from and how it follows it, whether it sends one, how bright its LEDs are, and
+whether it listens to AUX or the built-in mic. The loop, the effects
 and MIDI play on meanwhile; only your hands are on this page. Switch back down to play.
 
 Each key sets one thing on its press. The white keys pick the MIDI channel; the dark keys
@@ -68,10 +70,10 @@ set the rest:
 | D# (upper octave) | [MIDI feedback](#midi-feedback): on (lit) / off (dim, default) | light blue |
 | F# (upper octave) | [Mono input](#mono-input): mono (lit) / stereo (dim) | white |
 | G# (upper octave) | [LED brightness](#led-brightness), each press the next: 100 % (default), 75 %, 50 % | purple, as bright as the LEDs are |
+| A# (upper octave) | [The input](#input-aux-or-the-mic): AUX or the built-in mic, each press the other. Not saved | green (AUX), magenta (mic) |
 
 The dark keys are grouped by topic: the lower octave's are MIDI in, the upper octave's MIDI out
-and the rest. The upper octave's A# does nothing. (Before v0.12 they sat elsewhere: see the
-CHANGELOG.)
+and the rest. (Before v0.12 they sat elsewhere: see the CHANGELOG.)
 
 - **The beat on G#** is the tempo the effects follow right now (see [Tempo](#tempo)): with a
   loop, the loop's at its speed; otherwise the MIDI clock's; otherwise the last tempo, each
@@ -95,8 +97,8 @@ CHANGELOG.)
 - Flipping up ends a scene mode (SAVE, COPY, DELETE): nothing is saved, copied or deleted,
   and you're out of the mode when you flip back down.
 - The low-battery warning dims with the LEDs too.
-- Every setting is saved on the card with the master compressor, 2 s after the last change,
-  so it comes back at power-on. None is part of a scene. Without a card, or when the card
+- Every setting but the input is saved on the card with the master compressor, 2 s after the
+  last change, so it comes back at power-on. None is part of a scene. Without a card, or when the card
   can't be written, the key you changed last blinks red 3 times, and FRIZZ tries again 2 s
   later, up to 3 times; the setting then lasts until power-off.
 
@@ -105,7 +107,28 @@ CHANGELOG.)
 Mono is for a mono (TS) cable, such as one from a Lyra-8 or a guitar pedal: the plug grounds
 the right channel, so in stereo the source is heard on the left only. In mono the left channel
 feeds both sides, and the effects' stereo knobs spread it from there. Its key (F# of the upper
-octave) toggles it.
+octave) toggles it. It's for AUX only: the mic is mono anyway, and plays on both sides either way.
+
+### Input: AUX or the mic
+
+From v0.12 FRIZZ hears CHOMPI's built-in microphone too, as TAPE and TEMPO do. AUX's jack
+picks: with a cable plugged in, the input is AUX; pull it out and it's the mic, plug one in
+and it's AUX again. At power-on the jack decides the same way.
+
+The upper octave's A# picks the other input by hand: green while AUX is the input, magenta
+while the mic is. It holds until a cable goes in or out of AUX, which picks again; it isn't
+saved, so at power-on the jack decides. Use it to sing into the mic with a cable left in AUX,
+or to silence the mic with no cable in AUX (to play the loop on its own, say).
+
+The mic is everything the input is: the looper records it, the input/loop mix and the effects
+take it, the input gain (VOLUME's page 2) sets its level and the headphone feed (page 3)
+carries it. It is mono, the same on both sides. FRIZZ treats it as TAPE does: 5 times the
+input gain (AUX gets 3 times), its DC taken out, and a highpass at about 150 Hz (TAPE's
+narrow notches above it are left out: they did next to nothing). A switch between AUX and the
+mic fades over 5 ms, so it doesn't click.
+
+Mind the speaker: with the mic on and the headphones' or master's volume up, a loudspeaker
+near CHOMPI feeds back. Headphones are the safe way to play it.
 
 ### LED brightness
 
@@ -292,7 +315,7 @@ the chaos key takes up its idea.)
 | Knobs 1-4 | The parameters of the most recently pressed or selected FX key, 1% per detent; stepped ones (shifter shift, filter LFO and delay divisions, freezer length and roll, slicer pattern and stereo, tape stop and spin-up times, the flanger's polarity, the chaos key's grid, the phaser's rate right of its centre) move one step per 3 detents |
 | SHIFT + knobs 1-4 | Coarse: jumps to the next point of the parameter's grid per detent (see below) |
 | SHIFT + press knobs 1-4 | Resets that parameter to its default, on the page shown |
-| Press knobs 1-4 | **Page 2:** all four knobs turn over to the effect's second page, and their LEDs pulse; press any knob again for page 1. Pressing or selecting another effect, or the compressor's key, goes back to page 1; pressing the same effect's key, or the compressor's while it's selected, keeps page 2. Every effect but the chaos key has one, and the compressor too. See [Page 2](#page-2) |
+| Press knobs 1-4 | **Page 2:** all four knobs turn over to the effect's second page, and the page's number blinks on their LEDs, twice (page 1 once), as VOLUME's pages do; press any knob again for page 1. Pressing or selecting another effect, or the compressor's key, goes back to page 1; pressing the same effect's key, or the compressor's while it's selected, keeps page 2. Every effect but the chaos key has one, and the compressor too. See [Page 2](#page-2) |
 
 The FX keys are dimly lit in their effect's colour while off and at full brightness while
 on, where the audio coming out of the effect pushes the colour towards white, from -30 dBFS
@@ -305,10 +328,11 @@ dark and does nothing. Values reset at power-off unless they're saved in a
 
 The knob LEDs use white for one thing only, a neutral point. A knob with a centre (the
 shifter's shift and grain, the filter's cutoff, the delay's random and damping, every Band)
-and Level (0 dB at 3/4) are white there, blue below and orange above, the same on every
-effect, so you can see at a glance which way a knob is off. Every other knob goes from the
-effect's first colour to its second. The phaser's rate shows which half it's in: its own
-colours while it runs free, green to yellow once it follows the tempo.
+is white there, blue below and orange above, the same on every effect, so you can see at a
+glance which way a knob is off. Every other knob goes from the effect's first colour to its
+second. The phaser's rate shows which half it's in: its own colours while it runs free,
+green to yellow once it follows the tempo. Page 2's knob 4 shows what the effect puts out
+instead of its value (see [Page 2](#page-2)).
 
 The knobs do the same kind of job on every effect, so you can find a setting without
 looking it up:
@@ -318,7 +342,7 @@ looking it up:
 | 1 | The main control: length, pitch, drive, rate, cutoff, pattern, wow, stop time, division, decay | — |
 | 2 | Feedback (the filter's resonance) | its second main control: shape, bits, decay, flutter, spin-up time, diffusion |
 | 3 | Tone or colour: tone, roll, swoop, amount, LFO depth, chance, curve, random | — |
-| 4 | Stereo, or level on the delay and reverb | the tape stop's depth |
+| 4 | A setting of the effect's own, the one you play: gate, grain, symmetry, XOR, LFO division, polarity, centre, env mod, shuffle, age; level on the delay and reverb | the tape stop's depth |
 
 The chaos key makes no sound, so its knobs are its own: 1 the FX chance, 2 the scramble
 chance, 3 the grid, 4 random to pattern.
@@ -331,29 +355,18 @@ shorter press only hears the live signal; the slicer at every step on with the l
 decay, a slight pump; and the tape stop stops on every press, over 1/2 bar.
 SHIFT + press on a knob takes it back there.
 
-| Key | Effect | Knob 1 | Knob 2 | Knob 3 | Knob 4 |
-|---|---|---|---|---|---|
-| 1st white | Freezer: Kastle 2 FX Wizard's, as a beat repeat | Length: 1/16, 1/8T, 1/8, 1/4T, 1/4, 1/2T, 1/2, 1 bar (default 1 bar) | Feedback: the input overdubbed into the repeats (default 0, pure repeat) | Roll: the loop halves as it repeats, down to 1/64 bar: off, slow, … fast, one step per 3 detents (default off) | Stereo: the left loop up to 45 ms longer (default off) |
-| 2nd white | Shifter: a two-tap pitch shifter, with Kastle 2 FX Wizard's swoop and feedback | Shift in semitones, -12 to +12, one step per 3 detents; centre off (default 0, off) | Feedback: the shifted sound spirals (default off) | Swoop: on the key press, the shift pushes up to 2 octaves further and falls back over 1 s (default off) | Stereo: the right channel up to a semitone higher (default off) |
-| 3rd white | Folder: a sine-to-triangle wavefolder, antialiased | Drive: 1x up to 32x, from barely folding to many folds (default 1x) | Shape: sine (smooth) to triangle (bright) (default sine) | Tone, lowpass 200 Hz to open (default open) | Stereo: the right channel driven up to 2x harder (default off) |
-| 4th white | Crusher: TEMPO's sample-rate reducer plus bit reduction | Rate, 21.6 kHz down to 480 Hz, halving every 18% of the knob (default 21.6 kHz) | Bits, 16 down to 2 (default 16 bits) | Tone, lowpass 200 Hz to open (default open) | Stereo: the right channel's rate up to an octave lower (default off) |
-| 5th white | Filter: the DJ filter from TAPE, TEMPO and WAVE (WAVE's copy) | Cutoff: lowpass left of centre, highpass right, flat at centre (default centre, flat) | Resonance (default 50%) | LFO depth (default off) | Stereo: the right channel's LFO up to half a cycle behind, so the sweep moves across (default off; only with the LFO) |
-| 6th white | Flanger: Kastle 2 FX Wizard's | Rate, 0.02 Hz to 50 Hz (default 0.55 Hz) | Feedback, up to 85% (default 50%) | Amount: sweep depth and mix together, the top is pure vibrato (default 0, dry) | Stereo: the right LFO runs free and detuned (default off) |
-| 7th white | [Phaser](#phaser): six allpass stages with feedback, FRIZZ's own | Rate, in two halves: left of the centre free, 0.02 Hz to 50 Hz; from the centre right on the tempo, 1/16, 1/8, 1/4, 1/2, 1 bar, 2 bars, 4 bars (default 0.7 Hz, free) | Feedback: the resonance between the notches, up to 85% (default 40%) | Depth: brings the notches in and widens the sweep, up to 2.5 octaves either way of the centre (default 0, dry) | Stereo: the right channel's sweep up to half a cycle behind (default off) |
-| 8th white | Resonator: the comb Kastle 2 FX Wizard runs around every mode | Pitch, 22 Hz to 880 Hz (default 110 Hz) | Feedback, up to 98% (default 0, off) | Tone: the loop's lowpass, 1 kHz to 15 kHz (default 6.6 kHz) | Stereo: the right channel up to 12 semitones higher (default off) |
-| 9th white | Slicer: Kastle 2 FX Wizard's rhythmic gate | Pattern, 8 steps of 16ths: `x.......`, `x...x...`, `..x...x.`, `x....x..`, `x..x..x.`, `x.x.x.x.`, `x.x.xx..`, `xxxxxxxx` (default `xxxxxxxx`) | Decay, 10 ms to 1 s (default 1 s) | Chance: each step flipped at random, up to 90% (default off) | Stereo: the left channel plays a pattern up the list, the right one down, 0-7 apart (default off) |
-| 10th white | Wow & flutter: TAPE's warble, plus flutter | Wow: TAPE's warble knob, how often the pitch drifts and how much of it you hear, together (default off) | Flutter: a fast, shallow wobble, up to 1.4% of pitch; real tape's 0.1-0.5% is the lower half (default off) | Tone, lowpass 200 Hz to open (default open) | Stereo: the right channel drifts on its own and wobbles out of step (default off) |
-| 11th white | Tape stop | Stop time: 1/16, 1/8, 1/4, 1/2, 1 bar, 2 bars (default 1/2) | Spin-up time on release: off, 1/16, 1/8, 1/4, 1/2, 1 bar (default 1/4) | Curve: linear to a brake, fast at first then dragging (default linear) | Depth: how far it slows, from a full stop at the top (default) down to half speed (the SP-404MK2 Stopper's DEPTH) |
-| 12th white | Delay: TEMPO's tempo-synced delay | Division: 1/8, 1/4T, 1/4, 1/2T, 1/4., 1/2, 1/2., 1 bar, 2 bars (default 1/4) | Feedback (default 40%) | Random: left of centre retrigger / reverse / pitch events, right octave-up shimmer with random pan, centre off (default off) | Level (default 0) |
-| 13th white | Reverb (TEMPO's / WAVE's) | Decay (default 60%) | Diffusion (default 60%) | Tone, dark to open (default 60%) | Level (default 0) |
-| 14th white | [Chaos](#chaos-key): no sound of its own, it plays with the effects you've latched | FX chance: how often each latched effect drops out of a step, from never to half the steps (default off) | Scramble chance: how often a step of the loop plays from elsewhere in it, from never to every step (default off) | Grid: 1/16, 1/8, 1/4, 1/2, 1 bar, on the effects' tempo (default 1/8) | Random to pattern: left, every step rolled anew; right, a bar rolled once and repeated (default random) |
+Each effect has its own section below, with its knobs on both pages and its details:
+[Freezer](#freezer), [Shifter](#shifter), [Folder](#folder), [Crusher](#crusher),
+[Filter](#filter), [Flanger](#flanger), [Phaser](#phaser), [Resonator](#resonator),
+[Slicer](#slicer), [Wow & flutter](#wow--flutter), [Tape stop](#tape-stop),
+[Delay](#delay), [Reverb](#reverb) and the [Chaos key](#chaos-key).
 
 ### Page 2
 
 A press on any of knobs 1-4 turns all four over to a second page of the selected effect's
 (or the compressor's) parameters, the ones you set and leave rather than play; another
-press turns them back. On
-page 2 the knob LEDs pulse, so you can't mistake which page you're turning, and a knob the
+press turns them back. Turning the page blinks its number on the four knob LEDs in white,
+as VOLUME's pages do: twice for page 2, once for page 1 (a turn cuts it short). A knob the
 effect has nothing on is dark and does nothing. Every effect but the chaos key has a page 2. Selecting another
 effect or the compressor
 always brings back page 1, so the main controls are under your fingers whenever you pick an
@@ -365,25 +378,18 @@ Page 2 is laid out the same on every effect that has one, so your hand learns it
 | Knob | Page 2 | Default |
 |---|---|---|
 | 1 | **Mix:** the dry sound against the effect's, for parallel distortion, a harmony under the shifter, a half-frozen loop. On the delay and reverb: **Freeze** | fully the effect; freeze off |
-| 2 | **The effect's own:** one setting each, below | see below |
+| 2 | **Stereo:** how far the right channel parts from the left, each effect its own way (in its section). The tape stop, delay and reverb, which have no stereo, have a setting of their own there: darken, damping, pre-delay | off |
 | 3 | **Band:** which part of the sound the effect works on. In the middle, all of it. Turned left, only the lows, below a split that falls from 20 kHz to 40 Hz; turned right, only the highs, above one that rises from 20 Hz to 8 kHz. The rest passes dry, so a folder can grind the highs and leave the bass clean. On the delay and reverb it filters what goes in: right a low cut, left a high cut | the middle, all of it |
-| 4 | **Level:** the effect's output, not the dry sound Mix blends in: off at the bottom, then -36 dB to +12 dB. On the delay and reverb (whose level is page 1's knob 4): **Ducking** | 0 dB, at 3/4; ducking off |
+| 4 | **Level:** the effect's output, not the dry sound Mix blends in: off at the bottom, then -36 dB to +12 dB. Its LED is a meter of the effect's output (below). On the delay and reverb (whose level is page 1's knob 4): **Ducking** | 0 dB, at 3/4; ducking off |
 
-| Effect | Knob 1 | Knob 2, its own | Knob 3 | Knob 4 |
-|---|---|---|---|---|
-| Freezer | Mix | Gate: how much of each repeat you hear, all of it down to its first eighth, a stutter (default all) | Band | Level |
-| Shifter | Mix | Grain: the window the shifter reads in, 10 ms (glitchy) through 30 ms (the centre, as before) to 50 ms (smooth) | Band | Level |
-| Folder | Mix | Symmetry: a bias for uneven folds and even harmonics (was page 1's knob 4; default off) | Band | Level |
-| Crusher | Mix | XOR: flips bits of every sample for a digital buzz (was page 1's knob 4; default off) | Band | Level |
-| Filter | Mix | LFO division: 1/16, 1/8, 1/4, 1/2, 1 bar, 2 bars, 4 bars (was page 1's knob 4; default 1 bar) | Band | Level |
-| Flanger | — (its Amount is its mix) | Polarity: the feedback positive (metallic, as before) or negative (hollow), two steps | Band | Level |
-| Phaser | Mix | Centre: the frequency the sweep moves around, 100 Hz to 6.4 kHz in octaves, 800 Hz in the middle (default) | Band | Level |
-| Resonator | — | Env mod: the feedback rises with the input's level, so loud notes ring longer (the SP-404MK2's ENV MOD; default off) | Band: what goes into the ringing loop | Level of what it rings |
-| Slicer | Mix: at less than full, closed steps duck instead of mute (the SP-404MK2's DEPTH) | Shuffle: the even steps late, up to two thirds of a 16th, a triplet swing (default straight) | Band | Level |
-| Wow & flutter | Mix | Age: worn tape's dropouts, the level dipping at random, more often, deeper and longer as you turn it up (default none) | Band | Level |
-| Tape stop | Mix | Darken: the highs fall away as the tape slows (default off) | Band | Level |
-| Delay | Freeze: the input shut and the echoes held as they are, by degrees; no random events while frozen | Damping: in the middle none; right, every repeat darker (a high cut); left, every repeat thinner (a low cut) | Band | Ducking: the echoes duck under what you play, back up when it stops |
-| Reverb | Freeze: the input shut and the room held | Pre-delay: up to 250 ms before the room starts (default none) | Band | Ducking |
+**Knob 4's LED on page 2 is a VU meter** of what the effect puts out, in the colours of
+VOLUME's meter: from dim through green and yellow to pink at full scale (-30 dBFS up), and as
+bright as Level turns it, the way VOLUME's LED is as bright as VOLUME. So page 2 shows itself
+whenever the effect sounds, and you see what Level does. It's measured after Level and Mix,
+so at less than full Mix it shows some of the dry sound too. An effect that's off shows only
+the dim floor. On the delay and reverb, where knob 4 is Ducking, it shows their return
+(the echoes, the room, their tails too) at full brightness. The compressor's page 2 shows its
+Makeup's value, as before: its key already shows how hard it works.
 
 - **Nothing evens out levels by itself.** An effect that adds level, like the folder driven
   or the crusher's XOR on a quiet sound, comes out louder, and Level is how you set it.
@@ -392,8 +398,8 @@ Page 2 is laid out the same on every effect that has one, so your hand learns it
   after you let go.
 - **At the defaults** an effect sounds exactly as without page 2.
 - **Scenes from before** load with page 2 on its defaults (the shifter's mix kept from a
-  test build that had it), and the folder's symmetry, the crusher's XOR and the filter's LFO
-  division move from page 1's knob 4 to page 2's knob 2, with stereo off in their place.
+  test build that had it), and with every value where its knob went: stereo to page 2's
+  knob 2, the effect's own setting to page 1's knob 4.
 
 SHIFT + turn moves one point of a fixed grid per detent, always to the next point in the
 direction you turn, so a value set finely snaps onto the grid with the first coarse move:
@@ -416,15 +422,17 @@ direction you turn, so a value set finely snaps onto the grid with the first coa
 | Phaser centre | Octaves: 100, 200, 400, 800 Hz … 6.4 kHz |
 | Everything else, filter cutoff included | 10% steps |
 
-Filter details:
-- **LFO:** a triangle on the cutoff, like WAVE's filter LFO but synced to the same tempo as
-  the delay. At full depth it sweeps half the cutoff knob either way, so from the centre it
-  goes all the way from lowpass to highpass. It's at the centre of the cutoff on the beat and
-  rises towards highpass first. Like the delay's events, the beat is counted from the loop's
-  start, or without a loop from when the clock locked, not from the DAW's beat 1.
-- LEDs: the key is pink; the knobs go pink to light blue.
+### Freezer
 
-Freezer details:
+The 1st white key: Kastle 2 FX Wizard's freezer, as a beat repeat.
+
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Length: 1/16, 1/8T, 1/8, 1/4T, 1/4, 1/2T, 1/2, 1 bar (default 1 bar) | Mix |
+| 2 | Feedback: the input overdubbed into the repeats (default 0, pure repeat) | Stereo: the left loop up to 45 ms longer (default off) |
+| 3 | Roll: the loop halves as it repeats, down to 1/64 bar: off, slow, … fast, one step per 3 detents (default off) | Band |
+| 4 | Gate: how much of each repeat you hear, all of it down to its first eighth, a stutter (default all) | Level |
+
 - **Capture:** pressing the key waits for the next 16th, then records. The first pass is the
   live signal, so there's no gap; after one length it repeats. Releasing the key goes back to
   the live signal. Pressed again before the repeats have faded, they play on until the next
@@ -439,27 +447,24 @@ Freezer details:
   1/16s, a bar of 1/32s, then 1/64s until release. Each halving repeats the start of the
   capture, following on from the last repeat through the seam crossfade. Turning it off
   goes back to the full length.
+- **Gate** silences the rest of each repeat, faded in and out over 2 ms: turned up, the
+  repeats turn into a stutter.
 - Lengths follow the delay's tempo. The loop seam has a 5 ms crossfade (shorter on loops
   under 20 ms), which Kastle doesn't have.
 - LEDs: the key is purple; the knobs go purple to light blue.
 
-Slicer details:
-- **Steps** are 16ths, counted from the [tempo](#tempo) like the filter LFO, so a pattern is half a
-  bar. Each step that's on retriggers a 10 ms attack and the decay. Pressing the key also
-  triggers it, so the signal doesn't drop out until the next step.
-- LEDs: the key is yellow; the knobs go yellow to green.
+### Shifter
 
-Flanger details:
-- A ~12 ms delay swept up to its full length either way by a triangle LFO. Like Kastle's
-  Amount, one knob sets both the depth and the mix: around the middle it flanges and
-  chorus-sweeps, at the top it's all delayed signal, a vibrato.
-- Pressing the key restarts the sweep from the centre (Kastle's trigger input).
-- **Feedback** goes through the swept delay, a classic flanger's resonance. Kastle's FEEDBACK
-  is a short comb around every mode, at most 8% on the flanger, so this one is stronger.
-- LEDs: the key is light blue; the knobs go light blue to purple.
+The 2nd white key: a two-tap pitch shifter, with Kastle 2 FX Wizard's swoop and feedback.
 
-Shifter details:
-- Two taps read the input at the shifted speed, each for a 30 ms stretch before it starts
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Shift in semitones, -12 to +12, one step per 3 detents; centre off (default 0, off) | Mix: the dry sound under the shifted one, a harmony |
+| 2 | Feedback: the shifted sound spirals (default off) | Stereo: the right channel up to a semitone higher; SHIFT + turn in quarter semitones (default off) |
+| 3 | Swoop: on the key press, the shift pushes up to 2 octaves further and falls back over 1 s (default off) | Band |
+| 4 | Grain: the window the shifter reads in, 10 ms (glitchy) through 30 ms (the centre, the default) to 50 ms (smooth) | Level |
+
+- Two taps read the input at the shifted speed, each for a grain's stretch before it starts
   over, crossfaded so the level stays even. Where a tap starts over is searched for, within
   7.5 ms, so it lines up with the other one: the pitch lands within about a cent of the
   interval and doesn't wobble.
@@ -470,9 +475,20 @@ Shifter details:
   here it has its own knob.
 - **Feedback** sends the shifted output back into the delay, so each pass shifts again: a
   fifth stacks into fifths (Kastle: its comb around every mode).
-- LEDs: the key is red; the shift knob goes blue (down) through white (off) to orange (up), as every knob with a centre does, the other page-1 knobs blue to red.
+- LEDs: the key is red; the shift and the grain go blue (down) through white (the centre) to
+  orange (up), as every knob with a centre does, feedback and swoop blue to red.
 
-Folder details:
+### Folder
+
+The 3rd white key: a sine-to-triangle wavefolder, antialiased.
+
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Drive: 1x up to 32x, from barely folding to many folds (default 1x) | Mix |
+| 2 | Shape: sine (smooth) to triangle (bright) (default sine) | Stereo: the right channel driven up to 2x harder (default off) |
+| 3 | Tone, lowpass 200 Hz to open (default open) | Band |
+| 4 | Symmetry: a bias for uneven folds and even harmonics (default off) | Level |
+
 - **The fold:** past the fold point the signal is mirrored back, again and again as the
   drive rises, each fold adding harmonics. Drive is the folding: on loud material the folds
   start low on the knob, on quiet material higher up.
@@ -490,8 +506,18 @@ Folder details:
 - In the resonator's loop, the folder folds the ringing on every trip.
 - LEDs: the key is magenta; the knobs go magenta to orange.
 
-Crusher details:
-- LEDs: the key is orange; the knobs go yellow to red.
+### Crusher
+
+The 4th white key: TEMPO's sample-rate reducer plus bit reduction, with Kastle 2 FX
+Wizard's XOR and dive.
+
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Rate, 21.6 kHz down to 480 Hz, halving every 18% of the knob (default 21.6 kHz) | Mix |
+| 2 | Bits, 16 down to 2 (default 16 bits) | Stereo: the right channel's rate up to an octave lower (default off) |
+| 3 | Tone, lowpass 200 Hz to open (default open) | Band |
+| 4 | XOR: flips bits of every sample for a digital buzz (default off) | Level |
+
 - **Dive:** every press of the key drops the rate up to 10x over 0.1 s and lets it recover
   over 0.4 s, Kastle's trigger dive.
 - **XOR** flips fixed bits of each sample as 16-bit (Kastle's constants, up to 4000), a buzz
@@ -501,48 +527,45 @@ Crusher details:
   level, so on a quiet sound they come out louder than it (XOR at full on a sound 40 dB down:
   about 22 dB louder). Nothing turns that down by itself: page 2's Level and Mix are there
   for it.
+- LEDs: the key is orange; the knobs go yellow to red.
 
-Resonator details:
-- The loop holds a soft clipper, a lowpass (Tone) and a 50 Hz highpass, as on Kastle, so it
-  saturates rather than runs away, whatever is inside it. On its own it's a comb on the dry
-  sound; with the inserts inside the loop on, the ringing goes through them on every trip:
-  through the shifter it spirals, through the crusher it turns grainy, the filter shapes
-  it the way a filter in a dub delay's feedback does, and the phaser sweeps through it. With the freezer on, it rings the
-  repeats; with the slicer on, the ringing is chopped into bursts.
-- Like Kastle, it turns the input down as feedback goes up (by half at the most). Kastle's
-  comb is fixed per mode, 22-440 Hz with about 40% feedback at most; this one is tunable
-  and stronger.
-- LEDs: the key is lime; the knobs go orange to light blue.
+### Filter
 
-Wow & flutter details:
-- **Wow** is TAPE's warble, from its SHIFT menu: a short delay (2-20 ms) that now and then
-  heads for a new length at a random speed, so the pitch drifts like a worn tape's. The knob
-  sets both how often (0.1 to 30 times a second) and the mix: around the middle the drifting
-  copy blends with the dry sound into a chorus, at the top you hear only the drift.
-- **Flutter** is two fast wobbles, at 7.3 Hz and 11.7 Hz, like a capstan's and a pinch
-  roller's. It brings the effect in over the first quarter of its knob, so it works without
-  the wow.
-- **Tone** darkens what comes off the tape, not the dry sound.
-- LEDs: the key is teal; the knobs go teal to purple.
+The 5th white key: the DJ filter from TAPE, TEMPO and WAVE (WAVE's copy), with an LFO.
 
-Tape stop details:
-- **Press:** the tape slows to a standstill over the stop time and the pitch falls with it.
-  Below 5% of speed the level fades too, as on a real machine, and while you hold the key it
-  stays stopped and silent.
-- **Release:** the tape spins back up from the live signal over the spin-up time, then
-  crossfades (15 ms) back to the live signal once it's at speed. A spin-up has to start from
-  live: a tape slower than real time falls behind, so it can't catch up by itself. With the
-  spin-up off, it goes straight back.
-- **Release halfway down** spins up from that speed. **Press while it spins up** and it
-  slows again from there.
-- **Curve:** linear slows the tape evenly. Turned up, it brakes: fast at first, then a long
-  drag at the bottom. The spin-up mirrors it, a motor's quick start and slow settle.
-- The times follow the [tempo](#tempo), taken when the stop or spin-up starts, so a stop
-  pressed on a beat lands on a beat.
-- It comes before the delay and reverb, so their tails ring on while the tape stops. A
-  latched tape stop, or a scene that latches one, keeps the whole mix silent, and the sends
-  get nothing new, until it's unlatched.
-- LEDs: the key is amber; the knobs go amber to red.
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Cutoff: lowpass left of centre, highpass right, flat at centre (default centre, flat) | Mix |
+| 2 | Resonance (default 50%) | Stereo: the right channel's LFO up to half a cycle behind, so the sweep moves across (default off; only with the LFO) |
+| 3 | LFO depth (default off) | Band |
+| 4 | LFO division: 1/16, 1/8, 1/4, 1/2, 1 bar, 2 bars, 4 bars (default 1 bar) | Level |
+
+- **LFO:** a triangle on the cutoff, like WAVE's filter LFO but synced to the same tempo as
+  the delay. At full depth it sweeps half the cutoff knob either way, so from the centre it
+  goes all the way from lowpass to highpass. It's at the centre of the cutoff on the beat and
+  rises towards highpass first. Like the delay's events, the beat is counted from the loop's
+  start, or without a loop from when the clock locked, not from the DAW's beat 1.
+- LEDs: the key is pink; the cutoff goes blue through white (flat) to orange, the other knobs
+  pink to light blue.
+
+### Flanger
+
+The 6th white key: Kastle 2 FX Wizard's flanger.
+
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Rate, 0.02 Hz to 50 Hz (default 0.55 Hz) | — (its Amount is its mix) |
+| 2 | Feedback, up to 85% (default 50%) | Stereo: the right LFO runs free and detuned (default off) |
+| 3 | Amount: sweep depth and mix together, the top is pure vibrato (default 0, dry) | Band |
+| 4 | Polarity: the feedback positive (metallic, the default) or negative (hollow), two steps | Level |
+
+- A ~12 ms delay swept up to its full length either way by a triangle LFO. Like Kastle's
+  Amount, one knob sets both the depth and the mix: around the middle it flanges and
+  chorus-sweeps, at the top it's all delayed signal, a vibrato.
+- Pressing the key restarts the sweep from the centre (Kastle's trigger input).
+- **Feedback** goes through the swept delay, a classic flanger's resonance. Kastle's FEEDBACK
+  is a short comb around every mode, at most 8% on the flanger, so this one is stronger.
+- LEDs: the key is light blue; the knobs go light blue to purple.
 
 ### Phaser
 
@@ -550,8 +573,14 @@ The 7th white key, next to the flanger, after the SP-404MK2's Phaser and the Ele
 Tonverk's Phase 98, but FRIZZ's own: six allpass stages in a row on each channel, the sound added to them, and
 feedback from the end of the chain back into it. Six stages cut three notches into the
 sound, the middle one on the sweep's frequency, one about two octaves below it and one about
-two above; a triangle LFO sweeps them up and down in octaves around the centre (page 2's knob
-2).
+two above; a triangle LFO sweeps them up and down in octaves around the centre (knob 4).
+
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Rate, in two halves: left of the centre free, 0.02 Hz to 50 Hz; from the centre right on the tempo, 1/16, 1/8, 1/4, 1/2, 1 bar, 2 bars, 4 bars (default 0.7 Hz, free) | Mix |
+| 2 | Feedback: the resonance between the notches, up to 85% (default 40%) | Stereo: the right channel's sweep up to half a cycle behind (default off) |
+| 3 | Depth: brings the notches in and widens the sweep, up to 2.5 octaves either way of the centre (default 0, dry) | Band |
+| 4 | Centre: the frequency the sweep moves around, 100 Hz to 6.4 kHz in octaves (default 800 Hz, in the middle) | Level |
 
 - **Rate (knob 1), two halves on one knob.** Left of the centre it runs free, from 0.02 Hz
   (a sweep a minute) to 50 Hz (a buzz), on the flanger's curve. From the centre right it
@@ -574,10 +603,9 @@ two above; a triangle LFO sweeps them up and down in octaves around the centre (
   say. Over the first fifth of the knob the notches fade in, and from there on it only widens
   the sweep, up to 2.5 octaves either way of the centre at the top (from 800 Hz: 140 Hz to
   4.5 kHz). A morph fades the phaser in and out on it.
-- **Stereo (knob 4):** the right channel's sweep lags the left's, up to half a cycle, so at
-  the top one channel's notches go up while the other's come down.
-- **Page 2:** Mix, Centre (100 Hz to 6.4 kHz, 800 Hz in the middle; SHIFT + turn in
-  octaves), Band and Level, as on every insert.
+- **Centre (knob 4):** where the sweep is centred; SHIFT + turn moves it in octaves.
+- **Stereo (page 2's knob 2):** the right channel's sweep lags the left's, up to half a
+  cycle, so at the top one channel's notches go up while the other's come down.
 - **In the resonator's loop:** with the resonator on, its ringing goes through the phaser on
   every trip, so the sweep moves through the resonances.
 - **Level:** a phaser takes some of the sound into its notches, about 3 dB of a full mix,
@@ -589,7 +617,113 @@ two above; a triangle LFO sweeps them up and down in octaves around the centre (
 - LEDs: the key is violet; the knobs go violet to orange, the rate's synced half green to
   yellow.
 
-Delay details:
+### Resonator
+
+The 8th white key: the comb Kastle 2 FX Wizard runs around every mode, as a loop of its own.
+While on, it taps the signal after the phaser and feeds it back in after the freezer.
+
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Pitch, 22 Hz to 880 Hz (default 110 Hz) | — |
+| 2 | Feedback, up to 98% (default 0, off) | Stereo: the right channel up to 12 semitones higher (default off) |
+| 3 | Tone: the loop's lowpass, 1 kHz to 15 kHz (default 6.6 kHz) | Band: what goes into the ringing loop |
+| 4 | Env mod: the feedback rises with the input's level, so loud notes ring longer (the SP-404MK2's ENV MOD; default off) | Level of what it rings |
+
+- The loop holds a soft clipper, a lowpass (Tone) and a 50 Hz highpass, as on Kastle, so it
+  saturates rather than runs away, whatever is inside it. On its own it's a comb on the dry
+  sound; with the inserts inside the loop on, the ringing goes through them on every trip:
+  through the shifter it spirals, through the crusher it turns grainy, the filter shapes
+  it the way a filter in a dub delay's feedback does, and the phaser sweeps through it. With the freezer on, it rings the
+  repeats; with the slicer on, the ringing is chopped into bursts.
+- **Feedback inside the loop:** an insert in the loop with feedback or resonance of its own
+  (the phaser, the flanger, the filter's resonance) raises the loop's gain. The phaser's
+  peaks between its notches are about +4 dB at its default feedback and +16 dB at 85%, so
+  with it on, the ringing runs away (and the soft clipper holds it) already at a low
+  resonator feedback. Nothing evens that out by itself: for less, turn the inserts' feedback
+  or the resonator's down.
+- Like Kastle, it turns the input down as feedback goes up (by half at the most). Kastle's
+  comb is fixed per mode, 22-440 Hz with about 40% feedback at most; this one is tunable
+  and stronger.
+- LEDs: the key is lime; the knobs go orange to light blue.
+
+### Slicer
+
+The 9th white key: Kastle 2 FX Wizard's rhythmic gate.
+
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Pattern, 8 steps of 16ths: `x.......`, `x...x...`, `..x...x.`, `x....x..`, `x..x..x.`, `x.x.x.x.`, `x.x.xx..`, `xxxxxxxx` (default `xxxxxxxx`) | Mix: at less than full, closed steps duck instead of mute (the SP-404MK2's DEPTH) |
+| 2 | Decay, 10 ms to 1 s (default 1 s) | Stereo: the left channel plays a pattern up the list, the right one down, 0-7 apart (default off) |
+| 3 | Chance: each step flipped at random, up to 90% (default off) | Band |
+| 4 | Shuffle: the even steps late, up to two thirds of a 16th, a triplet swing (default straight) | Level |
+
+- **Steps** are 16ths, counted from the [tempo](#tempo) like the filter LFO, so a pattern is half a
+  bar. Each step that's on retriggers a 10 ms attack and the decay. Pressing the key also
+  triggers it, so the signal doesn't drop out until the next step.
+- LEDs: the key is yellow; the knobs go yellow to green.
+
+### Wow & flutter
+
+The 10th white key: TAPE's warble, plus flutter.
+
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Wow: TAPE's warble knob, how often the pitch drifts and how much of it you hear, together (default off) | Mix |
+| 2 | Flutter: a fast, shallow wobble, up to 1.4% of pitch; real tape's 0.1-0.5% is the lower half (default off) | Stereo: the right channel drifts on its own and wobbles out of step (default off) |
+| 3 | Tone, lowpass 200 Hz to open (default open) | Band |
+| 4 | Age: worn tape's dropouts, the level dipping at random, more often, deeper and longer as you turn it up (default none) | Level |
+
+- **Wow** is TAPE's warble, from its SHIFT menu: a short delay (2-20 ms) that now and then
+  heads for a new length at a random speed, so the pitch drifts like a worn tape's. The knob
+  sets both how often (0.1 to 30 times a second) and the mix: around the middle the drifting
+  copy blends with the dry sound into a chorus, at the top you hear only the drift.
+- **Flutter** is two fast wobbles, at 7.3 Hz and 11.7 Hz, like a capstan's and a pinch
+  roller's. It brings the effect in over the first quarter of its knob, so it works without
+  the wow.
+- **Tone** darkens what comes off the tape, not the dry sound.
+- LEDs: the key is teal; the knobs go teal to purple.
+
+### Tape stop
+
+The 11th white key. It has no stereo, so its knob 4 is its depth and page 2's knob 2 its own.
+
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Stop time: 1/16, 1/8, 1/4, 1/2, 1 bar, 2 bars (default 1/2) | Mix |
+| 2 | Spin-up time on release: off, 1/16, 1/8, 1/4, 1/2, 1 bar (default 1/4) | Darken: the highs fall away as the tape slows (default off) |
+| 3 | Curve: linear to a brake, fast at first then dragging (default linear) | Band |
+| 4 | Depth: how far it slows, from a full stop at the top (default) down to half speed (the SP-404MK2 Stopper's DEPTH) | Level |
+
+- **Press:** the tape slows to a standstill over the stop time and the pitch falls with it.
+  Below 5% of speed the level fades too, as on a real machine, and while you hold the key it
+  stays stopped and silent.
+- **Release:** the tape spins back up from the live signal over the spin-up time, then
+  crossfades (15 ms) back to the live signal once it's at speed. A spin-up has to start from
+  live: a tape slower than real time falls behind, so it can't catch up by itself. With the
+  spin-up off, it goes straight back.
+- **Release halfway down** spins up from that speed. **Press while it spins up** and it
+  slows again from there.
+- **Curve:** linear slows the tape evenly. Turned up, it brakes: fast at first, then a long
+  drag at the bottom. The spin-up mirrors it, a motor's quick start and slow settle.
+- The times follow the [tempo](#tempo), taken when the stop or spin-up starts, so a stop
+  pressed on a beat lands on a beat.
+- It comes before the delay and reverb, so their tails ring on while the tape stops. A
+  latched tape stop, or a scene that latches one, keeps the whole mix silent, and the sends
+  get nothing new, until it's unlatched. Page 2's Mix and Level stay on while it spins up
+  after you let go.
+- LEDs: the key is amber; the knobs go amber to red.
+
+### Delay
+
+The 12th white key: TEMPO's tempo-synced delay, a send.
+
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Division: 1/8, 1/4T, 1/4, 1/2T, 1/4., 1/2, 1/2., 1 bar, 2 bars (default 1/4) | Freeze: the input shut and the echoes held as they are, by degrees; no random events while frozen (default off) |
+| 2 | Feedback (default 40%) | Damping: in the middle none; right, every repeat darker (a high cut); left, every repeat thinner (a low cut) |
+| 3 | Random: left of centre retrigger / reverse / pitch events, right octave-up shimmer with random pan, centre off (default off) | Band: what goes in, right a low cut, left a high cut |
+| 4 | Level (default 0) | Ducking: the echoes duck under what you play, back up when it stops (default off) |
+
 - **Tempo:** the [tempo](#tempo): with a loop, its exact tempo, so the echoes stay on its
   beats; otherwise rounded to whole BPM. Limited to 50-300 BPM so 2 bars fit the 10 s buffer.
 - **Random events** are rolled on every 8th note; the knob's distance from centre is the
@@ -598,19 +732,39 @@ Delay details:
   Without a loop, only the clock's tempo is used, not MIDI Start / Song Position, so they're
   counted from when the clock locked (or from power-on, or the last tap, without clock), not
   from the DAW's beat 1. Echo spacing is unaffected.
+- LEDs: the key is green; division green (short) to light blue (long); random and damping
+  blue through white (off) to orange, as every knob with a centre. On page 2, knob 4's LED
+  shows the echoes coming back (see [Page 2](#page-2)).
 
-- LEDs: the key is green; division green (short) to light blue (long); random blue
-  (events) through white (off) to orange (shimmer), as every knob with a centre.
+### Reverb
 
-Reverb details:
-- LEDs: the key is blue; the knobs go light blue to purple.
+The 13th white key: TEMPO's and WAVE's reverb, a send.
+
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Decay (default 60%) | Freeze: the input shut and the room held (default off) |
+| 2 | Diffusion (default 60%) | Pre-delay: up to 250 ms before the room starts (default none) |
+| 3 | Tone, dark to open (default 60%) | Band: what goes in, right a low cut, left a high cut |
+| 4 | Level (default 0) | Ducking: the room ducks under what you play (default off) |
+
+- It gets the inserts' output and the delay's echoes, so the echoes are reverberated while
+  both are on.
+- LEDs: the key is blue; the knobs go light blue to purple. On page 2, knob 4's LED shows
+  the room coming back (see [Page 2](#page-2)).
 
 ### Chaos key
 
 The 14th white key, after the Red Panda Tensor's RAND and the Chase Bliss Blooper's
 Scrambler. It works like any effect's key (hold to play, hold + SHIFT to latch, part of
 scenes and morphs), but makes no sound of its own. It plays with what's there, on its grid,
-in two ways:
+in two ways. It has no page 2: a knob press does nothing.
+
+| Knob | Page 1 |
+|---|---|
+| 1 | FX chance: how often each latched effect drops out of a step, from never to half the steps (default off) |
+| 2 | Scramble chance: how often a step of the loop plays from elsewhere in it, from never to every step (default off) |
+| 3 | Grid: 1/16, 1/8, 1/4, 1/2, 1 bar, on the effects' tempo (default 1/8) |
+| 4 | Random to pattern: left, every step rolled anew; right, a bar rolled once and repeated (default random) |
 
 - **FX gates (knob 1):** the effects you've *latched* drop out of a step and come back on
   the next, at random. An effect you're holding by hand stays on: holding a latched key takes
@@ -627,7 +781,6 @@ in two ways:
   bar's steps are kept once rolled and only now and then rolled again, so at the right one
   bar repeats and grooves. Each time the key comes on (a press, a latch, a scene), it rolls
   a fresh bar.
-- It has no page 2: a knob press does nothing.
 - A morph fades it in and out on its two chances. A scene file from before it loads with it
   off.
 - Effects that react to coming on do so each time chaos lets them back in: the freezer
@@ -955,7 +1108,7 @@ or C2 in Ableton Live): the white keys from 48 up, the dark keys on the sharps. 
 | 85 | Output gain |
 | 86 | Input gain |
 | 87 | Input/loop mix |
-| 89 | Headphone feed, as VOLUME's page 3: 127 the master out, 0 the AUX input on its own |
+| 89 | Headphone feed, as VOLUME's page 3: 127 the master out, 0 the input (AUX or the mic) on its own |
 | 90 | The loop's speed in semitones, set outright: 64 as recorded (1×), 0 the slowest (1/16×), 127 double. Only with a loop; forward or in reverse as it runs |
 | 3 | Morph to scene 0-4 (0 the blank one), as SHIFT + its key, landing on the bar line. It acts as the value changes: to morph to the same scene again, send another value first (127, no scene) |
 | 9 | How many bars a morph over CC 3 takes, 1-8 (1 at first) |

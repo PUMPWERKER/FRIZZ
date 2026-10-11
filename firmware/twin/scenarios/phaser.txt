@@ -1,7 +1,7 @@
 # The phaser (#68) on the 7th white key: latched on a sine against a MIDI clock, depth, feedback
-# and stereo up; its rate turned from free into the synced half, where knob 1's LED turns from
+# and centre up; its rate turned from free into the synced half, where knob 1's LED turns from
 # the phaser's colours to green, SHIFT + turn stepping through the divisions and back into the
-# free half; page 2's centre swept; then off. Nothing is saved. (turn: 4 is knob 1, 1-3 knobs
+# free half; page 2's stereo up (#117); then off. Nothing is saved. (turn: 4 is knob 1, 1-3 knobs
 # 2-4)
 input sine 220 0.3
 clock 120
@@ -12,13 +12,14 @@ wait 80
 tap KEY_26
 up KEY_7
 wait 200
-# its knobs at their defaults: rate .25, between violet and orange; feedback .4; depth and stereo violet
+# its knobs at their defaults: rate .25, between violet and orange; feedback .4; depth violet;
+# centre .5
 expect led pth 1 b0429a
 expect led pth 2 9a37b0
 expect led pth 3 6300fd
-expect led pth 4 6300fd
-# depth, feedback, stereo up
-turn 3 60
+expect led pth 4 b0429a
+# depth, feedback up, the centre up an octave
+turn 3 17
 wait 600
 turn 1 50
 wait 500
@@ -26,7 +27,7 @@ turn 2 100
 wait 1000
 expect led pth 2 e7844d
 expect led pth 3 fd8f37
-expect led pth 4 bb5884
+expect led pth 4 c66379
 # rate (.7 Hz, at .25) up to the centre: the first division, 1/16, green
 turn 4 25
 wait 2000
@@ -51,12 +52,12 @@ wait 100
 up KEY_26
 wait 2000
 expect led pth 1 dc7963
-# page 2: the centre swept up two octaves and back
+# page 2: stereo up, the right LFO behind, then back
 tap ENC_4_SW
 wait 300
-turn 1 33
+turn 1 100
 wait 1500
-turn 1 -33
+turn 1 -100
 wait 1500
 tap ENC_4_SW
 wait 300
