@@ -1,0 +1,17 @@
+# The input (#113): a cable in AUX picks AUX; the settings page's upper A# picks the mic by
+# hand, and AUX again, not saved. On the device AUX has its cable in, as the twin has at first
+input sine 220 0.3
+at 6000
+toggle 1
+wait 300
+# AUX: the upper A# green
+expect led smt 9 00fc00
+tap KEY_25
+wait 300
+# the mic: magenta
+expect led smt 9 fc00fc
+tap KEY_25
+wait 300
+expect led smt 9 00fc00
+toggle 0
+wait 300

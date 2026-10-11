@@ -14,7 +14,7 @@
                                       or the real one again; until power-off
     ./remote.py scene get SLOT [FILE] a scene (1-4, 0 the blank one) as JSON
     ./remote.py scene put SLOT FILE   one into slot 1-4, and onto the card
-    ./remote.py play SCRIPT [--cpu] [--force] [--save]
+    ./remote.py play SCRIPT [--cpu] [--fresh] [--force] [--save]
                                       a twin script (twin/README.md) on the device
 
 and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
@@ -35,10 +35,17 @@ times, sends its `midi` and `clock` to the device, and checks its `expect led` l
 LEDs the device shows, dimmed as the card's led_brightness (the settings page) has them: at
 100, 75 or 50 %, the one level that fits every line, said when it isn't 100 %; its
 `toggle 0|1` sets the mode switch (down, up) over SysEx, back to the real one when the script
-ends. What only the twin has (the card, the input, the battery, power-on) is
-skipped, and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
+ends. What only the twin has (the card, the input, the mic, AUX's jack, the battery, power-on)
+is skipped, and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
 and prints the worst, the way to try a scenario for crackles on FRIZZ.bin itself rather than on
-the bench's build. A bug report (/FRIZZ/bug-N.txt) plays too, from where the device is. From
+the bench's build. A bug report (/FRIZZ/bug-N.txt) plays too, from where the device is.
+
+A script plays on FRIZZ as it stands, with what the scripts before it left in RAM since it
+started (the effect selected, its knobs, the page, the loop): a twin script starts from
+power-on, so its `expect led` lines can fail after another one (#123). --fresh starts the slot
+again first, through the launcher (tools/chompi.py), as `flash.py --run N` does: FRIZZ boots
+from the card, which a start doesn't write, and with nothing left from before. Every `play`
+after the first one since a start wants it. From
 the computer everything goes over USB, `midi` lines too: with the device's clock source on TRS,
 a script's clock and Start / Stop are ignored there (MANUAL.md, "Clock source").
 
@@ -52,7 +59,7 @@ written as FRIZZ writes it. A FRIZZ from before PERSIST, or --save, gets the old
 shares, naming the line and the file (card_use). /FRIZZ/frizz_master.txt, saved 2 s after the
 last change, with no .bak to go back to: the settings page (twin/scenarios/settings.txt, most
 bug reports, which end with SHIFT + VOLUME held there), a key or knob while the mode switch is
-up, or a settings SysEx (#58); knobs 1-4 turned with the compressor selected (comp.txt, or
+up but the input's (the upper A#, not saved), or a settings SysEx (#58); knobs 1-4 turned with the compressor selected (comp.txt, or
 in focus by CC 23); MIDI's CCs never (#97). /FRIZZ/frizz_scenes.txt, whose .bak keeps only the one before: SAVE /
 COPY / DELETE confirmed with CHOMPI once a slot is picked (scenes.txt), or a scene put over
 SysEx (#78). It reads where the device stands before it decides (the page, what the knobs edit,
@@ -121,6 +128,7 @@ COMP_KEY = "KEY_15"
 FX_KEYS = {"KEY_%d" % k for k in range(1, 15)}
 SLOT_KEYS = {"KEY_%d" % k for k in range(16, 21)}
 MODE_KEYS = {"KEY_25": 1, "KEY_24": 2, "KEY_23": 3}
+INPUT_KEY = "KEY_25"  # the settings page's upper A#: AUX or the mic, not saved
 # MidiControl.h's midimap: the morph to a scene, the focus (15 the compressor), the notes
 MORPH_CC, FOCUS_CC, COMP_FOCUS = 3, 23, 15
 BASE_NOTE, CHOMPI_NOTE = 48, 45
@@ -519,8 +527,8 @@ def card_use(path, up, comp, mode):
     shown; comp, the compressor's knobs selected; mode, a scene mode (MODES), its slot taken
     as picked.
 
-    The settings page: a key or a knob while the mode switch is up, or a setting over SysEx
-    (frizz_master.txt, #58). The play page: knobs 1-4 turned with the compressor selected, by
+    The settings page: a key or a knob while the mode switch is up, but the input's (not
+    saved), or a setting over SysEx (frizz_master.txt, #58). The play page: knobs 1-4 turned with the compressor selected, by
     its key or MIDI's focus (frizz_master.txt), SAVE / COPY / DELETE confirmed with the CHOMPI
     key once a slot is picked, or a scene put over SysEx (frizz_scenes.txt, #78). The hand's
     and SysEx's keys and knobs reach the page the switch shows, MIDI's notes and controllers
@@ -550,7 +558,8 @@ def card_use(path, up, comp, mode):
             if up:
                 mode = 0  # the settings page shown leaves the scene mode (NormalPage::Draw)
         elif cmd in ("down", "tap", "turn") and up:
-            used = "%s %s on the settings page" % (cmd, args[0]), MASTER
+            if cmd == "turn" or args[0] != INPUT_KEY:
+                used = "%s %s on the settings page" % (cmd, args[0]), MASTER
         elif cmd in ("down", "tap"):
             used = key(args[0], "%s %s" % (cmd, args[0]))
         elif cmd == "turn" and comp and 1 <= int(args[0]) <= 4:
@@ -568,7 +577,8 @@ def card_use(path, up, comp, mode):
                         if up:
                             mode = 0
                     elif m[4] == KEY and up:
-                        used = "a SysEx key on the settings page", MASTER
+                        if m[5] >= len(SW_NAMES) or SW_NAMES[m[5]] != INPUT_KEY:
+                            used = "a SysEx key on the settings page", MASTER
                     elif m[4] == KEY and m[6:7] != [0] and m[5] < len(SW_NAMES):
                         used = key(SW_NAMES[m[5]], "a SysEx key")
                     elif m[4] == TURN and not up and comp and 1 <= m[5] <= 4:
@@ -761,6 +771,9 @@ def main():
     p = sub.add_parser("play", parents=[common])
     p.add_argument("script")
     p.add_argument("--cpu", action="store_true")
+    p.add_argument("--fresh", action="store_true",
+                   help="start the slot again first, so the script plays from power-on as on "
+                        "the twin, not after what played before (#123)")
     p.add_argument("--force", action="store_true",
                    help="with --save (or a FRIZZ from before PERSIST): play a script that changes "
                         "the card: the settings page, the compressor's knobs, a scene saved, "
@@ -790,8 +803,15 @@ def run(a):
     if a.cmd in ("bench", "ident") and not a.device and not a.slot:
         # whatever runs, the bench too, which answers as FRIZZ does
         a.device = chompi.wait_for("frizz", 30)
-    if not a.device and not a.no_start:
-        a.device = chompi.to_frizz(a.slot)
+    # FRIZZ found or started by the tools, which can start it again (play --fresh, restore);
+    # a.device is its node from here on either way
+    a.found = not a.device and not a.no_start
+    fresh = a.cmd == "play" and a.fresh
+    if fresh and not a.found:
+        sys.exit("--fresh starts the slot again through the launcher: not with --device or "
+                 "--no-start")
+    if a.found:
+        a.device = chompi.to_frizz(a.slot, again=fresh)
     f = Frizz(a.device)
     if a.cmd == "state":
         show_state(f)
@@ -871,6 +891,9 @@ def run(a):
         finally:
             if ram:
                 restore(f, a)
+        if failed and not isinstance(failed, str) and a.found and not fresh:
+            print("expect led judged after what played since FRIZZ started: --fresh plays the "
+                  "script from power-on (#123)", file=sys.stderr)
         sys.exit(failed if isinstance(failed, str) else 1 if failed else 0)
 
 
@@ -880,7 +903,7 @@ def restore(f, a):
     slot = chompi.frizz_slot
     if slot == chompi.TEST_SLOT:
         return
-    if a.device or a.no_start or slot is None:
+    if not a.found or slot is None:
         print("FRIZZ%s keeps what it changes in RAM until it restarts: ./flash.py --run N"
               % ("" if slot is None else " on slot %d" % slot), file=sys.stderr)
         return

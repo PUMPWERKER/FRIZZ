@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -24,6 +25,7 @@
 using namespace twin;
 
 static const int kFilterKeyLed = 20;
+static const int kPlayLed = 7; // PanelLeds.h
 
 static int master_fd = -1;
 static std::string slave_path;
@@ -73,6 +75,26 @@ static void RunMs(uint32_t ms)
 #include "twintest.h" // after RunMs, which its Tap runs
 
 static bool Has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
+
+/** In an LED line (LedLine, remote.py leds), where PLAY's colour is: after "pth " and the LEDs
+ *  before it, 7 characters each. npos in another line */
+static size_t PlayAt(const std::string& line)
+{
+    const size_t at = 4 + 7 * kPlayLed;
+    return line.compare(0, 4, "pth ") == 0 && line.size() >= at + 6 ? at : std::string::npos;
+}
+static std::string PlayLed(const std::string& line)
+{
+    const size_t at = PlayAt(line);
+    return at == std::string::npos ? "" : line.substr(at, 6);
+}
+static std::string WithoutPlay(std::string line)
+{
+    const size_t at = PlayAt(line);
+    if (at != std::string::npos)
+        line.replace(at, 6, "------");
+    return line;
+}
 
 /** remote.py ARGS, the twin running at the wall clock's pace until it's done (30 s at most),
  *  interrupted (SIGINT, Ctrl-C) once it has printed interrupt_at, if given. Its exit code; out
@@ -480,10 +502,26 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     if (rc != 0)
         printf("%s\n", out.c_str());
 
+    // PLAY blinks the boot tempo's beat (kPlayLed), which may turn between remote.py's read and
+    // the twin's (#124): compared apart, as one of the colours it shows over a beat
+    std::vector<std::string> play_beat;
+    for (int t = 0; t < 600; t += 10)
+    {
+        const std::string now = PlayLed(LedLine());
+        if (std::find(play_beat.begin(), play_beat.end(), now) == play_beat.end())
+            play_beat.push_back(now);
+        RunMs(10);
+    }
+    const auto on_beat = [&](const std::string& led)
+    { return std::find(play_beat.begin(), play_beat.end(), led) != play_beat.end(); };
     rc = Remote({"leds"}, out);
     const std::string leds = LedLine();
-    Check(rc == 0 && out == leds + "\n", "remote: leds prints every LED as the twin's LED log does");
-    if (out != leds + "\n")
+    const std::string play_remote = PlayLed(out), play_twin = PlayLed(leds);
+    Check(rc == 0 && WithoutPlay(out) == WithoutPlay(leds) + "\n",
+          "remote: leds prints every LED as the twin's LED log does");
+    Check(play_beat.size() == 2 && on_beat(play_remote) && on_beat(play_twin),
+          "remote: and PLAY in one of the two colours the twin's beat shows");
+    if (WithoutPlay(out) != WithoutPlay(leds) + "\n" || !on_beat(play_remote))
         printf("      remote: %s      twin:   %s\n", out.c_str(), leds.c_str());
 
     rc = Remote({"load"}, out);
@@ -493,6 +531,10 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc == 0 && Has(out, "max"), "remote: --device after the subcommand counts too");
     if (rc != 0)
         printf("%s\n", out.c_str());
+
+    rc = Remote({"play", "nothing.txt", "--fresh"}, out);
+    Check(rc != 0 && Has(out, "--fresh starts the slot again through the launcher: not with --device"),
+          "remote: play --fresh, which starts the slot again, is refused with --device (#123)");
 
     Remote({"channel", "5"}, out);
     Remote({"transport", "on"}, out);
@@ -696,6 +738,12 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc == 0, "remote: a script that toggles up and down again, no key there, plays");
     if (rc != 0)
         printf("%s\n", out.c_str());
+    // the input's key up there (the upper A#, AUX or the mic) isn't saved: it plays (#113)
+    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_25\nwait 100\ntap KEY_25\nwait 100\ntoggle 0\nwait 100\n");
+    rc = Remote({"play", script, "--save"}, out);
+    Check(rc == 0, "remote: and one that taps the input's key there plays: it isn't saved (#113)");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
     Write(script, "booted\nmidi F0 7D 43 48 13 00 05 F7\n");
     rc = Remote({"play", script, "--save"}, out);
     const std::string refused_sysex = out;
@@ -829,10 +877,13 @@ running = {}
 def ident(node):
     return running.get("info")
 chompi.ident = ident
-def case(name, info, slot=None):
+def case(name, info, slot=None, again=False):
     running["info"] = info
     log.clear()
-    got = chompi.to_frizz(slot)
+    try:
+        got = chompi.to_frizz(slot, again=again)
+    except SystemExit as e:
+        got = "exit: %s" % e
     print("%s: %s %s %s" % (name, got, chompi.frizz_slot, log), flush=True)
 a = dict(kind="frizz", crc=chompi.image_id("a.bin")[0], length=7)
 case("by hand", a)
@@ -841,6 +892,12 @@ case("other", a, 10)
 case("bench", dict(a, kind="bench"))
 case("unknown", dict(a, crc=1))
 case("old", None)
+# remote.py play --fresh: the one running started again, the one asked for once (#123)
+case("fresh", a, None, True)
+case("fresh asked", a, 12, True)
+case("fresh other", a, 10, True)
+case("fresh unknown", dict(a, crc=1), None, True)
+case("fresh bench", dict(a, kind="bench"), None, True)
 chompi.started(12)
 case("old noted", None)
 sys.argv = ["flash.py", "a.bin", "--slot", "12"]
@@ -864,6 +921,11 @@ flash.main()
               && Has(out, "unknown: node None []\n") && Has(out, "not a build the tools sent")
               && Has(out, "old: node None []\n") && Has(out, "old noted: node 12 []\n"),
           "tools: the bench isn't FRIZZ; a build the tools didn't send, or one without IDENT, as before");
+    Check(Has(out, "fresh: started 12 ['start 12']\n") && Has(out, "fresh asked: started 12 ['start 12']\n")
+              && Has(out, "fresh other: started 10 ['start 10']\n") && Has(out, "starting slot 12 again"),
+          "tools: again (play --fresh) starts the FRIZZ running again, through the launcher (#123)");
+    Check(Has(out, "fresh unknown: exit: FRIZZ runs on a slot the tools can't tell") && Has(out, "fresh bench: started 10 ['start 10']\n"),
+          "tools: again, a FRIZZ on a slot it can't tell is refused, not guessed; the bench is replaced as before");
     Check(Has(out, "exit: it runs crc32 00000005, 7 B, NOT the build sent")
               && Has(out, "it runs the build sent: crc32 "),
           "tools: flash.py checks the build running is the one sent");
@@ -904,22 +966,56 @@ print(chompi.to_launcher(), log)
         printf("%s\n", out.c_str());
 
     // after a script played RAM only, a FRIZZ slot other than the test slot is started again
-    // (from the card, so it saves again); the test slot isn't; one it can't tell, it says
+    // (from the card, so it saves again); the test slot isn't; one it can't tell, it says.
+    // Through run(), which gets the node from to_frizz (#134). A failed expect led says --fresh
     rc = Python(R"(
-import argparse, chompi, remote
+import argparse, sys, chompi, remote
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr = sys.stdout
 chompi.start = lambda slot, *rest: print("start", slot)
+running = [None]
+def to_frizz(slot=None, timeout=120, device=None, again=False):
+    chompi.frizz_slot = running[0]
+    return "node"
+chompi.to_frizz = to_frizz
 class F:
     class link:
         fd = None
+    def __init__(self, device):
+        pass
+    def ram_only(self):
+        return True
+remote.Frizz = F
 remote.os.close = lambda fd: None
-for slot in (10, 12, None):
-    chompi.frizz_slot = slot
+def case(slot, failed, **given):
+    running[0] = chompi.frizz_slot = slot
+    remote.play = lambda f, path, cpu: failed
+    a = argparse.Namespace(cmd="play", script="x.txt", cpu=False, fresh=False, save=False,
+                           force=False, slot=None, device=None, no_start=False)
+    vars(a).update(given)
     print("slot", slot)
-    remote.restore(F(), argparse.Namespace(device=None, no_start=False))
+    try:
+        remote.run(a)
+    except SystemExit as e:
+        print("exit", e.code)
+case(10, 0)
+case(12, 0)
+case(None, 0)
+case(12, 2)
+case(10, 0, device="/dev/x")
+case(12, 2, fresh=True)
 )", out);
-    Check(rc == 0 && Has(out, "slot 10\nstart 10\nslot 12\nslot None\n")
-              && Has(out, "FRIZZ keeps what it changes in RAM until it restarts"),
-          "tools: after play RAM only, key 10's FRIZZ is started again from the card; the test slot isn't");
+    Check(rc == 0 && Has(out, "slot 10\nthe card isn't written until FRIZZ restarts (PERSIST 0): what the script changes "
+                             "stays in RAM\nstarting slot 10 again, from the card, so it saves again\nstart 10\nexit 0\n")
+              && Has(out, "RAM\nexit 0\nslot None\n") && Has(out, "FRIZZ keeps what it changes in RAM until it restarts"),
+          "tools: after play RAM only, key 10's FRIZZ is started again from the card; the test slot isn't (#134)");
+    Check(Has(out, "RAM\nexpect led judged after what played since FRIZZ started: --fresh plays the script from "
+                   "power-on (#123)\nexit 1\n")
+              && Has(out, "slot 10\nthe card isn't written until FRIZZ restarts (PERSIST 0): what the script changes "
+                          "stays in RAM\nFRIZZ on slot 10 keeps what it changes in RAM")
+              && Has(out, "slot 12\nthe card isn't written until FRIZZ restarts (PERSIST 0): what the script changes "
+                          "stays in RAM\nexit 1\n"),
+          "tools: a failed expect led says --fresh, not after it; with --device, key 10's FRIZZ isn't started, but said");
     if (rc != 0 || !Has(out, "start 10"))
         printf("%s\n", out.c_str());
 

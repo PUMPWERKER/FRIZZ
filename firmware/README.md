@@ -219,7 +219,7 @@ minutes). Mounting needs udisks, as any desktop has.
 longer than a block, which crackle), `settings`, `channel N`, `transport on|off`,
 `source auto|trs|usb|internal`, `out off|trs|all`, `scene get|put SLOT FILE`, the developers'
 `ident`, `ram-only`, `get GROUP`, `set GROUP INDEX VALUE` and `bench [--wait] [--out FILE]`
-(below), and `play SCRIPT [--cpu]`, which plays a twin
+(below), and `play SCRIPT [--cpu] [--fresh]`, which plays a twin
 script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over SysEx at the
 script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs, at the
 brightness the card's `led_brightness` sets (100, 75 or 50 %: the one level that fits every
@@ -229,6 +229,14 @@ the bench does, and how many blocks took longer than a block, so a scenario can 
 crackles on the build that plays, not the bench's (it says how many readings went unanswered,
 if any). Whatever ends a script (an error, Ctrl-C), it lets go of the keys it holds and gives
 the mode switch back to the hand.
+
+A script plays on FRIZZ as it stands: a twin script starts from power-on, but on the device the
+scripts played before it since FRIZZ started have left the effect selected, its knobs, the
+page or a loop in RAM, so its `expect led` lines can fail after another one (#123).
+`play --fresh` first starts the slot again through the launcher, as `flash.py --run N` does:
+FRIZZ boots from the card, which a start doesn't write, with nothing left from before. Every
+`play` after the first since `flash.py` started the slot wants it (about 10 s each); a failed
+`expect led` without it says so. Not with `--device` or `--no-start`, which can't restart it.
 
 `play` first stops FRIZZ writing the card until it restarts (PERSIST 0), so a script may
 change the settings, the compressor or the scenes: they stay in RAM, and the card keeps what
@@ -403,8 +411,8 @@ erase a stuck Seed, but the generic Daisy bootloader it offers is not CHOMPI's.
 ## Where things are in `code/src`
 
 ```
-chompi_main.cpp        entry point: audio callback, main loop, boot sequence
-passthroughEngine.h    the engine: input gain, the looper, input/loop mix ("dry/wet" in the code), punch-in FX,
+chompi_main.cpp        entry point: audio callback, main loop, boot sequence, AUX's jack picking the input
+passthroughEngine.h    the engine: the input (AUX or the built-in mic) and its gain, the looper, input/loop mix ("dry/wet" in the code), punch-in FX,
                        master compressor, output gain, headphone cue, safety limiter
 FxChain.h              the punch-in effects in their processing order, with a level meter each
 FxParams.h             each effect's knobs: how many, defaults, steps, coarse grids; the compressor's too
@@ -439,7 +447,8 @@ MidiOut.h              MIDI out: the clock and the loop's Start, Stop, Continue,
                        out of the jack and over USB, if the settings page asks
 NormalPage.h           the play page: routes the controls (VOLUME, PLAY/LOOP, transport, FX and scene keys) and draws the LEDs
 SettingsPage.h         the settings page (the mode switch up): MIDI channel and transport, mono,
-                       the clock factor, the LED brightness, the battery on VOLUME
+                       the clock factor, the LED brightness, the input (AUX or the mic), the
+                       battery on VOLUME
 LedSignal.h            the play page's short LED signals: 3 red or white blinks, a flash
 ui.h                   page plumbing: events, page switching
 EventLog.h             the bug report: every key, knob and MIDI event since power-on, written as
@@ -448,6 +457,7 @@ Bench.h, BenchProfile.h
                        the CPU bench (only in FRIZZ-bench.bin, `make BENCH=1`) and its cycle marks
 limiter.h, EnvFollower.h
                        the safety limiter and the VU meter
+MicFilter.h            the built-in mic's highpass, TAPE's (without its notches)
 hardware.h             the CHOMPI hardware: encoders, keys, switches, LEDs, battery
 encoder.h / .cpp       encoder driver
 temp_led_stuff.h       LED driver (ui_utils.h: LED flush/clear helpers)

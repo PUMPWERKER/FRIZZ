@@ -9,20 +9,21 @@ did nothing, so if the keys don't play after updating, flip it down.
 
 ## Overview
 
-The stereo AUX input goes to the headphone and master outputs through a volume stage taken
-from TAPE's Volume Engine, with a looper on the wet side of a dry/wet mix. The looper can
-record free-length loops or loops quantized to whole bars of an incoming MIDI clock. The
-white keys punch in effects on the mixed signal, and four dark keys save and recall their
-settings as scenes, next to one that clears them. A master compressor, set from the last
-white key, sits after the effects. The built-in microphone is not used.
+The stereo AUX input, or the built-in microphone while no cable is in AUX (see
+[Input: AUX or the mic](#input-aux-or-the-mic)), goes to the headphone and master outputs
+through a volume stage taken from TAPE's Volume Engine, with a looper on the wet side of a
+dry/wet mix. The looper can record free-length loops or loops quantized to whole bars of an
+incoming MIDI clock. The white keys punch in effects on the mixed signal, and four dark keys
+save and recall their settings as scenes, next to one that clears them. A master compressor,
+set from the last white key, sits after the effects.
 
 ## VOLUME knob
 
 | Control | Function | LED |
 |---|---|---|
 | Turn (page 1, default) | Output gain, headphone + master (default 75%) | VU meter of the master, scaled by gain: dim when silent, then green, yellow, pink at the loudest |
-| Press, then turn (page 2) | Input gain, AUX (default 75%) | blue (0%) to red (100%) |
-| Press twice, then turn (page 3) | Headphone feed: left towards the AUX input on its own, right back to the master out (default: the master out) | white (master) to green (input) |
+| Press, then turn (page 2) | Input gain, AUX or the mic (default 75%) | blue (0%) to red (100%) |
+| Press twice, then turn (page 3) | Headphone feed: left towards the input on its own, right back to the master out (default: the master out) | white (master) to green (input) |
 | SHIFT + turn | Input/loop mix: input only to looper only | green (input) to purple (loop) |
 | SHIFT + press | Resets the mix: the loop only while there is one, otherwise the input only | |
 
@@ -36,7 +37,7 @@ when the loop is erased; SHIFT + press puts it back there. The punch-in FX come 
 so they act on the input as well as the loop.
 
 **Headphone feed (page 3):** the master out always carries the full signal. Turned left, the
-headphones carry the AUX input on its own instead, after input gain and VOLUME: no loop, no
+headphones carry the input (AUX or the mic) on its own instead, after input gain and VOLUME: no loop, no
 effects, no mix, no compressor. Use it when the master goes to a PA, mixer or recorder and the
 headphones are your monitor; with headphones alone, leave it at the master. It's back on the
 master at every power-on.
@@ -49,7 +50,8 @@ then on page 4. Mono and the battery check moved to the [settings page](#setting
 
 From v0.11. With the mode switch **up**, the keys set what you'd set once for a setup rather
 than play: the MIDI channel, MIDI transport following, the mono input, where FRIZZ takes a
-MIDI clock from and how it follows it, whether it sends one, and how bright its LEDs are. The loop, the effects
+MIDI clock from and how it follows it, whether it sends one, how bright its LEDs are, and
+whether it listens to AUX or the built-in mic. The loop, the effects
 and MIDI play on meanwhile; only your hands are on this page. Switch back down to play.
 
 Each key sets one thing on its press. The white keys pick the MIDI channel; the dark keys
@@ -68,10 +70,10 @@ set the rest:
 | D# (upper octave) | [MIDI feedback](#midi-feedback): on (lit) / off (dim, default) | light blue |
 | F# (upper octave) | [Mono input](#mono-input): mono (lit) / stereo (dim) | white |
 | G# (upper octave) | [LED brightness](#led-brightness), each press the next: 100 % (default), 75 %, 50 % | purple, as bright as the LEDs are |
+| A# (upper octave) | [The input](#input-aux-or-the-mic): AUX or the built-in mic, each press the other. Not saved | green (AUX), magenta (mic) |
 
 The dark keys are grouped by topic: the lower octave's are MIDI in, the upper octave's MIDI out
-and the rest. The upper octave's A# does nothing. (Before v0.12 they sat elsewhere: see the
-CHANGELOG.)
+and the rest. (Before v0.12 they sat elsewhere: see the CHANGELOG.)
 
 - **The beat on G#** is the tempo the effects follow right now (see [Tempo](#tempo)): with a
   loop, the loop's at its speed; otherwise the MIDI clock's; otherwise the last tempo, each
@@ -95,8 +97,8 @@ CHANGELOG.)
 - Flipping up ends a scene mode (SAVE, COPY, DELETE): nothing is saved, copied or deleted,
   and you're out of the mode when you flip back down.
 - The low-battery warning dims with the LEDs too.
-- Every setting is saved on the card with the master compressor, 2 s after the last change,
-  so it comes back at power-on. None is part of a scene. Without a card, or when the card
+- Every setting but the input is saved on the card with the master compressor, 2 s after the
+  last change, so it comes back at power-on. None is part of a scene. Without a card, or when the card
   can't be written, the key you changed last blinks red 3 times, and FRIZZ tries again 2 s
   later, up to 3 times; the setting then lasts until power-off.
 
@@ -105,7 +107,28 @@ CHANGELOG.)
 Mono is for a mono (TS) cable, such as one from a Lyra-8 or a guitar pedal: the plug grounds
 the right channel, so in stereo the source is heard on the left only. In mono the left channel
 feeds both sides, and the effects' stereo knobs spread it from there. Its key (F# of the upper
-octave) toggles it.
+octave) toggles it. It's for AUX only: the mic is mono anyway, and plays on both sides either way.
+
+### Input: AUX or the mic
+
+From v0.12 FRIZZ hears CHOMPI's built-in microphone too, as TAPE and TEMPO do. AUX's jack
+picks: with a cable plugged in, the input is AUX; pull it out and it's the mic, plug one in
+and it's AUX again. At power-on the jack decides the same way.
+
+The upper octave's A# picks the other input by hand: green while AUX is the input, magenta
+while the mic is. It holds until a cable goes in or out of AUX, which picks again; it isn't
+saved, so at power-on the jack decides. Use it to sing into the mic with a cable left in AUX,
+or to silence the mic with no cable in AUX (to play the loop on its own, say).
+
+The mic is everything the input is: the looper records it, the input/loop mix and the effects
+take it, the input gain (VOLUME's page 2) sets its level and the headphone feed (page 3)
+carries it. It is mono, the same on both sides. FRIZZ treats it as TAPE does: 5 times the
+input gain (AUX gets 3 times), its DC taken out, and a highpass at about 150 Hz (TAPE's
+narrow notches above it are left out: they did next to nothing). A switch between AUX and the
+mic fades over 5 ms, so it doesn't click.
+
+Mind the speaker: with the mic on and the headphones' or master's volume up, a loudspeaker
+near CHOMPI feeds back. Headphones are the safe way to play it.
 
 ### LED brightness
 
@@ -959,7 +982,7 @@ or C2 in Ableton Live): the white keys from 48 up, the dark keys on the sharps. 
 | 85 | Output gain |
 | 86 | Input gain |
 | 87 | Input/loop mix |
-| 89 | Headphone feed, as VOLUME's page 3: 127 the master out, 0 the AUX input on its own |
+| 89 | Headphone feed, as VOLUME's page 3: 127 the master out, 0 the input (AUX or the mic) on its own |
 | 90 | The loop's speed in semitones, set outright: 64 as recorded (1×), 0 the slowest (1/16×), 127 double. Only with a loop; forward or in reverse as it runs |
 | 3 | Morph to scene 0-4 (0 the blank one), as SHIFT + its key, landing on the bar line. It acts as the value changes: to morph to the same scene again, send another value first (127, no scene) |
 | 9 | How many bars a morph over CC 3 takes, 1-8 (1 at first) |
