@@ -2731,6 +2731,16 @@ int main()
         Turn(kVolumeEncoder, -5);
         RunMs(100);
         Check(LastCc(TrsCcs(), 0xBF, 85) >= 0, "midi-feedback: VOLUME by hand: CC 85");
+        // on a battery, no host: nothing tried over USB (#84), the jack's as ever
+        SetUsbHost(false);
+        TrsCcs();
+        TakeUsbOut();
+        Turn(kKnob1Encoder, 10);
+        RunMs(500);
+        const std::vector<std::array<int, 3>> no_host = TrsCcs();
+        Check(LastCc(no_host, 0xB4, 14) >= 0 && TakeUsbOut().empty(),
+              "midi-feedback: without a USB host, nothing goes to USB, the jack's CCs still do");
+        SetUsbHost(true);
         RunMs(2500);
         Check(Card("/FRIZZ/frizz_master.txt").find("midi_feedback 1") != std::string::npos,
               "midi-feedback: kept on the card");

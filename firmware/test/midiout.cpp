@@ -348,6 +348,28 @@ int main()
               "feedback: the clock's ticks keep their time through them, as without feedback");
     }});
 
+    // on a battery, no USB host: MIDI out's USB messages aren't tried, nor kept for later
+    // (#84); the jack's clock as ever
+    cases.push_back({"no-host", [] {
+        RunMs(kReadyMs);
+        SetOut(2);
+        RunMs(500);
+        SetUsbHost(false);
+        TakeSent();
+        TakeUsbOut();
+        RunMs(2000);
+        const Sent s = TakeSent();
+        const bool none = s.usb.empty() && TakeUsbOut().empty();
+        SetUsbHost(true);
+        RunMs(500);
+        const Sent back = TakeSent();
+        Report("no-host: %zu ticks on the jack, %zu bytes over USB; with a host again %zu", s.trs.size(),
+               s.usb.size(), back.usb.size());
+        Check(Count(s.trs, 0xF8) > 80 && none, "no-host: without a USB host nothing goes to USB, the jack's clock runs");
+        Check(Count(back.usb, 0xF8) > 15 && Count(back.usb, 0xF8) < 30,
+              "no-host: with a host again, USB's clock goes on, without the ticks from meanwhile");
+    }});
+
     // a DAW's Start was passed on, then a quantized loop: no second Start, and the ticks carry
     // on, its start on the clock's bar line
     cases.push_back({"handover", [] {

@@ -32,6 +32,10 @@
 #pragma once
 #include <string.h>
 #include "daisy.h"
+#if defined(__arm__)
+#include "usbd_cdc.h"
+extern "C" USBD_HandleTypeDef hUsbDeviceHS; // libDaisy's (hid/usb.cpp): FRIZZ's USB, external
+#endif
 
 using namespace daisy;
 
@@ -220,8 +224,23 @@ public:
 
     /** A message out over USB. From MainLoop only: the transport waits for the bus */
     void SendUsb(uint8_t* bytes, size_t size) { usb_midi.SendMessage(bytes, size); }
-    /** The same, false if it didn't go (the last transfer still going): to try again */
-    bool TrySendUsb(uint8_t* bytes, size_t size) { return usb_midi.GetMutableTransport().Tx(bytes, size); }
+    /** The same, at once or not at all: false if it didn't go (no host, or the last transfer
+     *  still going), to try again. It never waits, where libDaisy's Tx would (#84) */
+    bool TrySendUsb(uint8_t* bytes, size_t size)
+    {
+        return UsbReady() && usb_midi.GetMutableTransport().Tx(bytes, size);
+    }
+
+    /** Whether a host has USB configured: a cable to a computer that knows FRIZZ (not on a
+     *  battery or a charger alone) */
+    inline bool UsbHost() const
+    {
+#if defined(__arm__)
+        return hUsbDeviceHS.dev_state == USBD_STATE_CONFIGURED;
+#else
+        return twin::UsbHost();
+#endif
+    }
 
     /** One byte out of the MIDI jack if the UART can take it now, without waiting: from the
      *  audio callback (MidiOut.h). False while it's busy: at 31250 baud a byte takes 0.32 ms,
@@ -236,6 +255,17 @@ public:
         return true;
 #else
         return uart_midi.GetMutableTransport().GetUartHandle().PutByte(byte);
+#endif
+    }
+
+    /** A host, and the last transfer done: a message goes now without waiting */
+    inline bool UsbReady()
+    {
+#if defined(__arm__)
+        const USBD_CDC_HandleTypeDef* cdc = static_cast<USBD_CDC_HandleTypeDef*>(hUsbDeviceHS.pClassData);
+        return UsbHost() && cdc && cdc->TxState == 0;
+#else
+        return usb_midi.GetMutableTransport().Ready();
 #endif
     }
 

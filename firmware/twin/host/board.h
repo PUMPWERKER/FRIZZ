@@ -43,6 +43,8 @@ bool UartTx(uint8_t byte);
 // --- USB MIDI, as raw MIDI bytes ------------------------------------------------------------
 void UsbListen(UartRx rx, void* context);
 void UsbTx(const uint8_t* data, size_t size);
+/** A host has USB configured (a cable to a computer that knows FRIZZ); SetUsbHost (twin.h) */
+bool UsbHost();
 
 // --- power ---------------------------------------------------------------------------------
 void Stop(); // HAL_PWR_EnterSTOPMode

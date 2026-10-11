@@ -404,6 +404,7 @@ public:
     inline void SetFeedback(bool on) { feedback_ = on; }
     /** A message over USB from MainLoop, false if it didn't go (MidiClock::TrySendUsb) */
     inline bool TrySendUsb(uint8_t* bytes, size_t size) { return clock_->TrySendUsb(bytes, size); }
+    inline bool UsbHost() const { return clock_->UsbHost(); }
     inline void SetClockFactor(ClockFactor factor) { clock_->SetFactor(factor); }
     inline void SetClockSource(ClockSource source) { clock_->SetSource(source); }
     inline ClockSource GetClockSource() const { return clock_->GetSource(); }

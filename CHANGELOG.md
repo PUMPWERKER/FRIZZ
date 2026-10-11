@@ -227,7 +227,8 @@ what FRIZZ does.
   COPY onto it does, since what plays is no longer what the slot holds.
 - **MIDI out over USB no longer drops a tick** that came while USB was still sending something
   else (an answer to a query, or MIDI feedback's CCs): it goes at the next chance, at most 5 ms
-  late, instead of not at all (#104).
+  late, instead of not at all (#104). Without a computer on USB (on a battery), nothing is
+  tried there any more, where every tick held FRIZZ's other work up a moment (#84).
 - **MIDI out at double tempo keeps every tick** of a clock whose ticks come in bunches (a DAW
   over USB sending two at once): one in four went missing, so the gear behind fell behind.
 - **MIDI out no longer sends a stale Start after power-on:** a Start that came while FRIZZ

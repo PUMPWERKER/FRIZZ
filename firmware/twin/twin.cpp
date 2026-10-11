@@ -415,6 +415,9 @@ bool UartTx(uint8_t byte)
     midi_out.push_back({start / 1e6, byte, false});
     return true;
 }
+static bool usb_host = true;
+bool UsbHost() { return usb_host; }
+void SetUsbHost(bool host) { usb_host = host; }
 void UsbTx(const uint8_t* data, size_t size)
 {
     usb_out.append(reinterpret_cast<const char*>(data), size);

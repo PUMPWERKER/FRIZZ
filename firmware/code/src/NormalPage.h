@@ -666,8 +666,10 @@ namespace chompi
                                    }
                                if (midi_->feedback_trs.Room() < m)
                                    return false;
-                               // USB busy: again at the next pass, a few times, then without it
-                               if (usb && !midi_->TrySendUsb(msg, 3 * n) && ++feedback_usb_tries_ < kFeedbackUsbTries)
+                               // USB busy: again at the next pass, a few times, then without
+                               // it; without a host, not at all (#84)
+                               if (usb && midi_->UsbHost() && !midi_->TrySendUsb(msg, 3 * n)
+                                   && ++feedback_usb_tries_ < kFeedbackUsbTries)
                                    return false;
                                feedback_usb_tries_ = 0;
                                midi_->feedback_trs.Push(trs, m);

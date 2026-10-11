@@ -171,9 +171,10 @@ public:
         last_ticks_ = clock_->GetTicks();
     }
 
-    /** From MainLoop, every pass: USB's bytes, a message at a time. One USB can't take yet
-     *  (the transfer before still going, MIDI feedback's or an answer's) waits for the next
-     *  pass, for kUsbWaitMs at most: then USB isn't listening, and it's dropped */
+    /** From MainLoop, every pass: USB's bytes, a message at a time, never waiting. Without
+     *  a host (on a battery) they're dropped unsent (#84); one USB can't take yet (the
+     *  transfer before still going, MIDI feedback's or an answer's) waits for the next pass,
+     *  for kUsbWaitMs at most */
     void FlushUsb()
     {
         uint8_t msg[3];
@@ -181,6 +182,12 @@ public:
         while ((n = usb_.PeekMessage(msg)) > 0)
         {
             const uint32_t now = System::GetNow();
+            if (!clock_->UsbHost())
+            {
+                usb_.Clear();
+                usb_waiting_ = false;
+                return;
+            }
             if (!clock_->TrySendUsb(msg, n))
             {
                 if (!usb_waiting_)
