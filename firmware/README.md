@@ -281,9 +281,11 @@ then run `bin/install_bootloader.sh`.
 ## Measure timing and sound on the device
 
 `tools/measure.py` measures what the twin can't, on the real CHOMPI, with no hands at the
-panel. It needs an audio interface: one of its outputs into AUX, the CHOMPI's line out into
-its input 1, its MIDI out into the TRS jack (found by name; `FRIZZ_AUX_SINK`,
-`FRIZZ_LINE_SOURCE`, `FRIZZ_TRS_MIDI` set them). Python 3 with numpy (a venv:
+panel. It needs an audio interface: its line outputs 3+4 into AUX, the CHOMPI's line out into
+its inputs 3+4 (the left, input 3, is recorded), its MIDI out into the TRS jack (found by name,
+the Scarlett's `HiFi__Line4__sink` and `HiFi__Line8__source`; `FRIZZ_AUX_SINK`,
+`FRIZZ_LINE_SOURCE`, `FRIZZ_TRS_MIDI` set them). Outputs 1+2 are the user's monitors: the
+tools never play into them. Python 3 with numpy (a venv:
 `python3 -m venv ~/.venvs/frizz && ~/.venvs/frizz/bin/pip install numpy`).
 
 ```bash

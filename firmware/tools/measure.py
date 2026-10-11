@@ -21,11 +21,13 @@
         40 s of generated, never repeating notes and noise (for drift: every pass of a loop
         is told apart), or a mix of the WAV files given, looped (for listening tests)
 
-The audio: AUX gets an output of the audio interface, the CHOMPI's line out goes into one of
-its inputs, the TRS jack gets its MIDI out. Found by name, or set them:
-    FRIZZ_AUX_SINK      a part of the PipeWire sink's name    (default: Line3)
-    FRIZZ_LINE_SOURCE   a part of the PipeWire source's name  (default: Mic1, input 1 of the
-                        interface AUX's sink is on)
+The audio: AUX gets an output pair of the audio interface, the CHOMPI's line out goes into
+two of its inputs, of which the left one is recorded; the TRS jack gets its MIDI out. Found by
+name, or set them:
+    FRIZZ_AUX_SINK      a part of the PipeWire sink's name    (default: HiFi__Line4__sink, the
+                        Scarlett's line outputs 3+4; never 1+2, the monitors)
+    FRIZZ_LINE_SOURCE   a part of the PipeWire source's name  (default: HiFi__Line8__source,
+                        input 3, the left, on the interface AUX's sink is on)
     FRIZZ_TRS_MIDI      the raw MIDI node for the jack        (default: the first sound
                         card's with MIDI that isn't the CHOMPI, e.g. /dev/snd/midiC1D0)
 
@@ -74,16 +76,22 @@ def pw_node(kind, part):
     return names[0]
 
 
+# The Scarlett's line outputs 3+4 into AUX, the line out into its inputs 3 (L) and 4 (R): whole
+# node names' ends, as Line1 would also find Line10-13. Outputs 1+2 are the monitors: never
+# played into
+AUX_SINK, LINE_SOURCE = "HiFi__Line4__sink", "HiFi__Line8__source"
+
+
 def aux_sink():
-    return pw_node("sinks", os.environ.get("FRIZZ_AUX_SINK", "Line3"))
+    return pw_node("sinks", os.environ.get("FRIZZ_AUX_SINK", AUX_SINK))
 
 
 def line_source():
-    """On the same interface as the AUX sink, unless set: a laptop has a Mic1 too"""
-    part = os.environ.get("FRIZZ_LINE_SOURCE", "Mic1")
+    """On the same interface as the AUX sink, unless set: a laptop has a HiFi source too"""
+    part = os.environ.get("FRIZZ_LINE_SOURCE", LINE_SOURCE)
     if "FRIZZ_LINE_SOURCE" not in os.environ:
         device = aux_sink().replace("alsa_output.", "alsa_input.").split(".HiFi")[0]
-        return pw_node("sources", device + ".HiFi__" + part)
+        return pw_node("sources", device + "." + part)
     return pw_node("sources", part)
 
 
