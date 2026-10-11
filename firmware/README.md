@@ -293,7 +293,8 @@ panel. It needs an audio interface: its line outputs 3+4 into AUX, the CHOMPI's 
 its inputs 3+4 (the left, input 3, is recorded), its MIDI out into the TRS jack (found by name,
 the Scarlett's `HiFi__Line4__sink` and `HiFi__Line8__source`; `FRIZZ_AUX_SINK`,
 `FRIZZ_LINE_SOURCE`, `FRIZZ_TRS_MIDI` set them). Outputs 1+2 are the user's monitors: the
-tools never play into them. Python 3 with numpy (a venv:
+tools never play into them. In the Scarlett's mixer (alsa-scarlett-gui), line outputs 3+4 get
+PCM 3+4 directly, not a mix, or nothing played into `HiFi__Line4__sink` reaches AUX. Python 3 with numpy (a venv:
 `python3 -m venv ~/.venvs/frizz && ~/.venvs/frizz/bin/pip install numpy`).
 
 ```bash
@@ -363,12 +364,12 @@ tools/midisuite.py --cases out-loop,start-spp -v    # a few, every check as it's
   the knobs, latches, VOLUME's levels and the scenes 1-2 the morph cases put are set back
   after each case, the settings at the end, in RAM. It plays on slot 12 (`--slot`).
 - **How long:** about 7 minutes. `loop-drift` and `out-x2` ("over a few minutes") measure
-  40 s; `--long` makes it 3 minutes each, `--quick` 15 s (the host check). A 1-bar loop's
-  length, taken from a USB clock, scatters by a ms or two a minute from one recording to the
-  next (#20; on beta.1 −2.18, −0.29 and −1.59 ms a minute): `loop-drift` can land either side
-  of its ±2. A lone `loop-drift` FAIL is run again (`--cases loop-drift`, a new recording)
-  before it's read as a regression; its two halves alike say it's the recording's length,
-  apart that the glide back to 1x was still settling.
+  40 s; `--long` makes it 3 minutes each, `--quick` 8 s (the host check). `loop-drift`
+  records 4 bars: a 1-bar loop's length, taken from a USB clock's ticks, scattered by up to
+  ±2.3 ms a minute from one recording to the next on beta.1 (#20), a 4-bar loop's by 0.4. Its
+  two halves alike say a drift is the recording's length; apart, that the glide back to 1x was
+  still settling. "No jumps" is the position stepping (the median distance from the line,
+  every two beats), not a single late tick: USB, or this computer busy.
 - **What it reads, and what not:** while a morph runs, GET shows the scene it goes to (the
   knobs "already show the scene"), so the morph cases read MIDI's crossfader off the transport
   LEDs; what is heard on the way stays the user's. Checks on timing (rates, jitter, a tempo
