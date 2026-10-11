@@ -39,18 +39,18 @@ install numpy`, then run this with that python.
 """
 import argparse
 import os
-import re
 import struct
 import subprocess
 import sys
-import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(HERE))
 import chompi  # noqa: E402
+import midiport  # noqa: E402
 import remote  # noqa: E402
+from midiport import Clock  # noqa: E402
 
 try:
     import numpy as np
@@ -96,19 +96,10 @@ def line_source():
 
 
 def trs_midi():
-    """The first sound card's raw MIDI node that isn't the CHOMPI's: FRIZZ's card isn't called
-    CHOMPI (its id is FrizZ, or Default), so the CHOMPI's is skipped as the tools find it"""
-    if os.environ.get("FRIZZ_TRS_MIDI"):
-        return os.environ["FRIZZ_TRS_MIDI"]
-    own = re.match(r".*/midiC(\d+)D", chompi.find_device() or "")
-    cards = open("/proc/asound/cards").read()
-    for m in re.finditer(r"^\s*(\d+) \[([^\]]*)\]", cards, re.M):
-        node = "/dev/snd/midiC%sD0" % m.group(1)
-        if own and m.group(1) == own.group(1) or "CHOMPI" in m.group(2):
-            continue
-        if os.path.exists(node):
-            return node
-    sys.exit("no MIDI out for the TRS jack (FRIZZ_TRS_MIDI)")
+    node = midiport.trs_midi()
+    if not node:
+        sys.exit("no MIDI out for the TRS jack (FRIZZ_TRS_MIDI)")
+    return node
 
 
 def frizz(a):
@@ -124,55 +115,6 @@ def latch(f, name):
     f.key("KEY_26", False)
     time.sleep(.05)
     f.key(name, False)
-
-
-# ======== a clock paced by this computer ========
-
-def wait_until(t):
-    """Sleeps most of the way, then spins: ticks to about 0.1 ms"""
-    while True:
-        d = t - time.perf_counter()
-        if d <= 0:
-            return
-        if d > .002:
-            time.sleep(d - .0015)
-
-
-class Clock:
-    """24 ticks a beat at bpm from a thread, through write(bytes); mode as `clock` says"""
-
-    def __init__(self, write, bpm, mode="single"):
-        self.write, self.period, self.mode = write, 60. / (bpm * 24.), mode
-        self.stop = False
-        self.thread = threading.Thread(target=self.run, daemon=True)
-        self.thread.start()
-
-    def run(self):
-        t0 = time.perf_counter() + .05
-        n = 0
-        while not self.stop:
-            if self.mode == "pairs":
-                wait_until(t0 + (n + 1) * self.period)
-                self.write(b"\xF8\xF8")
-                n += 2
-            elif self.mode == "late":
-                wait_until(t0 + n * self.period + (.010 if n % 48 == 47 else 0.))
-                self.write(b"\xF8")
-                n += 1
-            elif self.mode == "catchup":
-                wait_until(t0 + (n + 1) * self.period - .001)
-                self.write(b"\xF8")
-                wait_until(t0 + (n + 1) * self.period)
-                self.write(b"\xF8")
-                n += 2
-            else:
-                wait_until(t0 + n * self.period)
-                self.write(b"\xF8")
-                n += 1
-
-    def close(self):
-        self.stop = True
-        self.thread.join()
 
 
 # ======== audio ========
