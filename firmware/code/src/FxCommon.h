@@ -111,12 +111,8 @@ public:
      *  or asleep at 0) there's nothing to do */
     float Process()
     {
-        if (value_ != target_)
-        {
-            fonepole(value_, target_, kFxGateCoeff);
-            if (on_ && value_ > 1.f - kFxGateFull)
-                value_ = 1.f;
-        }
+        if (__builtin_expect(value_ != target_, 0))
+            Fade();
         return value_;
     }
 
@@ -147,6 +143,15 @@ public:
     }
 
 private:
+    /** One step of the fade, out of line: every effect inlines Process, and the audio
+     *  callback is bound by the I-cache (#51) */
+    __attribute__((noinline)) void Fade()
+    {
+        fonepole(value_, target_, kFxGateCoeff);
+        if (on_ && value_ > 1.f - kFxGateFull)
+            value_ = 1.f;
+    }
+
     float value_, target_;
     bool on_; // SetOn runs in the audio callback, as everything else here
     bool pressed_;
