@@ -588,13 +588,25 @@ SETTLE = 10  # s for a firmware just started to answer: USB back, FRIZZ booted
 frizz_slot = None
 
 
-def to_frizz(slot=None, timeout=120, device=None):
+def to_frizz(slot=None, timeout=120, device=None, again=False):
     """FRIZZ's raw MIDI node: on SLOT, started unless it's the one running; without one the
     FRIZZ running, or else the slot last started in this hold, or FRIZZ_SLOT. Which runs, it
     asks FRIZZ (ident(): the build, the bench or not), or else goes by the slot noted as
     started. Waits SETTLE s first for a firmware that is still starting, and says which slot
-    it is (frizz_slot)"""
+    it is (frizz_slot). AGAIN starts the one running again too, so it comes up as from
+    power-on (remote.py play --fresh, #123): through the launcher, the card not written"""
     global frizz_slot
+
+    def found(node, which):
+        global frizz_slot
+        frizz_slot = which
+        if not again:
+            return kept(node)
+        if which is None:
+            sys.exit("FRIZZ runs on a slot the tools can't tell, to start it again: --slot N")
+        say("starting slot %d again, for a fresh start" % which)
+        return start(which, timeout, device)
+
     now, where = state(device)
     settle = time.monotonic() + SETTLE
     while now in (None, "other") and time.monotonic() < settle:
@@ -609,27 +621,22 @@ def to_frizz(slot=None, timeout=120, device=None):
             say("the bench runs: %s" % describe_ident(info, slots))
         elif running is not None and slot in (None, running):
             say("FRIZZ on slot %d: %s" % (running, describe_ident(info, slots)))
-            frizz_slot = running
-            return kept(where)
+            return found(where, running)
         elif running is None and slot is None:
             say("FRIZZ runs: %s; --slot N makes sure" % describe_ident(info, slots))
-            frizz_slot = last if this_hold and last in FRIZZ_SLOTS else None
-            return kept(where)
+            return found(where, last if this_hold and last in FRIZZ_SLOTS else None)
         elif running is None and slot == last and this_hold:
             say("FRIZZ on slot %d (%s): %s" % (last, what, describe_ident(info, slots)))
-            frizz_slot = last
-            return kept(where)
+            return found(where, last)
     elif now == "frizz":
         if last == BENCH_SLOT:
             say("the bench runs (slot %d, %s), which answers as FRIZZ does" % (last, what))
         elif last in FRIZZ_SLOTS and slot in (None, last):
             say("FRIZZ on slot %d (%s)" % (last, what))
-            frizz_slot = last
-            return kept(where)
+            return found(where, last)
         elif slot is None:
             say("FRIZZ runs, on a slot the tools didn't start: --slot N makes sure")
-            frizz_slot = None
-            return kept(where)
+            return found(where, None)
     if slot is None:
         slot = last if this_hold and last in FRIZZ_SLOTS else FRIZZ_SLOT
     frizz_slot = slot
