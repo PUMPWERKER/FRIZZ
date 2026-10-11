@@ -109,6 +109,8 @@ what FRIZZ does.
   300 BPM) and between two whole BPM (say 120.4), it used to flip between neighbouring
   BPM many times a second, moving the delay time with it. It's now measured over the last
   few seconds; a jump in tempo is still followed at once.
+- **A MIDI clock that sends its ticks two at a time** (some DAWs over USB) no longer locks
+  FRIZZ to half its tempo when it starts while FRIZZ is already running (#92).
 
 ## v0.11 (2026-10-10)
 
