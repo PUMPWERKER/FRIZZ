@@ -185,10 +185,11 @@ cd firmware && tools/builds.py && tools/chompi.py hold sh -c '
 its `cpu.txt` into `card/`, and `builds.py cpu` files that as `bin/cpu.txt`), and leaves FRIZZ
 on key 10 running at the end. Each `play` (several go in the `{ }`, the `--test` build's)
 ends in `;`, not `&&`: a failed `expect led` (exit 1) is judged from its output, and stops
-neither the next scenario nor `--run 10`. Stage 2 plays no scenario that uses the settings
-page (`settings.txt`): what it changes is saved to the card key 10 shares, so `remote.py play`
-refuses it without `--force` (#58). The user takes the CHOMPI for playing with
-`tools/chompi.py hold` (until Ctrl-C), or by telling a session, which then runs it for them.
+neither the next scenario nor `--run 10`. Stage 2 plays no scenario that writes the card key 10
+shares: the settings page (`settings.txt`, #58), the compressor's knobs (`comp.txt`) or a scene
+saved, copied or deleted (`scenes.txt`, #78); `remote.py play` refuses them without
+`--force`. The user takes the CHOMPI for playing with `tools/chompi.py hold` (until Ctrl-C),
+or by telling a session, which then runs it for them.
 Within that, stage 2 needs no asking. Ask the user first only for what needs their hands or
 changes what they play: sending to key 10, anything when the lock's holder is the user, a
 cable to plug.
