@@ -7,9 +7,11 @@
 #
 # The checks run side by side, one per core (JOBS=N sets how many), once DaisySP and the twins
 # they share are built; their lines come in the order above. The ones on the twin go first,
-# the longest; remote.cpp, which plays the twin at the wall clock's pace against remote.py's
-# timeouts, only once at most two others still run. CASES (ui.cpp's, for working on a few) is
-# ignored: all.sh runs every case.
+# the longest; ui, sync, midi and midiout each run their cases side by side too (cases.h,
+# CASE_JOBS). remote.cpp, which plays the twin at the wall clock's pace against remote.py's
+# timeouts, and bench.cpp, the longest single process, start first and at the normal
+# priority, the others behind them (nice). CASES (for working on a few cases) is ignored:
+# all.sh runs every case.
 source "$(dirname "$0")/lib.sh"
 set +e
 unset CASES
@@ -24,18 +26,16 @@ on_twin=$(for t in $(units); do grep -q '#include "twin.h"' "$T/$t.cpp" && echo 
 others=$(for t in check $(units); do echo "$on_twin" | grep -qx "$t" || echo "$t"; done)
 run()
 {
-    local t=$1
-    if [ "$t" = check ]; then "$T/check.sh"; else "$T/unit.sh" "$t"; fi > "$OUT/$t.out" 2>&1
+    local t=$1 nice=
+    echo "$first" | grep -qx "$t" || nice="nice -n 10"
+    if [ "$t" = check ]; then $nice "$T/check.sh"; else $nice "$T/unit.sh" "$t"; fi > "$OUT/$t.out" 2>&1
     echo $? > "$OUT/$t.rc"
 }
-for t in $(echo "$on_twin" | grep -vx remote) $others; do
+first=$(printf '%s\n' remote bench | grep -x -f <(units))
+for t in $first $(echo "$on_twin" | grep -vx -f <(echo "$first")) $others; do
     while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do wait -n; done
     run "$t" &
 done
-if echo "$on_twin" | grep -qx remote; then
-    while [ "$(jobs -rp | wc -l)" -gt 2 ]; do wait -n; done
-    run remote &
-fi
 wait
 
 fail=0
