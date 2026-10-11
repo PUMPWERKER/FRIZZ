@@ -96,6 +96,21 @@ def fit(times):
     return slope, worst
 
 
+def steps(times, per=48):
+    """How far the ticks' position steps, apart from their jitter: the line through them, the
+    median of their distances from it every per ticks (two beats), the largest change from one
+    such median to the next, in s. A late tick or two (USB, this computer busy) moves no
+    median; a jump in the position moves every one after it"""
+    p, _ = fit(times)
+    if not p:
+        return None
+    n = len(times)
+    mx, my = (n - 1) / 2., sum(times) / n
+    res = [t - (my + p * (i - mx)) for i, t in enumerate(times)]
+    meds = [sorted(res[i:i + per])[len(res[i:i + per]) // 2] for i in range(0, n - per + 1, per)]
+    return max([abs(b - a) for a, b in zip(meds, meds[1:])] or [0.])
+
+
 def bpm_of(period):
     return 60. / (24. * period) if period else 0.
 
@@ -473,14 +488,16 @@ def usb_late(r):
         r.tcheck("USB clock 132 BPM (%s) started" % mode, took is not None, got, "132 +-1")
 
 
-def drift_case(r, port_in, seconds, factor=1.):
-    """A quantized loop to a clock, the transport a fifth up and back, then FRIZZ's own clock
-    out over USB (the loop's position) against the clock sent: the loop's drift"""
+def drift_case(r, port_in, seconds, factor=1., bars=4):
+    """A quantized loop of bars to a clock (4: its length taken from 4x the ticks of a 1-bar
+    loop's, which scatters by about +-2 ms a minute from one recording to the next, #20), the
+    transport a fifth up and back, then FRIZZ's own clock out over USB (the loop's position)
+    against the clock sent: the loop's drift"""
     r.setting(clock_source=SOURCES[port_in], midi_out=OUTS["all"],
               clock_factor=int(factor * 100))
     c = r.clock(port_in, 120)
     r.wait_tempo(120 * factor, 1, 5)
-    r.record_loop(1, 120, factor)
+    r.record_loop(bars, 120, factor)
     r.turn(TRANSPORT_ENC, 14)
     time.sleep(2.)
     r.turn(TRANSPORT_ENC, -14)
@@ -507,8 +524,12 @@ def drift_case(r, port_in, seconds, factor=1.):
     r.note("the halves: %+.2f, %+.2f ms a minute" % tuple(halves))
     r.tcheck("the loop (its clock out) against the clock sent, over %g s" % seconds,
             abs(drift) <= 2. * r.slack, "%+.2f ms a minute (halves %+.2f, %+.2f)" % ((drift,) + tuple(halves)), "+-%g ms a minute (before #90: ~30)" % (2 * r.slack))
-    r.tcheck("no jumps in its position", worst <= .004 * r.slack, "worst %.1f ms off the line" % (worst * 1000),
-            "%g ms (USB's own jitter ~1)" % (4 * r.slack))
+    step = steps(out)
+    _, sent_worst = fit(sent)
+    r.tcheck("no jumps in its position", step <= .002 * r.slack,
+             "steps %.2f ms; single ticks up to %.1f ms off (the clock sent: %.1f)"
+             % (step * 1000, worst * 1000, sent_worst * 1000),
+             "%g ms (a late tick is USB's or this computer's jitter)" % (2 * r.slack))
 
 
 @case("loop-drift", "7: a loop recorded to a MIDI clock, the transport turned a fifth up and back "
@@ -723,14 +744,18 @@ def out_x2(r):
     t0 = time.perf_counter()
     r.note("measuring %g s" % seconds)
     time.sleep(seconds)
-    p_out, worst = fit(ticks_after(r.captured(dst).log, t0))
-    p_in, _ = fit([t for t in c.ticks if t >= t0])
+    out = ticks_after(r.captured(dst).log, t0)
+    p_out, worst = fit(out)
+    p_in, sent_worst = fit([t for t in c.ticks if t >= t0])
     drift = (p_out * 2. / p_in - 1.) * 60000. if p_out and p_in else None
     r.tcheck("%s out at x2 against the clock sent, over %g s" % (dst.upper(), seconds),
             drift is not None and abs(drift) <= 2. * r.slack,
             "%+.2f ms a minute" % drift if drift is not None else "no clock", "+-%g ms a minute" % (2 * r.slack))
-    r.tcheck("each tick on its line", worst is not None and worst <= .004 * r.slack,
-            "worst %.1f ms" % (worst * 1000) if worst is not None else "-", "%g ms" % (4 * r.slack))
+    step = steps(out)
+    r.tcheck("in step: its position", step is not None and step <= .002 * r.slack,
+             "steps %.2f ms; single ticks up to %.1f ms off (the clock sent: %.1f)"
+             % (step * 1000, worst * 1000, sent_worst * 1000) if step is not None else "-",
+             "%g ms (a late tick is USB's or this computer's jitter)" % (2 * r.slack))
 
 
 @case("out-knobs", "7: a drum machine on the TRS clock while you turn knobs fast (feedback on): it "
