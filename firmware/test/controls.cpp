@@ -175,6 +175,44 @@ static void TestKeys()
     fx.KeyPressed(FX_FOLDER, false, true);
     Check(!e.on[FX_FOLDER] && !fx.IsLatched(FX_FOLDER), "... and no latch on its release");
 
+    // SHIFT just after a plain press (NormalPage's grace, #115): a select after all
+    Latch(fx, FX_FILTER);
+    fx.KeyPressed(FX_FILTER, true, false);
+    Check(fx.LateSelect(FX_FILTER) && e.on[FX_FILTER] && fx.IsLatched(FX_FILTER),
+          "late select on a latched FX: still on, still latched");
+    Check(!fx.ShiftPressed(), "... its key no longer counts as held for a latch");
+    fx.KeyPressed(FX_FILTER, false, true);
+    Check(e.on[FX_FILTER] && fx.IsLatched(FX_FILTER), "... and its release does nothing");
+    fx.KeyPressed(FX_FOLDER, true, false);
+    Check(fx.LateSelect(FX_FOLDER) && !e.on[FX_FOLDER] && fx.Selected() == FX_FOLDER,
+          "late select on an unlatched FX: off again, selected");
+    fx.KeyPressed(FX_FOLDER, false, false);
+    Check(!e.on[FX_FOLDER] && !fx.IsLatched(FX_FOLDER), "... and its release does nothing");
+    fx.KeyPressed(FX_FOLDER, true, true);
+    Check(!fx.LateSelect(FX_FOLDER), "late select of a select: nothing to take back");
+    fx.KeyPressed(FX_FOLDER, false, true);
+
+    // a key back down just after its release (NormalPage's grace): the release taken back
+    fx.KeyPressed(FX_FOLDER, true, false);
+    fx.ShiftPressed();
+    fx.KeyPressed(FX_FOLDER, false, false); // the latch gesture: latched
+    Check(fx.Rebound(FX_FOLDER) && e.on[FX_FOLDER] && !fx.IsLatched(FX_FOLDER),
+          "rebound after the latch gesture: held again, the latch as before the release");
+    fx.KeyPressed(FX_FOLDER, false, false);
+    Check(e.on[FX_FOLDER] && fx.IsLatched(FX_FOLDER), "... and the next release latches it");
+    fx.KeyPressed(FX_FILTER, true, true); // a select of a latched FX
+    fx.KeyPressed(FX_FILTER, false, false);
+    Check(fx.Rebound(FX_FILTER) && e.on[FX_FILTER] && fx.IsLatched(FX_FILTER),
+          "rebound after a select: still only latched, not held");
+    fx.KeyPressed(FX_FILTER, false, false);
+    Check(e.on[FX_FILTER] && fx.IsLatched(FX_FILTER), "... and its release does nothing");
+    fx.KeyPressed(FX_FILTER, true, false);
+    Check(!fx.Rebound(FX_FILTER), "rebound of a key held: nothing to take back");
+    fx.KeyPressed(FX_FILTER, false, false);
+    Check(!e.on[FX_FILTER] && !fx.IsLatched(FX_FILTER), "... a plain press clears the latch");
+    Latch(fx, FX_FOLDER);
+    Check(!e.on[FX_FOLDER] && !fx.IsLatched(FX_FOLDER), "back to off");
+
     // SHIFT going down with no FX key held changes nothing
     Check(!fx.ShiftPressed(), "SHIFT alone: no latch combo");
     bool none = true;

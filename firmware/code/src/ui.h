@@ -170,12 +170,15 @@ namespace chompi
         }
 
         /** The keys down on one side, against what it was told: a press or a release for each
-         *  that changed, as base plus the key */
+         *  that changed, as base plus the key; the play page's are timed (KeyEdge) */
         void Tell(uint64_t down, uint64_t& told, uint16_t base)
         {
+            const uint32_t now = System::GetNow();
             for (uint64_t changed = down ^ told; changed; changed &= changed - 1)
             {
                 const int key = __builtin_ctzll(changed);
+                if (base == 0)
+                    normal_page_.KeyEdge(key, (down >> key) & 1, now);
                 if ((down >> key) & 1)
                     event_queue.AddButtonPressed(base + key, 1);
                 else

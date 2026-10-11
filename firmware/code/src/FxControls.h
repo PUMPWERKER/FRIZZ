@@ -73,6 +73,7 @@ public:
             SetComp(p, kCompParams.defaults[p]);
         }
         comp_changed_ = 0;
+        rebound_ = 0;
         ClearChunks();
         chunk_shift_ = false;
         selected_ = 0;
@@ -105,9 +106,16 @@ public:
                 return;
             }
             on_release_[fx] = OnRelease::CLEAR;
+            rebound_ &= static_cast<uint16_t>(~Bit(fx));
         }
         else
         {
+            // what the release is about to change, for a bounce to take back (Rebound)
+            rebound_ |= Bit(fx);
+            was_held_ = static_cast<uint16_t>(held_[fx] ? was_held_ | Bit(fx) : was_held_ & ~Bit(fx));
+            was_latched_ = static_cast<uint16_t>(latched_[fx] ? was_latched_ | Bit(fx)
+                                                              : was_latched_ & ~Bit(fx));
+            was_on_release_[fx] = on_release_[fx];
             if (!held_[fx])
                 return;
             bool latched = latched_[fx];
@@ -125,6 +133,34 @@ public:
         }
         held_[fx] = down;
         SendOn(fx);
+    }
+
+    /** SHIFT went down just after fx's plain press (NormalPage's grace window, #115): the
+     *  press was SHIFT + key after all, a select. The effect goes off again unless latched, its
+     *  latch stays, and the release does nothing. False if the press wasn't a plain one */
+    bool LateSelect(size_t fx)
+    {
+        if (!held_[fx] || on_release_[fx] != OnRelease::CLEAR)
+            return false;
+        held_[fx] = false;
+        on_release_[fx] = OnRelease::KEEP;
+        SendOn(fx);
+        return true;
+    }
+
+    /** fx's key back down just after its release (a bounce, NormalPage's grace window): the
+     *  release is taken back, the key held, latched and pending as before it, so the next
+     *  release decides as that one did. False if the key wasn't just let go */
+    bool Rebound(size_t fx)
+    {
+        if (!((rebound_ >> fx) & 1))
+            return false;
+        rebound_ &= static_cast<uint16_t>(~Bit(fx));
+        held_[fx] = (was_held_ >> fx) & 1;
+        latched_[fx] = (was_latched_ >> fx) & 1;
+        on_release_[fx] = was_on_release_[fx];
+        SendOn(fx);
+        return true;
     }
 
     /** The master compressor's key going down: selects it for the knobs, on page 1 unless it
@@ -693,6 +729,10 @@ private:
     bool held_[kNumFx];
     bool latched_[kNumFx];
     OnRelease on_release_[kNumFx];
+    uint16_t rebound_ = 0;               // bit fx: let go, and Rebound may take that back
+    uint16_t was_held_ = 0;              // bit fx: held before that release
+    uint16_t was_latched_ = 0;           // bit fx: latched before it
+    OnRelease was_on_release_[kNumFx];   // and what it was to do
     size_t selected_ = 0;
     size_t page_ = 0;           // the knobs' page, 0 or 1 (ParamOf)
     float comp_[kNumFxParams];  // the master compressor's parameters, both pages
