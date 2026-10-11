@@ -50,7 +50,7 @@ public:
     static const size_t kNumStarts = sizeof(kTapeStart16ths);
 
     /** frames: a power of 2 */
-    void Init(float sample_rate, float* buf_l, float* buf_r, size_t frames)
+    FX_ONCE void Init(float sample_rate, float* buf_l, float* buf_r, size_t frames)
     {
         sample_rate_ = sample_rate;
         buf_[0] = buf_l;
@@ -58,6 +58,8 @@ public:
         mask_ = frames - 1;
         max_lag_ = static_cast<float>(frames) - 4.f;
         pos_ = 0;
+        held_[0] = held_[1] = 0.f;
+        recording_ = false;
         tempo_ = kDefaultBpm;
         gate_.Init();
         state_ = State::IDLE;
@@ -77,6 +79,22 @@ public:
     FRIZZ_HOT void Process(float* l, float* r)
     {
         gate_.Process();
+        // off, on the live signal: the buffer (in SDRAM) waits, only this frame is kept, for
+        // a press's first read, which reaches one frame behind it
+        if (state_ == State::IDLE && !gate_.IsOn())
+        {
+            held_[0] = *l;
+            held_[1] = *r;
+            recording_ = false;
+            return;
+        }
+        if (!recording_)
+        {
+            const size_t before = (pos_ - 1) & mask_;
+            buf_[0][before] = held_[0];
+            buf_[1][before] = held_[1];
+            recording_ = true;
+        }
         buf_[0][pos_] = *l;
         buf_[1][pos_] = *r;
         const size_t last = pos_;
@@ -118,6 +136,13 @@ public:
             break;
         }
         head_.Move(max_lag_);
+        // held long enough off its speed (at a depth below 1), the head nears the buffer's
+        // far end: it jumps back to the live signal at the same speed, crossfaded, and falls
+        // behind from there again, rather than sticking at the end, where it played the
+        // buffer's oldest sound at full speed. Early enough that the head it fades from
+        // doesn't reach the end either
+        if (head_.lag >= max_lag_ - kTapeJumpFrames && xfade_ >= 1.f)
+            Jump({0.f, head_.rate}, kTapeJumpFrames);
 
         float* const io[2] = {l, r};
         const bool fading = xfade_ < 1.f;
@@ -283,8 +308,10 @@ private:
     size_t mask_;
     float max_lag_;
     size_t pos_; // the next frame to write
+    float held_[2];  // the last frame while it didn't record
+    bool recording_; // whether it did last sample
     float tempo_;
-    volatile State state_;
+    State state_;
     Head head_;
     Head old_;         // the head a jump crossfades from
     float xfade_;      // 0..1 from old_ to head_

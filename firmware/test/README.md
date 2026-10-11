@@ -22,7 +22,7 @@ STRESS=1 ./run.sh work out.bin
 | `scenes`, `store` | the scene and master files and the card: formats, a card not read at boot, backups (also of a file next to a cut save's `.tmp`) |
 | `controls`, `keys`, `looper`, `tempo` | the play page's logic classes on their own: FX keys and knobs, SHIFT and the confirm, the looper (its glides landing exactly, its memory not cleared at boot), the tempo clock |
 | `ui` | the whole firmware from power-on on the virtual CHOMPI: keys through the 4021s, LEDs, the headphones and the master out, the card (full too), bug reports, MIDI (notes, CCs, NRPN, program changes, Start/Stop, the SysEx and its USB answers); each case on a fresh device |
-| `remote` | `../remote.py` itself against the virtual CHOMPI: the twin's USB MIDI on a pseudo-terminal, remote.py run as it is (`--device`) while the twin keeps the wall clock's pace: state, LEDs, load, settings, scenes there and back, a script played with its `expect led` lines, one that uses the settings page refused without `--force` (#58); needs `python3` |
+| `remote` | `../remote.py` itself against the virtual CHOMPI: the twin's USB MIDI on a pseudo-terminal, remote.py run as it is (`--device`) while the twin keeps the wall clock's pace: state, LEDs, load, settings, scenes there and back, a script played with its `expect led` lines, one that uses the settings page refused without `--force` (#58), one that breaks off or is interrupted leaving no key held and the switch with the hand; and the device tools with the CHOMPI stubbed (`Python()`, a lock of their own, never the CHOMPI's): the lock taken only when they reach for it, the slot noted and told apart (FRIZZ-TEST, the bench), `flash.py` waiting for the FRIZZ it sent, `card.py`'s eject after a failed mount, a CHOMPI with garbled USB names (#88); needs `python3` |
 | `bench` | the CPU bench's firmware on the twin: it runs through and writes its file (the loads themselves need the device) |
 | `midi`, `sync` | MIDI in on the twin: ticks among and inside other messages, the jack and USB, which clock locks; and timing against a clock with a real sender's jitter: the FX's tempo, quantized loops' length and drift, the clock lost or switched mid-recording, the 2:45 limit, tap tempo |
 | `midiout` | MIDI out on the twin (`MidiOut.h`), timed as the UART sends: off at first; an incoming clock passed on tick for tick, by the clock factor, never back to its input; a free clock at the last tempo; a loop's Start, Stop, Song Position and Continue; the handover from a DAW's clock to a quantized loop |
@@ -31,8 +31,12 @@ A check prints `KNOWN` for a fault it has found in the firmware that isn't fixed
 `check.h`): that doesn't fail it, so `all.sh` stays green while the faults are listed. Once one
 passes it prints `FIXED` and fails the run, and becomes a plain `Check()` with the fix.
 
-`all.sh` takes about 2 minutes; the first run longer, as it builds DaisySP and the twin for the
-host (into `build/` here and `../twin/build/`, both ignored by git).
+`all.sh` runs the checks side by side, one per core (`JOBS=N` sets how many), once it has
+built DaisySP and the twins they share; their lines come in the order above. On 12 cores it
+takes about 75 s, `sync` alone a minute of it; the first run longer, as it builds DaisySP and
+the twin for the host (into `build/` here and `../twin/build/`, both ignored by git). `remote`
+starts once at most two others still run, as it plays the twin at the wall clock's pace
+against `remote.py`'s timeouts. `CASES` (`ui.cpp`'s) is ignored there: `unit.sh ui` takes it.
 
 ## Engine harness
 
@@ -302,7 +306,7 @@ case on a freshly booted device:
 - PLAY + LOOP is refused without MIDI clock (red blinks) and records with one;
 - VOLUME turns the master down;
 - CHOMPI + PLAY + LOOP held at power-on is shipping mode;
-- below 3 V, the panel flashes amber and the device switches off after 15 s, but not on the
+- below 3 V, the panel flashes yellow and the device switches off after 15 s, but not on the
   charger.
 
 And PR #7's hardware checklist, each of which fails on the firmware before it (`b9031c3`):
@@ -352,7 +356,7 @@ and the master again with the cue down.
 
 The battery: VOLUME's LED on the settings page white on the cable, green once it's pulled, yellow
 below 3.3 V at the next 30 s read, white again with the cable (known: red never shows below 3 V,
-as the amber countdown comes first, #43), and the charger plugged in during the countdown
+as the yellow countdown comes first, #43), and the charger plugged in during the countdown
 stopping it. The scene keys: a saved slot dim, the active one bright, pulsing from a fifth up
 to full once a second once edited; a morph's key blinking on the beat, SHIFT + another scene key
 during it and a 9th bar each blinking red 3 times. The compressor's key without a card: 3 red

@@ -44,7 +44,7 @@ public:
 
     static const size_t kNumShifts = 25; // -12..+12 semitones
 
-    void Init(float sample_rate)
+    FX_ONCE void Init(float sample_rate)
     {
         ring_.Clear();
         for (size_t c = 0; c < 2; c++)
@@ -52,8 +52,8 @@ public:
             window_[c] = 0.f;
             delay_[c][0] = kGuard + static_cast<float>(kSearch);
             delay_[c][1] = kGuard + static_cast<float>(kSearch) + .5f * kWindowFrames;
-            window_frames_ = kWindowFrames;
         }
+        window_frames_ = kWindowFrames;
         gate_.Init();
         env_.Reset();
         env_attack_inc_ = 1.f / (.1f * sample_rate);
@@ -69,19 +69,21 @@ public:
     FRIZZ_HOT void Process(float* l, float* r)
     {
         const float gate = gate_.Process();
-        const float dry = dry_.Process();
-        const float feedback = feedback_.Process();
 
         if (gate_.TakePress())
             env_.Press();
         env_.Process(env_attack_inc_, env_decay_coeff_);
 
-        // off: only the buffer goes on, so a punch-in has the recent sound to shift
+        // off: only the buffer goes on, so a punch-in has the recent sound to shift; the
+        // knobs where they're going
         if (gate_.Asleep())
         {
+            SnapParams();
             ring_.WriteFrame(SoftClip(*l), SoftClip(*r));
             return;
         }
+        const float dry = dry_.Process();
+        const float feedback = feedback_.Process();
 
         // the speed per channel; recomputed every kSwoopUpdate samples while swooping (2
         // powf: every sample was ~6% of the CPU for the swoop's 1.3s), and once when it ends;
@@ -195,8 +197,9 @@ private:
 
     /** Where a tap that's starting over should start: its nominal start (the far end of
      *  the window going up, the near end going down) moved by up to kSearch to where its next
-     *  samples best match the other tap's, by normalised correlation */
-    float Splice(size_t c, float other, float ratio, bool up) const
+     *  samples best match the other tap's, by normalised correlation. Once per window, so
+     *  out of line: inlined twice, it made Process three times the size */
+    __attribute__((noinline)) float Splice(size_t c, float other, float ratio, bool up) const
     {
         const float* const b = ring_.buf[c];
         const size_t last = ring_.Last();

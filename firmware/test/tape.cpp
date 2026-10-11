@@ -256,6 +256,33 @@ static void CheckTapeStop()
         printf("      largest step %.4f\n", run.max_step);
     }
 
+    // held at depth 0 (half speed) for 30 s: the head falls behind by half a second each
+    // second and would reach the buffer's end (2^19 frames) after 22 s; it jumps back to the
+    // live signal there, crossfaded, and goes on at half speed rather than at full
+    {
+        InitTapeStop(.4f, .4f, 0.f);
+        tapestop.SetParam(TapeStop::DEPTH, 0.f);
+        TapeRun run;
+        run.Run(4800);
+        tapestop.SetOn(true);
+        run.Run(4 * k16th + 4800);
+        run.max_step = 0.f;
+        size_t cycles = 0;
+        float last = run.prev;
+        const size_t from = static_cast<size_t>(20.f * kSr), to = static_cast<size_t>(30.f * kSr);
+        for (size_t k = run.i; k < to; k++)
+        {
+            const float x = run.Step();
+            if (k >= from && last < 0.f && x >= 0.f)
+                cycles++;
+            last = x;
+        }
+        const float hz = static_cast<float>(cycles) / 10.f;
+        printf("      held at depth 0, 20-30 s: %.1f Hz, largest step %.4f\n", hz, run.max_step);
+        Check(hz > 104.f && hz < 116.f, "held long at depth 0: half speed throughout, past the buffer's end");
+        Check(run.finite && run.max_step < kMaxStep, "... with no step between samples");
+    }
+
     // the longest stop at the slowest tempo on the steepest brake: the lag stays in the buffer
     {
         tapestop.Init(kSr, tape_l, tape_r, kTapeFrames);

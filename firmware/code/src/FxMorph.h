@@ -33,6 +33,10 @@
 namespace chompi
 {
 
+// What runs once per morph, not per block (Start, AddBar, Land, Freeze): built for size, as
+// FxControls' FX_SCENE_ONCE. At -O3 their copies of the plan were unrolled into kilobytes
+#define FX_MORPH_ONCE __attribute__((noinline, optimize("Os")))
+
 // Taps of SHIFT + the scene key: the bar lines a morph may run to
 static const uint32_t kMaxMorphBars = 8;
 // A fade-in's key comes on this long after the start, once its fade knobs have slewed
@@ -76,7 +80,7 @@ public:
     /** Starts plan, landing on the next bar line, pulses_to_bar pulses away (an estimate);
      *  held: waiting at the start until Release. The chain must have plan's start values
      *  already. Call with the audio interrupt blocked */
-    void Start(const FxMorphPlan& plan, uint32_t pulses_to_bar, bool hold = false)
+    FX_MORPH_ONCE void Start(const FxMorphPlan& plan, uint32_t pulses_to_bar, bool hold = false)
     {
         if (active_)
             Land();
@@ -98,6 +102,7 @@ public:
         holding_ = hold;
         manual_ = false;
         fader_ = 0.f;
+        t0_ = t_ = 0.f;
         active_ = true;
     }
 
@@ -118,15 +123,15 @@ public:
     /** One bar line more, up to kMaxMorphBars. The glide carries on from where it is, now
      *  over pulses_per_bar more pulses. False if it can't. Call with the audio interrupt
      *  blocked */
-    bool AddBar(uint32_t pulses_per_bar)
+    FX_MORPH_ONCE bool AddBar(uint32_t pulses_per_bar)
     {
         if (!active_ || land_ || manual_ || bars_left_ >= kMaxMorphBars)
             return false;
         bars_left_++;
-        for (size_t fx = 0; fx < kNumFx; fx++)
-            for (size_t p = 0; p < kNumFxParams; p++)
-                plan_.start[fx][p] = live_[fx][p];
-        // from here, over what was left plus a bar
+        // from here, over what was left plus a bar. The plan keeps its start, which the
+        // crossfader's 0 is (and the UI's start, FxControls::EndFade): the glide goes on from
+        // where it got to, t0_ of the way
+        t0_ = t_;
         expected_ += static_cast<float>(pulses_per_bar);
         base_ = pos_;
         return true;
@@ -205,6 +210,9 @@ public:
         const float span = expected_ - base_;
         float t = span > 0.f ? (pos_ - base_) / span : 1.f;
         t = holding_ || t < 0.f ? 0.f : (t > 1.f ? 1.f : t);
+        // the rest of the way from where the last AddBar left it
+        t = t0_ + (1.f - t0_) * t;
+        t_ = t;
 
         chain_->FastSlew();
         for (size_t fx = 0; fx < kNumFx; fx++)
@@ -214,10 +222,8 @@ public:
                 const MorphParam how = plan_.how[fx][p];
                 if (how == MorphParam::HOLD)
                     continue;
-                const float end = how == MorphParam::FADE_OUT ? kFxParams[fx].defaults[p]
-                                                              : plan_.target[fx][p];
                 const float start = plan_.start[fx][p];
-                const float val = start + (end - start) * t;
+                const float val = start + (End(fx, p, how) - start) * t;
                 if (val != live_[fx][p])
                 {
                     live_[fx][p] = val;
@@ -230,7 +236,7 @@ public:
     /** Ends it now: every parameter on its target, the deferred keys switched; a parked FX
      *  that goes off stays faded out. Only what changes is sent, so an FX the scenes share
      *  runs on untouched. Call with the audio interrupt blocked, or from the audio callback */
-    void Land()
+    FX_MORPH_ONCE void Land()
     {
         if (!active_)
             return;
@@ -259,7 +265,8 @@ public:
      *  keys not yet switched stay as they were. Fills params with where that is, unswitched
      *  with those keys, and was_on with which of them are on. False if it doesn't run. Call
      *  with the audio interrupt blocked */
-    bool Freeze(float params[kNumFx][kNumFxParams], uint16_t* unswitched, uint16_t* was_on)
+    FX_MORPH_ONCE bool Freeze(float params[kNumFx][kNumFxParams], uint16_t* unswitched,
+                              uint16_t* was_on)
     {
         if (!active_)
             return false;
@@ -304,6 +311,12 @@ public:
     inline bool Active() const { return active_; }
 
 private:
+    /** Where a gliding parameter glides to: a fade-out to its default, the rest to the target */
+    inline float End(size_t fx, size_t p, MorphParam how) const
+    {
+        return how == MorphParam::FADE_OUT ? kFxParams[fx].defaults[p] : plan_.target[fx][p];
+    }
+
     /** A block on the crossfader: see the file comment. Only what changes is sent, at the
      *  knobs' slew, as if they were turned */
     __attribute__((noinline, optimize("Os"))) void ProcessFader()
@@ -337,9 +350,7 @@ private:
                 }
                 else
                 {
-                    const float end = how == MorphParam::FADE_OUT ? kFxParams[fx].defaults[p]
-                                                                  : plan_.target[fx][p];
-                    val = start + (end - start) * t;
+                    val = start + (End(fx, p, how) - start) * t;
                 }
                 if (val != live_[fx][p])
                 {
@@ -359,6 +370,8 @@ private:
     float expected_;    // pulses from the start to the landing, estimated
     float base_;        // where the glide carried on from after the last AddBar
     float pos_;         // pulses since the start, with the fraction of the next
+    float t_ = 0.f;     // how far the glide has got, 0 the start to 1 the target
+    float t0_ = 0.f;    // and had got at the last AddBar
     uint32_t pulses_;
     float since_pulse_; // samples
     uint32_t since_start_;
