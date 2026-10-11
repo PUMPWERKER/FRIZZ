@@ -209,6 +209,10 @@ what FRIZZ does.
   switches itself off on an empty battery, VOLUME's LED flashes red while the others flash
   yellow, so the battery's red (MANUAL.md, Settings page) is seen exactly when it matters.
   Before, VOLUME flashed yellow with the rest and its red was never shown.
+- **No click when a scene recall takes the flanger's stereo back to 0** (#130): depending on
+  how far its two sweeps had drifted apart, the right channel's sweep raced back onto the
+  left one in a few milliseconds, a click. It now glides there as a short bend, in under a
+  tenth of a second; stereo at rest sounds as before.
 - **Song Position on a loop recorded to a clock** reads the sender's 16ths by the clock
   factor the loop was recorded at (#116): with the factor changed since, it moved the loop
   to the wrong place.

@@ -68,7 +68,8 @@ public:
         const float depth = depth_.Process();
         const float mix = mix_.Process();
         const float feedback = feedback_.Process();
-        const float stereo_mix = stereo_mix_.Process();
+        const float mix_before = stereo_mix_.value;
+        stereo_mix_.Process();
 
         // triangle LFOs, -1..1, starting at 0 going up
         float lfo[2];
@@ -81,6 +82,13 @@ public:
                      : phase_[c] < .75f ? 2.f - 4.f * phase_[c]
                                         : 4.f * phase_[c] - 4.f;
         }
+        // the stereo knob's glide moves the right sweep onto the left one's (or away), up to
+        // the whole depth apart: no faster than kMaxGlideFrames a sample, or its delay would
+        // race through the buffer, a click, on a recall's fast slew far more (#130)
+        const float spread = kCentreFrames * depth * fabsf(lfo[0] - lfo[1]);
+        const float most = kMaxGlideFrames / fmaxf(spread, kMaxGlideFrames);
+        stereo_mix_.value = mix_before + fclamp(stereo_mix_.value - mix_before, -most, most);
+        const float stereo_mix = stereo_mix_.value;
         // Kastle: the right LFO is the left one until stereo is turned up. Re-synced once the
         // glide back has all but arrived, where the right one's share is too small to jump
         if (stereo_mix > kStereoSync)
@@ -158,6 +166,9 @@ private:
     Smoothed mix_;
     Smoothed feedback_;
     static constexpr float kStereoSync = .9999f;
+    // the right delay's fastest glide in frames a sample: a pitch bend of at most 25 %, the
+    // whole depth (1114 frames) in under 0.1 s
+    static constexpr float kMaxGlideFrames = .25f;
     Smoothed stereo_mix_;
 };
 

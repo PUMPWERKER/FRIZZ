@@ -2253,16 +2253,21 @@ int main()
         Turn(2, 60); // the amount up
         RunMs(800);
         Save(1); // stereo at 0
-        // stereo up: the right LFO runs free and drifts; then a recall takes it back to 0 within
-        // 25 ms (clicks.cpp's case, on the device). How far they drifted decides the jump, so
-        // after several times
+        // stereo up: the right LFO runs free and drifts; then a recall takes it back to 0
+        // (clicks.cpp's case, on the device). How far they drifted decides how far the right
+        // delay has to glide, so after several times, the whole sequence shifted 4 ways: at
+        // 560 ms it clicked (#130)
         max_step = 0.f; // over the presses too: the jump comes as the recall lands
-        for (uint32_t drift : {6000, 1500, 2500, 3500, 4500})
+        for (uint32_t shift : {0, 560, 1130, 1710})
         {
-            Turn(3, 50);
-            RunMs(drift);
-            Tap("KEY_17");
-            RunMs(600);
+            RunMs(shift);
+            for (uint32_t drift : {6000, 1500, 2500, 3500, 4500})
+            {
+                Turn(3, 50);
+                RunMs(drift);
+                Tap("KEY_17");
+                RunMs(600);
+            }
         }
         const float most = max_step;
         const float mono = StepMs(1000); // the flanger as saved, stereo at 0

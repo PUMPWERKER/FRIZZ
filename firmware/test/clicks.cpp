@@ -2,6 +2,9 @@
 // Built and run by unit.sh clicks.
 //  - the flanger's stereo knob turned back to 0 (as a recall or morph does): the right
 //    channel's sweep glides back onto the left one instead of jumping there
+//  - the same as a scene recall does it, at the recall's fast slew, after 200 drift times:
+//    however far apart the LFOs have drifted, the glide moves the right delay no faster than
+//    a small pitch bend (#130)
 //  - the freezer pressed again while its release fades the loop out: the loop plays on and
 //    hands over to the new capture, instead of dropping to the live signal at once
 //  - the filter's LFO division changed at full depth and high resonance: the cutoff jumps,
@@ -71,6 +74,42 @@ static void TestFlanger()
     printf("      flanger: largest step %.4f in stereo, %.4f turning it to 0\n", before, after);
     Check(before < kMaxStep, "flanger: a stereo sweep is smooth");
     Check(after < kMaxStep, "flanger: stereo back to 0 glides, no jump");
+}
+
+/** A recall taking stereo back to 0 (FxChain::FastSlew's coefficient for its 2400 samples),
+ *  after 1 to 11 s of drift in 50 ms steps: the largest step never much beyond the flanger's
+ *  own with stereo at 0 */
+static void TestFlangerRecall()
+{
+    static chompi::Flanger fx;
+    float mono = 0.f, worst = 0.f;
+    size_t worst_at = 0;
+    for (size_t d = 0; d < 200; d++)
+    {
+        fx.Init(kSr);
+        fx.SetParam(chompi::Flanger::AMOUNT, 1.f);
+        fx.SetParam(chompi::Flanger::RATE, .5f);
+        fx.SetOn(true);
+        size_t i = 0;
+        Run(fx, i, 24000);
+        if (d == 0)
+            mono = Run(fx, i, 48000);
+        fx.SetParam(chompi::Flanger::STEREO, .5f);
+        Run(fx, i, 48000 + d * 2400);
+        FxSlew::coeff = kFxRecallCoeff;
+        fx.SetParam(chompi::Flanger::STEREO, 0.f);
+        float step = Run(fx, i, 2400);
+        FxSlew::coeff = kFxParamCoeff;
+        step = fmaxf(step, Run(fx, i, 24000));
+        if (step > worst)
+        {
+            worst = step;
+            worst_at = 1000 + d * 50;
+        }
+    }
+    printf("      flanger recall: largest step %.4f (after %zu ms of drift), %.4f at stereo 0\n", worst,
+           worst_at, mono);
+    Check(worst < mono * 1.5f, "flanger: a recall to stereo 0 glides without a click, however far the LFOs drifted");
 }
 
 static void TestFreezer()
@@ -184,6 +223,7 @@ static void TestPunchIns()
 int main()
 {
     TestFlanger();
+    TestFlangerRecall();
     TestFreezer();
     TestFilter();
     TestPunchIns();
