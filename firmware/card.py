@@ -14,7 +14,7 @@ Each brings the CHOMPI from wherever it is (FRIZZ, the launcher's picker) into t
 storage firmware on the launcher's key 15, mounts the card, does its part, then ejects it,
 which restarts the CHOMPI into the launcher, and starts FRIZZ again (slot 10). --then N starts
 slot N instead, --then none leaves it at the picker (before or after the subcommand); mount
-leaves the card mounted.
+leaves the card mounted. A FRIZZ that comes up with garbled USB names is started again (#88).
 
 How it gets there, and which launcher and storage firmware do it without a hand:
 tools/chompi.py. FRIZZ_SLOT and STORAGE_SLOT set other slots.

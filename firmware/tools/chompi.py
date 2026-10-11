@@ -30,6 +30,14 @@ tools, or for playing it by hand:
     tools/chompi.py hold                 holds it until Ctrl-C
     tools/chompi.py hold CMD ARGS...     holds it while CMD runs (sh -c for a sequence)
 
+Now and then (#88, 2 in ~310 starts) FRIZZ comes up with its USB names garbled, one string
+off (product "Љ", maker "FrizZ"): the tools find it by the Daisy's USB id then, and say so.
+A tool that started a FRIZZ slot (or the bench, where it waits for it) and finds it so starts
+it again, twice at most, and then asks for the power switch. For one found running so:
+
+    tools/chompi.py fix-name [SLOT]      starts the slot noted as running (or SLOT) again:
+                                         10, 11 or 12, only started, nothing written
+
 Linux only: ALSA's raw MIDI and udisks, Python 3 without packages.
 """
 import argparse
@@ -155,11 +163,21 @@ DAISY_USB_ID = "0483:5740"  # the Daisy Seed's, which FRIZZ and the launcher kee
 
 def find_device():
     """The CHOMPI's raw MIDI node: as midi_send finds it (by "chompi" in the card's names), or
-    else the first card with the Daisy's USB id, for a FRIZZ whose names came garbled (seen
-    once: product "Љ", maker "FrizZ"), saying what it sees there"""
+    else the first card with the Daisy's USB id, for a FRIZZ whose names came garbled (#88:
+    product "Љ", maker "FrizZ"), saying what it sees there"""
     node = midi_send.find_device()
     if node:
         return node
+    card, node = by_usb_id()
+    if node:
+        say("sound card %s has the Daisy's USB id (%s) but no CHOMPI in its names (%s): "
+            "taken for the CHOMPI" % (card, DAISY_USB_ID, card_names(card)))
+    return node
+
+
+def by_usb_id():
+    """(the card, its raw MIDI node) of the first sound card with the Daisy's USB id, or
+    (None, None)"""
     for usbid in sorted(glob.glob(os.path.join(ASOUND, "card*", "usbid"))):
         try:
             with open(usbid) as f:
@@ -170,10 +188,14 @@ def find_device():
         card = re.search(r"card(\d+)", usbid).group(1)
         nodes = sorted(glob.glob(os.path.join(SND, "midiC%sD*" % card)))
         if nodes:
-            say("sound card %s has the Daisy's USB id (%s) but no CHOMPI in its names (%s): "
-                "taken for the CHOMPI" % (card, DAISY_USB_ID, card_names(card)))
-            return nodes[0]
-    return None
+            return card, nodes[0]
+    return None, None
+
+
+def garbled():
+    """Whether the CHOMPI is on USB with its names garbled (#88): found by the Daisy's USB id
+    only, not by its names"""
+    return not midi_send.find_device() and by_usb_id()[1] is not None
 
 
 def card_names(card):
@@ -344,9 +366,20 @@ def to_launcher(timeout=120, device=None):
     return wait_for("launcher", timeout, device, hint, hint_after=10)
 
 
-def run(slot, wanted, timeout=120, device=None):
-    """Starts slot SLOT from wherever the CHOMPI is and waits for state WANTED (None: don't)"""
+def run(slot, wanted, timeout=120, device=None, rename=True):
+    """Starts slot SLOT from wherever the CHOMPI is and waits for state WANTED (None: don't);
+    a FRIZZ whose USB names came garbled is started again (renamed())"""
     node = to_launcher(timeout, device)
+    send_run(node, slot)
+    started(slot)
+    if not wanted:
+        return None
+    where = wait_for(wanted, timeout, device)
+    return renamed(slot, where, timeout, device) if wanted == "frizz" and rename else where
+
+
+def send_run(node, slot):
+    """The launcher's RUN for slot SLOT, exiting if it can't"""
     with link(node) as to:
         reply = to.call(RUN, bytes([slot]), timeout=1.0, retries=2, required=False)
     if reply and reply[0] == BAD_SLOT:
@@ -357,10 +390,46 @@ def run(slot, wanted, timeout=120, device=None):
         sys.exit("the launcher refused to start slot %d: status %d" % (slot, reply[0]))
     else:
         say("starting slot %d ..." % slot)
-    started(slot)
-    if wanted:
-        return wait_for(wanted, timeout, device)
-    return None
+
+
+NAME_TRIES = 2  # restarts for USB names that came garbled
+RENAME_SLOTS = (FRIZZ_SLOT, BENCH_SLOT, TEST_SLOT)
+
+
+def renamed(slot, node, timeout=120, device=None):
+    """NODE, FRIZZ's on slot SLOT just started, once its USB names are right: now and then
+    (#88, 2 in ~310 starts) they come garbled, found by the USB id only, and FRIZZ is
+    restarted into the launcher and the slot started again, NAME_TRIES times at most, sending
+    nothing to it. Only FRIZZ's slots and the bench's; not with a node given (--device)"""
+    if device or slot not in RENAME_SLOTS:
+        return node
+    for attempt in range(NAME_TRIES):
+        if not garbled():
+            return node
+        say("slot %d came up with garbled USB names (#88): starting it again (%d of %d)"
+            % (slot, attempt + 1, NAME_TRIES))
+        node = run(slot, "frizz", timeout, device, rename=False)
+    if garbled():
+        say("the USB names are still garbled after %d restarts (#88): switch the CHOMPI off "
+            "and on. The tools find it anyway, by its USB id" % NAME_TRIES)
+    return node
+
+
+def fix_name(slot=None, timeout=120):
+    """Starts SLOT again (default: the one noted as running), for USB names that came
+    garbled; FRIZZ's on key 10 is only started, never written"""
+    last, _, what = last_started()
+    if slot is None and last is None:
+        sys.exit("no slot is noted as running (one started by hand isn't): fix-name SLOT")
+    slot = last if slot is None else slot
+    if slot not in RENAME_SLOTS:
+        sys.exit("slot %d isn't FRIZZ's, FRIZZ-TEST's or the bench's (%s)"
+                 % (slot, ", ".join(str(s) for s in RENAME_SLOTS)))
+    say("starting slot %d again%s" % (slot, " (%s)" % what if slot == last else ""))
+    node = run(slot, "frizz", timeout)
+    if not garbled():
+        say("slot %d answers, its USB names right" % slot)
+    return node
 
 
 def start(slot, timeout=120, device=None):
@@ -401,13 +470,20 @@ def to_frizz(slot=None, timeout=120, device=None):
             say("the bench runs (slot %d, %s), which answers as FRIZZ does" % (last, what))
         elif last in FRIZZ_SLOTS and slot in (None, last):
             say("FRIZZ on slot %d (%s)" % (last, what))
-            return where
+            return kept(where)
         elif slot is None:
             say("FRIZZ runs, on a slot the tools didn't start: --slot N makes sure")
-            return where
+            return kept(where)
     if slot is None:
         slot = last if this_hold and last in FRIZZ_SLOTS else FRIZZ_SLOT
     return start(slot, timeout, device)
+
+
+def kept(node):
+    """NODE, of a FRIZZ found running: with garbled USB names, saying what restarts it"""
+    if node and garbled():
+        say("its USB names are garbled (#88): tools/chompi.py fix-name starts it again")
+    return node
 
 
 def to_storage(timeout=120):
@@ -429,6 +505,12 @@ def before_and_after(ap, *options):
 
 
 if __name__ == "__main__":
-    if sys.argv[1:2] != ["hold"]:
+    if sys.argv[1:2] == ["hold"]:
+        hold(sys.argv[2:])
+    elif sys.argv[1:2] == ["fix-name"] and len(sys.argv) <= 3:
+        try:
+            fix_name(int(sys.argv[2]) if len(sys.argv) > 2 else None)
+        except ValueError:
+            sys.exit("fix-name [SLOT]: a slot number")
+    else:
         sys.exit(__doc__)
-    hold(sys.argv[2:])
