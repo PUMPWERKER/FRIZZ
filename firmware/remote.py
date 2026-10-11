@@ -19,8 +19,10 @@
 
 `play` presses the keys and turns the knobs of a script over FRIZZ's SysEx, at the script's
 times, sends its `midi` and `clock` to the device, and checks its `expect led` lines against the
-LEDs the device shows; its `toggle 0|1` sets the mode switch (down, up) over SysEx, back to
-the real one when the script ends. What only the twin has (the card, the input, the battery, power-on) is
+LEDs the device shows, dimmed as the card's led_brightness (the settings page) has them: at
+100, 75 or 50 %, the one level that fits every line, said when it isn't 100 %; its
+`toggle 0|1` sets the mode switch (down, up) over SysEx, back to the real one when the script
+ends. What only the twin has (the card, the input, the battery, power-on) is
 skipped, and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
 and prints the worst, the way to try a scenario for crackles on FRIZZ.bin itself rather than on
 the bench's build. A bug report (/FRIZZ/bug-N.txt) plays too, from where the device is. From
@@ -157,6 +159,36 @@ def led_line(pth, smt):
     def hexes(leds, by):
         return " ".join("%02x%02x%02x" % tuple(min(255, c * by) for c in rgb) for rgb in leds)
     return "pth " + hexes(pth, 11) + " | smt " + hexes(smt, 4)
+
+
+# the LEDs' brightness the settings page sets (led_brightness on the card), in quarters of
+# full as LedDim takes them (code/src/temp_led_stuff.h)
+LED_QUARTERS = (4, 3, 2)
+
+
+def led_dim(v, div, quarters):
+    """A colour byte on the chain, as LedDim makes it"""
+    d = v * quarters // (4 * div)
+    return 1 if d == 0 and v >= div else d
+
+
+def led_levels(want, chain, rgb, levels=LED_QUARTERS):
+    """The brightnesses (quarters, of LEVELS) at which the device's chain bytes RGB show the
+    colour WANT ("RRGGBB" at full scale, as the twin's LED log and expect led have it): any
+    colour byte that the log shows as WANT's, dimmed as LedDim does"""
+    div = 11 if chain == "pth" else 4
+    want = [int(want[i:i + 2], 16) for i in (0, 2, 4)]
+    return [q for q in levels
+            if all(got in {led_dim(v, div, q) for v in range(256) if min(255, v // div * div) == w}
+                   for w, got in zip(want, rgb))]
+
+
+def led_full(want, chain, quarters):
+    """WANT ("RRGGBB" at full scale) dimmed to QUARTERS, at full scale again: about what the
+    device's LED shows at that brightness"""
+    div = 11 if chain == "pth" else 4
+    return "%02x%02x%02x" % tuple(min(255, led_dim(int(want[i:i + 2], 16), div, quarters) * div)
+                                  for i in (0, 2, 4))
 
 
 def tempo(d):
@@ -325,6 +357,7 @@ def play(f, path, cpu):
     skipped = set()
     at_base = 0.0
     toggled = False
+    levels = list(LED_QUARTERS)  # the brightnesses that fit every expect led so far
     try:
         for line_no, cmd, args in script_lines(path):
             now_ms = (time.monotonic() - start) * 1000
@@ -359,11 +392,16 @@ def play(f, path, cpu):
                 pth, smt = f.leds()
                 chain, index, want = args[1], int(args[2]), args[3].lower()
                 rgb = (pth if chain == "pth" else smt)[index]
-                got = "%02x%02x%02x" % tuple(min(255, c * (11 if chain == "pth" else 4))
-                                             for c in rgb)
-                if got != want:
-                    print("line %d: %s %d is %s, not %s" % (line_no, chain, index, got, want),
-                          file=sys.stderr)
+                fits = led_levels(want, chain, rgb, levels)
+                if fits:
+                    levels = fits
+                else:
+                    got = "%02x%02x%02x" % tuple(min(255, c * (11 if chain == "pth" else 4))
+                                                 for c in rgb)
+                    print("line %d: %s %d is %s, not %s%s" % (
+                        line_no, chain, index, got, want, "".join(
+                            ", ~%s at %d %%" % (led_full(want, chain, q), 25 * q)
+                            for q in levels if q != 4)), file=sys.stderr)
                     failed += 1
             else:
                 if cmd not in skipped:
@@ -379,6 +417,9 @@ def play(f, path, cpu):
                 f.send(SWITCH, [0])  # the real switch again
         except OSError:
             pass  # the device went away: what ended the run says more
+    if levels != [4] and len(levels) < len(LED_QUARTERS):
+        print("expect led: the LEDs at %s %% brightness (led_brightness on the card)"
+              % " or ".join(str(25 * q) for q in levels))
     if cpu:
         last = load(f, required=False)
         if last:

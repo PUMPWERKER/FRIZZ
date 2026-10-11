@@ -249,16 +249,80 @@ open("asound/card2/usbid", "w").write("1235:8215\n")
 for n in ("midiC1D0", "midiC2D0"):
     open("snd/" + n, "w").close()
 chompi.ASOUND, chompi.SND = "asound", "snd"
-print("found", chompi.find_device())
+print("found", chompi.find_device(), "garbled", chompi.garbled())
 open("asound/card1/usbid", "w").write("1235:0001\n")
-print("found", chompi.find_device())
+print("found", chompi.find_device(), "garbled", chompi.garbled())
 shutil.rmtree("asound")
 shutil.rmtree("snd")
 )", out);
-    Check(rc == 0 && Has(out, "found snd/midiC1D0\n") && Has(out, "no CHOMPI in its names (Default")
-              && Has(out, "found None\n"),
+    Check(rc == 0 && Has(out, "found snd/midiC1D0 garbled True\n") && Has(out, "no CHOMPI in its names (Default")
+              && Has(out, "found None garbled False\n"),
           "tools: a FRIZZ with garbled USB names is found by its USB id, and said so");
     if (rc != 0 || !Has(out, "found snd/midiC1D0"))
+        printf("%s\n", out.c_str());
+
+    // a FRIZZ slot started that comes up with garbled names is started again from the launcher
+    // (to_launcher restarts it), twice at most, then the power switch asked for; never sent
+    // again; storage and other slots, or a node given (--device), aren't. chompi.py fix-name
+    // starts the slot noted as running again, names right or not (#88)
+    rc = Python(R"(
+import os, sys, chompi, card, flash, midi_send
+names, log = [], []
+chompi.garbled = lambda: names[0] if len(names) == 1 else names.pop(0)
+chompi.to_launcher = lambda *rest: log.append("launcher") or "l"
+chompi.send_run = lambda node, slot: log.append("run %d" % slot)
+chompi.wait_for = lambda wanted, *rest: log.append("wait " + str(wanted)) or "node"
+def case(name, garbled, call):
+    names[:] = garbled
+    log.clear()
+    try:
+        got = call()
+    except SystemExit as e:
+        got = "exit: %s" % e
+    print("%s: %s %s" % (name, got, log), flush=True)
+case("fine", [False], lambda: chompi.start(12))
+case("once", [True, False], lambda: chompi.start(12))
+case("stays", [True], lambda: chompi.start(10))
+case("storage", [True], lambda: chompi.run(chompi.STORAGE_SLOT, "storage"))
+case("device", [True], lambda: chompi.start(12, device="/dev/x"))
+case("then", [True, False], lambda: card.finish(12))
+open("image.bin", "wb").write(b"x")
+midi_send.main = lambda: log.append("sent")
+chompi.slot_file = lambda *rest: None
+def flash_to(*argv):
+    sys.argv = ["flash.py", "image.bin"] + list(argv)
+    flash.main()
+case("flash", [True, False], lambda: flash_to("--slot", "12"))
+case("flash 5", [True], lambda: flash_to("--slot", "5", "--name", "FRIZZ-X"))
+os.remove("image.bin")
+chompi.forget()
+case("fix-name, none noted", [False], lambda: chompi.fix_name())
+chompi.started(12)
+case("fix-name", [False], lambda: chompi.fix_name())
+case("fix-name 15", [False], lambda: chompi.fix_name(15))
+chompi.forget()
+)", out);
+    Check(rc == 0 && Has(out, "fine: node ['launcher', 'run 12', 'wait frizz']\n")
+              && Has(out, "once: node ['launcher', 'run 12', 'wait frizz', 'launcher', 'run 12', 'wait frizz']\n")
+              && Has(out, "slot 12 came up with garbled USB names (#88): starting it again (1 of 2)"),
+          "tools: a FRIZZ started with garbled USB names is started again from the launcher (#88)");
+    Check(Has(out, "stays: node ['launcher', 'run 10', 'wait frizz', 'launcher', 'run 10', 'wait frizz', "
+                   "'launcher', 'run 10', 'wait frizz']\n")
+              && Has(out, "still garbled after 2 restarts (#88): switch the CHOMPI off and on"),
+          "tools: twice at most, then the power switch asked for");
+    Check(Has(out, "storage: node ['launcher', 'run 15', 'wait storage']\n")
+              && Has(out, "device: node ['launcher', 'run 12', 'wait frizz']\n")
+              && Has(out, "flash 5: None ['launcher', 'sent']\n"),
+          "tools: not the storage firmware's, another slot's, or with a node given");
+    Check(Has(out, "then: None ['launcher', 'run 12', 'wait frizz', 'launcher', 'run 12', 'wait frizz']\n")
+              && Has(out, "flash: None ['launcher', 'sent', 'wait frizz', 'launcher', 'run 12', 'wait frizz']\n"),
+          "tools: card.py --then and flash.py do it too, flash.py starting it again, not sending it again");
+    Check(Has(out, "fix-name, none noted: exit: no slot is noted as running")
+              && Has(out, "fix-name: node ['launcher', 'run 12', 'wait frizz']\n")
+              && Has(out, "slot 12 answers, its USB names right")
+              && Has(out, "fix-name 15: exit: slot 15 isn't FRIZZ's"),
+          "tools: chompi.py fix-name starts the slot noted as running again; FRIZZ's slots and the bench's only");
+    if (rc != 0 || !Has(out, "fix-name 15"))
         printf("%s\n", out.c_str());
 
     // card.py: a mount that fails still ejects the card and starts FRIZZ; mount alone needs a
@@ -293,6 +357,7 @@ except SystemExit as e:
     const char* const kSlots = R"(
 import os, sys, chompi, flash, midi_send
 chompi.time.sleep = lambda s: None
+chompi.garbled = lambda: False
 os.environ[chompi.HELD] = "7"
 states, starts = [], []
 def state(device=None):
@@ -385,6 +450,33 @@ remote.play(Stub(True), "wait.txt", True)
     if (rc != 0)
         printf("%s\n", out.c_str());
     unlink((tmp_dir + "/wait.txt").c_str());
+
+    // expect led at the brightness that fits every line so far: one that fits only 100 %
+    // after one that fits only 50 % fails, saying at which it looked (#94)
+    const char* const kLevels = R"(
+import remote
+class Stub(remote.Frizz):
+    def __init__(self, shown):
+        self.held, self.shown = set(), shown
+    def send(self, cmd, payload=b""):
+        pass
+    def leds(self):
+        return [(0, 0, 0)] * 10, [self.shown.pop(0)] + [(0, 0, 0)] * 24
+open("levels.txt", "w").write("expect led smt 0 fc0000\nexpect led smt 0 fc0000\n")
+print("full", remote.play(Stub([(63, 0, 0), (63, 0, 0)]), "levels.txt", False), flush=True)
+print("75", remote.play(Stub([(47, 0, 0), (47, 0, 0)]), "levels.txt", False), flush=True)
+print("mixed", remote.play(Stub([(31, 0, 0), (63, 0, 0)]), "levels.txt", False), flush=True)
+print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), flush=True)
+)";
+    rc = Python(kLevels, out);
+    Check(rc == 0 && Has(out, "full 0\n") && Has(out, "the LEDs at 75 % brightness") && Has(out, "75 0\n"),
+          "remote: expect led holds at 100 % and at 75 %, saying which when it isn't 100 %");
+    Check(Has(out, "line 2: smt 0 is fc0000, not fc0000, ~7c0000 at 50 %\n") && Has(out, "mixed 1\n")
+              && Has(out, "dark 2\n"),
+          "remote: but the level must fit every line, saying what it would show, and dark is none of them");
+    if (rc != 0 || !Has(out, "mixed 1"))
+        printf("%s\n", out.c_str());
+    unlink((tmp_dir + "/levels.txt").c_str());
 
     if (!OpenPty())
     {
@@ -511,6 +603,37 @@ remote.play(Stub(True), "wait.txt", True)
           "remote: and an LED that isn't as expected fails the run, telling which");
     rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, "knobs on   filter"), "remote: the script's key selected the filter");
+
+    // the LEDs dimmed to 50 % on the settings page (A# twice, led_brightness 50 on the card):
+    // the same expectations, at full scale, hold at the level that fits them, said (#94)
+    auto brightness_key = [](int presses) {
+        SetToggle(true);
+        RunMs(300);
+        for (int i = 0; i < presses; i++)
+        {
+            Press("KEY_20", true);
+            RunMs(60);
+            Press("KEY_20", false);
+            RunMs(100);
+        }
+        SetToggle(false);
+        RunMs(300);
+    };
+    brightness_key(2);
+    const std::string dim_off = Hex(SmtLedFull(kFilterKeyLed));
+    Write(script, "booted\ndown KEY_5\nwait 300\nexpect led smt 20 " + on + "\nup KEY_5\nwait 300\n"
+                  "expect led smt 20 " + off + "\n");
+    rc = Remote({"play", script}, out);
+    Check(rc == 0 && dim_off != off && Has(out, "the LEDs at 50 % brightness"),
+          "remote: play's expect led holds at the card's 50 % brightness, and says it's 50 % (#94)");
+    if (rc != 0 || !Has(out, "50 %"))
+        printf("%s\n", out.c_str());
+    Write(script, "booted\ndown KEY_5\nwait 300\nexpect led smt 20 " + off + "\nup KEY_5\n");
+    rc = Remote({"play", script}, out);
+    Check(rc == 1 && Has(out, "line 4: smt 20 is "),
+          "remote: and an LED that isn't as expected at any brightness still fails");
+    brightness_key(1); // and round to 100 %
+    Check(Hex(SmtLedFull(kFilterKeyLed)) == off, "remote: the LEDs at full again");
 
     // whatever ends a script, the keys it holds are let go, the switch is the hand's again
     // (a key goes down on the page shown when the next block reads it: a wait before toggling)

@@ -18,6 +18,7 @@ FRIZZ restarts into it over USB MIDI (MidiClock.h), the USB storage firmware on 
 (tools/chompi.py); a FRIZZ from before that, or another firmware, needs the power switch, and
 this says so. It then sends, and FRIZZ starts; it waits until FRIZZ (or the bench) answers, so a tool run
 right after finds it, and notes the slot, so that tool knows which it is (tools/chompi.py).
+One that came up with its USB names garbled (#88) is started again, not sent again.
 FRIZZ_SLOT, BENCH_SLOT and TEST_SLOT set other slots; without --slot, a key that holds another
 firmware than FRIZZ is refused (launcher 1.5 lists its keys; an older one can't, and isn't
 asked). It waits while another tool has the CHOMPI (tools/chompi.py, the lock).
@@ -92,7 +93,8 @@ def main():
     if slot in chompi.FRIZZ_SLOTS + (chompi.BENCH_SLOT,) and name.upper().startswith("FRIZZ"):
         # until it answers (the bench does as FRIZZ): the launcher may for a moment, then
         # nothing while USB comes back
-        chompi.wait_for("frizz", args.wait, args.device)
+        node = chompi.wait_for("frizz", args.wait, args.device)
+        chompi.renamed(slot, node, args.wait, args.device)  # started again, not sent again
         print("%s answers on slot %d" % (name, slot))
 
 
