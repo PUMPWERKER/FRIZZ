@@ -13,12 +13,18 @@ into it on its SysEx F0 7D 43 48 10 F7 (MidiClock.h), the storage firmware on an
 the launcher starts a slot on its RUN (05). Launchers and storage firmwares from before those
 two need a hand instead, and this says which.
 
-Which slot runs, no firmware says: FRIZZ on 10 and FRIZZ-TEST on 12 answer alike, and so does
-the bench (FRIZZ-bench.bin, 11), whose load reads 0. So the tools note the slot they last
-started (RUNNING, beside the lock: run(), flash.py) and to_frizz() goes by it: the FRIZZ
-running if no slot is asked for, else the one asked for, started unless it's the one noted;
-the bench is never taken for FRIZZ. A slot started by hand isn't noted: `hold` without a
-command (playing by hand) forgets the note.
+Which build runs, FRIZZ says itself since its developers' SysEx (ident(): kCmdDev's IDENT,
+code/src/MidiControl.h): the CRC-32 and length of the image it runs, which the host works out
+from a .bin (zlib.crc32), and whether it's the bench. flash.py notes the build it sends to a
+slot (IMAGES, beside the lock: noted_image()), so a build found running is its slot's, even one
+started by hand; to_frizz() goes by that: the FRIZZ running if no slot is asked for, else the
+one asked for, started unless it's the one running; the bench is never taken for FRIZZ.
+
+A FRIZZ from before IDENT (or a build the tools didn't send) can't say, and answers as FRIZZ on
+10, FRIZZ-TEST on 12 and the bench (FRIZZ-bench.bin, 11, whose load reads 0) all do. For those
+the tools note the slot they last started (RUNNING: run(), flash.py) and go by that note
+instead. A slot started by hand isn't noted: `hold` without a command (playing by hand)
+forgets the note.
 
 One process at a time has the CHOMPI: the first time a tool reaches for it (state(), a link
 to it, a restart), it takes a lock (LOCK, flock) for the process's life, and waits, saying who
@@ -49,6 +55,7 @@ import re
 import subprocess
 import sys
 import time
+import zlib
 
 import midi_send
 
@@ -63,6 +70,16 @@ RESTART = midi_send.HEADER + bytes([0x10, 0xF7])  # FRIZZ's (MidiClock.h)
 SETTINGS = 0x24  # FRIZZ's kCmdSettings: two bytes back; the launcher's BAD_MESSAGE is one
 RUN = 0x05
 BAD_MESSAGE, BAD_SLOT = 1, 8
+# FRIZZ's developers' SysEx (MidiControl.h's namespace dev): F0 7D 43 48 3E SUB SEQ ARGS F7,
+# answered 7E SUB SEQ STATUS DATA
+DEV = 0x3E
+IDENT, PERSIST, GET, SET, BENCH = range(5)
+DEV_STATUS = {0: "ok", 1: "refused", 2: "not in this build", 3: "not yet"}
+OK, REFUSED, NOT_HERE, NOT_YET = range(4)
+RAM_ONLY = 1  # IDENT's and PERSIST's flags: the card isn't written until a restart
+# RCC_RSR's flags (the STM32H750's reference manual, RM0433): why the chip last reset
+RESET_FLAGS = {17: "cpu", 19: "d1", 20: "d2", 21: "brown-out", 22: "pin", 23: "power-on",
+               24: "software", 26: "watchdog", 28: "window watchdog", 30: "low power"}
 
 
 def say(*args):
@@ -153,6 +170,109 @@ def last_started():
         return int(slot), holder == os.environ.get(HELD), "%s at %s" % (what, at)
     except (OSError, ValueError):
         return None, False, None
+
+
+# ---- which build runs: IDENT, and the builds flash.py sent ------------------------------
+
+IMAGES = os.path.join(os.path.dirname(LOCK), "frizz-chompi.images")
+
+
+def image_id(path):
+    """(CRC-32, length) of a .bin, as IDENT tells them for the image running"""
+    with open(path, "rb") as f:
+        data = f.read()
+    return zlib.crc32(data), len(data)
+
+
+def noted_images():
+    """{slot: (crc, length, 'md5 M, what at when')} of the builds flash.py sent"""
+    found = {}
+    try:
+        with open(IMAGES) as f:
+            for line in f:
+                slot, crc, length, rest = line.rstrip("\n").split(" ", 3)
+                found[int(slot)] = (int(crc, 16), int(length), rest)
+    except (OSError, ValueError):
+        pass
+    return found
+
+
+def noted_image(slot, path, md5):
+    """Notes that the build at PATH (md5 MD5) went to slot SLOT"""
+    images = noted_images()
+    crc, length = image_id(path)
+    images[slot] = (crc, length, "md5 %s, %s at %s" % (md5, os.path.basename(path),
+                                                         time.strftime("%H:%M:%S")))
+    try:
+        with open(IMAGES, "w") as f:
+            for s in sorted(images):
+                f.write("%d %08x %d %s\n" % ((s,) + images[s]))
+    except OSError:
+        pass
+
+
+def slots_of(info):
+    """The slots flash.py sent the build IDENT (INFO) tells of to"""
+    return [s for s, (crc, length, _) in sorted(noted_images().items())
+            if (crc, length) == (info["crc"], info["length"])]
+
+
+_seq = [0]
+
+
+def dev_call(to, sub, args=b"", timeout=0.5, retries=3):
+    """kCmdDev's SUB on the Link TO, asked again while unanswered: (status, data), or None
+    when nothing answers (a firmware without it)"""
+    _seq[0] = _seq[0] % 127 + 1
+    seq = _seq[0]
+    reply = to.call(DEV, bytes([sub, seq]) + bytes(args), timeout=timeout, retries=retries,
+                    required=False, match=lambda r: len(r) >= 3 and r[0] == sub and r[1] == seq)
+    return None if reply is None else (reply[2], bytes(reply[3:]))
+
+
+def get7(data):
+    """A number in 7-bit groups, the highest first"""
+    v = 0
+    for b in data:
+        v = v << 7 | b
+    return v
+
+
+def parse_ident(data):
+    """IDENT's answer as a dict"""
+    return {"version": data[0], "kind": "bench" if data[1] == 1 else "frizz",
+            "crc": get7(data[2:7]) & 0xFFFFFFFF, "length": get7(data[7:10]),
+            "uptime": get7(data[10:15]) / 1000, "passes": get7(data[15:20]),
+            "reset": get7(data[20:25]) & 0xFFFFFFFF, "ram_only": bool(data[25] & RAM_ONLY)}
+
+
+def ident(device):
+    """What the FRIZZ at DEVICE runs (parse_ident), or None from one without IDENT"""
+    try:
+        with link(device) as to:
+            got = dev_call(to, IDENT, retries=2)
+    except OSError:
+        return None
+    if not got or got[0] != OK or len(got[1]) < 26:
+        return None
+    return parse_ident(got[1])
+
+
+def reset_cause(flags):
+    return ", ".join(n for bit, n in sorted(RESET_FLAGS.items()) if flags >> bit & 1) or "none"
+
+
+def describe_ident(info, slots=None):
+    """'FRIZZ, crc32 X, N B (slot 12's: md5 M, ...)', for the tools to say"""
+    slots = slots_of(info) if slots is None else slots
+    images = noted_images()
+    what = "%s, crc32 %08x, %d B" % ("the bench" if info["kind"] == "bench" else "FRIZZ",
+                                     info["crc"], info["length"])
+    if slots:
+        what += " (%s)" % "; ".join("slot %d's: %s" % (s, images[s][2]) for s in slots)
+    elif info["length"]:
+        what += " (not a build the tools sent)"
+    return what
 
 
 # ---- MIDI ---------------------------------------------------------------------------------
@@ -343,9 +463,18 @@ def wait_for(wanted, timeout, device=None, hint=None, hint_after=8):
     sys.exit("the CHOMPI didn't get to %s within %d s" % (wanted, timeout))
 
 
+BUSY = 20  # s a FRIZZ (or the bench) may leave unanswered before it's taken for another firmware
+
+
 def to_launcher(timeout=120, device=None):
     """The launcher's raw MIDI node, from wherever the CHOMPI is"""
     now, where = state(device)
+    # a FRIZZ that doesn't answer for a while looks like another firmware: the bench, its
+    # audio callback over 100 % in a segment, leaves MainLoop no time (BUSY s at most)
+    busy = time.monotonic() + BUSY
+    while now == "other" and time.monotonic() < busy:
+        time.sleep(1)
+        now, where = state(device)
     if now == "launcher":
         return where
     if now == "frizz":
@@ -455,27 +584,55 @@ def slot_file(node, slot):
 SETTLE = 10  # s for a firmware just started to answer: USB back, FRIZZ booted
 
 
+# the slot to_frizz() found or started FRIZZ on, None if it couldn't tell
+frizz_slot = None
+
+
 def to_frizz(slot=None, timeout=120, device=None):
-    """FRIZZ's raw MIDI node: on SLOT, started unless it's the one noted as running; without
-    one the FRIZZ running, or else the slot last started in this hold, or FRIZZ_SLOT. Waits
-    SETTLE s first for a firmware that is still starting, and says which slot it is"""
+    """FRIZZ's raw MIDI node: on SLOT, started unless it's the one running; without one the
+    FRIZZ running, or else the slot last started in this hold, or FRIZZ_SLOT. Which runs, it
+    asks FRIZZ (ident(): the build, the bench or not), or else goes by the slot noted as
+    started. Waits SETTLE s first for a firmware that is still starting, and says which slot
+    it is (frizz_slot)"""
+    global frizz_slot
     now, where = state(device)
     settle = time.monotonic() + SETTLE
     while now in (None, "other") and time.monotonic() < settle:
         time.sleep(0.5)
         now, where = state(device)
     last, this_hold, what = last_started()
-    if now == "frizz":
+    info = ident(where) if now == "frizz" else None
+    if info:
+        slots = slots_of(info)
+        running = slots[0] if len(slots) == 1 else (last if last in slots else None)
+        if info["kind"] == "bench":
+            say("the bench runs: %s" % describe_ident(info, slots))
+        elif running is not None and slot in (None, running):
+            say("FRIZZ on slot %d: %s" % (running, describe_ident(info, slots)))
+            frizz_slot = running
+            return kept(where)
+        elif running is None and slot is None:
+            say("FRIZZ runs: %s; --slot N makes sure" % describe_ident(info, slots))
+            frizz_slot = last if this_hold and last in FRIZZ_SLOTS else None
+            return kept(where)
+        elif running is None and slot == last and this_hold:
+            say("FRIZZ on slot %d (%s): %s" % (last, what, describe_ident(info, slots)))
+            frizz_slot = last
+            return kept(where)
+    elif now == "frizz":
         if last == BENCH_SLOT:
             say("the bench runs (slot %d, %s), which answers as FRIZZ does" % (last, what))
         elif last in FRIZZ_SLOTS and slot in (None, last):
             say("FRIZZ on slot %d (%s)" % (last, what))
+            frizz_slot = last
             return kept(where)
         elif slot is None:
             say("FRIZZ runs, on a slot the tools didn't start: --slot N makes sure")
+            frizz_slot = None
             return kept(where)
     if slot is None:
         slot = last if this_hold and last in FRIZZ_SLOTS else FRIZZ_SLOT
+    frizz_slot = slot
     return start(slot, timeout, device)
 
 

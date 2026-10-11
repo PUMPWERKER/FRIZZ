@@ -12,9 +12,9 @@
         PLAY + LOOP over SysEx, the line out recorded, then the loop's length against the
         clock's bars and its drift in ms a minute
     ./measure.py fx KEY [--level CC] [--seconds 30] [--material FILE] --out NAME
-        an effect latched (KEY: its key, KEY_1 .. KEY_13), its level knob set over CC (the
-        sends start at 0: 113 the delay, 117 the reverb), material into AUX, the line out
-        recorded to NAME.f32
+        an effect latched (KEY: its key, KEY_1 .. KEY_13), its level knob set over CC on the
+        channel FRIZZ listens on (the sends start at 0: 113 the delay, 117 the reverb),
+        material into AUX, the line out recorded to NAME.f32
     ./measure.py compare A.f32 B.f32
         two recordings' levels and octave bands, B against A, in dB
     ./measure.py material [--music FILE ...] --out FILE.wav
@@ -57,7 +57,11 @@ except ImportError:
              "~/.venvs/frizz/bin/pip install numpy")
 
 SR = 48000
-CC = 0xBF  # channel 16, FRIZZ's at first
+def cc_status(f):
+    """A CC's status byte on the channel FRIZZ listens on (the settings, kCmdSettings): 16, its
+    default, when it listens on all"""
+    channel = f.ask(remote.SETTINGS)[0]
+    return 0xB0 | ((channel or 16) - 1)
 
 
 # ======== the devices ========
@@ -356,7 +360,7 @@ def cmd_fx(a):
     time.sleep(1)
     latch(f, a.key)
     if a.level:
-        f.raw([CC, a.level, 100])
+        f.raw([cc_status(f), a.level, 100])
     time.sleep(2)
     y = record(a.seconds, a.out + ".f32")
     p.terminate()

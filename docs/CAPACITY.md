@@ -51,6 +51,13 @@ the scenes and the morph's plan), the phaser itself (~150 B, no SDRAM), and 128 
 each scene file buffer (`kSceneFileMax` 4096 to 4224: 4 scenes of 14 effects take 4,172 B);
 the bench adds a 25th segment's rows.
 
+The developers' SysEx (#97 part 1, 2026-10-11: IDENT, PERSIST, GET/SET, BENCH, the load's
+crackle count) took 1.8 KB of code and 96 B of data (a queue of 8 requests, the counters):
+`FRIZZ.bin` at 221,244 B of code (~57 KB free) and 224,312 B of data (~21 KB free), the
+bench build at 237,556 B (~41 KB) and 232,476 B (**~13 KB free**), from 219,444 / 224,216
+and 235,708 / 232,348 on `main` (493c13c). The bench's `cpu.txt` window moved from a static
+into the bench, for BENCH to read; no new buffer.
+
 The split moved by 40 KB (step 1 below) after the FX knobs' page 2 (#35) had left ~21 KB of
 code, ~3.4 KB in the bench build. The scene work (`Recall`, `Morph`, the scene file) is
 compiled `-Os` and out of line (`FX_SCENE_ONCE`), as the event log's and MIDI's are.

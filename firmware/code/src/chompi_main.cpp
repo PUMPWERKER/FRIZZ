@@ -107,6 +107,28 @@ static uint32_t restart_asked = 0;
 extern "C" uint32_t _ssdram_bss;
 extern "C" uint32_t _esdram_bss;
 
+/** What kCmdDev's IDENT tells (MidiControl.h): the image as the bootloader copied it to
+ *  SRAM_EXEC, from the vector table to the end of .data's initial values, which is the .bin
+ *  byte for byte (chompi_sram.lds: .data's values are copied out of it, never into it), and
+ *  why the chip last reset (RCC_RSR, left as the bootloader left it). The kind of build, and
+ *  the bench's answer to BENCH */
+#ifdef __arm__
+extern "C" uint32_t g_pfnVectors, _sidata, _sdata, _edata;
+#endif
+static void DevInfo(dev::Info& info)
+{
+#ifdef __arm__
+    info.image = reinterpret_cast<const uint8_t*>(&g_pfnVectors);
+    info.image_len = reinterpret_cast<uint32_t>(&_sidata) - reinterpret_cast<uint32_t>(&g_pfnVectors)
+                     + (reinterpret_cast<uint32_t>(&_edata) - reinterpret_cast<uint32_t>(&_sdata));
+    info.reset_cause = RCC->RSR;
+#endif
+#if FRIZZ_BENCH
+    info.kind = 1;
+    info.bench = [](uint8_t part, uint32_t offset, uint8_t* d) { return bench.Report(part, offset, d); };
+#endif
+}
+
 /** Clears the buffers in the Daisy Seed's external SDRAM at boot. The delay's, freezer's,
  *  tape stop's and reverb pre-delay's buffers live there, and unlike internal-RAM statics
  *  they aren't zeroed by the startup code. Only the ~10 of the 64 MB they take, which
@@ -183,6 +205,7 @@ uint32_t batt;
 
 void MainLoop(void* data)
 {
+    midi_control.dev.passes = midi_control.dev.passes + 1; // for kCmdDev's IDENT
     if(booting)
     {
         hw.LowBatteryLockoutCheck();
@@ -271,6 +294,7 @@ static void CopyItcm() {}
 int main(void)
 {
     CopyItcm();
+    DevInfo(midi_control.dev);
     hw.Init();
 
     midi_clock.Init(hw.seed.AudioSampleRate());

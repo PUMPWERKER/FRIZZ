@@ -982,7 +982,13 @@ every channel; its keys and knobs act as your hands do, on the settings page too
 page shows, every LED, the processing load, and sends and receives scenes. `firmware/remote.py`
 uses it from a Linux computer: `state`, `leds`, `load`, `settings`, `channel 16`, `transport on|off`, `source usb`, `out off|trs|all`, `switch up|down|hand`, `scene get 2 my.json`, `scene put 3
 my.json`, and `play SCRIPT --cpu`, which plays a scenario of the virtual CHOMPI on the device
-and reports the worst load.
+and reports the worst load and how many audio blocks ran late (crackles).
+
+For developers, one more command over USB, `0x3E` (`firmware/README.md`, *The developers'
+SysEx*), lets the tools tell which build runs (`remote.py ident`), read and set any effect or
+compressor knob, VOLUME's levels and every setting of the settings page by number rather than
+by CC (`remote.py get` / `set`), follow the CPU bench and fetch its results, and keep a test
+from writing the card until FRIZZ restarts (`remote.py ram-only`; `play` does this first).
 
 ## Bug reports
 

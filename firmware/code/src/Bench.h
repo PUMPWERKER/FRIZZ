@@ -19,7 +19,9 @@
  *  LEDs: one key per segment as it's done, white keys left to right, then the dark keys: green
  *  below 80%, amber below 95%, red above; the segment running blinks white. At the end every
  *  panel LED is green (everything below 95%) or red; red blinking means cpu.txt couldn't be
- *  written. Switch off and on to run it again.
+ *  written. Switch off and on to run it again. How far it is, and cpu.txt once it's done, also
+ *  go out over USB (kCmdDev's BENCH, Report), so a tool needn't wait a fixed time or fetch the
+ *  file from the card.
  *
  *  Where the time goes: each segment's mean also split into the callback's parts
  *  (BenchProfile.h), counted in the core's cycles, with the clocks and caches the chip runs on.
@@ -33,6 +35,7 @@
 #include "fatfs.h"
 #include "BenchProfile.h"
 #include "passthroughEngine.h"
+#include "MidiControl.h"
 #include "SceneStore.h"
 #include "temp_led_stuff.h"
 
@@ -259,6 +262,36 @@ public:
             return;
         written_ = true;
         stored_ = Write();
+    }
+
+    /** In MainLoop, kCmdDev's BENCH (MidiControl.h) into d: part 0 its state (running,
+     *  settling, the segment, how many, written, stored, cpu.txt's length in 3 7-bit groups),
+     *  part 1 up to dev::kBenchChunk bytes of cpu.txt from offset, as it went to the card (or
+     *  would have). The length, or -1 while it runs (part 1) */
+    int Report(uint8_t part, uint32_t offset, uint8_t* d)
+    {
+        const bool done = started_ && !running_;
+        if (done)
+        {
+            text_.from = part ? offset : Text::kMax;
+            Render(text_);
+        }
+        if (part == 0)
+        {
+            const uint32_t len = done ? static_cast<uint32_t>(text_.pos) : 0;
+            const uint8_t state[] = {running_, settling_, static_cast<uint8_t>(segment_),
+                                     static_cast<uint8_t>(kNumSegments), written_, stored_,
+                                     static_cast<uint8_t>(len >> 14 & 0x7F),
+                                     static_cast<uint8_t>(len >> 7 & 0x7F),
+                                     static_cast<uint8_t>(len & 0x7F)};
+            memcpy(d, state, sizeof(state));
+            return sizeof(state);
+        }
+        if (!done)
+            return -1;
+        const size_t n = text_.Held() < dev::kBenchChunk ? text_.Held() : dev::kBenchChunk;
+        memcpy(d, text_.buf, n);
+        return static_cast<int>(n);
     }
 
     /** In MainLoop, after the UI has drawn: the bench's LEDs over it */
@@ -591,7 +624,7 @@ private:
         static FIL file;
         if (f_open(&file, "/FRIZZ/cpu.txt", FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
             return false;
-        static Text t;
+        Text& t = text_;
         bool ok = true;
         for (t.from = 0; ok; t.from += Text::kWindow)
         {
@@ -677,6 +710,7 @@ private:
     bool loop_missing_ = false;
     uint32_t lcg_ = 12345;
     Tune tune_;
+    Text text_; // cpu.txt, a window at a time: for the card and for BENCH
     float in_l_[kMaxBlock] = {}, in_r_[kMaxBlock] = {};
     const float* inputs_[4];
 };
