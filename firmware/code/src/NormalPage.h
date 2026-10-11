@@ -460,11 +460,12 @@ namespace chompi
             if (midi_->TakeSettingsChanged())
                 MasterChanged(now);
 
+            // one answer a pass (every 2 ms), so USB has sent the last before the next goes
             MidiControl::Query query;
+            MidiControl::DevQuery dev;
             if (midi_->TakeQuery(query))
                 Answer(query);
-            MidiControl::DevQuery dev;
-            while (midi_->TakeDev(dev))
+            else if (midi_->TakeDev(dev))
                 DevAnswer(dev);
         }
 
