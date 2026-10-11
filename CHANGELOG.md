@@ -130,6 +130,17 @@ what FRIZZ does.
 
 ### Changed
 
+- **The clock factor works on every tempo** (#116), not only on MIDI clock: the settings
+  page's lower G# (as sent, double, half) now also doubles or halves the effects' tempo from
+  a loop, from your taps and from the last tempo. Tap the tempo of a song on AUX (SHIFT +
+  LOOP), then put the delay, the slicer and the rest at double or half of it. The loop
+  itself stays as it is (its length, its beats, the bars it was recorded to), and a loop
+  recorded to a clock at double has the effects where they were. Changed while a loop plays,
+  the effects' beat 1 stays on the loop's start; a tapped beat stays on your taps. The beat
+  on G# and PLAY and the clock MIDI out sends follow it, and the 50-300 BPM limit applies
+  after it. At half, a loop of an odd number of beats holds a beat and a half a pass: the
+  effects' beats run on evenly, and beat 1 lands on the loop's start every other pass. See
+  MANUAL.md, "Clock factor".
 - **The MIDI map is new** (#97): everything a DAW automates is a plain CC (DAWs automate NRPN
   poorly, Ableton Live not at all), effects have channels of their own, and nothing collides
   with what hosts and keyboards send by themselves. A setup made for v0.11 needs its numbers
@@ -202,6 +213,9 @@ what FRIZZ does.
 
 ### Fixed
 
+- **Song Position on a loop recorded to a clock** reads the sender's 16ths by the clock
+  factor the loop was recorded at (#116): with the factor changed since, it moved the loop
+  to the wrong place.
 - **Selecting a latched effect keeps it latched** (#115): SHIFT + an FX key played as a
   quick roll, letting go of SHIFT just as the key went down, or the key landing a moment
   before SHIFT, could count as a plain press or as the latch gesture, and the effect dropped

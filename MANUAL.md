@@ -64,7 +64,7 @@ set the rest:
 | C# (lower octave) | MIDI on every channel: lit when on. It only switches it on; a channel key switches it off | light blue |
 | D# | [Effect channels over TRS](#channels): on (lit, default) / off (dim). Over USB they always count | light blue |
 | F# | [MIDI transport following](#start-and-stop): on (lit) / off (dim) | green |
-| G# | [Clock factor](#midi-clock), each press the next: as sent (default), double, half. It also shows the [beat](#tempo): lit for the first half of every beat, dim for the second | yellow (as sent), red (double), light blue (half) |
+| G# | [Clock factor](#clock-factor), each press the next: as sent (default), double, half. It also shows the [beat](#tempo): lit for the first half of every beat, dim for the second | yellow (as sent), red (double), light blue (half) |
 | A# | [Clock source](#clock-source), each press the next: Auto (default), TRS, USB, internal | white (Auto), orange (TRS), blue (USB), pink (internal) |
 | C# (upper octave) | [MIDI out](#midi-out), each press the next: off (default), TRS, TRS and USB | dim (off), orange (TRS), white (TRS and USB) |
 | D# (upper octave) | [MIDI feedback](#midi-feedback): on (lit) / off (dim, default) | light blue |
@@ -76,8 +76,9 @@ The dark keys are grouped by topic: the lower octave's are MIDI in, the upper oc
 and the rest. (Before v0.12 they sat elsewhere: see the CHANGELOG.)
 
 - **The beat on G#** is the tempo the effects follow right now (see [Tempo](#tempo)): with a
-  loop, the loop's at its speed; otherwise the MIDI clock's, with the clock factor applied
-  (a 120 BPM clock at double beats at 240); otherwise the last tempo. It's there to see the
+  loop, the loop's at its speed; otherwise the MIDI clock's; otherwise the last tempo, each
+  with the clock factor applied (a loop, a clock or a tapped tempo of 120 at double beats at
+  240). It's there to see the
   tempo, not to play to: it can be a little late, up to a few hundredths of a second. The
   play page shows it on PLAY too (see [Looper](#looper)).
 
@@ -226,12 +227,37 @@ or dark when it's already lit nearly white.
   delay times and freezer lengths included. Tapping
   at double the loop's tempo, for example, doubles the effects' tempo.
 - Without a loop, the taps set the tempo, and the last tap lands on a beat.
+- Tap the tempo you hear: the [clock factor](#clock-factor) applies on top of it.
 - Without a loop while MIDI clock runs, the clock is the tempo: LOOP blinks red 3 times.
   With the [clock source](#clock-source) on internal, no clock counts, and the taps set the
   tempo.
 
-The tempo is limited to 50-300 BPM: at very slow loop speeds the effects stop slowing down
-at 50 BPM.
+The tempo is limited to 50-300 BPM, after the clock factor: at very slow loop speeds the
+effects stop slowing down at 50 BPM.
+
+### Clock factor
+
+The lower octave's G# on the [settings page](#settings-page) sets it, each press the next:
+**as sent** (yellow, the default), **double** (red), **half** (light blue). It multiplies the
+effects' tempo, whichever of the three above it comes from: tap the tempo of a song on AUX
+(SHIFT + LOOP), then put the delay, the slicer and the rest at double or half of it; or
+record a loop and let the effects run at half its tempo. The loop itself stays as it is: its
+length, its beats, and the bars a quantized recording ends on. With MIDI clock, FRIZZ
+follows the clock at the factor (see [MIDI clock](#midi-clock)), so a loop recorded to a
+120 BPM clock at double has the effects at 240, as before.
+
+- Changed while a loop plays, the effects' beat stays on the loop: beat 1 on its start.
+  Without a loop, a tapped beat stays on the beats you tapped: at double with one more
+  halfway, at half on every other one.
+- At half, a loop of an odd number of beats (three, say) holds a beat and a half per pass.
+  The effects' beats run on evenly across its start, so beat 1 lands on the loop's start
+  every other pass, and halfway through a beat on the others. A quantized loop always holds
+  whole bars, so it's never one of them.
+- The 50-300 BPM limit applies after the factor: 200 tapped at double is 300, at half 100.
+- The beat on G# and PLAY and the clock [MIDI out](#midi-out) sends show the tempo with the
+  factor.
+
+It's kept as `clock_factor` in `FRIZZ/frizz_master.txt` (50, 100 or 200).
 
 ## Punch-in FX
 
@@ -879,10 +905,11 @@ Continue and Song Position come only from the chosen input (see [Start and Stop]
 `clock_source` in `FRIZZ/frizz_master.txt` (0 Auto, 1 TRS, 2 USB, 3 internal), and
 `firmware/remote.py source auto|trs|usb|internal` sets it too.
 
-The **clock factor** on the [settings page](#settings-page) makes FRIZZ follow the clock at
-half its tempo or at double: a DAW at 70 BPM with FRIZZ thinking in 140, or the other way
-round. It counts for everything that follows the clock: the bars of a quantized recording and
-the effects' tempo. A loop, once there is one, keeps its own tempo. Changing it while a
+The [clock factor](#clock-factor) on the [settings page](#settings-page) makes FRIZZ follow
+the clock at half its tempo or at double: a DAW at 70 BPM with FRIZZ thinking in 140, or the
+other way round. It counts for everything that follows the clock: the bars of a quantized
+recording and the effects' tempo. A loop recorded to it keeps those bars when the factor
+changes later; the effects then follow the loop at the new factor. Changing it during a
 quantized recording ends that recording where it is, as a lost clock does.
 
 ### Channels
@@ -997,7 +1024,7 @@ with `firmware/remote.py transport on`, or `midi_transport 1` in `FRIZZ/frizz_ma
 | **Start** | back to its start, playing from the next clock tick (playing, it glides there) | plays on from where it is |
 | **Continue** | plays on from where it is, from the next clock tick | plays on |
 | **Stop** | pauses | pauses |
-| **Song Position**, while paused | moves it there, by its length in the sender's 16ths (a 2-bar loop is 32: position 36 is 4 in; with the [clock factor](#midi-clock) at half, a bar of the loop is two of the sender's) | ignored |
+| **Song Position**, while paused | moves it there, by its length in the sender's 16ths (a 2-bar loop is 32: position 36 is 4 in; with the [clock factor](#clock-factor) at half when it was recorded, a bar of the loop is two of the sender's) | ignored |
 
 So a DAW's Start lines the loop up with its bar 1, and moving its playhead while stopped takes
 the loop along. A loop counts as recorded to the clock if its recording ended on the clock's
@@ -1020,14 +1047,16 @@ off|trs|all` sets it too.
 **The clock** (24 PPQN) runs all the time while MIDI out is on, at the tempo FRIZZ thinks in,
 the beat on the settings page's G#:
 
-- **With a loop:** the loop's tempo, at its speed, with the loop's start on beat 1. In reverse
+- **With a loop:** the loop's tempo, at its speed and the [clock factor](#clock-factor), with
+  the loop's start on beat 1 (at half, a loop of an odd number of beats on every other pass,
+  so the clock runs evenly). In reverse
   the clock keeps running, at the loop's speed; while the loop is paused, it runs on at the
   loop's tempo.
 - **Without a loop, with a MIDI clock coming in:** that clock, passed on tick for tick, with
-  the [clock factor](#midi-clock): at double a tick more halfway between two, at half every
+  the [clock factor](#clock-factor): at double a tick more halfway between two, at half every
   other one.
 - **Neither:** the last tempo (tapped, from the last loop or from a clock; 120 BPM at
-  power-on).
+  power-on), with the clock factor.
 
 **Start, Stop and Continue** follow the loop:
 

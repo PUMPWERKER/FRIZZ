@@ -20,7 +20,8 @@
  *    midi_block_trs 1
  *    midi_feedback 0
  *
- *  clock_factor is how FRIZZ follows a MIDI clock, in percent of its tempo: 50, 100 or 200;
+ *  clock_factor is the effects' tempo in percent of its source's, a MIDI clock's, a loop's
+ *  or the tapped or last one (TempoClock.h): 50, 100 or 200;
  *  clock_source whose clock it follows (ClockSource, MidiClock.h): 0 Auto, 1 TRS, 2 USB, 3
  *  internal; midi_out where MIDI out goes (MidiOutPorts): 0 off, 1 the jack, 2 the jack and
  *  USB; led_brightness the LEDs' in percent of FRIZZ's full: 100, 75 or 50; midi_block_trs
@@ -51,7 +52,7 @@ struct MasterSettings
     bool mono;  // the AUX input's left channel to both sides, for a mono (TS) cable
     uint8_t midi_channel; // the channel FRIZZ listens on, 1-16, or 0 for all
     bool midi_transport;  // MIDI Start, Continue and Stop play and pause the loop
-    uint8_t clock_factor;   // percent of the clock's tempo FRIZZ follows: 50, 100, 200
+    uint8_t clock_factor;   // percent of the tempo the effects follow: 50, 100, 200
     uint8_t clock_source;   // whose clock: 0 Auto, 1 TRS, 2 USB, 3 internal (MidiClock.h's ClockSource)
     uint8_t midi_out;       // where MIDI out goes: 0 off, 1 the jack, 2 and USB (MidiOutPorts)
     uint8_t led_brightness; // percent: 100, 75, 50
