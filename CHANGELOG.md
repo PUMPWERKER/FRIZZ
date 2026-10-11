@@ -120,6 +120,18 @@ what FRIZZ does.
 - **MIDI out no longer sends a stale Start after power-on:** a Start that came while FRIZZ
   was starting up went out once it was up, seconds late. A clock running then no longer
   sends a few ticks at once either.
+- **Band on the delay, reverb and resonator after a pause:** with page 2's Band turned, an
+  effect switched on again could start with a short thump from what the Band filter held
+  when it last went off, which the delay then repeated. The filter now starts afresh.
+- **An effect's key LED when it comes on again** no longer flashes up for a moment at the
+  level it showed when the effect last went off.
+- **The crossfader over MIDI after a morph got another bar:** when CC 62 asked again for
+  the scene a morph was already gliding to (another bar) and CC 118 then took it, the
+  fader's far end was where the morph had got to at that moment, not the scene you came
+  from, so arriving there jumped. It's now always where the morph started.
+- **A long-held tape stop with Depth below the top:** held for more than about 12 s (Depth
+  at 0.8) to 22 s (at 0), the slowed tape suddenly played sound from 11 s before at full
+  speed. It now jumps back to the live sound in a short crossfade and plays on slowed.
 
 ## v0.11 (2026-10-10)
 

@@ -32,6 +32,15 @@ The split moved by 40 KB (step 1 below) after the FX knobs' page 2 (#35) had lef
 code, ~3.4 KB in the bench build. The scene work (`Recall`, `Morph`, the scene file) is
 compiled `-Os` and out of line (`FX_SCENE_ONCE`), as the event log's and MIDI's are.
 
+The FX layer's cleanup (#89) took 11.3 KB of code off against `main` before #86: `FRIZZ.bin`
+241,588 → 230,316 B, the bench build 259,588 → 247,556 B; data 96 B less (228,304 B; the
+bench build's 240,340 B). The scene morph's `Start`, `AddBar`, `Land` and `Freeze` built
+`-Os` and out of line (`FX_MORPH_ONCE`, -7.3 KB: their copies of the 104-float plan had been
+unrolled and inlined into the scene keys' code), the effects' `Init`s too (`FX_ONCE`,
+-2.4 KB), the shifter's `Splice` out of line (-1.8 KB: `Shifter::Process` 5.7 → 1.7 KB) and
+the coarse grids by index (-1.2 KB). #86 builds the play page `-Os` as well, which overlaps
+with the morph's share: the two together save less than their sum.
+
 Where the code goes (`.text` + `.rodata` by object, from the map):
 
 | | Bytes |

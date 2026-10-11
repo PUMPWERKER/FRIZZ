@@ -192,7 +192,7 @@ public:
             while (chunk_[knob] >= 1.f || chunk_[knob] <= -1.f)
             {
                 const float dir = chunk_[knob] > 0.f ? 1.f : -1.f;
-                SetKnob(knob, CoarseStep(fxp.coarse[param], Knob(knob), dir));
+                SetKnob(knob, CoarseStep(kFxGrids[fxp.coarse[param]], Knob(knob), dir));
                 chunk_[knob] -= dir;
             }
             return;

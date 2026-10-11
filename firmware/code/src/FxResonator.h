@@ -36,7 +36,7 @@ public:
         LEVEL = 7,
     };
 
-    void Init(float sample_rate)
+    FX_ONCE void Init(float sample_rate)
     {
         sample_rate_ = sample_rate;
         ring_.Clear();
@@ -61,17 +61,16 @@ public:
     void Feed(float* l, float* r)
     {
         const float gate = gate_.Process();
-        const float feedback = feedback_.Process();
-        lp_coeff_.Process();
-        // off and faded out: no loop, so nothing to read. Tap still fills the ring and the
-        // knobs still slew, so a punch-in rings from the recent sound as ever
+        // off and faded out: no loop, so nothing to read. Tap still fills the ring, so a
+        // punch-in rings from the recent sound as ever, with the knobs where they're going
         if (gate_.Asleep())
         {
-            delay_[0].Process();
-            delay_[1].Process();
+            SnapParams();
             ret_[0] = ret_[1] = 0.f;
             return;
         }
+        const float feedback = feedback_.Process();
+        lp_coeff_.Process();
 
         float fb = gate * feedback;
         float* const io[2] = {l, r};

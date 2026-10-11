@@ -37,7 +37,7 @@ public:
         POLARITY = 5,
     };
 
-    void Init(float sample_rate)
+    FX_ONCE void Init(float sample_rate)
     {
         sample_rate_ = sample_rate;
         ring_.Clear();
@@ -53,20 +53,22 @@ public:
     void Process(float* l, float* r)
     {
         const float gate = gate_.Process();
-        const float depth = depth_.Process();
-        const float mix = mix_.Process();
-        const float feedback = feedback_.Process();
-        const float stereo_mix = stereo_mix_.Process();
 
         if (gate_.TakePress())
             phase_[0] = phase_[1] = 0.f;
 
-        // off: only the buffer goes on (a press restarts the LFOs anyway)
+        // off: only the buffer goes on (a press restarts the LFOs anyway), the knobs where
+        // they're going
         if (gate_.Asleep())
         {
+            SnapParams();
             ring_.WriteFrame(SoftClip(*l), SoftClip(*r));
             return;
         }
+        const float depth = depth_.Process();
+        const float mix = mix_.Process();
+        const float feedback = feedback_.Process();
+        const float stereo_mix = stereo_mix_.Process();
 
         // triangle LFOs, -1..1, starting at 0 going up
         float lfo[2];

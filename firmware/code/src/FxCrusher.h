@@ -33,7 +33,7 @@ public:
         XOR = 5,
     };
 
-    void Init(float sample_rate)
+    FX_ONCE void Init(float sample_rate)
     {
         sample_rate_ = sample_rate;
 
@@ -56,27 +56,19 @@ public:
     void Process(float* l, float* r)
     {
         const float gate = gate_.Process();
-        const float rate_knob = rate_.Process();
-        const float tone_coeff = tone_coeff_.Process();
 
         // off and faded out: only what a punch-in starts from goes on: the reducer (so its
-        // grid runs on unbroken) and the XOR's DC blockers (so its offset doesn't thump in)
+        // grid runs on unbroken) and the XOR's DC blockers (so its offset doesn't thump in);
+        // the knobs where they're going
         if (gate_.Asleep())
         {
-            srr_l_.SetFreq(rate_knob);
-            srr_r_.SetFreq(rate_knob * stereo_);
+            SnapParams();
+            srr_l_.SetFreq(rate_.value);
+            srr_r_.SetFreq(rate_.value * stereo_);
             srr_l_.Process(*l);
             srr_r_.Process(*r);
-            if (xor_ > 0)
-            {
-                xor_dc_l_.Process(Xor(*l) - *l);
-                xor_dc_r_.Process(Xor(*r) - *r);
-            }
-            else
-            {
-                xor_dc_l_.Process(0.f);
-                xor_dc_r_.Process(0.f);
-            }
+            XorOffset(xor_dc_l_, *l);
+            XorOffset(xor_dc_r_, *r);
             asleep_samples_++;
             return;
         }
@@ -89,6 +81,8 @@ public:
             lp_l_ = *l;
             lp_r_ = *r;
         }
+        const float rate_knob = rate_.Process();
+        const float tone_coeff = tone_coeff_.Process();
 
         if (gate_.TakePress())
             dive_.Press();
@@ -101,17 +95,8 @@ public:
 
         // XOR before the reducer, as on Kastle. On its own XOR turns silence into a constant
         // offset, so what it adds is DC-blocked: the buzz stays, the thump on punch-in doesn't
-        float xl = *l, xr = *r;
-        if (xor_ > 0)
-        {
-            xl += xor_dc_l_.Process(Xor(xl) - xl);
-            xr += xor_dc_r_.Process(Xor(xr) - xr);
-        }
-        else
-        {
-            xor_dc_l_.Process(0.f);
-            xor_dc_r_.Process(0.f);
-        }
+        const float xl = *l + XorOffset(xor_dc_l_, *l);
+        const float xr = *r + XorOffset(xor_dc_r_, *r);
         float wl = srr_l_.Process(xl);
         float wr = srr_r_.Process(xr);
 
@@ -189,6 +174,11 @@ private:
     {
         const int16_t i = static_cast<int16_t>(fclamp(x, -1.f, 1.f) * 32767.f);
         return static_cast<float>(static_cast<int16_t>(i ^ xor_)) * (1.f / 32767.f);
+    }
+    /** What the XOR adds to x, DC-blocked; with it off, the blocker runs on 0 */
+    inline float XorOffset(daisysp::DcBlock& dc, float x) const
+    {
+        return dc.Process(xor_ > 0 ? Xor(x) - x : 0.f);
     }
 
     float sample_rate_;

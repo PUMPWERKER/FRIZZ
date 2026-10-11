@@ -16,10 +16,11 @@ writes it to its slot, replacing whatever is there, and starts it (tools/midi_se
 launcher's own client). The CHOMPI is first brought to the launcher from wherever it is: a running
 FRIZZ restarts into it over USB MIDI (MidiClock.h), the USB storage firmware on an eject
 (tools/chompi.py); a FRIZZ from before that, or another firmware, needs the power switch, and
-this says so. It then sends, and FRIZZ starts. FRIZZ_SLOT, BENCH_SLOT and TEST_SLOT set other
-slots; without --slot, a key that holds another firmware than FRIZZ is refused (launcher 1.5
-lists its keys; an older one can't, and isn't asked). It waits while another tool has the
-CHOMPI (tools/chompi.py, the lock).
+this says so. It then sends, and FRIZZ starts; it waits until FRIZZ (or the bench) answers, so a tool run
+right after finds it, and notes the slot, so that tool knows which it is (tools/chompi.py).
+FRIZZ_SLOT, BENCH_SLOT and TEST_SLOT set other slots; without --slot, a key that holds another
+firmware than FRIZZ is refused (launcher 1.5 lists its keys; an older one can't, and isn't
+asked). It waits while another tool has the CHOMPI (tools/chompi.py, the lock).
 
 It prints the md5 of what it sends: that names the build (tools/builds.py). Builds aren't in
 git, so --no-build needs one made first (make, make BENCH=1 in code/src), and refuses one older
@@ -55,8 +56,7 @@ def main():
     args = ap.parse_args()
 
     if args.run:
-        frizz = args.run in (chompi.FRIZZ_SLOT, chompi.TEST_SLOT)
-        chompi.run(args.run, "frizz" if frizz else None, args.wait, args.device)
+        chompi.start(args.run, args.wait, args.device)
         return
     if args.list:
         device = chompi.to_launcher(args.wait, args.device)
@@ -88,6 +88,12 @@ def main():
                      "or set FRIZZ_SLOT / BENCH_SLOT / TEST_SLOT" % (slot, there, slot))
     sys.argv = ["midi_send.py", image, "--slot", str(slot), "--name", name, "--device", device]
     midi_send.main()
+    chompi.started(slot)
+    if slot in chompi.FRIZZ_SLOTS + (chompi.BENCH_SLOT,) and name.upper().startswith("FRIZZ"):
+        # until it answers (the bench does as FRIZZ): the launcher may for a moment, then
+        # nothing while USB comes back
+        chompi.wait_for("frizz", args.wait, args.device)
+        print("%s answers on slot %d" % (name, slot))
 
 
 if __name__ == "__main__":

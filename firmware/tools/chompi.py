@@ -13,18 +13,29 @@ into it on its SysEx F0 7D 43 48 10 F7 (MidiClock.h), the storage firmware on an
 the launcher starts a slot on its RUN (05). Launchers and storage firmwares from before those
 two need a hand instead, and this says which.
 
-One process at a time has the CHOMPI: importing this takes a lock (LOCK, flock) for the
-process's life, and waits, saying who has it, while another holds it. A tool started by one
-that holds it (FRIZZ_CHOMPI_HELD set) shares it; one that talks to the twin, not the CHOMPI
-(test/remote.cpp), sets it too. To keep the CHOMPI over several tools, or
-for playing it by hand:
+Which slot runs, no firmware says: FRIZZ on 10 and FRIZZ-TEST on 12 answer alike, and so does
+the bench (FRIZZ-bench.bin, 11), whose load reads 0. So the tools note the slot they last
+started (RUNNING, beside the lock: run(), flash.py) and to_frizz() goes by it: the FRIZZ
+running if no slot is asked for, else the one asked for, started unless it's the one noted;
+the bench is never taken for FRIZZ. A slot started by hand isn't noted: `hold` without a
+command (playing by hand) forgets the note.
+
+One process at a time has the CHOMPI: the first time a tool reaches for it (state(), a link
+to it, a restart), it takes a lock (LOCK, flock) for the process's life, and waits, saying who
+has it, while another holds it; what doesn't touch the CHOMPI (measure.py compare) never
+waits. A tool started by one that holds it (FRIZZ_CHOMPI_HELD set) shares it; one that talks
+to the twin, not the CHOMPI (test/remote.cpp), sets it too. To keep the CHOMPI over several
+tools, or for playing it by hand:
 
     tools/chompi.py hold                 holds it until Ctrl-C
     tools/chompi.py hold CMD ARGS...     holds it while CMD runs (sh -c for a sequence)
 
 Linux only: ALSA's raw MIDI and udisks, Python 3 without packages.
 """
+import argparse
+import contextlib
 import fcntl
+import glob
 import os
 import re
 import subprocess
@@ -37,6 +48,7 @@ FRIZZ_SLOT = int(os.environ.get("FRIZZ_SLOT", 10))
 BENCH_SLOT = int(os.environ.get("BENCH_SLOT", 11))
 TEST_SLOT = int(os.environ.get("TEST_SLOT", 12))  # a branch's build, tested by a session
 STORAGE_SLOT = int(os.environ.get("STORAGE_SLOT", 15))
+FRIZZ_SLOTS = (FRIZZ_SLOT, TEST_SLOT)  # the slots with a FRIZZ that answers its SysEx
 STORAGE_LABEL = "CHOMPI-SD"
 
 RESTART = midi_send.HEADER + bytes([0x10, 0xF7])  # FRIZZ's (MidiClock.h)
@@ -51,8 +63,18 @@ def say(*args):
 
 # ---- the lock: one process at a time ------------------------------------------------------
 
-LOCK = os.environ.get("FRIZZ_CHOMPI_LOCK") or os.path.join(
-    os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "frizz-chompi.lock")
+def _runtime_dir():
+    """The user's /run/user/UID, as the desktop's XDG_RUNTIME_DIR is, whatever a shell set: one
+    lock for every tool of the user; ~/.cache where there's none"""
+    run = "/run/user/%d" % os.getuid()
+    if os.path.isdir(run) and os.access(run, os.W_OK):
+        return run
+    cache = os.path.join(os.path.expanduser("~"), ".cache")
+    os.makedirs(cache, exist_ok=True)
+    return cache
+
+
+LOCK = os.environ.get("FRIZZ_CHOMPI_LOCK") or os.path.join(_runtime_dir(), "frizz-chompi.lock")
 HELD = "FRIZZ_CHOMPI_HELD"
 _lock = None
 
@@ -74,7 +96,7 @@ def claim():
     f.write("pid %d in %s: %s\n" % (os.getpid(), os.getcwd(), " ".join(sys.argv)))
     f.flush()
     _lock = f
-    os.environ[HELD] = "1"  # the tools this one starts share it
+    os.environ[HELD] = str(os.getpid())  # the tools this one starts share it, and know the hold
 
 
 def hold(cmd):
@@ -82,6 +104,7 @@ def hold(cmd):
     claim()
     if cmd:
         sys.exit(subprocess.run(cmd).returncode)
+    forget()  # what's started by hand, the tools can't know
     say("holding the CHOMPI; Ctrl-C lets it go")
     try:
         while True:
@@ -90,24 +113,98 @@ def hold(cmd):
         pass
 
 
-if not {"-h", "--help"} & set(sys.argv[1:]) and sys.argv[1:2] != ["hold"]:
-    claim()
+
+# ---- which slot runs: noted by the tools that start one ----------------------------------
+
+RUNNING = os.path.join(os.path.dirname(LOCK), "frizz-chompi.slot")
+
+
+def started(slot):
+    """Notes that slot SLOT was started, by what and in which hold"""
+    what = " ".join([os.path.basename(sys.argv[0])] + sys.argv[1:])
+    try:
+        with open(RUNNING, "w") as f:
+            f.write("%d %s %s %s\n" % (slot, os.environ.get(HELD) or "-",
+                                       time.strftime("%H:%M:%S"), what))
+    except OSError:
+        pass
+
+
+def forget():
+    try:
+        os.remove(RUNNING)
+    except OSError:
+        pass
+
+
+def last_started():
+    """(the slot last started, whether in this hold, 'what at when'), or (None, False, None)"""
+    try:
+        with open(RUNNING) as f:
+            slot, holder, at, what = f.read().strip().split(" ", 3)
+        return int(slot), holder == os.environ.get(HELD), "%s at %s" % (what, at)
+    except (OSError, ValueError):
+        return None, False, None
 
 
 # ---- MIDI ---------------------------------------------------------------------------------
 
+ASOUND, SND = "/proc/asound", "/dev/snd"
+DAISY_USB_ID = "0483:5740"  # the Daisy Seed's, which FRIZZ and the launcher keep
+
+
+def find_device():
+    """The CHOMPI's raw MIDI node: as midi_send finds it (by "chompi" in the card's names), or
+    else the first card with the Daisy's USB id, for a FRIZZ whose names came garbled (seen
+    once: product "Љ", maker "FrizZ"), saying what it sees there"""
+    node = midi_send.find_device()
+    if node:
+        return node
+    for usbid in sorted(glob.glob(os.path.join(ASOUND, "card*", "usbid"))):
+        try:
+            with open(usbid) as f:
+                if f.read().strip() != DAISY_USB_ID:
+                    continue
+        except OSError:
+            continue
+        card = re.search(r"card(\d+)", usbid).group(1)
+        nodes = sorted(glob.glob(os.path.join(SND, "midiC%sD*" % card)))
+        if nodes:
+            say("sound card %s has the Daisy's USB id (%s) but no CHOMPI in its names (%s): "
+                "taken for the CHOMPI" % (card, DAISY_USB_ID, card_names(card)))
+            return nodes[0]
+    return None
+
+
+def card_names(card):
+    """Sound card CARD's id and names, as /proc/asound/cards has them"""
+    try:
+        with open(os.path.join(ASOUND, "cards")) as f:
+            text = f.read()
+    except OSError:
+        return "?"
+    m = re.search(r"^\s*%s \[([^\]]*)\]: (.*)\n\s*(.*)$" % card, text, re.M)
+    return " / ".join(g.strip() for g in m.groups()) if m else "?"
+
+
+@contextlib.contextmanager
+def link(node):
+    """A midi_send.Link to the raw MIDI node, closed afterwards; takes the CHOMPI first"""
+    claim()
+    to = midi_send.Link(node)
+    try:
+        yield to
+    finally:
+        os.close(to.fd)
+
+
 def ask_midi(device):
     """frizz, launcher or other, by one query to the device"""
     try:
-        link = midi_send.Link(device)
+        with link(device) as to:
+            reply = to.call(SETTINGS, timeout=0.3, retries=2, required=False)
     except OSError:
-        return None
-    try:
-        reply = link.call(SETTINGS, timeout=0.3, retries=2, required=False)
-    except OSError:
-        return None  # it went away mid-way
-    finally:
-        os.close(link.fd)
+        return None  # not there, or it went away mid-way
     if reply is None:
         return "other"
     return "frizz" if len(reply) >= 2 else "launcher"
@@ -116,14 +213,10 @@ def ask_midi(device):
 def restart(device):
     """Asks a running FRIZZ to restart into the launcher; the launcher ignores it"""
     try:
-        fd = os.open(device, os.O_WRONLY | os.O_NONBLOCK)
-        try:
-            os.write(fd, RESTART)
-        finally:
-            os.close(fd)
-        return True
+        with link(device) as to:
+            os.write(to.fd, RESTART)
     except OSError:
-        return False
+        pass
 
 
 # ---- the card, as a drive -----------------------------------------------------------------
@@ -201,10 +294,11 @@ def eject(part):
 
 def state(device=None):
     """(state, the raw MIDI node or the drive's partition), or (None, None)"""
+    claim()
     part = storage_partition()
     if part:
         return "storage", part
-    device = device or midi_send.find_device()
+    device = device or find_device()
     if device:
         found = ask_midi(device)
         if found:
@@ -253,11 +347,8 @@ def to_launcher(timeout=120, device=None):
 def run(slot, wanted, timeout=120, device=None):
     """Starts slot SLOT from wherever the CHOMPI is and waits for state WANTED (None: don't)"""
     node = to_launcher(timeout, device)
-    link = midi_send.Link(node)
-    try:
-        reply = link.call(RUN, bytes([slot]), timeout=1.0, retries=2, required=False)
-    finally:
-        os.close(link.fd)
+    with link(node) as to:
+        reply = to.call(RUN, bytes([slot]), timeout=1.0, retries=2, required=False)
     if reply and reply[0] == BAD_SLOT:
         sys.exit("the launcher has nothing in slot %d" % slot)
     if reply and reply[0] == BAD_MESSAGE:
@@ -266,40 +357,75 @@ def run(slot, wanted, timeout=120, device=None):
         sys.exit("the launcher refused to start slot %d: status %d" % (slot, reply[0]))
     else:
         say("starting slot %d ..." % slot)
+    started(slot)
     if wanted:
         return wait_for(wanted, timeout, device)
     return None
 
 
+def start(slot, timeout=120, device=None):
+    """Starts slot SLOT from wherever the CHOMPI is; a FRIZZ slot's raw MIDI node once it
+    answers, None for another"""
+    return run(slot, "frizz" if slot in FRIZZ_SLOTS else None, timeout, device)
+
+
 def slot_file(node, slot):
     """The file on key SLOT ("" for none), as the launcher at NODE lists it; None from a
     launcher before 1.5, which can't say"""
-    link = midi_send.Link(node)
-    try:
-        reply = link.call(midi_send.PING, timeout=0.3, retries=3, required=False)
+    with link(node) as to:
+        reply = to.call(midi_send.PING, timeout=0.3, retries=3, required=False)
         if not reply or len(reply) < 8 or not reply[7] & midi_send.FEATURE_LIST:
             return None
-        reply = link.call(midi_send.LIST, bytes([slot]), timeout=2.0, retries=2,
-                          required=False, match=midi_send.for_slot(slot))
-    finally:
-        os.close(link.fd)
+        reply = to.call(midi_send.LIST, bytes([slot]), timeout=2.0, retries=2,
+                        required=False, match=midi_send.for_slot(slot))
     if not reply or reply[0] != 0 or len(reply) < 3:
         return None
     return reply[3:3 + reply[2]].decode("ascii", "replace")
 
 
-def to_frizz(slot=FRIZZ_SLOT, timeout=120, device=None):
-    """FRIZZ's raw MIDI node, starting it from the launcher if it isn't running"""
+SETTLE = 10  # s for a firmware just started to answer: USB back, FRIZZ booted
+
+
+def to_frizz(slot=None, timeout=120, device=None):
+    """FRIZZ's raw MIDI node: on SLOT, started unless it's the one noted as running; without
+    one the FRIZZ running, or else the slot last started in this hold, or FRIZZ_SLOT. Waits
+    SETTLE s first for a firmware that is still starting, and says which slot it is"""
     now, where = state(device)
+    settle = time.monotonic() + SETTLE
+    while now in (None, "other") and time.monotonic() < settle:
+        time.sleep(0.5)
+        now, where = state(device)
+    last, this_hold, what = last_started()
     if now == "frizz":
-        return where
-    return run(slot, "frizz", timeout, device)
+        if last == BENCH_SLOT:
+            say("the bench runs (slot %d, %s), which answers as FRIZZ does" % (last, what))
+        elif last in FRIZZ_SLOTS and slot in (None, last):
+            say("FRIZZ on slot %d (%s)" % (last, what))
+            return where
+        elif slot is None:
+            say("FRIZZ runs, on a slot the tools didn't start: --slot N makes sure")
+            return where
+    if slot is None:
+        slot = last if this_hold and last in FRIZZ_SLOTS else FRIZZ_SLOT
+    return start(slot, timeout, device)
 
 
 def to_storage(timeout=120):
-    """The card's mount point, with the CHOMPI in its USB storage firmware"""
-    part = storage_partition() or run(STORAGE_SLOT, "storage", timeout)
-    return mount(part), part
+    """The card's partition, with the CHOMPI in its USB storage firmware (mount() mounts it)"""
+    return storage_partition() or run(STORAGE_SLOT, "storage", timeout)
+
+
+# ---- the tools' command lines --------------------------------------------------------------
+
+def before_and_after(ap, *options):
+    """Options taken before the subcommand and after it, each (flags, add_argument's keywords):
+    added to AP, and to the parser returned, the parent for the subcommands, where a default of
+    SUPPRESS keeps one given before from being overwritten"""
+    common = argparse.ArgumentParser(add_help=False)
+    for flags, kw in options:
+        ap.add_argument(*flags, **kw)
+        common.add_argument(*flags, **dict(kw, default=argparse.SUPPRESS))
+    return common
 
 
 if __name__ == "__main__":
