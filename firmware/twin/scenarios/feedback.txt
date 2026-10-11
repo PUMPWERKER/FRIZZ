@@ -1,0 +1,24 @@
+# MIDI feedback (#104): MIDI out on the jack and USB, and feedback switched on, by SysEx (in RAM
+# while remote.py plays); the filter picked, its cutoff turned, latched by hand, VOLUME turned,
+# then the blank scene. Each change goes out as its CC: test/ui.cpp checks them (compare.sh
+# doesn't see MIDI out), on the device a capture of the jack does
+input sine 220 0.3
+at 6000
+usb F0 7D 43 48 13 03 02 F7
+usb F0 7D 43 48 3E 03 01 23 08 00 01 F7
+wait 300
+tap KEY_5
+wait 300
+turn 4 -30
+wait 600
+down KEY_5
+wait 80
+tap KEY_26
+up KEY_5
+wait 500
+# the filter latched
+expect led smt 20 fcc0d8
+turn 6 -5
+wait 500
+tap KEY_16
+wait 1000
