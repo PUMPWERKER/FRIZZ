@@ -219,7 +219,7 @@ minutes). Mounting needs udisks, as any desktop has.
 longer than a block, which crackle), `settings`, `channel N`, `transport on|off`,
 `source auto|trs|usb|internal`, `out off|trs|all`, `scene get|put SLOT FILE`, the developers'
 `ident`, `ram-only`, `get GROUP`, `set GROUP INDEX VALUE` and `bench [--wait] [--out FILE]`
-(below), and `play SCRIPT [--cpu]`, which plays a twin
+(below), and `play SCRIPT [--cpu] [--fresh]`, which plays a twin
 script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over SysEx at the
 script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs, at the
 brightness the card's `led_brightness` sets (100, 75 or 50 %: the one level that fits every
@@ -229,6 +229,14 @@ the bench does, and how many blocks took longer than a block, so a scenario can 
 crackles on the build that plays, not the bench's (it says how many readings went unanswered,
 if any). Whatever ends a script (an error, Ctrl-C), it lets go of the keys it holds and gives
 the mode switch back to the hand.
+
+A script plays on FRIZZ as it stands: a twin script starts from power-on, but on the device the
+scripts played before it since FRIZZ started have left the effect selected, its knobs, the
+page or a loop in RAM, so its `expect led` lines can fail after another one (#123).
+`play --fresh` first starts the slot again through the launcher, as `flash.py --run N` does:
+FRIZZ boots from the card, which a start doesn't write, with nothing left from before. Every
+`play` after the first since `flash.py` started the slot wants it (about 10 s each); a failed
+`expect led` without it says so. Not with `--device` or `--no-start`, which can't restart it.
 
 `play` first stops FRIZZ writing the card until it restarts (PERSIST 0), so a script may
 change the settings, the compressor or the scenes: they stay in RAM, and the card keeps what
