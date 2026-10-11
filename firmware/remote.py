@@ -800,11 +800,14 @@ def run(a):
     if a.cmd in ("bench", "ident") and not a.device and not a.slot:
         # whatever runs, the bench too, which answers as FRIZZ does
         a.device = chompi.wait_for("frizz", 30)
+    # FRIZZ found or started by the tools, which can start it again (play --fresh, restore);
+    # a.device is its node from here on either way
+    a.found = not a.device and not a.no_start
     fresh = a.cmd == "play" and a.fresh
-    if fresh and (a.device or a.no_start):
+    if fresh and not a.found:
         sys.exit("--fresh starts the slot again through the launcher: not with --device or "
                  "--no-start")
-    if not a.device and not a.no_start:
+    if a.found:
         a.device = chompi.to_frizz(a.slot, again=fresh)
     f = Frizz(a.device)
     if a.cmd == "state":
@@ -885,7 +888,7 @@ def run(a):
         finally:
             if ram:
                 restore(f, a)
-        if failed and not isinstance(failed, str) and not (fresh or a.device or a.no_start):
+        if failed and not isinstance(failed, str) and a.found and not fresh:
             print("expect led judged after what played since FRIZZ started: --fresh plays the "
                   "script from power-on (#123)", file=sys.stderr)
         sys.exit(failed if isinstance(failed, str) else 1 if failed else 0)
@@ -897,7 +900,7 @@ def restore(f, a):
     slot = chompi.frizz_slot
     if slot == chompi.TEST_SLOT:
         return
-    if a.device or a.no_start or slot is None:
+    if not a.found or slot is None:
         print("FRIZZ%s keeps what it changes in RAM until it restarts: ./flash.py --run N"
               % ("" if slot is None else " on slot %d" % slot), file=sys.stderr)
         return

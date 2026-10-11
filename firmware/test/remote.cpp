@@ -960,22 +960,56 @@ print(chompi.to_launcher(), log)
         printf("%s\n", out.c_str());
 
     // after a script played RAM only, a FRIZZ slot other than the test slot is started again
-    // (from the card, so it saves again); the test slot isn't; one it can't tell, it says
+    // (from the card, so it saves again); the test slot isn't; one it can't tell, it says.
+    // Through run(), which gets the node from to_frizz (#134). A failed expect led says --fresh
     rc = Python(R"(
-import argparse, chompi, remote
+import argparse, sys, chompi, remote
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr = sys.stdout
 chompi.start = lambda slot, *rest: print("start", slot)
+running = [None]
+def to_frizz(slot=None, timeout=120, device=None, again=False):
+    chompi.frizz_slot = running[0]
+    return "node"
+chompi.to_frizz = to_frizz
 class F:
     class link:
         fd = None
+    def __init__(self, device):
+        pass
+    def ram_only(self):
+        return True
+remote.Frizz = F
 remote.os.close = lambda fd: None
-for slot in (10, 12, None):
-    chompi.frizz_slot = slot
+def case(slot, failed, **given):
+    running[0] = chompi.frizz_slot = slot
+    remote.play = lambda f, path, cpu: failed
+    a = argparse.Namespace(cmd="play", script="x.txt", cpu=False, fresh=False, save=False,
+                           force=False, slot=None, device=None, no_start=False)
+    vars(a).update(given)
     print("slot", slot)
-    remote.restore(F(), argparse.Namespace(device=None, no_start=False))
+    try:
+        remote.run(a)
+    except SystemExit as e:
+        print("exit", e.code)
+case(10, 0)
+case(12, 0)
+case(None, 0)
+case(12, 2)
+case(10, 0, device="/dev/x")
+case(12, 2, fresh=True)
 )", out);
-    Check(rc == 0 && Has(out, "slot 10\nstart 10\nslot 12\nslot None\n")
-              && Has(out, "FRIZZ keeps what it changes in RAM until it restarts"),
-          "tools: after play RAM only, key 10's FRIZZ is started again from the card; the test slot isn't");
+    Check(rc == 0 && Has(out, "slot 10\nthe card isn't written until FRIZZ restarts (PERSIST 0): what the script changes "
+                             "stays in RAM\nstarting slot 10 again, from the card, so it saves again\nstart 10\nexit 0\n")
+              && Has(out, "RAM\nexit 0\nslot None\n") && Has(out, "FRIZZ keeps what it changes in RAM until it restarts"),
+          "tools: after play RAM only, key 10's FRIZZ is started again from the card; the test slot isn't (#134)");
+    Check(Has(out, "RAM\nexpect led judged after what played since FRIZZ started: --fresh plays the script from "
+                   "power-on (#123)\nexit 1\n")
+              && Has(out, "slot 10\nthe card isn't written until FRIZZ restarts (PERSIST 0): what the script changes "
+                          "stays in RAM\nFRIZZ on slot 10 keeps what it changes in RAM")
+              && Has(out, "slot 12\nthe card isn't written until FRIZZ restarts (PERSIST 0): what the script changes "
+                          "stays in RAM\nexit 1\n"),
+          "tools: a failed expect led says --fresh, not after it; with --device, key 10's FRIZZ isn't started, but said");
     if (rc != 0 || !Has(out, "start 10"))
         printf("%s\n", out.c_str());
 
