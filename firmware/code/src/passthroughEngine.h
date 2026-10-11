@@ -99,6 +99,11 @@ public:
 
         // the FX's tempo and clock, once per block, from the loop while there is one
         SyncLoopTempo();
+        if (looper.Rewinds() != rewinds_)
+        {
+            rewinds_ = looper.Rewinds();
+            tempo_clock_.Rewound();
+        }
         const float tap = tap_bpm_.exchange(0.f);
         if (tap > 0.f)
             tempo_clock_.Tap(tap);
@@ -325,6 +330,7 @@ private:
     volatile float lim_gain_ = 1.f; // TakeLimiterGain
     chompi::EnvFollower output_env_follower;
     chompi::TempoClock tempo_clock_;
+    uint32_t rewinds_ = 0; // the looper's Rewinds() as last seen
     uint32_t block_pulses_ = 0; // the last block's pulses, up to kMaxBlockPulses
     uint32_t block_loop_pulse_[kMaxBlockPulses] = {};
     uint32_t next_16th_ = 0;

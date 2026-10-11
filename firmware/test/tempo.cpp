@@ -1034,6 +1034,16 @@ static void TestFactor()
     Check(p.size() == 1 && p[0] == 18, "factor odd: reverse back across the start, 18 as forward has it");
     p = Pulses(clock, 16.5f / 18.f, -1.f);
     Check(p.size() == 1 && p[0] == 17, "factor odd: and on into the first pass's end, 17");
+    // taken back to its start in its second pass (MIDI's Start): beat 1 of the grid again
+    Pulses(clock, 17.5f / 18.f, 1.f);
+    Pulses(clock, .2f / 18.f, 1.f); // into the second pass
+    p = Pulses(clock, 5.5f / 18.f, 1.f);
+    Check(!p.empty() && p.back() == 23, "factor odd: 5 pulses into the second pass, 23");
+    clock.Rewound();
+    p = Pulses(clock, .1f / 18.f, 1.f);
+    Check(p.size() == 1 && p[0] == 0, "factor odd: rewound in the second pass, beat 1 of the grid");
+    p = Pulses(clock, 1.1f / 18.f, 1.f);
+    Check(p.size() == 1 && p[0] == 1, "factor odd: and on from there");
     clock.ClearLoop();
 
     // paused, the grid runs on: a factor scales it around its place

@@ -171,6 +171,10 @@ public:
         phase_ = 1.f;
     }
 
+    /** The loop was taken back to its start (MIDI's Start, Looper::Follow): a grid over two
+     *  passes starts again on its first, as the gear MIDI out sends Start to does */
+    inline void Rewound() { rewound_ = true; }
+
     /** Call once per block, after the looper, with its position (0-1), actual speed and
      *  whether it's paused, when there's a loop. Returns how many pulses happened during it
      *  (usually 0 or 1). */
@@ -443,9 +447,16 @@ private:
      *  paused, the pulses of the grid running on by itself */
     uint32_t ProcessLoop(size_t size, float pos, float speed, bool paused)
     {
-        // a grid over two passes: the position wrapping, either way, is the other pass
-        if (!paused && grid_pulses_ != loop_pulses_ && fabsf(pos - loop_pos_) > .5f)
+        // a grid over two passes: the position wrapping, either way, is the other pass; taken
+        // back to the start, its first, the next pulse beat 1 (as a new loop's)
+        if (grid_pulses_ != loop_pulses_ && rewound_)
+        {
+            pass_ = 0;
+            loop_idx_ = grid_pulses_ - 1;
+        }
+        else if (!paused && grid_pulses_ != loop_pulses_ && fabsf(pos - loop_pos_) > .5f)
             pass_ ^= 1;
+        rewound_ = false;
         loop_pos_ = pos;
         const float bpm = ClampBpm(loop_bpm_ * scale_ * fabsf(speed));
         tempo_ = static_cast<int>(bpm + .5f);
@@ -538,6 +549,7 @@ private:
     uint32_t loop_pulses_; // per pass
     uint32_t grid_pulses_; // the grid's, over one pass or two (SetLoopBeats)
     uint32_t pass_ = 0;    // which of the two the position is in
+    bool rewound_ = false; // Rewound() since the last block
     float loop_bpm_;       // at 1x, before the factor
     float loop_pos_ = 0.f;
     uint32_t loop_idx_;    // the pulse interval the position was last counted in
