@@ -2495,6 +2495,14 @@ int main()
         RunMs(50);
         comp = Ask({0x21, 14});
         Check(comp.size() == 17 && comp[1] == 0, "midi cc: and CC 14 on its channel, 15");
+        // the last latches by key: 114 the reverb's (key 13, FxId 11), 115 the chaos key's
+        // (key 14, FxId 13)
+        Trs({kCC, 114, 127, kCC, 115, 127});
+        RunMs(100);
+        const std::string last = Ask({0x20});
+        const int latched = last.size() > 9 ? static_cast<uint8_t>(last[8]) << 7 | static_cast<uint8_t>(last[9]) : 0;
+        Check((latched >> 11 & 1) && (latched >> 13 & 1) && !(latched >> 12 & 1),
+              "midi cc: CC 114 latches the reverb, CC 115 the chaos key");
         Trs({kCC, 85, 0}); // output gain
         RunMs(300);
         Check(RunMs(300) < .001f, "midi cc: CC 85 sets the output gain");

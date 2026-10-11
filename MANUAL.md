@@ -592,7 +592,7 @@ in two ways:
 - Effects that react to coming on do so each time chaos lets them back in: the freezer
   grabs, the tape stop stops, the slicer attacks. A latched tape stop under chaos makes
   random stops.
-- Over MIDI it's channel 14 (CC 14-17 its knobs, CC 22 its latch), and CC 114 latches it on
+- Over MIDI it's channel 14 (CC 14-17 its knobs, CC 22 its latch), and CC 115 latches it on
   the global channel (see [Controllers](#controllers)).
 - LEDs: the key is rose; the knobs go light blue to rose.
 
@@ -920,7 +920,7 @@ or C2 in Ableton Live): the white keys from 48 up, the dark keys on the sharps. 
 | 80 | The [crossfader](#crossfading-by-hand): takes a running morph (CC 3's, or one you hold) to where it says, 0 the scene it started from, 127 the scene it goes to. Reaching 127 lands it; reaching 0 after being away from it goes back to where it started; in between it waits |
 | 81 | Stops a morph where it is, as the value crosses 64 upward |
 | 82 | A [tempo tap](#tempo), as the value crosses 64 upward: a button sending 127 and 0 |
-| 102-115 | The latch of white key 1-14 (102 the freezer … 108 the phaser … 114 the chaos key), as CC 22 |
+| 102-115 | The latch of white key 1-14 (102 the freezer … 108 the phaser … 114 the reverb, 115 the chaos key), as CC 22 |
 | 120, 123 | All Sound Off, All Notes Off: let go of every key MIDI holds |
 
 - **Set outright**, a value does what the knob or key would: the LEDs follow, the scene key

@@ -38,7 +38,7 @@ what FRIZZ does.
   elsewhere in it, while the loop itself runs on; knob 3 sets the grid, 1/16 to a bar, on the
   effects' tempo; knob 4 turns it from every step rolled anew to one bar repeating as a
   pattern. Chance decides only when your effects act, never how they sound. Over MIDI it's
-  channel 14, its latch CC 114 on the global channel. See MANUAL.md, "Chaos key".
+  channel 14, its latch CC 115 on the global channel. See MANUAL.md, "Chaos key".
 - **A second page for the FX knobs:** press any of knobs 1-4 and all four turn over to the
   selected effect's page 2, with their LEDs pulsing; press again for page 1. Every effect but
   the chaos key has one. Pressing or
