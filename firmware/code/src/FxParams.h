@@ -40,6 +40,12 @@ struct FxGrid
 static constexpr FxGrid StepGrid(size_t steps) { return {0.f, 1.f / (steps - 1), nullptr, 0}; }
 // shifter shift (-12..+12 over 0-1): octaves, fifths and fourths
 static const float kShiftPoints[] = {0.f, 5.f / 24.f, 7.f / 24.f, .5f, 17.f / 24.f, 19.f / 24.f, 1.f};
+// the phaser's rate, a split knob (FxCommon.h): 10% steps in its free half, then each of its
+// divisions
+static_assert(kSplitKnob == .5f && Phaser::kNumDivisions == 7, "the points below");
+static const float kPhaserRatePoints[] = {0.f, .1f, .2f, .3f, .4f, .5f, .5f + 1.f / 12.f,
+                                          .5f + 2.f / 12.f, .75f, .5f + 4.f / 12.f,
+                                          .5f + 5.f / 12.f, 1.f};
 
 /** The coarse grids, by index into kFxGrids: FxParams keeps a byte per parameter rather than
  *  a copy of its grid */
@@ -67,6 +73,8 @@ enum FxGridId : uint8_t
     GRID_TAPE_START,
     GRID_DELAY_DIVISION,
     GRID_CHAOS_GRID,
+    GRID_PHASER_RATE, // the phaser's rate: 10% in Hz, then its divisions (kPhaserRatePoints)
+    GRID_OCTAVE6,     // octaves of a knob six octaves wide: the phaser's centre
     kNumFxGrids,
 };
 static const FxGrid kFxGrids[] = {
@@ -90,6 +98,8 @@ static const FxGrid kFxGrids[] = {
     StepGrid(TapeStop::kNumStarts),
     StepGrid(DelaySend::kNumDivisions),
     StepGrid(Chaos::kNumGrids),
+    {0.f, 1.f, kPhaserRatePoints, sizeof(kPhaserRatePoints) / sizeof(kPhaserRatePoints[0])},
+    {0.f, 1.f / 6.f, nullptr, 0},
 };
 static_assert(sizeof(kFxGrids) / sizeof(kFxGrids[0]) == kNumFxGrids, "one per FxGridId");
 
@@ -109,6 +119,9 @@ struct FxParams
     uint8_t bipolar;              // bit p: a knob with its neutral point at its default (the
                                   // centre, or Level's 0dB), white there on its LED, blue
                                   // below and orange above (NormalPage.h)
+    uint8_t split;                // bit p: a split knob (FxCommon.h), continuous in its lower
+                                  // half and stepped in its upper, in steps[p] steps there
+                                  // (the phaser's rate: free in Hz, then tempo divisions)
 };
 
 // page 2's shared knobs at their defaults (FxOutput.h): fully the effect's, all of the
@@ -181,6 +194,12 @@ static const FxParams kFxParams[] = {
     {0xff, {.6f, .6f, .6f, 0.f, 0.f, 0.f, kP2Band, 0.f}, {0, 0, 0, 0},
      {GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10},
      0x8, 0x40},
+    // phaser: rate (.7Hz, free), feedback, depth (off: dry), stereo (off); page 2's own:
+    // centre (800Hz). Rate is split: free on the left, the tempo's divisions on the right;
+    // coarse centre: octaves
+    {0xff, {.25f, .4f, 0.f, 0.f, kP2Mix, .5f, kP2Band, kP2Level}, {Phaser::kNumDivisions, 0, 0, 0},
+     {GRID_PHASER_RATE, GRID_10, GRID_10, GRID_10, GRID_10, GRID_OCTAVE6, GRID_10, GRID_LEVEL},
+     0x84, kP2Bipolar, 0x01},
     // chaos: FX chance (off), scramble chance (off), grid (1/8), random to pattern (random);
     // no page 2. Both chances fade it in and out
     {0x0f, {0.f, 0.f, .25f, 0.f, kP2Mix, 0.f, kP2Band, kP2Level}, {0, 0, Chaos::kNumGrids, 0},

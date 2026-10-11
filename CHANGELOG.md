@@ -17,7 +17,20 @@ what FRIZZ does.
   stays there, as SHIFT + PLAY leaves a morph. The two scene keys light in their mix, the
   transport LEDs show where it is. Over MIDI, CC 118 does the same for any running morph.
   See MANUAL.md, "Crossfading by hand".
-- **The chaos key** on the 11th white key (#65), after the Red Panda Tensor's RAND and the
+- **A phaser** on the 11th white key (#68), after the SP-404MK2's and the Elektron Tonverk's:
+  six allpass stages in a row with feedback, sweeping three notches through the sound, after
+  the tape stop and before the delay and reverb. Knob 1 is its rate, in two halves: turned
+  left of the centre it runs free, .02 to 50 Hz (its LED in the phaser's colours, azure to
+  magenta); right of the centre it follows the effects' tempo, 1/16 at the centre, then 1/8,
+  1/4, 1/2, a bar, 2 bars and 4 bars at the top (its LED green to yellow), a step every 3
+  detents, and with SHIFT a step every detent. Knob 2 is feedback (the resonance), knob 3
+  depth (at 0 the phaser is dry; turning it up brings the notches in and widens the sweep, up
+  to 2.5 octaves either way), knob 4 stereo (the right channel's sweep up to half a cycle
+  behind). Page 2: Mix, the centre the sweep moves around (100 Hz to 6.4 kHz, 800 Hz in the
+  middle), Band and Level. Its key is azure. Over MIDI, NRPN 0/64-67 set its page-1 knobs and
+  NRPN 1/64-67 its page 2; it has no latch CC yet. Scene files from before it load with the
+  phaser off, on its defaults. See MANUAL.md, "Phaser".
+- **The chaos key** on the 14th white key (#65), after the Red Panda Tensor's RAND and the
   Chase Bliss Blooper's Scrambler: an effect slot like any other (hold, latch, scenes) that
   makes no sound of its own. Knob 1 lets the effects you've latched drop out and come back on
   random steps (their keys dim while they're out); knob 2 plays random steps of the loop from

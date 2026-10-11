@@ -37,7 +37,7 @@ struct BenchProfile
         LOOPER,
         TEMPO,    // the FX's tempo and clock, the scene morph
         FX0,      // the FX chain, one part per effect in FxId's order (FxChain.h), with its meter
-        COMP = FX0 + 12, // the master compressor
+        COMP = FX0 + 13, // the master compressor
         OUTPUT,   // the mix, the gains, the meter, the headphones' cue, the four limiters
         kNumParts
     };

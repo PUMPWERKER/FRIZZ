@@ -65,7 +65,8 @@ STATE, LEDS, LOAD, SETTINGS = 0x20, 0x22, 0x23, chompi.SETTINGS
 SOURCES = ["auto", "trs", "usb", "internal"]  # MidiClock.h's ClockSource, as SETTING 2 takes it
 OUTS = ["off", "trs", "all"]  # MidiClock.h's MidiOutPorts, as SETTING 3 takes it
 SCENE_GET, SCENE_PUT = 0x30, 0x31
-# a scene's parts: 4 of 4 effects' page-1 knobs (the last has the chaos key and zeros), the
+# a scene's parts: 4 of 4 effects' page-1 knobs (the last has the phaser, the chaos key and
+# zeros), the
 # same for page 2, then the latches
 FX_PARTS, FX_PER_PART = 4, 4
 SCENE_PARTS = 2 * FX_PARTS + 1
@@ -79,7 +80,7 @@ SW_NAMES = [
     "ENC_6_SW", "KEY_27", "KEY_28",
 ]
 FX_NAMES = ["freezer", "shifter", "folder", "crusher", "filter", "flanger", "resonator",
-            "slicer", "warble", "tapestop", "delay", "reverb", "chaos"]
+            "slicer", "warble", "tapestop", "delay", "reverb", "phaser", "chaos"]
 LOOPER = ["empty", "recording", "playing", "paused"]
 MODES = ["none", "save", "copy", "delete"]
 
@@ -89,7 +90,7 @@ SCENES = "frizz_scenes.txt", "whose .bak keeps only the one before"
 # the play page's keys that matter there (NormalPage.h, FxSlots.h): the compressor's, the
 # effects', the scene slots and SAVE / COPY / DELETE (MODES' order)
 COMP_KEY = "KEY_15"
-FX_KEYS = {"KEY_%d" % k for k in range(1, 14)}
+FX_KEYS = {"KEY_%d" % k for k in range(1, 15)}
 SLOT_KEYS = {"KEY_%d" % k for k in range(16, 21)}
 MODE_KEYS = {"KEY_25": 1, "KEY_24": 2, "KEY_23": 3}
 # MidiControl.h's midimap: the compressor's knobs (CC, or NRPN in bank 0 or 1), mono, the
@@ -271,8 +272,8 @@ def scene_get(f, slot):
 def scene_put(f, slot, scene):
     params = scene["params"]
     if any(len(v) < 8 for v in params.values()) or any(n not in params for n in FX_NAMES):
-        # four knobs each, from before page 2, or an effect missing (the chaos key, before
-        # it was there): the rest on its defaults, the blank scene's
+        # four knobs each, from before page 2, or an effect missing (the chaos key or the
+        # phaser, before they were there): the rest on its defaults, the blank scene's
         blank = scene_get(f, 0)["params"]
         params = {n: list(params.get(n, [])[:8]) + blank[n][len(params.get(n, [])[:8]):]
                   for n in FX_NAMES}

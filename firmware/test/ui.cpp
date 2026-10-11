@@ -415,7 +415,7 @@ int main()
         const float flat = RunMs(300);
         Trs({kCC, 99, 1, kCC, 98, 55, kCC, 6, 64, kCC, 38, 0});
         RunMs(300);
-        const std::string comp = Ask({0x21, 13});
+        const std::string comp = Ask({0x21, 14});
         Check(comp.size() == 17 && comp[15] == 64 && comp[16] == 0,
               "fx-level: NRPN 1/55 is the compressor's page-2 knob 4, its makeup");
         const float made_up = RunMs(300);
@@ -872,16 +872,16 @@ int main()
               "scene-morph: SHIFT let go, it glides and lands on scene 2");
     }});
 
-    // the chaos key (#65), the 11th white key: the effects latched drop out on random steps
+    // the chaos key (#65), the 14th white key: the effects latched drop out on random steps
     cases.push_back({"chaos-gates", [] {
         RunMs(kReadyMs);
         const float dry = RunMs(300);
-        static const int kChaosKeyLed = 14;
+        static const int kChaosKeyLed = 11;
         Latch("KEY_5");
         Turn(kKnob1Encoder, -60); // the filter closed: quiet while it's in
         RunMs(300);
         const float closed = RunMs(300);
-        Latch("KEY_11");
+        Latch("KEY_14");
         Turn(kKnob1Encoder, 100); // its FX chance at the top
         RunMs(300);
         const Rgb chaos = SmtLedFull(kChaosKeyLed);
@@ -914,7 +914,7 @@ int main()
 
         // unlatched chaos: the filter stays in
         Latch("KEY_5");
-        Latch("KEY_11");
+        Latch("KEY_14");
         RunMs(300);
         int open_off = 0;
         for (int w = 0; w < 32; w++)
@@ -923,12 +923,12 @@ int main()
               "chaos-gates: chaos unlatched, the filter steady");
 
         // over MIDI: CC 119 latches it, NRPN 0/122 its FX chance
-        const std::string before = Ask({0x21, 12});
+        const std::string before = Ask({0x21, 13});
         Trs({kCC, 99, 0, kCC, 98, 122, kCC, 6, 0, kCC, 38, 0});
         Trs({kCC, 119, 127});
         RunMs(300);
-        const std::string st = Ask({0x20}), after = Ask({0x21, 12});
-        Check(st.size() > 9 && ((static_cast<uint8_t>(st[8]) << 7 | static_cast<uint8_t>(st[9])) >> 12 & 1),
+        const std::string st = Ask({0x20}), after = Ask({0x21, 13});
+        Check(st.size() > 9 && ((static_cast<uint8_t>(st[8]) << 7 | static_cast<uint8_t>(st[9])) >> 13 & 1),
               "chaos-gates: CC 119 latches the chaos key");
         Check(before.size() > 2 && after.size() > 2 && before[1] != 0 && after[1] == 0 && after[2] == 0,
               "chaos-gates: NRPN 0/122 sets its FX chance (to 0)");
@@ -965,7 +965,7 @@ int main()
         };
         amp = 0.f; // only the loop from here
         const int before = elsewhere(150);
-        Latch("KEY_11");
+        Latch("KEY_14");
         Turn(1, 100); // knob 2 (SW1), scramble chance at the top
         RunMs(300);
         const int during = elsewhere(150);
@@ -977,7 +977,7 @@ int main()
         Check(before == 0 && during > 5, "chaos-scramble: the loop's silent half plays from elsewhere");
         Check(fabsf((moved < 0.f ? moved + 1.f : moved) - .25f) < .02f,
               "chaos-scramble: the loop's position runs on as ever");
-        Latch("KEY_11");
+        Latch("KEY_14");
         RunMs(300);
         Check(elsewhere(150) == 0, "chaos-scramble: chaos off, the loop in place again");
     }});
@@ -1455,10 +1455,12 @@ int main()
         RunMs(300);
         SetToggle(false);
         RunMs(300);
-        // the 11th white key is the chaos key's there: dimly in its own colour, rose
-        const Rgb chaos = SmtLedFull(kChannel11Led);
-        Check(Max(chaos) < 60 && chaos.r > 2 * chaos.g && Max(SmtLedFull(kChannel14Led)) == 0,
-              "settings-channel: back on the play page, the 14th key dark, the 11th the chaos key's, dim");
+        // the 11th white key is the phaser's there, the 14th the chaos key's: dimly in their
+        // own colours, azure and rose
+        const Rgb phaser = SmtLedFull(kChannel11Led), chaos = SmtLedFull(kChannel14Led);
+        Check(Max(phaser) < 60 && phaser.b > 2 * phaser.g && phaser.r == 0 && Max(chaos) < 60
+                  && chaos.r > 2 * chaos.g,
+              "settings-channel: back on the play page, the 11th key the phaser's, the 14th the chaos key's, dim");
         SetToggle(true);
         RunMs(300);
         Tap("KEY_17"); // D#: transport following
@@ -2508,7 +2510,7 @@ int main()
               "midi cc: NRPN 86 sets the cutoff in 14 bits, 8192 its centre");
         Trs({kCC, kCompAmountCC, 127});
         RunMs(50);
-        const std::string comp = Ask({0x21, 13});
+        const std::string comp = Ask({0x21, 14});
         Check(comp.size() == 17 && comp[1] == 127, "midi cc: CC 52 is the compressor's threshold");
         Trs({kCC, 56, 0}); // output gain
         RunMs(300);
@@ -2733,7 +2735,7 @@ int main()
 
         Trs({kCC, 53, 0, kCC, 54, 64, kCC, 55, 127});
         RunMs(50);
-        const std::string comp = Ask({0x21, 13});
+        const std::string comp = Ask({0x21, 14});
         Check(comp.size() == 17 && at14(comp, 3) == 0 && at14(comp, 5) == 8192 && at14(comp, 7) == 16383,
               "midi cc more: CCs 53-55 are the compressor's knobs 2-4");
 

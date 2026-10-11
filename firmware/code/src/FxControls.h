@@ -173,8 +173,9 @@ public:
     }
 
     /** Knob 0-3 turned by detents (signed). Plain: 1% per detent, or a step per
-     *  kFxDetentsPerStep for a stepped parameter. SHIFT: one point of the coarse grid per
-     *  detent. A knob the page doesn't use does nothing */
+     *  kFxDetentsPerStep for a stepped parameter, a split one (FxParams::split) either by
+     *  which half it's in. SHIFT: one point of the coarse grid per detent. A knob the page
+     *  doesn't use does nothing */
     void KnobTurned(size_t knob, float detents, bool shift)
     {
         const FxParams& fxp = Knobs();
@@ -207,9 +208,13 @@ public:
         }
 
         const uint8_t steps = fxp.steps[param];
-        if (steps == 0)
+        const bool split = (fxp.split >> param) & 1;
+        if (steps == 0 || (split && !SplitUpper(val)))
         {
-            SetKnob(knob, val + detents * kFxParamStep);
+            // a split knob's lower half stops on the upper's first step, reached from a hair
+            // below it too: 1% steps add up to a little under it
+            const float to = val + detents * kFxParamStep;
+            SetKnob(knob, split && SplitUpper(to + .5f * kFxParamStep) ? kSplitKnob : to);
             return;
         }
 
@@ -217,12 +222,19 @@ public:
         chunk_[knob] += detents;
         if (chunk_[knob] >= kFxDetentsPerStep || chunk_[knob] <= -kFxDetentsPerStep)
         {
-            const float step = 1.f / (steps - 1);
             const float dir = chunk_[knob] > 0.f ? 1.f : -1.f;
+            chunk_[knob] = 0.f;
+            if (split)
+            {
+                // below the first step: the top of the lower half
+                const float idx = static_cast<float>(SplitStep(val, steps)) + dir;
+                SetKnob(knob, idx < 0.f ? kSplitKnob - kFxParamStep : SplitStepValue(idx, steps));
+                return;
+            }
+            const float step = 1.f / (steps - 1);
             // snap to the step grid, so values set elsewhere can't drift off it
             const float idx = roundf(val / step) + dir;
             SetKnob(knob, idx * step);
-            chunk_[knob] = 0.f;
         }
     }
 
@@ -255,7 +267,13 @@ public:
         const FxParams& fxp = kFxParams[fx];
         if (param >= kNumFxParams || !((fxp.knobs >> param) & 1))
             return;
-        if (fxp.steps[param])
+        if ((fxp.split >> param) & 1)
+        {
+            if (SplitUpper(val))
+                val = SplitStepValue(static_cast<float>(SplitStep(val, fxp.steps[param])),
+                                     fxp.steps[param]);
+        }
+        else if (fxp.steps[param])
         {
             const float step = 1.f / (fxp.steps[param] - 1);
             val = roundf(fclamp(val, 0.f, 1.f) / step) * step;
@@ -382,7 +400,11 @@ public:
                 if (!was && !will)
                     from = to;
                 else if (was && will)
-                    how = fxp.steps[p] == 0 ? MorphParam::GLIDE : MorphParam::HOLD;
+                    // a split knob glides only within its lower half
+                    how = fxp.steps[p] == 0
+                                  || ((fxp.split >> p & 1) && !SplitUpper(from) && !SplitUpper(to))
+                              ? MorphParam::GLIDE
+                              : MorphParam::HOLD;
                 else if (fxp.fade && will)
                 {
                     from = fade ? fxp.defaults[p] : to;

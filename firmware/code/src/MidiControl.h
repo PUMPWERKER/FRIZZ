@@ -59,10 +59,13 @@ static const uint8_t kStopMorphCC = 63; // stops a morph where it is
 static const uint8_t kParamCC = 70;     // 70-117: effect FX's knob P at 70 + 4 FX + P
 static const uint8_t kFaderCC = 118;    // the crossfader: a running morph from its start to its scene
 // the effects with CCs: the first 12 FxIds; the chaos key (FX_CHAOS) has CC 119 for its
-// latch and its knobs on NRPN alone (bank 0, 122-125), since 118-121 are taken or reserved
+// latch and its knobs on NRPN alone (bank 0, 122-125), since 118-121 are taken or reserved.
+// The phaser (FX_PHASER) has its knobs on NRPN alone, page 1 in bank 0 and page 2 in bank 1,
+// both at 64-67, and no latch, until the MIDI map is reworked (#97)
 static const size_t kMidiFx = 12;
 static const uint8_t kChaosLatchCC = 119;
 static const uint8_t kChaosNrpn = 122;
+static const uint8_t kPhaserNrpn = 64;
 static const uint8_t kAllSoundOffCC = 120, kAllNotesOffCC = 123;
 // NRPN: in bank (MSB) 0, parameter number = the CC above, its value in 14 bits; in bank 1,
 // page 2 of the FX knobs and the compressor's (FxControls.h), numbered as page 1's CCs
@@ -82,7 +85,8 @@ enum MidiCmd : uint8_t
                          // out (0 off, 1 the jack, 2 the jack and USB)
     kCmdSwitch = 0x14,   // POS: the mode switch, 0 as it stands, 1 down, 2 up, until power-off
     kCmdState = 0x20,    // what the play page shows
-    kCmdParams = 0x21,   // FX: an effect's knobs (12 the chaos key's, 13 the compressor's), 14 bits each
+    kCmdParams = 0x21,   // FX: an effect's knobs (12 the phaser's, 13 the chaos key's, 14 the
+                         // compressor's), 14 bits each
     kCmdLeds = 0x22,     // PART: the LEDs as their bytes, part 0 the panel's, 1-3 the keys'
     kCmdLoad = 0x23,     // the audio callback's load since the last ask
     kCmdSettings = 0x24, // the channel, transport following, the clock source, MIDI out
@@ -92,7 +96,7 @@ enum MidiCmd : uint8_t
 };
 static const uint8_t kMidiHeader[] = {0x7D, 0x43, 0x48};
 // a scene over SysEx: 4 parts of 4 effects' page-1 knobs, the same 4 for page 2, then the
-// latches. The last part of a page has the chaos key and room for 3 more (zeros)
+// latches. The last part of a page has the phaser, the chaos key and room for 2 more (zeros)
 static const size_t kFxPerPart = 4;
 static const size_t kFxParts = 4;
 static const size_t kSceneParts = 2 * kFxParts + 1;
@@ -373,11 +377,13 @@ private:
         {
             // bank 0: an absolute controller; bank 1: page 2 of an effect's or the
             // compressor's knobs
+            const bool phaser = nrpn_lsb_ >= kPhaserNrpn && nrpn_lsb_ < kPhaserNrpn + kNumFxKnobs;
             const bool page2 = nrpn_msb_ == kPage2Bank
                                && ((nrpn_lsb_ >= kParamCC && nrpn_lsb_ < kParamCC + kMidiFx * kNumFxKnobs)
-                                   || (nrpn_lsb_ >= kCompCC && nrpn_lsb_ < kCompCC + kNumFxKnobs));
+                                   || (nrpn_lsb_ >= kCompCC && nrpn_lsb_ < kCompCC + kNumFxKnobs)
+                                   || phaser);
             const bool page1 = nrpn_msb_ == 0
-                               && (Absolute(nrpn_lsb_)
+                               && (Absolute(nrpn_lsb_) || phaser
                                    || (nrpn_lsb_ >= kChaosNrpn && nrpn_lsb_ < kChaosNrpn + kNumFxKnobs));
             if (!page1 && !page2)
                 return false;

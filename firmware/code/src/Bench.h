@@ -322,7 +322,7 @@ private:
     static const uint16_t kScene4 = (1u << FX_SHIFTER) | (1u << FX_FOLDER) | (1u << FX_CRUSHER)
                                     | (1u << FX_SLICER);
 
-    static constexpr size_t kNumSegments = 24;
+    static constexpr size_t kNumSegments = 25;
     static const Segment kSegments[kNumSegments];
 
     static const size_t kMaxBlock = 48;
@@ -696,6 +696,7 @@ const Bench::Segment Bench::kSegments[Bench::kNumSegments] = {
     {"slicer", Bench::Bit(FX_SLICER), 0},
     {"warble", Bench::Bit(FX_WARBLE), 0},
     {"tapestop", Bench::Bit(FX_TAPESTOP), 0},
+    {"phaser", Bench::Bit(FX_PHASER), 0},
     {"compressor", 0, Bench::COMP},
     {"inserts", Bench::kInserts, 0},
     {"recording", 0, Bench::RECORD},
@@ -707,8 +708,8 @@ const Bench::Segment Bench::kSegments[Bench::kNumSegments] = {
     {"everything", Bench::kEverything, Bench::COMP},
     {"stress", Bench::kEverything, Bench::STRESS | Bench::COMP},
     {"loop+everything", Bench::kEverything, Bench::LOOP | Bench::COMP},
-    // after the 22 above, so they stay comparable with older cpu.txt files: the chaos key
-    // gating the inserts on the loop, every 16th, and scrambling it
+    // the chaos key gating the inserts on the loop, every 16th, and scrambling it (after the
+    // others, as it came later)
     {"loop+inserts+chaos", Bench::kInserts | Bench::Bit(FX_CHAOS), Bench::LOOP | Bench::CHAOS},
     // last: the segment after it would start with every insert's page 2 settling back to its
     // defaults, page 2's cost, as the chaos segment did after it (114 % for a block)

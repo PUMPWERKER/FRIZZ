@@ -226,6 +226,28 @@ wait 100
 wait 300
 up KEY_10
 wait 600
+# KEY_11
+down KEY_11
+wait 100
+turn 4 12
+wait 150
+turn 4 -6
+wait 100
+turn 1 12
+wait 150
+turn 1 -6
+wait 100
+turn 2 12
+wait 150
+turn 2 -6
+wait 100
+turn 3 12
+wait 150
+turn 3 -6
+wait 100
+wait 300
+up KEY_11
+wait 600
 # KEY_12
 down KEY_12
 wait 100
