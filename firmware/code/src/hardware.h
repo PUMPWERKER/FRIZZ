@@ -437,7 +437,7 @@ uint8_t DMA_BUFFER_MEM_SECTION mp_dma_buff[6];
         ShiftRegister4021<1, 1> encoder_sr;
         SaiHandle external_sai_handle;
         I2CHandle i2c; // comms w/ MP2722
-        GPIO usb_sw, mpc_int, jack_detect; // mpc_int and jack_detect are set up, but not read
+        GPIO usb_sw, mpc_int, jack_detect; // mpc_int is set up, but not read; jack_detect: chompi_main.cpp
     private:
     };
 
