@@ -81,6 +81,15 @@ inline bool FromSource(ClockSource source, bool usb)
     return source == ClockSource::TRS ? !usb : source == ClockSource::USB ? usb : true;
 }
 
+/** A Start (0xFA), Continue (0xFB) or Stop (0xFC) as its status byte, 0 for any other
+ *  message: for MIDI out to pass on (MidiClock) and the loop to follow (MidiControl.h) */
+inline uint8_t TransportByte(const MidiEvent& e)
+{
+    if (e.type != SystemRealTime)
+        return 0;
+    return e.srt_type == Start ? 0xFA : e.srt_type == Continue ? 0xFB : e.srt_type == Stop ? 0xFC : 0;
+}
+
 class MidiClock
 {
 public:
@@ -270,11 +279,10 @@ private:
                        || (event.sysex_message_len == sizeof(kRestartSysEx)
                            && memcmp(event.sysex_data, kRestartSysEx, sizeof(kRestartSysEx)) == 0);
         }
-        if (event.type == SystemRealTime
-            && (event.srt_type == Start || event.srt_type == Continue || event.srt_type == Stop)
-            && Counts(from) && (source_ == Source::NONE || from == source_))
+        const uint8_t transport = TransportByte(event);
+        if (transport && Counts(from) && (source_ == Source::NONE || from == source_))
         {
-            transport_in_ = event.srt_type == Start ? 0xFA : event.srt_type == Continue ? 0xFB : 0xFC;
+            transport_in_ = transport;
             transport_from_ = from;
         }
         if (event.type != SystemRealTime || event.srt_type != TimingClock)

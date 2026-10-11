@@ -68,6 +68,7 @@ static const uint8_t kAllSoundOffCC = 120, kAllNotesOffCC = 123;
 // page 2 of the FX knobs and the compressor's (FxControls.h), numbered as page 1's CCs
 // (kParamCC, kCompCC). No CCs are left for page 2
 static const uint8_t kNrpnMsbCC = 99, kNrpnLsbCC = 98, kDataMsbCC = 6, kDataLsbCC = 38;
+static const uint8_t kRpnMsbCC = 101, kRpnLsbCC = 100;
 static const uint8_t kPage2Bank = 1;
 } // namespace midimap
 
@@ -286,15 +287,11 @@ private:
             // Start and Stop from the clock source's input only, from both in Auto and internal
             if (!transport_ || !FromSource(clock_->GetSource(), usb))
                 return;
-            int t = 0;
-            if (e.srt_type == Start || e.srt_type == Continue)
-                t = 1;
-            else if (e.srt_type == Stop)
-                t = -1;
+            const uint8_t t = TransportByte(e);
             if (t)
             {
-                transport_cmd_ = t;
-                Log(e.srt_type == Start ? 0xFA : e.srt_type == Continue ? 0xFB : 0xFC, 0, 0, usb);
+                transport_cmd_ = t == 0xFC ? -1 : 1;
+                Log(t, 0, 0, usb);
             }
             return;
         }
@@ -345,7 +342,9 @@ private:
             // relative, two's complement: 1-63 up, 65-127 down
             if (v == 0 || v == 64)
                 return false;
-            turns_[cc - kTurnCC] += v < 64 ? v : static_cast<int>(v) - 128;
+            // taken one a block: a DAW's fast turns would pile up and run on for seconds
+            const int t = turns_[cc - kTurnCC] + (v < 64 ? v : static_cast<int>(v) - 128);
+            turns_[cc - kTurnCC] = t > kMaxTurns ? kMaxTurns : (t < -kMaxTurns ? -kMaxTurns : t);
             return true;
         }
         if (cc == kAllSoundOffCC || cc == kAllNotesOffCC)
@@ -357,13 +356,19 @@ private:
         if (cc == kNrpnMsbCC)
         {
             nrpn_msb_ = v;
+            data_msb_ = 0; // a new parameter's value starts afresh
             return true;
         }
         if (cc == kNrpnLsbCC)
         {
             nrpn_lsb_ = v;
+            data_msb_ = 0;
             return true;
         }
+        // an RPN chosen (a DAW's pitch-bend range): CC 6 and 38 are its, no NRPN's. CC 100
+        // and 101 are the slicer's knobs 3 and 4 too, so they go on to Absolute
+        if (cc == kRpnMsbCC || cc == kRpnLsbCC)
+            nrpn_msb_ = 0xFF;
         if (cc == kDataMsbCC || cc == kDataLsbCC)
         {
             // bank 0: an absolute controller; bank 1: page 2 of an effect's or the
@@ -501,7 +506,8 @@ private:
             query_pending_ = true;
             return;
         }
-        log_->Add(EventLog::SYSEX, cmd, static_cast<int16_t>((arg[0] << 7) | arg[1]));
+        // the switch has one byte: what's after it is a longer SysEx's before it
+        log_->Add(EventLog::SYSEX, cmd, static_cast<int16_t>((arg[0] << 7) | (n > 1 ? arg[1] : 0)));
     }
 
     void Log(uint8_t status, uint8_t d0, uint8_t d1, bool usb)
@@ -528,6 +534,7 @@ private:
 
     volatile uint64_t keys_ = 0;       // notes'
     volatile uint64_t panel_keys_ = 0; // SysEx's
+    static const int kMaxTurns = 64; // detents waiting, at most: 32 ms of them
     volatile int turns_[midimap::kNumKnobs] = {};       // CCs'
     volatile int panel_turns_[midimap::kNumKnobs] = {}; // SysEx's
     volatile uint8_t switch_ = 0;

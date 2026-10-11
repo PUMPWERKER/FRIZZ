@@ -239,15 +239,8 @@ uint8_t DMA_BUFFER_MEM_SECTION mp_dma_buff[6];
         /** Before sleeping on a legacy cable with a low battery: all LEDs off */
         void LedsOff()
         {
-            for(size_t i = 0; i < kNumPthLeds; i++)
-            {
-                SetPthLed(i, 0, 0, 0);
-            }
-
-            for(size_t i = 0; i < kNumSmtLeds; i++)
-            {
-                SetSmtLed(i, 0, 0, 0);
-            }
+            PthLedsOff();
+            SmtLedsOff();
 
             // ========   send the data   =========
             fill_led_data();
@@ -295,7 +288,7 @@ uint8_t DMA_BUFFER_MEM_SECTION mp_dma_buff[6];
                             return; // break out early if battery status changed
 
                         bool led_on = (now / 250) % 2 == 0;
-                        for(size_t i = 0; i < kNumPthLeds; ++i)
+                        for(size_t i = 0; i < kPthLeds; ++i)
                         {
                             if(led_on)
                                 SetPthLedFloat(i, 1.f, .95f, .05f);

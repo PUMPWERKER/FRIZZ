@@ -40,7 +40,7 @@ public:
     // FX chance at the top: each pooled effect sits out half the steps
     static constexpr float kMaxDrop = .5f;
 
-    void Init()
+    FX_ONCE void Init()
     {
         gate_.Init();
         rng_.Seed(0x6A09E667u);

@@ -258,6 +258,16 @@ SECTIONS
 		PROVIDE(__sdram_bss_end = _esdram_bss);
 	} > SDRAM
 
+	/* FRIZZ: SDRAM that is always written before it's read, which ZeroSDRAM (from _ssdram_bss
+	 * to _esdram_bss) doesn't clear: the loop and the event log (chompi_main.cpp, SDRAM_NOINIT) */
+	.sdram_noinit (NOLOAD) :
+	{
+		. = ALIGN(4);
+		*(.sdram_noinit)
+		*(.sdram_noinit*)
+		. = ALIGN(4);
+	} > SDRAM
+
 
     .qspiflash_text :
 	{

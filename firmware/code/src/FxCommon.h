@@ -12,6 +12,11 @@ using namespace daisysp;
 namespace chompi
 {
 
+// What runs once (at boot), not per sample: built for size. Code space is the tightest
+// memory (docs/CAPACITY.md), and -O3 unrolls the effects' buffer clears and settings into
+// kilobytes
+#define FX_ONCE __attribute__((noinline, optimize("Os")))
+
 // The FX knobs 1-4, and the parameters per effect: two pages of them, page 1's on parameters
 // 0-3, page 2's on 4-7 (FxControls.h)
 static const size_t kNumFxKnobs = 4;
@@ -87,7 +92,7 @@ public:
         pressed_ = false;
     }
 
-    /** From the UI. Returns true on a press (off to on) */
+    /** The key, from FxChain::Block. Returns true on a press (off to on) */
     bool SetOn(bool on)
     {
         const bool press = on && !on_;
@@ -133,8 +138,8 @@ public:
 
 private:
     float value_, target_;
-    volatile bool on_;
-    volatile bool pressed_;
+    bool on_; // SetOn runs in the audio callback, as everything else here
+    bool pressed_;
 };
 
 /** What every punch-in effect has: a key and kNumFxParams parameters, each 0..1. Process is
@@ -307,6 +312,25 @@ struct PressEnvelope
         else
             value *= decay_coeff;
         return value;
+    }
+    /** n samples of Process at once, for an effect that slept through them */
+    void Skip(uint32_t n, float attack_inc, float decay_coeff)
+    {
+        if (attacking)
+        {
+            // the samples the attack still needs to reach 1 (its steps add up a little
+            // short or over, so a hair under a whole number counts as it)
+            const float k = ceilf((1.f - value) / attack_inc - 1e-3f);
+            if (static_cast<float>(n) < k)
+            {
+                value += static_cast<float>(n) * attack_inc;
+                return;
+            }
+            n -= static_cast<uint32_t>(k);
+            value = 1.f;
+            attacking = false;
+        }
+        value *= powf(decay_coeff, static_cast<float>(n));
     }
 };
 

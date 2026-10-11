@@ -102,6 +102,8 @@ what FRIZZ does.
   and the VOLUME knob pressed for 2 seconds. SHIFT + press the transport knob on the play page
   does nothing now, so a report can't be written by accident while playing. See MANUAL.md,
   "Bug reports".
+- **FRIZZ starts up a quarter of a second faster:** it no longer clears the loop's 32 MB of
+  memory at power-on, which a loop never plays before it has recorded it.
 
 ### Fixed
 
@@ -109,6 +111,44 @@ what FRIZZ does.
   300 BPM) and between two whole BPM (say 120.4), it used to flip between neighbouring
   BPM many times a second, moving the delay time with it. It's now measured over the last
   few seconds; a jump in tempo is still followed at once.
+- **A loop runs at exactly its speed again after the speed has been changed:** after a
+  glide (back to 1× or to any other step) it used to stay a hair beside it, about 0.06 %,
+  so a loop recorded to a MIDI clock drifted away from it by about half a millisecond a
+  second, and the effects' tempo and MIDI out, which follow the loop, with it.
+- **A scene file FRIZZ can't read is kept as `frizz_scenes.bak`** also when a save cut
+  short by a power cut sits next to it: the boot used to finish that save by deleting the
+  unreadable file.
+- **A CHOMPI tap no longer ends a morph that MIDI's crossfader (CC 118) holds.** It used to
+  freeze it where it was, so CC 118 had no effect after, or, with CC 118 at 0, take it back
+  to the scene it started from. Now only your own crossfader (the transport knob with SHIFT
+  held) ends where you let go of SHIFT; CC 118's stays CC 118's.
+- **VOLUME held through the boot animation** no longer switches VOLUME's page when it's let
+  go on the play page.
+- **A scene sent over SysEx into the active slot** marks it as edited (its key pulses), as
+  COPY onto it does, since what plays is no longer what the slot holds.
+- **A DAW's RPN no longer moves an effect's knob:** after an NRPN, the pitch-bend range a
+  DAW sets (RPN 0, CC 101/100, then CC 6) went to the parameter the last NRPN chose. Now
+  CC 101/100 end the NRPN, and CC 6/38 after them do nothing. A new NRPN also starts its
+  value afresh, so a CC 38 alone sets just its fine part.
+- **Knobs turned by relative CCs (14-19) stop when the CCs stop:** a DAW's fast turns used
+  to pile up and keep the knob turning for seconds after.
+- **MIDI out at double tempo keeps every tick** of a clock whose ticks come in bunches (a DAW
+  over USB sending two at once): one in four went missing, so the gear behind fell behind.
+- **MIDI out no longer sends a stale Start after power-on:** a Start that came while FRIZZ
+  was starting up went out once it was up, seconds late. A clock running then no longer
+  sends a few ticks at once either.
+- **Band on the delay, reverb and resonator after a pause:** with page 2's Band turned, an
+  effect switched on again could start with a short thump from what the Band filter held
+  when it last went off, which the delay then repeated. The filter now starts afresh.
+- **An effect's key LED when it comes on again** no longer flashes up for a moment at the
+  level it showed when the effect last went off.
+- **The crossfader over MIDI after a morph got another bar:** when CC 62 asked again for
+  the scene a morph was already gliding to (another bar) and CC 118 then took it, the
+  fader's far end was where the morph had got to at that moment, not the scene you came
+  from, so arriving there jumped. It's now always where the morph started.
+- **A long-held tape stop with Depth below the top:** held for more than about 12 s (Depth
+  at 0.8) to 22 s (at 0), the slowed tape suddenly played sound from 11 s before at full
+  speed. It now jumps back to the live sound in a short crossfade and plays on slowed.
 - **A MIDI clock that sends its ticks two at a time** (some DAWs over USB) no longer locks
   FRIZZ to half its tempo when it starts while FRIZZ is already running (#92).
 

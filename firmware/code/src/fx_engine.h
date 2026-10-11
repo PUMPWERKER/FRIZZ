@@ -57,22 +57,16 @@ struct StaticAssertion<true>
 {
 }; // StaticAssertion<true>
 
-template <int i>
-struct StaticAssertionTest
-{
-}; // StaticAssertionTest<int>
-
 } // namespace impl
 
 namespace daisysp
 {
 #define TAIL , -1
 
+// FRIZZ: only the reverb's 16-bit format; Plaits' 12 and 32 bit are gone
 enum Format
 {
-    FORMAT_12_BIT,
-    FORMAT_16_BIT,
-    FORMAT_32_BIT
+    FORMAT_16_BIT
 };
 
 enum LFOIndex
@@ -103,23 +97,6 @@ struct DataType
 };
 
 template <>
-struct DataType<FORMAT_12_BIT>
-{
-    typedef uint16_t T;
-
-    static inline float Decompress(T value)
-    {
-        return static_cast<float>(static_cast<int16_t>(value)) * 0.00024414f; // 1 / 4096
-    }
-
-    static inline T Compress(float value)
-    {
-        return static_cast<uint16_t>(
-            Clip16(static_cast<int32_t>(value * 4096.0f)));
-    }
-};
-
-template <>
 struct DataType<FORMAT_16_BIT>
 {
     typedef uint16_t T;
@@ -136,20 +113,6 @@ struct DataType<FORMAT_16_BIT>
     }
 };
 
-template <>
-struct DataType<FORMAT_32_BIT>
-{
-    typedef float T;
-
-    static inline float Decompress(T value)
-    {
-        return value;
-        ;
-    }
-
-    static inline T Compress(float value) { return value; }
-};
-
 /**  
        @brief Base Class for building reverbs
 	   @author Electrosmith
@@ -158,7 +121,7 @@ struct DataType<FORMAT_32_BIT>
 	   to an independent module. \n
 	   Original code written by Emilie Gillet in 2014. \n
 */
-template <size_t size, Format format = FORMAT_12_BIT>
+template <size_t size, Format format>
 class FxEngine
 {
   public:
@@ -232,8 +195,6 @@ class FxEngine
             accumulator_ += value * scale;
         }
 
-        inline void Read(float value) { accumulator_ += value; }
-
         inline void Write(float& value) { value = accumulator_; }
 
         inline void Write(float& value, float scale)
@@ -305,30 +266,6 @@ class FxEngine
         {
             state += coefficient * (accumulator_ - state);
             accumulator_ = state;
-        }
-
-        inline void Hp(float& state, float coefficient)
-        {
-            state += coefficient * (accumulator_ - state);
-            accumulator_ -= state;
-        }
-
-        template <typename D>
-        inline void Interpolate(D& d, float offset, float scale)
-        {
-            STATIC_ASSERT(D::base + D::length <= size, delay_memory_full);
-
-            int32_t offset_integral = static_cast<int32_t>(offset);
-            float   offset_fractional
-                = offset - static_cast<float>(offset_integral);
-
-            float a = DataType<format>::Decompress(
-                buffer_[(write_ptr_ + offset_integral + D::base) & MASK]);
-            float b = DataType<format>::Decompress(
-                buffer_[(write_ptr_ + offset_integral + D::base + 1) & MASK]);
-            float x        = a + (b - a) * offset_fractional;
-            previous_read_ = x;
-            accumulator_ += x * scale;
         }
 
         template <typename D>

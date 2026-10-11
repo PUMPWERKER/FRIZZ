@@ -29,8 +29,9 @@ its inputs, the TRS jack gets its MIDI out. Found by name, or set them:
     FRIZZ_TRS_MIDI      the raw MIDI node for the jack        (default: the first sound
                         card's with MIDI that isn't the CHOMPI, e.g. /dev/snd/midiC1D0)
 
-Before measuring: is anyone else testing on the CHOMPI? (CLAUDE.md). FRIZZ is started first
-if the CHOMPI is elsewhere (chompi.py). Linux (ALSA raw MIDI, PipeWire's pw-play and
+Before measuring: is anyone else testing on the CHOMPI? (CLAUDE.md). It measures the FRIZZ that
+runs, saying which slot, or the one --slot names, and starts FRIZZ first if the CHOMPI is
+elsewhere, as remote.py does (chompi.py). Linux (ALSA raw MIDI, PipeWire's pw-play and
 pw-record), Python 3 with numpy: `python3 -m venv ~/.venvs/frizz && ~/.venvs/frizz/bin/pip
 install numpy`, then run this with that python.
 """
@@ -85,41 +86,34 @@ def line_source():
 
 
 def trs_midi():
+    """The first sound card's raw MIDI node that isn't the CHOMPI's: FRIZZ's card isn't called
+    CHOMPI (its id is FrizZ, or Default), so the CHOMPI's is skipped as the tools find it"""
     if os.environ.get("FRIZZ_TRS_MIDI"):
         return os.environ["FRIZZ_TRS_MIDI"]
+    own = re.match(r".*/midiC(\d+)D", chompi.find_device() or "")
     cards = open("/proc/asound/cards").read()
     for m in re.finditer(r"^\s*(\d+) \[([^\]]*)\]", cards, re.M):
         node = "/dev/snd/midiC%sD0" % m.group(1)
-        if "CHOMPI" not in m.group(2) and os.path.exists(node):
+        if own and m.group(1) == own.group(1) or "CHOMPI" in m.group(2):
+            continue
+        if os.path.exists(node):
             return node
     sys.exit("no MIDI out for the TRS jack (FRIZZ_TRS_MIDI)")
 
 
-def frizz():
-    return remote.Frizz(chompi.to_frizz())
-
-
-def key(f, name, down):
-    f.send(remote.KEY, [remote.SW_NAMES.index(name), 1 if down else 0])
+def frizz(a):
+    return remote.Frizz(chompi.to_frizz(a.slot))
 
 
 def latch(f, name):
     """An FX key held, SHIFT tapped: latched (MANUAL.md)"""
-    key(f, name, True)
+    f.key(name, True)
     time.sleep(.08)
-    key(f, "KEY_26", True)
+    f.key("KEY_26", True)
     time.sleep(.05)
-    key(f, "KEY_26", False)
+    f.key("KEY_26", False)
     time.sleep(.05)
-    key(f, name, False)
-
-
-def state(f):
-    return f.ask(remote.STATE)
-
-
-def tempo(d):
-    return remote.get14(d[21], d[22]) / 10
+    f.key(name, False)
 
 
 # ======== a clock paced by this computer ========
@@ -263,13 +257,13 @@ def record(seconds, path=None, times=None):
 # ======== the commands ========
 
 def cmd_clock(a):
-    f = frizz()
+    f = frizz(a)
     clock = Clock(lambda b: f.raw(b), a.bpm, a.mode)
     time.sleep(3)  # locked and settled
     vals = []
     end = time.time() + a.seconds
     while time.time() < end:
-        vals.append(tempo(state(f)))
+        vals.append(remote.tempo(f.state()))
         time.sleep(.05)
     clock.close()
     changes = sum(1 for x, y in zip(vals, vals[1:]) if x != y)
@@ -317,8 +311,8 @@ def loop_length(y, times, bpm, bars):
 
 
 def cmd_drift(a):
-    f = frizz()
-    if state(f)[0] != 0:
+    f = frizz(a)
+    if f.state()[0] != 0:
         sys.exit("the looper isn't empty: erase it, or restart FRIZZ (flash.py --run 10)")
     midi = os.open(trs_midi(), os.O_WRONLY)
     clock = Clock(lambda b: os.write(midi, b), a.bpm, a.mode)
@@ -327,17 +321,17 @@ def cmd_drift(a):
     p = play(wav)
     time.sleep(4)
     # PLAY held, LOOP: a quantized recording; LOOP again half a bar before its last bar ends
-    key(f, "KEY_27", True); time.sleep(.08); key(f, "KEY_28", True); time.sleep(.06)
-    key(f, "KEY_28", False); time.sleep(.02); key(f, "KEY_27", False)
+    f.key("KEY_27", True); time.sleep(.08); f.key("KEY_28", True); time.sleep(.06)
+    f.key("KEY_28", False); time.sleep(.02); f.key("KEY_27", False)
     start, bar = time.time(), 4 * 60. / a.bpm
-    while state(f)[0] != 1 and time.time() - start < 2:
+    while f.state()[0] != 1 and time.time() - start < 2:
         time.sleep(.01)
     time.sleep(max(0., (a.bars - .5) * bar - (time.time() - start)))
-    key(f, "KEY_28", True); time.sleep(.05); key(f, "KEY_28", False)
+    f.key("KEY_28", True); time.sleep(.05); f.key("KEY_28", False)
     t1 = time.time()
-    while state(f)[0] != 2 and time.time() - t1 < bar + 2:
+    while f.state()[0] != 2 and time.time() - t1 < bar + 2:
         time.sleep(.02)
-    if state(f)[0] != 2:
+    if f.state()[0] != 2:
         sys.exit("the loop didn't close: is the clock reaching the TRS jack?")
     time.sleep(.3)
     p.terminate()
@@ -353,7 +347,7 @@ def cmd_drift(a):
 
 
 def cmd_fx(a):
-    f = frizz()
+    f = frizz(a)
     material = a.material
     if not material:
         material = a.out + ".material.wav"
@@ -405,17 +399,21 @@ def cmd_material(a):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("clock")
+    on_frizz = argparse.ArgumentParser(add_help=False)
+    on_frizz.add_argument("--slot", type=int, choices=chompi.FRIZZ_SLOTS,
+                          help="the FRIZZ slot to measure (10, 12), started unless it runs; "
+                          "default the one running (remote.py)")
+    p = sub.add_parser("clock", parents=[on_frizz])
     p.add_argument("--mode", choices=["single", "pairs", "catchup", "late"], default="single")
     p.add_argument("--bpm", type=float, default=120.)
     p.add_argument("--seconds", type=float, default=20.)
-    p = sub.add_parser("drift")
+    p = sub.add_parser("drift", parents=[on_frizz])
     p.add_argument("--bpm", type=float, default=120.)
     p.add_argument("--bars", type=int, default=1)
     p.add_argument("--mode", choices=["single", "pairs", "catchup", "late"], default="single")
     p.add_argument("--seconds", type=float, default=180.)
     p.add_argument("--out", help="keep the recording as OUT.f32 and the material as OUT.material.wav")
-    p = sub.add_parser("fx")
+    p = sub.add_parser("fx", parents=[on_frizz])
     p.add_argument("key", choices=["KEY_%d" % i for i in range(1, 14)])
     p.add_argument("--level", type=int, help="CC of the effect's level knob, set to 100")
     p.add_argument("--seconds", type=float, default=30.)

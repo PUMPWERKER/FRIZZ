@@ -176,13 +176,16 @@ holds it for the whole sequence, so nothing slips in between:
 ```bash
 cd firmware && tools/builds.py && tools/chompi.py hold sh -c '
   ./flash.py --bench --no-build && sleep 150 && ./card.py --then none get &&
-  ./flash.py --test --no-build && ./remote.py play twin/scenarios/fx-each.txt --cpu
+  ./flash.py --test --no-build && {
+    ./remote.py play twin/scenarios/fx-each.txt --cpu; echo "play: $?"; }
   ./flash.py --run 10' && tools/builds.py cpu
 ```
 
 (it builds before taking the CHOMPI; the bench runs ~100 s by itself; `card.py get` fetches
 its `cpu.txt` into `card/`, and `builds.py cpu` files that as `bin/cpu.txt`), and leaves FRIZZ
-on key 10 running at the end. Stage 2 plays no scenario that uses the settings
+on key 10 running at the end. Each `play` (several go in the `{ }`, the `--test` build's)
+ends in `;`, not `&&`: a failed `expect led` (exit 1) is judged from its output, and stops
+neither the next scenario nor `--run 10`. Stage 2 plays no scenario that uses the settings
 page (`settings.txt`): what it changes is saved to the card key 10 shares, so `remote.py play`
 refuses it without `--force` (#58). The user takes the CHOMPI for playing with
 `tools/chompi.py hold` (until Ctrl-C), or by telling a session, which then runs it for them.
@@ -215,10 +218,10 @@ checks need only `g++` and `python3`; the browser twin needs Emscripten in `~/op
 
 ## Tests: the host checks and the virtual CHOMPI
 
-`firmware/test/all.sh` runs everything (a few minutes): `check.sh` (the engine against HEAD;
+`firmware/test/all.sh` runs everything, side by side (about 75 s): `check.sh` (the engine against HEAD;
 a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
 `pitch`, `tape`, `crusher`, `freezer`, `scenes`, `store`, `clicks`, `delay`, `controls`, `keys`, `looper`, `tempo`,
-`comp`, `level`, `sleep`, `inserts`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`. A new check is just a new
+`comp`, `level`, `sleep`, `inserts`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`. A new check is just a new
 `NAME.cpp`; [`firmware/test/README.md`](firmware/test/README.md) says what each covers.
 `check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail.
 
@@ -267,11 +270,12 @@ the jack from the audio callback without waiting, over USB from `MainLoop()`.
 
 The play page is `NormalPage.h`; the engine is `passthroughEngine.h` → `Looper.h` +
 `FxMorph.h` → `FxChain.h` → `MasterComp.h` → output gain → `limiter.h`. Large buffers live in
-SDRAM (`DSY_SDRAM_BSS`), cleared by `ZeroSDRAM()` at boot because startup code doesn't. Card
+SDRAM (`DSY_SDRAM_BSS`), cleared by `ZeroSDRAM()` at boot because startup code doesn't; the
+loop and the event log (`SDRAM_NOINIT`) aren't, as they're always written before read. Card
 buffers live in internal RAM, 32-byte aligned, written in whole sectors (`EventLog::Flush`).
 
 **Memory**: the firmware runs from SRAM, loaded by CHOMPI's bootloader (`APP_TYPE=BOOT_SRAM`).
-Code has about 60 KB left (`SRAM_EXEC`), the bench build ~43 KB, and its data only ~7 KB; `docs/CAPACITY.md` lists every
+Code has about 60 KB left (`SRAM_EXEC`), the bench build ~44 KB, and its data ~14 KB; `docs/CAPACITY.md` lists every
 region and the ways to make room. Never use `make program-boot`, and never swap in upstream
 libDaisy: the vendored copy is patched (`THIRD_PARTY.md`).
 `__attribute__((optimize("-O0")))` and similar per-function overrides (`ProcessAllControls`)

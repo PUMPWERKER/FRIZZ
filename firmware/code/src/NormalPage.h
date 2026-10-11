@@ -28,6 +28,7 @@
  *  SHIFT + PLAY stops a morph where it is; without one, PLAY works as ever. The transport knob
  *  turned while SHIFT still holds a morph is its crossfader (#66, SceneControls::FaderTurned):
  *  the glide in the hand, until SHIFT is let go (ReleaseMorph); the transport LEDs show it.
+ *  A morph on MIDI's crossfader (CC 118) stays MIDI's: letting go of SHIFT doesn't end it.
  *  The card is written from MainLoop (SceneStore::Process), never here.
  *
  *  MIDI (MidiControl.h): notes and FRIZZ's SysEx keys and detents come as the hand's do (ui.h);
@@ -41,6 +42,7 @@
 #include "FxSlots.h"
 #include "hardware.h"
 #include "LedSignal.h"
+#include "PanelLeds.h"
 #include "PlayKeys.h"
 #include "SceneControls.h"
 #include "SettingsPage.h"
@@ -51,6 +53,11 @@
 #include "LedColors.h"
 #include "passthroughEngine.h"
 #include "temp_led_stuff.h"
+
+// the play page's logic, a key or a frame now and then and never per sample: built for size,
+// as FRIZZ's code space is tight (SRAM_EXEC, docs/CAPACITY.md)
+#pragma GCC push_options
+#pragma GCC optimize("Os")
 
 namespace chompi
 {
@@ -78,12 +85,6 @@ namespace chompi
     static const uint16_t kTransportEncoder = 4;
     static const uint16_t kVolumeEncoder = 5;
 
-    static const uint8_t kVolumeLed = 9;
-    static const uint8_t kChompiKeyLed = 0;
-    static const uint8_t kTransportLedRev = 5; // lit when playing in reverse
-    static const uint8_t kTransportLedFwd = 6; // lit when playing forward
-    static const uint8_t kPlayLed = 7;
-    static const uint8_t kLoopLed = 8;
     static const float kPausedDim = .3f;
     // waiting for something: a quantized record closing, an erase at the loop's end, a picked
     // scene slot, the CHOMPI key armed to confirm. Slower than a refusal's 3 blinks (LedSignal)
@@ -106,9 +107,7 @@ namespace chompi
         Hardware::SwId::ENC_2_SW,
         Hardware::SwId::ENC_3_SW,
     };
-    // FX key LEDs. The SMT LEDs have 64 steps (temp_led_stuff.h), and below about 8 of them
-    // the colours run together, so off is as dim as the keys go while keeping their colour.
-    static const float kFxOffLevel = .15f;    // off: every FX key dimly in its colour
+    // FX key LEDs: off, every FX key dimly in its colour (kFxOffLevel, PanelLeds.h)
     static const float kFxMeterFloorDb = -30.f; // the meters' range, up to 0 dBFS
     static const float kFxWhiteMax = .8f;     // on: how far the loudest audio pushes to white
     static const float kCompMeterDb = 12.f;   // the compressor key's full brightness, dB reduced
@@ -167,17 +166,13 @@ namespace chompi
             engine_ = engine;
             scenes_ = scenes;
 
-            out_gain_ = kDefaultOutGain;
-            in_gain_ = kDefaultInGain;
-            mix_ = kDefaultMix;
-            hp_cue_ = 0.f; // the headphones mirror the master at power-on
             page_ = kOutGainPage;
 
             // the engine only hears about a value when it changes, so push them all now
-            engine_->SetMainGain(out_gain_);
-            engine_->SetInputGain(in_gain_);
-            engine_->SetMix(mix_);
-            engine_->SetHeadphoneCue(hp_cue_);
+            SetOutGain(kDefaultOutGain);
+            SetInGain(kDefaultInGain);
+            SetMix(kDefaultMix);
+            SetHpCue(0.f); // the headphones mirror the master at power-on
 
             fx_.Init(engine_);
             // the compressor's knobs as they were left, from the card
@@ -190,8 +185,7 @@ namespace chompi
             keys_.Init(this);
 
             ResetSmtLeds();
-            for (int i = 0; i < kNumPthLeds; i++)
-                SetPthLed(i, 0, 0, 0);
+            PthLedsOff();
         }
 
         /** Before a restart: master settings waiting out their kMasterSaveDelayMs go to the
@@ -205,14 +199,15 @@ namespace chompi
             return !master_unsaved_;
         }
 
+        // called from the audio callback (ui.h's GenerateEvents, and DoEvents while it boots):
+        // built as the callback is, so it inlines them rather than calling -Os copies
+#pragma GCC pop_options
         /** From ui.h, as the mode switch goes: up shows the settings page */
         inline void ShowSettings(bool show) { show_settings_ = show; }
 
-        void ResetSmtLeds()
-        {
-            for (int i = 0; i < kNumSmtLeds; i++)
-                SetSmtLed(i, 0, 0, 0);
-        }
+        inline void ResetSmtLeds() { SmtLedsOff(); }
+#pragma GCC push_options
+#pragma GCC optimize("Os")
 
         void Draw(const daisy::UiCanvasDescriptor &canvasDescriptor) override
         {
@@ -221,20 +216,20 @@ namespace chompi
 
             // the boot / rainbow animations leave the other knob LEDs lit, and nothing
             // clears the canvas, so blank them all every frame
-            for (int i = 0; i < kNumPthLeds; i++)
-                SetPthLed(i, 0, 0, 0);
+            PthLedsOff();
 
             // the keys the play page doesn't draw would keep the settings page's colours; a
             // scene mode (SAVE, COPY, DELETE) is left on the way up, so CHOMPI can't confirm
-            // it later
-            if (show_settings_ != drew_settings_)
+            // it later. The switch is read once: the audio callback may flip it meanwhile
+            const bool settings = show_settings_;
+            if (settings != drew_settings_)
             {
-                drew_settings_ = show_settings_;
+                drew_settings_ = settings;
                 ResetSmtLeds();
-                if (show_settings_)
+                if (settings)
                     scene_ctl_.Cancel();
             }
-            if (show_settings_)
+            if (settings)
             {
                 // SHIFT + VOLUME held there: a bug report, its blink over the transport LEDs
                 if (settings_.BugReportHeld(now))
@@ -297,10 +292,14 @@ namespace chompi
             switch (buttonID)
             {
             case static_cast<uint16_t>(Hardware::SwId::KEY_26):
+            {
+                // a release whose press the boot page had lets go of nothing
+                const bool held = Shift();
                 keys_.Chompi(rising);
-                if (!rising)
+                if (!rising && held)
                     ReleaseMorph();
                 return true;
+            }
             case static_cast<uint16_t>(Hardware::SwId::KEY_27):
                 keys_.Play(rising);
                 return true;
@@ -341,14 +340,20 @@ namespace chompi
                 if (rising)
                 {
                     keys_.Used();
+                    vol_down_ = true;
                     vol_shift_ = Shift();
                     if (vol_shift_)
                         SetMix(LoopExists() ? 1.f : 0.f);
                 }
-                else if (!vol_shift_)
+                else
                 {
-                    page_ = (page_ + 1) % kNumPages;
-                    page_flash_.Start(System::GetNow(), (page_ + 1) * 2 * kSignalBlinkMs);
+                    // a release whose press the boot page had picks no page
+                    if (vol_down_ && !vol_shift_)
+                    {
+                        page_ = (page_ + 1) % kNumPages;
+                        page_flash_.Start(System::GetNow(), (page_ + 1) * 2 * kSignalBlinkMs);
+                    }
+                    vol_down_ = false;
                 }
                 return true;
             }
@@ -476,22 +481,13 @@ namespace chompi
             else if (cc == kChaosLatchCC)
                 fx_.SetLatch(FX_CHAOS, raw >= 64);
             else if (cc == kOutGainCC)
-            {
-                out_gain_ = value;
-                engine_->SetMainGain(out_gain_);
-            }
+                SetOutGain(value);
             else if (cc == kInGainCC)
-            {
-                in_gain_ = value;
-                engine_->SetInputGain(in_gain_);
-            }
+                SetInGain(value);
             else if (cc == kMixCC)
                 SetMix(value);
             else if (cc == kHpCueCC)
-            {
-                hp_cue_ = value;
-                engine_->SetHeadphoneCue(hp_cue_);
-            }
+                SetHpCue(value);
             else if (cc == kMonoCC && settings_.SetMono(raw >= 64))
                 MasterChanged(System::GetNow());
             else if (cc == kMorphBarsCC)
@@ -511,17 +507,8 @@ namespace chompi
          *  unless the hand holds it, whose release then lets it glide */
         void RemoteMorph(size_t slot)
         {
-            SceneControls<PassthroughEngine>::Slot result;
-            {
-                ScopedIrqBlocker irq;
-                result = scene_ctl_.Press(slot, true);
-                if (result == SceneControls<PassthroughEngine>::Slot::MORPH)
-                    for (uint8_t bar = 1; bar < morph_bars_; bar++)
-                        scene_ctl_.MorphMore();
-            }
-            if (result == SceneControls<PassthroughEngine>::Slot::REFUSED)
-                SceneRefusedBlink(slot);
-            else if (!Shift())
+            const auto result = ScenePressed(slot, true, morph_bars_);
+            if (result != SceneControls<PassthroughEngine>::Slot::REFUSED && !Shift())
                 ReleaseMorph();
         }
 
@@ -667,10 +654,10 @@ namespace chompi
                 put_scene_.latched = static_cast<uint16_t>((v[1] << 7) | v[2]);
                 scenes_->scenes[q.a] = put_scene_;
                 put_slot_ = kNoScene;
-                scenes_->RequestSave();
-                scene_flash_ = q.a;
-                scene_flash_waiting_ = true;
-                scene_flash_signal_.Stop();
+                // the sound stays, so it no longer matches the active scene (as COPY onto it)
+                if (q.a == scene_ctl_.Active())
+                    fx_.MarkEdited();
+                FlashWhenSaved(q.a);
                 return true;
             }
             if (q.len < kFxPerPart * kNumFxKnobs * 2)
@@ -693,13 +680,15 @@ namespace chompi
             ScopedIrqBlocker irq;
             return scene_ctl_.FreezeMorph();
         }
-        /** SHIFT let go: a morph started with it glides now (FxMorph::Release), or the
-         *  crossfader ends where it is (SceneControls::EndFade) */
+        /** SHIFT let go: a morph started with it glides now (FxMorph::Release), or the hand's
+         *  crossfader ends where it is (SceneControls::EndFade). One on MIDI's crossfader
+         *  (CC 118) stays MIDI's */
         void ReleaseMorph()
         {
             ScopedIrqBlocker irq;
-            if (!scene_ctl_.EndFade())
+            if (!(hand_fader_ && scene_ctl_.EndFade()))
                 engine_->ReleaseFxMorph();
+            hand_fader_ = false;
         }
         inline void Refused() { loop_refused_.Start(System::GetNow()); }
         inline uint32_t Now() const { return System::GetNow(); }
@@ -785,21 +774,11 @@ namespace chompi
             if (Shift())
                 SetMix(mix_ + detents * kMixStep);
             else if (page_ == kOutGainPage)
-            {
-                out_gain_ = fclamp(out_gain_ + inc, 0.f, 1.f);
-                engine_->SetMainGain(out_gain_);
-            }
+                SetOutGain(out_gain_ + inc);
             else if (page_ == kInGainPage)
-            {
-                in_gain_ = fclamp(in_gain_ + inc, 0.f, 1.f);
-                engine_->SetInputGain(in_gain_);
-            }
+                SetInGain(in_gain_ + inc);
             else
-            {
-                // left towards the dry input, right back to the master
-                hp_cue_ = fclamp(hp_cue_ - detents * kHpCueStep, 0.f, 1.f);
-                engine_->SetHeadphoneCue(hp_cue_);
-            }
+                SetHpCue(hp_cue_ - detents * kHpCueStep); // left towards the dry input
         }
 
         /** A tempo tap: with a loop, it refits the loop's beats; without one, it sets the
@@ -826,30 +805,61 @@ namespace chompi
             master_tries_ = 0;
         }
 
+        // VOLUME's pages and the mix, 0..1, to the engine
+        void SetOutGain(float gain)
+        {
+            out_gain_ = fclamp(gain, 0.f, 1.f);
+            engine_->SetMainGain(out_gain_);
+        }
+        void SetInGain(float gain)
+        {
+            in_gain_ = fclamp(gain, 0.f, 1.f);
+            engine_->SetInputGain(in_gain_);
+        }
+        void SetHpCue(float cue)
+        {
+            hp_cue_ = fclamp(cue, 0.f, 1.f);
+            engine_->SetHeadphoneCue(hp_cue_);
+        }
         void SetMix(float mix)
         {
             mix_ = fclamp(mix, 0.f, 1.f);
             engine_->SetMix(mix_);
         }
 
-        void ScenePressed(size_t slot, bool shift)
+        /** A scene key, the hand's or MIDI's: a new morph runs over bars bar lines. A refusal
+         *  blinks the slot */
+        SceneControls<PassthroughEngine>::Slot ScenePressed(size_t slot, bool shift,
+                                                            uint8_t bars = 1)
         {
             SceneControls<PassthroughEngine>::Slot result;
             {
                 // a recall within one audio block
                 ScopedIrqBlocker irq;
                 result = scene_ctl_.Press(slot, shift);
+                if (result == SceneControls<PassthroughEngine>::Slot::MORPH)
+                {
+                    hand_fader_ = false; // a new morph: no fader has it yet
+                    for (uint8_t bar = 1; bar < bars; bar++)
+                        scene_ctl_.MorphMore();
+                }
             }
             if (result == SceneControls<PassthroughEngine>::Slot::REFUSED)
                 SceneRefusedBlink(slot);
+            return result;
         }
 
         void ConfirmScene()
         {
             const int slot = scene_ctl_.Confirm();
-            if (slot == kNoScene)
-                return;
-            // the slot flashes once SceneStore::Process has written the card (Update)
+            if (slot != kNoScene)
+                FlashWhenSaved(slot);
+        }
+
+        /** A slot changed: to the card, and it flashes once SceneStore::Process has written
+         *  it (Update) */
+        void FlashWhenSaved(int slot)
+        {
             scenes_->RequestSave();
             scene_flash_ = slot;
             scene_flash_waiting_ = true;
@@ -1130,6 +1140,7 @@ namespace chompi
                 }
                 if (fader)
                 {
+                    hand_fader_ = true;
                     keys_.Used();
                     return;
                 }
@@ -1170,15 +1181,8 @@ namespace chompi
 
         inline bool Shift() const { return keys_.Shift(); }
 
-        // LED helpers: a colour at a level, and crossfades through two, three or four colours
-        static void SmtLed(uint8_t led, const float* color, float level)
-        {
-            SetSmtLedFloat(led, level * color[0], level * color[1], level * color[2]);
-        }
-        static void PthLed(uint8_t led, const float* color, float level)
-        {
-            SetPthLedFloat(led, level * color[0], level * color[1], level * color[2]);
-        }
+        // LED helpers (a colour at a level: PanelLeds.h): crossfades through two, three or
+        // four colours
         /** A short flash over what an LED shows: white, or dark where it's already close to
          *  white (a loud FX, the compressor working hard, LOOP near the loop's end), so it's
          *  always seen */
@@ -1273,8 +1277,13 @@ namespace chompi
         int scene_refused_ = kNoScene; // refused, pressed
         LedSignal scene_refused_signal_;
 
+        bool vol_down_ = false;     // VOLUME's press was seen here, not by the boot page
         bool vol_shift_ = false;    // VOLUME's press was SHIFT + press
+        bool hand_fader_ = false;   // the transport knob has had the crossfader since SHIFT
+                                    // went down (TransportTurned)
         LedSignal page_flash_;      // a page picked: its number in blinks
     };
 
 } // namespace chompi
+
+#pragma GCC pop_options

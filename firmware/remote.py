@@ -19,8 +19,10 @@
 
 `play` presses the keys and turns the knobs of a script over FRIZZ's SysEx, at the script's
 times, sends its `midi` and `clock` to the device, and checks its `expect led` lines against the
-LEDs the device shows; its `toggle 0|1` sets the mode switch (down, up) over SysEx, back to
-the real one when the script ends. What only the twin has (the card, the input, the battery, power-on) is
+LEDs the device shows, dimmed as the card's led_brightness (the settings page) has them: at
+100, 75 or 50 %, the one level that fits every line, said when it isn't 100 %; its
+`toggle 0|1` sets the mode switch (down, up) over SysEx, back to the real one when the script
+ends. What only the twin has (the card, the input, the battery, power-on) is
 skipped, and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
 and prints the worst, the way to try a scenario for crackles on FRIZZ.bin itself rather than on
 the bench's build. A bug report (/FRIZZ/bug-N.txt) plays too, from where the device is. From
@@ -33,8 +35,12 @@ or a settings SysEx. FRIZZ saves what the keys there change to /FRIZZ/frizz_mast
 later, on the card the FRIZZ on key 10 shares, with no .bak to go back to (#58). It reads where
 the device's switch stands before it decides; --force plays it anyway.
 
-FRIZZ is started first if the CHOMPI is elsewhere: at the launcher's picker, in its USB storage
-firmware, or in the bench (tools/chompi.py); --no-start leaves it be, as --device does.
+It plays on the FRIZZ that runs, and says which slot that is (10 FRIZZ, 12 FRIZZ-TEST), as
+the tools that started it noted (tools/chompi.py); --slot N plays on that one, started if it
+isn't the one running. FRIZZ is started first if the CHOMPI is elsewhere: at the launcher's
+picker, in its USB storage firmware, or in the bench, which answers as FRIZZ does but measures
+no load: the slot last started in this hold (tools/chompi.py hold), or FRIZZ's. --no-start
+leaves it be, as --device does.
 
 Linux only (ALSA's raw MIDI), Python 3 without packages, like flash.py.
 """
@@ -51,7 +57,7 @@ import chompi  # noqa: E402
 import midi_send  # noqa: E402
 
 KEY, TURN, SETTING, SWITCH = 0x11, 0x12, 0x13, 0x14
-STATE, PARAMS, LEDS, LOAD, SETTINGS = 0x20, 0x21, 0x22, 0x23, 0x24
+STATE, LEDS, LOAD, SETTINGS = 0x20, 0x22, 0x23, chompi.SETTINGS
 SOURCES = ["auto", "trs", "usb", "internal"]  # MidiClock.h's ClockSource, as SETTING 2 takes it
 OUTS = ["off", "trs", "all"]  # MidiClock.h's MidiOutPorts, as SETTING 3 takes it
 SCENE_GET, SCENE_PUT = 0x30, 0x31
@@ -73,8 +79,8 @@ FX_NAMES = ["freezer", "shifter", "folder", "crusher", "filter", "flanger", "res
 LOOPER = ["empty", "recording", "playing", "paused"]
 MODES = ["none", "save", "copy", "delete"]
 PAGES = ["output gain", "input gain", "headphone feed"]
-# the LED parts kCmdLeds answers: (panel?, first, count)
-LED_PARTS = [(True, 0, 10), (False, 0, 9), (False, 9, 8), (False, 17, 8)]
+# the LED parts kCmdLeds answers: (panel?, count)
+LED_PARTS = [(True, 10), (False, 9), (False, 8), (False, 8)]
 
 
 def get14(hi, lo):
@@ -94,14 +100,16 @@ def to14(k):
 
 class Frizz:
     def __init__(self, device=None):
-        device = device or midi_send.find_device()
+        device = device or chompi.find_device()
         if not device:
             sys.exit("no CHOMPI on USB MIDI")
+        chompi.claim()
         self.link = midi_send.Link(device)
         # one write at a time, so messages don't interleave; one query at a time, whose wait
         # for the answer doesn't hold up the clock's ticks or a script's keys
         self.write_lock = threading.Lock()
         self.query_lock = threading.Lock()
+        self.held = set()
 
     def send(self, cmd, payload=b""):
         self.raw(midi_send.HEADER + bytes([cmd]) + bytes(payload) + b"\xF7")
@@ -110,18 +118,36 @@ class Frizz:
         with self.write_lock:
             os.write(self.link.fd, bytes(data))
 
-    def ask(self, cmd, payload=b""):
+    def ask(self, cmd, payload=b"", required=True):
+        """The answer's payload; None if there's none and it isn't required"""
         with self.query_lock:
             self.send(cmd, payload)
             reply = self.link.recv(cmd, 0.5)
-        if reply is None:
+        if reply is None and required:
             sys.exit("no answer to 0x%02X: is FRIZZ running, a build newer than v0.10?" % cmd)
         return reply
+
+    def key(self, name, down):
+        """A key (SW_NAMES) pressed or let go over SysEx; the ones held are kept, for release()"""
+        if name not in SW_NAMES:
+            print("unknown key %s" % name, file=sys.stderr)
+            return
+        self.send(KEY, [SW_NAMES.index(name), 1 if down else 0])
+        (self.held.add if down else self.held.discard)(name)
+
+    def release(self):
+        """Lets go of every key held"""
+        for name in sorted(self.held):
+            self.key(name, False)
+
+    def state(self):
+        """STATE's answer: what the play page shows (show_state)"""
+        return self.ask(STATE)
 
     def leds(self):
         """[(r, g, b)] * 10 for the panel, * 25 for the keys, as the LEDs get them"""
         pth, smt = [], []
-        for part, (panel, _, count) in enumerate(LED_PARTS):
+        for part, (panel, count) in enumerate(LED_PARTS):
             d = self.ask(LEDS, [part])[1:]
             rgb = [tuple(d[3 * i:3 * i + 3]) for i in range(count)]
             (pth if panel else smt).extend(rgb)
@@ -135,8 +161,43 @@ def led_line(pth, smt):
     return "pth " + hexes(pth, 11) + " | smt " + hexes(smt, 4)
 
 
+# the LEDs' brightness the settings page sets (led_brightness on the card), in quarters of
+# full as LedDim takes them (code/src/temp_led_stuff.h)
+LED_QUARTERS = (4, 3, 2)
+
+
+def led_dim(v, div, quarters):
+    """A colour byte on the chain, as LedDim makes it"""
+    d = v * quarters // (4 * div)
+    return 1 if d == 0 and v >= div else d
+
+
+def led_levels(want, chain, rgb, levels=LED_QUARTERS):
+    """The brightnesses (quarters, of LEVELS) at which the device's chain bytes RGB show the
+    colour WANT ("RRGGBB" at full scale, as the twin's LED log and expect led have it): any
+    colour byte that the log shows as WANT's, dimmed as LedDim does"""
+    div = 11 if chain == "pth" else 4
+    want = [int(want[i:i + 2], 16) for i in (0, 2, 4)]
+    return [q for q in levels
+            if all(got in {led_dim(v, div, q) for v in range(256) if min(255, v // div * div) == w}
+                   for w, got in zip(want, rgb))]
+
+
+def led_full(want, chain, quarters):
+    """WANT ("RRGGBB" at full scale) dimmed to QUARTERS, at full scale again: about what the
+    device's LED shows at that brightness"""
+    div = 11 if chain == "pth" else 4
+    return "%02x%02x%02x" % tuple(min(255, led_dim(int(want[i:i + 2], 16), div, quarters) * div)
+                                  for i in (0, 2, 4))
+
+
+def tempo(d):
+    """The tempo in BPM, from STATE's answer"""
+    return get14(d[21], d[22]) / 10
+
+
 def show_state(f):
-    d = f.ask(STATE)
+    d = f.state()
     sel, active, flags = d[4], d[5], d[6]
     latched, on = get14(d[8], d[9]), get14(d[10], d[11])
     print("looper     %s, speed %+.3f, at %d%%" % (
@@ -153,7 +214,7 @@ def show_state(f):
         PAGES[d[12]] if d[12] < len(PAGES) else d[12], knob(get14(d[13], d[14])),
         knob(get14(d[15], d[16])), knob(get14(d[17], d[18])), knob(get14(d[19], d[20])),
         ", mono" if flags & 32 else ""))
-    print("tempo      %.1f BPM%s%s" % (get14(d[21], d[22]) / 10,
+    print("tempo      %.1f BPM%s%s" % (tempo(d),
                                      ", SHIFT held" if flags & 4 else "",
                                      ", erase waiting" if flags & 8 else ""))
     if len(d) > 23:
@@ -162,9 +223,10 @@ def show_state(f):
             {0: "", 2: ", SysEx holds it down", 4: ", SysEx holds it up"}.get(d[23] & 6, "")))
 
 
-def load(f):
-    d = f.ask(LOAD)
-    return get14(d[0], d[1]) / 10, get14(d[2], d[3]) / 10
+def load(f, required=True):
+    """(max, mean) in % of the block since the last ask; None if unanswered and not required"""
+    d = f.ask(LOAD, required=required)
+    return d and (get14(d[0], d[1]) / 10, get14(d[2], d[3]) / 10)
 
 
 def scene_get(f, slot):
@@ -210,39 +272,47 @@ def scene_put(f, slot, scene):
         sys.exit("refused: slots 1-4 only")
 
 
+def script_lines(path):
+    """(line number, command, its arguments) for each line of a twin script that says
+    something: comments and the LED log's lines (|) left out"""
+    with open(path) as src:
+        for line_no, line in enumerate(src, 1):
+            words = line.split("#", 1)[0].split()
+            if words and not line.startswith("|"):
+                yield line_no, words[0], words[1:]
+
+
 def settings_use(path, up):
     """Where a script uses the settings page, (line, what), or None: a key or a knob while the
     mode switch is up (up: where it stands when the script starts), or a SETTING SysEx"""
     by_toggle = up
-    with open(path) as src:
-        for line_no, line in enumerate(src, 1):
-            words = line.split("#", 1)[0].split()
-            if not words or line.startswith("|"):
+    for line_no, cmd, args in script_lines(path):
+        if cmd == "toggle":
+            up = by_toggle = bool(int(args[0]))
+        elif cmd in ("down", "tap", "turn") and up:
+            return line_no, "%s %s on the settings page" % (cmd, args[0])
+        elif cmd in ("midi", "usb"):
+            data = [int(b, 16) for b in args]
+            if bytes(data[:4]) != midi_send.HEADER or len(data) < 6:
                 continue
-            cmd, args = words[0], words[1:]
-            if cmd == "toggle":
-                up = by_toggle = bool(int(args[0]))
-            elif cmd in ("down", "tap", "turn") and up:
-                return line_no, "%s %s on the settings page" % (cmd, args[0])
-            elif cmd in ("midi", "usb"):
-                data = [int(b, 16) for b in args]
-                if bytes(data[:4]) != midi_send.HEADER or len(data) < 6:
-                    continue
-                if data[4] == SETTING:
-                    return line_no, "a setting over SysEx"
-                if data[4] == SWITCH:
-                    up = {0: by_toggle, 1: False, 2: True}.get(data[5], up)
-                elif data[4] == KEY and up:
-                    return line_no, "a SysEx key on the settings page"
+            if data[4] == SETTING:
+                return line_no, "a setting over SysEx"
+            if data[4] == SWITCH:
+                up = {0: by_toggle, 1: False, 2: True}.get(data[5], up)
+            elif data[4] == KEY and up:
+                return line_no, "a SysEx key on the settings page"
     return None
 
 
 def play(f, path, cpu):
-    """A twin script on the device; returns how many expectations failed"""
+    """A twin script on the device; returns how many expectations failed. Whatever ends it
+    (an error, Ctrl-C, no answer), the keys it holds are let go and the mode switch it set is
+    given back to the hand"""
     start = time.monotonic()
     clock = {"bpm": 0.0}
     stop = threading.Event()
     worst = [0.0, 0.0]
+    readings = {"asked": 0, "missed": 0, "zero": 0}
     failed = 0
 
     def clock_thread():
@@ -258,9 +328,18 @@ def play(f, path, cpu):
             f.raw([0xF8])
 
     def cpu_thread():
+        # an unanswered ask is counted, not the thread's end: the worst covers the whole run
         while not stop.is_set():
-            mx, mean = load(f)
-            worst[0], worst[1] = max(worst[0], mx), max(worst[1], mean)
+            try:
+                got = load(f, required=False)
+            except OSError:
+                got = None
+            readings["asked"] += 1
+            if got is None:
+                readings["missed"] += 1
+            else:
+                worst[0], worst[1] = max(worst[0], got[0]), max(worst[1], got[1])
+                readings["zero"] += got == (0.0, 0.0)
             time.sleep(0.25)
 
     threads = [threading.Thread(target=clock_thread, daemon=True)]
@@ -275,21 +354,12 @@ def play(f, path, cpu):
         if left > 0:
             time.sleep(left)
 
-    def key(name, down):
-        if name not in SW_NAMES:
-            print("unknown key %s" % name, file=sys.stderr)
-            return
-        f.send(KEY, [SW_NAMES.index(name), 1 if down else 0])
-
     skipped = set()
     at_base = 0.0
     toggled = False
-    with open(path) as src:
-        for line_no, line in enumerate(src, 1):
-            words = line.split("#", 1)[0].split()
-            if not words or line.startswith("|"):
-                continue
-            cmd, args = words[0], words[1:]
+    levels = list(LED_QUARTERS)  # the brightnesses that fit every expect led so far
+    try:
+        for line_no, cmd, args in script_lines(path):
             now_ms = (time.monotonic() - start) * 1000
             if cmd == "wait":
                 wait_until(now_ms + float(args[0]))
@@ -298,11 +368,11 @@ def play(f, path, cpu):
             elif cmd == "booted":
                 at_base = now_ms
             elif cmd in ("down", "up"):
-                key(args[0], cmd == "down")
+                f.key(args[0], cmd == "down")
             elif cmd == "tap":
-                key(args[0], True)
+                f.key(args[0], True)
                 time.sleep((float(args[1]) if len(args) > 1 else 60) / 1000)
-                key(args[0], False)
+                f.key(args[0], False)
             elif cmd == "turn":
                 detents = int(args[1])
                 while detents:
@@ -314,48 +384,66 @@ def play(f, path, cpu):
             elif cmd == "clock":
                 clock["bpm"] = float(args[0])
             elif cmd == "toggle":
-                f.send(SWITCH, [2 if int(args[0]) else 1])
                 toggled = True
+                f.send(SWITCH, [2 if int(args[0]) else 1])
             elif cmd == "leds":
                 print("%7d %s" % (now_ms, led_line(*f.leds())))
             elif cmd == "expect" and args[0] == "led":
                 pth, smt = f.leds()
                 chain, index, want = args[1], int(args[2]), args[3].lower()
                 rgb = (pth if chain == "pth" else smt)[index]
-                got = "%02x%02x%02x" % tuple(min(255, c * (11 if chain == "pth" else 4))
-                                             for c in rgb)
-                if got != want:
-                    print("line %d: %s %d is %s, not %s" % (line_no, chain, index, got, want),
-                          file=sys.stderr)
+                fits = led_levels(want, chain, rgb, levels)
+                if fits:
+                    levels = fits
+                else:
+                    got = "%02x%02x%02x" % tuple(min(255, c * (11 if chain == "pth" else 4))
+                                                 for c in rgb)
+                    print("line %d: %s %d is %s, not %s%s" % (
+                        line_no, chain, index, got, want, "".join(
+                            ", ~%s at %d %%" % (led_full(want, chain, q), 25 * q)
+                            for q in levels if q != 4)), file=sys.stderr)
                     failed += 1
             else:
                 if cmd not in skipped:
                     print("skipped (twin only): %s" % cmd, file=sys.stderr)
                 skipped.add(cmd)
-    stop.set()
-    for t in threads:
-        t.join(1)
-    if toggled:
-        f.send(SWITCH, [0])  # the real switch again
+    finally:
+        stop.set()
+        for t in threads:
+            t.join(1)
+        try:
+            f.release()
+            if toggled:
+                f.send(SWITCH, [0])  # the real switch again
+        except OSError:
+            pass  # the device went away: what ended the run says more
+    if levels != [4] and len(levels) < len(LED_QUARTERS):
+        print("expect led: the LEDs at %s %% brightness (led_brightness on the card)"
+              % " or ".join(str(25 * q) for q in levels))
     if cpu:
-        mx, mean = load(f)
-        print("load: worst max %.1f%%, worst mean %.1f%% of the block"
-              % (max(worst[0], mx), max(worst[1], mean)))
+        last = load(f, required=False)
+        if last:
+            worst = [max(worst[0], last[0]), max(worst[1], last[1])]
+        print("load: worst max %.1f%%, worst mean %.1f%% of the block" % tuple(worst))
+        if readings["missed"]:
+            print("load: %d of %d readings unanswered, their time not in the worst"
+                  % (readings["missed"], readings["asked"]))
+        answered = readings["asked"] - readings["missed"]
+        if answered and readings["zero"] == answered:
+            print("load: 0 throughout: the bench (FRIZZ-bench.bin) answers as FRIZZ does, but "
+                  "doesn't count its load")
     return failed
 
 
 def main():
-    # --device and --no-start are taken before the subcommand and after it: a default of
-    # SUPPRESS on the subcommands keeps one given before from being overwritten
-    help_device = "the raw MIDI node, if not the first CHOMPI"
-    help_no_start = "don't start FRIZZ if the CHOMPI is elsewhere"
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--device", help=help_device)
-    ap.add_argument("--no-start", action="store_true", help=help_no_start)
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--device", default=argparse.SUPPRESS, help=help_device)
-    common.add_argument("--no-start", action="store_true", default=argparse.SUPPRESS,
-                        help=help_no_start)
+    common = chompi.before_and_after(
+        ap, (["--device"], dict(help="the raw MIDI node, if not the first CHOMPI")),
+        (["--no-start"], dict(action="store_true",
+                              help="don't start FRIZZ if the CHOMPI is elsewhere")),
+        (["--slot"], dict(type=int, choices=chompi.FRIZZ_SLOTS,
+                          help="the FRIZZ slot to play on (10, 12), started unless it runs; "
+                          "default the one running")))
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("state", parents=[common])
     sub.add_parser("leds", parents=[common])
@@ -383,8 +471,15 @@ def main():
                    help="play a script that uses the settings page, which saves to the card")
     a = ap.parse_args()
 
+    try:
+        run(a)
+    except OSError as e:  # the node went away under it, e.g. the CHOMPI restarting
+        sys.exit("the CHOMPI went away: %s" % e)
+
+
+def run(a):
     if not a.device and not a.no_start:
-        a.device = chompi.to_frizz()
+        a.device = chompi.to_frizz(a.slot)
     f = Frizz(a.device)
     if a.cmd == "state":
         show_state(f)
@@ -431,12 +526,15 @@ def main():
         if not a.force:
             # the page the device shows (STATE's flags, bit 6), where the script's keys land
             # until it toggles
-            used = settings_use(a.script, bool(f.ask(STATE)[6] & 64))
+            used = settings_use(a.script, bool(f.state()[6] & 64))
             if used:
                 sys.exit("line %d: %s. FRIZZ would save it to /FRIZZ/frizz_master.txt, on the card "
                          "the FRIZZ on key 10 shares, with no .bak (#58): not played. --force "
                          "plays it anyway" % used)
-        sys.exit(1 if play(f, a.script, a.cpu) else 0)
+        try:
+            sys.exit(1 if play(f, a.script, a.cpu) else 0)
+        except KeyboardInterrupt:
+            sys.exit("interrupted: the keys let go, the mode switch back with the hand")
 
 
 if __name__ == "__main__":

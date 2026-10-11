@@ -11,7 +11,8 @@
  *  all FRIZZ's card buffers do),
  *  writing the slot before it counts it; MainLoop writes the file a chunk per pass, up to the
  *  count it saw at the press, so neither waits for the other. The list starts when main()
- *  enters its loop (Start: the SDRAM has been cleared, the card read); the times count from
+ *  enters its loop (Start: the card read; its SDRAM isn't cleared at boot, SDRAM_NOINIT, so
+ *  nothing in it is read before it's written); the times count from
  *  there, and the script's `booted` line lines them up with the twin's own start. The audio
  *  in isn't recorded: the replay plays a tone.
  *
@@ -55,10 +56,13 @@ static const size_t kEventLogSize = 1u << 18;
 static const size_t kEventLogText = 4096; // written a chunk this size at a time
 static const size_t kSector = 512;        // the card's, and FatFs's
 
-/** Its list, in SDRAM (chompi_main.cpp) */
+/** Its list, and the card's FRIZZ files as they were at power-on (only a bug report reads
+ *  them), in SDRAM (chompi_main.cpp) */
 struct EventLogMem
 {
     LoggedEvent events[kEventLogSize];
+    char scenes[kSceneFileMax];
+    char master[kMasterFileMax];
 };
 
 // Hardware::SwId's names, as the twin's scripts take them
@@ -91,6 +95,8 @@ public:
     void Init(EventLogMem* mem, FATFS* fs, const char* path)
     {
         mem_ = mem;
+        // until Start, no card files (its memory isn't cleared at boot)
+        mem_->scenes[0] = mem_->master[0] = '\0';
         fs_ = fs;
         path_ = path;
     }
@@ -100,8 +106,8 @@ public:
     void Start(uint32_t now, bool toggle)
     {
         // relative, as SceneStore's: /FRIZZ, or the root on a card where it couldn't be made
-        Snapshot(kSceneFile, scenes_, kSceneFileMax);
-        Snapshot(kMasterFile, master_, kMasterFileMax);
+        Snapshot(kSceneFile, mem_->scenes, kSceneFileMax);
+        Snapshot(kMasterFile, mem_->master, kMasterFileMax);
         toggle_ = toggle_at_start_ = toggle;
         start_ = now;
         started_ = true;
@@ -257,15 +263,22 @@ private:
         Add(kind, id, value);
     }
 
+    /** The file's text into to (in SDRAM), terminated; empty when it can't be read. Read
+     *  through text_: the card's DMA only gets internal RAM (the class comment) */
     EVENT_LOG_ONCE void Snapshot(const char* name, char* to, size_t size)
     {
+        static_assert(sizeof(text_) >= kSceneFileMax && kSceneFileMax >= kMasterFileMax,
+                      "a snapshot fits text_");
         to[0] = '\0';
         if (f_open(&file_, name, FA_READ) != FR_OK)
             return;
         UINT len = 0;
-        const FRESULT res = f_read(&file_, to, size - 1, &len);
+        const FRESULT res = f_read(&file_, text_, size - 1, &len);
         f_close(&file_);
-        to[res == FR_OK ? len : 0] = '\0';
+        if (res != FR_OK)
+            len = 0;
+        memcpy(to, text_, len);
+        to[len] = '\0';
     }
 
     // the text being put together in text_
@@ -382,8 +395,8 @@ private:
         if (full_)
             Put("# The log was full: it ends early, and the replay too.\n");
         // the replay puts them where FRIZZ keeps them, /FRIZZ
-        if (!Flush() || !PutFile("/FRIZZ/frizz_scenes.txt", scenes_)
-            || !PutFile("/FRIZZ/frizz_master.txt", master_))
+        if (!Flush() || !PutFile("/FRIZZ/frizz_scenes.txt", mem_->scenes)
+            || !PutFile("/FRIZZ/frizz_master.txt", mem_->master))
         {
             f_close(&file_); // open: a failed write mustn't leave it so
             return false;
@@ -462,10 +475,8 @@ private:
     }
 
     EventLogMem* mem_ = nullptr;
-    // the card's files at power-on, and the text going to it: whole cache lines, as the SD
-    // driver keeps the cache in step with its DMA by them (SceneStore's buf_ too)
-    alignas(32) char scenes_[kSceneFileMax];
-    alignas(32) char master_[kMasterFileMax];
+    // the text going to and from the card: whole cache lines, as the SD driver keeps the
+    // cache in step with its DMA by them (SceneStore's buf_ too)
     alignas(32) char text_[kEventLogText + 128];
     FATFS* fs_ = nullptr;
     const char* path_ = nullptr;

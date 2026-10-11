@@ -17,8 +17,6 @@ class EnvFollower
         void Init()
         {
             last_samp_ = 0.f;
-            b_up_ = .5f;
-            b_down_ = .9993f;
         }
 
         void Process(float samp)
@@ -26,7 +24,7 @@ class EnvFollower
             samp = fabsf(samp);
             samp = daisysp::fclamp(samp, 0.f, 1.f);
 
-            const float b = samp > last_samp_ ? b_up_ : b_down_;
+            const float b = samp > last_samp_ ? kUp : kDown;
             const float g = 1.f - b;
 
             last_samp_ = samp * g + last_samp_ * b;
@@ -43,7 +41,8 @@ class EnvFollower
         }
 
     private:
+        // the share of the last value kept: fast up, slow down
+        static constexpr float kUp = .5f, kDown = .9993f;
         float last_samp_;
-        float b_up_, b_down_;
 };
 } // namespace chompi

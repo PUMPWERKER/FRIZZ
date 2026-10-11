@@ -160,10 +160,19 @@ public:
             output_env_follower.Process(hpl + hpr);
 
             // headphone feed: the cue blends from the master's mirror to the input on its own,
-            // slewed so a jump doesn't click
-            fonepole(hp_cue_, hp_cue_target_, .001f);
-            out[0][i] = hpl + (dryl[i] * kHpGain * mgain_ - hpl) * hp_cue_;
-            out[1][i] = hpr + (dryr[i] * kHpGain * mgain_ - hpr) * hp_cue_;
+            // slewed so a jump doesn't click; at rest on the mirror (as it usually is) no blend
+            if (hp_cue_ != hp_cue_target_)
+                fonepole(hp_cue_, hp_cue_target_, .001f);
+            if (hp_cue_ == 0.f)
+            {
+                out[0][i] = hpl;
+                out[1][i] = hpr;
+            }
+            else
+            {
+                out[0][i] = hpl + (dryl[i] * kHpGain * mgain_ - hpl) * hp_cue_;
+                out[1][i] = hpr + (dryr[i] * kHpGain * mgain_ - hpr) * hp_cue_;
+            }
 
             // safety limiter: TAPE's master compressor at its lowest setting (limiter.h)
             out[0][i] = lim_hp_l_.ProcessComp(out[0][i], 1.f, kLimThresh, 1.f, kLimMakeup);

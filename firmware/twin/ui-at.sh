@@ -8,5 +8,5 @@
 set -e -o pipefail
 source "$(dirname "$0")/ref.sh"
 [ -n "$1" ] || { echo "usage: ui-at.sh REF [CHECK] (REF a commit, tag, branch, or work)"; exit 2; }
-DIR=$(twin_dir "$1")
+DIR=$(twin_dir "$1") || { echo "the twin didn't build on $1"; exit 1; }
 TWIN_FIRMWARE=$DIR/src TWIN_BUILD=$DIR exec "$REPO/firmware/test/unit.sh" "${2:-ui}"

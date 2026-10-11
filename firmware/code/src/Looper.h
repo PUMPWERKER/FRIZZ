@@ -203,17 +203,32 @@ public:
                     postroll_++;
                 }
 
-                daisysp::fonepole(speed_, speed_target_, kSpeedSlewCoeff);
-                daisysp::fonepole(scrub_, scrub_target_, kSpeedSlewCoeff);
-                if (fabsf(scrub_) < .0001f)
-                    scrub_ = 0.f;
+                // the slews only while they move: a fonepole at its target stays there
+                if (speed_ != speed_target_)
+                {
+                    // the glide stalls a hair short of its target, where a step rounds to
+                    // nothing (~0.06% of it): from there it's at the step's speed exactly,
+                    // or the loop would drift against the clock it was recorded to
+                    const float was = speed_;
+                    daisysp::fonepole(speed_, speed_target_, kSpeedSlewCoeff);
+                    if (speed_ == was)
+                        speed_ = speed_target_;
+                }
+                if (scrub_ != scrub_target_)
+                {
+                    daisysp::fonepole(scrub_, scrub_target_, kSpeedSlewCoeff);
+                    if (fabsf(scrub_) < .0001f)
+                        scrub_ = 0.f;
+                }
 
                 {
                     // playing: audible at the ladder speed. Paused: audible only while
                     // scrubbing, at the scrub speed. Erasing: fade out.
                     const bool playing = state_ == State::PLAYING;
                     const bool audible = !erasing_ && (playing || scrub_ != 0.f);
-                    daisysp::fonepole(fade_, audible ? 1.f : 0.f, kPlayFadeCoeff);
+                    const float fade_target = audible ? 1.f : 0.f;
+                    if (fade_ != fade_target)
+                        daisysp::fonepole(fade_, fade_target, kPlayFadeCoeff);
 
                     // the fade-out after a pause or erase keeps moving at play speed, so it
                     // doesn't freeze on one sample (a DC thump)
@@ -645,19 +660,27 @@ private:
         return wrapped;
     }
 
+    /** frame + offset (-1..2) within the loop; a loop is under 2^31 frames (kLoopMaxFrames) */
     inline size_t Wrap(size_t frame, int offset) const
     {
-        const int64_t f = static_cast<int64_t>(frame) + offset;
+        const int32_t f = static_cast<int32_t>(frame) + offset;
         if (f < 0)
-            return static_cast<size_t>(f + length_);
-        if (f >= static_cast<int64_t>(length_))
-            return static_cast<size_t>(f - length_);
+            return static_cast<size_t>(f + static_cast<int32_t>(length_));
+        if (f >= static_cast<int32_t>(length_))
+            return static_cast<size_t>(f - static_cast<int32_t>(length_));
         return static_cast<size_t>(f);
     }
 
     /** 4-point Hermite interpolation around frame pos, at the read head's fraction */
     void ReadInterpolated(size_t pos, float* l, float* r) const
     {
+        // on a whole frame (1x forward or back since the recording, no glide): Hermite at 0
+        // is that frame itself, exactly, so it's read alone
+        if (play_frac_ == 0.f)
+        {
+            Read(pos, l, r);
+            return;
+        }
         float xl[4], xr[4];
         for (int k = 0; k < 4; k++)
             Read(Wrap(pos, k - 1), &xl[k], &xr[k]);
