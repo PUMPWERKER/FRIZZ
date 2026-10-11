@@ -194,6 +194,14 @@ what FRIZZ does.
 
 ### Fixed
 
+- **Selecting a latched effect keeps it latched** (#115): SHIFT + an FX key played as a
+  quick roll, letting go of SHIFT just as the key went down, or the key landing a moment
+  before SHIFT, could count as a plain press or as the latch gesture, and the effect dropped
+  out or latched when you let go. SHIFT now counts as first when it goes down up to about
+  15 ms after the key, or is let go up to about 15 ms before the key registers; a key that
+  touches again just after you let go of it doesn't count as a new press either. The latch
+  gesture (hold the key, then SHIFT) works as before; it just needs a little more than
+  15 ms between them, as it always gets. The same goes for the compressor's key.
 - **What hosts and keyboards send by themselves turns no knob** (#97): a DAW's pitch-bend
   range (RPN 0, then the null RPN) turned the slicer's knobs to 0 or the top, data increment
   and decrement (CC 96/97) moved the resonator, keyboards' CC 71 and 74 the freezer and the

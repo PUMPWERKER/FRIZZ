@@ -15,7 +15,13 @@
  *
  *  FX keys: an FX key held, then SHIFT, toggles the latch, decided on the key's release;
  *  SHIFT, then an FX key, only selects it for the knobs, silently (FxControls.h), and the key
- *  flashes white. Knobs 1-4 edit the FX pressed or selected last.
+ *  flashes white. Knobs 1-4 edit the FX pressed or selected last. Which came first is judged
+ *  with kShiftGraceMs of grace (#115), by when the audio callback saw the keys (KeyEdge), not
+ *  when MainLoop gets to their events: SHIFT going down that soon after an FX key's or the
+ *  compressor's press, or let go that soon before it, is SHIFT first, a select
+ *  (FxControls::LateSelect); the latch gesture leaves far more time between them. An FX key
+ *  back down that soon after its release is a bounce, and takes the release back
+ *  (FxControls::Rebound).
  *
  *  The master compressor's key (kCompKey) selects it for the knobs, and flashes white; it's
  *  always on, so the key does nothing else. Its knobs go to the card (SceneStore's master
@@ -99,6 +105,7 @@ namespace chompi
     static const uint32_t kPendingBlinkMs = 250;
     static const uint32_t kTapFlashMs = 80;      // LOOP flashes on a tempo tap
     static const uint32_t kSelectFlashMs = 80;   // an FX key flashes on a select
+    static const uint32_t kShiftGraceMs = 15;    // SHIFT this near an FX key's press: first (#115)
     static const float kFlashDarkAbove = .5f;    // a flash goes dark on an LED this white (Flash)
     static const float kSemiStepPerTurn = .5f;   // 2 transport detents per semitone
     static const float kSpeedStepPerTurn = .25f; // SHIFT: 4 detents per step of the ladder
@@ -216,6 +223,12 @@ namespace chompi
 #pragma GCC pop_options
         /** From ui.h, as the mode switch goes: up shows the settings page */
         inline void ShowSettings(bool show) { show_settings_ = show; }
+        /** From ui.h, a key of this page going down or up, when the audio callback saw it */
+        inline void KeyEdge(int key, bool down, uint32_t now)
+        {
+            if (key < kEdgeKeys)
+                edge_ms_[down][key] = now;
+        }
 
         inline void ResetSmtLeds() { SmtLedsOff(); }
 #pragma GCC push_options
@@ -328,7 +341,7 @@ namespace chompi
                 if (rising)
                 {
                     FxKeyDown(true);
-                    fx_.CompKeyPressed(Shift());
+                    fx_.CompKeyPressed(ShiftAt(buttonID));
                 }
                 return true;
             }
@@ -336,9 +349,14 @@ namespace chompi
             {
                 if (buttonID == static_cast<uint16_t>(kFxSlots[fx].key))
                 {
-                    if (rising)
-                        FxKeyDown(Shift());
-                    fx_.KeyPressed(fx, rising, Shift());
+                    if (!rising)
+                        fx_.KeyPressed(fx, false, Shift());
+                    else if (!(Grace(buttonID, false, buttonID) && fx_.Rebound(fx)))
+                    {
+                        const bool shift = ShiftAt(buttonID);
+                        FxKeyDown(shift);
+                        fx_.KeyPressed(fx, true, shift);
+                    }
                     return true;
                 }
             }
@@ -1042,7 +1060,27 @@ namespace chompi
         // PlayKeys' Host
         friend class PlayKeys<NormalPage>;
         inline bool SceneArmed() const { return scene_ctl_.Armed(); }
-        inline bool ShiftPressed() { return fx_.ShiftPressed(); }
+        /** SHIFT going down: SHIFT + key after all if an FX key's or the compressor's press
+         *  came at most kShiftGraceMs before it, a select, which a plain press of an FX key
+         *  takes back (FxControls::LateSelect); otherwise the FX keys held will latch */
+        bool ShiftPressed()
+        {
+            const uint16_t shift = static_cast<uint16_t>(Hardware::SwId::KEY_26);
+            bool select = Grace(static_cast<uint16_t>(kCompKey), true, shift);
+            for (size_t fx = 0; fx < kNumFx; fx++)
+            {
+                if (Grace(static_cast<uint16_t>(kFxSlots[fx].key), true, shift))
+                {
+                    fx_.LateSelect(fx);
+                    select = true;
+                }
+            }
+            if (!select)
+                return fx_.ShiftPressed();
+            fx_.ShiftUsed(); // as SHIFT, then the key, would leave the keys held long before
+            select_flash_.Start(System::GetNow(), kSelectFlashMs);
+            return true;
+        }
         inline void ShiftUsed() { fx_.ShiftUsed(); }
         bool FreezeMorph()
         {
@@ -1588,6 +1626,19 @@ namespace chompi
         }
 
         inline bool Shift() const { return keys_.Shift(); }
+        /** Whether key's last press (down) or release went at most kShiftGraceMs before
+         *  the last press of key `at`, by the audio callback's clock (KeyEdge). Not if it went
+         *  after: then their events came in late, together, and keep their order */
+        inline bool Grace(uint16_t key, bool down, uint16_t at) const
+        {
+            return edge_ms_[1][at] - edge_ms_[down][key] <= kShiftGraceMs;
+        }
+        /** SHIFT for an FX key's or the compressor's press: held, or let go at most
+         *  kShiftGraceMs before it */
+        inline bool ShiftAt(uint16_t key) const
+        {
+            return Shift() || Grace(static_cast<uint16_t>(Hardware::SwId::KEY_26), false, key);
+        }
 
         // LED helpers (a colour at a level: PanelLeds.h): crossfades through two, three or
         // four colours
@@ -1683,6 +1734,10 @@ namespace chompi
         uint32_t beat_at_ = 0;      // when it began
         bool downbeat_ = false;     // it's a bar's 1
         LedSignal select_flash_; // on the selected FX's key
+        // when each key of this page last went down ([1]) and up ([0]), by the audio
+        // callback's clock (KeyEdge), for the grace of kShiftGraceMs
+        static const int kEdgeKeys = static_cast<int>(Hardware::SwId::SR_LAST);
+        volatile uint32_t edge_ms_[2][kEdgeKeys] = {};
         float lim_shown_ = 0.f;  // the limiter on the compressor's key, 0..1, held from lim_at_
         uint32_t lim_at_ = 0;
         float speed_chunk_ = 0.f;   // transport detents towards the next speed step
