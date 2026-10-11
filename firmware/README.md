@@ -219,7 +219,7 @@ minutes). Mounting needs udisks, as any desktop has.
 longer than a block, which crackle), `settings`, `channel N`, `transport on|off`,
 `source auto|trs|usb|internal`, `out off|trs|all`, `scene get|put SLOT FILE`, the developers'
 `ident`, `ram-only`, `get GROUP`, `set GROUP INDEX VALUE` and `bench [--wait] [--out FILE]`
-(below), and `play SCRIPT [--cpu]`, which plays a twin
+(below), and `play SCRIPT [--cpu] [--fresh]`, which plays a twin
 script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over SysEx at the
 script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs, at the
 brightness the card's `led_brightness` sets (100, 75 or 50 %: the one level that fits every
