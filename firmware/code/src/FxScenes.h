@@ -202,6 +202,23 @@ inline __attribute__((noinline, optimize("Os"))) size_t FormatScenes(const FxSce
     return pos + 1 < size ? pos : 0;
 }
 
+namespace scenefile
+{
+constexpr size_t Digits(uint32_t n) { return n < 10 ? 1 : 1 + Digits(n / 10); }
+constexpr size_t Length(const char* s) { return *s ? 1 + Length(s + 1) : 0; }
+/** The longest text FormatScenes writes, its terminator too: every scene used, every effect
+ *  latched, every value 1 (7 digits) */
+constexpr size_t LongestFile()
+{
+    size_t fx_lines = 0;
+    for (size_t fx = 0; fx < kNumFx; fx++) // name, latch, values (1 in millionths), newline
+        fx_lines += Length(kFxNames[fx]) + 2 + kNumFxParams * (1 + Digits(1000000)) + 1;
+    const size_t scene = Length("scene ") + Digits(kNumScenes) + 1 + fx_lines;
+    return sizeof(kHeader) - 1 + Length("\nlayout ") + Digits(kLayoutNow) + 1 + kNumScenes * scene + 1;
+}
+static_assert(LongestFile() <= kSceneFileMax, "kSceneFileMax holds the longest scene file");
+} // namespace scenefile
+
 /** Reads the file's text into scenes, all of them: a scene the text lacks is unused, an
  *  effect it lacks gets defaults. Returns false, with every scene unused, if it isn't a
  *  scene file */

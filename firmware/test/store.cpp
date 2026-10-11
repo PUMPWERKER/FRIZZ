@@ -1,6 +1,7 @@
 // store.cpp: checks SceneStore.h's card handling against an SD card in memory (host/fatfs.h):
-// the boot read, a .tmp left by a cut save, an unreadable or oversized file kept as .bak, and
-// a card that couldn't be read at boot, which that session never writes.
+// the boot read, a .tmp left by a cut save, an unreadable or oversized file kept as .bak (also
+// next to a .tmp), a card that couldn't be read at boot, which that session never writes, and
+// frizz_master.txt's text and what each of its settings refuses.
 // Exits 0 when everything passes. Run by unit.sh store.
 #include <cstdio>
 #include <string>
@@ -126,6 +127,23 @@ static void TestUnreadable()
     SaveInRam(store, 2, .5f);
     Check(Saves(store), "... and the next one too");
 
+    // a save cut short next to a file that can't be read: the .tmp is read and finished,
+    // and the unreadable file is kept as .bak, as a save keeps it
+    NewCard(true);
+    card.dirs["/FRIZZ"] = true;
+    card.files[kScenes] = "FRIZZ scenes 2\nsomething else\n";
+    card.files["/FRIZZ/frizz_scenes.tmp"] = SceneText(0x2, .25f);
+    card.files[kScenesBak] = "an older .bak\n";
+    store.Init(&fs, "");
+    Check(store.scenes[2].used && UsedIn(card.files[kScenes]) == 0x2
+              && !card.files.count("/FRIZZ/frizz_scenes.tmp")
+              && card.files[kScenesBak] == "FRIZZ scenes 2\nsomething else\n",
+          "unreadable, with a .tmp from a cut save: the .tmp read and finished, the file kept as .bak");
+    SaveInRam(store, 3, .5f);
+    Check(Saves(store) && UsedIn(card.files[kScenes]) == 0x6
+              && card.files[kScenesBak] == "FRIZZ scenes 2\nsomething else\n",
+          "... and the next save keeps that .bak");
+
     // a valid file padded past what the buffer holds would be read cut short
     NewCard(true);
     card.dirs["/FRIZZ"] = true;
@@ -166,10 +184,58 @@ static void TestNotRead()
     Check(Saves(store) && UsedIn(card.files[kScenes]) == 0x7, "read at the next boot: written again");
 }
 
+/** frizz_master.txt's text, line for line, and how each setting reads what it can't take */
+static void TestMasterFormat()
+{
+    MasterSettings a, b;
+    a.Reset();
+    for (size_t p = 0; p < kNumFxParams; p++)
+        a.comp[p] = .125f * p;
+    a.mono = true;
+    a.midi_channel = 3;
+    a.midi_transport = true;
+    a.clock_factor = 50;
+    a.clock_source = 2;
+    a.midi_out = 1;
+    a.led_brightness = 75;
+    char buf[kMasterFileMax];
+    const size_t len = FormatMaster(a, buf, sizeof(buf));
+    const std::string want = "FRIZZ master 1\n"
+                             "compressor2 0 125000 250000 375000 500000 625000 750000 875000\n"
+                             "mono 1\nmidi_channel 3\nmidi_transport 1\nclock_factor 50\n"
+                             "clock_source 2\nmidi_out 1\nled_brightness 75\n";
+    Check(std::string(buf) == want && len == want.size(), "master: the file's text, line for line");
+    a.Reset();
+    FormatMaster(a, buf, sizeof(buf));
+    Check(std::string(buf).find("\nmono 0\nmidi_channel 16\nmidi_transport 0\nclock_factor 100\n"
+                                "clock_source 0\nmidi_out 0\nled_brightness 100\n") != std::string::npos,
+          "master: the defaults' text");
+
+    Check(ParseMaster("FRIZZ master 1\nmono 7\nmidi_transport -1\n", b) && b.mono && b.midi_transport,
+          "master: a switch is on for any number but 0");
+    Check(ParseMaster("FRIZZ master 1\nmono\nmidi_channel\nclock_factor\n", b) && !b.mono
+              && b.midi_channel == 16 && b.clock_factor == 100,
+          "master: a setting without its number keeps its default");
+    Check(ParseMaster("FRIZZ master 1\nmidi_channel x\nclock_source x\nmidi_out x\n", b)
+              && b.midi_channel == 0 && b.clock_source == 0 && b.midi_out == 0,
+          "master: a word for a number reads as 0 (strtol), where 0 is allowed");
+    Check(ParseMaster("FRIZZ master 1\nclock_factor 150\nled_brightness 60\nmidi_channel -1\n"
+                      "clock_source -1\nmidi_out -2\n", b)
+              && b.clock_factor == 100 && b.led_brightness == 100 && b.midi_channel == 16
+              && b.clock_source == 0 && b.midi_out == 0,
+          "master: values between or below the allowed ones keep the defaults");
+    Check(ParseMaster("FRIZZ master 1\nclock_factor 200\nled_brightness 50\nmidi_channel 16\n"
+                      "clock_source 3\nmidi_out 2\nmono 0\nmidi_channel_x 4\n", b)
+              && b.clock_factor == 200 && b.led_brightness == 50 && b.midi_channel == 16
+              && b.clock_source == 3 && b.midi_out == 2,
+          "master: the highest allowed values are read, a longer name isn't its setting");
+}
+
 int main()
 {
     TestBoot();
     TestUnreadable();
     TestNotRead();
+    TestMasterFormat();
     return Finish();
 }

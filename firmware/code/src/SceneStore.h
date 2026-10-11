@@ -14,7 +14,8 @@
  *  so a power cut mid-write leaves one or the other. Reading falls back to the .tmp, and
  *  then finishes that save, so the next one doesn't overwrite the only good copy. A file that
  *  is there but can't be read (another version, edited into something else) isn't
- *  overwritten: the next save moves it to frizz_scenes.bak first.
+ *  overwritten: the next save moves it to frizz_scenes.bak first, or the boot, when it
+ *  finishes a .tmp.
  *
  *  A write that fails is reported (GetSaveState); the next save mounts the card again and
  *  tries again. A card that couldn't be read at boot is never written in that session: the
@@ -207,10 +208,25 @@ private:
         const bool there = Exists(kSceneFile);
         if (Load(kSceneTmpFile, defaults, into))
         {
+            // the file that couldn't be read is kept, as a save keeps it; if it can't be
+            // moved, the .tmp stays too, and the next save tries again
+            if (there && !KeepUnreadable())
+                return false;
             FinishRename(kSceneFile, kSceneTmpFile);
             return true;
         }
         return !there;
+    }
+
+    /** A scene file that couldn't be read to frizz_scenes.bak, in place of the one there;
+     *  true once it's out of the way, or gone meanwhile (deleted, or the card swapped) */
+    static bool KeepUnreadable()
+    {
+        const FRESULT del = f_unlink(kSceneBakFile);
+        if (del != FR_OK && del != FR_NO_FILE)
+            return false;
+        const FRESULT moved = f_rename(kSceneFile, kSceneBakFile);
+        return moved == FR_OK || moved == FR_NO_FILE;
     }
 
     /** The master settings, or a .tmp a save cut short before its rename, which it finishes */
@@ -246,12 +262,7 @@ private:
         // a file that couldn't be read is kept, not overwritten
         if (unreadable_)
         {
-            const FRESULT del = f_unlink(kSceneBakFile);
-            if (del != FR_OK && del != FR_NO_FILE)
-                return false;
-            // gone meanwhile (deleted, or the card swapped): nothing left to keep
-            const FRESULT moved = f_rename(kSceneFile, kSceneBakFile);
-            if (moved != FR_OK && moved != FR_NO_FILE)
+            if (!KeepUnreadable())
                 return false;
             unreadable_ = false;
         }

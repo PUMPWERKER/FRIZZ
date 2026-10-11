@@ -31,6 +31,17 @@ the chaos key, the crossfader and the settings page's later keys took the code t
 (~36 KB free) and the bench build's to 259,588 B (~18 KB), until the play page's logic went
 `-Os` (step 3): -15.5 KB in both.
 
+The engine cleanup (#90, 2026-10-11, after #86 and #89) gave some back: `FRIZZ.bin` at
+216,828 B of code (~60 KB free) and 223,424 B of data (~22 KB free), the bench build at
+233,036 B (~44 KB) and 231,332 B (**~14 KB free**), from 218,108 / 228,032 and 235,140 /
+240,068 on `main` (cee7f72).
+The event log's copies of the card's files (4.5 KB, read only for a bug report) moved into
+its SDRAM (`EventLogMem`), the bench writes `cpu.txt` through a 4 KB window instead of an
+8 KB buffer, and `frizz_master.txt`'s lines are a table (1.6 KB of code). In SDRAM the loop
+and the event log moved to `.sdram_noinit` (`SDRAM_NOINIT`, `chompi_sram.lds`): always
+written before they're read, they aren't cleared at boot, so `ZeroSDRAM` clears 10.1 MB
+instead of 43.9.
+
 The split moved by 40 KB (step 1 below) after the FX knobs' page 2 (#35) had left ~21 KB of
 code, ~3.4 KB in the bench build. The scene work (`Recall`, `Morph`, the scene file) is
 compiled `-Os` and out of line (`FX_SCENE_ONCE`), as the event log's and MIDI's are.

@@ -44,7 +44,15 @@ SceneStore scene_store;
 // every key, knob and clock change since power-on, for a bug report (SHIFT + VOLUME held on
 // the settings page)
 EventLog event_log;
-EventLogMem DSY_SDRAM_BSS event_log_mem;
+// SDRAM that is always written before it's read, so ZeroSDRAM leaves it (chompi_sram.lds's
+// .sdram_noinit): the loop (Looper reads only frames it recorded) and the event log (each
+// event before it's counted, the card's files at Start). An ordinary static on the twin
+#ifdef __arm__
+#define SDRAM_NOINIT __attribute__((section(".sdram_noinit")))
+#else
+#define SDRAM_NOINIT
+#endif
+EventLogMem SDRAM_NOINIT event_log_mem;
 #if FRIZZ_BENCH
 // FRIZZ-bench.bin (make BENCH=1): measures the audio callback's load (Bench.h)
 Bench bench;
@@ -52,7 +60,7 @@ Bench bench;
 BenchProfile chompi::bench_profile;
 #endif
 
-int16_t DSY_SDRAM_BSS loop_mem[kLoopMemSize];
+int16_t SDRAM_NOINIT loop_mem[kLoopMemSize];
 
 // TEMPO's delay buffer: 10s of interleaved stereo float
 static const size_t kDelayFrames = 480000;
@@ -99,9 +107,10 @@ static uint32_t restart_asked = 0;
 extern "C" uint32_t _ssdram_bss;
 extern "C" uint32_t _esdram_bss;
 
-/** Clears the buffers in the Daisy Seed's external SDRAM at boot. The loop's, delay's,
- *  freezer's and tape stop's buffers live there, and unlike internal-RAM statics they aren't
- *  zeroed by the startup code. Only the ~43 of the 64 MB they take, which shortens the boot */
+/** Clears the buffers in the Daisy Seed's external SDRAM at boot. The delay's, freezer's,
+ *  tape stop's and reverb pre-delay's buffers live there, and unlike internal-RAM statics
+ *  they aren't zeroed by the startup code. Only the ~10 of the 64 MB they take, which
+ *  shortens the boot: the loop and the event log (SDRAM_NOINIT) need none */
 void ZeroSDRAM()
 {
     std::fill(&_ssdram_bss, &_esdram_bss, 0);
@@ -342,7 +351,7 @@ int main(void)
     daisy::System::Delay(1); // Wait a sec
     hw.usb_sw.Write(true);     // take USB control
 
-    // the event log starts here, its memory cleared and the card read
+    // the event log starts here, the card read
     event_log.Start(daisy::System::GetNow(), hw.GetToggleState());
     main_loop_running = true;
     while (1)

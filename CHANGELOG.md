@@ -102,6 +102,8 @@ what FRIZZ does.
   and the VOLUME knob pressed for 2 seconds. SHIFT + press the transport knob on the play page
   does nothing now, so a report can't be written by accident while playing. See MANUAL.md,
   "Bug reports".
+- **FRIZZ starts up a quarter of a second faster:** it no longer clears the loop's 32 MB of
+  memory at power-on, which a loop never plays before it has recorded it.
 
 ### Fixed
 
@@ -109,6 +111,13 @@ what FRIZZ does.
   300 BPM) and between two whole BPM (say 120.4), it used to flip between neighbouring
   BPM many times a second, moving the delay time with it. It's now measured over the last
   few seconds; a jump in tempo is still followed at once.
+- **A loop runs at exactly its speed again after the speed has been changed:** after a
+  glide (back to 1× or to any other step) it used to stay a hair beside it, about 0.06 %,
+  so a loop recorded to a MIDI clock drifted away from it by about half a millisecond a
+  second, and the effects' tempo and MIDI out, which follow the loop, with it.
+- **A scene file FRIZZ can't read is kept as `frizz_scenes.bak`** also when a save cut
+  short by a power cut sits next to it: the boot used to finish that save by deleting the
+  unreadable file.
 - **A CHOMPI tap no longer ends a morph that MIDI's crossfader (CC 118) holds.** It used to
   freeze it where it was, so CC 118 had no effect after, or, with CC 118 at 0, take it back
   to the scene it started from. Now only your own crossfader (the transport knob with SHIFT

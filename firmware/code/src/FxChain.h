@@ -81,7 +81,7 @@ static_assert(BenchProfile::COMP - BenchProfile::FX0 == kNumSoundFx, "a bench pa
 
 /** Their names in the scene file (FxScenes.h): fixed, so saved scenes survive new effects
  *  and a new order */
-static const char* const kFxNames[] = {
+static constexpr const char* kFxNames[] = {
     "freezer", "shifter", "folder", "crusher", "filter",
     "flanger", "resonator", "slicer", "warble", "tapestop",
     "delay", "reverb", "chaos",

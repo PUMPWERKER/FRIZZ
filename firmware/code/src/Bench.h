@@ -444,19 +444,36 @@ private:
         }
     }
 
+    /** cpu.txt, put together a window of it at a time: Write renders it once per window, and
+     *  each time keeps only the bytes from `from` on that fit buf */
     struct Text
     {
-        alignas(32) char buf[8192]; // whole cache lines for the SD DMA, as SceneStore's
-        size_t pos = 0;
+        static const size_t kMax = 8192;    // the file at most
+        static const size_t kWindow = 4096; // whole sectors, so each write starts on one
+        alignas(32) char buf[kWindow]; // whole cache lines for the SD DMA, as SceneStore's
+        size_t pos = 0;  // in the file
+        size_t from = 0; // where buf starts in the file
+        inline bool Room() const { return pos + 1 < kMax; }
+        void Char(char c)
+        {
+            if (pos >= from && pos - from < kWindow)
+                buf[pos - from] = c;
+            pos++;
+        }
+        /** The bytes buf holds */
+        size_t Held() const
+        {
+            return pos <= from ? 0 : (pos - from < kWindow ? pos - from : kWindow);
+        }
         void Put(const char* s)
         {
-            while (*s && pos + 1 < sizeof(buf))
-                buf[pos++] = *s++;
+            while (*s && Room())
+                Char(*s++);
         }
         void Pad(size_t to)
         {
-            while (pos < to && pos + 1 < sizeof(buf))
-                buf[pos++] = ' ';
+            while (pos < to && Room())
+                Char(' ');
         }
         void Load(float load)
         {
@@ -473,8 +490,8 @@ private:
             while ((n /= 10) > 0);
             for (size_t i = len; i < width; i++)
                 Put(" ");
-            while (len > 0 && pos + 1 < sizeof(buf))
-                buf[pos++] = d[--len];
+            while (len > 0 && Room())
+                Char(d[--len]);
         }
     };
 
@@ -568,7 +585,30 @@ private:
 
     bool Write()
     {
+        if (f_mount(fs_, path_, 1) != FR_OK)
+            return false;
+        EnterFrizzDir(); // a mount goes back to the root; SceneStore's paths are relative
+        static FIL file;
+        if (f_open(&file, "/FRIZZ/cpu.txt", FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+            return false;
         static Text t;
+        bool ok = true;
+        for (t.from = 0; ok; t.from += Text::kWindow)
+        {
+            Render(t);
+            const size_t n = t.Held();
+            UINT written = 0;
+            ok = n == 0
+                 || (f_write(&file, t.buf, static_cast<UINT>(n), &written) == FR_OK && written == n);
+            if (t.pos <= t.from + Text::kWindow)
+                break;
+        }
+        return f_close(&file) == FR_OK && ok;
+    }
+
+    /** The whole of cpu.txt, into t's window */
+    void Render(Text& t)
+    {
         t.pos = 0;
         t.Put("FRIZZ cpu bench, source " FRIZZ_BENCH_SOURCE "\n");
         t.Put("# of the 0.5 ms a block has; measured in FRIZZ-bench.bin, whose memory layout\n");
@@ -608,16 +648,6 @@ private:
         t.Put(loop_missing_ || loop_frames_ == 0 ? " s, NOT playing in every loop segment\n"
                                                  : " s, playing in every loop segment\n");
         WriteParts(t);
-
-        if (f_mount(fs_, path_, 1) != FR_OK)
-            return false;
-        EnterFrizzDir(); // a mount goes back to the root; SceneStore's paths are relative
-        static FIL file;
-        if (f_open(&file, "/FRIZZ/cpu.txt", FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
-            return false;
-        UINT written = 0;
-        const FRESULT res = f_write(&file, t.buf, static_cast<UINT>(t.pos), &written);
-        return f_close(&file) == FR_OK && res == FR_OK && written == t.pos;
     }
 
     float ticks_per_block_ = 1.f;

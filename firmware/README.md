@@ -426,8 +426,10 @@ chompi_sram.lds        linker script (the firmware runs from SRAM, placed there 
   of it starts at its beginning on a sector of the file: write whole sectors, keep the rest
   for the next write (`EventLog::Flush`). Otherwise the sectors come out shifted, bytes
   repeated and others lost; the twin's card does the same (`test/host/fatfs.h`).
-- Large buffers (the loop, the delay, the freezer, the tape stop) live in SDRAM (`DSY_SDRAM_BSS`) and are
-  cleared at boot.
+- Large buffers (the delay, the freezer, the tape stop) live in SDRAM (`DSY_SDRAM_BSS`) and are
+  cleared at boot (`ZeroSDRAM`). The loop and the event log, always written before they're
+  read, are in SDRAM too but not cleared (`SDRAM_NOINIT`, `.sdram_noinit`): what goes there
+  must never be read before it's written.
 - `__attribute__((optimize("-O0")))` and similar per-function overrides are deliberate
   workarounds inherited from the stock firmware. Don't remove them as leftovers. Code that runs
   rarely (`EVENT_LOG_ONCE`, `MIDI_CONTROL_ONCE`) is built for size (`-Os`, noinline): code

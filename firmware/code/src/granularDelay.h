@@ -364,7 +364,8 @@ class granularDelay {
         buffer_[idx] = in_l + cur_sig_l_;
         buffer_[idx + 1] = in_r + cur_sig_r_;
 
-        write_head_ = (write_head_ + 1) % buffer_size_;
+        if (++write_head_ >= buffer_size_) // a compare, not a division each sample
+            write_head_ = 0;
     }
 
     FRIZZ_HOT void read(float* out_l, float* out_r) {
