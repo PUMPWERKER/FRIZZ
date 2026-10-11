@@ -8,10 +8,10 @@
 # The checks run side by side, one per core (JOBS=N sets how many), once DaisySP and the twins
 # they share are built; their lines come in the order above. The ones on the twin go first,
 # the longest; ui, sync, midi and midiout each run their cases side by side too (cases.h,
-# CASE_JOBS). remote.cpp, which plays the twin at the wall clock's pace against remote.py's
-# timeouts, and bench.cpp, the longest single process, start first and at the normal
-# priority, the others behind them (nice). CASES (for working on a few cases) is ignored:
-# all.sh runs every case.
+# CASE_JOBS). remote.cpp and midisuite.cpp, which play the twin at the wall clock's pace
+# against remote.py's and midisuite.py's timeouts, and bench.cpp, the longest single process,
+# start first and at the normal priority, the others behind them (nice). CASES (for working
+# on a few cases) is ignored: all.sh runs every case.
 source "$(dirname "$0")/lib.sh"
 set +e
 unset CASES
@@ -31,7 +31,7 @@ run()
     if [ "$t" = check ]; then $nice "$T/check.sh"; else $nice "$T/unit.sh" "$t"; fi > "$OUT/$t.out" 2>&1
     echo $? > "$OUT/$t.rc"
 }
-first=$(printf '%s\n' remote bench | grep -x -f <(units))
+first=$(printf '%s\n' remote midisuite bench | grep -x -f <(units))
 for t in $first $(echo "$on_twin" | grep -vx -f <(echo "$first")) $others; do
     while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do wait -n; done
     run "$t" &
