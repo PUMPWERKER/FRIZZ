@@ -430,6 +430,13 @@ def main():
                    help="play a script that uses the settings page, which saves to the card")
     a = ap.parse_args()
 
+    try:
+        run(a)
+    except OSError as e:  # the node went away under it, e.g. the CHOMPI restarting
+        sys.exit("the CHOMPI went away: %s" % e)
+
+
+def run(a):
     if not a.device and not a.no_start:
         a.device = chompi.to_frizz(a.slot)
     f = Frizz(a.device)

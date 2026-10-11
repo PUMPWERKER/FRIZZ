@@ -328,6 +328,11 @@ states[:] = [("launcher", "l"), (None, None), ("frizz", "node")]
 sys.argv = ["flash.py", "image.bin", "--slot", "12"]
 flash.main()
 print("noted", chompi.last_started()[0])
+# and the bench, which answers as FRIZZ does
+states[:] = [("launcher", "l"), (None, None), ("frizz", "node")]
+sys.argv = ["flash.py", "image.bin", "--slot", "11", "--name", "FRIZZ-BENCH"]
+flash.main()
+print("left", states)
 chompi.forget()
 os.remove("image.bin")
 )";
@@ -346,6 +351,8 @@ os.remove("image.bin")
           "tools: from the launcher, the FRIZZ last started in this hold, else FRIZZ's");
     Check(Has(out, "FRIZZ answers on slot 12") && Has(out, "noted 12\n"),
           "tools: flash.py waits until the FRIZZ it sent answers, and notes its slot");
+    Check(Has(out, "FRIZZ-BENCH answers on slot 11") && Has(out, "left [('frizz', 'node')]\n"),
+          "tools: and until the bench answers, so a tool run right after finds it");
     if (rc != 0 || !Has(out, "noted 12"))
         printf("%s\n", out.c_str());
 

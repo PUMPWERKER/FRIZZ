@@ -160,7 +160,7 @@ sequence of tools, `tools/chompi.py hold` until Ctrl-C (for playing it by hand).
 
 **Which slot runs** no firmware says: FRIZZ, FRIZZ-TEST and the bench all answer FRIZZ's SysEx
 (the bench with a load of 0). So the tools note the slot they last started, beside the lock,
-and go by it: `flash.py` waits after sending a FRIZZ until it answers, `remote.py` and
+and go by it: `flash.py` waits after sending a FRIZZ (or the bench) until it answers, `remote.py` and
 `measure.py` say which slot they play on and take `--slot 10|12` for one in particular,
 started unless it's the one running, and never take the bench for FRIZZ. A slot started by
 hand isn't noted (`hold` without a command forgets the note).
