@@ -302,7 +302,7 @@ case on a freshly booted device:
 - PLAY + LOOP is refused without MIDI clock (red blinks) and records with one;
 - VOLUME turns the master down;
 - CHOMPI + PLAY + LOOP held at power-on is shipping mode;
-- below 3 V, the panel flashes amber and the device switches off after 15 s, but not on the
+- below 3 V, the panel flashes yellow and the device switches off after 15 s, but not on the
   charger.
 
 And PR #7's hardware checklist, each of which fails on the firmware before it (`b9031c3`):
@@ -352,7 +352,7 @@ and the master again with the cue down.
 
 The battery: VOLUME's LED on the settings page white on the cable, green once it's pulled, yellow
 below 3.3 V at the next 30 s read, white again with the cable (known: red never shows below 3 V,
-as the amber countdown comes first, #43), and the charger plugged in during the countdown
+as the yellow countdown comes first, #43), and the charger plugged in during the countdown
 stopping it. The scene keys: a saved slot dim, the active one bright, pulsing from a fifth up
 to full once a second once edited; a morph's key blinking on the beat, SHIFT + another scene key
 during it and a 9th bar each blinking red 3 times. The compressor's key without a card: 3 red
