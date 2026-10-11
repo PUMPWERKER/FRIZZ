@@ -109,6 +109,17 @@ what FRIZZ does.
   300 BPM) and between two whole BPM (say 120.4), it used to flip between neighbouring
   BPM many times a second, moving the delay time with it. It's now measured over the last
   few seconds; a jump in tempo is still followed at once.
+- **A DAW's RPN no longer moves an effect's knob:** after an NRPN, the pitch-bend range a
+  DAW sets (RPN 0, CC 101/100, then CC 6) went to the parameter the last NRPN chose. Now
+  CC 101/100 end the NRPN, and CC 6/38 after them do nothing. A new NRPN also starts its
+  value afresh, so a CC 38 alone sets just its fine part.
+- **Knobs turned by relative CCs (14-19) stop when the CCs stop:** a DAW's fast turns used
+  to pile up and keep the knob turning for seconds after.
+- **MIDI out at double tempo keeps every tick** of a clock whose ticks come in bunches (a DAW
+  over USB sending two at once): one in four went missing, so the gear behind fell behind.
+- **MIDI out no longer sends a stale Start after power-on:** a Start that came while FRIZZ
+  was starting up went out once it was up, seconds late. A clock running then no longer
+  sends a few ticks at once either.
 - **Band on the delay, reverb and resonator after a pause:** with page 2's Band turned, an
   effect switched on again could start with a short thump from what the Band filter held
   when it last went off, which the delay then repeated. The filter now starts afresh.

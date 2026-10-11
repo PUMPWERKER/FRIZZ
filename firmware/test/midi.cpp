@@ -1,7 +1,8 @@
 // midi.cpp: FRIZZ's MIDI input (MidiClock.h, behind libDaisy's parser and handlers) on the
 // virtual CHOMPI: clock ticks among other messages and inside them, the messages it ignores,
 // rubbish, and the two inputs, the jack and USB: which one locks, and when the other takes
-// over. Each case on a fresh device. Run by unit.sh midi.
+// over; and what MidiControl.h makes of controllers: NRPN against a DAW's RPN, relative CCs
+// sent fast, FRIZZ's SysEx in a bug report. Each case on a fresh device. Run by unit.sh midi.
 #include "timing.h"
 #include "twin.h"
 
@@ -30,6 +31,34 @@ static uint32_t Feed(bool on_usb, double period_ms, int count,
 }
 
 static const double kTick120 = 60000. / (120. * 24.); // ms
+
+/** Bytes into the jack, or over USB */
+static void Trs(std::initializer_list<int> bytes)
+{
+    for (int b : bytes)
+        Midi(static_cast<uint8_t>(b));
+}
+static void Usb(std::initializer_list<int> bytes)
+{
+    for (int b : bytes)
+        UsbMidi(static_cast<uint8_t>(b));
+}
+static const int kCC = 0xBF; // FRIZZ listens on channel 16 at first
+
+/** The filter's knob 1 and 2 (its cutoff, CC 86, and CC 87) in 14 bits, asked over USB
+ *  (MidiControl.h's kCmdParams); -1 when no answer came */
+static void FilterKnobs(int& k1, int& k2)
+{
+    TakeUsbOut();
+    Usb({0xF0, 0x7D, 0x43, 0x48, 0x21, 4, 0xF7});
+    RunMs(20);
+    const std::string out = TakeUsbOut();
+    k1 = k2 = -1;
+    if (out.size() != 23 || static_cast<uint8_t>(out[4]) != 0x61)
+        return;
+    k1 = out[6] << 7 | out[7];
+    k2 = out[8] << 7 | out[9];
+}
 
 /** The ticks the firmware counted from the clock it locked to while bytes went in */
 static void ExpectTicks(const char* name, bool on_usb,
@@ -260,6 +289,77 @@ int main()
             Check(lo > 119.5f && hi < 120.5f && tempo_lo == 120 && tempo_hi == 120,
                   "a lone late tick doesn't move the tempo");
         }});
+
+    // NRPN (MidiControl.h): a DAW's RPN after it, its pitch-bend range (RPN 0/0 and CC 6),
+    // goes to the RPN, not to the last NRPN
+    cases.push_back({"rpn", [] {
+        RunMs(kReadyMs);
+        Trs({kCC, 99, 0, kCC, 98, 86, kCC, 6, 64, kCC, 38, 0}); // the cutoff, at its centre
+        RunMs(50);
+        int before, k2;
+        FilterKnobs(before, k2);
+        Trs({kCC, 101, 0, kCC, 100, 0, kCC, 6, 2, kCC, 38, 0}); // pitch-bend range 2
+        RunMs(50);
+        int after;
+        FilterKnobs(after, k2);
+        Report("rpn: the cutoff %d before the RPN, %d after", before, after);
+        Check(before == 8192 && after == 8192, "rpn: CC 6 after an RPN's CC 101/100 leaves the last NRPN's parameter alone");
+    }});
+
+    // a new NRPN's value starts from MSB 0: an LSB alone sets only the low 7 bits
+    cases.push_back({"nrpn-lsb", [] {
+        RunMs(kReadyMs);
+        Trs({kCC, 99, 0, kCC, 98, 86, kCC, 6, 64, kCC, 38, 0});
+        Trs({kCC, 99, 0, kCC, 98, 87, kCC, 38, 5}); // knob 2, an LSB alone
+        RunMs(50);
+        int k1, k2;
+        FilterKnobs(k1, k2);
+        Report("nrpn-lsb: knob 1 %d, knob 2 %d", k1, k2);
+        Check(k1 == 8192 && k2 == 5, "nrpn-lsb: an LSB alone after a new NRPN doesn't take the last one's MSB");
+    }});
+
+    // relative CCs (14-19) a DAW sends fast: the knob stops when they stop, it doesn't run on
+    cases.push_back({"turn-backlog", [] {
+        RunMs(kReadyMs);
+        Tap("KEY_5"); // the filter: knob 1 its cutoff
+        RunMs(200);
+        for (int i = 0; i < 10; i++)
+            Trs({kCC, 14, 63}); // 630 detents up, in a few ms
+        RunMs(50);
+        Trs({kCC, 86, 0}); // then the cutoff to 0 outright
+        RunMs(1000);
+        int k1, k2;
+        FilterKnobs(k1, k2);
+        Report("turn-backlog: the cutoff %d a second after it was set to 0", k1);
+        Check(k1 == 0, "turn-backlog: relative CCs don't pile up: the knob stops turning soon after they stop");
+    }});
+
+    // FRIZZ's SysEx in a bug report as it came: the mode switch has one data byte, and the
+    // log doesn't take the one a longer SysEx before it left behind
+    cases.push_back({"sysex-log", [] {
+        RunMs(kReadyMs);
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x11, 11, 1, 0xF7}); // KEY_5 down: 1 behind the key
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x11, 11, 0, 0xF7});
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 0, 16, 0xF7}); // channel 16: 16 behind it
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x14, 0, 0xF7});     // the switch as it stands
+        RunMs(100);
+        SetToggle(true); // the bug report: SHIFT + VOLUME held 2 s on the settings page
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(2500);
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(300);
+        SetToggle(false);
+        RunMs(1000);
+        const std::string log = CardFiles()["/FRIZZ/bug-1.txt"];
+        const size_t at = log.find("midi F0 7D 43 48 14");
+        const std::string line = at == std::string::npos ? "" : log.substr(at, log.find('\n', at) - at);
+        Report("sysex-log: \"%s\"", line.c_str());
+        Check(line == "midi F0 7D 43 48 14 00 00 F7", "sysex-log: the switch's SysEx logged with its one byte, the rest 0");
+    }});
 
     return RunCases();
 }
