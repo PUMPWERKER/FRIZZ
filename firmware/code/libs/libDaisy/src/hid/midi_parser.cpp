@@ -4,6 +4,20 @@ using namespace daisy;
 
 bool MidiParser::Parse(uint8_t byte, MidiEvent* event_out)
 {
+    // A real-time byte may come anywhere, even inside another message or a SysEx (MIDI 1.0):
+    // passed on at once, and what it interrupted carries on (FRIZZ, #18)
+    if((byte & 0xF8) == 0xF8)
+    {
+        if(event_out != nullptr)
+        {
+            event_out->type    = SystemRealTime;
+            event_out->channel = 0;
+            event_out->srt_type
+                = static_cast<SystemRealTimeType>(byte & kSystemRealTimeMask);
+        }
+        return true;
+    }
+
     // reset parser when status byte is received
     bool did_parse = false;
 
@@ -31,6 +45,9 @@ bool MidiParser::Parse(uint8_t byte, MidiEvent* event_out)
 
                     if(incoming_message_.type == SystemCommon)
                     {
+                        // a System Common message ends running status (MIDI 1.0), so
+                        // its data bytes aren't read as a channel message's (FRIZZ)
+                        running_status_           = MessageLast;
                         incoming_message_.channel = 0;
                         incoming_message_.sc_type
                             = static_cast<SystemCommonType>(byte & 0x07);
@@ -72,16 +89,14 @@ bool MidiParser::Parse(uint8_t byte, MidiEvent* event_out)
                 }
                 // Else we'll keep waiting for a valid incoming status byte
             }
-            else
+            else if(running_status_ != MessageLast)
             {
                 // Handle as running status
                 incoming_message_.type    = running_status_;
                 incoming_message_.data[0] = byte & kDataByteMask;
                 //check for single byte running status, really this only applies to channel pressure though
                 if(running_status_ == ChannelPressure
-                   || running_status_ == ProgramChange
-                   || incoming_message_.sc_type == MTCQuarterFrame
-                   || incoming_message_.sc_type == SongSelect)
+                   || running_status_ == ProgramChange)
                 {
                     //Send the single byte update
                     pstate_ = ParserEmpty;
@@ -101,10 +116,14 @@ bool MidiParser::Parse(uint8_t byte, MidiEvent* event_out)
             if((byte & kStatusByteMask) == 0)
             {
                 incoming_message_.data[0] = byte & kDataByteMask;
-                if(running_status_ == ChannelPressure
-                   || running_status_ == ProgramChange
-                   || incoming_message_.sc_type == MTCQuarterFrame
-                   || incoming_message_.sc_type == SongSelect)
+                // a System Common message's length by its own type, a channel
+                // message's by its status (FRIZZ: a Song Position after a program
+                // change was read as one byte)
+                if(incoming_message_.type == SystemCommon
+                       ? incoming_message_.sc_type == MTCQuarterFrame
+                             || incoming_message_.sc_type == SongSelect
+                       : running_status_ == ChannelPressure
+                             || running_status_ == ProgramChange)
                 {
                     //these are just one data byte, so we short circuit back to start
                     pstate_ = ParserEmpty;
@@ -191,4 +210,5 @@ void MidiParser::Reset()
 {
     pstate_                = ParserEmpty;
     incoming_message_.type = MessageLast;
+    running_status_        = MessageLast;
 }

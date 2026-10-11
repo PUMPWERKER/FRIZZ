@@ -132,6 +132,11 @@ what FRIZZ does.
 
 ### Fixed
 
+- **A clock tick inside a SysEx counts** (#18), and the SysEx around it still arrives whole:
+  a DAW sending SysEx while its clock runs cost ticks, and the tempo with them.
+- **A Song Position after a program change** is read whole: its second byte became a program
+  change, recalling a scene.
+
 - **The CHOMPI key lights white while you hold it on the settings page** (#81), as SHIFT on
   the play page and as the manual says, also through the 2 s SHIFT + VOLUME hold for a bug
   report. It stayed dark there.

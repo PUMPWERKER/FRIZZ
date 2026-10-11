@@ -428,9 +428,8 @@ clocks: the first to tick is kept and the other's ticks ignored, the other takes
 after it stopped, with a new lock; two started in the same block; and no clock 0.5 s after the
 last tick, the FX keeping its tempo, a new clock locking again.
 
-Known: a tick inside a SysEx is lost (the parser keeps it as SysEx data), so a DAW's SysEx
-during the clock costs ticks and misreads the tempo; and the restart SysEx with a tick inside
-doesn't restart.
+A tick inside a SysEx counts too, and the SysEx around it still arrives whole: the restart SysEx
+with a tick inside restarts (#18, fixed in the vendored parser, `THIRD_PARTY.md`).
 
 ## Timing check
 
