@@ -1,33 +1,33 @@
-FRIZZ cpu bench, source 3200352664
-# measured on FRIZZ-bench.bin md5 27cbf2e7954789c780539987b1459fd0; FRIZZ.bin from the same source md5 50a4eec6e427b61e15b282007e3b4e19
+FRIZZ cpu bench, source 3813360979
+# measured on FRIZZ-bench.bin md5 9e8f977f00cf7e7389b48bc9a1424446; FRIZZ.bin from the same source md5 f3e7c24d791aaac2afbf98313917292d
 # of the 0.5 ms a block has; measured in FRIZZ-bench.bin, whose memory layout
 # isn't FRIZZ.bin's
 # segment           max %  mean %  still working
-idle                40.7    37.4
-freezer             44.1    41.1
-shifter             51.4    40.9
-folder              46.4    43.7
-crusher             40.1    38.8
-filter              43.4    40.9
-flanger             42.8    40.1
-resonator           41.2    38.7
-slicer              40.5    36.9
-warble              43.0    40.9
-tapestop            45.6    40.6
-phaser              43.1    40.6
-compressor          41.8    37.4
-inserts             80.3    69.7
-recording           39.5    37.7
-loop                44.1    41.7
-loop+inserts        86.4    74.4
-loop+delay          55.2    48.8
-loop+scene4+delay   90.3    62.6
-loop+reverb         54.8    49.5
-everything         100.2    89.1
-stress              99.7    89.1
-loop+everything    103.3    92.4
-loop+inserts+chaos  87.3    70.3
-loop+everything+page2 161.3   126.9
+idle                40.8    37.6
+freezer             43.7    41.0
+shifter             51.8    41.2
+folder              46.4    43.8
+crusher             40.6    39.0
+filter              43.7    41.2
+flanger             43.3    40.3
+resonator           41.1    38.8
+slicer              40.1    37.1
+warble              42.7    41.1
+tapestop            45.5    40.7
+phaser              43.2    40.8
+compressor          41.7    37.6
+inserts             80.4    70.0
+recording           39.4    37.9
+loop                44.5    41.8
+loop+inserts        86.7    74.8
+loop+delay          55.6    48.9
+loop+scene4+delay   90.8    62.7
+loop+reverb         55.1    49.6
+everything          99.9    89.1
+stress             100.5    89.2
+loop+everything    103.5    92.6
+loop+inserts+chaos  87.7    70.6
+loop+everything+page2 162.2   127.9
 # worst: loop+everything+page2
 # loop:    4.0 s, playing in every loop segment
 
@@ -35,56 +35,56 @@ loop+everything+page2 161.3   126.9
 # where the mean goes, % of the block by the audio clock (BenchProfile.h);
 # total: the whole callback so, to set against the mean above
 # segment            midi   ctrl events  input looper  tempo     fx   comp output   rest  total
-idle                  0.1    7.0    1.6    0.7    0.3    0.2   17.5    4.0    5.9    0.1   37.3
-freezer               0.1    7.0    1.6    0.7    0.2    0.2   21.2    3.9    5.9    0.1   41.0
-shifter               0.1    7.0    1.7    0.7    0.3    0.2   21.1    3.8    5.9    0.1   40.8
-folder                0.1    7.0    1.7    0.7    0.3    0.2   23.9    3.8    5.9    0.1   43.6
-crusher               0.1    7.0    1.6    0.7    0.3    0.2   19.1    3.7    5.9    0.1   38.7
-filter                0.1    7.0    1.6    0.7    0.2    0.2   21.3    3.6    5.9    0.1   40.7
-flanger               0.1    7.0    1.7    0.7    0.3    0.2   20.2    3.9    5.9    0.1   40.0
-resonator             0.1    7.0    1.7    0.7    0.2    0.2   18.9    3.7    5.9    0.1   38.6
-slicer                0.1    7.0    1.7    0.7    0.3    0.2   17.9    3.0    5.9    0.1   36.8
-warble                0.1    7.0    1.7    0.7    0.3    0.2   20.7    4.0    6.0    0.1   40.8
-tapestop              0.1    7.0    1.6    0.7    0.3    0.2   20.8    3.8    5.8    0.1   40.5
-phaser                0.1    7.0    1.7    0.7    0.3    0.2   21.0    3.6    6.0    0.1   40.5
-compressor            0.1    7.0    1.7    0.7    0.3    0.2   17.4    4.0    5.9    0.1   37.3
-inserts               0.1    7.1    1.7    0.7    0.3    0.3   49.7    3.6    6.1    0.2   69.6
-recording             0.1    7.0    1.7    0.7    0.8    0.2   17.4    3.8    5.9    0.1   37.6
-loop                  0.1    7.0    1.7    0.7    1.6    0.3   17.6    3.9    8.9    0.1   41.6
-loop+inserts          0.1    7.1    1.7    0.7    1.6    0.3   49.7    3.5    9.6    0.1   74.3
-loop+delay            0.1    7.0    1.7    0.7    1.6    0.3   24.5    4.1    8.7    0.1   48.7
-loop+scene4+delay     0.1    7.1    1.7    0.7    1.6    0.3   38.1    4.2    8.7    0.1   62.5
-loop+reverb           0.1    7.0    1.7    0.7    1.6    0.3   24.8    4.3    8.9    0.1   49.4
-everything            0.1    7.1    1.7    0.7    1.6    0.3   66.3    5.0    6.1    0.1   89.0
-stress                0.1    7.1    1.7    0.7    1.6    0.3   66.7    4.8    6.0    0.1   89.0
-loop+everything       0.1    7.0    1.7    0.7    1.6    0.3   66.5    5.0    9.3    0.1   92.3
-loop+inserts+chaos    0.1    7.1    1.7    0.7    1.9    0.3   45.2    3.9    9.2    0.1   70.2
-loop+everything+page2    0.1    5.2    1.3    0.5    1.2    0.2   75.6    4.3    7.2    0.1   95.8
+idle                  0.1    7.2    1.6    0.7    0.3    0.2   17.5    4.0    5.9    0.1   37.5
+freezer               0.1    7.2    1.6    0.7    0.2    0.2   21.0    3.9    5.9    0.1   40.9
+shifter               0.1    7.2    1.6    0.7    0.3    0.2   21.2    3.8    5.9    0.1   41.1
+folder                0.1    7.2    1.6    0.7    0.3    0.2   23.7    3.9    5.9    0.1   43.7
+crusher               0.1    7.2    1.6    0.7    0.3    0.2   19.1    3.7    5.9    0.1   38.9
+filter                0.1    7.2    1.6    0.7    0.3    0.2   21.5    3.6    5.9    0.1   41.1
+flanger               0.1    7.2    1.6    0.7    0.3    0.2   20.2    3.9    5.9    0.1   40.1
+resonator             0.1    7.2    1.7    0.7    0.2    0.2   18.9    3.7    5.9    0.1   38.7
+slicer                0.1    7.2    1.7    0.7    0.3    0.2   17.9    3.0    5.9    0.1   37.0
+warble                0.1    7.2    1.7    0.7    0.3    0.2   20.7    4.0    6.0    0.1   41.0
+tapestop              0.1    7.2    1.6    0.7    0.3    0.2   20.8    3.8    5.8    0.1   40.6
+phaser                0.1    7.2    1.6    0.7    0.3    0.2   21.0    3.5    6.0    0.1   40.7
+compressor            0.1    7.2    1.6    0.7    0.3    0.2   17.4    4.0    5.9    0.1   37.5
+inserts               0.1    7.2    1.7    0.7    0.3    0.2   49.8    3.6    6.1    0.1   69.9
+recording             0.1    7.2    1.7    0.7    0.8    0.2   17.4    3.8    5.9    0.1   37.8
+loop                  0.1    7.2    1.7    0.7    1.5    0.3   17.5    3.8    8.8    0.1   41.7
+loop+inserts          0.1    7.2    1.7    0.7    1.6    0.3   49.7    3.4    9.8    0.1   74.7
+loop+delay            0.1    7.2    1.7    0.7    1.6    0.3   24.5    4.1    8.6    0.1   48.8
+loop+scene4+delay     0.1    7.2    1.7    0.7    1.6    0.3   37.9    4.3    8.7    0.1   62.6
+loop+reverb           0.1    7.2    1.7    0.7    1.6    0.3   24.7    4.3    8.9    0.1   49.4
+everything            0.1    7.2    1.7    0.7    1.6    0.3   66.2    4.9    6.1    0.1   89.0
+stress                0.1    7.2    1.7    0.7    1.6    0.3   66.7    4.7    6.0    0.1   89.1
+loop+everything       0.1    7.2    1.7    0.7    1.6    0.3   66.5    4.8    9.5    0.1   92.5
+loop+inserts+chaos    0.1    7.2    1.7    0.7    1.9    0.3   45.3    3.8    9.5    0.1   70.5
+loop+everything+page2    0.1    5.3    1.3    0.5    1.2    0.2   75.4    4.2    7.5    0.1   95.8
 
 # the FX chain by effect, % of the block, each with its meter
 # segment            freezer   shifter    folder   crusher    filter   flanger resonator    slicer    warble  tapestop     delay    reverb    phaser
-idle                     1.1       2.2       0.5       2.2       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.7       0.4
-freezer                  4.8       2.2       0.5       2.2       2.3       1.7       1.9       1.1       2.0       0.8       0.7       0.7       0.4
-shifter                  1.2       5.6       0.5       2.3       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.7       0.4
-folder                   1.2       2.1       6.8       2.3       2.3       1.7       1.9       1.1       2.0       0.8       0.7       0.7       0.4
-crusher                  1.1       2.1       0.5       3.8       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.6       0.4
-filter                   1.1       2.2       0.5       2.2       6.0       1.6       1.9       1.1       2.0       0.7       0.7       0.6       0.4
-flanger                  1.1       2.2       0.5       2.2       2.3       4.2       1.9       1.1       2.0       0.8       0.7       0.7       0.4
+idle                     1.2       2.2       0.5       2.2       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.7       0.4
+freezer                  4.7       2.2       0.5       2.2       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.7       0.4
+shifter                  1.2       5.7       0.5       2.3       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.7       0.4
+folder                   1.3       2.1       6.7       2.2       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.7       0.4
+crusher                  1.2       2.2       0.5       3.9       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.7       0.4
+filter                   1.2       2.2       0.5       2.3       6.1       1.6       1.9       1.1       2.0       0.7       0.7       0.6       0.4
+flanger                  1.2       2.2       0.5       2.2       2.3       4.2       1.9       1.1       2.0       0.8       0.7       0.7       0.4
 resonator                1.1       2.2       0.5       2.3       2.3       1.7       3.3       1.1       2.0       0.7       0.7       0.7       0.4
-slicer                   1.1       2.1       0.5       2.2       2.3       1.7       1.9       1.7       2.0       0.7       0.7       0.6       0.4
-warble                   1.1       2.2       0.5       2.2       2.3       1.7       1.9       1.3       5.0       0.8       0.7       0.7       0.4
-tapestop                 1.1       2.2       0.5       2.2       2.3       1.7       1.9       1.1       1.9       4.3       0.8       0.7       0.4
-phaser                   1.1       2.2       0.5       2.2       2.3       1.7       1.8       1.1       2.6       0.7       0.7       0.6       3.5
-compressor               1.1       2.1       0.5       2.2       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.7       0.4
-inserts                  5.5       5.8       7.3       4.0       6.2       4.2       3.2       1.9       5.7       1.0       0.7       0.6       3.5
-recording                1.1       2.1       0.5       2.2       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.7       0.4
-loop                     1.2       2.2       0.5       2.2       2.3       1.7       1.9       1.1       2.0       0.8       0.7       0.7       0.4
-loop+inserts             5.4       5.9       7.1       4.0       6.3       4.4       3.2       1.9       5.6       1.0       0.7       0.6       3.5
-loop+delay               1.2       2.3       0.5       2.3       2.5       1.7       1.9       1.1       1.9       0.8       7.1       0.7       0.5
-loop+scene4+delay        1.5       6.3       6.9       4.2       2.7       1.7       1.9       1.7       1.9       0.9       7.2       0.7       0.5
-loop+reverb              1.2       2.1       0.5       2.3       2.3       1.7       1.9       1.2       2.2       0.8       0.8       7.5       0.4
-everything               5.6       6.2       7.4       4.5       6.5       4.3       3.3       2.3       6.1       1.0       7.5       8.1       3.5
-stress                   6.2       6.0       7.5       4.4       6.6       4.3       3.3       2.3       6.1       1.0       7.5       8.1       3.5
-loop+everything          5.9       6.0       7.1       4.4       6.7       4.5       3.2       2.3       6.1       1.0       7.7       8.1       3.5
-loop+inserts+chaos       4.3       5.8       6.0       3.8       5.9       4.0       2.9       1.8       5.2       1.0       0.7       0.6       3.1
-loop+everything+page2       8.0       6.4       7.4       5.5       6.9       5.2       3.7       3.8       6.8       1.0       7.5       8.9       4.6
+slicer                   1.2       2.1       0.5       2.2       2.3       1.7       1.9       1.7       2.1       0.7       0.7       0.6       0.4
+warble                   1.2       2.2       0.5       2.2       2.3       1.7       1.9       1.3       5.1       0.7       0.7       0.7       0.4
+tapestop                 1.2       2.2       0.5       2.2       2.3       1.7       1.9       1.1       1.9       4.2       0.8       0.7       0.4
+phaser                   1.2       2.2       0.5       2.2       2.3       1.7       1.8       1.1       2.6       0.7       0.7       0.6       3.5
+compressor               1.2       2.1       0.5       2.2       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.7       0.4
+inserts                  5.7       5.9       7.3       4.1       6.2       4.2       3.2       1.9       5.7       0.9       0.7       0.6       3.5
+recording                1.2       2.2       0.5       2.2       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.7       0.4
+loop                     1.2       2.2       0.5       2.2       2.3       1.7       1.9       1.1       2.0       0.7       0.7       0.7       0.4
+loop+inserts             5.6       5.9       7.1       4.1       6.3       4.3       3.2       1.9       5.6       0.9       0.7       0.6       3.5
+loop+delay               1.2       2.3       0.5       2.3       2.5       1.7       1.9       1.1       1.9       0.7       7.1       0.7       0.5
+loop+scene4+delay        1.6       6.3       6.9       4.2       2.7       1.7       1.9       1.7       1.9       0.7       7.2       0.7       0.5
+loop+reverb              1.2       2.2       0.5       2.3       2.3       1.7       1.9       1.2       2.2       0.8       0.8       7.5       0.4
+everything               5.8       6.2       7.3       4.5       6.4       4.3       3.3       2.3       6.1       0.9       7.5       8.1       3.6
+stress                   6.3       6.0       7.4       4.4       6.6       4.3       3.3       2.3       6.1       0.9       7.5       8.0       3.6
+loop+everything          6.1       6.0       7.1       4.4       6.7       4.4       3.2       2.3       6.1       0.9       7.6       8.1       3.6
+loop+inserts+chaos       4.5       5.8       6.0       3.9       6.0       4.0       2.9       1.8       5.2       0.9       0.7       0.6       3.1
+loop+everything+page2       8.0       6.3       7.5       5.5       7.0       5.1       3.7       3.7       6.7       0.9       7.4       8.9       4.6
