@@ -5,9 +5,9 @@ Your first ten minutes with FRIZZ. Every detail is in the [manual](MANUAL.md).
 ## How the sound flows
 
 ```
-AUX in -> input gain -+-----------------+
-                      |                 +-> input/loop mix -> effects (white keys) -> compressor -> output volume -> out
-                      +-> looper -------+
+AUX in or mic -> input gain -+-----------------+
+                             |                 +-> input/loop mix -> effects (white keys) -> compressor -> output volume -> out
+                             +-> looper -------+
 ```
 
 The looper records the input **before** the effects, so you can play effects over a loop and
@@ -15,6 +15,10 @@ nothing gets printed into it. The effects come **after** the mix, so they act on
 hear, the live input as well as the loop. The mix knob balances input against loop; there's no
 dry path around the effects on the master out. The headphones carry the same as the master
 out, or, from VOLUME's page 3, only the dry input (no loop, no effects).
+
+The input is AUX while a cable is plugged in there, and CHOMPI's built-in microphone while
+none is: pull the cable to record your voice or the room. To pick the other one by hand, flip
+the mode switch **up** and press A# of the upper octave (green: AUX, magenta: the mic).
 
 **SHIFT** means holding the CHOMPI key. The key lights white while it acts as SHIFT.
 

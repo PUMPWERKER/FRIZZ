@@ -4,8 +4,8 @@
  *  CHOMPI (built on the Daisy Seed / STM32H7) has two places code runs, in
  *  order of priority:
  *   1. AudioCallback() - the audio ISR. Runs once per audio block (~24 samples
- *      at 48kHz here). Polls the controls and MIDI (clock, and the panel played over it), and
- *      passes the AUX input through the engine.
+ *      at 48kHz here). Polls the controls, AUX's jack and MIDI (clock, and the panel played
+ *      over it), and passes the input, AUX or the built-in mic, through the engine.
  *   2. MainLoop() - Lowest priority, handles UI dispatch, battery checks, writing the FX
  *      scenes to the SD card, and boot-time stuff.
  */
@@ -99,6 +99,33 @@ volatile bool booting = true;
 bool rainbow_done = false;
 volatile bool loading_screen = true;
 
+/** AUX's jack, as TAPE and TEMPO read it (Hardware's jack_detect, high with a cable in): a
+ *  cable plugged in makes AUX the input, pulled out the built-in mic. At power-on it decides;
+ *  after that only a change does, kJackBlocks steady (20 ms), so the settings page's key
+ *  (SettingsPage.h) holds until the next */
+struct InputJack
+{
+    static const uint8_t kJackBlocks = 40;
+    bool plugged = true;
+    uint8_t steady = 0; // blocks the jack has read other than plugged
+
+    /** True once a change has held kJackBlocks */
+    bool Changed(bool level)
+    {
+        if (level == plugged)
+        {
+            steady = 0;
+            return false;
+        }
+        if (++steady < kJackBlocks)
+            return false;
+        plugged = level;
+        steady = 0;
+        return true;
+    }
+};
+InputJack input_jack;
+
 // a restart over MIDI waits this long at most for the card (MainLoop)
 static const uint32_t kRestartWaitMs = 1000;
 static uint32_t restart_asked = 0;
@@ -140,7 +167,7 @@ void ZeroSDRAM()
 
 /** breakdown:
  *  Inputs:
- *  Channel 1 - Microphone (unused)
+ *  Channel 1 - Microphone
  *  Channel 2 - X
  *  Channel 3 - Aux L
  *  Channel 4 - Aux R
@@ -188,6 +215,12 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
         }
 
         return;
+    }
+
+    if(input_jack.Changed(hw.jack_detect.Read()))
+    {
+        engine.SetMicInput(!input_jack.plugged);
+        event_log.Jack(input_jack.plugged);
     }
 
 #if FRIZZ_BENCH
@@ -337,6 +370,8 @@ int main(void)
                       24.f / hw.seed.AudioSampleRate());
     midi_out.Init(&midi_clock, &midi_control.feedback_trs);
     ui.Init(&engine, &hw, &scene_store, &event_log, &midi_control);
+    input_jack.plugged = hw.jack_detect.Read();
+    engine.SetMicInput(!input_jack.plugged);
 #if FRIZZ_BENCH
     bench.Init(hw.seed.AudioSampleRate(), 24, &fsi.GetSDFileSystem(), fsi.GetSDPath());
 #endif
@@ -380,7 +415,7 @@ int main(void)
     hw.usb_sw.Write(true);     // take USB control
 
     // the event log starts here, the card read
-    event_log.Start(daisy::System::GetNow(), hw.GetToggleState());
+    event_log.Start(daisy::System::GetNow(), hw.GetToggleState(), input_jack.plugged);
     main_loop_running = true;
     while (1)
     {

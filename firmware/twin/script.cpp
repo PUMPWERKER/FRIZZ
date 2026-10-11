@@ -23,11 +23,34 @@ static FILE* led_log = nullptr;
 static std::string last_leds;
 static int failures = 0;
 
-// the audio into AUX (L and R): a sine, a WAV file looped, or nothing
-static enum { IN_OFF, IN_SINE, IN_WAV } input = IN_OFF;
-static float sine_freq = 220.f, sine_amp = .3f, sine_phase = 0.f;
-static std::vector<float> wav_in; // interleaved L R
-static size_t wav_pos = 0;
+// the audio into AUX (L and R) and into the mic (a WAV's left): a sine, a WAV file looped,
+// or nothing
+struct Source
+{
+    enum { OFF, SINE, WAV } mode = OFF;
+    float freq = 220.f, amp = .3f, phase = 0.f;
+    std::vector<float> wav; // interleaved L R
+    size_t pos = 0;
+
+    void Next(float& l, float& r)
+    {
+        l = r = 0.f;
+        if (mode == SINE)
+        {
+            l = r = amp * sinf(phase);
+            phase += 2.f * float(M_PI) * freq / kSampleRate;
+            if (phase > 2.f * float(M_PI))
+                phase -= 2.f * float(M_PI);
+        }
+        else if (mode == WAV && !wav.empty())
+        {
+            l = wav[pos];
+            r = wav[pos + 1];
+            pos = (pos + 2) % wav.size();
+        }
+    }
+};
+static Source aux_in, mic_in;
 
 // MIDI clock out of a virtual sequencer on the jack and a DAW over USB (clockgen.h)
 static ClockGen clock_trs, clock_usb;
@@ -83,21 +106,10 @@ static void RunMs(uint32_t ms)
         clock_usb.Step(BlockMs());
         for (size_t i = 0; i < kBlockSize; i++)
         {
-            float l = 0.f, r = 0.f;
-            if (input == IN_SINE)
-            {
-                l = r = sine_amp * sinf(sine_phase);
-                sine_phase += 2.f * float(M_PI) * sine_freq / kSampleRate;
-                if (sine_phase > 2.f * float(M_PI))
-                    sine_phase -= 2.f * float(M_PI);
-            }
-            else if (input == IN_WAV && !wav_in.empty())
-            {
-                l = wav_in[wav_pos];
-                r = wav_in[wav_pos + 1];
-                wav_pos = (wav_pos + 2) % wav_in.size();
-            }
-            in[i * kChannels + 0] = 0.f;
+            float l, r, mic, unused;
+            aux_in.Next(l, r);
+            mic_in.Next(mic, unused);
+            in[i * kChannels + 0] = mic;
             in[i * kChannels + 1] = 0.f;
             in[i * kChannels + 2] = l;
             in[i * kChannels + 3] = r;
@@ -233,28 +245,39 @@ int PlayScript(std::istream& src_in, FILE* leds, std::vector<float>* out)
             SetBattery(v, a == "plugged" || b == "plugged", a == "full" || b == "full");
             continue;
         }
-        if (cmd == "input")
+        if (cmd == "input" || cmd == "mic")
         {
+            Source& src = cmd == "mic" ? mic_in : aux_in;
             std::string what;
             in >> what;
             if (what == "sine")
             {
-                in >> sine_freq >> sine_amp;
-                input = IN_SINE;
+                in >> src.freq >> src.amp;
+                src.mode = Source::SINE;
             }
             else if (what == "wav")
             {
                 std::string path;
                 in >> path;
-                wav_in.clear();
-                wav_pos = 0;
-                if (ReadWav(path.c_str(), wav_in))
-                    input = IN_WAV;
+                src.wav.clear();
+                src.pos = 0;
+                if (ReadWav(path.c_str(), src.wav))
+                    src.mode = Source::WAV;
                 else
                     Fail(line_no, "can't read " + path + " (16-bit PCM or 32-bit float WAV)");
             }
             else
-                input = IN_OFF;
+                src.mode = Source::OFF;
+            continue;
+        }
+        if (cmd == "jack")
+        {
+            std::string what;
+            in >> what;
+            if (what == "in" || what == "out")
+                SetJack(what == "in");
+            else
+                Fail(line_no, "jack in or out");
             continue;
         }
 

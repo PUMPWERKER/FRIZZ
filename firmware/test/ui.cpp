@@ -48,8 +48,10 @@ static float usb_clock_bpm = 0.f; // and one over USB
 static double usb_clock_next = 0.;
 static float last_out[2] = {0.f, 0.f}, max_step = 0.f; // the master out's largest step, L or R
 static float hp_rms = 0.f; // the headphones' (left) RMS over the last RunMs
+static float mic_amp = 0.f, mic_freq = 1000.f, mic_phase = 0.f; // a sine into the mic
 
-/** Runs ms with a sine (or silence) into AUX; the master out's RMS over the time */
+/** Runs ms with a sine (or silence) into AUX, and one into the mic while mic_amp > 0; the
+ *  master out's RMS over the time */
 static float RunMs(uint32_t ms)
 {
     float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
@@ -71,6 +73,8 @@ static float RunMs(uint32_t ms)
             const float s = sine ? amp * sinf(phase) : 0.f;
             phase = fmodf(phase + 2.f * float(M_PI) * freq / kSampleRate, 2.f * float(M_PI));
             in[i * kChannels + 2] = in[i * kChannels + 3] = s;
+            in[i * kChannels] = mic_amp * sinf(mic_phase);
+            mic_phase = fmodf(mic_phase + 2.f * float(M_PI) * mic_freq / kSampleRate, 2.f * float(M_PI));
         }
         Run(1, in, out);
         for (size_t i = 0; i < kBlockSize; i++)
@@ -2474,6 +2478,7 @@ int main()
                      || line.rfind("down ", 0) == 0 || line.rfind("up ", 0) == 0
                      || line.rfind("turn ", 0) == 0 || line.rfind("card file ", 0) == 0
                      || line.rfind("toggle ", 0) == 0 || line.rfind("input ", 0) == 0
+                     || line.rfind("mic ", 0) == 0 || line.rfind("jack ", 0) == 0
                      || line.rfind("midi ", 0) == 0
                      || line == "booted");
         Check(log.size() > 3 * 512 && bad == 0,
@@ -3811,6 +3816,278 @@ int main()
         Check(param(3) == 0.f && param(5) == 1.f, "cc-stereo: CC 17 turns the grain");
     }});
 
+    // ---- the built-in mic (#113): AUX's jack picks the input at power-on and on each change,
+    // the settings page's upper A# the other until the next; TAPE's gain and filter ----
+    static const int kInputKeyLed = 9; // the settings page's upper A# (the play page's SAVE)
+    static auto green_led = [](const Rgb& c) { return c.g > 150 && c.r < 40 && c.b < 40; };
+    static auto magenta_led = [](const Rgb& c) { return c.r > 150 && c.b > 150 && c.g < 40; };
+    // what the master out carries of AUX's sine on its own, then of the mic's on its own
+    static auto heard = [](float& aux, float& mic) {
+        const float a = amp, m = mic_amp;
+        mic_amp = 0.f;
+        RunMs(50);
+        aux = RunMs(200);
+        amp = 0.f;
+        mic_amp = m;
+        RunMs(50);
+        mic = RunMs(200);
+        amp = a;
+    };
+    static auto is_aux = [](const char* what) {
+        float aux, mic;
+        heard(aux, mic);
+        printf("      %s: AUX %.4f, the mic %.4f\n", what, aux, mic);
+        return aux > .03f && mic < aux * .02f;
+    };
+    static auto is_mic = [](const char* what) {
+        float aux, mic;
+        heard(aux, mic);
+        printf("      %s: AUX %.4f, the mic %.4f\n", what, aux, mic);
+        return mic > .03f && aux < mic * .02f;
+    };
+
+    cases.push_back({"mic-boot", [] {
+        SetJack(false); // no cable in AUX at power-on
+        mic_amp = .1f;
+        RunMs(kReadyMs);
+        Check(is_mic("no cable"), "mic-boot: no cable in AUX at power-on: the mic is the input, AUX unheard");
+        SetToggle(true);
+        RunMs(300);
+        Check(magenta_led(SmtLedFull(kInputKeyLed)), "mic-boot: the settings page's upper A# is magenta");
+    }});
+
+    cases.push_back({"mic-jack", [] {
+        mic_amp = .1f;
+        RunMs(kReadyMs);
+        Check(is_aux("a cable"), "mic-jack: a cable in AUX at power-on: AUX is the input, the mic unheard");
+        SetToggle(true);
+        RunMs(300);
+        Check(green_led(SmtLedFull(kInputKeyLed)), "mic-jack: the settings page's upper A# is green");
+        SetToggle(false);
+        RunMs(300);
+        // a bounce shorter than the debouncing (20 ms) changes nothing
+        SetJack(false);
+        RunMs(10);
+        SetJack(true);
+        RunMs(100);
+        Check(is_aux("a 10 ms bounce"), "mic-jack: the jack out for 10 ms: still AUX");
+        SetJack(false);
+        RunMs(100);
+        Check(is_mic("pulled"), "mic-jack: the cable pulled: the mic");
+        SetJack(true);
+        RunMs(100);
+        Check(is_aux("plugged again"), "mic-jack: plugged in again: AUX");
+    }});
+
+    cases.push_back({"mic-key", [] {
+        mic_amp = .1f;
+        RunMs(kReadyMs);
+        const std::string master = Card("/FRIZZ/frizz_master.txt");
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_25");
+        RunMs(100);
+        Check(magenta_led(SmtLedFull(kInputKeyLed)) && is_mic("the key, a cable in"),
+              "mic-key: the upper A# with a cable in: the mic, its key magenta");
+        Tap("KEY_25");
+        RunMs(100);
+        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("the key again"),
+              "mic-key: again: AUX, its key green");
+        Tap("KEY_25");
+        // nothing goes to the card, and nothing blinks red for it
+        bool red = false;
+        for (int t = 0; t < 3000; t++)
+        {
+            RunMs(1);
+            const Rgb c = SmtLedFull(kInputKeyLed);
+            red |= c.r > 150 && c.g < 40 && c.b < 40;
+        }
+        Check(Card("/FRIZZ/frizz_master.txt") == master && !red && magenta_led(SmtLedFull(kInputKeyLed)),
+              "mic-key: the input isn't saved: the card as it was, no red blink");
+        // the jack's next change decides again: pulled, the mic; plugged, AUX
+        SetJack(false);
+        RunMs(100);
+        Check(is_mic("the key, then pulled"), "mic-key: then the cable pulled: the mic still");
+        SetJack(true);
+        RunMs(100);
+        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("plugged again"),
+              "mic-key: plugged in again: AUX, over the key");
+        // on the play page the key is SAVE again, not the input
+        SetToggle(false);
+        RunMs(300);
+        Tap("KEY_25");
+        RunMs(100);
+        Tap("KEY_25");
+        RunMs(300);
+        Check(is_aux("SAVE on the play page"), "mic-key: on the play page the upper A# doesn't switch the input");
+    }});
+
+    cases.push_back({"mic-loop", [] {
+        SetJack(false);
+        amp = 0.f; // nothing into AUX
+        mic_amp = .1f;
+        RunMs(kReadyMs);
+        Tap("KEY_28"); // record
+        RunMs(2000);
+        Tap("KEY_28"); // play
+        RunMs(500);
+        mic_amp = 0.f;
+        RunMs(300);
+        const float loop = RunMs(500);
+        SetJack(true);
+        RunMs(300);
+        const float aux_loop = RunMs(500);
+        printf("      the loop recorded from the mic: %.4f, with a cable in AUX %.4f\n", loop, aux_loop);
+        Check(Probe().loop_state == 2 && loop > .03f,
+              "mic-loop: the looper records the mic, and plays it once it's silent");
+        Check(fabsf(aux_loop - loop) < loop * .1f, "mic-loop: and plays it on with AUX the input again");
+    }});
+
+    cases.push_back({"mic-level", [] {
+        SetJack(false);
+        amp = 0.f;
+        mic_amp = .05f;
+        RunMs(kReadyMs);
+        RunMs(100);
+        const float m1k = RunMs(500);
+        mic_freq = 50.f;
+        RunMs(100);
+        const float m50 = RunMs(500);
+        // above it nothing: TAPE's notches (4 kHz one of them) are left out (#127), so a quiet
+        // tone at 4 kHz is as loud as one beside it
+        mic_amp = .0005f;
+        mic_freq = 3600.f;
+        RunMs(100);
+        const float q3600 = RunMs(500);
+        mic_freq = 4000.f;
+        RunMs(300);
+        const float q4k = RunMs(500);
+        mic_freq = 1000.f;
+        mic_amp = .05f;
+        printf("      the mic at 1 kHz %.4f, 50 Hz %.4f; quietly at 3.6 kHz %.6f, 4 kHz %.6f\n", m1k, m50,
+               q3600, q4k);
+        Check(m50 < m1k * .3f, "mic-level: 50 Hz well below 1 kHz (the highpass at 150 Hz)");
+        Check(fabsf(q4k - q3600) < q3600 * .05f, "mic-level: a quiet tone at 4 kHz as loud as one at 3.6 kHz: no notch (#127)");
+        // as loud on both sides, and the mono input changes nothing
+        float l2 = 0.f, r2 = 0.f;
+        {
+            float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
+            for (int b = 0; b < 400; b++)
+            {
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    in[i * kChannels] = mic_amp * sinf(mic_phase);
+                    mic_phase = fmodf(mic_phase + 2.f * float(M_PI) * mic_freq / kSampleRate, 2.f * float(M_PI));
+                }
+                Run(1, in, out);
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    l2 += out[i * kChannels + 2] * out[i * kChannels + 2];
+                    r2 += out[i * kChannels + 3] * out[i * kChannels + 3];
+                }
+            }
+        }
+        Check(fabsf(l2 - r2) < l2 * .001f, "mic-level: the mic on both sides alike");
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23"); // mono
+        RunMs(300);
+        SetToggle(false);
+        RunMs(300);
+        const float mono = RunMs(500);
+        Check(fabsf(mono - m1k) < m1k * .02f, "mic-level: the mono input doesn't change the mic");
+        // TAPE's gains: the mic x5, AUX x3 (and both after the input gain)
+        mic_amp = 0.f;
+        amp = .05f;
+        freq = 1000.f;
+        SetJack(true);
+        RunMs(300);
+        const float a1k = RunMs(500);
+        printf("      AUX at 1 kHz %.4f: the mic %.2f times as loud\n", a1k, m1k / a1k);
+        Check(m1k / a1k > 1.4f && m1k / a1k < 1.95f, "mic-level: the mic about 5/3 as loud as AUX at the same level");
+        Turn(kVolumeEncoder, 0);
+        Tap("ENC_6_SW"); // VOLUME's page 2: the input gain
+        RunMs(300);
+        Turn(kVolumeEncoder, -20); // 75 % to 35 %
+        RunMs(500);
+        amp = 0.f;
+        mic_amp = .05f;
+        SetJack(false);
+        RunMs(300);
+        const float m_low = RunMs(500);
+        printf("      the mic at 35 %% input gain %.4f\n", m_low);
+        Check(m_low < m1k * .6f && m_low > m1k * .3f, "mic-level: the input gain turns the mic down too");
+        // the headphones' input on its own (VOLUME's page 3) carries the mic
+        Latch("KEY_11"); // the tape stop: silence on the master
+        RunMs(3000);
+        Usb({kCC, kHpCueCC, 0});
+        RunMs(300);
+        const float cued = RunMs(500);
+        printf("      the headphones' input alone: %.4f (the master %.4f)\n", hp_rms, cued);
+        Check(cued < .01f * m_low && hp_rms > .5f * m_low,
+              "mic-level: the headphones' input on its own is the mic");
+    }});
+
+    cases.push_back({"mic-click", [] {
+        mic_amp = 0.f;
+        RunMs(kReadyMs);
+        const float steady = StepMs(300);
+        SetJack(false); // AUX's sine to the silent mic
+        const float to_mic = StepMs(300);
+        mic_amp = .1f;
+        RunMs(300);
+        const float mic_steady = StepMs(300);
+        SetJack(true);
+        const float to_aux = StepMs(300);
+        printf("      largest steps: AUX %.4f, to the mic %.4f, the mic %.4f, back to AUX %.4f\n", steady,
+               to_mic, mic_steady, to_aux);
+        Check(to_mic < steady * 1.5f && to_aux < std::max(steady, mic_steady) * 1.5f,
+              "mic-click: switching between AUX and the mic crossfades, no click");
+    }});
+
+    // a bug report knows AUX's jack: as it was at power-on, and each change; its replay plays
+    // them, so it ends on the input the session had
+    cases.push_back({"mic-bug-log", [] {
+        SetJack(false);
+        RunMs(kReadyMs);
+        SetJack(true);
+        RunMs(500);
+        SetJack(false);
+        RunMs(500);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_25"); // AUX, by hand
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(2500);
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(1000);
+        const std::string log = Card("/FRIZZ/bug-1.txt");
+        const size_t booted = log.find("\nbooted\n"), in = log.find("\njack in\n", booted),
+                     out = log.find("\njack out\n", booted);
+        Check(booted != std::string::npos && log.rfind("\njack out\n", booted) != std::string::npos
+                  && log.find("\nmic sine ") < booted,
+              "mic-bug-log: no cable at power-on: the report's head says jack out, and plays a tone into the mic");
+        Check(in != std::string::npos && out != std::string::npos && in < out,
+              "mic-bug-log: the cable in, then out, among its events");
+        KeepCard();
+    }});
+    cases.push_back({"bug-replay-mic", [] {
+        TakeCard();
+        const std::string log = Card("/FRIZZ/bug-1.txt");
+        CardFiles().clear();
+        std::istringstream script(log + "\nwait 3000\n");
+        Check(PlayScript(script, nullptr, nullptr) == 0 && !log.empty(), "mic-bug-log: the twin plays it");
+        // no cable, a cable, none, the key: AUX, as in the session (without the jack's lines
+        // it would be the mic)
+        mic_amp = .1f;
+        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("replayed"),
+              "mic-bug-log: played back, it ends on AUX by the key, as the session did");
+    }});
+
     // ===== #116: the clock factor times every tempo the effects follow, not only a clock's =====
     {
         // SHIFT + LOOP, 5 taps ms apart
@@ -3983,6 +4260,7 @@ int main()
     Chain({"clock-source-log", "bug-replay-usb"});
     Chain({"card-1", "card-2", "card-3", "bug-log", "bug-full", "bug-replay"});
     Chain({"midi-transport", "midi-kept"});
+    Chain({"mic-bug-log", "bug-replay-mic"});
     // a replay boots by its script
     RunAllCases([](const Case& c) {
         return c.name.compare(0, 10, "bug-replay") != 0 && c.name.compare(0, 9, "scenario:") != 0;
