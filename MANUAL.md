@@ -950,9 +950,12 @@ with the music.
 - **An effect the scene turns off fades out:** the same knobs glide back to their defaults,
   and on the bar line the effect goes off. It stays faded out (a delay or reverb tail rings
   out at that level) and takes the scene's settings when its key next comes on.
-- **The freezer, shifter and slicer** have no knob to fade with: one the scene turns on or off
-  switches on the bar line, so the freezer grabs, the shifter swoops and the slicer attacks on
-  the downbeat.
+- **The freezer, shifter and slicer** have no knob that brings them in, so they fade with
+  their page 2 **Mix** instead: one the scene turns off glides to dry and goes off on the bar
+  line; the shifter or slicer the scene turns on comes on when the glide starts, dry, and its
+  Mix glides up to the scene's. The freezer coming on still switches on the bar line, so it
+  grabs on the downbeat: a grab in the middle of a bar sounds worse than a hard one on the
+  beat.
 - **SHIFT + the blank scene** fades every effect out onto the bar line.
 
 The bar lines are the effects' (see [Tempo](#tempo)): the loop's bars, counted from its start,
@@ -987,9 +990,10 @@ and the bar lines don't count while you hold it.
 
 - **What fades is what a morph fades:** knobs on both scenes glide with the transport knob;
   an effect only the new scene has fades in as soon as you're off the left end, one only the
-  old scene has fades out and goes off at the right end. What can't fade switches in the
-  middle, either way: stepped knobs (delay division, slicer pattern, shifter shift …) and the
-  freezer, shifter and slicer coming on or going off.
+  old scene has fades out and goes off at the right end. The freezer, shifter and slicer fade
+  with their Mix, as in a morph. What can't fade switches in the middle, either way: stepped
+  knobs (delay division, slicer pattern, shifter shift …) and the freezer coming on, which
+  grabs there.
 - **Let go of SHIFT** to leave it:
   - **all the way right:** you're in the new scene, as after a recall;
   - **all the way left:** you're back where you started, the scene you were in as it was
