@@ -5,15 +5,16 @@
  *  key and LEDs go with each effect, FxParams.h its knobs.
  *
  *  The order follows a pedalboard's: source, pitch, dirt, filter, modulation, gate, tape,
- *  space. The keys follow it too, left to right:
+ *  space; but for the phaser, a modulation that comes after the tape on purpose (#68), so it
+ *  sweeps the tape effects too. The keys follow it, left to right:
  *   freezer -> shifter -> folder -> crusher -> filter -> flanger -> slicer -> wow & flutter
  *              |<-------------- resonator loop --------------->|
  *     -> tape stop -> phaser -> delay -> reverb
  *  The freezer comes first so it captures the clean sound and everything after it works on
  *  the repeats. The folder comes before the crusher, so it folds the clean signal and the
  *  crusher grinds the folds. The filter sweeps the dirt, and the flanger the harmonics it
- *  made. The slicer is the last insert, the final gate: it chops everything including the
- *  resonator's ringing, and the sends get the chopped sound. Wow & flutter and the tape stop
+ *  made. The slicer is the final gate: it chops everything including the resonator's
+ *  ringing, and what comes after it gets the chopped sound. Wow & flutter and the tape stop
  *  come after it, so they bend everything before them; the sends after them, so a tape stop
  *  leaves the echoes and the reverb ringing. The phaser (#68) comes after the tape stop, the
  *  last insert, so it sweeps the whole sound, a tape stop's too, before the sends: the echoes

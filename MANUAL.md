@@ -208,7 +208,7 @@ The keys run in signal order, left to right:
 
 ```
 freezer -> shifter -> folder -> crusher -> filter -> flanger -> slicer -> wow & flutter
-           |<------------------- resonator loop ------------------->|
+           |<-------------- resonator loop --------------->|
   -> tape stop -> phaser -> delay -> reverb
 ```
 
