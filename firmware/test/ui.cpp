@@ -25,6 +25,7 @@ using namespace twin;
 
 // the play page's LEDs (NormalPage.h, FxSlots.h)
 static const int kKnob1Led = 1, kPlayLed = 7, kLoopLed = 8;
+static const int kBeatPulseMax = 70; // PLAY's beat with no loop: .25 white (NormalPage.h's kBeatPulse)
 static const int kFilterKeyLed = 20, kShifterKeyLed = 23, kFlangerKeyLed = 19;
 static const int kVolumeEncoder = 6, kKnob1Encoder = 4; // SW6, SW4
 static const int kTransportRevLed = 5, kTransportFwdLed = 6, kVolumeLed = 9;
@@ -659,7 +660,8 @@ int main()
         Check(RunMs(300) < .001f, "looper: PLAY pauses it");
         Tap("KEY_28");
         RunMs(300);
-        Check(Max(PthLedFull(kLoopLed)) == 0 && Max(PthLedFull(kPlayLed)) == 0, "looper: LOOP erases it");
+        Check(Max(PthLedFull(kLoopLed)) == 0 && Max(PthLedFull(kPlayLed)) <= kBeatPulseMax,
+              "looper: LOOP erases it: LOOP dark, PLAY at most the beat's dim pulse");
     }});
 
     cases.push_back({"quantize", [] {
@@ -2799,6 +2801,119 @@ int main()
         const std::vector<std::array<int, 3>> global_only = TrsCcs();
         Check(LastCc(global_only, 0xBF, 14) >= 0 && LastCc(global_only, 0xB4, 14) < 0,
               "midi-feedback-scenes: with the effect channels off on the jack, only channel 16's go there");
+    }});
+
+    // the beat on the PLAY LED (#110), the tempo the effects follow (as the settings page's G#)
+    cases.push_back({"beat-led", [] {
+        RunMs(kReadyMs);
+        // PLAY's level every ms for ms, and the loop's position
+        auto watch = [](uint32_t ms, std::vector<int>& play, std::vector<float>& pos) {
+            play.clear();
+            pos.clear();
+            for (uint32_t t = 0; t < ms; t++)
+            {
+                RunMs(1);
+                play.push_back(PthLedFull(kPlayLed).r);
+                pos.push_back(Probe().loop_pos);
+            }
+        };
+        // a pulse's starts: where the level rises over a threshold
+        auto rises = [](const std::vector<int>& v, int over) {
+            std::vector<size_t> at;
+            for (size_t i = 1; i < v.size(); i++)
+                if (v[i] > over && v[i - 1] <= over)
+                    at.push_back(i);
+            return at;
+        };
+        std::vector<int> play;
+        std::vector<float> pos;
+        // no loop: dim white for the first half of each beat, at 120 BPM (power-on's tempo)
+        watch(2000, play, pos);
+        std::vector<size_t> beats = rises(play, 10);
+        int lit = 0, top = 0;
+        for (int v : play)
+        {
+            lit += v > 10;
+            top = std::max(top, v);
+        }
+        printf("      no loop: %zu beats in 2 s, lit %d ms, at most %d\n", beats.size(), lit, top);
+        Check(beats.size() == 4 && lit > 900 && lit < 1100 && top > 40 && top <= kBeatPulseMax
+                  && Same(PthLedFull(kPlayLed), Rgb{0, 0, 0}) == (play.back() <= 10),
+              "beat-led: no loop: PLAY pulses dim white on each beat, the first half lit");
+        // recording: LOOP red, PLAY counting the beats
+        Tap("KEY_28");
+        RunMs(10);
+        watch(1000, play, pos);
+        const Rgb rec = PthLedFull(kLoopLed);
+        Check(rises(play, 10).size() == 2 && rec.r > 200 && rec.g == 0,
+              "beat-led: recording: LOOP red, PLAY pulsing the beat");
+        RunMs(980); // a 2 s loop: 4 beats at 120 BPM, a bar
+        Tap("KEY_28");
+        RunMs(600);
+        // playing: the crossfade as before, a short flash on each beat, more on the bar's 1
+        watch(4000, play, pos);
+        std::vector<int> off; // the flash, either way off the crossfade
+        for (size_t i = 0; i < play.size(); i++)
+            off.push_back(abs(play[i] - static_cast<int>((1.f - pos[i]) * 252.f + .5f)));
+        beats = rises(off, 40);
+        int down = 0, other = 0;
+        for (size_t b : beats)
+        {
+            int peak = 0, len = 0;
+            for (size_t i = b; i < off.size() && off[i] > 40; i++, len++)
+                peak = std::max(peak, off[i]);
+            const bool one = pos[b] < .05f || pos[b] > .95f; // a 1-bar loop: its start
+            (one ? down : other) = std::max(one ? down : other, peak);
+            printf("      flash at %zu ms (loop at %.3f): %d off for %d ms\n", b, pos[b], peak, len);
+        }
+        Check(beats.size() == 8 && down > other + 40,
+              "beat-led: playing: a flash on each beat over the crossfade, the bar's 1 the strongest, at the loop's start too");
+        // paused: the dim position, the beat on it
+        Tap("KEY_27");
+        RunMs(300);
+        watch(2000, play, pos);
+        Check(rises(play, static_cast<int>((1.f - pos[0]) * 252.f * .3f) + 10).size() == 4,
+              "beat-led: paused: the beat pulses over the dim position");
+        // LOOP's red blinks stay: an erase at the loop's end waits, blinking
+        Tap("KEY_27");
+        RunMs(100);
+        Press("KEY_27", true);
+        RunMs(60);
+        Tap("KEY_28");
+        Press("KEY_27", false);
+        int red = 0;
+        for (int t = 0; t < 600; t++)
+        {
+            RunMs(1);
+            const Rgb l = PthLedFull(kLoopLed);
+            red += l.r > 200 && l.g == 0;
+        }
+        Check(red > 100, "beat-led: LOOP's red blink for an erase waiting shows through");
+    }});
+
+    // the beat dims with the LEDs: at 50 %, half
+    cases.push_back({"beat-led-dim", [] {
+        RunMs(kReadyMs);
+        auto top = [] {
+            int t = 0;
+            for (int ms = 0; ms < 1000; ms++)
+            {
+                RunMs(1);
+                t = std::max(t, static_cast<int>(PthLedFull(kPlayLed).r));
+            }
+            return t;
+        };
+        const int full = top();
+        SetToggle(true);
+        RunMs(200);
+        Tap("KEY_24");
+        RunMs(100);
+        Tap("KEY_24"); // 50 %
+        SetToggle(false);
+        RunMs(300);
+        const int half = top();
+        printf("      the beat's top %d at 100 %%, %d at 50 %%\n", full, half);
+        Check(half > 0 && half < full * .7f, "beat-led-dim: the beat dims with the LEDs' brightness");
     }});
 
     // what hosts send by themselves reaches nothing: an RPN (a DAW's pitch-bend range) with its

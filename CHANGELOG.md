@@ -101,6 +101,11 @@ what FRIZZ does.
 - **On the global channel** (#97): CC 14-22 reach the effect in focus, the one the knobs edit,
   and CC 23 picks it (1-15, by key); CC 82 taps the tempo; CC 90 sets the loop's speed
   outright, in semitones (64 as recorded); CC 102-115 latch the effects by key.
+- **The beat on PLAY** (#110): the play page's PLAY LED shows the beat the effects follow, as
+  the settings page's G# does: dim white for the first half of each beat without a loop or
+  while recording, a short flash on each beat while a loop plays (stronger on each bar's 1),
+  and pulsing over the dim position while it's paused. LOOP's red blinks stay as they were.
+  See MANUAL.md, "Looper".
 - **MIDI feedback** (#104): with the settings page's new upper D# on, what you change on the
   panel goes out as the CCs that would set it, wherever MIDI out goes. An effect's knobs and
   latch go on its channel, and for the effect in focus on the global channel too. The latches

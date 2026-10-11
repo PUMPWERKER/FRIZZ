@@ -42,7 +42,6 @@ down KEY_27
 tap KEY_28
 up KEY_27
 wait 2500
-# erased: PLAY and LOOP dark
-expect led pth 7 000000
+# erased: LOOP dark (PLAY shows the beat now, its phase the device's own: test/ui.cpp checks it)
 expect led pth 8 000000
 expect on
