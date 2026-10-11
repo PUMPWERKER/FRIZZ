@@ -173,8 +173,9 @@ namespace chompi
          *  that changed, as base plus the key; the play page's are timed (KeyEdge) */
         void Tell(uint64_t down, uint64_t& told, uint16_t base)
         {
-            const uint32_t now = System::GetNow();
-            for (uint64_t changed = down ^ told; changed; changed &= changed - 1)
+            const uint64_t edges = down ^ told;
+            const uint32_t now = edges ? System::GetNow() : 0; // read only when a key changed
+            for (uint64_t changed = edges; changed; changed &= changed - 1)
             {
                 const int key = __builtin_ctzll(changed);
                 if (base == 0)
