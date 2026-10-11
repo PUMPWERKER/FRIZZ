@@ -184,6 +184,23 @@ public:
     }
     inline bool Mono() const { return mono_; }
 
+    /** One of the card's settings (masterfile::kLines' index) to v, as its key would set
+     *  it (kCmdDev's SET). False if there's no such setting or it doesn't take v */
+    bool Set(size_t line, long v)
+    {
+        using namespace masterfile;
+        if (line >= sizeof(kLines) / sizeof(kLines[0]) || !kLines[line].Takes(v))
+            return false;
+        MasterSettings master;
+        Store(master);
+        *Field(master, kLines[line]) = static_cast<uint8_t>(kLines[line].kind == Line::SWITCH ? v != 0 : v);
+        // a setter leaves a setting that stays as it is (the clock keeps its state)
+        Init(engine_, midi_, hw_, master);
+        midi_->SetChannel(master.midi_channel);
+        midi_->SetTransport(master.midi_transport);
+        return true;
+    }
+
     /** Its settings into the master settings, for the card */
     void Store(MasterSettings& master) const
     {

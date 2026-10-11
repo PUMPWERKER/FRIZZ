@@ -27,7 +27,7 @@
  *  can get the CHOMPI back to the multi-firmware launcher without the power switch
  *  (firmware/flash.py). The header is the launcher's (7D, non-commercial, then "CH";
  *  github.com/sfaber02/CHOMPI, firmware/chompi-launcher/PROTOCOL.md); 10 is FRIZZ's own
- *  command, above the launcher's 01-04. MainLoop does the restart (chompi_main.cpp).
+ *  command, above the launcher's 01-07. MainLoop does the restart (chompi_main.cpp).
  */
 #pragma once
 #include <string.h>

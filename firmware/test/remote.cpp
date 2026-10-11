@@ -568,6 +568,15 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
               && fabsf(JsonParam(json, "shifter", 4) - 1.f) < 1e-4f,
           "remote: a scene of four knobs each puts page 2 on its defaults");
 
+    // which build runs (kCmdDev's IDENT): FRIZZ, the twin's image 0 B; the card written, as no
+    // script has played yet
+    rc = Remote({"ident"}, out);
+    Check(rc == 0 && Has(out, "FRIZZ, crc32 00000000, 0 B") && Has(out, "MainLoop ")
+              && Has(out, "the card: written as FRIZZ writes it"),
+          "remote: ident says FRIZZ runs, its uptime, and that it writes the card");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
+
     // a script played on the device: the filter's key held, its LED expected as the twin
     // shows it held and let go, with the load
     const std::string off = Hex(SmtLedFull(kFilterKeyLed));
@@ -649,13 +658,14 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
         printf("%s\n%s\n", interrupted.c_str(), out.c_str());
 
     // the mode switch over SysEx (kCmdSwitch): up shows the settings page, and SysEx keys
-    // reach it as the hand's do; `switch hand` gives the real switch back
+    // reach it as the hand's do; `switch hand` gives the real switch back. The guard of a FRIZZ
+    // from before PERSIST (card_use), as --save keeps it
     Remote({"switch", "up"}, out);
     rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, "page       settings; the mode switch stands down, SysEx holds it up"),
           "remote: switch up shows the settings page, and state says so");
     Write(script, "booted\ntap KEY_18\nwait 100\n"); // F#: mono
-    rc = Remote({"play", script}, out);
+    rc = Remote({"play", script, "--save"}, out);
     const std::string refused = out;
     Remote({"state"}, out);
     Check(rc != 0 && Has(refused, "line 2: tap KEY_18 on the settings page") && Has(refused, "--force")
@@ -663,17 +673,17 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
           "remote: play refuses a key on the settings page the device shows, saying why, and sends none (#58)");
     if (rc == 0 || !Has(refused, "--force"))
         printf("%s\n", refused.c_str());
-    Remote({"play", script, "--force"}, out);
+    Remote({"play", script, "--save", "--force"}, out);
     Remote({"switch", "hand"}, out);
     rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, ", mono") && Has(out, "page       play; the mode switch stands down\n"),
           "remote: a SysEx key there sets mono; switch hand, the play page again");
     // a script's toggle: up and down over SysEx, the real switch again at its end
     Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_18\nwait 100\ntoggle 0\nwait 100\n");
-    rc = Remote({"play", script}, out);
+    rc = Remote({"play", script, "--save"}, out);
     Check(rc != 0 && Has(out, "line 4: tap KEY_18 on the settings page"),
           "remote: and one the script toggles up to, by the line (#58)");
-    rc = Remote({"play", script, "--force"}, out);
+    rc = Remote({"play", script, "--save", "--force"}, out);
     const int played = rc;
     rc = Remote({"state"}, out);
     Check(played == 0 && rc == 0 && !Has(out, ", mono") && Has(out, "page       play; the mode switch stands down\n"),
@@ -682,21 +692,22 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
         printf("%s\n", out.c_str());
     // the settings page only looked at plays; a setting over SysEx doesn't
     Write(script, "booted\ntoggle 1\nwait 100\ntoggle 0\nwait 100\ntap KEY_18\n");
-    rc = Remote({"play", script}, out);
+    rc = Remote({"play", script, "--save"}, out);
     Check(rc == 0, "remote: a script that toggles up and down again, no key there, plays");
     if (rc != 0)
         printf("%s\n", out.c_str());
     Write(script, "booted\nmidi F0 7D 43 48 13 00 05 F7\n");
-    rc = Remote({"play", script}, out);
+    rc = Remote({"play", script, "--save"}, out);
     const std::string refused_sysex = out;
     Remote({"settings"}, out);
     Check(rc != 0 && Has(refused_sysex, "line 2: a setting over SysEx") && Has(out, "channel all,"),
           "remote: and a script that sets the channel over SysEx is refused, the channel kept");
 
     // the play page writes the card too (#78): the compressor's knobs to frizz_master.txt,
-    // SAVE / COPY / DELETE to frizz_scenes.txt. Refused without --force, nothing sent
+    // SAVE / COPY / DELETE to frizz_scenes.txt. Refused without --force, nothing sent (with
+    // --save, as from a FRIZZ before PERSIST)
     Write(script, "booted\ntap KEY_15\nwait 100\nturn 4 10\nwait 300\n");
-    rc = Remote({"play", script}, out);
+    rc = Remote({"play", script, "--save"}, out);
     const std::string refused_comp = out;
     Remote({"state"}, out);
     Check(rc != 0 && Has(refused_comp, "line 4: turn 4 with the compressor selected")
@@ -707,24 +718,24 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
         printf("%s\n", refused_comp.c_str());
     // the compressor selected already: where the device stands counts, as the switch does
     Write(script, "booted\ntap KEY_15\nwait 200\n");
-    const int selected = Remote({"play", script}, out);
+    const int selected = Remote({"play", script, "--save"}, out);
     Remote({"state"}, out);
     const bool comp_shown = Has(out, "knobs on   compressor");
     Write(script, "booted\nturn 1 3\nwait 300\n");
-    rc = Remote({"play", script}, out);
+    rc = Remote({"play", script, "--save"}, out);
     Check(selected == 0 && comp_shown && rc != 0 && Has(out, "line 2: turn 1 with the compressor selected"),
           "remote: and a knob alone with the compressor already selected on the device (#78)");
     Write(script, "booted\ntap KEY_5\nwait 100\nturn 4 2\nwait 300\n");
-    rc = Remote({"play", script}, out);
+    rc = Remote({"play", script, "--save"}, out);
     Check(rc == 0, "remote: an effect selected first, its knob turns, played");
     if (rc != 0)
         printf("%s\n", out.c_str());
     Write(script, "booted\nmidi B0 34 40\n"); // CC 52: the compressor's knob 1
-    rc = Remote({"play", script}, out);
+    rc = Remote({"play", script, "--save"}, out);
     Check(rc != 0 && Has(out, "line 2: the compressor's knob over MIDI (CC 52)"),
           "remote: and its knob over MIDI is refused (#78)");
     Write(script, "booted\ntap KEY_25\nwait 100\ntap KEY_17\nwait 100\ntap KEY_26\nwait 500\n");
-    rc = Remote({"play", script}, out);
+    rc = Remote({"play", script, "--save"}, out);
     const std::string refused_save = out;
     Remote({"state"}, out);
     Check(rc != 0 && Has(refused_save, "line 6: SAVE confirmed (tap KEY_26)")
@@ -732,6 +743,127 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
           "remote: play refuses a scene saved with SAVE, a slot and CHOMPI, naming the scenes file (#78)");
     if (rc == 0 || !Has(refused_save, "frizz_scenes"))
         printf("%s\n", refused_save.c_str());
+
+    // since PERSIST 0, play keeps the card as it was (#58, #78): the settings page's mono key,
+    // a channel over SysEx, the compressor's knob and a scene saved change FRIZZ, not its files
+    const std::string master_file = CardFiles()["/FRIZZ/frizz_master.txt"];
+    const std::string scenes_file = CardFiles()["/FRIZZ/frizz_scenes.txt"];
+    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_18\nwait 100\ntoggle 0\nwait 100\n"
+                  "midi F0 7D 43 48 13 00 05 F7\ntap KEY_15\nwait 100\nturn 4 10\nwait 100\n"
+                  "tap KEY_25\nwait 100\ntap KEY_18\nwait 100\ntap KEY_26\nwait 2500\n");
+    rc = Remote({"play", script}, out);
+    const std::string in_ram = out;
+    Remote({"settings"}, out);
+    const std::string settings = out;
+    Remote({"state"}, out);
+    Check(rc == 0 && Has(in_ram, "what the script changes stays in RAM") && Has(settings, "channel 5,")
+              && Has(out, ", mono") && CardFiles()["/FRIZZ/frizz_master.txt"] == master_file
+              && CardFiles()["/FRIZZ/frizz_scenes.txt"] == scenes_file && !master_file.empty(),
+          "remote: play keeps what a script changes in RAM (PERSIST 0), the card's files as they were");
+    if (rc != 0)
+        printf("%s\n", in_ram.c_str());
+    rc = Remote({"ident"}, out);
+    Check(rc == 0 && Has(out, "the card: not written until it restarts (RAM only)"),
+          "remote: and ident says so");
+
+    // GET and SET by (group, index): an effect's knob, a setting, one refused
+    rc = Remote({"set", "filter", "1", "0.25"}, out);
+    rc |= Remote({"get", "filter"}, out);
+    Check(rc == 0 && out.find("0.2500") == out.find("page 1  ") + 16, "remote: set an effect's knob, get reads it");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
+    rc = Remote({"set", "settings", "clock_factor", "50"}, out);
+    rc |= Remote({"get", "settings"}, out);
+    Check(rc == 0 && Has(out, "clock_factor    50\n") && Has(out, "midi_channel    5\n"),
+          "remote: set the clock factor, get reads every setting");
+    rc = Remote({"set", "settings", "led_brightness", "60"}, out);
+    Check(rc != 0 && Has(out, "refused"), "remote: a value a setting doesn't take is refused");
+    rc = Remote({"set", "volume", "mix", "1"}, out);
+    rc |= Remote({"get", "volume"}, out);
+    Check(rc == 0 && Has(out, "mix 1.0000"), "remote: VOLUME's by name");
+    rc = Remote({"bench"}, out);
+    Check(rc != 0 && Has(out, "not in this build"), "remote: bench, on FRIZZ: not in this build");
+    rc = Remote({"load"}, out);
+    Check(rc == 0 && Has(out, "over 100 %: 0 blocks"), "remote: load counts the blocks over 100 %");
+
+    // a FRIZZ from before PERSIST (no answer): the old guard, refusing
+    rc = Python(R"(
+import sys, remote
+class Old:
+    def ram_only(self):
+        return None
+    def state(self):
+        return bytes([0, 0, 0, 0, 0, 0, 64, 0]) + bytes(20)
+remote.Frizz = lambda device: Old()
+open("s.txt", "w").write("booted\ntap KEY_18\n")
+sys.argv = ["remote.py", "--device", "x", "play", "s.txt"]
+try:
+    remote.main()
+except SystemExit as e:
+    print("exit:", e)
+)", out);
+    Check(Has(out, "a FRIZZ from before PERSIST") && Has(out, "exit: line 2: tap KEY_18 on the settings page"),
+          "remote: a FRIZZ from before PERSIST is guarded as before (#58)");
+    if (!Has(out, "exit: line 2"))
+        printf("%s\n", out.c_str());
+
+    // which slot runs, by IDENT and the builds flash.py noted: one started by hand is found,
+    // the bench never taken for FRIZZ, another slot asked for started; one without IDENT goes
+    // by the note as before. flash.py fails when the build running isn't the one sent
+    rc = Python(R"(
+import sys, chompi, flash, midi_send
+open("a.bin", "wb").write(b"build a")
+open("b.bin", "wb").write(b"build b")
+chompi.noted_image(12, "a.bin", "aaaa")
+chompi.noted_image(10, "b.bin", "bbbb")
+chompi.forget()
+log = []
+chompi.state = lambda device=None: ("frizz", "node")
+chompi.start = lambda slot, *rest: log.append("start %d" % slot) or "started"
+running = {}
+def ident(node):
+    return running.get("info")
+chompi.ident = ident
+def case(name, info, slot=None):
+    running["info"] = info
+    log.clear()
+    got = chompi.to_frizz(slot)
+    print("%s: %s %s %s" % (name, got, chompi.frizz_slot, log), flush=True)
+a = dict(kind="frizz", crc=chompi.image_id("a.bin")[0], length=7)
+case("by hand", a)
+case("asked", a, 12)
+case("other", a, 10)
+case("bench", dict(a, kind="bench"))
+case("unknown", dict(a, crc=1))
+case("old", None)
+chompi.started(12)
+case("old noted", None)
+sys.argv = ["flash.py", "a.bin", "--slot", "12"]
+chompi.to_launcher = lambda *rest: "l"
+chompi.wait_for = lambda *rest: "node"
+chompi.renamed = lambda slot, node, *rest: node
+midi_send.main = lambda: None
+running["info"] = dict(a, crc=5)
+try:
+    flash.main()
+except SystemExit as e:
+    print("exit:", e)
+running["info"] = a
+flash.main()
+)", out);
+    Check(rc == 0 && Has(out, "by hand: node 12 []\n") && Has(out, "asked: node 12 []\n")
+              && Has(out, "other: started 10 ['start 10']\n") && Has(out, "FRIZZ on slot 12: FRIZZ, crc32 ")
+              && Has(out, "slot 12's: md5 aaaa, a.bin at "),
+          "tools: IDENT finds the slot a build went to, started by hand too; another asked for is started");
+    Check(Has(out, "bench: started 10 ['start 10']\n") && Has(out, "the bench runs:")
+              && Has(out, "unknown: node None []\n") && Has(out, "not a build the tools sent")
+              && Has(out, "old: node None []\n") && Has(out, "old noted: node 12 []\n"),
+          "tools: the bench isn't FRIZZ; a build the tools didn't send, or one without IDENT, as before");
+    Check(Has(out, "exit: it runs crc32 00000005, 7 B, NOT the build sent")
+              && Has(out, "it runs the build sent: crc32 "),
+          "tools: flash.py checks the build running is the one sent");
+    if (rc != 0 || !Has(out, "it runs the build sent"))
+        printf("%s\n", out.c_str());
 
     unlink(blank.c_str());
     unlink(mine.c_str());

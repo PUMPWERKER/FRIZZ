@@ -2,13 +2,14 @@
 """builds.py: FRIZZ's two builds and their md5, the name a build goes by.
 
     tools/builds.py              builds both (make, make BENCH=1 in code/src, GCC 10.3), prints their md5
-    tools/builds.py md5          prints the md5 of the builds there are, building nothing
+    tools/builds.py md5          prints the md5 (and CRC-32) of the builds there are, building nothing
     tools/builds.py cpu [FILE]   files the bench's cpu.txt (default card/cpu.txt, from card.py get)
                                  as bin/cpu.txt, headed by the md5 of the build it measured
 
 The builds aren't in git: they live in code/src/build/FRIZZ.bin and
 code/src/build-bench/FRIZZ-bench.bin, and their md5 names them in a pull request, a cpu.txt
-and a release's notes. That works because GCC 10.3-2021.10 builds the same source to the
+and a release's notes. Their CRC-32 is what a running FRIZZ tells of itself (IDENT,
+tools/chompi.py), so flash.py and remote.py can say which build runs. That works because GCC 10.3-2021.10 builds the same source to the
 same bytes, on any machine (README.md, 1. Toolchain); another compiler gives other bytes, so
 builds here refuse it.
 
@@ -24,6 +25,7 @@ import hashlib
 import os
 import subprocess
 import sys
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIRMWARE = os.path.dirname(HERE)
@@ -109,9 +111,16 @@ def built(bench, fresh=True):
     return path
 
 
+def crc32(path):
+    """zlib's CRC-32 of the build: what FRIZZ says it runs (IDENT, tools/chompi.py)"""
+    with open(path, "rb") as f:
+        return zlib.crc32(f.read())
+
+
 def describe(path):
-    """'PATH md5 X', with a warning if it's one of the builds here and older than the source"""
-    line = "%s  md5 %s" % (short(path), md5(path))
+    """'PATH md5 X crc32 Y', with a warning if it's one of the builds here and older than the
+    source"""
+    line = "%s  md5 %s  crc32 %08x" % (short(path), md5(path), crc32(path))
     if stale(path):
         line += "  (older than the source: rebuild)"
     return line

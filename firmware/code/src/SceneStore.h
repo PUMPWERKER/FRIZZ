@@ -17,6 +17,9 @@
  *  overwritten: the next save moves it to frizz_scenes.bak first, or the boot, when it
  *  finishes a .tmp.
  *
+ *  For a test on the device, KeepInRam (kCmdDev's PERSIST 0) stops the writes until a
+ *  restart: the session's scenes and settings stay in RAM, the card as it was at boot.
+ *
  *  A write that fails is reported (GetSaveState); the next save mounts the card again and
  *  tries again. A card that couldn't be read at boot is never written in that session: the
  *  scenes work in RAM only, and a save would replace the card's with the session's. The
@@ -98,6 +101,12 @@ public:
     /** From the play page, master changed: the next Process writes its file */
     inline void RequestMasterSave() { master_pending_ = true; }
 
+    /** Until a restart, nothing more is written to the card (kCmdDev's PERSIST 0, for a
+     *  test on the device): a save requested goes through as if it was written, so the
+     *  play page shows it as saved, and the card keeps what it had at boot */
+    inline void KeepInRam() { in_ram_ = true; }
+    inline bool InRam() const { return in_ram_; }
+
     /** A save requested and not yet written */
     inline bool Busy() const { return save_state_ == SaveState::PENDING || master_pending_; }
 
@@ -114,6 +123,13 @@ public:
     /** From MainLoop */
     void Process()
     {
+        if (in_ram_)
+        {
+            if (save_state_ == SaveState::PENDING)
+                save_state_ = SaveState::OK;
+            master_pending_ = false;
+            return;
+        }
         if (save_state_ == SaveState::PENDING)
         {
             Remount();
@@ -282,6 +298,7 @@ private:
     volatile SaveState save_state_;
     bool master_pending_ = false;
     bool master_failed_ = false;
+    bool in_ram_ = false;
 };
 
 } // namespace chompi

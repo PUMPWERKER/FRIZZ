@@ -14,8 +14,21 @@
                                       or the real one again; until power-off
     ./remote.py scene get SLOT [FILE] a scene (1-4, 0 the blank one) as JSON
     ./remote.py scene put SLOT FILE   one into slot 1-4, and onto the card
-    ./remote.py play SCRIPT [--cpu] [--force]
+    ./remote.py play SCRIPT [--cpu] [--force] [--save]
                                       a twin script (twin/README.md) on the device
+
+and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
+
+    ./remote.py ident                 which build runs (its CRC-32, and which slot's that is),
+                                      the bench or FRIZZ, uptime, why it last reset, RAM only
+    ./remote.py ram-only              the card isn't written until FRIZZ restarts (PERSIST 0)
+    ./remote.py get GROUP             an effect's knobs (by name, both pages), comp, latch,
+                                      volume or settings
+    ./remote.py set GROUP INDEX VALUE one of them: a knob's 0-1, a latch's 0/1, a setting's
+                                      value as frizz_master.txt has it (INDEX a number or name)
+    ./remote.py bench [--wait] [--out FILE]
+                                      the bench's progress; --wait until it's done, --out
+                                      writes its cpu.txt, as it went to the card, to FILE
 
 `play` presses the keys and turns the knobs of a script over FRIZZ's SysEx, at the script's
 times, sends its `midi` and `clock` to the device, and checks its `expect led` lines against the
@@ -28,6 +41,12 @@ and prints the worst, the way to try a scenario for crackles on FRIZZ.bin itself
 the bench's build. A bug report (/FRIZZ/bug-N.txt) plays too, from where the device is. From
 the computer everything goes over USB, `midi` lines too: with the device's clock source on TRS,
 a script's clock and Start / Stop are ignored there (MANUAL.md, "Clock source").
+
+`play` first stops FRIZZ writing the card until it restarts (PERSIST 0, ram-only above), so a
+script may change the settings, the compressor or the scenes: they stay in RAM, the card keeps
+what the FRIZZ on key 10 shares. It says so, and, on a slot other than the test slot (12),
+starts that slot again at the end, from the card, so it saves again. --save leaves the card
+written as FRIZZ writes it. A FRIZZ from before PERSIST, or --save, gets the old guard:
 
 `play` refuses a script that would change what FRIZZ keeps on the card the FRIZZ on key 10
 shares, naming the line and the file (card_use). /FRIZZ/frizz_master.txt, saved 2 s after the
@@ -81,6 +100,14 @@ SW_NAMES = [
 ]
 FX_NAMES = ["freezer", "shifter", "folder", "crusher", "filter", "flanger", "resonator",
             "slicer", "warble", "tapestop", "delay", "reverb", "phaser", "chaos"]
+# kCmdDev's GET / SET groups (MidiControl.h's namespace dev): the effects by FxId, then these;
+# the settings as masterfile::kLines lists them (MasterSettings.h), VOLUME's as NormalPage has them
+GROUP_COMP, GROUP_LATCH, GROUP_VOLUME, GROUP_SETTINGS = 0x20, 0x21, 0x22, 0x23
+GROUPS = dict({n: i for i, n in enumerate(FX_NAMES)}, comp=GROUP_COMP, latch=GROUP_LATCH,
+              volume=GROUP_VOLUME, settings=GROUP_SETTINGS)
+SETTING_NAMES = ["mono", "midi_channel", "midi_transport", "clock_factor", "clock_source",
+                 "midi_out", "led_brightness"]
+VOLUME_NAMES = ["out", "in", "mix", "headphones"]
 LOOPER = ["empty", "recording", "playing", "paused"]
 MODES = ["none", "save", "copy", "delete"]
 
@@ -139,6 +166,26 @@ class Frizz:
     def raw(self, data):
         with self.write_lock:
             os.write(self.link.fd, bytes(data))
+
+    def dev(self, sub, args=(), retries=3):
+        """kCmdDev's SUB: (status, data), asked again while unanswered (its queue full, or the
+        USB lost it); None if nothing answers, a FRIZZ from before it"""
+        with self.query_lock:
+            for _ in range(retries):
+                chompi._seq[0] = chompi._seq[0] % 127 + 1
+                seq = chompi._seq[0]
+                self.send(chompi.DEV, [sub, seq] + list(args))
+                reply = self.link.recv(chompi.DEV, 0.5,
+                                       match=lambda r: len(r) >= 3 and r[0] == sub and r[1] == seq)
+                if reply is not None:
+                    return reply[2], bytes(reply[3:])
+        return None
+
+    def ram_only(self):
+        """PERSIST 0: True once FRIZZ keeps everything in RAM until it restarts, None from a
+        FRIZZ without it"""
+        got = self.dev(chompi.PERSIST, [0])
+        return bool(got and got[0] == chompi.OK and got[1][:1] == bytes([chompi.RAM_ONLY])) or None
 
     def ask(self, cmd, payload=b"", required=True):
         """The answer's payload; None if there's none and it isn't required"""
@@ -246,9 +293,122 @@ def show_state(f):
 
 
 def load(f, required=True):
-    """(max, mean) in % of the block since the last ask; None if unanswered and not required"""
+    """(max, mean) in % of the block since the last ask, and the blocks that took longer than
+    a block (crackles; None from a FRIZZ that doesn't count them); None if unanswered and not
+    required"""
     d = f.ask(LOAD, required=required)
-    return d and (get14(d[0], d[1]) / 10, get14(d[2], d[3]) / 10)
+    return d and (get14(d[0], d[1]) / 10, get14(d[2], d[3]) / 10,
+                  chompi.get7(d[4:7]) if len(d) >= 10 else None)
+
+
+def show_ident(f):
+    got = f.dev(chompi.IDENT)
+    if not got or got[0] != chompi.OK:
+        sys.exit("no answer to IDENT: a FRIZZ from before it")
+    info = chompi.parse_ident(got[1])
+    print(chompi.describe_ident(info))
+    for path in (os.path.join(HERE, "code/src/build/FRIZZ.bin"),
+                 os.path.join(HERE, "code/src/build-bench/FRIZZ-bench.bin")):
+        if os.path.isfile(path) and chompi.image_id(path) == (info["crc"], info["length"]):
+            print("the build in %s" % os.path.relpath(path))
+    print("up %.1f s, MainLoop %d passes; reset: %s (RCC_RSR %08x)" % (
+        info["uptime"], info["passes"], chompi.reset_cause(info["reset"]), info["reset"]))
+    print("the card: %s" % ("not written until it restarts (RAM only)" if info["ram_only"]
+                            else "written as FRIZZ writes it"))
+
+
+def group_of(name):
+    if name in GROUPS:
+        return GROUPS[name]
+    sys.exit("no group %s: %s" % (name, ", ".join(GROUPS)))
+
+
+def dev_get(f, group):
+    """GET's values for GROUP (a number)"""
+    got = f.dev(chompi.GET, [group])
+    if not got:
+        sys.exit("no answer to GET: a FRIZZ from before it")
+    if got[0] != chompi.OK:
+        sys.exit("GET %d: %s" % (group, chompi.DEV_STATUS.get(got[0], got[0])))
+    d = got[1]
+    return [get14(d[2 + 2 * i], d[3 + 2 * i]) for i in range(d[1])]
+
+
+def show_get(f, name):
+    group = group_of(name)
+    values = dev_get(f, group)
+    if group == GROUP_SETTINGS:
+        for n, v in zip(SETTING_NAMES + ["?"] * len(values), values):
+            print("%-15s %d" % (n, v))
+    elif group == GROUP_LATCH:
+        print("latched    %s" % " ".join(n for n, v in zip(FX_NAMES, values) if v))
+    elif group == GROUP_VOLUME:
+        print("  ".join("%s %.4f" % (n, knob(v)) for n, v in zip(VOLUME_NAMES, values)))
+    else:
+        print("page 1  %s\npage 2  %s" % tuple("  ".join("%.4f" % knob(v) for v in values[p:p + 4])
+                                              for p in (0, 4)))
+
+
+def dev_set(f, name, index, value):
+    group = group_of(name)
+    names = {GROUP_SETTINGS: SETTING_NAMES, GROUP_VOLUME: VOLUME_NAMES,
+             GROUP_LATCH: FX_NAMES}.get(group, [])
+    i = names.index(index) if index in names else int(index)
+    if group in (GROUP_SETTINGS, GROUP_LATCH):
+        v = {"on": 1, "off": 0}.get(value)
+        v = int(value) if v is None else v
+    else:
+        v = to14(float(value))
+    got = f.dev(chompi.SET, [group, i, v >> 7 & 0x7F, v & 0x7F])
+    if not got:
+        sys.exit("no answer to SET: a FRIZZ from before it")
+    if got[0] != chompi.OK:
+        sys.exit("SET %s %s %s: %s" % (name, index, value, chompi.DEV_STATUS.get(got[0], got[0])))
+
+
+def bench_state(f):
+    """The bench's state (Bench::Report), or exits"""
+    got = f.dev(chompi.BENCH, [0])
+    if not got:
+        sys.exit("no answer to BENCH: a FRIZZ from before it")
+    if got[0] != chompi.OK:
+        sys.exit("BENCH: %s (FRIZZ-bench.bin only)" % chompi.DEV_STATUS.get(got[0], got[0]))
+    d = got[1]
+    return {"running": bool(d[0]), "settling": bool(d[1]), "segment": d[2], "segments": d[3],
+            "written": bool(d[4]), "stored": bool(d[5]), "length": chompi.get7(d[6:9])}
+
+
+def bench_text(f, length):
+    """cpu.txt, as the bench sent it to the card, a chunk at a time"""
+    text = b""
+    while len(text) < length:
+        at = len(text)
+        got = f.dev(chompi.BENCH, [1, at >> 14 & 0x7F, at >> 7 & 0x7F, at & 0x7F])
+        if not got or got[0] != chompi.OK or not got[1]:
+            sys.exit("BENCH: no cpu.txt from %d on" % at)
+        text += got[1]
+    return text.decode("ascii")
+
+
+def bench(f, wait, out):
+    st = bench_state(f)
+    said = None
+    while wait and (st["running"] or not st["written"]):
+        line = "segment %d of %d%s" % (st["segment"] + 1, st["segments"],
+                                       ", waiting for the effects to rest" if st["settling"] else "")
+        if line != said:
+            print(line, flush=True)
+            said = line
+        time.sleep(2)
+        st = bench_state(f)
+    if st["running"] or not st["written"]:
+        print("running: segment %d of %d" % (st["segment"] + 1, st["segments"]))
+        return
+    print("done; cpu.txt %s the card, %d B" % ("on" if st["stored"] else "NOT on", st["length"]))
+    if out:
+        with open(out, "w") as dst:
+            dst.write(bench_text(f, st["length"]))
+        print("written to", out)
 
 
 def scene_get(f, slot):
@@ -441,6 +601,7 @@ def play(f, path, cpu):
     clock = {"bpm": 0.0}
     stop = threading.Event()
     worst = [0.0, 0.0]
+    over = [None]  # the blocks over 100 %, from a FRIZZ that counts them
     readings = {"asked": 0, "missed": 0, "zero": 0}
     failed = 0
 
@@ -468,7 +629,9 @@ def play(f, path, cpu):
                 readings["missed"] += 1
             else:
                 worst[0], worst[1] = max(worst[0], got[0]), max(worst[1], got[1])
-                readings["zero"] += got == (0.0, 0.0)
+                readings["zero"] += got[:2] == (0.0, 0.0)
+                if got[2] is not None:
+                    over[0] = (over[0] or 0) + got[2]
             time.sleep(0.25)
 
     threads = [threading.Thread(target=clock_thread, daemon=True)]
@@ -553,7 +716,10 @@ def play(f, path, cpu):
         last = load(f, required=False)
         if last:
             worst = [max(worst[0], last[0]), max(worst[1], last[1])]
-        print("load: worst max %.1f%%, worst mean %.1f%% of the block" % tuple(worst))
+            if last[2] is not None:
+                over[0] = (over[0] or 0) + last[2]
+        print("load: worst max %.1f%%, worst mean %.1f%% of the block%s" % (
+            worst[0], worst[1], "" if over[0] is None else ", %d blocks over 100 %%" % over[0]))
         if readings["missed"]:
             print("load: %d of %d readings unanswered, their time not in the worst"
                   % (readings["missed"], readings["asked"]))
@@ -597,8 +763,22 @@ def main():
     p.add_argument("script")
     p.add_argument("--cpu", action="store_true")
     p.add_argument("--force", action="store_true",
-                   help="play a script that changes the card: the settings page, the compressor's "
-                        "knobs, a scene saved, copied or deleted")
+                   help="with --save (or a FRIZZ from before PERSIST): play a script that changes "
+                        "the card: the settings page, the compressor's knobs, a scene saved, "
+                        "copied or deleted")
+    p.add_argument("--save", action="store_true",
+                   help="don't keep it in RAM (PERSIST 0): what the script changes goes to the card")
+    sub.add_parser("ident", parents=[common])
+    sub.add_parser("ram-only", parents=[common])
+    p = sub.add_parser("get", parents=[common])
+    p.add_argument("group")
+    p = sub.add_parser("set", parents=[common])
+    p.add_argument("group")
+    p.add_argument("index")
+    p.add_argument("value")
+    p = sub.add_parser("bench", parents=[common])
+    p.add_argument("--wait", action="store_true", help="until it's done")
+    p.add_argument("--out", help="write its cpu.txt there, once it's done")
     a = ap.parse_args()
 
     try:
@@ -608,6 +788,9 @@ def main():
 
 
 def run(a):
+    if a.cmd in ("bench", "ident") and not a.device and not a.slot:
+        # whatever runs, the bench too, which answers as FRIZZ does
+        a.device = chompi.wait_for("frizz", 30)
     if not a.device and not a.no_start:
         a.device = chompi.to_frizz(a.slot)
     f = Frizz(a.device)
@@ -617,8 +800,9 @@ def run(a):
         print(led_line(*f.leds()))
     elif a.cmd == "load":
         while True:
-            mx, mean = load(f)
-            print("max %5.1f%%  mean %5.1f%%" % (mx, mean), flush=True)
+            mx, mean, over = load(f)
+            print("max %5.1f%%  mean %5.1f%%%s" % (
+                mx, mean, "" if over is None else "  over 100 %%: %d blocks" % over), flush=True)
             if not a.every:
                 break
             time.sleep(a.every)
@@ -652,8 +836,26 @@ def run(a):
             sys.exit("scene put SLOT FILE")
         with open(a.file) as src:
             scene_put(f, a.slot, json.load(src))
+    elif a.cmd == "ident":
+        show_ident(f)
+    elif a.cmd == "ram-only":
+        if not f.ram_only():
+            sys.exit("no answer to PERSIST: a FRIZZ from before it")
+        print("FRIZZ writes nothing to the card until it restarts")
+    elif a.cmd == "get":
+        show_get(f, a.group)
+    elif a.cmd == "set":
+        dev_set(f, a.group, a.index, a.value)
+    elif a.cmd == "bench":
+        bench(f, a.wait, a.out)
     elif a.cmd == "play":
-        if not a.force:
+        ram = None if a.save else f.ram_only()
+        if ram:
+            print("the card isn't written until FRIZZ restarts (PERSIST 0): what the script "
+                  "changes stays in RAM")
+        elif not a.save:
+            print("a FRIZZ from before PERSIST: the card is guarded by refusing", file=sys.stderr)
+        if not a.force and not ram:
             # where the device stands: the page it shows (STATE's flags, bit 6), where the
             # script's keys land until it toggles; what the knobs edit; the scene mode
             d = f.state()
@@ -664,9 +866,28 @@ def run(a):
                          "key 10 shares, %s (#58, #78): not played. --force plays it anyway"
                          % (line_no, what, name, bak))
         try:
-            sys.exit(1 if play(f, a.script, a.cpu) else 0)
+            failed = play(f, a.script, a.cpu)
         except KeyboardInterrupt:
-            sys.exit("interrupted: the keys let go, the mode switch back with the hand")
+            failed = "interrupted: the keys let go, the mode switch back with the hand"
+        finally:
+            if ram:
+                restore(f, a)
+        sys.exit(failed if isinstance(failed, str) else 1 if failed else 0)
+
+
+def restore(f, a):
+    """After a script played RAM only: FRIZZ on a slot other than the test slot is started
+    again, from the card, so it saves again"""
+    slot = chompi.frizz_slot
+    if slot == chompi.TEST_SLOT:
+        return
+    if a.device or a.no_start or slot is None:
+        print("FRIZZ%s keeps what it changes in RAM until it restarts: ./flash.py --run N"
+              % ("" if slot is None else " on slot %d" % slot), file=sys.stderr)
+        return
+    os.close(f.link.fd)
+    print("starting slot %d again, from the card, so it saves again" % slot, file=sys.stderr)
+    chompi.start(slot)
 
 
 if __name__ == "__main__":

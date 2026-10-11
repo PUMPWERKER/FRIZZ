@@ -28,6 +28,23 @@ static const size_t kNum = sizeof(kSegments) / sizeof(kSegments[0]);
 // be working in any segment that isn't part of it
 static const size_t kClean = kNum;
 
+/** kCmdDev's request over USB (MidiControl.h) and its answer's data after F0 7D 43 48 7E,
+ *  or empty */
+static std::string Dev(std::initializer_list<int> request)
+{
+    TakeUsbOut();
+    for (int b : {0xF0, 0x7D, 0x43, 0x48, 0x3E})
+        UsbMidi(static_cast<uint8_t>(b));
+    for (int b : request)
+        UsbMidi(static_cast<uint8_t>(b));
+    UsbMidi(0xF7);
+    Run(40, nullptr, nullptr);
+    const std::string out = TakeUsbOut();
+    if (out.size() < 9 || out.compare(0, 5, "\xF0\x7D\x43\x48\x7E") != 0)
+        return "";
+    return out.substr(5, out.size() - 6);
+}
+
 // Without a card: the bench runs, then the panel blinks red
 static int NoCard()
 {
@@ -73,6 +90,17 @@ int main()
         Run(1, nullptr, out);
         for (size_t i = 0; i < kBlockSize; i++)
             sum += out[i * kChannels + 2] * out[i * kChannels + 2];
+        if (b == 20000 * 2)
+        {
+            // over USB meanwhile: the bench, running, cpu.txt not yet there
+            const std::string ident = Dev({0, 1});
+            const std::string state = Dev({4, 2, 0});
+            const std::string early = Dev({4, 3, 1, 0, 0, 0});
+            Check(ident.size() == 29 && ident[4] == 1, "bench: IDENT says it's the bench");
+            Check(state.size() == 12 && state[2] == 0 && state[3] == 1 && state[6] == static_cast<char>(kNum)
+                      && early.size() == 3 && early[2] == 3,
+                  "bench: BENCH says it runs, of how many segments; cpu.txt not yet");
+        }
         if (NowMs() >= start_ms && (NowMs() - start_ms) % 3000 == 0 && b % 2 == 1)
         {
             rms.push_back(sqrtf(sum / (6000 * kBlockSize)));
@@ -102,6 +130,24 @@ int main()
             s++;
         }
     Check(found == kNum, "bench: every segment has its line, in order, with a max and a mean");
+    // and over USB, as the card has it, a chunk at a time
+    const std::string state = Dev({4, 4, 0});
+    const size_t length = state.size() == 12
+                              ? static_cast<size_t>(state[9] << 14 | state[10] << 7 | state[11])
+                              : 0;
+    std::string sent;
+    for (uint8_t seq = 5; sent.size() < length; seq = (seq + 1) & 0x7F)
+    {
+        const size_t at = sent.size();
+        const std::string part = Dev({4, seq, 1, static_cast<int>(at >> 14 & 0x7F),
+                                     static_cast<int>(at >> 7 & 0x7F), static_cast<int>(at & 0x7F)});
+        if (part.size() <= 3 || part[2] != 0)
+            break;
+        sent += part.substr(3);
+    }
+    Check(state.size() == 12 && state[3] == 0 && state[7] == 1 && state[8] == 1 && length == text.size()
+              && sent == text,
+          "bench: BENCH says it's done and stored, and sends cpu.txt as the card has it");
     Check(clean, "bench: nothing else still works in any segment");
     Check(text.find(" s, playing in every loop segment") != std::string::npos
               && text.find("# loop:    4.0 s") != std::string::npos,
@@ -150,9 +196,9 @@ int main()
         quiet += rms[w] < .001f;
     Check(rms.size() >= kNum && quiet <= 2, "bench: its tune reaches the master out throughout");
 
-    // it answers FRIZZ's SysEx as FRIZZ does: the tools can't tell the two apart by asking, and
-    // note the slot they started instead (tools/chompi.py). Its load reads 0, as the bench
-    // never counts it there (chompi_main.cpp); on the twin FRIZZ's does too, no time passing
+    // it answers FRIZZ's SysEx as FRIZZ does; IDENT tells the two apart (above). Its load
+    // reads 0, blocks and all, as the bench never counts it there (chompi_main.cpp); on the
+    // twin FRIZZ's does too, no time passing
     const auto Ask = [](uint8_t cmd) {
         TakeUsbOut();
         for (uint8_t b : {0xF0, 0x7D, 0x43, 0x48, int(cmd), 0xF7})
@@ -164,7 +210,7 @@ int main()
     };
     const std::string settings = Ask(0x24), load = Ask(0x23);
     Check(settings.size() >= 2, "bench: it answers FRIZZ's settings query (0x24), as FRIZZ does");
-    Check(load == std::string(4, '\0'), "bench: and its load (0x23) reads 0");
+    Check(load == std::string(10, '\0'), "bench: and its load (0x23) reads 0");
 
     fflush(stdout);
     int status = 0;

@@ -18,8 +18,14 @@
  *  card's scenes.
  *
  *  SysEx: F0 7D 43 48 CMD DATA F7, the launcher's header (MidiClock.h). FRIZZ's commands start
- *  at 0x11, above the launcher's 01-04, and an answer is the command | 0x40, as the
- *  launcher's are: 0x51 and up, so no answer of FRIZZ's passes as the launcher's.
+ *  at 0x10, above the launcher's 01-07, and an answer is the command | 0x40, as the
+ *  launcher's are: 0x50 and up, so no answer of FRIZZ's passes as the launcher's.
+ *
+ *  0x3E is the developers' (kCmdDev, firmware/README.md): F0 7D 43 48 3E SUB SEQ ARGS F7, over
+ *  USB only, answered F0 7D 43 48 7E SUB SEQ STATUS DATA F7, SEQ the request's, so a tool
+ *  matches its answer. It has a queue of its own (kDevQueue), apart from the other queries'
+ *  one slot, and every request taken is answered, with a status if nothing else: a tool that
+ *  gets no answer asks again, which every request can take (they set, never step).
  */
 #pragma once
 #include <stdint.h>
@@ -88,12 +94,63 @@ enum MidiCmd : uint8_t
     kCmdParams = 0x21,   // FX: an effect's knobs (12 the phaser's, 13 the chaos key's, 14 the
                          // compressor's), 14 bits each
     kCmdLeds = 0x22,     // PART: the LEDs as their bytes, part 0 the panel's, 1-3 the keys'
-    kCmdLoad = 0x23,     // the audio callback's load since the last ask
+    kCmdLoad = 0x23,     // the audio callback's load since the last ask: max and mean, 14 bits
+                         // each, then the blocks longer than a block (crackles) and the
+                         // blocks, 3 7-bit groups each
     kCmdSettings = 0x24, // the channel, transport following, the clock source, MIDI out
     kCmdSceneGet = 0x30, // SLOT PART: a scene, in kSceneParts parts
     kCmdScenePut = 0x31, // SLOT PART DATA: likewise; the last part stores it
+    kCmdDev = 0x3E,      // SUB SEQ ARGS: the developers' (namespace dev)
     kCmdReply = 0x40,
 };
+
+/** kCmdDev's sub-commands, their groups and statuses. Numbers in 7-bit groups, the highest
+ *  first; a knob's value in 14 bits as kCmdParams has it */
+namespace dev
+{
+static const uint8_t kVersion = 1;
+enum Sub : uint8_t
+{
+    IDENT = 0,   // -> version, kind (0 FRIZZ, 1 the bench), the image's CRC-32 (5) and length
+                 //    (3) as loaded (zlib.crc32 of the .bin; 0 on the twin), uptime ms (5),
+                 //    MainLoop's passes (5), RCC_RSR at boot (5), flags (kRamOnly)
+    PERSIST = 1, // 0: the card isn't written until a restart (SceneStore::KeepInRam); -> flags
+    GET = 2,     // GROUP -> GROUP COUNT, then COUNT values, 14 bits each
+    SET = 3,     // GROUP INDEX VALUE(2): as the knob or setting would; -> GROUP INDEX
+    BENCH = 4,   // 0 -> its state (Bench::Report); 1 OFFSET(3) -> up to kBenchChunk bytes
+                 //    of cpu.txt from there. FRIZZ-bench.bin only
+};
+enum Status : uint8_t
+{
+    OK = 0,
+    BAD = 1,      // an unknown sub-command, group or index, or a value the setting doesn't take
+    NOT_HERE = 2, // not in this build (BENCH in FRIZZ.bin)
+    NOT_YET = 3,  // the bench is still running
+};
+// the groups of GET and SET: an effect's knobs by FxId (0-7: page 1, then page 2), then
+// numbers that don't move as effects join
+static const uint8_t kGroupComp = 0x20;     // the compressor's knobs, 0-7
+static const uint8_t kGroupLatch = 0x21;    // the latches, by FxId: 0 or 1
+static const uint8_t kGroupVolume = 0x22;   // 0 output gain, 1 input gain, 2 mix, 3 headphones
+static const uint8_t kGroupSettings = 0x23; // the card's settings, as masterfile::kLines lists
+                                            // them, their values as the file has them
+static const uint8_t kRamOnly = 1;          // IDENT's flags: PERSIST 0 is on
+static const size_t kBenchChunk = 32;
+
+/** What chompi_main.cpp knows for IDENT and BENCH */
+struct Info
+{
+    uint8_t kind = 0;                 // 0 FRIZZ, 1 the bench
+    const uint8_t* image = nullptr;   // the image as the bootloader loaded it
+    uint32_t image_len = 0;
+    uint32_t crc = 0;                 // its CRC-32, once worked out (on the first IDENT)
+    bool crc_done = false;
+    volatile uint32_t passes = 0;     // MainLoop's
+    uint32_t reset_cause = 0;         // RCC_RSR at boot
+    // the bench's answer to BENCH (Bench::Report) into d: its length, or -1 for NOT_YET
+    int (*bench)(uint8_t part, uint32_t offset, uint8_t* d) = nullptr;
+};
+} // namespace dev
 static const uint8_t kMidiHeader[] = {0x7D, 0x43, 0x48};
 // a scene over SysEx: 4 parts of 4 effects' page-1 knobs, the same 4 for page 2, then the
 // latches. The last part of a page has the phaser, the chaos key and room for 2 more (zeros)
@@ -128,6 +185,12 @@ public:
         uint8_t data[32]; // a scene part's
         uint8_t len;
     };
+    /** A kCmdDev request */
+    struct DevQuery
+    {
+        uint8_t sub, seq, len;
+        uint8_t arg[5];
+    };
 
     void Init(MidiClock* clock, EventLog* log, uint8_t channel, bool transport, float tick_freq,
               float block_seconds)
@@ -137,6 +200,7 @@ public:
         channel_ = channel;
         transport_ = transport;
         ticks_per_block_ = tick_freq * block_seconds;
+        block_ticks_ = static_cast<uint32_t>(ticks_per_block_);
         clock_->SetListener(&MidiControl::Listen, this);
     }
 
@@ -164,6 +228,7 @@ public:
         load_max_ = load > load_max_ ? load : load_max_;
         load_sum_ += load;
         load_blocks_++;
+        load_over_ += ticks > block_ticks_; // longer than a block: a crackle
     }
 
     // ---- from MainLoop (the play page) ----
@@ -219,6 +284,17 @@ public:
         return true;
     }
 
+    /** A kCmdDev request, taken */
+    inline bool TakeDev(DevQuery& q)
+    {
+        daisy::ScopedIrqBlocker irq;
+        if (dev_read_ == dev_write_)
+            return false;
+        q = dev_queue_[dev_read_ % kDevQueue];
+        dev_read_++;
+        return true;
+    }
+
     /** The settings changed over SysEx since last asked: they go to the card */
     inline bool TakeSettingsChanged()
     {
@@ -242,16 +318,23 @@ public:
     inline void SetMidiOut(MidiOutPorts ports) { out_ = ports; }
     inline MidiOutPorts GetMidiOut() const { return out_; }
 
-    /** The load since the last call, max and mean, in 1/1000 of a block */
-    void TakeLoad(uint16_t& max, uint16_t& mean)
+    /** The load since the last call, max and mean, in 1/1000 of a block, and the blocks
+     *  that took longer than a block (over) of how many */
+    void TakeLoad(uint16_t& max, uint16_t& mean, uint32_t& over, uint32_t& blocks)
     {
         daisy::ScopedIrqBlocker irq;
         max = static_cast<uint16_t>(load_max_ * 1000.f + .5f);
         mean = load_blocks_ ? static_cast<uint16_t>(load_sum_ / load_blocks_ * 1000. + .5) : 0;
+        over = load_over_;
+        blocks = load_blocks_;
         load_max_ = 0.f;
         load_sum_ = 0.;
         load_blocks_ = 0;
+        load_over_ = 0;
     }
+
+    /** What IDENT and BENCH answer from, chompi_main.cpp's */
+    dev::Info dev;
 
     /** An answer to a query, over USB: F0, the header, cmd | 0x40, the data, F7. Kept to
      *  16 USB packets (64 bytes), one transfer */
@@ -482,6 +565,19 @@ private:
                 return;
             switch_ = arg[0];
             break;
+        case kCmdDev:
+            // over USB, where the answer goes; a full queue drops it, unanswered
+            if (!usb || n < 2 || static_cast<uint8_t>(dev_write_ - dev_read_) >= kDevQueue)
+                return;
+            {
+                DevQuery& q = dev_queue_[dev_write_ % kDevQueue];
+                q.sub = arg[0];
+                q.seq = arg[1];
+                q.len = static_cast<uint8_t>(n - 2 > sizeof(q.arg) ? sizeof(q.arg) : n - 2);
+                memcpy(q.arg, arg + 2, q.len);
+                dev_write_ = dev_write_ + 1;
+            }
+            return;
         case kCmdSetting:
             if (n < 2 || arg[0] > 3 || (arg[0] == 0 && arg[1] > 16)
                 || (arg[0] == 2 && arg[1] >= kNumClockSources)
@@ -498,8 +594,9 @@ private:
             settings_changed_ = true;
             break;
         default:
-            // the rest only ask, over USB, where the answer goes
-            if (!usb || query_pending_)
+            // the rest only ask, over USB, where the answer goes; an answer (a DAW echoing
+            // FRIZZ's own back) asks nothing
+            if (!usb || query_pending_ || cmd >= kCmdReply)
                 return;
             query_.cmd = cmd;
             query_.a = n > 0 ? arg[0] : 0;
@@ -555,11 +652,16 @@ private:
 
     Query query_;
     volatile bool query_pending_ = false;
+    static const size_t kDevQueue = 8; // kCmdDev's requests, waiting for MainLoop
+    DevQuery dev_queue_[kDevQueue];
+    volatile uint8_t dev_write_ = 0, dev_read_ = 0;
 
     float ticks_per_block_ = 1.f;
     float load_max_ = 0.f;
     double load_sum_ = 0.; // a float stops adding ~0.45 a block after a few hours unread
     uint32_t load_blocks_ = 0;
+    uint32_t load_over_ = 0;
+    uint32_t block_ticks_ = 1;
 };
 
 } // namespace chompi

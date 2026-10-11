@@ -17,7 +17,9 @@ launcher's own client). The CHOMPI is first brought to the launcher from whereve
 FRIZZ restarts into it over USB MIDI (MidiClock.h), the USB storage firmware on an eject
 (tools/chompi.py); a FRIZZ from before that, or another firmware, needs the power switch, and
 this says so. It then sends, and FRIZZ starts; it waits until FRIZZ (or the bench) answers, so a tool run
-right after finds it, and notes the slot, so that tool knows which it is (tools/chompi.py).
+right after finds it, and notes the slot and the build sent there, so that tool knows which it
+is (tools/chompi.py). It then asks FRIZZ which build it runs (IDENT: the image's CRC-32 and
+length) and fails if that isn't the one sent; --run says which build it started.
 One that came up with its USB names garbled (#88) is started again, not sent again.
 FRIZZ_SLOT, BENCH_SLOT and TEST_SLOT set other slots; without --slot, a key that holds another
 firmware than FRIZZ is refused (launcher 1.5 lists its keys; an older one can't, and isn't
@@ -57,7 +59,10 @@ def main():
     args = ap.parse_args()
 
     if args.run:
-        chompi.start(args.run, args.wait, args.device)
+        node = chompi.start(args.run, args.wait, args.device)
+        info = node and chompi.ident(node)
+        if info:
+            print("slot %d runs %s" % (args.run, chompi.describe_ident(info)))
         return
     if args.list:
         device = chompi.to_launcher(args.wait, args.device)
@@ -78,6 +83,7 @@ def main():
     if args.image and not args.slot:
         sys.exit("a file of your own needs --slot: sending replaces what's in it")
 
+    md5 = builds.md5(image)
     print("sending", builds.describe(image), "to key", slot)
 
     device = chompi.to_launcher(args.wait, args.device)
@@ -90,12 +96,27 @@ def main():
     sys.argv = ["midi_send.py", image, "--slot", str(slot), "--name", name, "--device", device]
     midi_send.main()
     chompi.started(slot)
+    chompi.noted_image(slot, image, md5)
     if slot in chompi.FRIZZ_SLOTS + (chompi.BENCH_SLOT,) and name.upper().startswith("FRIZZ"):
         # until it answers (the bench does as FRIZZ): the launcher may for a moment, then
         # nothing while USB comes back
         node = chompi.wait_for("frizz", args.wait, args.device)
-        chompi.renamed(slot, node, args.wait, args.device)  # started again, not sent again
+        node = chompi.renamed(slot, node, args.wait, args.device)  # started again, not sent again
         print("%s answers on slot %d" % (name, slot))
+        check_running(node, image)
+
+
+def check_running(node, image):
+    """Exits unless FRIZZ at NODE runs IMAGE, by IDENT; a build without IDENT can't say"""
+    info = node and chompi.ident(node)
+    if not info:
+        print("(it can't say which build it runs: one from before IDENT)")
+        return
+    crc, length = chompi.image_id(image)
+    if (info["crc"], info["length"]) != (crc, length):
+        sys.exit("it runs crc32 %08x, %d B, NOT the build sent (crc32 %08x, %d B)"
+                 % (info["crc"], info["length"], crc, length))
+    print("it runs the build sent: crc32 %08x, %d B" % (crc, length))
 
 
 if __name__ == "__main__":

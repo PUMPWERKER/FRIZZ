@@ -463,6 +463,9 @@ namespace chompi
             MidiControl::Query query;
             if (midi_->TakeQuery(query))
                 Answer(query);
+            MidiControl::DevQuery dev;
+            while (midi_->TakeDev(dev))
+                DevAnswer(dev);
         }
 
     private:
@@ -588,9 +591,12 @@ namespace chompi
             case kCmdLoad:
             {
                 uint16_t max, mean;
-                midi_->TakeLoad(max, mean);
+                uint32_t over, blocks;
+                midi_->TakeLoad(max, mean, over, blocks);
                 n = Put14(d, n, max);
                 n = Put14(d, n, mean);
+                n = Put7s(d, n, over, 3);
+                n = Put7s(d, n, blocks, 3);
                 break;
             }
             case kCmdSettings:
@@ -624,6 +630,177 @@ namespace chompi
             d[n++] = (v >> 7) & 0x7F;
             d[n++] = v & 0x7F;
             return n;
+        }
+
+        /** v in `groups` 7-bit groups, the highest first; saturated at the most they hold */
+        static size_t Put7s(uint8_t* d, size_t n, uint32_t v, size_t groups)
+        {
+            const uint32_t top = groups >= 5 ? 0xFFFFFFFFu : (1u << (7 * groups)) - 1;
+            v = v > top ? top : v;
+            for (size_t g = groups; g-- > 0;)
+                d[n++] = static_cast<uint8_t>(g * 7 < 32 ? (v >> (g * 7)) & 0x7F : 0);
+            return n;
+        }
+
+        /** A kCmdDev request (MidiControl.h's namespace dev), answered over USB: SUB SEQ
+         *  STATUS, then what it asked for. Every one is answered */
+        MIDI_CONTROL_ONCE void DevAnswer(const MidiControl::DevQuery& q)
+        {
+            using namespace dev;
+            uint8_t d[MidiControl::kMaxReply];
+            size_t n = 3;
+            uint8_t status = OK;
+            const uint8_t group = q.len > 0 ? q.arg[0] : 0xFF;
+            Info& info = midi_->dev;
+            switch (q.sub)
+            {
+            case IDENT:
+                if (!info.crc_done)
+                {
+                    info.crc = Crc32(info.image, info.image_len);
+                    info.crc_done = true;
+                }
+                d[n++] = kVersion;
+                d[n++] = info.kind;
+                n = Put7s(d, n, info.crc, 5);
+                n = Put7s(d, n, info.image_len, 3);
+                n = Put7s(d, n, System::GetNow(), 5);
+                n = Put7s(d, n, info.passes, 5);
+                n = Put7s(d, n, info.reset_cause, 5);
+                d[n++] = scenes_->InRam() ? kRamOnly : 0;
+                break;
+            case PERSIST:
+                if (q.len < 1 || q.arg[0] != 0)
+                    status = BAD;
+                else
+                    scenes_->KeepInRam();
+                d[n++] = scenes_->InRam() ? kRamOnly : 0;
+                break;
+            case GET:
+            {
+                d[n++] = group;
+                const size_t count_at = n++;
+                uint16_t values[16];
+                const size_t count = DevValues(group, values);
+                status = count ? OK : BAD;
+                for (size_t i = 0; i < count; i++)
+                    n = Put14(d, n, values[i]);
+                d[count_at] = static_cast<uint8_t>(count);
+                break;
+            }
+            case SET:
+                if (q.len < 4 || !DevSet(group, q.arg[1], static_cast<uint16_t>((q.arg[2] << 7) | q.arg[3])))
+                    status = BAD;
+                d[n++] = group;
+                d[n++] = q.len > 1 ? q.arg[1] : 0;
+                break;
+            case BENCH:
+            {
+                if (!info.bench)
+                {
+                    status = NOT_HERE;
+                    break;
+                }
+                const uint32_t offset = q.len >= 4 ? static_cast<uint32_t>(q.arg[1] << 14 | q.arg[2] << 7 | q.arg[3]) : 0;
+                const int got = q.len >= 1 && q.arg[0] <= 1 ? info.bench(q.arg[0], offset, d + n) : 0;
+                if (q.len < 1 || q.arg[0] > 1)
+                    status = BAD;
+                else if (got < 0)
+                    status = NOT_YET;
+                else
+                    n += static_cast<size_t>(got);
+                break;
+            }
+            default:
+                status = BAD;
+            }
+            d[0] = q.sub;
+            d[1] = q.seq;
+            d[2] = status;
+            midi_->Reply(kCmdDev, d, n);
+        }
+
+        /** A GET group's values, 14 bits each: how many, 0 for no such group */
+        size_t DevValues(uint8_t group, uint16_t* v)
+        {
+            using namespace dev;
+            if (group < kNumFx || group == kGroupComp)
+            {
+                for (size_t p = 0; p < kNumFxParams; p++)
+                    v[p] = KnobToMidi14(group == kGroupComp ? fx_.CompParam(p) : fx_.Param(group, p));
+                return kNumFxParams;
+            }
+            if (group == kGroupLatch)
+            {
+                for (size_t fx = 0; fx < kNumFx; fx++)
+                    v[fx] = fx_.IsLatched(fx) ? 1 : 0;
+                return kNumFx;
+            }
+            if (group == kGroupVolume)
+            {
+                const float gains[] = {out_gain_, in_gain_, mix_, hp_cue_};
+                for (size_t i = 0; i < 4; i++)
+                    v[i] = KnobToMidi14(gains[i]);
+                return 4;
+            }
+            if (group == kGroupSettings)
+            {
+                MasterSettings master;
+                settings_.Store(master);
+                size_t i = 0;
+                for (const masterfile::Line& line : masterfile::kLines)
+                    v[i++] = masterfile::Value(master, line);
+                return i;
+            }
+            return 0;
+        }
+
+        /** A SET: as the knob, latch or setting would, the card written as theirs are (or
+         *  not, after PERSIST 0). False for no such value, or one the setting doesn't take */
+        bool DevSet(uint8_t group, uint8_t index, uint16_t raw)
+        {
+            using namespace dev;
+            const float value = MidiToKnob(raw, true);
+            if (group < kNumFx && index < kNumFxParams)
+                fx_.SetParamTo(group, index, value);
+            else if (group == kGroupComp && index < kNumFxParams)
+                fx_.SetComp(index, value);
+            else if (group == kGroupLatch && index < kNumFx && raw <= 1)
+                fx_.SetLatch(index, raw != 0);
+            else if (group == kGroupVolume && index < 4)
+            {
+                if (index == 0)
+                    SetOutGain(value);
+                else if (index == 1)
+                    SetInGain(value);
+                else if (index == 2)
+                    SetMix(value);
+                else
+                    SetHpCue(value);
+            }
+            else if (group == kGroupSettings && settings_.Set(index, raw))
+                MasterChanged(System::GetNow());
+            else
+                return false;
+            return true;
+        }
+
+        /** zlib's CRC-32 of the image as loaded, which the host works out from the .bin
+         *  (tools/builds.py): a nibble at a time, from a table of 16 */
+        static uint32_t Crc32(const uint8_t* p, size_t len)
+        {
+            static const uint32_t kNibble[16] = {
+                0x00000000, 0x1DB71064, 0x3B6E20C8, 0x26D930AC, 0x76DC4190, 0x6B6B51F4,
+                0x4DB26158, 0x5005713C, 0xEDB88320, 0xF00F9344, 0xD6D6A3E8, 0xCB61B38C,
+                0x9B64C2B0, 0x86D3D2D4, 0xA00AE278, 0xBDBDF21C};
+            uint32_t crc = 0xFFFFFFFFu;
+            for (size_t i = 0; i < len; i++)
+            {
+                crc ^= p[i];
+                crc = (crc >> 4) ^ kNibble[crc & 15];
+                crc = (crc >> 4) ^ kNibble[crc & 15];
+            }
+            return ~crc;
         }
 
         /** A scene's part for kCmdSceneGet: kFxPerPart effects' knobs on one page, 14 bits

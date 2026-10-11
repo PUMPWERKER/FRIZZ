@@ -2520,7 +2520,10 @@ int main()
             }
         }
         Check(leds_ok, "midi sysex: 22 answers every LED as it's lit");
-        Check(Ask({0x23}).size() == 4, "midi sysex: 23 answers the load");
+        const std::string load = Ask({0x23});
+        Check(load.size() == 10 && load[4] == 0 && load[5] == 0 && load[6] == 0
+                  && ((load[7] << 14) | (load[8] << 7) | load[9]) > 10,
+              "midi sysex: 23 answers the load, the blocks over 100 % (none) and the blocks");
         Usb({0xF0, 0x7D, 0x43, 0x48, 0x11, 11, 0, 0xF7});
         Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 0, 1, 0xF7}); // channel 1
         RunMs(300);
@@ -2537,6 +2540,94 @@ int main()
         Trs({0xF0, 0x7D, 0x43, 0x48, 0x20, 0xF7});
         RunMs(20);
         Check(TakeUsbOut().empty(), "midi sysex: a query over the jack isn't answered");
+    }});
+
+    // the developers' SysEx (kCmdDev, 0x3E): IDENT, GET and SET by (group, index), PERSIST 0,
+    // over USB only, each answered with its SEQ and a status
+    cases.push_back({"midi-dev", [] {
+        RunMs(kReadyMs);
+        const std::string ident = Ask({0x3E, 0, 5});
+        Check(ident.size() == 29 && ident[0] == 0 && ident[1] == 5 && ident[2] == 0 && ident[3] == 1
+                  && ident[4] == 0 && ident[28] == 0,
+              "midi dev: IDENT answers, its SEQ back, version 1, FRIZZ, the card written");
+        const auto get7 = [](const std::string& d, size_t at, size_t groups) {
+            uint64_t v = 0;
+            for (size_t i = 0; i < groups; i++)
+                v = v << 7 | static_cast<uint8_t>(d[at + i]);
+            return v;
+        };
+        if (ident.size() == 29)
+        {
+            const uint64_t up = get7(ident, 13, 5), passes = get7(ident, 18, 5);
+            Check(up >= static_cast<uint64_t>(kReadyMs) && up <= NowMs() && passes > 100,
+                  "midi dev: with the uptime and MainLoop's passes");
+        }
+        // GET: the filter's knobs, both pages; SET its cutoff and the compressor's threshold
+        const std::string filter = Ask({0x3E, 2, 6, 4});
+        Check(filter.size() == 5 + 16 && filter[2] == 0 && filter[3] == 4 && filter[4] == 8,
+              "midi dev: GET an effect's 8 knobs, by its FxId");
+        const std::string set = Ask({0x3E, 3, 7, 4, 0, 0x20, 0});
+        const std::string params = Ask({0x21, 4});
+        Check(set == std::string("\x03\x07\x00\x04\x00", 5) && params.size() == 17 && params[1] == 0x20
+                  && params[2] == 0,
+              "midi dev: SET the cutoff in 14 bits, as kCmdParams then reads it");
+        Ask({0x3E, 3, 8, 0x20, 0, 0x7F, 0x7F});
+        const std::string comp = Ask({0x3E, 2, 9, 0x20});
+        Check(comp.size() == 21 && comp[5] == 0x7F && comp[6] == 0x7F,
+              "midi dev: the compressor is group 0x20, whatever the effects' number");
+        // VOLUME's: the output gain to 0
+        const float dry = RunMs(300);
+        Ask({0x3E, 3, 10, 0x22, 0, 0, 0});
+        RunMs(300);
+        Check(dry > .01f && RunMs(300) < .001f, "midi dev: SET VOLUME's output gain");
+        Ask({0x3E, 3, 11, 0x22, 0, 0x40, 0});
+        // the settings by masterfile::kLines: clock_factor (3) to 200, led_brightness (6) 60 refused
+        const std::string factor = Ask({0x3E, 3, 12, 0x23, 3, 1, 200 - 128});
+        const std::string dim = Ask({0x3E, 3, 13, 0x23, 6, 0, 60});
+        const std::string settings = Ask({0x3E, 2, 14, 0x23});
+        Check(factor.size() == 5 && factor[2] == 0 && dim.size() == 5 && dim[2] == 1,
+              "midi dev: SET a setting, a value it doesn't take refused");
+        Check(settings.size() == 5 + 14 && settings[4] == 7 && settings[11] == 1 && settings[12] == 200 - 128
+                  && settings[17] == 0 && settings[18] == 100 && settings[7] == 0 && settings[8] == 16,
+              "midi dev: GET the settings: the clock factor x2, the LEDs at 100 %, channel 16");
+        Check(Ask({0x3E, 3, 15, 0x23, 9, 0, 1})[2] == 1 && Ask({0x3E, 2, 16, 0x30})[2] == 1
+                  && Ask({0x3E, 9, 17})[2] == 1,
+              "midi dev: no such setting, group or sub-command: refused, answered");
+        RunMs(2500);
+        Check(Card("/FRIZZ/frizz_master.txt").find("clock_factor 200\n") != std::string::npos,
+              "midi dev: a setting SET goes to the card, as its key's");
+
+        // PERSIST 0: nothing more on the card until a restart, though the page shows it saved
+        const std::string master = Card("/FRIZZ/frizz_master.txt"), scenes = Card("/FRIZZ/frizz_scenes.txt");
+        const std::string persist = Ask({0x3E, 1, 18, 0});
+        Check(persist == std::string("\x01\x12\x00\x01", 4) && Ask({0x3E, 0, 19})[28] == 1,
+              "midi dev: PERSIST 0, and IDENT says so");
+        Ask({0x3E, 3, 20, 0x23, 3, 0, 50});
+        Ask({0x3E, 3, 21, 0x20, 1, 0, 0});
+        Tap("KEY_5");
+        Save(1);
+        RunMs(2500);
+        const std::string slot = Ask({0x30, 1, 8});
+        Check(slot.size() == 5 && slot[2] == 1, "midi dev: a scene saved after it is in its slot");
+        Check(Card("/FRIZZ/frizz_master.txt") == master && Card("/FRIZZ/frizz_scenes.txt") == scenes,
+              "midi dev: but neither it nor the settings are on the card");
+
+        // several at once are queued, each answered; none over the jack; FRIZZ's answers
+        // echoed back ask nothing
+        TakeUsbOut();
+        for (int seq = 30; seq < 34; seq++)
+            Usb({0xF0, 0x7D, 0x43, 0x48, 0x3E, 0, seq, 0xF7});
+        RunMs(30);
+        const std::string four = TakeUsbOut();
+        int answered = 0;
+        for (size_t at = four.find("\x7E"); at != std::string::npos; at = four.find("\x7E", at + 1))
+            answered += four[at + 1] == 0 && four[at + 2] >= 30 && four[at + 2] < 34;
+        Check(answered == 4, "midi dev: 4 at once, 4 answers");
+        Trs({0xF0, 0x7D, 0x43, 0x48, 0x3E, 0, 1, 0xF7});
+        RunMs(20);
+        Check(TakeUsbOut().empty(), "midi dev: none over the jack");
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x60, 1, 2, 0xF7}); // an echo of 0x20's answer
+        Check(Ask({0x20}).size() > 12, "midi dev: an answer echoed back doesn't take the query's slot");
     }});
 
     // scenes over SysEx and program changes, morphs over CC
