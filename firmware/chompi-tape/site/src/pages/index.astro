@@ -2,7 +2,8 @@
 import fs from 'node:fs';
 import Panel from '../components/Panel.astro';
 import UsageCard from '../components/UsageCard.astro';
-import { usage } from '../data/usage.js';
+import Diagram from '../components/Diagram.astro';
+import { usage, arp } from '../data/usage.js';
 import { LED } from '../lib/drawing.js';
 import '../styles/site.css';
 
@@ -67,6 +68,12 @@ const kb = fs.existsSync(`public/${file}`) ? Math.round(fs.statSync(`public/${fi
             <li><a href="#kits">Play OP-1 drum kits from a JAMMI slot</a></li>
           </ul>
         </div>
+        <div>
+          <h3>Arpeggiator</h3>
+          <ul>
+            <li><a href="#arp">Arpeggiator for JAMMI samples, synced to the beat</a></li>
+          </ul>
+        </div>
       </div>
     </section>
 
@@ -82,6 +89,18 @@ const kb = fs.existsSync(`public/${file}`) ? Math.round(fs.statSync(`public/${fi
     <section class="usage" aria-label="Usage">
       <div class="feats">
         {usage.map((card) => <UsageCard {...card} />)}
+      </div>
+    </section>
+
+    <section class="usage" aria-labelledby="arp-head">
+      <h2 id="arp-head">Arpeggiator</h2>
+      <div class="lead" style="--c: var(--green)">
+        <figure class="fig"><Panel hl={['knob0']} labels={{ knob0: ['click', 0, -90] }} /></figure>
+        <figure class="fig"><Diagram type="flow" steps={[['PITCH'], ['GAIN'], ['ARP', LED.green]]} back /></figure>
+        <p>Click the left knob twice to reach the arp page.<br>The arp is only available for JAMMI samples.</p>
+      </div>
+      <div class="feats">
+        {arp.map((card) => <UsageCard {...card} />)}
       </div>
     </section>
 

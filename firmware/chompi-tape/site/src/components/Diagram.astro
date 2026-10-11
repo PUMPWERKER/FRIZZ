@@ -3,9 +3,10 @@
 import Arrow from './Arrow.astro';
 import { LED, SANS, MONO, CW, FS, SM, r } from '../lib/drawing.js';
 
-const { type, steps = [], back = false, blink = false } = Astro.props;
+const { type, steps = [], back = false, blink = false, rows = [] } = Astro.props;
 const y = 30;
-const heights = { flow: back ? 108 : 84, length: 120, sections: 112, mono: 150, beats: 160 };
+const heights = { flow: back ? 108 : 84, length: 120, sections: 112, mono: 150, beats: 160, rate: 70,
+  legend: rows.length * 46 + 4 };
 
 // flow: three boxes with arrows, an LED in some; back: a dashed line back to the first; blink: the first LED blinks
 const bw = (CW - 2 * 56) / 3;
@@ -21,6 +22,12 @@ const sw = CW / 4;
 const bx = (i) => 30 + i * (CW - 60) / 4;
 const presses = [['rec', bx(0) + 90], ['stop', bx(4) - 90]];
 const monoModes = [['Stereo', LED.pink], ['Mono, left channel', LED.red], ['Mono, right channel', LED.green]];
+
+// rate: the arp knob from off over the note values into free time, as its LED shows them
+const notes = [['1/4', 'green'], ['1/8.', 'yellow'], ['1/8', 'orange'], ['1/16.', 'pink'], ['1/16', 'red'],
+  ['1/32.', 'magenta'], ['1/32', 'deep']];
+const nx = (i) => 110 + i * 84;
+const fx = nx(notes.length - 1) + 64;
 ---
 <svg viewBox={`-4 0 ${CW + 8} ${heights[type] + 34}`} role="img">
   {type === 'flow' && (
@@ -108,6 +115,33 @@ const monoModes = [['Stereo', LED.pink], ['Mono, left channel', LED.red], ['Mono
       })}
     </>
   )}
+  {type === 'rate' && (
+    <>
+      <defs>
+        <linearGradient id="free">
+          <stop offset="0" stop-color={LED.white} /><stop offset="1" stop-color={LED.white} stop-opacity=".15" />
+        </linearGradient>
+      </defs>
+      <circle class="dot" cx="24" cy={y + 14} r="9" style="fill-opacity: .15" stroke-width="1.8" />
+      <text class="dim" x="24" y={y + 60} text-anchor="middle" font-family={MONO} font-size={SM}>off</text>
+      {notes.map(([label, c], i) => (
+        <>
+          <circle class="dot" cx={r(nx(i))} cy={y + 14} r="9" style={`fill: ${LED[c]}`} stroke-width="1.8" />
+          <text x={r(nx(i))} y={y + 60} text-anchor="middle" font-family={MONO} font-size={SM} font-weight="500">{label}</text>
+        </>
+      ))}
+      <rect class="dot" x={r(fx)} y={y + 5} width={r(CW - fx)} height="18" rx="9" style="fill: url(#free)" stroke-width="1.8" />
+      <text x={r(fx)} y={y + 60} font-family={MONO} font-size={SM} font-weight="500">fast</text>
+      <text x={r(CW)} y={y + 60} text-anchor="end" font-family={MONO} font-size={SM} font-weight="500">slow</text>
+    </>
+  )}
+  {type === 'legend' && rows.map(([text, c, note], i) => (
+    <>
+      <circle class="dot" cx="12" cy={y + i * 46 + 20} r="10" style={`fill: ${LED[c]}`} stroke-width="1.8" />
+      <text x="36" y={y + i * 46 + 30} font-family={SANS} font-size={FS} font-weight="600">{text}</text>
+      {note && <text class="dim" x="250" y={y + i * 46 + 30} font-family={SANS} font-size={FS}>{note}</text>}
+    </>
+  ))}
   {type === 'mono' && monoModes.map(([text, c], i) => (
     <>
       <circle class="dot" cx="12" cy={y + i * 46 + 20} r="10" style={`fill: ${c}`} stroke-width="1.8" />

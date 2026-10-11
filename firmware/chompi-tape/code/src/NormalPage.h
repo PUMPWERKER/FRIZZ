@@ -122,7 +122,7 @@ namespace chompi
     static const float dark_orange[3] = {.77f, .38f, .06f};
     static const float yellow_green[3] = {.706f, 1.f, 0.f};
 
-    static const uint8_t knob_num_pages[6] = {2, 2, 2, 3, 1, 2};
+    static const uint8_t knob_num_pages[6] = {3, 2, 2, 3, 1, 2};
 
     class NormalPage : public daisy::UiPage
     {
@@ -223,6 +223,12 @@ namespace chompi
         void Draw(const daisy::UiCanvasDescriptor &canvasDescriptor) override __attribute__((optimize("Os")))
         {
             uint32_t now = System::GetNow();
+
+            if(knob_page[0] == 2 && !fx_->ArpAllowed())
+                knob_page[0] = 0;
+
+            if(knob_page[0] == 2)
+                arp_knob.Update(now);
 
             if(transport_held && now - transport_down >= kTransportHold)
             {
@@ -340,6 +346,8 @@ namespace chompi
 
                         fx_->SetGain(value);
                     }
+                    else
+                        arp_knob.Led(false, now, r, g, b);
 
                     SetPthLedFloat(1, r, g, b);
                 }
@@ -773,11 +781,15 @@ namespace chompi
                                                               // case static_cast<uint16_t>(Hardware::SwId::NC_6): // caught in ui.h
                 break;
 
+            case static_cast<uint16_t>(Hardware::SwId::ENC_4_SW):
+                if(arp_knob.Click(rising, System::GetNow()))
+                    knob_page[0] = (knob_page[0] + 1) % (fx_->ArpAllowed() ? knob_num_pages[0] : 2);
+                break;
+
             // encoder clicks, toggle pages
             case static_cast<uint16_t>(Hardware::SwId::ENC_1_SW): // fall through
             case static_cast<uint16_t>(Hardware::SwId::ENC_2_SW): // fall through
             case static_cast<uint16_t>(Hardware::SwId::ENC_3_SW): // fall through
-            case static_cast<uint16_t>(Hardware::SwId::ENC_4_SW): // fall through
             {
                 if(!rising)
                 {
@@ -1065,6 +1077,14 @@ namespace chompi
 
             uint8_t page = knob_page[encoderID];
             float old_val = enc_values[page][encoderID];
+
+            // no CC: enc_values[2][0] is the threshold
+            if(encoderID == 0 && page == 2)
+            {
+                if(stepsPerRevolution == 0)
+                    arp_knob.Turn(turns, false);
+                return true;
+            }
 
             // a kit: start and end edit the last played slice
             if(page == 0 && (encoderID == 1 || encoderID == 2) && stepsPerRevolution == 0

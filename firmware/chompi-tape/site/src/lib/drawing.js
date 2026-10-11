@@ -4,6 +4,7 @@
 export const LED = {
   blue: '#19B4E6', green: '#2EB82E', yellow: '#E6C200', orange: '#F08C3C', teal: '#1FC9B8',
   purple: '#8C3CF0', magenta: '#D23CD2', red: '#E03030', pink: '#F06E9E',
+  deep: '#3046E8', lime: '#A8D81E', white: '#F2F2F2',
 };
 
 export const SANS = 'Helvetica Neue, Helvetica, Arial, sans-serif';

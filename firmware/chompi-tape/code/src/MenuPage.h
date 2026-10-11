@@ -272,6 +272,8 @@ namespace chompi
                     g = color_triple_xfade(purple[1], 0.f, yellow[1], fx_->GetPan());
                     b = color_triple_xfade(purple[2], 0.f, yellow[2], fx_->GetPan());
                 }
+                else
+                    arp_knob.Led(true, System::GetNow(), r, g, b);
 
                 SetPthLedFloat(1, r, g, b);
             }
@@ -458,6 +460,8 @@ namespace chompi
                     {
                         fx_->SetPan(fx_->GetPan() + inc);
                     }
+                    else
+                        arp_knob.Turn(turns, true);
 
                     DumpValuePresets();
                 }
@@ -685,6 +689,8 @@ namespace chompi
                         fx_->SetPan(.5f);
                         fx_->SetGain(.704f);
                     }
+                    else
+                        arp_knob.Off();
 
                     DumpValuePresets();
                     SetPthLedFloat(1, 1.f, 1.f, 1.f);

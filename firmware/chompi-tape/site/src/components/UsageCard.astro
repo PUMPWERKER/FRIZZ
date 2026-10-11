@@ -3,12 +3,13 @@ import Keys from './Keys.astro';
 import Panel from './Panel.astro';
 import Diagram from './Diagram.astro';
 
-const { id, title, colour, keys, panel, diagram, items } = Astro.props;
+const { id, title, colour, keys, panel, diagram, items = [], text } = Astro.props;
 ---
 <article class="feat" id={id} style={`--c: var(--${colour})`}>
   <h3>{title}</h3>
   <div class="combo"><Keys keys={keys} /></div>
   {panel && <figure class="fig"><Panel {...panel} /></figure>}
   {diagram && <figure class="fig"><Diagram {...diagram} /></figure>}
-  <ul>{items.map((item) => <li set:html={item} />)}</ul>
+  {items.length > 0 && <ul>{items.map((item) => <li set:html={item} />)}</ul>}
+  {text && <p set:html={text} />}
 </article>

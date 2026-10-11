@@ -18,6 +18,8 @@
 #include "InterpolatedDelayLine.h"
 #include "Clock.h"
 #include "KitLoader.h"
+#include "Arp.h"
+#include "ArpKnob.h"
 #include <algorithm>
 
 using namespace daisy;
@@ -484,6 +486,8 @@ namespace daisy
             std::fill(out[0], out[0] + size, 0.f);
             std::fill(out[1], out[1] + size, 0.f);
 
+            StepArp(size);
+
             /** TODO: debug why this is happening */
             if(record != true && record != false)
                 record = false;
@@ -781,7 +785,7 @@ namespace daisy
          *  Starts playback of sample in slot at desired playback ratio
          *  @param transpose_nn MIDI note number transposition to play w/ middle C being 0
          */
-        void StartPlayback(float transpose_nn, int key, float vel)
+        void StartPlayback(float transpose_nn, int key, float vel) __attribute__((optimize("Os")))
         {
             // a kit plays a slice per key, from the lowest key up
             if(AiffSelected() && !chompi::kit_loader.Frames()) // still loading
@@ -791,11 +795,11 @@ namespace daisy
             if(kit && slice < 0)
                 return;
 
-            /** Is this key already playing? */
+            /** Is this key already playing? In JAMMI a tail still sounding keeps its voice */
             int free_idx = -1;
             for(size_t i = 0; i < kMaxPoly; i++)
             {
-                if(playing_key[i] == key)
+                if(playing_key[i] == key && (voice_mode == VoiceMode::CUBBI || !chompi_voice[i].IsPlaying()))
                 {
                     free_idx = i;
                     break;
@@ -931,11 +935,21 @@ namespace daisy
             if (!request_fifo.IsEmpty())
             {
                 KeyRequest req = request_fifo.PopFront();
-                
+                const bool allowed = ArpAllowed();
+
                 if (req.type_ == KeyRequest::Type::START)
-                    StartPlayback(req.transpose_nn_, req.key_, req.vel_);
+                {
+                    if(allowed && (chompi::arp.On() || chompi::arp.Latched()))
+                        chompi::arp.Hold(req.key_, req.transpose_nn_, req.vel_);
+                    if(!allowed || !chompi::arp.On())
+                        StartPlayback(req.transpose_nn_, req.key_, req.vel_);
+                }
                 else if (req.type_ == KeyRequest::Type::STOP)
-                    StopPlayback(req.key_);
+                {
+                    const bool kept = chompi::arp.Release(req.key_) && chompi::arp.Latched();
+                    if(!kept && chompi::arp.Playing() != req.key_)
+                        StopPlayback(req.key_);
+                }
             }
         }
 
@@ -1286,6 +1300,27 @@ namespace daisy
         inline float GetFinalComp() { return final_lim_target_; }
 
         inline void SetReverb(float val) { dly_amt_target_ = reverb_amt_target_ = 1.3f * logf(val + 1.f); }
+        float ArpQuarter()
+        {
+            const float q = DelayQuarter();
+            return q > 0.f ? q : chompi::beat_clock.WheelQuarter();
+        }
+
+        void StepArp(size_t size) __attribute__((noinline, optimize("Os")))
+        {
+            int stop, key;
+            float nn, vel;
+            chompi::arp.Step(size, ArpAllowed(), ArpQuarter(), looper.IsFirstRecording(),
+                             looper.IsRecording(), stop, key, nn, vel);
+            if(stop >= 0)
+                StopPlayback(stop);
+            for(int k; (k = chompi::arp.Drop()) >= 0;)
+                if(k != key)
+                    StopPlayback(k);
+            if(key >= 0)
+                StartPlayback(nn, key, vel);
+        }
+
         // samples per quarter, 0 when the tempo is unknown
         float DelayQuarter()
         {
@@ -1732,6 +1767,8 @@ namespace daisy
             return true;
         }
 
+        bool ArpAllowed() { return voice_mode == VoiceMode::JAMMI && !KitSelected(); }
+
         // the JAMMI slot plays an .aif
         bool AiffSelected() { return voice_mode == VoiceMode::JAMMI && chompi_voice[0].IsAiff(); }
         bool KitSelected() { return voice_mode == VoiceMode::JAMMI && chompi_voice[0].IsKit(); }
@@ -1832,6 +1869,8 @@ namespace daisy
 
         void StopAllVoices(size_t idx = 100)
         {
+            if(idx == 100)
+                chompi::arp.Clear();
             for(size_t i = 0; i < kMaxPoly; i++)
             {
                 if(idx == 100 || idx == chompi_voice[i].GetSlot())

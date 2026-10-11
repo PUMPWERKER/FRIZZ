@@ -28,6 +28,8 @@ OptionsManager options;
 daisysp::Reverb DSY_DTCMRAM_BSS reverb;
 Clock DSY_DTCMRAM_BSS chompi::beat_clock;
 LoopSync DSY_DTCMRAM_BSS daisy::loop_sync;
+Arp DSY_DTCMRAM_BSS chompi::arp;
+ArpKnob DSY_DTCMRAM_BSS chompi::arp_knob;
 AiffInfo DSY_DTCMRAM_BSS chompi::slot_aiff;
 uint16_t DSY_DTCMRAM_BSS chompi::kit_slots[5];
 RamBufferMemory DSY_DTCMRAM_BSS chompi::kit_buff;
@@ -347,6 +349,8 @@ int main(void)
 {
     beat_clock.Init(); // DTCM isn't zeroed, and hw.Init starts MIDI
     loop_sync.Init();
+    arp.Init();
+    arp_knob.Init();
     slot_aiff = AiffInfo();
     std::fill(kit_slots, kit_slots + 5, 0);
     kit_buff = RamBufferMemory();

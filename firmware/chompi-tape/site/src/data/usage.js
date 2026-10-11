@@ -82,3 +82,30 @@ export const usage = [
       'Keys blink while loading, red if the file can\'t play'],
   },
 ];
+
+// the arpeggiator, a section of its own
+export const arp = [
+  {
+    id: 'arp', title: 'Speed', colour: 'green', keys: ['LEFT KNOB', '_turn'],
+    diagram: { type: 'rate' },
+    items: ['Colours: synced to the beat',
+      'White: free running, slower to the right'],
+  },
+  {
+    id: 'arp-pattern', title: 'Patterns', colour: 'green', keys: ['LEFT KNOB', '_hold + turn'],
+    diagram: { type: 'legend', rows: [['Up', 'white', 'low to high'], ['Down', 'deep', 'high to low'],
+      ['Up-down', 'blue', 'up, then back down'], ['As played', 'green', 'in the order you pressed'],
+      ['Random', 'magenta', 'in random order'], ['Bounce', 'purple', 'each note, then an octave up'],
+      ['Tresillo', 'lime', 'the 3 + 3 + 2 rhythm'], ['Swing', 'teal', 'every second note late']] },
+    items: [],
+  },
+  {
+    id: 'arp-octaves', title: 'Octaves', colour: 'green', keys: ['SHIFT', '+', 'LEFT KNOB', '_turn'],
+    items: ['1, 2 or 3 octaves'],
+  },
+  {
+    id: 'arp-latch', title: 'Hold', colour: 'green', keys: ['LEFT KNOB', '_hold'],
+    text: 'Hold the knob and the arpeggio keeps playing after you release the keys. A new chord replaces it. '
+      + 'With the arp off, the notes are sustained.',
+  },
+];

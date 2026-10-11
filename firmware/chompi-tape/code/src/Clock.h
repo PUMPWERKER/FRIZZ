@@ -105,6 +105,7 @@ namespace chompi
         // the beep is an aid for the first loop, the grid it rides on outlives it
         void SetBeep(bool on) { beep_on_ = on; }
         float SampleRate() const { return sr_; }
+        float WheelQuarter() const { return 60.f * sr_ / tempo_; }
 
         // /8 signatures count their eighths in threes: 6/8 is two dotted-quarter beats
         float QuartersPerBeat() const { return TicksPerBeat() / static_cast<float>(kTicksPerQuarter); }
