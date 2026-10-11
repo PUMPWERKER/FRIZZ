@@ -2191,7 +2191,9 @@ int main()
         RunMs(kReadyMs);
         Latch("KEY_6");
         Turn(2, 60); // the amount up
-        RunMs(800);
+        RunMs(500);
+        Tap("ENC_4_SW"); // page 2: stereo on knob 2 (#117); the timing as before it (#130)
+        RunMs(240);
         Save(1); // stereo at 0
         // stereo up: the right LFO runs free and drifts; then a recall takes it back to 0 within
         // 25 ms (clicks.cpp's case, on the device). How far they drifted decides the jump, so
@@ -2199,7 +2201,7 @@ int main()
         max_step = 0.f; // over the presses too: the jump comes as the recall lands
         for (uint32_t drift : {6000, 1500, 2500, 3500, 4500})
         {
-            Turn(3, 50);
+            Turn(1, 50);
             RunMs(drift);
             Tap("KEY_17");
             RunMs(600);
