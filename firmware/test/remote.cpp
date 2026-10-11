@@ -3,6 +3,8 @@
 // (--device), while the twin plays at the wall clock's pace: remote.py's SysEx, its parsing of
 // the answers and its script player are checked, end to end, against the firmware's.
 #include <fcntl.h>
+#include <signal.h>
+#include <sys/file.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
@@ -70,10 +72,15 @@ static void RunMs(uint32_t ms)
     }
 }
 
-/** remote.py ARGS, the twin running at the wall clock's pace until it's done (30 s at most).
- *  Its exit code; out gets what it printed, stdout and stderr */
-static int Remote(const std::vector<std::string>& args, std::string& out)
+static bool Has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
+
+/** remote.py ARGS, the twin running at the wall clock's pace until it's done (30 s at most),
+ *  interrupted (SIGINT, Ctrl-C) once it has printed interrupt_at, if given. Its exit code; out
+ *  gets what it printed, stdout and stderr */
+static int Remote(const std::vector<std::string>& args, std::string& out,
+                  const std::string& interrupt_at = "")
 {
+    bool interrupt = !interrupt_at.empty();
     int pipe_fd[2];
     if (pipe(pipe_fd))
         return -1;
@@ -85,6 +92,7 @@ static int Remote(const std::vector<std::string>& args, std::string& out)
         close(pipe_fd[0]);
         setenv("PYTHONDONTWRITEBYTECODE", "1", 1); // no __pycache__ in the repo
         setenv("FRIZZ_CHOMPI_HELD", "1", 1); // the twin, not the CHOMPI: no lock (tools/chompi.py)
+        signal(SIGINT, SIG_DFL); // a shell's background job (all.sh) ignores it, Python then too
         std::vector<const char*> argv = {"python3", remote_py.c_str(), "--device",
                                          slave_path.c_str()};
         for (const std::string& a : args)
@@ -108,6 +116,11 @@ static int Remote(const std::vector<std::string>& args, std::string& out)
         if (waitpid(pid, &status, WNOHANG) == pid)
             break;
         const auto wall = std::chrono::steady_clock::now() - start;
+        if (interrupt && Has(out, interrupt_at))
+        {
+            kill(pid, SIGINT);
+            interrupt = false;
+        }
         if (wall > std::chrono::seconds(30))
         {
             kill(pid, SIGKILL);
@@ -129,7 +142,30 @@ static int Remote(const std::vector<std::string>& args, std::string& out)
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
-static bool Has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
+
+static std::string firmware_dir;
+
+/** python3 on CODE with tools/ and firmware/ on its path, the lock (tools/chompi.py) a file in
+ *  the temp folder and not held, 20 s at most: never the CHOMPI's own. It runs in the temp
+ *  folder. Its exit code (-1 for a signal); out gets what it printed, stdout and stderr */
+static int Python(const std::string& code, std::string& out)
+{
+    const std::string file = tmp_dir + "/tools.py";
+    std::ofstream(file) << code;
+    const std::string cmd = "cd '" + tmp_dir + "' && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH='" + firmware_dir + "/tools:"
+                            + firmware_dir + "' FRIZZ_CHOMPI_LOCK='" + tmp_dir
+                            + "/lock' FRIZZ_CHOMPI_HELD= timeout -s KILL 20 python3 '" + file
+                            + "' 2>&1";
+    out.clear();
+    FILE* p = popen(cmd.c_str(), "r");
+    char buf[512];
+    size_t n;
+    while (p && (n = fread(buf, 1, sizeof(buf), p)) > 0)
+        out.append(buf, n);
+    const int status = p ? pclose(p) : -1;
+    unlink(file.c_str());
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
 
 static std::string Hex(const Rgb& c)
 {
@@ -169,9 +205,187 @@ static float JsonParam(const std::string& json, const char* fx, int index)
 
 int main()
 {
-    remote_py = std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/')) + "/../remote.py";
+    firmware_dir = std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/')) + "/..";
+    remote_py = firmware_dir + "/remote.py";
     char dir[] = "/tmp/frizz-remote-XXXXXX";
     tmp_dir = mkdtemp(dir);
+    std::string out;
+
+    // the tools without the CHOMPI: the lock is taken only when one reaches for it
+    {
+        const int lock = open((tmp_dir + "/lock").c_str(), O_RDWR | O_CREAT, 0644);
+        flock(lock, LOCK_EX);
+        int rc = Python("import chompi, remote, card, flash\nprint('imported')\n", out);
+        Check(rc == 0 && Has(out, "imported"),
+              "tools: importing them doesn't wait for the CHOMPI another holds (measure.py compare)");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        rc = Python("import signal, chompi\nsignal.alarm(1)\nchompi.claim()\nprint('claimed')\n", out);
+        Check(rc != 0 && Has(out, "the CHOMPI is in use") && !Has(out, "claimed"),
+              "tools: reaching for it does, saying so");
+        close(lock);
+        unlink((tmp_dir + "/lock").c_str());
+    }
+    // where the slot started afterwards is waited for: a FRIZZ until it answers (both of them)
+    int rc = Python("import chompi, card\ncalls = []\n"
+                    "chompi.run = lambda slot, wanted, *rest: calls.append((slot, wanted))\n"
+                    "card.finish(12)\ncard.finish(None)\ncard.finish(11)\nprint(calls)\n", out);
+    Check(rc == 0 && Has(out, "[(12, 'frizz'), (10, 'frizz'), (11, None)]"),
+          "tools: card.py --then 12 waits for FRIZZ-TEST as for FRIZZ, not for the bench");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
+    // a FRIZZ whose USB names came garbled (product "Љ", maker "FrizZ": no "chompi" in them)
+    // is found by the Daisy's USB id, saying so; another card with MIDI isn't taken for it
+    rc = Python(R"(
+import os, shutil, chompi, midi_send
+midi_send.find_device = lambda: None
+for d in ("asound/card1", "asound/card2", "snd"):
+    os.makedirs(d)
+open("asound/cards", "w").write(
+    " 1 [Default        ]: USB-Audio - Љ\n                      FrizZ Љ at usb-1, full speed\n"
+    " 2 [USB            ]: USB-Audio - Scarlett\n                      Focusrite Scarlett at usb-2\n")
+open("asound/card1/usbid", "w").write("0483:5740\n")
+open("asound/card2/usbid", "w").write("1235:8215\n")
+for n in ("midiC1D0", "midiC2D0"):
+    open("snd/" + n, "w").close()
+chompi.ASOUND, chompi.SND = "asound", "snd"
+print("found", chompi.find_device())
+open("asound/card1/usbid", "w").write("1235:0001\n")
+print("found", chompi.find_device())
+shutil.rmtree("asound")
+shutil.rmtree("snd")
+)", out);
+    Check(rc == 0 && Has(out, "found snd/midiC1D0\n") && Has(out, "no CHOMPI in its names (Default")
+              && Has(out, "found None\n"),
+          "tools: a FRIZZ with garbled USB names is found by its USB id, and said so");
+    if (rc != 0 || !Has(out, "found snd/midiC1D0"))
+        printf("%s\n", out.c_str());
+
+    // card.py: a mount that fails still ejects the card and starts FRIZZ; mount alone needs a
+    // hold, as the card stays mounted after it
+    rc = Python(R"(
+import os, sys, chompi, card
+chompi.to_storage = lambda *rest: "/dev/sdx1"
+def mount(part):
+    sys.exit("udisksctl mount: refused")
+chompi.mount = mount
+card.finish = lambda then: print("finished", then)
+sys.argv = ["card.py", "ls"]
+try:
+    card.main()
+except SystemExit as e:
+    print("exit:", e)
+sys.argv = ["card.py", "mount"]
+try:
+    card.main()
+except SystemExit as e:
+    print("exit:", e)
+)", out);
+    Check(rc == 0 && Has(out, "finished None\nexit: udisksctl mount: refused"),
+          "tools: card.py ejects the card and starts FRIZZ again when the mount fails");
+    Check(Has(out, "exit: card.py mount leaves the card mounted"),
+          "tools: card.py mount needs a hold");
+    if (rc != 0 || !Has(out, "finished None"))
+        printf("%s\n", out.c_str());
+
+    // which slot runs, no firmware says (the bench answers as FRIZZ does): the tools note the
+    // one they started, and go by it. chompi's way to the CHOMPI stubbed: states in turn
+    const char* const kSlots = R"(
+import os, sys, chompi, flash, midi_send
+chompi.time.sleep = lambda s: None
+os.environ[chompi.HELD] = "7"
+states, starts = [], []
+def state(device=None):
+    return states.pop(0) if len(states) > 1 else states[0]
+chompi.state = state
+chompi.start = lambda slot, *rest: starts.append(slot) or "started"
+def case(name, now, slot, noted=None, hold="7"):
+    states[:] = now
+    starts.clear()
+    chompi.forget()
+    if noted:
+        os.environ[chompi.HELD] = hold
+        chompi.started(noted)
+        os.environ[chompi.HELD] = "7"
+    got = chompi.to_frizz(slot)
+    print("%s: %s %s" % (name, got, starts), flush=True)
+frizz = [("frizz", "node")]
+case("test runs", frizz, None, 12)
+case("test asked", frizz, 12, 12)
+case("other asked", frizz, 10, 12)
+case("unknown asked", frizz, 12)
+case("unknown", frizz, None)
+case("bench", frizz, None, 11)
+case("booting", [(None, None), ("other", "x"), ("frizz", "node")], None, 12)
+case("launcher, this hold", [("launcher", "l")], None, 12)
+case("launcher, another", [("launcher", "l")], None, 12, hold="8")
+# flash.py: once sent, the launcher for a moment, then nothing, then FRIZZ-TEST
+open("image.bin", "wb").write(b"x")
+midi_send.main = lambda: None
+chompi.to_launcher = lambda *rest: "l"
+chompi.slot_file = lambda *rest: None
+states[:] = [("launcher", "l"), (None, None), ("frizz", "node")]
+sys.argv = ["flash.py", "image.bin", "--slot", "12"]
+flash.main()
+print("noted", chompi.last_started()[0])
+# and the bench, which answers as FRIZZ does
+states[:] = [("launcher", "l"), (None, None), ("frizz", "node")]
+sys.argv = ["flash.py", "image.bin", "--slot", "11", "--name", "FRIZZ-BENCH"]
+flash.main()
+print("left", states)
+chompi.forget()
+os.remove("image.bin")
+)";
+    rc = Python(kSlots, out);
+    Check(rc == 0 && Has(out, "FRIZZ on slot 12 (") && Has(out, "test runs: node []\n")
+              && Has(out, "test asked: node []\n"),
+          "tools: FRIZZ-TEST running is told apart, and used");
+    Check(Has(out, "other asked: started [10]\n") && Has(out, "unknown asked: started [12]\n")
+              && Has(out, "unknown: node []\n") && Has(out, "a slot the tools didn't start"),
+          "tools: --slot starts the slot asked for, unless noted as running; without, an unknown one is said");
+    Check(Has(out, "the bench runs (slot 11") && Has(out, "bench: started [10]\n"),
+          "tools: the bench isn't taken for FRIZZ");
+    Check(Has(out, "booting: node []\n"), "tools: a firmware still starting is waited for, not restarted");
+    Check(Has(out, "launcher, this hold: started [12]\n")
+              && Has(out, "launcher, another: started [10]\n"),
+          "tools: from the launcher, the FRIZZ last started in this hold, else FRIZZ's");
+    Check(Has(out, "FRIZZ answers on slot 12") && Has(out, "noted 12\n"),
+          "tools: flash.py waits until the FRIZZ it sent answers, and notes its slot");
+    Check(Has(out, "FRIZZ-BENCH answers on slot 11") && Has(out, "left [('frizz', 'node')]\n"),
+          "tools: and until the bench answers, so a tool run right after finds it");
+    if (rc != 0 || !Has(out, "noted 12"))
+        printf("%s\n", out.c_str());
+
+    // play --cpu on a FRIZZ that leaves every other ask for the load unanswered: counted, and the
+    // sampling goes on; and one whose load reads 0, the bench
+    const char* const kLoad = R"(
+import remote
+class Stub(remote.Frizz):
+    def __init__(self, zero):
+        self.held, self.zero, self.n = set(), zero, 0
+    def send(self, cmd, payload=b""):
+        pass
+    def raw(self, data):
+        pass
+    def ask(self, cmd, payload=b"", required=True):
+        self.n += 1
+        if self.n % 2 and self.n > 1 and not self.zero:
+            return None
+        return [0, 0, 0, 0] if self.zero else [0, 50 + self.n, 0, 40]
+open("wait.txt", "w").write("wait 1500\n")
+f = Stub(False)
+remote.play(f, "wait.txt", True)
+print("asked", f.n >= 6)
+remote.play(Stub(True), "wait.txt", True)
+)";
+    rc = Python(kLoad, out);
+    Check(rc == 0 && Has(out, "readings unanswered, their time not in the worst") && Has(out, "asked True")
+              && Has(out, "0 throughout: the bench"),
+          "remote: play --cpu counts the load's unanswered asks and samples on; a load of 0 is the bench's");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
+    unlink((tmp_dir + "/wait.txt").c_str());
+
     if (!OpenPty())
     {
         Check(false, "remote: a pseudo-terminal for the twin's USB");
@@ -179,9 +393,8 @@ int main()
     }
     Boot();
     RunMs(kReadyMs);
-    std::string out;
 
-    int rc = Remote({"state"}, out);
+    rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, "looper     empty") && Has(out, "knobs on   freezer")
               && Has(out, "tempo      120.0 BPM") && Has(out, "out 0.75, in 0.75"),
           "remote: state reads the play page: no loop, the freezer's knobs, 120 BPM, the gains");
@@ -298,6 +511,32 @@ int main()
           "remote: and an LED that isn't as expected fails the run, telling which");
     rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, "knobs on   filter"), "remote: the script's key selected the filter");
+
+    // whatever ends a script, the keys it holds are let go, the switch is the hand's again
+    // (a key goes down on the page shown when the next block reads it: a wait before toggling)
+    Write(script, "booted\ndown KEY_5\nwait 100\ntoggle 1\nwait 200\nwait x\n");
+    rc = Remote({"play", script}, out);
+    const std::string broke = out;
+    RunMs(100);
+    const std::string after_error = Hex(SmtLedFull(kFilterKeyLed));
+    Remote({"state"}, out);
+    Check(rc != 0 && Has(broke, "could not convert") && after_error == off
+              && Has(out, "page       play; the mode switch stands down\n"),
+          "remote: a script that breaks off lets go of its key and gives the switch back");
+    if (after_error != off || !Has(out, "page       play"))
+        printf("%s\n%s\n", broke.c_str(), out.c_str());
+    // (stderr's "skipped" says when it's there, in the wait)
+    Write(script, "booted\ndown KEY_5\nwait 100\ntoggle 1\nbattery 3.0\nwait 5000\nup KEY_5\n");
+    rc = Remote({"play", script, "--cpu"}, out, "skipped (twin only): battery");
+    const std::string interrupted = out;
+    RunMs(100);
+    const std::string after_interrupt = Hex(SmtLedFull(kFilterKeyLed));
+    Remote({"state"}, out);
+    Check(rc != 0 && Has(interrupted, "interrupted: the keys let go") && after_interrupt == off
+              && Has(out, "page       play; the mode switch stands down\n"),
+          "remote: and so does one interrupted (Ctrl-C)");
+    if (after_interrupt != off || !Has(out, "page       play"))
+        printf("%s\n%s\n", interrupted.c_str(), out.c_str());
 
     // the mode switch over SysEx (kCmdSwitch): up shows the settings page, and SysEx keys
     // reach it as the hand's do; `switch hand` gives the real switch back

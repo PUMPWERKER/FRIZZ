@@ -97,7 +97,7 @@ Nothing else gets installed: the first run builds DaisySP and the twin for the c
 
 ```bash
 cd firmware/test
-./all.sh          # everything, one line each: about 1.5 minutes, the first time a bit more
+./all.sh          # everything, side by side, one line each: about 75 s on 12 cores, the first time more
 ./check.sh        # engine at HEAD vs the working tree: a refactor must print "bit-identical"
 ./unit.sh tempo   # one unit check (each NAME.cpp; ui runs the whole firmware on the twin)
 ```
@@ -153,9 +153,17 @@ cd firmware
 
 Each send prints the md5 of what it sends, the name of that build in a pull request.
 
-**One at a time.** Every tool here takes a lock (`tools/chompi.py`) and waits while another
-has the CHOMPI, saying who. `tools/chompi.py hold CMD` keeps it over a whole sequence of
-tools, `tools/chompi.py hold` until Ctrl-C (for playing it by hand).
+**One at a time.** Every tool here takes a lock (`tools/chompi.py`, in `/run/user/UID`) when
+it first reaches for the CHOMPI, and waits while another has it, saying who; what doesn't
+touch it (`measure.py compare`) never waits. `tools/chompi.py hold CMD` keeps it over a whole
+sequence of tools, `tools/chompi.py hold` until Ctrl-C (for playing it by hand).
+
+**Which slot runs** no firmware says: FRIZZ, FRIZZ-TEST and the bench all answer FRIZZ's SysEx
+(the bench with a load of 0). So the tools note the slot they last started, beside the lock,
+and go by it: `flash.py` waits after sending a FRIZZ (or the bench) until it answers, `remote.py` and
+`measure.py` say which slot they play on and take `--slot 10|12` for one in particular,
+started unless it's the one running, and never take the bench for FRIZZ. A slot started by
+hand isn't noted (`hold` without a command forgets the note).
 
 Sending replaces whatever is in that slot, so set yours (`FRIZZ_SLOT=4 ./flash.py`,
 `BENCH_SLOT`, `TEST_SLOT`, or `--slot`) if FRIZZ isn't on key 10. Without `--slot`, it
@@ -173,6 +181,8 @@ up as a drive. `./card.py` uses it with no hands at the panel:
 ./card.py put FILE FRIZZ/      # a file onto the card
 ./card.py ls FRIZZ             # a folder
 ./card.py mount                # just mounts it and prints where; ./card.py done ends it
+                               # (in a hold, which keeps the CHOMPI between them:
+                               # tools/chompi.py hold bash)
 ```
 
 Each brings the CHOMPI into the storage firmware, mounts the card, does its part, ejects it and
@@ -200,7 +210,8 @@ script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over 
 script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs.
 With `--cpu` it reports the worst load FRIZZ.bin itself had, measured in the audio callback as
 the bench does, so a scenario can be tried for crackles on the build that plays, not the
-bench's. It refuses a script that uses the settings page (`twin/scenarios/settings.txt`, most
+bench's (it says how many readings went unanswered, if any). Whatever ends a script (an
+error, Ctrl-C), it lets go of the keys it holds and gives the mode switch back to the hand. It refuses a script that uses the settings page (`twin/scenarios/settings.txt`, most
 bug reports): FRIZZ saves those settings to `/FRIZZ/frizz_master.txt` on the card that key 10's
 FRIZZ shares, with no `.bak` (#58); `--force` plays it anyway. Linux only, Python 3, no
 packages, like `flash.py`.

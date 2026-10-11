@@ -49,6 +49,7 @@ static int NoCard()
 
 int main()
 {
+    // the run without a card in a process of its own, side by side with the one with a card
     fflush(stdout);
     const pid_t pid = fork();
     if (pid == 0)
@@ -57,10 +58,6 @@ int main()
         fflush(stdout);
         _exit(result);
     }
-    int status = 0;
-    waitpid(pid, &status, 0);
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
-        failures++;
 
     Boot();
     // the boot animation, about 10 s for the delay to rest, then 24 segments of 3 s with the
@@ -150,5 +147,27 @@ int main()
     for (size_t w = 1; w < rms.size(); w++)
         quiet += rms[w] < .002f;
     Check(rms.size() >= kNum && quiet <= 2, "bench: its tune reaches the master out throughout");
+
+    // it answers FRIZZ's SysEx as FRIZZ does: the tools can't tell the two apart by asking, and
+    // note the slot they started instead (tools/chompi.py). Its load reads 0, as the bench
+    // never counts it there (chompi_main.cpp); on the twin FRIZZ's does too, no time passing
+    const auto Ask = [](uint8_t cmd) {
+        TakeUsbOut();
+        for (uint8_t b : {0xF0, 0x7D, 0x43, 0x48, int(cmd), 0xF7})
+            UsbMidi(b);
+        Run(100 * 2, nullptr, nullptr);
+        const std::string out = TakeUsbOut();
+        const size_t at = out.find(std::string("\xF0\x7D\x43\x48", 4) + char(cmd | 0x40));
+        return at == std::string::npos ? std::string() : out.substr(at + 5, out.find('\xF7', at) - at - 5);
+    };
+    const std::string settings = Ask(0x24), load = Ask(0x23);
+    Check(settings.size() >= 2, "bench: it answers FRIZZ's settings query (0x24), as FRIZZ does");
+    Check(load == std::string(4, '\0'), "bench: and its load (0x23) reads 0");
+
+    fflush(stdout);
+    int status = 0;
+    waitpid(pid, &status, 0);
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        failures++;
     return Finish();
 }

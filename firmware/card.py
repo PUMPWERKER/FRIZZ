@@ -6,6 +6,8 @@
     ./card.py put FILE PATH           FILE onto the card as PATH (a folder keeps FILE's name)
     ./card.py ls [PATH]               what's in a folder on the card
     ./card.py mount                   only mounts it, and prints where; `card.py done` ends it
+                                      (in a hold, which keeps the CHOMPI in between:
+                                      tools/chompi.py hold bash)
     ./card.py done                    ejects it and starts FRIZZ again
 
 Each brings the CHOMPI from wherever it is (FRIZZ, the launcher's picker) into the USB
@@ -80,8 +82,8 @@ def finish(then):
         chompi.to_launcher()
         print("at the launcher's picker")
     else:
-        slot = int(then) if then else chompi.FRIZZ_SLOT
-        chompi.run(slot, "frizz" if slot == chompi.FRIZZ_SLOT else None)
+        slot = then or chompi.FRIZZ_SLOT
+        chompi.start(slot)
         print("started slot %d" % slot)
 
 
@@ -96,13 +98,9 @@ def then_arg(value):
 
 
 def main():
-    # --then is taken before the subcommand and after it: a default of SUPPRESS on the
-    # subcommands keeps one given before from being overwritten
-    help_then = "the slot to start afterwards (default FRIZZ's), or none"
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--then", type=then_arg, help=help_then)
-    then = argparse.ArgumentParser(add_help=False)
-    then.add_argument("--then", type=then_arg, default=argparse.SUPPRESS, help=help_then)
+    then = chompi.before_and_after(ap, (["--then"], dict(
+        type=then_arg, help="the slot to start afterwards (default FRIZZ's), or none")))
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("get", parents=[then])
     p.add_argument("paths", nargs="*")
@@ -118,19 +116,24 @@ def main():
 
     if a.cmd == "put" and not os.path.isfile(a.file):
         sys.exit("no file %s" % a.file)
+    if a.cmd == "mount" and not os.environ.get(chompi.HELD):
+        # the card stays mounted after this ends, so the CHOMPI must stay held until done
+        sys.exit("card.py mount leaves the card mounted until card.py done, which no lock of its "
+                 "own covers: run both in a hold, e.g. tools/chompi.py hold bash")
     if a.cmd == "done":
         if not chompi.storage_partition():
             sys.exit("the card isn't on USB")
         finish(a.then)
         return
 
-    root, _ = chompi.to_storage()
+    part = chompi.to_storage()
     if a.cmd == "mount":
-        print(root)
+        print(chompi.mount(part))
         return
-    # whatever goes wrong, eject the card and start FRIZZ again: never leave the CHOMPI in
-    # the storage firmware with the card mounted
+    # whatever goes wrong from here (the mount too), eject the card and start FRIZZ again:
+    # never leave the CHOMPI in the storage firmware with the card mounted
     try:
+        root = chompi.mount(part)
         if a.cmd == "get":
             get(root, a.paths, a.out)
         elif a.cmd == "put":
