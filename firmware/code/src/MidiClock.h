@@ -123,7 +123,7 @@ public:
         counted_at_ = 0;
         factor_ = ClockFactor::ONE;
         period_ = 0.f;
-        held_ = 0.f;
+        held_ = kNoneHeld;
     }
 
     /** Drains both MIDI inputs. Call once per audio block from the audio callback.
@@ -300,7 +300,7 @@ private:
             source_ = from;
             period_ = 0.f;
             locks_++;
-            held_ = 0.f;
+            held_ = kNoneHeld;
             skipped_ = true; // at half, the first tick counts
         }
         else if (from != source_)
@@ -310,7 +310,7 @@ private:
         else
         {
             const float interval = static_cast<float>(now - last_tick_);
-            if (held_ > 0.f)
+            if (held_ != kNoneHeld)
             {
                 // an interval off the period waited for this one: if together they come
                 // closer to two periods than it alone to one, they were a pair (two ticks
@@ -323,7 +323,7 @@ private:
                     Smooth(held_);
                     Smooth(interval);
                 }
-                held_ = 0.f;
+                held_ = kNoneHeld;
             }
             else if (period_ > 0.f && fabsf(interval - period_) > kHold * period_)
                 held_ = interval; // waits for the next tick (above)
@@ -357,7 +357,10 @@ private:
     volatile ClockSource setting_ = ClockSource::AUTO;
     bool skipped_ = false; // at half: the last tick wasn't counted
     float period_;
-    float held_ = 0.f; // an interval waiting for the next tick, 0 for none
+    // an interval waiting for the next tick, kNoneHeld for none: two ticks in one block come
+    // 0 apart, which is held like any other, or a pair locked on settles at twice the period
+    static constexpr float kNoneHeld = -1.f;
+    float held_ = kNoneHeld;
     volatile bool restart_ = false;
     uint8_t transport_in_ = 0; // TakeTransport's
     Source transport_from_ = Source::NONE;

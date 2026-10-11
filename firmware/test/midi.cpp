@@ -361,5 +361,23 @@ int main()
         Check(line == "midi F0 7D 43 48 14 00 00 F7", "sysex-log: the switch's SysEx logged with its one byte, the rest 0");
     }});
 
+    // a host that sends its ticks two at a time (in one USB packet), started once FRIZZ is up:
+    // whichever tick of a pair it locks on, it follows the clock's tempo, not half of it (#92)
+    cases.push_back({"pairs-late", [] {
+        RunMs(kReadyMs);
+        bool all = true;
+        for (int phase = 0; phase < 4; phase++)
+        {
+            StartUsb(Clock(120., .3, true, 0., true));
+            RunMs(8000);
+            const ClockState c = Probe();
+            Report("pairs from %.0f ms: %.2f BPM, FX at %d", BlockMs() - 8000., c.midi_bpm, c.tempo);
+            all &= fabsf(c.midi_bpm - 120.f) < 1.f && c.tempo == 120;
+            usb.Stop();
+            RunMs(1000 + 7 * phase); // lost, then found again on another phase
+        }
+        Check(all, "pairs-late: a clock in pairs started after power-on is followed at its tempo (#92)");
+    }});
+
     return RunCases();
 }
