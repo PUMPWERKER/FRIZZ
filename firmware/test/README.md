@@ -18,6 +18,7 @@ STRESS=1 ./run.sh work out.bin
 |---|---|
 | `check.sh` | the engine harness (below): every output sample and FX meter of a fixed script, two versions compared; a refactor must be `bit-identical` |
 | `pitch`, `tape`, `delay`, `crusher`, `freezer`, `comp`, `clicks`, `level`, `sleep`, `inserts`, `page2` | parts of the engine on their own: the shifter's tuning, wow and flutter and the tape stop, the delay's pitch-up and random events, the crusher's rate, bits and dive, the freezer's capture and roll, the master compressor, moves that used to click, page 2's Mix, Band and Level (`FxOutput.h`), effects that are off costing no time, the folder's bypass and level, the slicer's patterns, chance and stereo, page 2's Mix on the shifter, and each effect's own page-2 knob |
+| `phaser` | the phaser (`FxPhaser.h`): its six stages' notches where they belong and unity between them, dry at depth 0, feedback bounded at the top and ringing down, the stereo LFO half a cycle behind, asleep bit for bit the input, the rate knob's free half in Hz and synced half in divisions, the LFOs running at their rate and on the clock's pulses |
 | `chaos` | the chaos key (`FxChaos.h`): its dice on the grid, the pattern that repeats and the press that rolls a new one, the gates on the engine's pool of latched effects, the loop's scramble (another part of the loop, crossfaded, its position running on) |
 | `scenes`, `store` | the scene and master files and the card: formats, a card not read at boot, backups (also of a file next to a cut save's `.tmp`) |
 | `controls`, `keys`, `looper`, `tempo` | the play page's logic classes on their own: FX keys and knobs, SHIFT and the confirm, the looper (its glides landing exactly, its memory not cleared at boot), the tempo clock |
@@ -162,6 +163,23 @@ nearly as it was; the bits knob at the top leaves a handful of steps, at 0 the s
 value; a press dives the rate 10x lower 0.1 s on, and it's back to the knob's by 0.3 s. Held
 values are compared within 1e-4 and a step counts once, as the reducer's BLEP spreads it over
 two samples.
+
+## Phaser check
+
+```bash
+./unit.sh phaser
+```
+
+The phaser (`FxPhaser.h`) with its LFO held still on the centre: at the centre knob's 0, .5 and
+1 (100 Hz, 800 Hz, 6.4 kHz, within the Pade tangent's .5%) the stages' 90 degree point, and the
+three notches below -30 dB where a stage turns 30, 90 and 150 degrees, unity between them. At
+depth 0 the output is the input exactly, feedback and stereo up. Feedback at the top on noise,
+sweeping fast: bounded, and down to nothing 0.5 s after the noise stops; it resonates between
+the notches. Stereo at 1 puts the right channel's sweep at the bottom while the left's is at
+the top. Off and faded out the output is the input bit for bit, and it comes on again from
+silence. The rate knob: free .02 to 50 Hz below the centre, 1/16 to 4 bars from it up, a free
+1 Hz LFO back where it was a second on, a synced one on the clock's pulses and gliding between
+them. Turning the knob (fine, stepped, SHIFT across both halves) is `controls`' job.
 
 ## Freezer check
 

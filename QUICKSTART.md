@@ -56,15 +56,15 @@ A loop can be up to 2:45 long and is gone when you switch off.
 
 ## 3. Play the effects
 
-The white keys hold twelve effects, counted from the left, in the order the sound goes
-through them: ten inserts, the chaos key, the delay and reverb, a free key, and the master
+The white keys hold thirteen effects, counted from the left, in the order the sound goes
+through them: eleven inserts, the delay and reverb, then the chaos key, and the master
 compressor on the last one (below). The chaos key makes no sound of its own: it drops the
 effects you've latched out at random and scrambles the loop's steps (see
 [Chaos key](MANUAL.md#chaos-key)).
 
 | White key | 1st | 2nd | 3rd | 4th | 5th | 6th | 7th | 8th | 9th | 10th | 11th | 12th | 13th | 14th | 15th |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Effect | Freezer | Shifter | Folder | Crusher | Filter | Flanger | Resonator | Slicer | Wow & flutter | Tape stop | Chaos | Delay | Reverb | – | Compressor |
+| Effect | Freezer | Shifter | Folder | Crusher | Filter | Flanger | Resonator | Slicer | Wow & flutter | Tape stop | Phaser | Delay | Reverb | Chaos | Compressor |
 
 - **Hold a key:** the effect is on while you hold it.
 - **Hold a key, then SHIFT:** latch the effect on. Do it again, or just tap the key, to turn
@@ -85,8 +85,8 @@ effects you've latched out at random and scrambles the loop's steps (see
   an effect that gets louder as you drive it, like the folder, is set back with knob 4.
 
 Every effect starts silent or nearly so: one knob brings it in. That's knob 1 on most, knob 2
-(feedback) on the resonator, knob 3 (amount) on the flanger and knob 4 (level) on the delay
-and reverb. The freezer, slicer and tape stop work from the first press: the freezer repeats
+(feedback) on the resonator, knob 3 (amount, depth) on the flanger and the phaser and knob 4
+(level) on the delay and reverb. The freezer, slicer and tape stop work from the first press: the freezer repeats
 a whole bar, the slicer pumps gently and the tape stop stops.
 
 **Master compressor:** press the last white key, and knobs 1-4 set the compressor on the
@@ -108,12 +108,16 @@ Things to try first:
   clicks for a fifth, then hold the key to hear it.
 - **Resonator (7th key)** with the crusher or the shifter latched: the ringing goes through them on
   every pass.
+- **Phaser (11th key):** latch it, turn knob 3 (depth) up to hear the sweep and knob 2 for
+  its resonance. Turn knob 1 right past the centre (its LED turns green) and the sweep locks
+  to the tempo, 1/16 first, slower as you go on.
 - **Delay + reverb (the 12th and 13th keys):** turn up their knob 4, then tap them to throw echoes and
   tails onto single notes.
 - **Tape stop (10th key)** with the delay or reverb latched: hold it on a beat and the music
   winds down over half a bar while the tails ring on. Let go and it spins back up.
 
-The freezer, slicer, filter LFO, tape stop, delay and the chaos key's grid follow a tempo: the loop's while there is one, so
+The freezer, slicer, filter LFO, tape stop, delay, the phaser (its rate turned right of the
+centre) and the chaos key's grid follow a tempo: the loop's while there is one, so
 they lock to it; otherwise MIDI clock, or the last tempo (120 BPM at power-on). Hold SHIFT
 and tap LOOP three times or more to tap a tempo, or to tell FRIZZ how many beats a loop has.
 See [Tempo](MANUAL.md#tempo).

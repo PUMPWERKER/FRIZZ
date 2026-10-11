@@ -45,16 +45,17 @@ drive the VU LEDs.
   shared filter LFO and pitch LFO; voices summed → delay → reverb → output compressor →
   saturation → pan.
 - **FRIZZ** (`FxChain.h`): AUX input → input/loop mix with the looper → freezer → shifter →
-  folder → crusher → filter → flanger → slicer → wow & flutter → tape stop → delay → reverb
+  folder → crusher → filter → flanger → slicer → wow & flutter → tape stop → phaser → delay → reverb
   (fed the delay's echoes too) → master compressor (`MasterComp.h`: threshold, ratio, attack,
   release, and mix and makeup on page 2, on its own key) → output gain → safety limiter
   (`limiter.h` at its lowest setting), the only thing that sets a level by itself. Every
   insert but the resonator and tape stop sits inside page 2's Mix, Band and Level
   (`FxOutput.h`); the sends get its Band on their input. The
   resonator's comb loops from after the flanger back to after the freezer.
-  Each effect is a punch-in key, and the keys run in this order left to right, with a free
-  key between the inserts and the sends and another before the compressor. (A randomizer
-  that played the inserts on gate patterns sat on the last key until it was removed.)
+  Each effect is a punch-in key, and the keys run in this order left to right, the chaos key
+  (`FxChaos.h`, no sound of its own: it gates the latched effects and scrambles the loop)
+  after the sends and before the compressor. (A randomizer that played the inserts on gate
+  patterns sat on the last key until it was removed.)
 
 ## Unused effects in the vendored DaisySP
 
@@ -64,7 +65,8 @@ DaisySP is vendored in every firmware (`code/libs/DaisySP/Source/`) and its preb
 - **Effects:** `bitcrush`, `decimator` (bit depth + downsampling in one), `sampleratereducer`,
   `overdrive`, `fold` (a sample-and-hold rate reducer despite the name), `wavefolder` (an
   unfiltered triangle fold; FRIZZ's folder is its own, antialiased), `chorus`, `flanger`,
-  `phaser`, `tremolo`, `autowah`, `pitchshifter`, `reverbsc`
+  `phaser` (not a chain of stages: identical allpass engines in parallel, on 77 KB of delay
+  line a channel; FRIZZ's phaser is its own, #68), `tremolo`, `autowah`, `pitchshifter`, `reverbsc`
 - **Filters:** `moogladder`, `svf`, `comb`, `biquad`, `allpass`, `tone` / `atone`, `mode`, `nlfilt`
 
 Check the memory table after adding any of them, especially on TAPE, which has almost no SRAM
@@ -88,10 +90,10 @@ their keys' order left to right (see the FRIZZ chain above). Their controls are 
 | 8th white | Slicer (insert) | Bastl Instruments' Kastle 2 FX Wizard slicer (MIT) |
 | 9th white | Wow & flutter (insert) | TAPE's `Warble.h` as knob 1, plus FRIZZ's own flutter, tone and stereo |
 | 10th white | Tape stop (insert) | FRIZZ's own: a varispeed read head on an SDRAM buffer, tempo-synced stop and spin-up |
-| 11th white | Free | — |
+| 11th white | Phaser (insert) | FRIZZ's own (#68): six first-order allpass stages a channel with feedback, the coefficient retuned every 8 samples from a triangle LFO, free (the flanger's rate curve) or synced by `TempoClock.h` (the filter LFO's divisions) on one split knob; knobs after the SP-404MK2's Phaser and the Elektron Tonverk's Phase 98 |
 | 12th white | Delay (send) | TEMPO's `granularDelay.h`, clocked by FRIZZ's `TempoClock.h` (the loop, MIDI clock, taps or free running) |
 | 13th white | Reverb (send, also fed the delay's echoes) | TEMPO's `reverb.h` + `fx_engine.h` |
-| 14th white | Free | — |
+| 14th white | Chaos key (no sound: gates the latched effects, scrambles the loop) | FRIZZ's own (#65), after the Red Panda Tensor's RAND and the Chase Bliss Blooper's Scrambler |
 | 15th white | Master compressor (always on, after the chain) | FRIZZ's own (`MasterComp.h`) |
 
 ## Page 2 candidates (#40)
