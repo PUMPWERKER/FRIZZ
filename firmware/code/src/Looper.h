@@ -192,6 +192,9 @@ public:
     /** Current scrub speed while paused, 0 when not scrubbing (for the LEDs) */
     inline float GetScrub() const { return scrub_; }
 
+    /** The speed's semitones, -48 to 12, either way it runs (MIDI feedback's CC 90) */
+    inline int GetSemitones() const { return semis_; }
+
     /** Current speed target: negative is reverse, 1 is the recorded speed */
     inline float GetSpeed() const { return speed_target_; }
 

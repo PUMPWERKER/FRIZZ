@@ -220,6 +220,8 @@ public:
 
     /** A message out over USB. From MainLoop only: the transport waits for the bus */
     void SendUsb(uint8_t* bytes, size_t size) { usb_midi.SendMessage(bytes, size); }
+    /** The same, false if it didn't go (the last transfer still going): to try again */
+    bool TrySendUsb(uint8_t* bytes, size_t size) { return usb_midi.GetMutableTransport().Tx(bytes, size); }
 
     /** One byte out of the MIDI jack if the UART can take it now, without waiting: from the
      *  audio callback (MidiOut.h). False while it's busy: at 31250 baud a byte takes 0.32 ms,

@@ -49,6 +49,7 @@
 #include "hardware.h"
 #include "EventLog.h"
 #include "MidiClock.h"
+#include "MidiFeedback.h"
 
 // once each and not in a hurry: FRIZZ's code space is tight (SRAM_EXEC), as EventLog's
 #define MIDI_CONTROL_ONCE __attribute__((noinline, optimize("Os")))
@@ -392,12 +393,17 @@ public:
     inline uint8_t Channel() const { return channel_; }
     inline bool Transport() const { return transport_; }
     inline bool BlockTrs() const { return block_trs_; }
+    inline bool Feedback() const { return feedback_; }
 
     /** The settings page's (SettingsPage.h): the channel (0 all), transport following, the
      *  effect block over the jack too, and how the clock is followed and from where */
     inline void SetChannel(uint8_t channel) { channel_ = channel; }
     inline void SetTransport(bool on) { transport_ = on; }
     inline void SetBlockTrs(bool on) { block_trs_ = on; }
+    /** MIDI feedback (MidiFeedback.h), on or off */
+    inline void SetFeedback(bool on) { feedback_ = on; }
+    /** A message over USB from MainLoop, false if it didn't go (MidiClock::TrySendUsb) */
+    inline bool TrySendUsb(uint8_t* bytes, size_t size) { return clock_->TrySendUsb(bytes, size); }
     inline void SetClockFactor(ClockFactor factor) { clock_->SetFactor(factor); }
     inline void SetClockSource(ClockSource source) { clock_->SetSource(source); }
     inline ClockSource GetClockSource() const { return clock_->GetSource(); }
@@ -422,6 +428,8 @@ public:
 
     /** What IDENT and BENCH answer from, chompi_main.cpp's */
     dev::Info dev;
+    /** MIDI feedback's bytes for the jack: the play page's, sent by MidiOut */
+    FeedbackRing feedback_trs;
 
     /** An answer to a query, over USB: F0, the header, cmd | 0x40, the data, F7. Kept to
      *  16 USB packets (64 bytes), one transfer */
@@ -803,6 +811,7 @@ private:
     volatile int panel_turns_[midimap::kNumKnobs] = {}; // SysEx's
     volatile uint8_t switch_ = 0;
     volatile bool block_trs_ = true;
+    volatile bool feedback_ = false;
 
     // by midimap::Value
     static const size_t kValueWords = (midimap::kNumValues + 31) / 32;

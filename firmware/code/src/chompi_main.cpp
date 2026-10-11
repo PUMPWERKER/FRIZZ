@@ -335,7 +335,7 @@ int main(void)
     midi_control.Init(&midi_clock, &event_log, scene_store.master.midi_channel,
                       scene_store.master.midi_transport, System::GetTickFreq(),
                       24.f / hw.seed.AudioSampleRate());
-    midi_out.Init(&midi_clock);
+    midi_out.Init(&midi_clock, &midi_control.feedback_trs);
     ui.Init(&engine, &hw, &scene_store, &event_log, &midi_control);
 #if FRIZZ_BENCH
     bench.Init(hw.seed.AudioSampleRate(), 24, &fsi.GetSDFileSystem(), fsi.GetSDPath());

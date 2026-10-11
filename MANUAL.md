@@ -65,11 +65,12 @@ set the rest:
 | G# | [Clock factor](#midi-clock), each press the next: as sent (default), double, half. It also shows the [beat](#tempo): lit for the first half of every beat, dim for the second | yellow (as sent), red (double), light blue (half) |
 | A# | [Clock source](#clock-source), each press the next: Auto (default), TRS, USB, internal | white (Auto), orange (TRS), blue (USB), pink (internal) |
 | C# (upper octave) | [MIDI out](#midi-out), each press the next: off (default), TRS, TRS and USB | dim (off), orange (TRS), white (TRS and USB) |
+| D# (upper octave) | [MIDI feedback](#midi-feedback): on (lit) / off (dim, default) | light blue |
 | F# (upper octave) | [Mono input](#mono-input): mono (lit) / stereo (dim) | white |
 | G# (upper octave) | [LED brightness](#led-brightness), each press the next: 100 % (default), 75 %, 50 % | purple, as bright as the LEDs are |
 
 The dark keys are grouped by topic: the lower octave's are MIDI in, the upper octave's MIDI out
-and the rest. The upper octave's D# and A# do nothing. (Before v0.12 they sat elsewhere: see the
+and the rest. The upper octave's A# does nothing. (Before v0.12 they sat elsewhere: see the
 CHANGELOG.)
 
 - **The beat on G#** is the tempo the effects follow right now (see [Tempo](#tempo)): with a
@@ -1010,7 +1011,8 @@ the beat on the settings page's G#:
 it comes in on. A DAW over USB gets nothing back over USB, gear on the TRS jacks nothing out
 of TRS. With a loop, FRIZZ leads, and its clock goes out of every port MIDI out is set to.
 
-Nothing else goes out: no notes, no controllers, no MIDI thru.
+Nothing else goes out: no notes, no MIDI thru, and controllers only with [MIDI
+feedback](#midi-feedback) on.
 
 - Gear that follows any clock by itself takes FRIZZ's tempo as soon as MIDI out is on, even
   while nothing plays. That's why it's off at first.
@@ -1020,6 +1022,30 @@ Nothing else goes out: no notes, no controllers, no MIDI thru.
 - Gear with MIDI thru on that sends FRIZZ's clock back into its TRS input: with the clock
   source on Auto, FRIZZ follows its own clock coming back. Set the clock source to internal
   or USB, or switch the gear's thru off.
+
+### MIDI feedback
+
+From v0.12. What you change on the panel goes out as the CCs that would set it (see
+[Controllers](#controllers)), so a controller with LED rings or motor faders, or a DAW
+picking up a knob, follows the panel. Off at first; the upper octave's D# on the [settings
+page](#settings-page) switches it (`midi_feedback 1` in `FRIZZ/frizz_master.txt`). It goes
+where [MIDI out](#midi-out) goes, so MIDI out has to be on too.
+
+- **What goes out:** an effect's knobs (CC 14-21) and latch (CC 22) on its own channel, and
+  for the effect in focus also on the global channel (CC 14-22); the latches by key (CC
+  102-115), the focus (CC 23) as you pick an effect, the compressor (CC 24-31), the gains and
+  mix (CC 85-87), the headphone feed (CC 89), the loop's speed (CC 90), and the crossfader
+  (CC 80) while you hold it by hand.
+- **A scene** recalled sends what it changed, once. A morph sends only where it lands, once
+  it has. The chaos key changes no setting, so it sends nothing.
+- **Never back:** what came in by MIDI, or by FRIZZ's SysEx, isn't sent back, so a DAW
+  recording what it also sends doesn't loop.
+- **Paced:** a value goes at most once every 10 ms, and only when its 7-bit value changed.
+  A scene's many changes take a moment to go out of TRS (about 660 CCs a second). The clock
+  goes first, so its timing stays as without feedback.
+- With [the effect channels](#channels) off over TRS, only the global channel's go out of
+  TRS; over USB, all. On every channel (omni), only the global ones go out, on channel 16.
+- Switching it on sends nothing by itself: a controller learns a value when it next changes.
 
 ### Remote control
 

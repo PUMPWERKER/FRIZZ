@@ -311,6 +311,43 @@ int main()
               "follow-start: paused, Start: Song Position 1, Continue a 16th after, on the loop's 16th 1");
     }});
 
+    // MIDI feedback on the jack (#104): its CCs fill the gaps, the clock keeps its time, a
+    // tick even between a CC's bytes
+    cases.push_back({"feedback", [] {
+        StartUsb(Clock(120., 0., true));
+        RunMs(kReadyMs);
+        SetOut(1);
+        RunMs(500);
+        TakeSent();
+        RunMs(2000); // without feedback: the clock as passed on over USB's 1 ms frames
+        double base_mean, base_worst;
+        Gaps(TakeSent().trs, base_mean, base_worst);
+        for (uint8_t b : {0xF0, 0x7D, 0x43, 0x48, 0x3E, 0x03, 0x01, 0x23, 0x08, 0x00, 0x01, 0xF7})
+            UsbMidi(b); // kCmdDev SET: midi_feedback 1
+        RunMs(100);
+        TakeSent();
+        // every effect picked and two knobs turned: the focus's values, and theirs, in a rush
+        for (int key = 1; key <= 13; key++)
+        {
+            Tap(("KEY_" + std::to_string(key)).c_str(), 20);
+            Turn(4, 30);
+            Turn(1, -30);
+            RunMs(40);
+        }
+        RunMs(1500);
+        const Sent s = TakeSent();
+        int ccs = 0;
+        for (const MidiOutByte& b : s.trs)
+            ccs += (b.byte & 0xF0) == 0xB0;
+        double mean, worst;
+        Gaps(s.trs, mean, worst);
+        Report("feedback: %d CCs on the jack; a tick every %.3f ms (+-%.2f), without them +-%.2f", ccs,
+               mean, worst, base_worst);
+        Check(ccs > 100, "feedback: the hand's changes go out of the jack as CCs");
+        Check(fabs(mean - kTick120) < .05 && worst <= base_worst + .05,
+              "feedback: the clock's ticks keep their time through them, as without feedback");
+    }});
+
     // a DAW's Start was passed on, then a quantized loop: no second Start, and the ticks carry
     // on, its start on the clock's bar line
     cases.push_back({"handover", [] {

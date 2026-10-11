@@ -101,6 +101,13 @@ what FRIZZ does.
 - **On the global channel** (#97): CC 14-22 reach the effect in focus, the one the knobs edit,
   and CC 23 picks it (1-15, by key); CC 82 taps the tempo; CC 90 sets the loop's speed
   outright, in semitones (64 as recorded); CC 102-115 latch the effects by key.
+- **MIDI feedback** (#104): with the settings page's new upper D# on, what you change on the
+  panel goes out as the CCs that would set it, wherever MIDI out goes. An effect's knobs and
+  latch go on its channel, and for the effect in focus on the global channel too. The latches
+  by key, the focus, the compressor, the gains and the loop's speed go out, and the crossfader
+  while you hold it. A recalled scene sends what it changed, a morph where it lands. Nothing
+  that came in by MIDI goes back, a value goes at most every 10 ms, and the clock keeps its
+  timing. Off at first. See MANUAL.md, "MIDI feedback".
 - **The loop follows a DAW's Start and Song Position** (#97), with transport following on: a
   loop recorded to the clock goes back to its start on Start and plays from the next tick, and
   Song Position while stopped moves it there (by its length in 16ths), so it stays lined up
@@ -143,7 +150,8 @@ what FRIZZ does.
   C# every channel (as before), D# the effect channels over TRS (new), F# transport following
   (was D#), G# the clock factor (as before), A# the clock source (was the upper G#); the upper
   octave C# MIDI out (was the upper D#), F# mono (was the lower F#), G# the LEDs' brightness
-  (was the lower A#). Each keeps its colours. See MANUAL.md, "Settings page".
+  (was the lower A#), and the upper D# MIDI feedback (new). Each keeps its colours. See
+  MANUAL.md, "Settings page".
 
 - **The resonator, slicer, wow & flutter and tape stop are one key to the right** (#68): the
   8th, 9th, 10th and 11th white keys, making room for the phaser on the 7th, next to the
@@ -217,6 +225,9 @@ what FRIZZ does.
   go on the play page.
 - **A scene sent over SysEx into the active slot** marks it as edited (its key pulses), as
   COPY onto it does, since what plays is no longer what the slot holds.
+- **MIDI out over USB no longer drops a tick** that came while USB was still sending something
+  else (an answer to a query, or MIDI feedback's CCs): it goes at the next chance, at most 5 ms
+  late, instead of not at all (#104).
 - **MIDI out at double tempo keeps every tick** of a clock whose ticks come in bunches (a DAW
   over USB sending two at once): one in four went missing, so the gear behind fell behind.
 - **MIDI out no longer sends a stale Start after power-on:** a Start that came while FRIZZ
