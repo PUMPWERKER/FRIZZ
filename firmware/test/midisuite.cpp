@@ -142,6 +142,10 @@ int Suite(const std::string& args, std::string& out, int limit)
         out = "no pseudo-terminal";
         return -1;
     }
+    // the boot and the rainbow, as fast as the twin goes: the play page takes keys from here
+    // (midisuite.py waits for it on a FRIZZ just started)
+    while (NowMs() < 7000)
+        Run(2, nullptr, nullptr);
     int pipe_fd[2];
     if (pipe(pipe_fd))
         return -1;
@@ -257,7 +261,10 @@ void Run(const std::string& name, bool in, bool out_wired, const std::vector<std
     for (const std::string& id : ids)
         list += (list.empty() ? "" : ",") + id;
     std::string out;
+    const auto t0 = std::chrono::steady_clock::now();
     const int rc = Suite("--quick -v --cases " + list, out, 55);
+    printf("%s: %ld s\n", name.c_str(),
+           long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()));
     const std::vector<std::string> unjudged = Unjudged(out);
     for (const std::string& id : unjudged)
         printf("%s: %s not judged, the twin %ld ms behind the wall clock\n", name.c_str(), id.c_str(), lag);
@@ -291,36 +298,17 @@ int main()
         return rc;
     }
 
-    // wired both ways: every case runs, and passes on the firmware as it is (a few at a time)
-    cases.push_back({"clock", [] {
-        Run("both ways, the clock in", true, true,
-            {"clock-trs", "sources-trs", "sources-usb", "usb-late"}, "PASS",
-            {"wiring: both ways (found)"}, 0);
-    }});
-    cases.push_back({"transport", [] {
-        Run("both ways, the transport", true, true, {"transport-trs", "start-spp", "start-free"}, "PASS", {}, 0);
-    }});
-    cases.push_back({"factor", [] {
-        Run("both ways, the factor", true, true, {"factor", "start-spp-half"}, "PASS", {}, 0);
-    }});
-    cases.push_back({"out", [] {
-        Run("both ways, MIDI out", true, true, {"out-idle", "out-loop", "out-pass", "out-factor"}, "PASS", {}, 0);
-    }});
-    cases.push_back({"drift", [] { Run("both ways, the loop over time", true, true, {"loop-drift"}, "PASS", {}, 0); }});
-    cases.push_back({"x2", [] {
-        Run("both ways, MIDI out over time", true, true, {"out-x2", "out-knobs"}, "PASS", {}, 0);
-    }});
-    cases.push_back({"cc", [] {
-        Run("both ways, the CC map", true, true,
-            {"cc-channels", "cc-global", "cc-global-trs", "block-trs", "shifter-page", "chaos-cc", "rpn"},
-            "PASS", {}, 0);
-    }});
-    cases.push_back({"morph", [] {
-        Run("both ways, morphs", true, true, {"morph-back", "morph-hold"}, "PASS", {}, 0);
-    }});
-    cases.push_back({"feedback", [] {
-        Run("both ways, feedback", true, true, {"feedback", "no-double", "sysex-thru"}, "PASS", {}, 0);
-    }});
+    // wired both ways: every case runs, and passes on the firmware as it is (a few to a process,
+    // each under about 25 s; start-spp-half and fast-usb / fast-trs only on the device, the
+    // effect channels four of them)
+    const std::vector<std::vector<std::string>> both = {
+        {"clock-trs", "usb-late", "sources-usb"}, {"sources-trs"}, {"transport-trs", "start-free"},
+        {"start-spp"}, {"factor"}, {"out-idle", "out-loop", "out-pass"}, {"out-factor", "out-knobs"},
+        {"loop-drift"}, {"out-x2"}, {"cc-channels", "rpn"},
+        {"cc-global", "cc-global-trs", "block-trs", "shifter-page", "chaos-cc"}, {"morph-back", "morph-hold"},
+        {"feedback", "no-double", "sysex-thru"}};
+    for (const auto& ids : both)
+        cases.push_back({ids[0], [ids] { Run("both ways, " + ids[0], true, true, ids, "PASS", {"wiring: both ways (found)"}, 0); }});
     // wiring A, the jack's out into the interface: what needs the jack's in is a SKIP, listed
     // for the other wiring; MIDI out is seen on TRS, the clock passed on from USB
     cases.push_back({"wiring A", [] {
@@ -346,6 +334,8 @@ int main()
     cases.push_back({"usb only", [] {
         Run("no TRS", false, false, {"sources-trs", "out-factor"}, "SKIP", {"wiring: no TRS MIDI (USB only)"}, 0);
     }});
+    // the processes mostly wait on the wall clock: all at once, not a core each
+    setenv("CASE_JOBS", "16", 0);
     RunAllCases();
     return Finish();
 }

@@ -110,7 +110,8 @@ class Rig:
     def __init__(self, f, trs_fd, args):
         self.f, self.args = f, args
         self.usb = midiport.Tap(f.link.fd)
-        f.link = midiport.TapLink(self.usb)
+        # --quick: the host check's twin, which can fall behind the wall clock under load
+        f.link = midiport.TapLink(self.usb, 4. if args.quick else 1.)
         self.trs_fd = trs_fd
         self.trs = midiport.Tap(trs_fd) if trs_fd is not None else None
         self.trs_lock = threading.Lock()
@@ -495,8 +496,17 @@ def drift_case(r, port_in, seconds, factor=1.):
         r.check("FRIZZ's clock out over USB", False, "%d ticks" % len(out), "a clock")
         return
     drift = (p_out * factor / p_in - 1.) * 60000.  # ms a minute the loop gains on the clock
+    # each half on its own: alike, the loop's length is what it is (it scatters from one
+    # recording to the next, #20); apart, the glide back to 1x was still settling
+    mid = t0 + seconds / 2.
+    halves = []
+    for a, b in ((t0, mid), (mid, None)):
+        po, _ = fit(ticks_after(r.usb.log, a, b))
+        pi, _ = fit([t for t in sent if t >= a and (b is None or t < b)])
+        halves.append((po * factor / pi - 1.) * 60000. if po and pi else float("nan"))
+    r.note("the halves: %+.2f, %+.2f ms a minute" % tuple(halves))
     r.tcheck("the loop (its clock out) against the clock sent, over %g s" % seconds,
-            abs(drift) <= 2. * r.slack, "%+.2f ms a minute" % drift, "+-%g ms a minute (before #90: ~30)" % (2 * r.slack))
+            abs(drift) <= 2. * r.slack, "%+.2f ms a minute (halves %+.2f, %+.2f)" % ((drift,) + tuple(halves)), "+-%g ms a minute (before #90: ~30)" % (2 * r.slack))
     r.tcheck("no jumps in its position", worst <= .004 * r.slack, "worst %.1f ms off the line" % (worst * 1000),
             "%g ms (USB's own jitter ~1)" % (4 * r.slack))
 
@@ -504,7 +514,7 @@ def drift_case(r, port_in, seconds, factor=1.):
 @case("loop-drift", "7: a loop recorded to a MIDI clock, the transport turned a fifth up and back "
       "to 1x: it stays in time with the clock over a few minutes (#90)")
 def loop_drift(r):
-    drift_case(r, "usb", 15. if r.args.quick else 180. if r.args.long else 40.)
+    drift_case(r, "usb", 8. if r.args.quick else 180. if r.args.long else 40.)
 
 
 def start_spp(r, factor):
@@ -706,7 +716,7 @@ def out_factor(r):
       "stays in time over a few minutes (#85)", needs=("in|out",), literal="out")
 def out_x2(r):
     src, dst = pass_ports(r)
-    seconds = 15. if r.args.quick else 180. if r.args.long else 40.
+    seconds = 8. if r.args.quick else 180. if r.args.long else 40.
     r.setting(clock_source=SOURCES[src], midi_out=OUTS["trs" if dst == "trs" else "all"], clock_factor=200)
     c = r.clock(src, 120)
     r.wait_tempo(240, 1, 5)
@@ -772,7 +782,7 @@ def moved(r, fx, index, send):
       "effect's knobs, CC 22 latches it; re-sending the same latch value doesn't fight the hand (#108)")
 def cc_channels(r):
     bad, n = [], 0
-    for ch in range(1, 16):
+    for ch in (1, 7, 14, 15) if r.args.quick else range(1, 16):
         fx = WHITE_FX[ch] if ch < 15 else "comp"
         for i in range(8):
             up, a, b = moved(r, fx, i, lambda v: r.send_usb(cc(ch, 14 + i, v)))
@@ -780,8 +790,8 @@ def cc_channels(r):
             n += not empty
             if (b != a) if empty else not up:
                 bad.append("ch %d CC %d: %.2f -> %.2f" % (ch, 14 + i, a, b))
-    r.check("CC 14-21 at 20, then 100, on channels 1-15: the effect's knob", not bad,
-            "; ".join(bad) or "all %d moved, the %d empty ones didn't" % (n, len(EMPTY)),
+    r.check("CC 14-21 at 20, then 100, on channels %s: the effect's knob" % ("1, 7, 14, 15" if r.args.quick else "1-15"),
+            not bad, "; ".join(bad) or "all %d moved, the empty ones didn't" % n,
             "each moves up; a knob with nothing on it doesn't")
     latched = lambda fx: r.get("latch")[remote.FX_NAMES.index(fx)]  # noqa: E731
     bad = []

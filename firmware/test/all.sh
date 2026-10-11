@@ -12,12 +12,18 @@
 # against remote.py's and midisuite.py's timeouts, and bench.cpp, the longest single process,
 # start first and at the normal priority, the others behind them (nice). CASES (for working
 # on a few cases) is ignored: all.sh runs every case.
+#
+# A check that fails is named, with what it printed but its ok lines; one that exits non-zero
+# without naming a failing check, was killed (a signal), or left no exit code at all says so
+# (#107). Every check's whole output of the last run stays in
+# build/all-last/NAME.out.
 source "$(dirname "$0")/lib.sh"
 set +e
 unset CASES
 JOBS=${JOBS:-$(nproc)}
 OUT=$(mktemp -d)
-trap 'rm -rf "$OUT"' EXIT
+LAST=$T/build/all-last
+trap 'rm -rf "$LAST" && mkdir -p "$T/build" && mv "$OUT" "$LAST"' EXIT
 for t in $(units); do
     twin_for "$t" > /dev/null || { echo "FAIL  $t: its twin didn't build"; exit 1; }
 done
@@ -38,16 +44,27 @@ for t in $first $(echo "$on_twin" | grep -vx -f <(echo "$first")) $others; do
 done
 wait
 
-fail=0
+failed=
 for t in check $(units); do
-    out=$(cat "$OUT/$t.out")
-    if [ "$(cat "$OUT/$t.rc")" -eq 0 ]; then
+    out=$(cat "$OUT/$t.out" 2>/dev/null)
+    rc=$(cat "$OUT/$t.rc" 2>/dev/null)
+    if [ "$rc" = 0 ]; then
         echo "ok    $t: $(echo "$out" | tail -1)$(echo "$out" | grep -m1 -E '^[0-9]+ known$' | sed 's/^/, /')"
         echo "$out" | grep "^KNOWN" | sed 's/^/      /'
-    else
-        echo "FAIL  $t:"
-        echo "$out" | grep -v "^ok" | sed 's/^/      /'
-        fail=1
+        continue
     fi
+    failed="$failed $t"
+    if [ -z "$rc" ]; then
+        echo "FAIL  $t: no exit code: its run was lost"
+    elif [ "$rc" -gt 128 ]; then
+        echo "FAIL  $t: killed by SIG$(kill -l $((rc - 128)) 2>/dev/null || echo $((rc - 128)))"
+    else
+        echo "FAIL  $t: exit $rc"
+    fi
+    echo "$out" | grep -v "^ok" | sed 's/^/      /'
+    echo "$out" | grep -q "FAIL" || echo "      (no failing check named: all it printed is $LAST/$t.out)"
 done
-exit $fail
+if [ -n "$failed" ]; then
+    echo "failed:$failed; each one's whole output: $LAST/NAME.out"
+    exit 1
+fi

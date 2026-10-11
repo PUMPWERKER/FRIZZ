@@ -208,11 +208,12 @@ class TapLink:
     """midi_send.Link on a Tap: recv() takes FRIZZ's answers from it, so the tap's log keeps
     every other byte that came over USB"""
 
-    def __init__(self, tap):
-        self.tap, self.fd, self.buf = tap, tap.fd, bytearray()
+    def __init__(self, tap, patience=1.):
+        """patience: the answers' timeouts times this (a twin behind the wall clock)"""
+        self.tap, self.fd, self.buf, self.patience = tap, tap.fd, bytearray(), patience
 
     def recv(self, cmd, timeout, match=None):
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * self.patience
         with self.tap.cond:
             while True:
                 while self.tap.answers:

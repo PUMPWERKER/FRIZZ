@@ -35,10 +35,14 @@ passes it prints `FIXED` and fails the run, and becomes a plain `Check()` with t
 
 `all.sh` runs the checks side by side, one per core (`JOBS=N` sets how many), once it has
 built DaisySP and the twins they share; their lines come in the order above. On 12 cores it
-takes about 30 s, the bench's 20 s on the twin the longest; the first run longer, as it builds
+takes about 30-40 s, `midisuite` and `remote` (the wall clock's pace, about 30 s each) and the
+bench's 20 s on the twin the longest; the first run longer, as it builds
 DaisySP and the twin for the host (into `build/` here and `../twin/build/`, both ignored by
-git). `remote`, which plays the twin at the wall clock's pace against `remote.py`'s timeouts,
-and `bench` start first, at the normal priority; the others run behind them (`nice`). `CASES`
+git). `remote` and `midisuite`, which play the twin at the wall clock's pace against
+`remote.py`'s and `midisuite.py`'s timeouts, and `bench` start first, at the normal priority;
+the others run behind them (`nice`). A check that fails is named; one that exits non-zero
+without naming a failing check, is killed, or leaves no exit code says so (#107), and each
+check's whole output of the last run stays in `build/all-last/NAME.out`. `CASES`
 is ignored there: `unit.sh` takes it.
 
 The checks on the twin with many cases (`ui`, `midi`, `sync`, `midiout`) run them through
