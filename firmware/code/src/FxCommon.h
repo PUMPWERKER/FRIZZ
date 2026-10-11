@@ -29,6 +29,9 @@ static const size_t kNumFxParams = kNumFxKnobs * kNumFxPages;
 static const float kFxGateCoeff = .004f;
 // Below this (-120dB) a fading-out key counts as silent (FxGate::Asleep)
 static const float kFxGateSleep = 1e-6f;
+// Within this (-100dB) of 1 a fading-in key lands on 1 (FxGate::Process): in float the fade's
+// step falls below a float's resolution there, and it would stall at 1 - 7e-6 for good
+static const float kFxGateFull = 1e-5f;
 // The knobs' slew: a time constant of ~21ms, settled in ~100ms
 static const float kFxParamCoeff = .001f;
 // The slew for a moment after a scene recall (FxChain::FastSlew), the punch-in fade's, so a
@@ -103,10 +106,13 @@ public:
         return press;
     }
 
-    /** Once per sample, before the gate is used: the fade, 0..1 */
+    /** Once per sample, before the gate is used: the fade, 0..1. Fading in, it lands on 1
+     *  (kFxGateFull), so a fully wet effect carries none of its input (#45); landed (on at 1,
+     *  or asleep at 0) there's nothing to do */
     float Process()
     {
-        fonepole(value_, target_, kFxGateCoeff);
+        if (__builtin_expect(value_ != target_, 0))
+            Fade();
         return value_;
     }
 
@@ -137,6 +143,15 @@ public:
     }
 
 private:
+    /** One step of the fade, out of line: every effect inlines Process, and the audio
+     *  callback is bound by the I-cache (#51) */
+    __attribute__((noinline)) void Fade()
+    {
+        fonepole(value_, target_, kFxGateCoeff);
+        if (on_ && value_ > 1.f - kFxGateFull)
+            value_ = 1.f;
+    }
+
     float value_, target_;
     bool on_; // SetOn runs in the audio callback, as everything else here
     bool pressed_;

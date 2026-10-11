@@ -851,12 +851,61 @@ int main()
         RunMs(kReadyMs);
         SetBattery(2.9f, false);
         RunMs(1000);
-        bool amber = true;
-        for (int i = 0; i < kNumPthLeds; i++)
-            amber &= PthLedFull(i).r > 100 || Max(PthLedFull(i)) == 0;
-        Check(Powered() && amber, "battery: below 3V, every panel LED flashes yellow");
+        // over a few flashes: the others lit yellow, VOLUME's red (#43), all dark in between
+        bool right = true, yellow = false, red = false;
+        for (int t = 0; t < 1000; t++)
+        {
+            RunMs(1);
+            for (int i = 0; i < kNumPthLeds; i++)
+            {
+                const Rgb c = PthLedFull(i);
+                if (Max(c) == 0)
+                    continue;
+                if (i == kVolumeLed)
+                {
+                    right &= c.r > 100 && c.g < 50 && c.b < 50;
+                    red = true;
+                }
+                else
+                {
+                    right &= c.r > 100 && c.g > 100 && c.b < 50;
+                    yellow = true;
+                }
+            }
+        }
+        Check(Powered() && right && yellow && red,
+              "battery: below 3V, the panel LEDs flash yellow, VOLUME's red");
         RunMs(16000);
         Check(!Powered(), "battery: 15 s later it switches itself off");
+    }});
+
+    // the countdown dims with the LEDs: at 50 %, VOLUME's red at half, still red
+    cases.push_back({"battery-dim", [] {
+        auto top = [] {
+            Rgb t{0, 0, 0};
+            for (int ms = 0; ms < 1000; ms++)
+            {
+                RunMs(1);
+                const Rgb c = PthLedFull(kVolumeLed);
+                if (c.r > t.r)
+                    t = c;
+            }
+            return t;
+        };
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(200);
+        Tap("KEY_24");
+        RunMs(100);
+        Tap("KEY_24"); // 50 %
+        SetToggle(false);
+        RunMs(300);
+        SetBattery(2.9f, false);
+        RunMs(500);
+        const Rgb half = top();
+        printf("      VOLUME's red at 50 %%: %d %d %d\n", half.r, half.g, half.b);
+        Check(half.r > 100 && half.r < 160 && half.g == 0 && half.b == 0,
+              "battery-dim: the countdown's red dims with the LEDs' brightness");
     }});
 
     cases.push_back({"charging", [] {
@@ -935,7 +984,7 @@ int main()
             const Rgb c = PthLedFull(kVolumeLed);
             red += c.r > 100 && c.g < 50;
         }
-        Known(red > 0, "battery-level: red below 3V, as MANUAL.md says (the yellow countdown comes first: #43)");
+        Check(red > 0, "battery-level: red below 3V, as MANUAL.md says (flashing, in the countdown)");
     }});
 
     // the compressor's knobs without a card: its key blinks red 3 times, and the save is tried
@@ -1174,6 +1223,9 @@ int main()
         Save(1);
         RunMs(1000);
         const float closed = RunMs(300);
+        // back at the closed filter: about as quiet, with a floor 40dB under the dry, as
+        // closed is all but exactly 0 since the key's fade lands on 1 (#45)
+        const float quiet = closed * 1.3f + dry * .01f;
         printf("      dry %.3f, filter closed %.3f\n", dry, closed);
         Check(closed < dry * .3f, "scene-fader: scene 1, the filter closed, is quiet");
 
@@ -1202,9 +1254,9 @@ int main()
               "scene-fader: all the way right, the blank scene, its key bright");
         Turn(5, -24);
         RunMs(400);
-        Check(RunMs(300) < closed * 1.3f, "scene-fader: and all the way back, scene 1 again");
+        Check(RunMs(300) < quiet, "scene-fader: and all the way back, scene 1 again");
         RunMs(5000);
-        Check(state().size() > 6 && (state()[6] & 2) && RunMs(300) < closed * 1.3f,
+        Check(state().size() > 6 && (state()[6] & 2) && RunMs(300) < quiet,
               "scene-fader: held, the bar lines don't land it");
 
         // let go halfway: it stays there, the blank scene edited
@@ -1247,7 +1299,7 @@ int main()
         RunMs(500);
         st = state();
         Check(st.size() > 9 && !(st[6] & 3) && st[5] == 2 && (st[9] & (1 << 4))
-                  && RunMs(300) < closed * 1.3f,
+                  && RunMs(300) < quiet,
               "scene-fader: let go at the start, scene 1 is back as it was, not edited");
 
         // SHIFT + turn without a held morph: the speed as ever, no fader
@@ -1273,11 +1325,14 @@ int main()
         Save(1);
         RunMs(1000);
         const float closed = RunMs(300);
+        // back at the closed filter: about as quiet, with a floor 40dB under the dry, as
+        // closed is all but exactly 0 since the key's fade lands on 1 (#45)
+        const float quiet = closed * 1.3f + dry * .01f;
         Trs({kCC, 3, 0}); // to the blank scene, gliding over a bar
         RunMs(20);
         Trs({kCC, 80, 0});
         RunMs(3000);
-        Check(state().size() > 6 && (state()[6] & 2) && RunMs(300) < closed * 1.3f,
+        Check(state().size() > 6 && (state()[6] & 2) && RunMs(300) < quiet,
               "midi fader: CC 80 takes the morph; at 0 it waits at the start, past the bar line");
         Trs({kCC, 80, 64});
         RunMs(400);
@@ -2199,16 +2254,21 @@ int main()
         Tap("ENC_4_SW"); // page 2: stereo on knob 2 (#117); the timing as before it (#130)
         RunMs(240);
         Save(1); // stereo at 0
-        // stereo up: the right LFO runs free and drifts; then a recall takes it back to 0 within
-        // 25 ms (clicks.cpp's case, on the device). How far they drifted decides the jump, so
-        // after several times
+        // stereo up: the right LFO runs free and drifts; then a recall takes it back to 0
+        // (clicks.cpp's case, on the device). How far they drifted decides how far the right
+        // delay has to glide, so after several times, the whole sequence shifted 4 ways: at
+        // 560 ms it clicked (#130)
         max_step = 0.f; // over the presses too: the jump comes as the recall lands
-        for (uint32_t drift : {6000, 1500, 2500, 3500, 4500})
+        for (uint32_t shift : {0, 560, 1130, 1710})
         {
-            Turn(1, 50);
-            RunMs(drift);
-            Tap("KEY_17");
-            RunMs(600);
+            RunMs(shift);
+            for (uint32_t drift : {6000, 1500, 2500, 3500, 4500})
+            {
+                Turn(1, 50);
+                RunMs(drift);
+                Tap("KEY_17");
+                RunMs(600);
+            }
         }
         const float most = max_step;
         const float mono = StepMs(1000); // the flanger as saved, stereo at 0

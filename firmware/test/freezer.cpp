@@ -7,6 +7,7 @@
 //  - roll at its shortest stage: the loop halves after 1 repeat, again after 2 more, down to
 //    1/64 bar (1500), where it stays; at its longest stage it holds 8 repeats first
 //  - released, the live signal is back once the gate has faded out
+//  - the key's fade (FxGate) lands on 1, so a repeat carries none of the live input (#45)
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -21,9 +22,7 @@ static float buf_l[kFrames], buf_r[kFrames];
 
 /** Every sample its own value, 1/131072 from the next */
 static float Ramp(size_t i) { return (static_cast<float>(i % 65536) / 65536.f - .5f) * .5f; }
-/** Which sample of the ramp a value is (mod 65536). A running freezer's gate fades in towards
- *  1 without quite reaching it (1 - 7e-6), so the live input leaks in a little and a repeat
- *  is a little off: the input is silent once a capture has been recorded */
+/** Which sample of the ramp a value is (mod 65536) */
 static long Index(float v) { return lround((v / .5f + .5f) * 65536.f); }
 
 struct Run
@@ -33,8 +32,8 @@ struct Run
 };
 
 /** Presses it at sample 1000, a 16th at `start`, runs n samples, the left channel out; the
- *  input silent from the first repeat on, unless released */
-static Run Play(float roll, size_t start, size_t n, size_t release_at = 0)
+ *  input silent from the first repeat on, unless released or `live` */
+static Run Play(float roll, size_t start, size_t n, size_t release_at = 0, bool live = false)
 {
     static Freezer f;
     f.Init(kSr, buf_l, buf_r, kFrames);
@@ -50,7 +49,7 @@ static Run Play(float roll, size_t start, size_t n, size_t release_at = 0)
             f.ClockPulse(0);
         if (release_at && i == release_at)
             f.SetOn(false);
-        float l = release_at || i < start + 6000 ? Ramp(i) : 0.f, r = l;
+        float l = live || release_at || i < start + 6000 ? Ramp(i) : 0.f, r = l;
         f.Process(&l, &r);
         run.out.push_back(l);
     }
@@ -104,6 +103,12 @@ static void TestCapture()
     for (size_t t = start + 6000 + 240; t < start + 12000; t++)
         same &= Index(run.out[t]) == Index(Ramp(t - 6000));
     Check(same, "capture: what it repeats is what came in from the 16th, sample for sample");
+    // and bit for bit with the live input still coming in: none of it leaks through (#45)
+    const Run on = Play(0.f, start, 30000, 0, true);
+    bool exact = true;
+    for (size_t t = start + 6000 + 240; t < start + 12000; t++)
+        exact &= on.out[t] == Ramp(t - 6000);
+    Check(exact, "capture: the repeat bit for bit while the live input goes on");
 }
 
 static void TestRoll()
@@ -132,8 +137,27 @@ static void TestRelease()
     Check(live, "release: the live signal back bit for bit once it has faded out");
 }
 
+/** The key's fade lands on 1: in float the one-pole alone stalls at 1 - 7e-6, and a fully wet
+ *  effect then carries its input 100dB down, a repeat a few 1e-7 off what it captured (#45) */
+static void TestGate()
+{
+    FxGate g;
+    g.Init();
+    g.SetOn(true);
+    float early = 0.f;
+    for (int i = 0; i < 4800; i++) // 100 ms
+    {
+        g.Process();
+        if (i == 500)
+            early = g.Value();
+    }
+    Check(early > .5f && early < 1.f, "gate: the key fades in over a few ms");
+    Check(g.Value() == 1.f, "gate: and lands on 1, not short of it");
+}
+
 int main()
 {
+    TestGate();
     TestCapture();
     TestRoll();
     TestRelease();

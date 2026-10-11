@@ -68,7 +68,8 @@ public:
         const float depth = depth_.Process();
         const float mix = mix_.Process();
         const float feedback = feedback_.Process();
-        const float stereo_mix = stereo_mix_.Process();
+        const float mix_before = stereo_mix_.value;
+        stereo_mix_.Process();
 
         // triangle LFOs, -1..1, starting at 0 going up
         float lfo[2];
@@ -81,6 +82,12 @@ public:
                      : phase_[c] < .75f ? 2.f - 4.f * phase_[c]
                                         : 4.f * phase_[c] - 4.f;
         }
+        // the stereo knob's glide moves the right sweep onto the left one's (or away), up to
+        // the whole depth apart: no faster than kMaxGlideFrames a sample, or its delay would
+        // race through the buffer, a click, on a recall's fast slew far more (#130)
+        if (__builtin_expect(stereo_mix_.value != mix_before, 0))
+            LimitGlide(mix_before, depth, lfo[0] - lfo[1]);
+        const float stereo_mix = stereo_mix_.value;
         // Kastle: the right LFO is the left one until stereo is turned up. Re-synced once the
         // glide back has all but arrived, where the right one's share is too small to jump
         if (stereo_mix > kStereoSync)
@@ -145,6 +152,17 @@ public:
     }
 
 private:
+    /** The stereo glide from `before`, at most kMaxGlideFrames a sample for the right delay,
+     *  the LFOs `apart` at this depth. Out of line, as it only runs while stereo glides: the
+     *  audio callback is bound by the I-cache (#51) */
+    __attribute__((noinline)) void LimitGlide(float before, float depth, float apart)
+    {
+        const float glide = stereo_mix_.value - before;
+        const float spread = kCentreFrames * depth * fabsf(apart);
+        if (fabsf(glide) * spread > kMaxGlideFrames)
+            stereo_mix_.value = before + copysignf(kMaxGlideFrames / spread, glide);
+    }
+
     static const size_t kBufSize = 2048; // 2 x the deepest sweep, 1114 frames
     static constexpr float kCentreFrames = 557.f; // Kastle's 511 at 44kHz, 11.6ms
 
@@ -158,6 +176,9 @@ private:
     Smoothed mix_;
     Smoothed feedback_;
     static constexpr float kStereoSync = .9999f;
+    // the right delay's fastest glide in frames a sample: a pitch bend of at most 25 %, the
+    // whole depth (1114 frames) in under 0.1 s
+    static constexpr float kMaxGlideFrames = .25f;
     Smoothed stereo_mix_;
 };
 
