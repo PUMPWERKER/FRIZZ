@@ -37,6 +37,21 @@ FIL DSY_SDRAM_BSS kit_fil; // the SD DMA can't reach DTCM
 uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) kit_bounce[kKitBounce];
 chompi::InterpolatedDelayLine::AudioSample DSY_SDRAM_BSS del_mem[kMaxDelayTime];
 
+// the heap ends at _eheap: the default _sbrk runs past the end of RAM
+extern "C" uint8_t _sheap[], _eheap[];
+extern "C" void *_sbrk(ptrdiff_t incr)
+{
+    static size_t used; // .bss is zeroed, D3 isn't
+    if(incr > _eheap - _sheap - ptrdiff_t(used) || ptrdiff_t(used) + incr < 0)
+    {
+        errno = ENOMEM;
+        return reinterpret_cast<void *>(-1);
+    }
+    void *p = _sheap + used;
+    used += incr;
+    return p;
+}
+
 RamBufferMemory loop_buff;
 int16_t DSY_SDRAM_BSS loop_mem[kMaxRamBuffSize]; 
 UndoMemory DSY_DTCMRAM_BSS loop_undo;

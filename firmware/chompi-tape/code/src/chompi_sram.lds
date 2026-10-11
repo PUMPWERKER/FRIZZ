@@ -203,6 +203,16 @@ SECTIONS
 		PROVIDE(__d2_bss_end__ = _ed2_bss);
 	} > RAM_D2CACHE
 
+	.d3_bss (NOLOAD) :
+	{
+		. = ALIGN(8);
+		*(.d3_bss)
+		*(.d3_bss*)
+		. = ALIGN(8);
+		_sheap = .; /* newlib's heap: the rest of D3 */
+	} > RAM_D3
+	_eheap = ORIGIN(RAM_D3) + LENGTH(RAM_D3);
+
 	/*
 	.sdram_text :
 	{
