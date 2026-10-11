@@ -71,7 +71,9 @@ merged. A tool that sends a build (`flash.py --no-build`) sends what that worktr
 `firmware/code/src` built last: run it from the branch's worktree, or name the file.
 
 Branches don't wait for each other: each merges on its own once it passes, and a branch still
-open when another reaches `main` merges `main` in and runs its checks again. Stack a branch
+open when another reaches `main` merges `main` in and runs its host checks again (`all.sh`,
+`compare.sh`); its bench only if its numbers stood noticeably apart from `main`'s (*The audio
+callback*, below). Stack a branch
 on an unmerged one only when it really builds on it (or would conflict heavily without it),
 and say so in its PR; its PRs merge bottom-up, and a fix goes on the branch it belongs to,
 merged upwards.
@@ -178,13 +180,13 @@ cd firmware && tools/builds.py && tools/chompi.py hold sh -c '
   ./flash.py --bench --no-build && ./remote.py bench --wait --out card/cpu.txt &&
   ./flash.py --test --no-build && {
     ./remote.py play twin/scenarios/fx-each.txt --cpu; echo "play: $?"; }
-  ./flash.py --run 10' && tools/builds.py cpu
+  ./flash.py --run 10'
 ```
 
 (it builds before taking the CHOMPI; `flash.py` checks that the build it started is the one
 it sent (FRIZZ's IDENT, the developers' SysEx: `firmware/README.md`); the bench runs ~100 s
 by itself, and `remote.py bench --wait` follows it over USB and fetches its `cpu.txt` into
-`card/`, byte for byte what it wrote to the card; `builds.py cpu` files that as
+`card/`, byte for byte what it wrote to the card, for the PR to compare with `main`'s
 `bin/cpu.txt`), and leaves FRIZZ on key 10 running at the end. A bench build from before that
 (a branch that hasn't merged `main` since) gets `sleep 150 && ./card.py --then none get`
 instead. Each `play` (several go in the `{ }`, the `--test` build's)
@@ -253,10 +255,14 @@ appear that the twin can't reproduce. The host can't measure the load; the devic
 `make BENCH=1` builds `FRIZZ-bench.bin` (`Bench.h`, compiled in only then), which runs 23
 segments by itself and writes `/FRIZZ/cpu.txt`; `firmware/remote.py load` and `remote.py play
 SCRIPT --cpu` read `FRIZZ.bin`'s own load. Every firmware branch runs the bench in stage 2,
-on its final build: its `cpu.txt` goes into `firmware/bin/cpu.txt` through `tools/builds.py
-cpu`, which heads it with the md5 of the build it measured (so `main` always has its own load),
-and into the PR, compared with `main`'s. A segment
-noticeably higher is explained or fixed before the PR is ready. Details:
+on its final build, and its PR compares it with `main`'s `firmware/bin/cpu.txt`; a segment
+noticeably higher is explained or fixed before the PR is ready. **A branch doesn't commit
+`bin/cpu.txt`** (decided 2026-10-11), so firmware PRs don't queue behind each other's bench:
+after a round of merges, and before every test build or release, a session benches `main`'s
+own build, files it with `tools/builds.py cpu` (which heads it with the md5 of the build it
+measured) and opens a PR changing only `bin/cpu.txt` (tooling, it merges any time). So `main`
+has its own load, measured after the merges, and layout effects between merged branches show
+there. Details:
 `firmware/README.md`, *Measure the CPU load*.
 
 ## Firmware architecture
