@@ -706,6 +706,46 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc != 0 && Has(refused_sysex, "line 2: a setting over SysEx") && Has(out, "channel all,"),
           "remote: and a script that sets the channel over SysEx is refused, the channel kept");
 
+    // the play page writes the card too (#78): the compressor's knobs to frizz_master.txt,
+    // SAVE / COPY / DELETE to frizz_scenes.txt. Refused without --force, nothing sent
+    Write(script, "booted\ntap KEY_15\nwait 100\nturn 4 10\nwait 300\n");
+    rc = Remote({"play", script}, out);
+    const std::string refused_comp = out;
+    Remote({"state"}, out);
+    Check(rc != 0 && Has(refused_comp, "line 4: turn 4 with the compressor selected")
+              && Has(refused_comp, "/FRIZZ/frizz_master.txt") && Has(refused_comp, "--force")
+              && !Has(out, "knobs on   compressor"),
+          "remote: play refuses the compressor's key then a knob, naming the master file, and sends none (#78)");
+    if (rc == 0 || !Has(refused_comp, "frizz_master"))
+        printf("%s\n", refused_comp.c_str());
+    // the compressor selected already: where the device stands counts, as the switch does
+    Write(script, "booted\ntap KEY_15\nwait 200\n");
+    const int selected = Remote({"play", script}, out);
+    Remote({"state"}, out);
+    const bool comp_shown = Has(out, "knobs on   compressor");
+    Write(script, "booted\nturn 1 3\nwait 300\n");
+    rc = Remote({"play", script}, out);
+    Check(selected == 0 && comp_shown && rc != 0 && Has(out, "line 2: turn 1 with the compressor selected"),
+          "remote: and a knob alone with the compressor already selected on the device (#78)");
+    Write(script, "booted\ntap KEY_5\nwait 100\nturn 4 2\nwait 300\n");
+    rc = Remote({"play", script}, out);
+    Check(rc == 0, "remote: an effect selected first, its knob turns, played");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
+    Write(script, "booted\nmidi B0 34 40\n"); // CC 52: the compressor's knob 1
+    rc = Remote({"play", script}, out);
+    Check(rc != 0 && Has(out, "line 2: the compressor's knob over MIDI (CC 52)"),
+          "remote: and its knob over MIDI is refused (#78)");
+    Write(script, "booted\ntap KEY_25\nwait 100\ntap KEY_17\nwait 100\ntap KEY_26\nwait 500\n");
+    rc = Remote({"play", script}, out);
+    const std::string refused_save = out;
+    Remote({"state"}, out);
+    Check(rc != 0 && Has(refused_save, "line 6: SAVE confirmed (tap KEY_26)")
+              && Has(refused_save, "/FRIZZ/frizz_scenes.txt") && Has(out, "mode none"),
+          "remote: play refuses a scene saved with SAVE, a slot and CHOMPI, naming the scenes file (#78)");
+    if (rc == 0 || !Has(refused_save, "frizz_scenes"))
+        printf("%s\n", refused_save.c_str());
+
     unlink(blank.c_str());
     unlink(mine.c_str());
     unlink(back.c_str());
