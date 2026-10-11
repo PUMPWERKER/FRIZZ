@@ -3846,8 +3846,8 @@ int main()
         mic_freq = 50.f;
         RunMs(100);
         const float m50 = RunMs(500);
-        // the notches are some 20 Hz wide and bite on quiet tones (their filters saturate): a
-        // quiet one at 4 kHz against one beside it
+        // above it nothing: TAPE's notches (4 kHz one of them) are left out (#127), so a quiet
+        // tone at 4 kHz is as loud as one beside it
         mic_amp = .0005f;
         mic_freq = 3600.f;
         RunMs(100);
@@ -3860,7 +3860,7 @@ int main()
         printf("      the mic at 1 kHz %.4f, 50 Hz %.4f; quietly at 3.6 kHz %.6f, 4 kHz %.6f\n", m1k, m50,
                q3600, q4k);
         Check(m50 < m1k * .3f, "mic-level: 50 Hz well below 1 kHz (the highpass at 150 Hz)");
-        Check(q4k < q3600 * .7f, "mic-level: a quiet tone at 4 kHz cut (a notch), one at 3.6 kHz not");
+        Check(fabsf(q4k - q3600) < q3600 * .05f, "mic-level: a quiet tone at 4 kHz as loud as one at 3.6 kHz: no notch (#127)");
         // as loud on both sides, and the mono input changes nothing
         float l2 = 0.f, r2 = 0.f;
         {

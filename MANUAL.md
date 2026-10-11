@@ -123,8 +123,8 @@ or to silence the mic with no cable in AUX (to play the loop on its own, say).
 The mic is everything the input is: the looper records it, the input/loop mix and the effects
 take it, the input gain (VOLUME's page 2) sets its level and the headphone feed (page 3)
 carries it. It is mono, the same on both sides. FRIZZ treats it as TAPE does: 5 times the
-input gain (AUX gets 3 times), its DC taken out, a highpass at about 150 Hz, and narrow
-notches at 2, 4, 8, 9 and 12 kHz. A switch between AUX and the
+input gain (AUX gets 3 times), its DC taken out, and a highpass at about 150 Hz (TAPE's
+narrow notches above it are left out: they did next to nothing). A switch between AUX and the
 mic fades over 5 ms, so it doesn't click.
 
 Mind the speaker: with the mic on and the headphones' or master's volume up, a loudspeaker

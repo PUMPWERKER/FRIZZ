@@ -3,7 +3,7 @@
  *  through the Volume Engine: input gain -> input/loop mix -> punch-in FX (FxChain.h) ->
  *  master compressor (MasterComp.h) -> output gain -> safety limiter.
  *
- *  The mic (SetMicInput) is TAPE's: DC blocked after the input gain and its own x5, filtered
+ *  The mic (SetMicInput) is TAPE's: DC blocked after the input gain and its own x5, highpassed
  *  (MicFilter.h), and the same on both sides. It replaces AUX for everything that takes the
  *  input: the looper, the mix, the headphones' input on its own. A switch crossfades
  *  over kMicFadeSamples; the mic's filter runs only while the mic is heard.
