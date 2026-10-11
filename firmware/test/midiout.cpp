@@ -450,5 +450,99 @@ int main()
               "boot-start: the clock's ticks from then don't go out in a bunch");
     }});
 
+    // ===== #116: the factor on every tempo, so on the clock FRIZZ makes too =====
+
+    // no clock, no loop: the last tempo, at double and half
+    cases.push_back({"factor-free", [] {
+        RunMs(kReadyMs);
+        SetOut(1);
+        Factor(1); // x2
+        TakeSent();
+        RunMs(5000);
+        Sent s = TakeSent();
+        double mean, worst;
+        Gaps(s.trs, mean, worst);
+        Report("factor-free: x2, a tick every %.3f ms (+-%.2f)", mean, worst);
+        Check(fabs(mean - kTick120 / 2) < .05 && worst < .6, "factor-free: x2 of the last 120, ticks at 240");
+        Factor(1); // x1/2
+        TakeSent();
+        RunMs(5000);
+        s = TakeSent();
+        Gaps(s.trs, mean, worst);
+        Report("factor-free: x1/2, a tick every %.3f ms (+-%.2f)", mean, worst);
+        Check(fabs(mean - 2 * kTick120) < .1 && worst < .8, "factor-free: x1/2, ticks at 60");
+    }});
+
+    // a loop at x1/2: the ticks at half its tempo, and on PLAY the Song Position in the
+    // half-time 16ths, Continue on its tick
+    cases.push_back({"factor-loop", [] {
+        RunMs(kReadyMs);
+        SetOut(1);
+        RecordLoop(2000);
+        const ClockState one = Probe();
+        // 4 beats guessed: at x1/2 2 beats a pass
+        const int beats = static_cast<int>(one.loop_length / kSr * one.fx_bpm / 60. + .5) / 2;
+        Factor(2); // x1/2
+        TakeSent();
+        RunMs(4000);
+        Sent s = TakeSent();
+        const double tick = one.loop_length / kSr * 1000. / (beats * 24.);
+        double mean, worst;
+        Gaps(s.trs, mean, worst);
+        Report("factor-loop: x1/2, %d beats a pass, a tick every %.3f ms, sent every %.3f (+-%.2f)",
+               beats, tick, mean, worst);
+        Check(beats == 2 && fabs(mean - tick) < .05 && worst < .8, "factor-loop: x1/2, the ticks at half the loop's tempo");
+        Tap("KEY_27"); // pause
+        RunMs(1000);
+        s = TakeSent();
+        Check(Count(s.trs, 0xFC) == 1, "factor-loop: a pause sends Stop");
+        Tap("KEY_27"); // play on
+        RunMs(1000);
+        s = TakeSent();
+        size_t spp = 0, cont = 0;
+        while (spp < s.trs.size() && s.trs[spp].byte != 0xF2)
+            spp++;
+        while (cont < s.trs.size() && s.trs[cont].byte != 0xFB)
+            cont++;
+        const bool both = spp + 2 < s.trs.size() && cont + 1 < s.trs.size() && spp < cont;
+        Check(both, "factor-loop: PLAY sends Song Position, then Continue");
+        if (both)
+        {
+            const int pos = s.trs[spp + 1].byte | s.trs[spp + 2].byte << 7;
+            const double since = BlockMs() - s.trs[cont].ms;
+            double at16 = Probe().loop_pos * beats * 4 - since / (tick * 6.);
+            at16 = fmod(at16 + beats * 4, beats * 4);
+            Report("factor-loop: Song Position %d, the loop at half-time 16th %.2f then", pos, at16);
+            Check(pos >= 0 && pos < beats * 4 && (fabs(at16 - pos) < .3 || fabs(at16 - pos) > beats * 4 - .3),
+                  "factor-loop: on the half-time 16th the Song Position named");
+        }
+    }});
+
+    // a loop of 3 beats at x1/2: a beat and a half a pass, the clock steady across its starts
+    // (the grid over two passes, decided in #116): 36 ticks a pass
+    cases.push_back({"factor-odd", [] {
+        RunMs(kReadyMs);
+        SetOut(1);
+        twin::Press("KEY_26", true); // SHIFT + LOOP: 120
+        for (int i = 0; i < 5; i++)
+        {
+            Tap("KEY_28");
+            RunMs(440);
+        }
+        twin::Press("KEY_26", false);
+        RunMs(300);
+        RecordLoop(1500);
+        Factor(2); // x1/2
+        TakeSent();
+        RunMs(6000);
+        const Sent s = TakeSent();
+        const ClockState c = Probe();
+        const double tick = c.loop_length / kSr * 1000. / 36.;
+        double mean, worst;
+        Gaps(s.trs, mean, worst);
+        Report("factor-odd: a tick every %.3f ms (+-%.2f), %.3f for 36 a pass", mean, worst, tick);
+        Check(fabs(mean - tick) < .05 && worst < .8, "factor-odd: 3 beats at x1/2, 36 ticks a pass, steady across its starts");
+    }});
+
     return RunCases();
 }

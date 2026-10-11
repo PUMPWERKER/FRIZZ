@@ -137,11 +137,8 @@ public:
         }
         else if (msg == 0xF2)
         {
-            // the sender's 16ths: the loop's beats are FRIZZ's, by the clock factor
-            const ClockFactor factor = midi_clock_->Factor();
-            const uint32_t sixteenths = factor == ClockFactor::HALF     ? beats_ * 8
-                                        : factor == ClockFactor::DOUBLE ? beats_ * 2
-                                                                        : beats_ * 4;
+            // the sender's 16ths: the loop's beats are FRIZZ's, by the factor it was recorded at
+            const uint32_t sixteenths = GetSenderBeats() * 4;
             if (clocked && state_ == State::PAUSED)
                 JumpTo(static_cast<size_t>(static_cast<uint64_t>(spp % sixteenths) * length_ / sixteenths));
         }
@@ -206,6 +203,14 @@ public:
     /** Beats in a quantized loop, from the clock it was recorded to; 0 for an unquantized
      *  loop, or one closed early because the clock stopped */
     inline uint32_t GetBeats() const { return beats_; }
+    /** GetBeats as the clock was sent: the ticks it was recorded to counted by the clock
+     *  factor then (MidiClock.h), at half every other one, at double each twice */
+    inline uint32_t GetSenderBeats() const
+    {
+        return rec_factor_ == ClockFactor::HALF     ? beats_ * 2
+               : rec_factor_ == ClockFactor::DOUBLE ? beats_ / 2
+                                                    : beats_;
+    }
     /** The speed the read head is moving at right now, gliding towards GetSpeed() */
     inline float GetActualSpeed() const { return speed_; }
 
@@ -412,6 +417,8 @@ private:
             target_bars_ = 0;
             start_ticks_ = midi_clock_->GetTicks();
             start_locks_ = midi_clock_->GetLocks();
+            // a new factor is a new lock (GetLocks): it closes the loop unquantized
+            rec_factor_ = midi_clock_->Factor();
             first_tick_time_ = 0;
             first_tick_count_ = 0;
             have_first_tick_ = false;
@@ -892,6 +899,7 @@ private:
 
     uint32_t start_ticks_;
     uint32_t start_locks_ = 0; // the clock's locks at the record press
+    ClockFactor rec_factor_ = ClockFactor::ONE; // and its factor (GetSenderBeats)
     uint32_t first_tick_time_;
     uint32_t first_tick_count_;
     bool have_first_tick_;

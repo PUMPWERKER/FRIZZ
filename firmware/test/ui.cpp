@@ -3809,6 +3809,148 @@ int main()
         Check(param(3) == 0.f && param(5) == 1.f, "cc-stereo: CC 17 turns the grain");
     }});
 
+    // ===== #116: the clock factor times every tempo the effects follow, not only a clock's =====
+    {
+        // SHIFT + LOOP, 5 taps ms apart
+        static auto tap_tempo = [](uint32_t ms) {
+            Press("KEY_26", true);
+            for (int i = 0; i < 5; i++)
+            {
+                Tap("KEY_28");
+                RunMs(ms - 60);
+            }
+            Press("KEY_26", false);
+            RunMs(300);
+        };
+        // the settings page's G#, presses times (x1 -> x2 -> x1/2 -> x1), and back to play
+        static auto factor = [](int presses) {
+            SetToggle(true);
+            RunMs(300);
+            for (int i = 0; i < presses; i++)
+            {
+                Tap("KEY_19");
+                RunMs(100);
+            }
+            SetToggle(false);
+            RunMs(300);
+        };
+
+        // the use case: a song on AUX, its tempo tapped, the effects at double or half of it
+        cases.push_back({"factor-tap", [] {
+            RunMs(kReadyMs);
+            tap_tempo(600);
+            Check(Probe().tempo == 100, "factor-tap: 100 BPM tapped, no clock");
+            SetToggle(true);
+            RunMs(300);
+            Tap("KEY_19"); // x2
+            RunMs(500);
+            Check(Probe().tempo == 200 && Probe().fx_bpm == 200.f, "factor-tap: x2, the effects at 200");
+            // G# on the effects' beats: lit half a beat of 200, 150 ms
+            std::vector<int> runs = Runs(Watch(false, kFactorKeyLed, 2000), 100);
+            bool on = runs.size() >= 4;
+            for (int r : runs)
+                on &= r >= 125 && r <= 175;
+            Check(on, "factor-tap: G# beats at 200");
+            Tap("KEY_19"); // x1/2
+            RunMs(500);
+            Check(Probe().tempo == 50, "factor-tap: x1/2, the effects at 50");
+            Tap("KEY_19"); // x1
+            RunMs(500);
+            Check(Probe().tempo == 100, "factor-tap: x1, the tapped 100 again");
+            // past 300 after the factor: 200 tapped, x2 is 300
+            SetToggle(false);
+            RunMs(300);
+            tap_tempo(300);
+            factor(1);
+            Check(Probe().tempo == 300, "factor-tap: 200 tapped at x2 is 300, the limit after the factor");
+            factor(1); // x1/2
+            Check(Probe().tempo == 100, "factor-tap: and x1/2 of it 100");
+        }});
+
+        // a loop recorded without a clock: the effects at the factor of its tempo, the loop as
+        // it was
+        cases.push_back({"factor-loop", [] {
+            RunMs(kReadyMs);
+            Tap("KEY_28");
+            RunMs(2000);
+            Tap("KEY_28");
+            RunMs(1000);
+            const ClockState c = Probe();
+            printf("      loop: %zu frames, the effects at %.2f BPM\n", c.loop_length, c.fx_bpm);
+            Check(c.loop_state == 2 && fabsf(c.fx_bpm - 120.f) < 6.f, "factor-loop: a 2 s loop, 4 beats of about 120 guessed");
+            factor(1); // x2
+            Check(fabsf(Probe().fx_bpm - 2.f * c.fx_bpm) < .01f, "factor-loop: x2, the effects at twice its tempo");
+            factor(1); // x1/2
+            const ClockState h = Probe();
+            Check(fabsf(h.fx_bpm - .5f * c.fx_bpm) < .01f, "factor-loop: x1/2, the effects at half its tempo");
+            Check(h.loop_length == c.loop_length && h.loop_beats == c.loop_beats,
+                  "factor-loop: the loop as it was, its length and beats");
+        }});
+
+        // a loop recorded to a clock at x2: as before, the effects at the factor of the clock,
+        // not twice; then the factor follows on the loop
+        cases.push_back({"factor-clock-loop", [] {
+            clock_bpm = 120.f;
+            RunMs(kReadyMs);
+            RunMs(2000);
+            factor(1); // x2
+            RunMs(2000);
+            Check(Probe().tempo == 240, "factor-clock-loop: a 120 BPM clock at x2, 240");
+            Press("KEY_27", true);
+            RunMs(100);
+            Tap("KEY_28");
+            Press("KEY_27", false);
+            RunMs(1500);
+            Tap("KEY_28"); // closes at the bar's end
+            RunMs(2000);
+            const ClockState c = Probe();
+            Check(c.loop_state == 2 && c.loop_beats > 0 && c.tempo == 240,
+                  "factor-clock-loop: a quantized loop at x2, the effects at 240 as before, not 480");
+            factor(1); // x1/2
+            const ClockState h = Probe();
+            Check(h.tempo == 60, "factor-clock-loop: x1/2 on the loop, the effects at 60");
+            Check(h.loop_length == c.loop_length && h.loop_beats == c.loop_beats,
+                  "factor-clock-loop: the loop as it was, its length and beats");
+            printf("      loop: %zu frames, %u beats\n", c.loop_length, c.loop_beats);
+        }});
+
+        // 3 beats at x1/2 are a beat and a half a pass: the effects' grid runs over two passes,
+        // beat 1 on every other loop start, the other start halfway through a beat (decided in
+        // #116)
+        cases.push_back({"factor-odd", [] {
+            RunMs(kReadyMs);
+            tap_tempo(500); // 120
+            Tap("KEY_28");
+            RunMs(1500);
+            Tap("KEY_28"); // 1.5 s: 3 beats of 120
+            RunMs(500);
+            const float one = Probe().fx_bpm;
+            factor(2); // x1/2
+            printf("      the effects at %.2f BPM, at x1/2 %.2f\n", one, Probe().fx_bpm);
+            Check(fabsf(one - 120.f) < 6.f && fabsf(Probe().fx_bpm - .5f * one) < .01f,
+                  "factor-odd: 3 beats of about 120, at x1/2 the effects at half that");
+            // the grid's position just after each loop start
+            std::vector<uint32_t> at_start;
+            float last = Probe().loop_pos;
+            for (int ms = 0; ms < 8000 && at_start.size() < 4; ms += 5)
+            {
+                RunMs(5);
+                const ClockState c = Probe();
+                if (c.loop_pos < last)
+                    at_start.push_back(c.position);
+                last = c.loop_pos;
+            }
+            printf("      at the loop's starts:");
+            for (uint32_t pos : at_start)
+                printf(" %u", pos);
+            printf("\n");
+            bool alternate = at_start.size() == 4;
+            for (size_t i = 0; alternate && i < at_start.size(); i++)
+                alternate = (at_start[i] == 0 || at_start[i] == 18) && (i == 0 || at_start[i] != at_start[i - 1]);
+            Check(alternate, "factor-odd: the loop starts on the grid's 0 and 18 in turn");
+        }});
+    }
+
     // every scenario of ../twin/scenarios played from power-on, its expect lines holding
     static std::vector<std::string> scenarios;
     {
