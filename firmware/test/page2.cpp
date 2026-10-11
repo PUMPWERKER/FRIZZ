@@ -341,7 +341,7 @@ static float DelayTail(float freeze, float damping, float ducking, size_t from, 
                        float freq = 220.f, bool keep_input = false)
 {
     static chompi::DelaySend d;
-    d.Init(delay_mem, kDelayFrames);
+    d.Init(48000.f, delay_mem, kDelayFrames);
     d.SetTempo(120.f);
     d.SetParam(chompi::DelaySend::DIVISION, .25f);
     d.SetParam(chompi::DelaySend::FEEDBACK, .5f);
@@ -474,6 +474,108 @@ static void TestLayout()
           "layout 3: written, and read back as written");
 }
 
+// ======== the chain: an effect's key coming on again ========
+
+static chompi::FxChain chain;
+
+/** The chain at its defaults, every key off */
+static void ChainInit()
+{
+    chain.Init(kSr, delay_mem, kDelayFrames, &reverb, fz_l, fz_r, kFreezerFrames, tape_l,
+               tape_r, kTapeFrames);
+    chain.SetTempo(120.f, 2000.f);
+}
+
+/** samples of in through the chain, the keys taken at every block of 24 as FxChain::Block
+ *  does; the output's peak. level: the meter of fx after the first block, if asked */
+template <class In>
+static float ChainRun(size_t& n, size_t samples, In in, size_t fx = 0, float* level = nullptr)
+{
+    float peak = 0.f;
+    for (size_t i = 0; i < samples; i++, n++)
+    {
+        if (i % 24 == 0)
+        {
+            if (level && i == 24)
+                *level = chain.GetLevel(fx);
+            float jump;
+            chain.Block(&jump);
+        }
+        float l = in(n), r = l;
+        chain.Process(&l, &r);
+        peak = fmaxf(peak, fmaxf(fabsf(l), fabsf(r)));
+    }
+    return peak;
+}
+
+/** An insert with page 2 off its defaults: off and faded out, its page 2 drops out of the
+ *  chain's work (out_busy_), and on again it's back. Level at 0 mutes the folder */
+static void TestKeyOnPage2()
+{
+    ChainInit();
+    size_t n = 0;
+    auto sine = [](size_t i) { return Sine(i); };
+    chain.SetParam(chompi::FX_FOLDER, chompi::FxOutput::kLevel, 0.f);
+    chain.SetOn(chompi::FX_FOLDER, true);
+    ChainRun(n, 24000, sine);
+    const float muted = ChainRun(n, 12000, sine);
+    chain.SetOn(chompi::FX_FOLDER, false);
+    ChainRun(n, 24000, sine);
+    const bool left_out = !chain.OutRunning(chompi::FX_FOLDER);
+    const float off = ChainRun(n, 12000, sine);
+    chain.SetOn(chompi::FX_FOLDER, true);
+    ChainRun(n, 4800, sine);
+    const float again = ChainRun(n, 12000, sine);
+    printf("  folder at Level 0: on %.5f, off %.3f, on again %.5f\n", muted, off, again);
+    Check(muted < 1e-3f && off > .25f, "key on again: an insert's Level 0 mutes it, off it's the input");
+    Check(left_out, "key on again: an insert that's off leaves its page 2 out of the chain's work");
+    Check(again < 1e-3f, "key on again: its page 2 is back (Level 0 mutes it again)");
+}
+
+/** A send with its Band turned: the key off long enough for the delay to sleep, then on again
+ *  with silence going in. Silence comes out: Band's crossovers start afresh, not from what
+ *  they held when the key went off (an offset the delay repeated) */
+static void TestKeyOnBand()
+{
+    ChainInit();
+    size_t n = 0;
+    chain.SetParam(chompi::FX_DELAY, 1, 0.f);   // no feedback: one echo
+    chain.SetParam(chompi::FX_DELAY, 3, 1.f);   // its level
+    chain.SetParam(chompi::FX_DELAY, chompi::FxOutput::kBand, .2f); // the lows
+    chain.SetOn(chompi::FX_DELAY, true);
+    auto offset = [](size_t) { return .5f; };
+    ChainRun(n, 48000, offset);
+    chain.SetOn(chompi::FX_DELAY, false);
+    ChainRun(n, 4800, offset); // faded out on it: what Band last saw
+    auto silence = [](size_t) { return 0.f; };
+    ChainRun(n, 12 * 48000, silence);
+    chain.SetOn(chompi::FX_DELAY, true);
+    const float peak = ChainRun(n, 48000, silence);
+    printf("  delay, Band to the lows, on again on silence: peak %.6f\n", peak);
+    Check(peak < 1e-6f, "key on again: a send's Band starts afresh, silence in is silence out");
+}
+
+/** An insert's meter, frozen while it's off: on again, it starts from nothing rather than
+ *  from where it stopped (its key LED flashed at the old level) */
+static void TestKeyOnMeter()
+{
+    ChainInit();
+    size_t n = 0;
+    auto loud = [](size_t i) { return Sine(i, 220.f, .9f); };
+    chain.SetOn(chompi::FX_FOLDER, true);
+    ChainRun(n, 24000, loud);
+    chain.SetOn(chompi::FX_FOLDER, false);
+    ChainRun(n, 24000, loud);
+    const float stopped = chain.GetLevel(chompi::FX_FOLDER);
+    auto silence = [](size_t) { return 0.f; };
+    ChainRun(n, 4800, silence);
+    chain.SetOn(chompi::FX_FOLDER, true);
+    float level = 1.f;
+    ChainRun(n, 48, silence, chompi::FX_FOLDER, &level);
+    printf("  folder's meter: %.3f when it went off, %.3f on again on silence\n", stopped, level);
+    Check(stopped > .5f && level < .1f, "key on again: an insert's meter starts from nothing");
+}
+
 int main()
 {
     TestFreezerGate();
@@ -487,5 +589,8 @@ int main()
     TestDelay();
     TestReverb();
     TestLayout();
+    TestKeyOnPage2();
+    TestKeyOnBand();
+    TestKeyOnMeter();
     return Finish();
 }

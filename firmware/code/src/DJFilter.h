@@ -95,14 +95,7 @@ class DjFilter
         *out_r = filt_r;
     }
 
-    void SetControl(float cutoff)
-    {
-        lp_target_ = daisysp::fclamp(.01f + cutoff * 2.f, 0.f, .98f); //these have to be limited
-        lp_target_ = lp_target_ * lp_target_ * lp_target_;
-
-        hp_target_ = daisysp::fclamp((cutoff * 1.9f) - 1.f, 0.f, .9f);
-        hp_target_ = hp_target_ * hp_target_ * hp_target_;
-    }
+    void SetControl(float cutoff) { Targets(cutoff, &lp_target_, &hp_target_); }
 
     /** FRIZZ: the right channel's cutoff on its own, as SetControl; below 0: the left's */
     void SetControlR(float cutoff)
@@ -112,10 +105,16 @@ class DjFilter
             lp_r_target_ = -1.f;
             return;
         }
-        float lp = daisysp::fclamp(.01f + cutoff * 2.f, 0.f, .98f);
-        lp_r_target_ = lp * lp * lp;
-        float hp = daisysp::fclamp((cutoff * 1.9f) - 1.f, 0.f, .9f);
-        hp_r_target_ = hp * hp * hp;
+        Targets(cutoff, &lp_r_target_, &hp_r_target_);
+    }
+
+    /** FRIZZ: the knob, 0..1, as the lowpass's and the highpass's frequencies */
+    static inline void Targets(float cutoff, float* lp, float* hp)
+    {
+        const float l = daisysp::fclamp(.01f + cutoff * 2.f, 0.f, .98f); //these have to be limited
+        *lp = l * l * l;
+        const float h = daisysp::fclamp((cutoff * 1.9f) - 1.f, 0.f, .9f);
+        *hp = h * h * h;
     }
 
     void SetRes(float res) 

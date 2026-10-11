@@ -34,9 +34,10 @@ public:
     };
 
     /** The reverb's 64KB buffer lives in DTCMRAM, so it's a separate static (chompi_main.cpp) */
-    void Init(float sample_rate, daisysp::Reverb* reverb)
+    FX_ONCE void Init(float sample_rate, daisysp::Reverb* reverb)
     {
         reverb_ = reverb;
+        sample_rate_ = sample_rate;
         reverb_->Init(sample_rate);
         reverb_->SetInputGain(.3f); // WAVE's / TAPE's input gain
         gate_.Init();
@@ -125,7 +126,7 @@ public:
             freeze_.target = val;
             break;
         case PRE_DELAY:
-            pre_.target = val * .25f * 48000.f;
+            pre_.target = val * .25f * sample_rate_;
             break;
         case DUCKING:
             duck_.amount = val;
@@ -138,6 +139,7 @@ public:
 private:
     // 2s: far longer than the reverb's delay lines, so nothing under -120dB can come back
     static const uint32_t kSleepSamples = 96000;
+    float sample_rate_ = 48000.f;
     daisysp::Reverb* reverb_;
     TailWatch tail_;
     Smoothed level_;

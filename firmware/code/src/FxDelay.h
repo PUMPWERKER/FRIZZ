@@ -31,8 +31,9 @@ public:
 
     static const size_t kNumDivisions = kNumDelayDivs;
 
-    void Init(float* buffer, size_t buffer_frames)
+    FX_ONCE void Init(float sample_rate, float* buffer, size_t buffer_frames)
     {
+        sample_rate_ = sample_rate;
         delay_.Init(buffer, buffer_frames);
         sleep_samples_ = static_cast<uint32_t>(buffer_frames);
         gate_.Init();
@@ -115,9 +116,9 @@ public:
             // the centre off; left a highpass up to 1kHz, right a lowpass down to 1kHz
             float hi = 1.f, lo = 0.f;
             if (val > .5f)
-                hi = OnePoleCoeff(20000.f * powf(.05f, 2.f * (val - .5f)), 48000.f);
+                hi = OnePoleCoeff(20000.f * powf(.05f, 2.f * (val - .5f)), sample_rate_);
             else if (val < .5f)
-                lo = OnePoleCoeff(20.f * powf(50.f, 2.f * (.5f - val)), 48000.f);
+                lo = OnePoleCoeff(20.f * powf(50.f, 2.f * (.5f - val)), sample_rate_);
             delay_.setDamping(hi, lo);
             break;
         }
@@ -130,6 +131,7 @@ public:
     }
 
 private:
+    float sample_rate_ = 48000.f;
     granularDelay delay_;
     Smoothed level_;
     Smoothed feedback_;

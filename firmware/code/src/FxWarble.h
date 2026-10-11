@@ -40,7 +40,7 @@ public:
         AGE = 5,
     };
 
-    void Init(float sample_rate)
+    FX_ONCE void Init(float sample_rate)
     {
         sample_rate_ = sample_rate;
         ring_.Clear();
@@ -65,21 +65,16 @@ public:
     FRIZZ_HOT void Process(float* l, float* r)
     {
         const float gate = gate_.Process();
-        const float mix = mix_.Process();
-        const float depth = depth_.Process();
-        const float tone = tone_.Process();
-        const float stereo = stereo_.Process();
 
         // TAPE: now and then a new target and slew. None while the wow is off, so the flutter
         // alone is just the flutter. The right channel's walk is heard with the stereo knob.
-        static const float kRandScale = 4.656612873077392578125e-10f; // 1 / 2^31
         for (size_t c = 0; c < 2; c++)
         {
             Walk& w = walk_[c];
-            if (wow_ && static_cast<float>(Rand()) * kRandScale < chance_)
+            if (wow_ && RandUnit() < chance_)
             {
-                w.target = kWowMinFrames + static_cast<float>(Rand()) * kRandScale * kWowSpanFrames;
-                w.coeff = static_cast<float>(Rand()) * kRandScale * kWowMaxCoeff;
+                w.target = kWowMinFrames + RandUnit() * kWowSpanFrames;
+                w.coeff = RandUnit() * kWowMaxCoeff;
             }
             fonepole(w.pos, w.target, w.coeff);
         }
@@ -95,11 +90,16 @@ public:
         // it would have; the tone filter follows the dry signal, close to what it would hear
         if (gate_.Asleep())
         {
+            SnapParams(); // the knobs where they're going
             ring_.WriteFrame(*l, *r);
             lp_[0] = *l;
             lp_[1] = *r;
             return;
         }
+        const float mix = mix_.Process();
+        const float depth = depth_.Process();
+        const float tone = tone_.Process();
+        const float stereo = stereo_.Process();
 
         float flutter[2];
         for (size_t c = 0; c < 2; c++)
@@ -114,18 +114,16 @@ public:
         float drop = 1.f;
         if (age_ > 0.f || drop_ < 1.f)
         {
-            static const float kRandScale = 4.656612873077392578125e-10f; // 1 / 2^31
             if (drop_left_ > 0)
                 drop_left_--;
             else
             {
                 drop_target_ = 1.f;
-                if (age_ > 0.f && static_cast<float>(Rand()) * kRandScale < age_ * kDropsPerSample)
+                if (age_ > 0.f && RandUnit() < age_ * kDropsPerSample)
                 {
-                    const float depth = age_ * (.3f + .7f * static_cast<float>(Rand()) * kRandScale);
+                    const float depth = age_ * (.3f + .7f * RandUnit());
                     drop_target_ = 1.f - depth;
-                    drop_left_ = static_cast<uint32_t>(sample_rate_ * (.02f + .2f * age_
-                                 * static_cast<float>(Rand()) * kRandScale));
+                    drop_left_ = static_cast<uint32_t>(sample_rate_ * (.02f + .2f * age_ * RandUnit()));
                 }
             }
             fonepole(drop_, drop_target_, kDropCoeff);
@@ -176,14 +174,13 @@ public:
             stereo_.target = val;
             break;
         case AGE:
-            age_val_ = val;
             age_ = val;
             break;
         default:
             break;
         }
         // the wet signal comes in with the wow, the flutter or the age, whichever is up most
-        mix_.target = fmaxf(fmaxf(wow_val_, fminf(4.f * flutter_val_, 1.f)), fminf(4.f * age_val_, 1.f));
+        mix_.target = fmaxf(fmaxf(wow_val_, fminf(4.f * flutter_val_, 1.f)), fminf(4.f * age_, 1.f));
     }
 
 private:
@@ -202,6 +199,8 @@ private:
         rand_ = (1103515245u * rand_ + 12345u) & 0x7fffffffu;
         return rand_;
     }
+    /** The same as 0..1 */
+    float RandUnit() { return static_cast<float>(Rand()) * 4.656612873077392578125e-10f; } // 1 / 2^31
 
     /** A parabolic sine, close enough for a wobble, of a phase in cycles (-1..1) */
     static float Sine(float phase)
@@ -221,7 +220,7 @@ private:
     float inc_[2] = {0.f, 0.f};
     float chance_ = 0.f;
     bool wow_ = false;
-    float wow_val_ = 0.f, flutter_val_ = 0.f, age_val_ = 0.f;
+    float wow_val_ = 0.f, flutter_val_ = 0.f;
     float age_ = 0.f;
     float drop_ = 1.f, drop_target_ = 1.f; // the dropout's level, gliding
     uint32_t drop_left_ = 0;               // samples the dropout still holds

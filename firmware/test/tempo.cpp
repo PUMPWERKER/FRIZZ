@@ -658,6 +658,39 @@ static void TestMorph()
 /** The delay's reverse events at the slowest tempo: the longest divisions have no room */
 static bool Near(float a, float b) { return fabsf(a - b) < 1e-5f; }
 
+/** The crossfader taking a morph that a second tap gave another bar: its 0 is still where
+ *  the morph started, which is what letting go there restores (FxControls::EndFade), not
+ *  where the glide was at the tap */
+static void TestFaderAfterBar()
+{
+    MidiClock midi;
+    TempoClock clock;
+    clock.Init(kSr, &midi);
+    FakeChain chain;
+    FxMorphT<FakeChain> morph;
+    morph.Init(&chain);
+    while (clock.Position() != 0)
+        MorphBlock(clock, morph);
+    morph.Start(Plan(MorphParam::GLIDE, .2f, .8f), clock.PulsesToBarLine());
+    for (int i = 0; i < 1000; i++)
+        MorphBlock(clock, morph);
+    const float at_tap = chain.params[FX_FILTER][0];
+    morph.AddBar(clock.PulsesPerBarLine());
+    MorphBlock(clock, morph);
+    Check(fabsf(chain.params[FX_FILTER][0] - at_tap) < .002f, "fader after a tap: no jump at the tap");
+    for (int i = 0; i < 500; i++)
+        MorphBlock(clock, morph);
+    morph.Fader(0.f);
+    MorphBlock(clock, morph);
+    const float at_0 = chain.params[FX_FILTER][0];
+    morph.Fader(1.f);
+    MorphBlock(clock, morph);
+    printf("  fader after a tap: %.3f at the tap, %.3f at 0, %.3f at 1\n", at_tap, at_0,
+           chain.params[FX_FILTER][0]);
+    Check(at_tap > .3f && at_0 == .2f && chain.params[FX_FILTER][0] == .8f,
+          "fader after a tap: 0 is the morph's start, 1 the scene");
+}
+
 /** The crossfader (FxMorph::Fader): the glide in the hand, both ways */
 static void TestFader()
 {
@@ -888,6 +921,7 @@ int main()
     TestBarLines();
     TestMorph();
     TestFader();
+    TestFaderAfterBar();
     TestDelayReverse();
     TestDelayTempoJump();
     TestDelayOnLoopBeat();

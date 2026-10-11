@@ -46,7 +46,7 @@ public:
     static const size_t kNumLengths = sizeof(kFreezerBarDivisions);
     static const size_t kNumRolls = sizeof(kFreezerRollStages);
 
-    void Init(float sample_rate, float* buf_l, float* buf_r, size_t frames)
+    FX_ONCE void Init(float sample_rate, float* buf_l, float* buf_r, size_t frames)
     {
         sample_rate_ = sample_rate;
         buf_[0] = buf_l;
@@ -153,8 +153,7 @@ public:
 
     void SetOn(bool on) override
     {
-        // the gate is on before the capture is armed, so the audio callback can't drop the
-        // new capture back to idle
+        // from FxChain::Block, in the audio callback between two blocks, as everything here
         if (gate_.SetOn(on))
         {
             // a new capture, also during a release fade-out; while the old loop still plays,
@@ -345,9 +344,9 @@ private:
     float sample_rate_;
     float* buf_[2];
     size_t frames_;
-    volatile State state_;
+    State state_;
     bool start_; // ClockPulse and Process both run in the audio callback
-    volatile bool rearmed_;   // pressed again while running: a new capture at the next 16th
+    bool rearmed_;            // pressed again while running: a new capture at the next 16th
     size_t handover_;         // samples of the crossfade from the old loop left
     size_t old_len_[2] = {0, 0}; // the old loop, per channel (0: nothing to fade from)
     size_t old_pos_[2] = {0, 0};
