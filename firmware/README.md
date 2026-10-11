@@ -449,7 +449,7 @@ Bench.h, BenchProfile.h
                        the CPU bench (only in FRIZZ-bench.bin, `make BENCH=1`) and its cycle marks
 limiter.h, EnvFollower.h
                        the safety limiter and the VU meter
-MicFilter.h            TAPE's filter for the built-in mic
+MicFilter.h            the built-in mic's highpass, TAPE's (without its notches)
 hardware.h             the CHOMPI hardware: encoders, keys, switches, LEDs, battery
 encoder.h / .cpp       encoder driver
 temp_led_stuff.h       LED driver (ui_utils.h: LED flush/clear helpers)
