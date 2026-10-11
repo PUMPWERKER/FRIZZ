@@ -278,7 +278,7 @@ public:
         float worst = 0.f;
         for (size_t s = 0; s < kNumSegments; s++)
             worst = fmaxf(worst, max_[s]);
-        for (int i = 0; i < kNumPthLeds - 2 * kPorchSize; i++)
+        for (int i = 0; i < kPthLeds; i++)
         {
             float r = 0.f, g = 0.f, b = 0.f;
             if (running_)

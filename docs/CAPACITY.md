@@ -1,15 +1,15 @@
 # Capacity: what's free on the CHOMPI, and how to make room
 
-What a new feature can still use, measured on 2026-10-10 after the split between code and
-data moved (#26, `FRIZZ.bin` md5 `ff53db75`). `make` prints the memory table after every
+What a new feature can still use, measured on 2026-10-11 after the FX layer's cleanup (#89)
+and the play page's logic built for size (step 3 below, `FRIZZ.bin` md5 `1bee03da`). `make` prints the memory table after every
 build; the numbers below come from it and from `build/FRIZZ.map`.
 
 ## Memory
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 216,588 B (78 %) | **~60 KB** | all the code, and the initial values of `.data` |
-| `SRAM` (AXI SRAM) | 240 KB | 226,064 B (92 %) | ~19 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 217,980 B (78 %) | **~59 KB** | all the code, and the initial values of `.data` |
+| `SRAM` (AXI SRAM) | 240 KB | 228,032 B (93 %) | ~17 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 65,584 B | ~62 KB, shared with the stack | the reverb (64 KB); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 23,808 B | ~8 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
@@ -18,15 +18,18 @@ build; the numbers below come from it and from `build/FRIZZ.map`.
 | `SDRAM` | 64 MB | 43.9 MB | **~23 MB** | the loop (31.7 MB), the tape stop (4.2 MB), the delay (3.8 MB), the event log (2.1 MB), the freezer (1.9 MB), the reverb's pre-delay (0.1 MB); measured on `FRIZZ.bin` md5 `1eb11808` |
 
 **The bench build hits the walls first.** `FRIZZ-bench.bin` carries the bench as well: its
-code is at 234,220 B (84 %, ~43 KB free) and its data at 237,876 B (97 %, **~7.7 KB free**).
-So a feature of more than ~40 KB of code, or ~7 KB of data in internal RAM, needs room made
+code is at 235,004 B (84 %, ~42 KB free) and its data at 240,068 B (98 %, **~5.5 KB free**).
+So a feature of more than ~40 KB of code, or ~5 KB of data in internal RAM, needs room made
 first (below), or the bench build stops linking before `FRIZZ.bin` does. Data grows into
 SDRAM or DTCM where it can; for internal RAM, step 4 below frees 64 KB.
 
 Page 2's Mix, Band and Level on every effect and the compressor's page 2 (#40, #38,
 `FxOutput.h`) then took ~7.3 KB of code, and each effect's own page-2 knob (#40) ~3.8 KB
 more: `FRIZZ.bin` at 228,412 B (~50 KB free), the bench build at 246,508 B (~32 KB) with its
-data at 239,092 B (~6.5 KB free). The reverb's pre-delay took 128 KB of SDRAM.
+data at 239,092 B (~6.5 KB free). The reverb's pre-delay took 128 KB of SDRAM. MIDI out,
+the chaos key, the crossfader and the settings page's later keys took the code to 241,588 B
+(~36 KB free) and the bench build's to 259,588 B (~18 KB), until the play page's logic went
+`-Os` (step 3): -15.5 KB in both.
 
 The engine cleanup (#90, 2026-10-11, after #89) gave some back: `FRIZZ.bin` at 229,116 B of
 code (~48 KB free) and 223,696 B of data (~21 KB free), the bench build at 245,596 B (~32 KB)
@@ -50,7 +53,9 @@ bench build's 240,340 B). The scene morph's `Start`, `AddBar`, `Land` and `Freez
 unrolled and inlined into the scene keys' code), the effects' `Init`s too (`FX_ONCE`,
 -2.4 KB), the shifter's `Splice` out of line (-1.8 KB: `Shifter::Process` 5.7 → 1.7 KB) and
 the coarse grids by index (-1.2 KB). #86 builds the play page `-Os` as well, which overlaps
-with the morph's share: the two together save less than their sum.
+with the morph's share: the two together save less than their sum. On top of #89 the play
+page's `-Os` takes 12.0 KB (`FRIZZ.bin` 229,996 → 217,980 B, the bench build 247,212 →
+235,004 B).
 
 Where the code goes (`.text` + `.rodata` by object, from the map):
 
@@ -61,9 +66,10 @@ Where the code goes (`.text` + `.rodata` by object, from the map):
 | FatFs (`ff.o`, `ccsbcs.o`, `diskio.o`) | 14,700 |
 | newlib-nano, libm, libgcc | 11,400 |
 
-The biggest single functions are `FxChain::Process` (11 KB, everything inlined into it),
-`main` (7.8 KB), `NormalPage::OnButton` (6.8 KB), `PassthroughEngine::Process` (6.1 KB),
-`Shifter::Process` (5.6 KB) and `NormalPage::Draw` (5.1 KB).
+The biggest single functions are `PassthroughEngine::Process` (11.2 KB) and
+`FxChain::Process` (10.6 KB, everything inlined into them), then `Shifter::Process`,
+`Looper::Process` and `FxChain::Init` (5.5 KB each). `NormalPage::OnButton` was 7.9 KB at
+`-O3`, 1.1 KB at `-Os`.
 
 To see it again after a build (`firmware/code/src`):
 
@@ -84,7 +90,7 @@ A feature that runs per sample costs CPU in that budget; one that runs in `MainL
 
 ## Making room for code, the biggest lever first
 
-Step 1 is done (#26); the rest isn't built yet: do it when a feature needs it, each step on
+Steps 1 and, for the play page, 3 are done; the rest isn't built yet: do it when a feature needs it, each step on
 its own branch with a device test (the layout can change the timing: b5c658c).
 
 1. **Move the split between code and data** (done, #26: 232 KB / 280 KB became 272 KB /
@@ -106,10 +112,14 @@ its own branch with a device test (the layout can change the timing: b5c658c).
    `__HAL_RCC_D2SRAM3_CLK_ENABLE()` at boot. A zeroing loop is needed too: startup code
    clears only `.bss`.
 3. **Build rarely run code for size.** `EventLog.h` (`EVENT_LOG_ONCE`) and `MidiControl.h`
-   (`MIDI_CONTROL_ONCE`) mark such functions `noinline, optimize("Os")`. The same on the play
-   page's handlers and drawing, the card code (`SceneStore.h`, `MasterSettings.h`,
-   `FxScenes.h`), the boot and init code would save an estimated 10-20 KB; measure with the
-   map. The per-sample path stays `-O3`.
+   (`MIDI_CONTROL_ONCE`) mark such functions `noinline, optimize("Os")`. The play page's
+   logic is built `-Os` whole (done, 2026-10-11: `#pragma GCC optimize("Os")` over
+   `NormalPage.h`, `PlayKeys.h`, `SceneControls.h`, `SettingsPage.h` and `FxControls.h`,
+   -15.5 KB before #89, -12.0 KB after), but for what the audio callback calls (`NormalPage::ShowSettings`,
+   `ResetSmtLeds`), which stays as the callback is built; check with
+   `arm-none-eabi-objdump -d` that nothing the callback reaches lost its inlining. The card
+   code (`SceneStore.h`, `MasterSettings.h`, `FxScenes.h`), the boot and init code are left:
+   a few KB more; measure with the map. The per-sample path stays `-O3`.
 4. **Shrink the MIDI queues.** libDaisy's `MidiHandler` keeps `FIFO<MidiEvent, 256>`
    (`libs/libDaisy/src/hid/midi.h:261`), each event with a 128-byte SysEx buffer: 37 KB per
    transport. FRIZZ drains them every block, so 32 events would do: -64 KB of data. It's a
@@ -127,7 +137,10 @@ so the callback is bound by it: every byte on that path costs, even code that is
 skipped. Page 2's wrapper cost ~6 points of "everything" at its defaults until the chain
 skipped it with a bitmask and moved the busy case out of line (`FxChain::Insert`,
 `__attribute__((cold))`). Rare paths belong out of line; but a small change also shifts the
-layout, by ±2.5 points either way, so measure each one. `-O3` stays: `-O2` and `-Os` came out
+layout, by ±2.5 points either way, so measure each one. The play page's `-Os` (#86) is such a
+case: none of its code runs in the callback, yet before #89 the engine it moved by 15 KB ran
+1-2.8 points slower in the lighter bench segments (the same source without the pragma: as
+`main`); on top of #89 it measures as `main`, ±1.2. `-O3` stays: `-O2` and `-Os` came out
 slower.
 
 **For the CPU, not for room: ITCM** (an experiment, #51, off by default). ITCM (64 KB) is the

@@ -13,16 +13,18 @@ namespace chompi
     public:
 
         // roygbivr (roll over at end for programming ease)
-        const int reds[8] = {255, 255, 255, 0, 0, 75, 238, 255};
-        const int greens[8] = {0, 146, 255, 255, 0, 0, 130, 0};
-        const int blues[8] = {0, 0, 0, 0, 255, 130, 238, 0};
+        static constexpr int reds[8] = {255, 255, 255, 0, 0, 75, 238, 255};
+        static constexpr int greens[8] = {0, 146, 255, 255, 0, 0, 130, 0};
+        static constexpr int blues[8] = {0, 0, 0, 0, 255, 130, 238, 0};
 
-        const float kPthStep = 6.f / kNumPthLeds;
-        const float kSmtStepBlack = 6.f / 10;
-        const float kSmtStepWhite = 6.f / 15;
+        // the hue's step from one LED to the next: the panel's over the chain with its
+        // porches, as it always was
+        static constexpr float kPthStep = 6.f / 22;
+        static constexpr float kSmtStepBlack = 6.f / 10;
+        static constexpr float kSmtStepWhite = 6.f / 15;
 
         float idx = 0.f;
-        const float inc = .1f;
+        static constexpr float inc = .1f;
 
         float gain = 0.f;
 
@@ -41,19 +43,11 @@ namespace chompi
                 fade -= .01f;
                 if(fade > 0.f)
                 {
-                    for(size_t i = 0; i < kNumPthLeds; i++)
-                    {
-                        led_pth_data[i][0] = led_pth_data[i][0] * fade;
-                        led_pth_data[i][1] = led_pth_data[i][1] * fade;
-                        led_pth_data[i][2] = led_pth_data[i][2] * fade;
-                    }
-
-                    for(size_t i = 0; i < kNumSmtLeds; i++)
-                    {
-                        led_smt_data[i][0] = led_smt_data[i][0] * fade;
-                        led_smt_data[i][1] = led_smt_data[i][1] * fade;
-                        led_smt_data[i][2] = led_smt_data[i][2] * fade;
-                    }
+                    // what the boot glow left, fading out
+                    for(uint8_t* c = led_pth_data[0]; c < led_pth_data[0] + kPthLeds * 3; c++)
+                        *c = *c * fade;
+                    for(uint8_t* c = led_smt_data[0]; c < led_smt_data[0] + kSmtLeds * 3; c++)
+                        *c = *c * fade;
                 }
 
                 else
@@ -80,73 +74,9 @@ namespace chompi
                     if(fidx >= 7.f)
                         fidx -= 7.f;
 
-                    for(int i = 0; i < kNumPthLeds; i++)
-                    {
-                        const size_t floor = fidx;
-                        const size_t ceil = floor + 1;
-                        const float frac = fidx - int(fidx);
-
-                        float fgain = daisysp::fclamp((gain * 10.f) - (9.f - i), 0.f, 1.f);
-                        if(down)
-                            fgain = daisysp::fclamp((gain * 10.f) - i, 0.f, 1.f);
-                        fgain *= fgain;
-
-                        uint8_t r = frac * (reds[ceil] - reds[floor]) + reds[floor];
-                        uint8_t g = frac * (greens[ceil] - greens[floor]) + greens[floor];
-                        uint8_t b = frac * (blues[ceil] - blues[floor]) + blues[floor];
-
-                        fidx += kPthStep;
-                        if(fidx >= 7.f)
-                            fidx -= 7.f;
-
-                        SetPthLed(i, fgain * r, fgain * g, fgain * b);
-                    }
-
-                    fidx = idx;
-                    for(int i = 0; i < 10; i++)
-                    {
-                        const size_t floor = fidx;
-                        const size_t ceil = floor + 1;
-                        const float frac = fidx - int(fidx);
-
-                        float fgain = daisysp::fclamp((gain * 10.f) - (9.f - i), 0.f, 1.f);
-                        if(down)
-                            fgain = daisysp::fclamp((gain * 10.f) - i, 0.f, 1.f);
-                        fgain *= fgain;
-
-                        uint8_t r = frac * (reds[ceil] - reds[floor]) + reds[floor];
-                        uint8_t g = frac * (greens[ceil] - greens[floor]) + greens[floor];
-                        uint8_t b = frac * (blues[ceil] - blues[floor]) + blues[floor];
-
-                        fidx += kSmtStepBlack;
-                        if(fidx >= 7.f)
-                            fidx -= 7.f;
-
-                        SetSmtLed(i, fgain * r, fgain * g, fgain * b);
-                    }
-
-                    fidx = idx;
-                    for(int i = 0; i < 15; i++)
-                    {
-                        const size_t floor = fidx;
-                        const size_t ceil = floor + 1;
-                        const float frac = fidx - int(fidx);
-
-                        float fgain = daisysp::fclamp((gain * 15.f) - (14.f - i), 0.f, 1.f);
-                        if(down)
-                            fgain = daisysp::fclamp((gain * 15.f) - i, 0.f, 1.f);
-                        fgain *= fgain;
-
-                        uint8_t r = frac * (reds[ceil] - reds[floor]) + reds[floor];
-                        uint8_t g = frac * (greens[ceil] - greens[floor]) + greens[floor];
-                        uint8_t b = frac * (blues[ceil] - blues[floor]) + blues[floor];
-
-                        fidx += kSmtStepWhite;
-                        if(fidx >= 7.f)
-                            fidx -= 7.f;
-
-                        SetSmtLed(24 - i, fgain * r, fgain * g, fgain * b);
-                    }
+                    Wave(fidx, kPthStep, kPthLeds, true, 0, 1);
+                    Wave(idx, kSmtStepBlack, 10, false, 0, 1);
+                    Wave(idx, kSmtStepWhite, 15, false, 24, -1);
                 }
             }
 
@@ -173,6 +103,40 @@ namespace chompi
         bool IsClosable() { return down && System::GetNow() - startt > 1000; }
 
     private:
+        /** One row of the wave: n LEDs, the first at first and the next dir on, their hues
+         *  step apart from fidx; they light up from the last and go out from the first */
+        void Wave(float fidx, float step, int n, bool pth, int first, int dir)
+        {
+            for(int i = 0; i < n; i++)
+            {
+                const size_t floor = fidx;
+                const size_t ceil = floor + 1;
+                const float frac = fidx - int(fidx);
+
+                float fgain = daisysp::fclamp((gain * n) - (n - 1 - i), 0.f, 1.f);
+                if(down)
+                    fgain = daisysp::fclamp((gain * n) - i, 0.f, 1.f);
+                fgain *= fgain;
+
+                uint8_t r = frac * (reds[ceil] - reds[floor]) + reds[floor];
+                uint8_t g = frac * (greens[ceil] - greens[floor]) + greens[floor];
+                uint8_t b = frac * (blues[ceil] - blues[floor]) + blues[floor];
+
+                fidx += step;
+                if(fidx >= 7.f)
+                    fidx -= 7.f;
+
+                if(pth)
+                    SetPthLed(first + dir * i, fgain * r, fgain * g, fgain * b);
+                else
+                    SetSmtLed(first + dir * i, fgain * r, fgain * g, fgain * b);
+            }
+        }
+
         uint32_t last_blink_time = 0;
     };
+
+    constexpr int RainbowPage::reds[];
+    constexpr int RainbowPage::greens[];
+    constexpr int RainbowPage::blues[];
 } // namespace chompi

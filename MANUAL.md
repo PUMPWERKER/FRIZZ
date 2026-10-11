@@ -844,7 +844,8 @@ or C2 in Ableton Live): the white keys from 48 up, the dark keys on the sharps. 
   parameters take the nearest step.
 - **14 bits:** NRPN with the CC's number as the parameter (NRPN MSB 0, LSB the CC) sets it
   in 16,384 steps (8192 the centre): CC 99 0, CC 98 the CC number, CC 6 the value's top 7
-  bits, CC 38 its bottom 7.
+  bits, CC 38 its bottom 7 (after a new CC 99 or 98, the top 7 start at 0). An RPN (CC 101
+  and 100, a DAW's pitch-bend range) ends the NRPN: CC 6 and 38 after it change nothing.
 - **[Page 2](#page-2)** of an effect's or the compressor's knobs has no CCs (too few are free):
   NRPN MSB 1 with the same knob's page-1 CC number as LSB sets it, so the shifter's page-2
   knob 1 (its mix) is CC 99 1, CC 98 74, and the compressor's makeup CC 99 1, CC 98 55,

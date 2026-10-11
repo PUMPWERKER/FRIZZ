@@ -98,16 +98,15 @@ public:
             if (passing)
             {
                 // the ticks counted since the last block: at double two per tick that came,
-                // the second sent halfway to the next; more than one came only in a bunch
-                // (USB's frames), and goes on as it came
-                const uint32_t n = ticks - last_ticks_;
+                // the last one's second sent halfway to the next; more than one came only in
+                // a bunch (USB's frames), and goes on as it came, every tick counted
                 const bool twice = clock_->Factor() == ClockFactor::DOUBLE;
-                uint32_t now_ticks = twice ? (n + 1) / 2 : n;
-                if (now_ticks > kMaxBunch)
-                    now_ticks = kMaxBunch;
-                for (uint32_t i = 1; i < now_ticks; i++)
+                uint32_t n = ticks - last_ticks_;
+                if (n > kMaxBunch)
+                    n = kMaxBunch;
+                for (uint32_t i = twice ? 2 : 1; i < n; i++)
                     SendTick(back);
-                if (now_ticks > 0)
+                if (n > 0)
                     Tick(twice ? clock_->GetTickPeriod() : 0.f, 0.f, back);
             }
             else if (engine.BlockPulses() > 0)
@@ -148,6 +147,15 @@ public:
         was_paused_ = paused;
         was_passing_ = passing;
         now_ += size;
+    }
+
+    /** Instead of Process while FRIZZ starts up (the boot screen): what came in meanwhile is
+     *  dropped, so a Start from then doesn't go out late, nor the ticks counted in a bunch */
+    void Skip()
+    {
+        MidiClock::Source from;
+        clock_->TakeTransport(from);
+        last_ticks_ = clock_->GetTicks();
     }
 
     /** From MainLoop, every pass: USB's bytes, a message at a time */

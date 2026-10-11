@@ -42,15 +42,8 @@ namespace chompi
                 bright_inc *= -1.f;
             }                
 
-            for(size_t i = 0; i < kNumPthLeds; i++)
-            {
-                SetPthLedFloat(i, r * bright, g * bright, b * bright);
-            }
-
-            for(size_t i = 0; i < kNumSmtLeds; i++)
-            {
-                SetSmtLedFloat(i, r * bright, g * bright, b * bright);
-            }
+            SetPthLedsFloat(r * bright, g * bright, b * bright);
+            SetSmtLedsFloat(r * bright, g * bright, b * bright);
 
             // ========   send the data   =========
             fill_led_data();

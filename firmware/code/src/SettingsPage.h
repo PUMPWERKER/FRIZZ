@@ -41,8 +41,13 @@
 #include "MasterSettings.h"
 #include "MidiClock.h"
 #include "MidiControl.h"
+#include "PanelLeds.h"
 #include "passthroughEngine.h"
-#include "temp_led_stuff.h"
+
+// the play page's logic, a key or a frame now and then and never per sample: built for size,
+// as FRIZZ's code space is tight (SRAM_EXEC, docs/CAPACITY.md)
+#pragma GCC push_options
+#pragma GCC optimize("Os")
 
 namespace chompi
 {
@@ -173,8 +178,7 @@ public:
     /** Every LED; the panel's were cleared */
     void Draw()
     {
-        for (int i = 0; i < kNumSmtLeds; i++)
-            SetSmtLed(i, 0, 0, 0);
+        SmtLedsOff();
 
         const uint8_t channel = midi_->Channel();
         for (uint8_t ch = 0; ch < kNumChannelKeys; ch++)
@@ -193,9 +197,9 @@ public:
 
         const unsigned level = hw_->GetBatteryLevel();
         const float* battery = level < 4 ? kBatteryColors[level] : green;
-        SetPthLedFloat(kVolumeLed, battery[0], battery[1], battery[2]);
-        SetPthLedFloat(kTransportLedRev, purple[0], purple[1], purple[2]);
-        SetPthLedFloat(kTransportLedFwd, purple[0], purple[1], purple[2]);
+        PthLed(kVolumeLed, battery, 1.f);
+        PthLed(kTransportLedRev, purple, 1.f);
+        PthLed(kTransportLedFwd, purple, 1.f);
     }
 
 private:
@@ -210,8 +214,7 @@ private:
     /** A key's LED in its group's colour: full when it's the setting in force, else dim */
     static void KeyLed(Hardware::SwId key, const float* color, bool on)
     {
-        const float level = on ? 1.f : kOffLevel;
-        SetSmtLedFloat(KeyLedOf(key), level * color[0], level * color[1], level * color[2]);
+        SmtLed(KeyLedOf(key), color, on ? 1.f : kFxOffLevel);
     }
 
     /** A key's SMT LED: the white keys right to left from 24, the dark keys left to right
@@ -230,8 +233,6 @@ private:
 
     static const uint8_t kNumChannelKeys = 14; // white keys 1-14; the 15th is 15 and 16
     static const Hardware::SwId kChannel15Key = Hardware::SwId::KEY_15;
-    static const uint8_t kVolumeLed = 9, kTransportLedRev = 5, kTransportLedFwd = 6;
-    static constexpr float kOffLevel = .15f; // as an FX key that's off (NormalPage.h)
     static const uint8_t kBothHeld = 3;          // Held's bits: SHIFT 1, VOLUME 2
     static const uint32_t kBugReportHoldMs = 2000;
 
@@ -278,3 +279,5 @@ constexpr Hardware::SwId SettingsPage::kDarkKeys[];
 constexpr const float* SettingsPage::kBatteryColors[];
 
 } // namespace chompi
+
+#pragma GCC pop_options

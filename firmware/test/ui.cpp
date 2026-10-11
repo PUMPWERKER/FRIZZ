@@ -258,7 +258,7 @@ static void Trs(std::initializer_list<int> bytes)
     for (int b : bytes)
         Midi(static_cast<uint8_t>(b));
 }
-static void Usb(std::initializer_list<int> bytes)
+static void Usb(const std::vector<int>& bytes)
 {
     for (int b : bytes)
         UsbMidi(static_cast<uint8_t>(b));
@@ -276,7 +276,7 @@ static float KnobOf(int hi, int lo)
 }
 static float KnobOf7(int v) { return v <= 64 ? .5f * v / 64.f : .5f + .5f * (v - 64) / 63.f; }
 /** A SysEx query over USB and its answer's data, or empty if none came */
-static std::string Ask(std::initializer_list<int> query)
+static std::string Ask(const std::vector<int>& query)
 {
     TakeUsbOut();
     Usb({0xF0, 0x7D, 0x43, 0x48});
@@ -306,6 +306,23 @@ int main()
         for (int led : {24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 13, 12})
             all_dim &= Max(SmtLedFull(led)) > 0 && Max(SmtLedFull(led)) < 80;
         Check(all_dim, "boot: every FX key glows dimly in its colour");
+    }});
+
+    // VOLUME pressed during the boot animation and let go on the play page: no page change,
+    // as the boot page had the press
+    cases.push_back({"boot-volume", [] {
+        RunMs(1000);
+        Press("ENC_6_SW", true);
+        RunMs(kReadyMs);
+        Press("ENC_6_SW", false);
+        RunMs(300);
+        const std::string st = Ask({0x20});
+        Check(st.size() > 12 && st[12] == 0,
+              "boot-volume: VOLUME held through the boot, let go: still the output gain's page");
+        Tap("ENC_6_SW");
+        RunMs(300);
+        Check(Ask({0x20}).size() > 12 && Ask({0x20})[12] == 1,
+              "boot-volume: then a press steps to the input gain's page");
     }});
 
     cases.push_back({"hold", [] {
@@ -1102,6 +1119,92 @@ int main()
         Trs({kCC, 118, 64});
         RunMs(300);
         Check(state().size() > 6 && !(state()[6] & 2), "midi fader: without a morph, nothing");
+    }});
+
+    // a CHOMPI tap while CC 118 holds a morph: the morph stays MIDI's (only the hand's fader
+    // ends where SHIFT is let go), so CC 118 still lands it, and at 0 the tap doesn't take it
+    // back to where it started
+    cases.push_back({"midi-fader-tap", [] {
+        freq = 3000.f;
+        RunMs(kReadyMs);
+        const float dry = RunMs(300);
+        auto state = [] { return Ask({0x20}); };
+        auto landed = [&] {
+            const std::string st = state();
+            return st.size() > 9 && !(st[6] & 3) && st[5] == 1 && st[9] == 0
+                   && RunMs(300) > dry * .85f;
+        };
+        Latch("KEY_5");
+        Turn(kKnob1Encoder, -60);
+        RunMs(300);
+        Save(1);
+        RunMs(1000);
+
+        Trs({kCC, 62, 0}); // to the blank scene
+        RunMs(20);
+        Trs({kCC, 118, 64});
+        RunMs(400);
+        Tap("KEY_26");
+        RunMs(300);
+        Check(state().size() > 6 && (state()[6] & 2),
+              "midi-fader-tap: halfway, a CHOMPI tap leaves CC 118 its morph");
+        Trs({kCC, 118, 127});
+        RunMs(300);
+        Check(landed(), "midi-fader-tap: and CC 118 at 127 then lands it");
+
+        Tap("KEY_17"); // scene 1 again
+        RunMs(300);
+        Trs({kCC, 62, 0});
+        RunMs(20);
+        Trs({kCC, 118, 0});
+        RunMs(400);
+        Tap("KEY_26");
+        RunMs(300);
+        Check(state().size() > 6 && (state()[6] & 2),
+              "midi-fader-tap: at 0, the tap doesn't take the morph back");
+        Trs({kCC, 118, 127});
+        RunMs(300);
+        Check(landed(), "midi-fader-tap: and CC 118 at 127 lands it");
+
+        // CC 62 to the scene it runs to: no bar more while the fader has it, nothing else
+        Tap("KEY_17");
+        RunMs(300);
+        Trs({kCC, 62, 0});
+        RunMs(20);
+        Trs({kCC, 118, 64});
+        RunMs(400);
+        Trs({kCC, 62, 0});
+        RunMs(300);
+        Check(state().size() > 6 && (state()[6] & 2),
+              "midi-fader-tap: CC 62 to the same scene meanwhile leaves CC 118 its morph");
+        Trs({kCC, 118, 127});
+        RunMs(300);
+        Check(landed(), "midi-fader-tap: which CC 118 at 127 lands");
+    }});
+
+    // a scene sent over SysEx into the active slot: the sound stays, so it's edited (as COPY
+    // onto it), and SAVE stores what plays
+    cases.push_back({"scene-put-active", [] {
+        RunMs(kReadyMs);
+        Latch("KEY_5");
+        Save(1);
+        RunMs(1000);
+        std::string st = Ask({0x20});
+        Check(st.size() > 6 && st[5] == 2 && !(st[6] & 1), "scene-put-active: scene 1 saved, unedited");
+        bool taken = true;
+        for (int part = 0; part < 8; part++)
+        {
+            std::vector<int> put = {0x31, 1, part};
+            put.resize(put.size() + 32, 0);
+            const std::string r = Ask(put);
+            taken &= r.size() > 2 && r[2] == 0;
+        }
+        const std::string r = Ask({0x31, 1, 8, 1, 0, 0});
+        taken &= r.size() > 2 && r[2] == 0;
+        RunMs(1000);
+        st = Ask({0x20});
+        Check(taken && st.size() > 6 && st[5] == 2 && (st[6] & 1),
+              "scene-put-active: sent into it over SysEx, the active scene 1 is edited");
     }});
 
     // the millisecond counter wrapping (after 49.7 days on): the signals started just before it

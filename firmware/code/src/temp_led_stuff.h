@@ -18,26 +18,25 @@ namespace chompi
     /** Global timer refs. */
     daisy::TimerHandle tim3_smt, tim5_pth;
     daisy::TimChannel ledPthPwm, ledSmtPwm;
-    daisy::TimerHandle::Config tim3_cfg;
-    daisy::TimerHandle::Config tim5_cfg;
-    daisy::TimChannel::Config t3chn2_cfg;
-    daisy::TimChannel::Config t5chn4_cfg;
 
-    /** now a bunch of consts for the strings of LEDs */
+    /** The LEDs: the panel's 10 and the keys' 25. Each chain sends kPorchSize LEDs' worth
+     *  of zero pulses before and after them, which only the DMA buffers hold */
+    const int kPthLeds = 10;
+    const int kSmtLeds = 25;
     const int kPorchSize = 6;
-    const int kNumPthLeds = 10 + 2 * kPorchSize;
-    const int kNumSmtLeds = 25 + 2 * kPorchSize;
+    const int kPthChain = kPthLeds + 2 * kPorchSize;
+    const int kSmtChain = kSmtLeds + 2 * kPorchSize;
 
-    const size_t kOutPthDataSize = kNumPthLeds * 3 * 8;
-    const size_t kOutSmtDataSize = kNumSmtLeds * 3 * 8;
+    const size_t kOutPthDataSize = kPthChain * 3 * 8;
+    const size_t kOutSmtDataSize = kSmtChain * 3 * 8;
 
-    uint8_t led_pth_data[kNumPthLeds][3]; /**< RGB data */
-    uint8_t led_smt_data[kNumSmtLeds][3]; /**< RGB data */
+    uint8_t led_pth_data[kPthLeds][3]; /**< RGB data */
+    uint8_t led_smt_data[kSmtLeds][3]; /**< RGB data */
 
     uint32_t DMA_BUFFER_MEM_SECTION
-        output_pth_data[kNumPthLeds * 3 * 8]; /**< PWM lengths data, one "duration" per bit */
+        output_pth_data[kOutPthDataSize]; /**< PWM lengths data, one "duration" per bit */
     uint32_t DMA_BUFFER_MEM_SECTION
-        output_smt_data[kNumSmtLeds * 3 * 8]; /**< PWM lengths data, one "duration" per bit */
+        output_smt_data[kOutSmtDataSize]; /**< PWM lengths data, one "duration" per bit */
 
     /** Tweaked for Rev2 hardware */
     const int kOneTime = 20; /**< measured 0.68us */
@@ -48,14 +47,16 @@ namespace chompi
     /** @brief setup LEDs */
     void LedSetup()
     {
-        // zero out the buffers
-        std::fill(led_pth_data[0], led_pth_data[0] + kNumPthLeds * 3, 0);
-        std::fill(led_smt_data[0], led_smt_data[0] + kNumSmtLeds * 3, 0);
+        // zero out the buffers: the porches stay so (fill_led_data only writes the LEDs')
+        std::fill(led_pth_data[0], led_pth_data[0] + kPthLeds * 3, 0);
+        std::fill(led_smt_data[0], led_smt_data[0] + kSmtLeds * 3, 0);
 
-        std::fill(output_pth_data, output_pth_data + kNumPthLeds * 3 * 8, 0);
-        std::fill(output_smt_data, output_smt_data + kNumSmtLeds * 3 * 8, 0);
+        std::fill(output_pth_data, output_pth_data + kOutPthDataSize, 0);
+        std::fill(output_smt_data, output_smt_data + kOutSmtDataSize, 0);
 
-        /** Config */
+        /** Config: Init copies it, so it needn't outlive the setup */
+        daisy::TimerHandle::Config tim3_cfg, tim5_cfg;
+        daisy::TimChannel::Config t3chn2_cfg, t5chn4_cfg;
         tim3_cfg.periph = daisy::TimerHandle::Config::Peripheral::TIM_3;
         tim5_cfg.periph = daisy::TimerHandle::Config::Peripheral::TIM_5;
         tim3_cfg.dir = daisy::TimerHandle::Config::CounterDir::UP;
@@ -113,56 +114,23 @@ namespace chompi
         }
     }
 
-    void populate_off(uint32_t *buff)
-    {
-        for (int i = 0; i < 8; i++)
-        {
-            buff[i + 8 * 0] = 0;
-            buff[i + 8 * 1] = 0;
-            buff[i + 8 * 2] = 0;
-        }
-    }
-
+    /** The LEDs' colours into the DMA buffers, after the porch: the panel's in RGB order,
+     *  the keys' in GRB */
     void fill_led_data()
     {
-        /** TODO fix these to be accurate for necessary timing */
-        for (int i = 0; i < kNumPthLeds; i++)
+        for (int i = 0; i < kPthLeds; i++)
         {
-            auto data_index = i * 3 * 8;
-
-            if(i < kPorchSize || i >= (kNumPthLeds - kPorchSize))
-            {
-                populate_off(&output_pth_data[data_index]);
-            }
-            else
-            {
-                uint8_t g = led_pth_data[i - kPorchSize][1];
-                uint8_t r = led_pth_data[i - kPorchSize][0];
-                uint8_t b = led_pth_data[i - kPorchSize][2];
-
-                populate_bits(r, &output_pth_data[data_index]);
-                populate_bits(g, &output_pth_data[data_index + 8]);
-                populate_bits(b, &output_pth_data[data_index + 16]);
-            }
+            uint32_t* out = &output_pth_data[(kPorchSize + i) * 3 * 8];
+            populate_bits(led_pth_data[i][0], out);
+            populate_bits(led_pth_data[i][1], out + 8);
+            populate_bits(led_pth_data[i][2], out + 16);
         }
-        for (int i = 0; i < kNumSmtLeds; i++)
+        for (int i = 0; i < kSmtLeds; i++)
         {
-            auto data_index = i * 3 * 8;
-
-            if(i < kPorchSize || i >= (kNumSmtLeds - kPorchSize))
-            {
-                populate_off(&output_smt_data[data_index]);
-            }
-            else
-            {
-                uint8_t g = led_smt_data[i - kPorchSize][1];
-                uint8_t r = led_smt_data[i - kPorchSize][0];
-                uint8_t b = led_smt_data[i - kPorchSize][2];
-
-                populate_bits(g, &output_smt_data[data_index]);
-                populate_bits(r, &output_smt_data[data_index + 8]);
-                populate_bits(b, &output_smt_data[data_index + 16]);
-            }
+            uint32_t* out = &output_smt_data[(kPorchSize + i) * 3 * 8];
+            populate_bits(led_smt_data[i][1], out);
+            populate_bits(led_smt_data[i][0], out + 8);
+            populate_bits(led_smt_data[i][2], out + 16);
         }
     }
 
@@ -192,6 +160,10 @@ namespace chompi
         led_smt_data[index][2] = LedDim(b, 4);
     }
 
+    /** Every LED of a chain dark */
+    inline void PthLedsOff() { std::fill(led_pth_data[0], led_pth_data[0] + kPthLeds * 3, 0); }
+    inline void SmtLedsOff() { std::fill(led_smt_data[0], led_smt_data[0] + kSmtLeds * 3, 0); }
+
     /** 0..1 to 0..255; outside 0..1 the conversion to uint8_t would wrap (1.004 is dark) */
     inline uint8_t LedByte(float v)
     {
@@ -204,6 +176,20 @@ namespace chompi
     void SetSmtLedFloat(int index, float r, float g, float b)
     {
         SetSmtLed(index, LedByte(r), LedByte(g), LedByte(b));
+    }
+
+    /** Every LED of a chain in one colour: the first's, copied */
+    __attribute__((noinline)) void SetPthLedsFloat(float r, float g, float b)
+    {
+        SetPthLedFloat(0, r, g, b);
+        for (int i = 1; i < kPthLeds; i++)
+            std::copy(led_pth_data[0], led_pth_data[0] + 3, led_pth_data[i]);
+    }
+    __attribute__((noinline)) void SetSmtLedsFloat(float r, float g, float b)
+    {
+        SetSmtLedFloat(0, r, g, b);
+        for (int i = 1; i < kSmtLeds; i++)
+            std::copy(led_smt_data[0], led_smt_data[0] + 3, led_smt_data[i]);
     }
 
     void EndOfLeds(void *context)
@@ -225,8 +211,8 @@ namespace chompi
         }
     }
 
-    // ======== helper functions for color crossfading ========
-    // TODO: condense this to one RGB thing with the daisy::Color rather than 3 calls
+    // ======== helper functions for color crossfading, a channel at a time (NormalPage.h's
+    // Xfade does all three) ========
     float color_xfade(float start, float end, float idx)
     {
         return (1.f - idx) * start + idx * end;
