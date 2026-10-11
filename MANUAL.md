@@ -959,7 +959,7 @@ with `firmware/remote.py transport on`, or `midi_transport 1` in `FRIZZ/frizz_ma
 | **Start** | back to its start, playing from the next clock tick (playing, it glides there) | plays on from where it is |
 | **Continue** | plays on from where it is, from the next clock tick | plays on |
 | **Stop** | pauses | pauses |
-| **Song Position**, while paused | moves it there, by its length in 16ths (a 2-bar loop is 32: position 36 is 4 in) | ignored |
+| **Song Position**, while paused | moves it there, by its length in the sender's 16ths (a 2-bar loop is 32: position 36 is 4 in; with the [clock factor](#midi-clock) at half, a bar of the loop is two of the sender's) | ignored |
 
 So a DAW's Start lines the loop up with its bar 1, and moving its playhead while stopped takes
 the loop along. A loop counts as recorded to the clock if its recording ended on the clock's

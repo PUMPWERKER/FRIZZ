@@ -644,6 +644,31 @@ int main()
         RunMs(20);
         Check(Probe().loop_pos > .125f, "follow: playing, Song Position is ignored");
     }});
+    // Song Position counts the sender's 16ths: with the clock factor at half, a loop's bar is
+    // two of the sender's, so a 1-bar loop is 32 of its 16ths
+    cases.push_back({"follow-spp-half", [] {
+        StartUsb(Clock(120., 0., true));
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(200);
+        Tap("KEY_19"); // the factor: x2
+        RunMs(200);
+        Tap("KEY_19"); // x1/2
+        SetToggle(false);
+        RunMs(1000);
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 1, 1, 0xF7});
+        StopAt(StartQuantized(), 2500.); // a bar at half: 4 s, 2 of the sender's
+        RunUntil([] { return Probe().loop_state == 2; }, 5000.);
+        RunMs(1000);
+        Usb({0xFC});
+        RunMs(300);
+        Usb({0xF2, 36, 0}); // 36 of the sender's 16ths: 4 into the loop's 32
+        RunMs(20);
+        const ClockState c = Probe();
+        Report("follow-spp-half: %u beats, at %.4f after Song Position 36", c.loop_beats, c.loop_pos);
+        Check(c.loop_beats == 4 && c.loop_state == 3 && fabsf(c.loop_pos - 4.f / 32.f) < .001f,
+              "follow: at half the clock's tempo, Song Position in the sender's 16ths");
+    }});
     // a free loop plays on through Start, and isn't moved by Song Position
     cases.push_back({"follow-free", [] {
         RunMs(kReadyMs);

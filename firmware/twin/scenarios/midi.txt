@@ -2,6 +2,8 @@
 # effect's CCs on its own channel, a program change, a morph
 input sine 220 0.3
 at 6000
+# the global channel 16, whatever the device's card says (in RAM while remote.py plays)
+usb F0 7D 43 48 13 00 10 F7
 # a note holds the filter, CC 14 on its channel, 5, closes it, the note lets go
 midi 9F 37 64
 midi B4 0E 10

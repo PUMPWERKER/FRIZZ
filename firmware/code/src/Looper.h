@@ -123,7 +123,7 @@ public:
      *  0xFC Stop, 0xF2 Song Position (spp 16ths). tick: MidiClock::GetLastTick as it came.
      *  A loop recorded to the clock (GetBeats) is kept in step: Start takes it back to its
      *  start, and it plays from the first tick after Start or Continue; paused, Song Position
-     *  moves it there, by its length in 16ths. A free loop plays and pauses as PLAY does */
+     *  moves it there, by its length in the sender's 16ths. A free loop plays and pauses as PLAY does */
     void Follow(uint8_t msg, uint16_t spp, uint32_t tick)
     {
         if (erasing_ || (state_ != State::PLAYING && state_ != State::PAUSED))
@@ -137,7 +137,11 @@ public:
         }
         else if (msg == 0xF2)
         {
-            const uint32_t sixteenths = beats_ * 4;
+            // the sender's 16ths: the loop's beats are FRIZZ's, by the clock factor
+            const ClockFactor factor = midi_clock_->Factor();
+            const uint32_t sixteenths = factor == ClockFactor::HALF     ? beats_ * 8
+                                        : factor == ClockFactor::DOUBLE ? beats_ * 2
+                                                                        : beats_ * 4;
             if (clocked && state_ == State::PAUSED)
                 JumpTo(static_cast<size_t>(static_cast<uint64_t>(spp % sixteenths) * length_ / sixteenths));
         }
