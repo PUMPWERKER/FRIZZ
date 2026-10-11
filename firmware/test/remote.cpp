@@ -881,8 +881,8 @@ class F:
         at = args[1] << 14 | args[2] << 7 | args[3]
         return 0, text[at:at + 32]
 time.sleep = lambda s: None
-remote.bench(F(), True, "cpu.txt")
-print("same" if open("cpu.txt", "rb").read() == text else "differs")
+remote.bench(F(), True, "card/cpu.txt")
+print("same" if open("card/cpu.txt", "rb").read() == text else "differs")
 log = []
 seq = [("other", "x"), ("other", "x"), ("frizz", "node")]
 chompi.state = lambda device=None: seq.pop(0) if len(seq) > 1 else seq[0]
@@ -896,6 +896,26 @@ print(chompi.to_launcher(), log)
     Check(Has(out, "l ['restart node', 'wait launcher']"),
           "tools: a FRIZZ silent for a while is restarted once it answers, not taken for another firmware");
     if (rc != 0 || !Has(out, "same") || !Has(out, "waiting\n"))
+        printf("%s\n", out.c_str());
+
+    // after a script played RAM only, a FRIZZ slot other than the test slot is started again
+    // (from the card, so it saves again); the test slot isn't; one it can't tell, it says
+    rc = Python(R"(
+import argparse, chompi, remote
+chompi.start = lambda slot, *rest: print("start", slot)
+class F:
+    class link:
+        fd = None
+remote.os.close = lambda fd: None
+for slot in (10, 12, None):
+    chompi.frizz_slot = slot
+    print("slot", slot)
+    remote.restore(F(), argparse.Namespace(device=None, no_start=False))
+)", out);
+    Check(rc == 0 && Has(out, "slot 10\nstart 10\nslot 12\nslot None\n")
+              && Has(out, "FRIZZ keeps what it changes in RAM until it restarts"),
+          "tools: after play RAM only, key 10's FRIZZ is started again from the card; the test slot isn't");
+    if (rc != 0 || !Has(out, "start 10"))
         printf("%s\n", out.c_str());
 
     unlink(blank.c_str());

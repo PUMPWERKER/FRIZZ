@@ -613,7 +613,7 @@ def to_frizz(slot=None, timeout=120, device=None):
             return kept(where)
         elif running is None and slot is None:
             say("FRIZZ runs: %s; --slot N makes sure" % describe_ident(info, slots))
-            frizz_slot = last if last in FRIZZ_SLOTS else None
+            frizz_slot = last if this_hold and last in FRIZZ_SLOTS else None
             return kept(where)
         elif running is None and slot == last and this_hold:
             say("FRIZZ on slot %d (%s): %s" % (last, what, describe_ident(info, slots)))

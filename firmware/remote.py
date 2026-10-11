@@ -420,6 +420,7 @@ def bench(f, wait, out):
         return
     print("done; cpu.txt %s the card, %d B" % ("on" if st["stored"] else "NOT on", st["length"]))
     if out:
+        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
         with open(out, "w") as dst:
             dst.write(bench_text(f, st["length"]))
         print("written to", out)
