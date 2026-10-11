@@ -657,7 +657,7 @@ int main()
         bool amber = true;
         for (int i = 0; i < kNumPthLeds; i++)
             amber &= PthLedFull(i).r > 100 || Max(PthLedFull(i)) == 0;
-        Check(Powered() && amber, "battery: below 3V, every panel LED flashes amber");
+        Check(Powered() && amber, "battery: below 3V, every panel LED flashes yellow");
         RunMs(16000);
         Check(!Powered(), "battery: 15 s later it switches itself off");
     }});
@@ -695,7 +695,7 @@ int main()
     };
     cases.push_back({"charger-countdown", [countdown] {
         const auto seen = countdown(true);
-        Check(seen.first, "charger-countdown: unplugged below 3V, the panel flashes amber");
+        Check(seen.first, "charger-countdown: unplugged below 3V, the panel flashes yellow");
         Check(seen.second == 0 && Powered() && RunMs(300) > .05f,
               "charger-countdown: the charger plugged in 5 s into it, the flashing stops and FRIZZ plays on");
     }});
@@ -738,7 +738,7 @@ int main()
             const Rgb c = PthLedFull(kVolumeLed);
             red += c.r > 100 && c.g < 50;
         }
-        Known(red > 0, "battery-level: red below 3V, as MANUAL.md says (the amber countdown comes first: #43)");
+        Known(red > 0, "battery-level: red below 3V, as MANUAL.md says (the yellow countdown comes first: #43)");
     }});
 
     // the compressor's knobs without a card: its key blinks red 3 times, and the save is tried

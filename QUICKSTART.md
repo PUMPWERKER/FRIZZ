@@ -42,26 +42,29 @@ lower octave (a dark key, dimly white) so it lights fully: mono. Flip back down 
 2. Play something.
 3. Press **LOOP** again. The loop plays back immediately, and the mix jumps to only the loop, so you
    hear only the loop. Turn SHIFT + VOLUME back towards green to play along with it.
-4. **PLAY** pauses and resumes it.
+4. **PLAY** pauses and resumes it, when you let go of it.
 5. Turn the big **transport knob** to change speed in semitones, from 2× down to 1/16×. Hold
    SHIFT while turning to jump in fifths and octaves, and on past 1/16× into reverse. While paused, turning the knob scrubs. Press the knob to get back to normal speed.
 6. Press **LOOP** to erase the loop. The mix jumps back to the input. To erase at the end of
    the loop instead, hold PLAY and press LOOP.
 
 **In sync with a clock:** with MIDI clock coming in over TRS or USB, hold PLAY and press LOOP.
-The recording then ends on a whole bar. Without a clock, LOOP blinks red three times.
+The recording then ends on a whole bar. Without a clock, or with the clock source set to
+internal on the settings page, LOOP blinks red three times.
 
 A loop can be up to 2:45 long and is gone when you switch off.
 
 ## 3. Play the effects
 
 The white keys hold twelve effects, counted from the left, in the order the sound goes
-through them: ten inserts, a free key, the delay and reverb, another free key, and the master
-compressor on the last one (below).
+through them: ten inserts, the chaos key, the delay and reverb, a free key, and the master
+compressor on the last one (below). The chaos key makes no sound of its own: it drops the
+effects you've latched out at random and scrambles the loop's steps (see
+[Chaos key](MANUAL.md#chaos-key)).
 
 | White key | 1st | 2nd | 3rd | 4th | 5th | 6th | 7th | 8th | 9th | 10th | 11th | 12th | 13th | 14th | 15th |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Effect | Freezer | Shifter | Folder | Crusher | Filter | Flanger | Resonator | Slicer | Wow & flutter | Tape stop | – | Delay | Reverb | – | Compressor |
+| Effect | Freezer | Shifter | Folder | Crusher | Filter | Flanger | Resonator | Slicer | Wow & flutter | Tape stop | Chaos | Delay | Reverb | – | Compressor |
 
 - **Hold a key:** the effect is on while you hold it.
 - **Hold a key, then SHIFT:** latch the effect on. Do it again, or just tap the key, to turn
@@ -77,8 +80,8 @@ compressor on the last one (below).
 - **SHIFT + press a knob:** reset that setting.
 - **Press a knob:** all four knobs turn to the effect's second page (their LEDs pulse) and
   back. Picking another effect brings page 1 back. Page 2 is laid out the same on every
-  effect: knob 1 the mix (dry against the effect), knob 2 a setting of the effect's own, knob
-  3 the band (the effect only on the lows or only on the highs), knob 4 the effect's level. Nothing evens out the level by itself:
+  effect but the chaos key, which has none: knob 1 the mix (dry against the effect), knob 2
+  a setting of the effect's own, knob 3 the band (the effect only on the lows or only on the highs), knob 4 the effect's level. Nothing evens out the level by itself:
   an effect that gets louder as you drive it, like the folder, is set back with knob 4.
 
 Every effect starts silent or nearly so: one knob brings it in. That's knob 1 on most, knob 2
@@ -110,7 +113,7 @@ Things to try first:
 - **Tape stop (10th key)** with the delay or reverb latched: hold it on a beat and the music
   winds down over half a bar while the tails ring on. Let go and it spins back up.
 
-The freezer, slicer, filter LFO, tape stop and delay follow a tempo: the loop's while there is one, so
+The freezer, slicer, filter LFO, tape stop, delay and the chaos key's grid follow a tempo: the loop's while there is one, so
 they lock to it; otherwise MIDI clock, or the last tempo (120 BPM at power-on). Hold SHIFT
 and tap LOOP three times or more to tap a tempo, or to tell FRIZZ how many beats a loop has.
 See [Tempo](MANUAL.md#tempo).

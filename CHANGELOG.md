@@ -15,7 +15,7 @@ what FRIZZ does.
   like (24 detents from end to end), with or without a loop. Let go all the way right and
   you're in the new scene; all the way left and you're back where you were; in between it
   stays there, as SHIFT + PLAY leaves a morph. The two scene keys light in their mix, the
-  transport LEDs show where it is. Over MIDI, CC 118 does the same for a morph CC 62 started.
+  transport LEDs show where it is. Over MIDI, CC 118 does the same for any running morph.
   See MANUAL.md, "Crossfading by hand".
 - **The chaos key** on the 11th white key (#65), after the Red Panda Tensor's RAND and the
   Chase Bliss Blooper's Scrambler: an effect slot like any other (hold, latch, scenes) that
@@ -26,8 +26,8 @@ what FRIZZ does.
   pattern. Chance decides only when your effects act, never how they sound. Over MIDI, CC 119
   latches it and NRPN 0/122-125 set its knobs. See MANUAL.md, "Chaos key".
 - **A second page for the FX knobs:** press any of knobs 1-4 and all four turn over to the
-  selected effect's page 2, with their LEDs pulsing; press again for page 1. Every effect has
-  one. Pressing or
+  selected effect's page 2, with their LEDs pulsing; press again for page 1. Every effect but
+  the chaos key has one. Pressing or
   selecting another effect, or the compressor, brings page 1 back. Scenes, recalls and morphs
   carry page 2 along; scene files from v0.11 load with page 2 on its defaults. Over MIDI,
   page 2 is NRPN MSB 1 with the page-1 CC as LSB. See MANUAL.md, "Page 2".
@@ -46,8 +46,8 @@ what FRIZZ does.
 - **Freeze and ducking on the delay and reverb** (page 2's knobs 1 and 4): freeze holds the
   echoes or the room, by degrees; ducking turns them down while you play.
 - **Stereo on page 1's knob 4 of the folder, crusher and filter**, so knob 4 is stereo on
-  every insert: the folder drives the right channel harder, the crusher's right rate runs
-  lower, the filter's right LFO lags. Their old knob 4 (symmetry, XOR, LFO division) moved
+  every insert but the tape stop (its depth): the folder drives the right channel harder,
+  the crusher's right rate runs lower, the filter's right LFO lags. Their old knob 4 (symmetry, XOR, LFO division) moved
   to page 2's knob 2; saved scenes are moved along.
 - **Depth on the tape stop's knob 4:** from a full stop (as before) to slowing down to half
   speed.
@@ -81,7 +81,6 @@ what FRIZZ does.
 - **The knob LEDs use white only for a neutral point:** a knob with a centre (shift, cutoff,
   random, damping, grain, every Band) and Level (at 0 dB) are white there, blue below and
   orange above, on every effect. Other knobs go between the effect's two colours.
-
 - **Nothing sets a level by itself any more but the safety limiter.** The folder is no longer
   matched to its input's level, and the crusher no longer held to it: driven, they get
   louder, the folder much louder on quiet sounds (at full drive a sound 30 dB down comes out
@@ -97,11 +96,8 @@ what FRIZZ does.
   semitone every 2 detents, from 2× down to 1/16×, and stops at both ends. SHIFT + turn
   jumps in fifths and octaves as turning did before (from between two of them, to the next
   one in the turn's direction), and is now the only way on past 1/16× into reverse. Over
-  MIDI, CC 18 turns in semitones; with the CHOMPI key's note (45) held, in fifths and
-  octaves. See MANUAL.md, "Looper".
-
-### Changed
-
+  MIDI, CC 18 turns it by detents as the hand does, 2 to a semitone; with the CHOMPI key's
+  note (45) held, 4 to a step of fifths and octaves. See MANUAL.md, "Looper".
 - **Bug reports** moved to the settings page: with the mode switch up, hold SHIFT (CHOMPI)
   and the VOLUME knob pressed for 2 seconds. SHIFT + press the transport knob on the play page
   does nothing now, so a report can't be written by accident while playing. See MANUAL.md,
