@@ -289,9 +289,12 @@ then run `bin/install_bootloader.sh`.
 ## Measure timing and sound on the device
 
 `tools/measure.py` measures what the twin can't, on the real CHOMPI, with no hands at the
-panel. It needs an audio interface: one of its outputs into AUX, the CHOMPI's line out into
-its input 1, its MIDI out into the TRS jack (found by name; `FRIZZ_AUX_SINK`,
-`FRIZZ_LINE_SOURCE`, `FRIZZ_TRS_MIDI` set them). Python 3 with numpy (a venv:
+panel. It needs an audio interface: its line outputs 3+4 into AUX, the CHOMPI's line out into
+its inputs 3+4 (the left, input 3, is recorded), its MIDI out into the TRS jack (found by name,
+the Scarlett's `HiFi__Line4__sink` and `HiFi__Line8__source`; `FRIZZ_AUX_SINK`,
+`FRIZZ_LINE_SOURCE`, `FRIZZ_TRS_MIDI` set them). Outputs 1+2 are the user's monitors: the
+tools never play into them. In the Scarlett's mixer (alsa-scarlett-gui), line outputs 3+4 get
+PCM 3+4 directly, not a mix, or nothing played into `HiFi__Line4__sink` reaches AUX. Python 3 with numpy (a venv:
 `python3 -m venv ~/.venvs/frizz && ~/.venvs/frizz/bin/pip install numpy`).
 
 ```bash
@@ -321,6 +324,58 @@ cd firmware/tools
 
 For an A/B, send each build to slot 10 in turn (`flash.py FILE --slot 10`) and measure from a
 fresh start each time; `remote.py load` and `remote.py play SCRIPT --cpu` give the load.
+
+### The MIDI suite: the release test's MIDI items, unattended
+
+`tools/midisuite.py` runs the release test's MIDI clock, sync, MIDI out and MIDI control
+items (#55, sections 7 and 8; #114) on the device, with the computer as an idealised DAW: a
+clock over USB and out of the interface's MIDI into the TRS jack (steady, fast, nudged, in
+pairs, started late), Start / Stop / Continue / Song Position, the clock source and factor,
+transport following, CCs on the effect channels and the global one, RPNs, morphs over CC 3 /
+80, MIDI out and feedback, a DAW echoing back what it gets. It reads what FRIZZ makes of it
+(STATE's tempo, looper and position, GET's knobs and latches, the LEDs) and times every byte
+its MIDI out sends, on USB and, through the interface's MIDI in, on TRS. Each case says what
+it sent, what it read, its tolerance and the #55 item, PASS / FAIL / SKIP; the end is a
+summary in Markdown for the PR, with the cases still open with the other wiring and what
+stays with the user. Python 3 only (no numpy); `tools/midiport.py` has the clock and the
+timed capture it shares with `measure.py`.
+
+One command per wiring runs it all; for a release candidate, its `FRIZZ.bin` (built at its
+tag, md5 checked) goes to the test slot instead of the branch's build:
+
+```bash
+cd firmware && tools/chompi.py hold sh -c '
+  ./flash.py FRIZZ.bin --slot 12 --name FRIZZ-TEST &&
+  { tools/midisuite.py --out card/midisuite.md; echo "suite: $?"; }
+  ./flash.py --run 10'
+tools/midisuite.py --list                           # the cases, and what wiring each needs
+tools/midisuite.py --cases out-loop,start-spp -v    # a few, every check as it's made
+```
+
+- **The wiring** has one TRS adapter, one way or the other: the CHOMPI's TRS out into the
+  interface's MIDI in (A: MIDI out is captured on TRS, a clock passed on from USB), or the
+  interface's MIDI out into the TRS in (B: TRS clock and CCs in, MIDI out seen over USB). The
+  suite finds out which first (MIDI out on TRS for a second; a 137 BPM clock out of the
+  interface that the tempo follows), or `--wiring out|in|both|none` says. What the wiring
+  can't show is a SKIP, and the summary lists those cases with the `--cases` to run once the
+  adapter is turned round; a case the wiring can show that sees nothing is a FAIL.
+- **The card stays out of it:** it asks for PERSIST 0 first and refuses a FRIZZ without it.
+  Each case sets the settings it needs (from the global channel 16, everything else off), and
+  the knobs, latches, VOLUME's levels and the scenes 1-2 the morph cases put are set back
+  after each case, the settings at the end, in RAM. It plays on slot 12 (`--slot`).
+- **How long:** about 7 minutes. `loop-drift` and `out-x2` ("over a few minutes") measure
+  40 s; `--long` makes it 3 minutes each, `--quick` 8 s (the host check). `loop-drift`
+  records 4 bars: a 1-bar loop's length, taken from a USB clock's ticks, scattered by up to
+  ±2.3 ms a minute from one recording to the next on beta.1 (#20), a 4-bar loop's by 0.4. Its
+  two halves alike say a drift is the recording's length; apart, that the glide back to 1x was
+  still settling. "No jumps" is the position stepping (the median distance from the line,
+  every two beats), not a single late tick: USB, or this computer busy.
+- **What it reads, and what not:** while a morph runs, GET shows the scene it goes to (the
+  knobs "already show the scene"), so the morph cases read MIDI's crossfader off the transport
+  LEDs; what is heard on the way stays the user's. Checks on timing (rates, jitter, a tempo
+  held) are marked `[timing]` with `-v`.
+- `test/midisuite.cpp` runs it on the twin, wired every way, and `MIDISUITE="--cases ID -v"
+  test/unit.sh midisuite` plays it there once, to work on a case without the CHOMPI.
 
 ## Measure the CPU load
 
