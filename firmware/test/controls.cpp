@@ -894,6 +894,77 @@ static void TestPool()
     Check(e.pool == (1u << FX_FOLDER), "pool: the crossfader let go at the start, the start's again");
 }
 
+/** The phaser's rate (#68), a split knob (FxParams::split): free below the centre, 1% a
+ *  detent; the tempo's divisions from it up, a step per 3 detents; SHIFT on its own points
+ *  across both; MIDI on the nearest division in the upper half; a morph holds it across */
+static void TestSplit()
+{
+    FakeEngine e;
+    Fx fx;
+    Fresh(e, fx);
+    const size_t kRate = chompi::Phaser::RATE;
+    const float kDiv = .5f / (chompi::Phaser::kNumDivisions - 1); // a division's width on the knob
+    auto rate = [&fx, kRate] { return fx.Param(FX_PHASER, kRate); };
+    fx.KeyPressed(FX_PHASER, true, false);
+    Check(rate() == .25f && !SplitUpper(rate()), "split: the phaser's rate starts free, at .25");
+    for (int i = 0; i < 24; i++)
+        fx.KnobTurned(0, 1.f, false);
+    Check(Near(rate(), .49f), "split: fine turns in the free half, 1% a detent");
+    fx.KnobTurned(0, 1.f, false);
+    Check(rate() == kSplitKnob, "split: the next detent lands on the first division, the centre");
+    fx.KnobTurned(0, 2.f, false);
+    Check(rate() == kSplitKnob, "split: in the synced half, 2 detents do nothing yet");
+    fx.KnobTurned(0, 1.f, false);
+    Check(Near(rate(), .5f + kDiv), "split: the 3rd moves a division, 1/8");
+    fx.KnobTurned(0, -3.f, false);
+    fx.KnobTurned(0, -3.f, false);
+    Check(Near(rate(), .49f), "split: 3 detents down from the first division: the top of the free half");
+    fx.KnobTurned(0, 10.f, false);
+    Check(rate() == kSplitKnob, "split: a fast turn up out of the free half stops on the first division");
+    for (int i = 0; i < 20; i++)
+        fx.KnobTurned(0, 3.f, false);
+    Check(rate() == 1.f, "split: and steps up to 4 bars at the top");
+
+    // SHIFT: the free half's 10%, then each division
+    fx.KnobPressed(0, true); // SHIFT + press: its default
+    fx.KnobTurned(0, 1.f, true);
+    Check(Near(rate(), .3f), "split: SHIFT + turn in the free half: the next 10%");
+    fx.KnobTurned(0, 2.f, true);
+    Check(rate() == kSplitKnob, "split: SHIFT + turn across the centre: on the first division");
+    fx.KnobTurned(0, 2.f, true);
+    Check(Near(rate(), .5f + 2.f * kDiv), "split: SHIFT + turn in the synced half: a division a detent");
+    fx.KnobTurned(0, -3.f, true);
+    Check(Near(rate(), .4f), "split: and back down across the centre onto the free half's 10%");
+
+    // MIDI: the upper half on its nearest division, the lower as sent
+    fx.SetParamTo(FX_PHASER, kRate, .62f);
+    Check(Near(rate(), .5f + kDiv), "split: MIDI in the synced half: the nearest division");
+    fx.SetParamTo(FX_PHASER, kRate, .5f);
+    Check(rate() == kSplitKnob, "split: MIDI's centre (64, 8192) is the first division");
+    fx.SetParamTo(FX_PHASER, kRate, .4999f);
+    Check(rate() == .4999f, "split: MIDI just below it: free, as sent");
+
+    // a morph glides it within the free half, and holds it from one half to the other
+    FxScene store[kNumSlots] = {};
+    Scenes sc;
+    sc.Init(store, &fx);
+    for (size_t s = 1; s <= 3; s++)
+    {
+        store[s] = store[kBlankSlot];
+        store[s].latched = 1u << FX_PHASER;
+    }
+    store[1].params[FX_PHASER][kRate] = .2f;
+    store[2].params[FX_PHASER][kRate] = .4f;
+    store[3].params[FX_PHASER][kRate] = .5f + 3.f * kDiv;
+    sc.Recall(1);
+    sc.Morph(2);
+    Check(e.plan.how[FX_PHASER][kRate] == MorphParam::GLIDE, "split: a morph within the free half glides");
+    e.LandFxMorph();
+    sc.Recall(1);
+    sc.Morph(3);
+    Check(e.plan.how[FX_PHASER][kRate] == MorphParam::HOLD, "split: a morph into the synced half holds");
+}
+
 int main()
 {
     TestInit();
@@ -906,5 +977,6 @@ int main()
     TestTails();
     TestFader();
     TestPool();
+    TestSplit();
     return Finish();
 }

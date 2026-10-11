@@ -2965,6 +2965,72 @@ int main()
         Check(Max(PthLedFull(kChompiKeyLed)) == 0, "settings-shift: and dark once let go there");
     }});
 
+    // the phaser (#68) on the 11th white key: its notches sweep through a sine at its centre,
+    // its key azure, its rate knob's LED in its colours while free and green once synced, its
+    // knobs on NRPN 0/64-67 and 1/64-67
+    cases.push_back({"phaser", [] {
+        static const int kPhaserKeyLed = 14;
+        freq = 800.f; // the centre at its default: the middle notch sweeps across it
+        RunMs(kReadyMs);
+        const float dry = RunMs(300);
+        Latch("KEY_11");
+        Turn(2, 30); // knob 3 (SW2), depth .3: the notches all in, +-.75 octaves
+        RunMs(500);
+        float low = 1.f, high = 0.f;
+        for (int w = 0; w < 100; w++) // 2 s at .7Hz: the notch crosses the sine twice a cycle
+        {
+            const float rms = RunMs(20);
+            low = fminf(low, rms);
+            high = fmaxf(high, rms);
+        }
+        printf("      dry %.3f; latched, 20 ms windows from %.3f to %.3f\n", dry, low, high);
+        Check(low < dry * .3f && high > dry * .8f,
+              "phaser: KEY_11 latched sweeps a notch through an 800Hz sine, its centre");
+        // lit, azure, whitened by its meter as every key is
+        const Rgb key = SmtLedFull(kPhaserKeyLed);
+        printf("      its key %02x%02x%02x\n", key.r, key.g, key.b);
+        Check(key.b > 200 && key.b > key.g && key.g > key.r, "phaser: its key lit, azure");
+
+        // knob 1, the rate, at .25: free, between azure and magenta; synced over NRPN: green
+        const Rgb free_rate = PthLedFull(kKnob1Led);
+        Check(free_rate.b > 200 && free_rate.r > 60 && free_rate.g < 100,
+              "phaser: its rate free, knob 1's LED between azure and magenta");
+        Trs({kCC, 99, 0, kCC, 98, 64, kCC, 6, 64, kCC, 38, 0}); // NRPN 0/64 = 8192, the centre
+        RunMs(100);
+        const std::string params = Ask({0x21, 12});
+        const Rgb synced = PthLedFull(kKnob1Led);
+        Check(params.size() == 17 && params[0] == 12 && params[1] == 64 && params[2] == 0,
+              "phaser: NRPN 0/64 sets its rate, the centre the first division");
+        Check(synced.g > 200 && synced.r < 40 && synced.b < 40, "phaser: synced, knob 1's LED green");
+        Trs({kCC, 99, 0, kCC, 98, 64, kCC, 6, 127, kCC, 38, 127}); // the top: 4 bars
+        RunMs(100);
+        const Rgb bars4 = PthLedFull(kKnob1Led);
+        Check(bars4.r > 200 && bars4.g > 200 && bars4.b < 40, "phaser: 4 bars, knob 1's LED yellow");
+        Trs({kCC, 99, 1, kCC, 98, 65, kCC, 6, 0, kCC, 38, 0}); // NRPN 1/65: the centre to 100Hz
+        Trs({kCC, 99, 0, kCC, 98, 66, kCC, 6, 0, kCC, 38, 0}); // NRPN 0/66: depth 0, dry
+        RunMs(100);
+        const std::string page2 = Ask({0x21, 12});
+        Check(page2.size() == 17 && page2[11] == 0 && page2[12] == 0 && page2[5] == 0 && page2[6] == 0,
+              "phaser: NRPN 1/65 sets its centre (page 2's knob 2), 0/66 its depth");
+        RunMs(300);
+        const float at0 = RunMs(300);
+        printf("      depth 0 over MIDI: %.4f (dry %.4f)\n", at0, dry);
+        Check(fabsf(at0 - dry) < dry * .01f, "phaser: at depth 0 it's dry again");
+
+        // off: its key dim; the 14th white key is the chaos key's
+        Latch("KEY_11");
+        Press("KEY_11", true);
+        RunMs(80);
+        Press("KEY_11", false);
+        RunMs(300);
+        const Rgb off = SmtLedFull(kPhaserKeyLed);
+        Check(Max(off) < 60 && off.b > off.g, "phaser: off, its key dim azure");
+        Latch("KEY_14");
+        const std::string st = Ask({0x20});
+        Check(st.size() > 9 && ((static_cast<uint8_t>(st[8]) << 7 | static_cast<uint8_t>(st[9])) == 1u << 13),
+              "phaser: KEY_14 latches the chaos key (FxId 13), the phaser off");
+    }});
+
     // every scenario of ../twin/scenarios played from power-on, its expect lines holding
     static std::vector<std::string> scenarios;
     {

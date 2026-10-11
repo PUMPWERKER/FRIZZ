@@ -266,6 +266,9 @@ int main()
     Check(!(h[3].latched >> FX_CHAOS & 1) && h[3].params[FX_CHAOS][0] == defaults[FX_CHAOS][0]
               && h[3].params[FX_CHAOS][2] == defaults[FX_CHAOS][2],
           "a file from before the chaos key: it loads off, on its defaults");
+    Check(!(h[3].latched >> FX_PHASER & 1) && h[3].params[FX_PHASER][0] == defaults[FX_PHASER][0]
+              && h[3].params[FX_PHASER][5] == defaults[FX_PHASER][5],
+          "a file from before the phaser: it loads off, on its defaults");
     {
         const char* chaos = "FRIZZ scenes 1\nlayout 3\nscene 2\nchaos 1 300000 600000 750000 1000000\n";
         FxScene c[kNumScenes];
@@ -273,6 +276,15 @@ int main()
                   && fabsf(c[1].params[FX_CHAOS][1] - .6f) < 1e-6f
                   && fabsf(c[1].params[FX_CHAOS][2] - .75f) < 1e-6f,
               "the chaos key's line: latched, its knobs");
+    }
+    {
+        const char* phaser = "FRIZZ scenes 1\nlayout 3\nscene 3\nphaser 1 750000 500000 1000000 0 1000000 250000\n";
+        FxScene c[kNumScenes];
+        Check(ParseScenes(phaser, defaults, c) && (c[2].latched == 1u << FX_PHASER)
+                  && fabsf(c[2].params[FX_PHASER][0] - .75f) < 1e-6f
+                  && fabsf(c[2].params[FX_PHASER][5] - .25f) < 1e-6f
+                  && c[2].params[FX_PHASER][7] == defaults[FX_PHASER][7],
+              "the phaser's line: latched, its knobs, the rest on its defaults");
     }
 
     // 4. not a scene file, and an empty one

@@ -40,7 +40,7 @@ static const size_t kNumScenes = 4;
 static const size_t kBlankSlot = 0;
 static const size_t kNumSlots = kNumScenes + 1;
 // The file's size at most: 4 scenes of 14 effects with both pages, every value 7 digits, take
-// 4197 bytes (test/scenes.cpp); in 32-byte lines, as the card's buffers are, and no more than
+// 4172 bytes (test/scenes.cpp); in 32-byte lines, as the card's buffers are, and no more than
 // the event log reads it through (EventLog::Snapshot)
 static const size_t kSceneFileMax = 4224;
 
