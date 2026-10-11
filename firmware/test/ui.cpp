@@ -3846,6 +3846,120 @@ int main()
         }});
     }
 
+    // #118: a morph and the crossfader fade the freezer, shifter and slicer with their page 2
+    // Mix instead of switching them: the slicer sparse and short, much quieter than dry, so
+    // its Mix shows in the level
+    {
+        // the slicer latched, one 16th of 8 at 10 ms decay, saved as scene 1; dry and sliced
+        static float dry, sliced;
+        static auto slicer_scene = [] {
+            RunMs(kReadyMs);
+            dry = RunMs(1000);
+            Latch("KEY_9");
+            Turn(kKnob1Encoder, -100); // pattern: the sparsest
+            Turn(1, -100);             // knob 2, decay: 10 ms
+            RunMs(500);
+            sliced = RunMs(1000); // a pattern is half a bar at 120 BPM
+            Save(1);
+            RunMs(1000);
+            printf("      dry %.3f, sliced %.3f\n", dry, sliced);
+            Check(sliced < dry * .3f, "morph-mix: the slicer sparse and short, much quieter than dry");
+        };
+        // SHIFT + key 4 taps: a morph over 4 bars once SHIFT goes up; the level a second at a
+        // time until it has landed
+        static auto morph4 = [](const char* key) {
+            Press("KEY_26", true);
+            RunMs(80);
+            for (int tap = 0; tap < 4; tap++)
+            {
+                Tap(key);
+                RunMs(100);
+            }
+            Press("KEY_26", false);
+            std::vector<float> level;
+            for (int s = 0; s < 10; s++)
+                level.push_back(RunMs(1000));
+            printf("      over the morph:");
+            for (float l : level)
+                printf(" %.3f", l);
+            printf("\n");
+            return level;
+        };
+        // the windows clearly between lo and hi
+        static auto between = [](const std::vector<float>& level, float lo, float hi) {
+            int n = 0;
+            for (float l : level)
+                n += l > lo + .15f * (hi - lo) && l < hi - .15f * (hi - lo);
+            return n;
+        };
+
+        cases.push_back({"morph-mix-slicer", [] {
+            slicer_scene();
+            const std::vector<float> out = morph4("KEY_16"); // to the blank scene
+            Check(between(out, sliced, dry) >= 3 && out.back() > dry * .9f,
+                  "morph-mix-slicer: turned off, its Mix glides to dry over the morph, then it's off");
+            bool rising = true;
+            for (size_t i = 1; i < out.size(); i++)
+                rising &= out[i] > out[i - 1] - .02f * dry;
+            Check(rising, "morph-mix-slicer: steadily");
+            const std::vector<float> in = morph4("KEY_17"); // back to scene 1
+            Check(between(in, sliced, dry) >= 3 && in.back() < sliced * 1.3f,
+                  "morph-mix-slicer: turned on, it comes on at dry and its Mix glides to the scene's");
+            const std::string st = Ask({0x20});
+            Check(st.size() > 9 && !(st[6] & 2) && st[5] == 2 && (LatchedFx(st) >> 7 & 1),
+                  "morph-mix-slicer: landed on scene 1, the slicer (FX 7) latched");
+        }});
+
+        cases.push_back({"morph-mix-fader", [] {
+            slicer_scene();
+            Press("KEY_26", true);
+            RunMs(80);
+            Tap("KEY_16"); // to the blank scene, held
+            RunMs(100);
+            Turn(5, 6); // a quarter
+            RunMs(500);
+            const float quarter = RunMs(1000);
+            Turn(5, 6); // halfway
+            RunMs(500);
+            const float half = RunMs(1000);
+            Turn(5, -12); // back to the start
+            RunMs(500);
+            const float start = RunMs(1000);
+            printf("      a quarter %.3f, halfway %.3f, back at the start %.3f\n", quarter, half, start);
+            Check(quarter > sliced * 1.5f && quarter < dry * .5f,
+                  "morph-mix-fader: a quarter of the way, the slicer at three quarters of its Mix");
+            Check(half > quarter * 1.2f && half < dry * .75f,
+                  "morph-mix-fader: halfway, at half its Mix, not switched off");
+            Check(start < sliced * 1.3f, "morph-mix-fader: back at the start, sliced as before");
+            Turn(5, 30);
+            RunMs(500);
+            Press("KEY_26", false);
+            RunMs(500);
+            const std::string st = Ask({0x20});
+            Check(RunMs(1000) > dry * .9f && st.size() > 9 && !(st[6] & 2) && LatchedFx(st) == 0,
+                  "morph-mix-fader: all the way, dry; let go, it lands on the blank scene");
+        }});
+
+        // the freezer: frozen on a sine, the input then silent; a morph to the blank scene
+        // fades the repeats out with its Mix, instead of cutting them at the landing
+        cases.push_back({"morph-mix-freezer", [] {
+            RunMs(kReadyMs);
+            const float dry = RunMs(1000);
+            Latch("KEY_1");
+            RunMs(3000);
+            Save(1);
+            RunMs(1000);
+            amp = 0.f;
+            RunMs(500);
+            const float frozen = RunMs(1000);
+            printf("      dry %.3f, frozen %.3f\n", dry, frozen);
+            Check(frozen > dry * .5f, "morph-mix-freezer: the input silent, the freezer repeats the sine");
+            const std::vector<float> out = morph4("KEY_16");
+            Check(between(out, 0.f, frozen) >= 3 && out.back() < frozen * .05f,
+                  "morph-mix-freezer: turned off, its repeats fade with its Mix over the morph");
+        }});
+    }
+
     // every scenario of ../twin/scenarios played from power-on, its expect lines holding
     static std::vector<std::string> scenarios;
     {

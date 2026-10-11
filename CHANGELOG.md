@@ -122,6 +122,15 @@ what FRIZZ does.
 
 ### Changed
 
+- **The freezer, shifter and slicer fade in a morph** (#118), with their page 2 Mix, instead
+  of switching on the bar line. One the new scene turns off glides to dry over the morph and
+  goes off on the bar line, as the other effects do; the shifter or slicer the new scene
+  turns on comes on when the glide starts, dry, and its Mix glides up to the scene's. The
+  freezer coming on still grabs on the bar line: a grab in the middle of a bar sounds worse.
+  The crossfader does the same by hand: the shifter and slicer fade in from the left end,
+  the three fade out up to the right end, the freezer coming on switches in the middle as
+  before. Stepped knobs of an effect on in both scenes (delay division, slicer pattern,
+  shift …) still switch. See MANUAL.md, "Morphing to a scene".
 - **The clock factor works on every tempo** (#116), not only on MIDI clock: the settings
   page's lower G# (as sent, double, half) now also doubles or halves the effects' tempo from
   a loop, from your taps and from the last tempo. Tap the tempo of a song on AUX (SHIFT +

@@ -691,10 +691,20 @@ static void TestMorph()
               && plan.start[FX_FOLDER][7] == kFxParams[FX_FOLDER].defaults[7]
               && plan.target[FX_FOLDER][7] == 1.f && plan.how[FX_FOLDER][4] == MorphParam::HOLD,
           "turned on: page 2's Level glides from 0dB, Mix doesn't need to");
-    Check((plan.deferred >> FX_FREEZER & 1) && (plan.deferred >> FX_SLICER & 1)
-              && !(plan.wake >> FX_FREEZER & 1) && !(plan.wake >> FX_SLICER & 1)
-              && plan.how[FX_SLICER][1] == MorphParam::HOLD,
-          "no amount knob: switched at the landing");
+    // #118: the freezer, shifter and slicer fade with their Mix, from and to dry
+    Check((plan.deferred >> FX_FREEZER & 1) && !(plan.wake >> FX_FREEZER & 1)
+              && (plan.park >> FX_FREEZER & 1)
+              && plan.how[FX_FREEZER][FxOutput::kMix] == MorphParam::FADE_OUT
+              && plan.how[FX_FREEZER][0] == MorphParam::HOLD,
+          "turned off, the freezer: its Mix fades to dry, the key goes off at the landing");
+    Check((plan.deferred >> FX_SLICER & 1) && (plan.wake >> FX_SLICER & 1)
+              && plan.how[FX_SLICER][FxOutput::kMix] == MorphParam::GLIDE
+              && plan.start[FX_SLICER][FxOutput::kMix] == 0.f
+              && plan.target[FX_SLICER][FxOutput::kMix] == 1.f
+              && e.params[FX_SLICER][FxOutput::kMix] == 0.f
+              && plan.how[FX_SLICER][1] == MorphParam::HOLD
+              && plan.start[FX_SLICER][1] == plan.target[FX_SLICER][1],
+          "turned on, the slicer: on at the start, its Mix glides from dry, the rest jumps now");
     Check(plan.start[FX_FLANGER][0] == .3f && plan.how[FX_FLANGER][0] == MorphParam::HOLD,
           "off in both: jumps now");
     Check(plan.how[FX_FOLDER][2] == MorphParam::GLIDE && plan.start[FX_FOLDER][2] == 1.f
@@ -728,6 +738,20 @@ static void TestMorph()
     sc.Recall(1);
     Check(!e.morphing && e.landings == 1 && sc.Morphing() == kNoScene && sc.Active() == 1,
           "... which ends the morph first");
+
+    // and back: the freezer coming on still grabs at the landing; the slicer fades out
+    sc.Recall(2);
+    sc.Morph(1);
+    Check((e.plan.deferred >> FX_FREEZER & 1) && !(e.plan.wake >> FX_FREEZER & 1)
+              && e.plan.how[FX_FREEZER][FxOutput::kMix] == MorphParam::HOLD,
+          "turned on, the freezer: no fade, it comes on at the landing (#118)");
+    Check((e.plan.park >> FX_SLICER & 1)
+              && e.plan.how[FX_SLICER][FxOutput::kMix] == MorphParam::FADE_OUT,
+          "turned off, the slicer: its Mix fades to dry");
+    Check(MorphNeutral(FX_SHIFTER, FxOutput::kMix) == 0.f && MorphNeutral(FX_FOLDER, 7) == kP2Level
+              && MorphFades(FX_SHIFTER, true) == 1u << FxOutput::kMix && MorphFades(FX_FREEZER, true) == 0
+              && MorphFades(FX_FOLDER, true) == kFxParams[FX_FOLDER].fade,
+          "fading: Mix's neutral is dry; the shifter fades in with it, the freezer not");
 }
 
 static void TestTails()

@@ -114,8 +114,8 @@ struct FxParams
                                   // their defaults, whatever the others say, and its Level
                                   // (page 2's knob 4, FxOutput.h), which at 0dB leaves a
                                   // neutral effect's sound alone. A scene morph fades the
-                                  // effect in and out with them (FxMorph.h); 0: it can't be
-                                  // faded
+                                  // effect in and out with them (FxMorph.h); 0: none, the
+                                  // freezer, shifter and slicer fade with Mix (MorphFades)
     uint8_t bipolar;              // bit p: a knob with its neutral point at its default (the
                                   // centre, or Level's 0dB), white there on its LED, blue
                                   // below and orange above (NormalPage.h)

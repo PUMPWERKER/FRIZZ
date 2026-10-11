@@ -19,12 +19,17 @@
  *  destination, not the sound. An FX whose key it switches at the landing (or when its fade-in
  *  starts) is deferred: the UI's SetOn only says what it will be.
  *
+ *  An FX fades in and out with its fade knobs (FxParams::fade); the freezer, shifter and
+ *  slicer, which have none, with their page 2 Mix, from and to dry (#118). The freezer fades
+ *  only out: coming on, it still grabs at the landing, on the bar line (MorphFades).
+ *
  *  The crossfader (#66): Fader takes the glide out of the clock's hands into the UI's, 0 the
  *  start (A) and 1 the target (B), back and forth, and the bar lines no longer count. What
  *  glides follows the fader; a fade-in's key is on anywhere past A, a fade-out's until B; the
  *  rest switches in the middle, both ways: the stepped values of an FX on in both, and the
- *  keys of the FX without fade knobs. It ends as a morph does: Land (B), Freeze (where it
- *  is), or Freeze at A, which the UI takes back to where it was (FxControls::EndFade).
+ *  keys of the FX that don't fade (and the freezer's coming on). It ends as a morph does:
+ *  Land (B), Freeze (where it is), or Freeze at A, which the UI takes back to where it was
+ *  (FxControls::EndFade).
  */
 #pragma once
 #include "FxChain.h"
@@ -43,12 +48,31 @@ static const uint32_t kMaxMorphBars = 8;
 // to their defaults: 5 of the fast slew's time constants (FxCommon.h)
 static const uint32_t kMorphWakeSamples = 1200;
 
+// The FX without fade knobs that a morph fades with their page 2 Mix instead (#118): out,
+// all three; in, the shifter and slicer. The freezer comes on at the landing, as before: a
+// grab mid-bar sounds worse than a hard one on the bar line
+static const uint16_t kMixFadesOut = (1u << FX_FREEZER) | (1u << FX_SHIFTER) | (1u << FX_SLICER);
+static const uint16_t kMixFadesIn = (1u << FX_SHIFTER) | (1u << FX_SLICER);
+
+/** By bit, the parameters a morph fades fx in with (in) or out with: its fade knobs
+ *  (FxParams::fade), or its Mix; 0: it switches at the landing */
+inline uint8_t MorphFades(size_t fx, bool in)
+{
+    return ((in ? kMixFadesIn : kMixFadesOut) >> fx) & 1 ? 1u << FxOutput::kMix
+                                                          : kFxParams[fx].fade;
+}
+/** Where a fading parameter leaves fx neutral: its default, or for Mix dry */
+inline float MorphNeutral(size_t fx, size_t p)
+{
+    return p == FxOutput::kMix && ((kMixFadesOut >> fx) & 1) ? 0.f : kFxParams[fx].defaults[p];
+}
+
 /** What a parameter does during a morph */
 enum class MorphParam : uint8_t
 {
     HOLD,     // stays at start, jumps to the target at the landing
     GLIDE,    // start to target
-    FADE_OUT, // start to its default (silent), then the target at the landing
+    FADE_OUT, // start to neutral (MorphNeutral), then the target at the landing
 };
 
 /** A morph, from FxControls::Morph */
@@ -311,10 +335,10 @@ public:
     inline bool Active() const { return active_; }
 
 private:
-    /** Where a gliding parameter glides to: a fade-out to its default, the rest to the target */
+    /** Where a gliding parameter glides to: a fade-out to neutral, the rest to the target */
     inline float End(size_t fx, size_t p, MorphParam how) const
     {
-        return how == MorphParam::FADE_OUT ? kFxParams[fx].defaults[p] : plan_.target[fx][p];
+        return how == MorphParam::FADE_OUT ? MorphNeutral(fx, p) : plan_.target[fx][p];
     }
 
     /** A block on the crossfader: see the file comment. Only what changes is sent, at the
