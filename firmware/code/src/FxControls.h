@@ -127,14 +127,17 @@ public:
         SendOn(fx);
     }
 
-    /** The master compressor's key going down: selects it for the knobs. It has no gate or
-     *  latch, so the release does nothing. With SHIFT, a select as an FX key's would be */
+    /** The master compressor's key going down: selects it for the knobs, on page 1 unless it
+     *  already was, as an FX key does. It has no gate or latch, so the release does nothing.
+     *  With SHIFT, a select as an FX key's would be */
     void CompKeyPressed(bool shift)
     {
         if (selected_ != kCompSelected)
+        {
             ClearChunks();
+            page_ = 0;
+        }
         selected_ = kCompSelected;
-        page_ = 0;
         if (shift)
             ShiftUsed();
     }
