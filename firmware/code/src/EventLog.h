@@ -1,6 +1,6 @@
 /** @file EventLog.h
- *  @brief The event recorder: every key, knob detent, mode-switch flip, MIDI clock change and
- *  MIDI message FRIZZ acted on (MidiControl.h) since power-on, written to /FRIZZ/bug-N.txt when
+ *  @brief The event recorder: every key, knob detent, mode-switch flip, cable in or out of
+ *  AUX, MIDI clock change and MIDI message FRIZZ acted on (MidiControl.h) since power-on, written to /FRIZZ/bug-N.txt when
  *  SHIFT + VOLUME press are held 2 s on the settings page (SettingsPage.h; MANUAL.md, "Bug
  *  reports"). The file is a script for the virtual CHOMPI (firmware/twin/README.md): the
  *  card's FRIZZ files as they were at power-on, then the controls at the times they were
@@ -14,7 +14,7 @@
  *  enters its loop (Start: the card read; its SDRAM isn't cleared at boot, SDRAM_NOINIT, so
  *  nothing in it is read before it's written); the times count from
  *  there, and the script's `booted` line lines them up with the twin's own start. The audio
- *  in isn't recorded: the replay plays a tone.
+ *  in isn't recorded: the replay plays a tone, into AUX and the mic.
  *
  *  A logged time is when the firmware saw the change, after its debouncing; the file gives
  *  when the hand did it (kLead), as the twin debounces too. A MIDI message is logged as it
@@ -43,7 +43,8 @@ namespace chompi
 struct LoggedEvent
 {
     uint32_t ms;   // since Start
-    int16_t value; // a key: 1 down, 0 up; a detent: +-1; the switch: its level; the clock: BPM x10;
+    int16_t value; // a key: 1 down, 0 up; a detent: +-1; the switch: its level; the jack: 1 a
+                   // cable in; the clock: BPM x10;
                    // MIDI: its two data bytes, 7 bits each, the first on top
     uint8_t kind;  // EventLog::Kind
     uint8_t id;    // a key: its SwId; a knob: its encoder, 1-6 (SW1-SW6); the clock: how long
@@ -90,6 +91,7 @@ public:
         SYSEX, // FRIZZ's own, with two data bytes (MidiControl.h)
         CLOCK_USB, // as CLOCK and MIDI, from USB
         MIDI_USB,
+        JACK,      // a cable in AUX or out
     };
 
     void Init(EventLogMem* mem, FATFS* fs, const char* path)
@@ -101,10 +103,11 @@ public:
         path_ = path;
     }
 
-    /** From main() as it enters its loop: the list starts, with the mode switch as it is
-     *  and the card's FRIZZ files as SceneStore left them at boot */
-    void Start(uint32_t now, bool toggle)
+    /** From main() as it enters its loop: the list starts, with the mode switch and AUX's
+     *  jack as they are and the card's FRIZZ files as SceneStore left them at boot */
+    void Start(uint32_t now, bool toggle, bool jack)
     {
+        jack_at_start_ = jack;
         // relative, as SceneStore's: /FRIZZ, or the root on a card where it couldn't be made
         Snapshot(kSceneFile, mem_->scenes, kSceneFileMax);
         Snapshot(kMasterFile, mem_->master, kMasterFileMax);
@@ -140,6 +143,9 @@ public:
             Add(TOGGLE, 0, state ? 0 : 1);
         }
     }
+
+    /** From the audio callback: a cable plugged into AUX (true) or pulled, once debounced */
+    EVENT_LOG_ONCE void Jack(bool plugged) { Add(JACK, 0, plugged); }
 
     /** From the play page, as SHIFT + VOLUME press have been held 2 s on the settings page.
      *  Ignored while a file is being written */
@@ -204,6 +210,7 @@ private:
     static const uint32_t kSrTurnLeadMs = 4;
     static const uint32_t kTurnLeadMs = 3;
     static const uint32_t kToggleLowLeadMs = 58, kToggleHighLeadMs = 56;
+    static const uint32_t kJackLeadMs = 20; // its debouncing (chompi_main.cpp)
     // MIDI has nothing to debounce: its 1 ms is the twin's `booted`, which looks for the main
     // loop once a millisecond, so its times count from a millisecond after the log's
     static const uint32_t kMidiLeadMs = 1;
@@ -216,6 +223,7 @@ private:
         case KEY: return e.value && e.id != ENC_5_SW ? kSrKeyDownLeadMs : kKeyLeadMs;
         case TURN: return e.id <= 4 ? kSrTurnLeadMs : kTurnLeadMs;
         case TOGGLE: return e.value ? kToggleHighLeadMs : kToggleLowLeadMs;
+        case JACK: return kJackLeadMs;
         case CLOCK:
         case CLOCK_USB: return e.id * 10u;
         default: return kMidiLeadMs;
@@ -401,7 +409,9 @@ private:
             f_close(&file_); // open: a failed write mustn't leave it so
             return false;
         }
-        Put("input sine 220 0.3\ntoggle ");
+        // the twin's jack has a cable in until told otherwise
+        Put(jack_at_start_ ? "input sine 220 0.3\nmic sine 220 0.3\ntoggle "
+                           : "input sine 220 0.3\nmic sine 220 0.3\njack out\ntoggle ");
         PutNum(toggle_at_start_ ? 0 : 1);
         Put("\nbooted\n");
         if (Flush())
@@ -439,6 +449,9 @@ private:
             case TOGGLE:
                 Put("toggle ");
                 PutNum(e.value);
+                break;
+            case JACK:
+                Put(e.value ? "jack in" : "jack out");
                 break;
             case MIDI:
             case MIDI_USB:
@@ -487,6 +500,7 @@ private:
     volatile size_t count_ = 0;
     volatile bool full_ = false;
     bool toggle_ = false, toggle_at_start_ = false;
+    bool jack_at_start_ = true;
     uint32_t clock_checked_ = 0;
     uint32_t locks_seen_ = 0, locked_at_ = 0;
     int16_t clock_logged_ = 0; // the tempo the log has, 0 for none

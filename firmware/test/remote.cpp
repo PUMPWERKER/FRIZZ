@@ -738,6 +738,12 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc == 0, "remote: a script that toggles up and down again, no key there, plays");
     if (rc != 0)
         printf("%s\n", out.c_str());
+    // the input's key up there (the upper A#, AUX or the mic) isn't saved: it plays (#113)
+    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_25\nwait 100\ntap KEY_25\nwait 100\ntoggle 0\nwait 100\n");
+    rc = Remote({"play", script, "--save"}, out);
+    Check(rc == 0, "remote: and one that taps the input's key there plays: it isn't saved (#113)");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
     Write(script, "booted\nmidi F0 7D 43 48 13 00 05 F7\n");
     rc = Remote({"play", script, "--save"}, out);
     const std::string refused_sysex = out;

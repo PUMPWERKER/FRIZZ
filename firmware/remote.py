@@ -35,8 +35,8 @@ times, sends its `midi` and `clock` to the device, and checks its `expect led` l
 LEDs the device shows, dimmed as the card's led_brightness (the settings page) has them: at
 100, 75 or 50 %, the one level that fits every line, said when it isn't 100 %; its
 `toggle 0|1` sets the mode switch (down, up) over SysEx, back to the real one when the script
-ends. What only the twin has (the card, the input, the battery, power-on) is
-skipped, and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
+ends. What only the twin has (the card, the input, the mic, AUX's jack, the battery, power-on)
+is skipped, and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
 and prints the worst, the way to try a scenario for crackles on FRIZZ.bin itself rather than on
 the bench's build. A bug report (/FRIZZ/bug-N.txt) plays too, from where the device is.
 
@@ -59,7 +59,7 @@ written as FRIZZ writes it. A FRIZZ from before PERSIST, or --save, gets the old
 shares, naming the line and the file (card_use). /FRIZZ/frizz_master.txt, saved 2 s after the
 last change, with no .bak to go back to: the settings page (twin/scenarios/settings.txt, most
 bug reports, which end with SHIFT + VOLUME held there), a key or knob while the mode switch is
-up, or a settings SysEx (#58); knobs 1-4 turned with the compressor selected (comp.txt, or
+up but the input's (the upper A#, not saved), or a settings SysEx (#58); knobs 1-4 turned with the compressor selected (comp.txt, or
 in focus by CC 23); MIDI's CCs never (#97). /FRIZZ/frizz_scenes.txt, whose .bak keeps only the one before: SAVE /
 COPY / DELETE confirmed with CHOMPI once a slot is picked (scenes.txt), or a scene put over
 SysEx (#78). It reads where the device stands before it decides (the page, what the knobs edit,
@@ -128,6 +128,7 @@ COMP_KEY = "KEY_15"
 FX_KEYS = {"KEY_%d" % k for k in range(1, 15)}
 SLOT_KEYS = {"KEY_%d" % k for k in range(16, 21)}
 MODE_KEYS = {"KEY_25": 1, "KEY_24": 2, "KEY_23": 3}
+INPUT_KEY = "KEY_25"  # the settings page's upper A#: AUX or the mic, not saved
 # MidiControl.h's midimap: the morph to a scene, the focus (15 the compressor), the notes
 MORPH_CC, FOCUS_CC, COMP_FOCUS = 3, 23, 15
 BASE_NOTE, CHOMPI_NOTE = 48, 45
@@ -526,8 +527,8 @@ def card_use(path, up, comp, mode):
     shown; comp, the compressor's knobs selected; mode, a scene mode (MODES), its slot taken
     as picked.
 
-    The settings page: a key or a knob while the mode switch is up, or a setting over SysEx
-    (frizz_master.txt, #58). The play page: knobs 1-4 turned with the compressor selected, by
+    The settings page: a key or a knob while the mode switch is up, but the input's (not
+    saved), or a setting over SysEx (frizz_master.txt, #58). The play page: knobs 1-4 turned with the compressor selected, by
     its key or MIDI's focus (frizz_master.txt), SAVE / COPY / DELETE confirmed with the CHOMPI
     key once a slot is picked, or a scene put over SysEx (frizz_scenes.txt, #78). The hand's
     and SysEx's keys and knobs reach the page the switch shows, MIDI's notes and controllers
@@ -557,7 +558,8 @@ def card_use(path, up, comp, mode):
             if up:
                 mode = 0  # the settings page shown leaves the scene mode (NormalPage::Draw)
         elif cmd in ("down", "tap", "turn") and up:
-            used = "%s %s on the settings page" % (cmd, args[0]), MASTER
+            if cmd == "turn" or args[0] != INPUT_KEY:
+                used = "%s %s on the settings page" % (cmd, args[0]), MASTER
         elif cmd in ("down", "tap"):
             used = key(args[0], "%s %s" % (cmd, args[0]))
         elif cmd == "turn" and comp and 1 <= int(args[0]) <= 4:
@@ -575,7 +577,8 @@ def card_use(path, up, comp, mode):
                         if up:
                             mode = 0
                     elif m[4] == KEY and up:
-                        used = "a SysEx key on the settings page", MASTER
+                        if m[5] >= len(SW_NAMES) or SW_NAMES[m[5]] != INPUT_KEY:
+                            used = "a SysEx key on the settings page", MASTER
                     elif m[4] == KEY and m[6:7] != [0] and m[5] < len(SW_NAMES):
                         used = key(SW_NAMES[m[5]], "a SysEx key")
                     elif m[4] == TURN and not up and comp and 1 <= m[5] <= 4:

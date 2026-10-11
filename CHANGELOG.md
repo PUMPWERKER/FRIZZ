@@ -9,6 +9,14 @@ what FRIZZ does.
 
 ### Added
 
+- **The built-in microphone as an input** (#113), as on TAPE and TEMPO: with no cable in AUX,
+  FRIZZ hears CHOMPI's mic, and records it into the looper like AUX. Plugging a cable into AUX
+  switches to AUX, pulling it out back to the mic; at power-on the jack decides. On the
+  settings page, A# of the upper octave picks the other input by hand (green: AUX, magenta:
+  the mic) until the next cable goes in or out; it isn't saved. The input gain, the headphone
+  feed and the effects take the mic as they take AUX; it's mono, 5 times the input gain and
+  through a highpass at about 150 Hz, as on TAPE (without TAPE's narrow notches, #127), and the
+  mono setting doesn't touch it. See MANUAL.md, "Input: AUX or the mic".
 - **A scene crossfader by hand** (#66), after the Octatrack's: SHIFT + a scene key, and
   while you still hold SHIFT, turn the transport knob: the morph is in your hand, the scene
   you're in on the left, the one you picked on the right, back and forth as often as you

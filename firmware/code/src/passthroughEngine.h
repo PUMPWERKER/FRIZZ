@@ -1,7 +1,12 @@
 /** @file passthroughEngine.h
- *  @brief Audio engine: the stereo AUX input goes to both outputs through the Volume
- *  Engine: input gain -> input/loop mix -> punch-in FX (FxChain.h) -> master compressor
- *  (MasterComp.h) -> output gain -> safety limiter.
+ *  @brief Audio engine: the stereo AUX input, or the built-in mic, goes to both outputs
+ *  through the Volume Engine: input gain -> input/loop mix -> punch-in FX (FxChain.h) ->
+ *  master compressor (MasterComp.h) -> output gain -> safety limiter.
+ *
+ *  The mic (SetMicInput) is TAPE's: DC blocked after the input gain and its own x5, highpassed
+ *  (MicFilter.h), and the same on both sides. It replaces AUX for everything that takes the
+ *  input: the looper, the mix, the headphones' input on its own. A switch crossfades
+ *  over kMicFadeSamples; the mic's filter runs only while the mic is heard.
  *
  *  In the code the mix is dry/wet: dry is the input on its own, wet is the looper's playback
  *  on its own. The looper records the dry signal (see Looper.h).
@@ -30,6 +35,7 @@
 #include "limiter.h"
 #include "Looper.h"
 #include "MasterComp.h"
+#include "MicFilter.h"
 #include "TempoClock.h"
 
 using namespace daisy;
@@ -38,6 +44,7 @@ using namespace daisysp;
 static constexpr float kLineOutGain = .3f;
 static constexpr float kHpGain = .2f;
 static constexpr float kLineInGain = 3.f;
+static constexpr float kMicGain = 5.f; // TAPE's, after the input gain as there
 // the safety limiter's threshold and makeup (limiter.h)
 static constexpr float kLimThresh = .25f;
 static constexpr float kLimMakeup = .9f;
@@ -66,6 +73,8 @@ public:
 
         dcblock_line_in_l_.Init(sample_rate);
         dcblock_line_in_r_.Init(sample_rate);
+        dcblock_mic_in_.Init(sample_rate);
+        mic_filter_.Init(sample_rate);
 
         lim_hp_l_.Init();
         lim_hp_r_.Init();
@@ -75,23 +84,30 @@ public:
         output_env_follower.Init();
     }
 
-    /** Inputs: 0 mic (unused), 1 X, 2 aux L, 3 aux R
+    /** Inputs: 0 mic, 1 X, 2 aux L, 3 aux R
      *  Outputs: 0/1 headphone L/R, 2/3 master L/R */
     FRIZZ_HOT void Process(const float *const *in, float **out, size_t size)
     {
         float dryl[size], dryr[size], wetl[size], wetr[size];
 
-        for (size_t i = 0; i < size; i++)
+        const bool mic = mic_in_;
+        if (!mic && mic_fade_ == 0.f)
         {
-            // Every setting has a target and a live value; fonepole() slews the live
-            // value toward the target (a ~21ms time constant) so knob turns don't zipper.
-            fonepole(ingain_, ingain_target_, .001f);
+            // AUX alone, as it usually is
+            for (size_t i = 0; i < size; i++)
+            {
+                // Every setting has a target and a live value; fonepole() slews the live
+                // value toward the target (a ~21ms time constant) so knob turns don't zipper.
+                fonepole(ingain_, ingain_target_, .001f);
 
-            // mono: a TS plug grounds the right channel, so the left (its tip) feeds both
-            const float in_r = mono_in_ ? in[2][i] : in[3][i];
-            dryl[i] = dcblock_line_in_l_.Process(in[2][i] * ingain_ * kLineInGain);
-            dryr[i] = dcblock_line_in_r_.Process(in_r * ingain_ * kLineInGain);
+                // mono: a TS plug grounds the right channel, so the left (its tip) feeds both
+                const float in_r = mono_in_ ? in[2][i] : in[3][i];
+                dryl[i] = dcblock_line_in_l_.Process(in[2][i] * ingain_ * kLineInGain);
+                dryr[i] = dcblock_line_in_r_.Process(in_r * ingain_ * kLineInGain);
+            }
         }
+        else
+            ProcessMic(in, dryl, dryr, size, mic);
         BENCH_MARK(INPUT);
 
         looper.Process(dryl, dryr, wetl, wetr, size);
@@ -213,6 +229,9 @@ public:
     inline void SetHeadphoneCue(float cue) { hp_cue_target_ = cue; }
     /** AUX input: false = stereo, true = mono, the left channel to both sides */
     inline void SetMonoInput(bool mono) { mono_in_ = mono; }
+    /** The input: false = AUX, true = the built-in mic, crossfaded over kMicFadeSamples */
+    inline void SetMicInput(bool mic) { mic_in_ = mic; }
+    inline bool MicInput() const { return mic_in_; }
 
     /** Punch-in FX, by FxId (FxChain.h). While a morph runs, they go to it (FxMorph.h) */
     inline void SetFxOn(size_t fx, bool on)
@@ -284,6 +303,33 @@ public:
     chompi::Looper looper;
 
 private:
+    /** The input while the mic is heard: the mic alone, or crossfading between it and AUX
+     *  (mic: towards the mic) */
+    FRIZZ_HOT void ProcessMic(const float *const *in, float* dryl, float* dryr, size_t size,
+                              bool mic)
+    {
+        for (size_t i = 0; i < size; i++)
+        {
+            fonepole(ingain_, ingain_target_, .001f);
+            const float m = mic_filter_.Process(dcblock_mic_in_.Process(in[0][i] * ingain_ * kMicGain));
+            if (mic && mic_fade_ == 1.f)
+            {
+                dryl[i] = dryr[i] = m;
+                continue;
+            }
+            mic_fade_ = mic ? fminf(mic_fade_ + kMicFadeStep, 1.f) : fmaxf(mic_fade_ - kMicFadeStep, 0.f);
+            const float in_r = mono_in_ ? in[2][i] : in[3][i];
+            const float l = dcblock_line_in_l_.Process(in[2][i] * ingain_ * kLineInGain);
+            const float r = dcblock_line_in_r_.Process(in_r * ingain_ * kLineInGain);
+            dryl[i] = l + (m - l) * mic_fade_;
+            dryr[i] = r + (m - r) * mic_fade_;
+        }
+    }
+
+    // a switch between AUX and the mic crossfades over 5 ms, so neither clicks
+    static constexpr float kMicFadeSamples = 240.f;
+    static constexpr float kMicFadeStep = 1.f / kMicFadeSamples;
+
     /** A chaos step's scramble (FxChaos.h): the loop plays the step jump of the way round its
      *  other steps (on the chaos key's grid), or in place at 0, or while it isn't playing */
     void Scramble(float jump)
@@ -325,7 +371,8 @@ private:
 
     float sample_rate_;
     std::atomic<float> tap_bpm_{0.f};
-    daisysp::DcBlock dcblock_line_in_l_, dcblock_line_in_r_;
+    daisysp::DcBlock dcblock_line_in_l_, dcblock_line_in_r_, dcblock_mic_in_;
+    chompi::MicFilter mic_filter_;
     chompi::Limiter lim_hp_l_, lim_hp_r_, lim_line_l_, lim_line_r_;
     volatile float lim_gain_ = 1.f; // TakeLimiterGain
     chompi::EnvFollower output_env_follower;
@@ -338,6 +385,8 @@ private:
     chompi::FxMorph morph_;
     chompi::MasterComp comp_;
     volatile bool mono_in_ = false;
+    volatile bool mic_in_ = false;
+    float mic_fade_ = 0.f; // 0 AUX .. 1 the mic, towards mic_in_
     // live values start at 0 and slew up to the targets the play page sets at boot
     float mgain_ = 0.f, mgain_target_ = 0.f;
     float ingain_ = 0.f, ingain_target_ = 0.f;

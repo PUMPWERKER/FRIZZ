@@ -10,7 +10,8 @@ unchanged with the host's `g++`. Only the board underneath is simulated (`host/`
 | encoders 1-4 on a sixth 4021, 5 and 6 on their own pins | a full quadrature cycle per detent, 8 ms |
 | 35 WS2812 LEDs fed by timer PWM + DMA | the DMA's buffer decoded back to the bytes each LED latches |
 | MP2722 charger on I²C | a battery with a voltage, a charger plugged or not, shipping mode |
-| SAI audio, 24-sample blocks at 48 kHz | the same callback, block by block |
+| SAI audio, 24-sample blocks at 48 kHz | the same callback, block by block: AUX L and R and the built-in mic in |
+| AUX's jack detection on a pin | the pin, a cable in until a script pulls it (`jack`) |
 | MIDI in over the TRS jack's UART | bytes fed to libDaisy's parser, at the next block |
 | USB MIDI | bytes in to libDaisy's parser, at the next block; what FRIZZ sends kept for the script (`usb`, `replies`) |
 | SD card | `test/host/fatfs.h`, a card in memory |
@@ -50,7 +51,8 @@ host would do.
   PLAY Space, LOOP Enter); right-click holds a key down, for combos and for power-on with keys held.
 - Knobs: scroll or drag up and down, click the centre to press.
 - Into AUX: a test tone, an audio file (looped), or the mic / a line in. Out: the master out or
-  the headphones.
+  the headphones. AUX's jack always has a cable in there, so FRIZZ's own mic input is for
+  scripts (`mic`, `jack`).
 - MIDI clock: one of its own at a set tempo, or a connected MIDI device's (WebMIDI).
 - Battery: its voltage and the charger, for the low-battery lockout.
 - Switching off and on restarts the firmware (a new worker); the SD card's files are kept in the
@@ -122,6 +124,8 @@ it with SHIFT held: leave the gaps a hand would.
 | `turn ENC N` | encoder 1-6 (SW1-SW6: 4 is knob 1, 1-3 knobs 2-4, 5 the transport, 6 VOLUME) by N detents. They play out in the background, 8 ms each, as a hand turns: `wait` for them before the next key |
 | `toggle 0\|1` | the mode switch, as the 4021 reads it: 0 down (the play page, where the twin starts), 1 up (the settings page) |
 | `input sine HZ AMP` / `input wav FILE` / `input off` | what goes into AUX (a WAV loops) |
+| `mic sine HZ AMP` / `mic wav FILE` / `mic off` | what goes into the built-in mic (a WAV's left channel), heard while the mic is the input |
+| `jack in` / `jack out` | a cable in AUX's jack, as at first, or none: none at power-on (`jack out` before the first command that needs the device) or pulled later makes the mic the input (`chompi_main.cpp`) |
 | `midi HEX...` | raw bytes into the MIDI jack |
 | `usb HEX...` | raw bytes into USB MIDI, as a computer sends them (FRIZZ's queries are answered only there) |
 | `clock BPM [jitter MS] [drift PPM] [usb] [ramp BPM MS] [seed N]` | a running MIDI clock into the jack, or with `usb` over USB (one of each can run): each tick up to MS early or late, the sender's clock PPM slow, USB's 1 ms frames, a ramp to another tempo over MS (`clockgen.h`). `clock 0 [usb]` stops it |
@@ -137,11 +141,12 @@ it with SHIFT held: leave the gaps a hand would.
 SHIFT + VOLUME press held 2 s on a CHOMPI's settings page writes `/FRIZZ/bug-N.txt` (`code/src/EventLog.h`, MANUAL.md's
 *Bug reports*): a script of this kind. It puts the card's `frizz_scenes.txt` and
 `frizz_master.txt` as they were at power-on on the twin's card (`card file`), plays a 220 Hz
-tone into AUX (the audio in isn't recorded: change the `input` line to play a WAV instead),
-and from `booted` on, every key, detent, mode-switch flip and MIDI clock change at the time
-the hand made it: the device logs when its debouncing saw it, and gives the time back by the
+tone into AUX and the mic (the audio in isn't recorded: change the `input` or `mic` line to
+play a WAV instead), `jack out` if AUX had no cable at power-on, and from `booted` on, every
+key, detent, mode-switch flip, cable in or out of AUX and MIDI clock change at the time the
+hand made it: the device logs when its debouncing saw it, and gives the time back by the
 latency the twin measures for the same code (a key 7-8 ms, a detent 3-4 ms, the mode switch
-56-58 ms). So
+56-58 ms, the jack 20 ms). So
 
 ```bash
 ./run.sh -o out.wav -l leds.txt bug-1.txt
