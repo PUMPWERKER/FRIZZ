@@ -383,12 +383,13 @@ public:
      *   - off in both: the parameters jump now, unheard, except a send's, which rings out as
      *     it was (kFxSends);
      *   - on in both: continuous parameters glide, stepped ones switch at the landing;
-     *   - one it turns on: its fade knobs (FxParams::fade) start at their neutral defaults
-     *     and glide to the scene, the rest jump now; the key comes on as soon as they've got
-     *     there;
-     *   - one it turns off: its fade knobs glide to their defaults and the key goes off at the
-     *     landing; the engine keeps it there, silent, until its key next comes on;
-     *   - an FX without fade knobs it turns on or off: all at the landing.
+     *   - one it turns on: its fade knobs (FxParams::fade), or the shifter's and slicer's Mix
+     *     (MorphFades), start neutral (dry) and glide to the scene, the rest jump now; the key
+     *     comes on as soon as they've got there;
+     *   - one it turns off: its fade knobs, or the freezer's, shifter's and slicer's Mix, glide
+     *     to neutral and the key goes off at the landing; the engine keeps it there, silent,
+     *     until its key next comes on;
+     *   - an FX that doesn't fade (or the freezer coming on): all at the landing.
      *  Only what changes is sent, as in a recall
      *  On the device, call it with the audio interrupt blocked */
     FX_SCENE_ONCE void Morph(const FxScene& scene)
@@ -407,12 +408,13 @@ public:
             const bool was = IsOn(fx);
             const bool will = held_[fx] || ((scene.latched >> fx) & 1);
             const uint16_t bit = Bit(fx);
+            const uint8_t fades_in = MorphFades(fx, true), fades_out = MorphFades(fx, false);
             if (was)
                 plan.was_on |= bit;
             if (was != will)
             {
                 plan.deferred |= bit;
-                if (will && fxp.fade)
+                if (will && fades_in)
                     plan.wake |= bit;
             }
             if (was && !will)
@@ -437,7 +439,6 @@ public:
             for (size_t p = 0; p < kNumFxParams; p++)
             {
                 const float to = scene.params[fx][p];
-                const bool fade = (fxp.fade >> p) & 1;
                 float from = params_[fx][p];
                 MorphParam how = MorphParam::HOLD;
                 if (!was && !will)
@@ -448,12 +449,16 @@ public:
                                   || ((fxp.split >> p & 1) && !SplitUpper(from) && !SplitUpper(to))
                               ? MorphParam::GLIDE
                               : MorphParam::HOLD;
-                else if (fxp.fade && will)
+                else if (will)
                 {
-                    from = fade ? fxp.defaults[p] : to;
-                    how = fade ? MorphParam::GLIDE : MorphParam::HOLD;
+                    if (fades_in)
+                    {
+                        const bool fade = (fades_in >> p) & 1;
+                        from = fade ? MorphNeutral(fx, p) : to;
+                        how = fade ? MorphParam::GLIDE : MorphParam::HOLD;
+                    }
                 }
-                else if (fxp.fade && fade)
+                else if ((fades_out >> p) & 1)
                     how = MorphParam::FADE_OUT;
                 plan.start[fx][p] = from;
                 plan.target[fx][p] = to;

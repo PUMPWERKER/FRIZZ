@@ -135,6 +135,15 @@ what FRIZZ does.
 
 ### Changed
 
+- **The freezer, shifter and slicer fade in a morph** (#118), with their page 2 Mix, instead
+  of switching on the bar line. One the new scene turns off glides to dry over the morph and
+  goes off on the bar line, as the other effects do; the shifter or slicer the new scene
+  turns on comes on when the glide starts, dry, and its Mix glides up to the scene's. The
+  freezer coming on still grabs on the bar line: a grab in the middle of a bar sounds worse.
+  The crossfader does the same by hand: the shifter and slicer fade in from the left end,
+  the three fade out up to the right end, the freezer coming on switches in the middle as
+  before. Stepped knobs of an effect on in both scenes (delay division, slicer pattern,
+  shift …) still switch. See MANUAL.md, "Morphing to a scene".
 - **Stereo moved from knob 4 to page 2's knob 2** (#117) on the freezer, shifter, flanger,
   resonator, slicer and wow & flutter (and the phaser and, since v0.12-beta.1, the folder,
   crusher and filter): knob 4 is the effect's own setting now, the one you play (see Added).
