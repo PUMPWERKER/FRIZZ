@@ -1224,6 +1224,9 @@ int main()
         Save(1);
         RunMs(1000);
         const float closed = RunMs(300);
+        // back at the closed filter: about as quiet, with a floor 40dB under the dry, as
+        // closed is all but exactly 0 since the key's fade lands on 1 (#45)
+        const float quiet = closed * 1.3f + dry * .01f;
         printf("      dry %.3f, filter closed %.3f\n", dry, closed);
         Check(closed < dry * .3f, "scene-fader: scene 1, the filter closed, is quiet");
 
@@ -1252,9 +1255,9 @@ int main()
               "scene-fader: all the way right, the blank scene, its key bright");
         Turn(5, -24);
         RunMs(400);
-        Check(RunMs(300) < closed * 1.3f, "scene-fader: and all the way back, scene 1 again");
+        Check(RunMs(300) < quiet, "scene-fader: and all the way back, scene 1 again");
         RunMs(5000);
-        Check(state().size() > 6 && (state()[6] & 2) && RunMs(300) < closed * 1.3f,
+        Check(state().size() > 6 && (state()[6] & 2) && RunMs(300) < quiet,
               "scene-fader: held, the bar lines don't land it");
 
         // let go halfway: it stays there, the blank scene edited
@@ -1297,7 +1300,7 @@ int main()
         RunMs(500);
         st = state();
         Check(st.size() > 9 && !(st[6] & 3) && st[5] == 2 && (st[9] & (1 << 4))
-                  && RunMs(300) < closed * 1.3f,
+                  && RunMs(300) < quiet,
               "scene-fader: let go at the start, scene 1 is back as it was, not edited");
 
         // SHIFT + turn without a held morph: the speed as ever, no fader
@@ -1323,11 +1326,14 @@ int main()
         Save(1);
         RunMs(1000);
         const float closed = RunMs(300);
+        // back at the closed filter: about as quiet, with a floor 40dB under the dry, as
+        // closed is all but exactly 0 since the key's fade lands on 1 (#45)
+        const float quiet = closed * 1.3f + dry * .01f;
         Trs({kCC, 3, 0}); // to the blank scene, gliding over a bar
         RunMs(20);
         Trs({kCC, 80, 0});
         RunMs(3000);
-        Check(state().size() > 6 && (state()[6] & 2) && RunMs(300) < closed * 1.3f,
+        Check(state().size() > 6 && (state()[6] & 2) && RunMs(300) < quiet,
               "midi fader: CC 80 takes the morph; at 0 it waits at the start, past the bar line");
         Trs({kCC, 80, 64});
         RunMs(400);
