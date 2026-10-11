@@ -4322,6 +4322,39 @@ int main()
             const std::string st = Ask({0x20});
             Check(RunMs(1000) > dry * .9f && st.size() > 9 && !(st[6] & 2) && LatchedFx(st) == 0,
                   "morph-mix-fader: all the way, dry; let go, it lands on the blank scene");
+            // the slicer parked at Mix 0: a recall of scene 1 brings it back at its Mix
+            Tap("KEY_17");
+            RunMs(500);
+            const float back = RunMs(1000);
+            printf("      scene 1 recalled: %.3f\n", back);
+            Check(back < sliced * 1.3f, "morph-mix-fader: then scene 1 recalled, the slicer sliced again, not dry");
+        }});
+
+        // the shifter, a fifth up, in and out by a morph: no click where it comes on at dry
+        // or goes off at the landing (a guard: it switched without one before too)
+        cases.push_back({"morph-mix-shifter", [] {
+            RunMs(kReadyMs);
+            const float dry_step = StepMs(1000);
+            Latch("KEY_2");
+            Turn(kKnob1Encoder, 14); // shift up
+            RunMs(500);
+            const float shifted_step = StepMs(2000);
+            Save(1);
+            RunMs(1000);
+            const float steady = std::max(dry_step, shifted_step);
+            max_step = 0.f;
+            morph4("KEY_16");
+            const float out = max_step;
+            max_step = 0.f;
+            morph4("KEY_17");
+            const float in = max_step;
+            printf("      largest step: steady %.4f (dry %.4f), fading out %.4f, in %.4f\n", steady,
+                   dry_step, out, in);
+            Check(out < steady * 1.5f && in < steady * 1.5f,
+                  "morph-mix-shifter: fading out and in with its Mix: no click");
+            const std::string st = Ask({0x20});
+            Check(st.size() > 9 && st[5] == 2 && (LatchedFx(st) >> 1 & 1),
+                  "morph-mix-shifter: landed on scene 1, the shifter (FX 1) latched");
         }});
 
         // the freezer: frozen on a sine, the input then silent; a morph to the blank scene
