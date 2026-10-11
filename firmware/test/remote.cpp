@@ -24,7 +24,6 @@
 using namespace twin;
 
 static const int kFilterKeyLed = 20;
-static const uint32_t kReadyMs = 6000;
 
 static int master_fd = -1;
 static std::string slave_path;
@@ -71,6 +70,7 @@ static void RunMs(uint32_t ms)
         Run(2, nullptr, nullptr);
     }
 }
+#include "twintest.h" // after RunMs, which its Tap runs
 
 static bool Has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
 
@@ -165,19 +165,6 @@ static int Python(const std::string& code, std::string& out)
     const int status = p ? pclose(p) : -1;
     unlink(file.c_str());
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-}
-
-static std::string Hex(const Rgb& c)
-{
-    char s[8];
-    snprintf(s, sizeof(s), "%02x%02x%02x", c.r, c.g, c.b);
-    return s;
-}
-
-static std::string Card(const char* path)
-{
-    auto it = CardFiles().find(path);
-    return it == CardFiles().end() ? "" : it->second;
 }
 
 static void Write(const std::string& path, const std::string& text)

@@ -1,9 +1,7 @@
-// timing.h: what midi.cpp and sync.cpp share: the virtual CHOMPI (twin.h) with up to two MIDI
-// clocks into it (clockgen.h, the jack's and USB's), read out block by block with
-// twin::Probe(), and each case on a freshly booted device (a forked process).
+// timing.h: what midi.cpp, sync.cpp and midiout.cpp share: the virtual CHOMPI (twin.h) with up
+// to two MIDI clocks into it (clockgen.h, the jack's and USB's), read out block by block with
+// twin::Probe(), and each case on a freshly booted device (a forked process, cases.h).
 #pragma once
-#include <sys/wait.h>
-#include <unistd.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdarg>
@@ -13,14 +11,13 @@
 #include <map>
 #include <string>
 #include <vector>
+#include "cases.h"
 #include "check.h"
 #include "clockgen.h"
 #include "twin.h"
 
 using namespace twin;
 
-// boot, the rainbow, and the play page ready (as ui.cpp)
-static const uint32_t kReadyMs = 6000;
 static const double kSr = 48000.;
 
 static ClockGen trs, usb; // a sequencer on the jack and a DAW over USB
@@ -59,6 +56,7 @@ static void RunBlocks(size_t n)
     }
 }
 static void RunMs(double ms) { RunBlocks(static_cast<size_t>(ms * 2. + .5)); }
+#include "twintest.h" // after RunMs, which its Tap runs
 
 /** Runs until cond holds or max_ms has passed; whether it held */
 static bool RunUntil(const std::function<bool()>& cond, double max_ms)
@@ -70,13 +68,6 @@ static bool RunUntil(const std::function<bool()>& cond, double max_ms)
         RunBlocks(1);
     }
     return cond();
-}
-
-__attribute__((unused)) static void Tap(const char* key, uint32_t ms = 60)
-{
-    Press(key, true);
-    RunMs(ms);
-    Press(key, false);
 }
 
 static ClockGen::Config Clock(double bpm, double jitter_ms = 0., bool on_usb = false,
@@ -108,13 +99,11 @@ static void StartUsb(ClockGen::Config c)
     } while (0)
 
 
-static std::vector<std::pair<std::string, std::function<void()>>> cases;
-
 // A measurement a case hands back to main, for a check over all of them (RunCases' summary):
 // one that holds or fails in every case together, so a single case just inside a limit by
 // chance doesn't count as a fix
 static std::string results_path;
-static void Record(const std::string& key, double value)
+__attribute__((unused)) static void Record(const std::string& key, double value)
 {
     if (FILE* f = fopen(results_path.c_str(), "a"))
     {
@@ -136,7 +125,7 @@ static std::map<std::string, std::vector<double>> Recorded()
     return r;
 }
 /** The largest |value| recorded under key, 0 if none */
-static double Worst(const std::map<std::string, std::vector<double>>& r, const char* key)
+__attribute__((unused)) static double Worst(const std::map<std::string, std::vector<double>>& r, const char* key)
 {
     double w = 0.;
     auto it = r.find(key);
@@ -151,42 +140,12 @@ static double Worst(const std::map<std::string, std::vector<double>>& r, const c
 static int RunCases(const std::function<void(const std::map<std::string, std::vector<double>>&)>&
                         summary = nullptr)
 {
-    char path[] = "/tmp/frizz-timing-XXXXXX";
-    close(mkstemp(path));
-    results_path = path;
-    int failed = 0, found = 0;
-    for (auto& c : cases)
-    {
-        fflush(stdout);
-        const pid_t pid = fork();
-        if (pid == 0)
-        {
-            Boot();
-            c.second();
-            fflush(stdout);
-            // failures in the low 4 bits, known faults in the high 4
-            _exit((failures > 15 ? 15 : failures) | (known > 15 ? 15 : known) << 4);
-        }
-        int status = 0;
-        waitpid(pid, &status, 0);
-        if (!WIFEXITED(status))
-        {
-            printf("FAIL  %s: crashed\n", c.first.c_str());
-            failed++;
-        }
-        else
-        {
-            failed += WEXITSTATUS(status) & 15;
-            found += WEXITSTATUS(status) >> 4;
-        }
-    }
-    failures = failed;
-    known = found;
+    results_path = RunDir() + "/results";
+    RunAllCases();
     if (summary)
     {
         printf("over all cases:\n");
         summary(Recorded());
     }
-    unlink(path);
     return Finish();
 }

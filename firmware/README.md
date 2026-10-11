@@ -97,7 +97,7 @@ Nothing else gets installed: the first run builds DaisySP and the twin for the c
 
 ```bash
 cd firmware/test
-./all.sh          # everything, side by side, one line each: about 75 s on 12 cores, the first time more
+./all.sh          # everything, side by side, one line each: about 30 s on 12 cores, the first time more
 ./check.sh        # engine at HEAD vs the working tree: a refactor must print "bit-identical"
 ./unit.sh tempo   # one unit check (each NAME.cpp; ui runs the whole firmware on the twin)
 ```
