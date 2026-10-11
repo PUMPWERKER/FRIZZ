@@ -216,6 +216,25 @@ static void Latch(const char* key)
     RunMs(200);
 }
 
+/** Keys pressed and let go to the ms: "+KEY_5" down, "-KEY_5" up, a number waits that many
+ *  ms; keys in a row go down in the same ms */
+static void Keys(const std::vector<const char*>& steps)
+{
+    for (const char* s : steps)
+    {
+        if (*s == '+' || *s == '-')
+            Press(s + 1, *s == '+');
+        else
+            RunMs(static_cast<uint32_t>(atoi(s)));
+    }
+}
+
+/** The FX latched, a bit each (FxId), as SysEx 0x20 answers them */
+static unsigned LatchedFx(const std::string& st)
+{
+    return st.size() > 9 ? static_cast<uint8_t>(st[8]) << 7 | static_cast<uint8_t>(st[9]) : ~0u;
+}
+
 /** SAVE, a slot (1-4), CHOMPI to confirm */
 static void Save(int slot)
 {
@@ -417,6 +436,127 @@ int main()
         Check(changed, "select: SHIFT + a key puts its effect on the knobs");
         Check(fabsf(RunMs(300) - dry) < dry * .05f, "select: without switching it on");
         Check(Max(SmtLedFull(kShifterKeyLed)) < 80, "select: its key stays dim");
+    }});
+
+    // SHIFT and an FX key nearly together (#115): within kShiftGraceMs (15 ms) of the key's
+    // press, SHIFT going down or let go counts as SHIFT first, a select, and a key's release
+    // bouncing back is taken back; the latch gesture, key then SHIFT, has more time between.
+    // Each from the filter latched (or not), the shifter on the knobs; the debounce sees a
+    // press 8 ms after contact, a release 7 ms after
+    cases.push_back({"select-grace", [] {
+        RunMs(kReadyMs);
+        const unsigned filter = 1u << 4;
+        struct Seq
+        {
+            const char* what;
+            bool latched_before, latched_after;
+            std::vector<const char*> keys;
+        };
+        const std::vector<Seq> seqs = {
+            {"SHIFT let go 1 ms after the key's contact", true, true,
+             {"+KEY_26", "50", "+KEY_5", "1", "-KEY_26", "150", "-KEY_5"}},
+            {"SHIFT let go in the key's ms", true, true,
+             {"+KEY_26", "50", "+KEY_5", "-KEY_26", "150", "-KEY_5"}},
+            {"SHIFT let go 40 ms before the key: a plain press", true, false,
+             {"+KEY_26", "50", "-KEY_26", "40", "+KEY_5", "150", "-KEY_5"}},
+            {"key and SHIFT in the same ms", true, true,
+             {"+KEY_5", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"key, SHIFT 1 ms later", true, true,
+             {"+KEY_5", "1", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"key, SHIFT 5 ms later", true, true,
+             {"+KEY_5", "5", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"key, SHIFT 12 ms later", true, true,
+             {"+KEY_5", "12", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"key, SHIFT 5 ms later, unlatched", false, false,
+             {"+KEY_5", "5", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"key, SHIFT 25 ms later: the latch gesture unlatches", true, false,
+             {"+KEY_5", "25", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"key, SHIFT 25 ms later: the latch gesture latches", false, true,
+             {"+KEY_5", "25", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"SHIFT bouncing 4 ms, the key at its 2nd", true, true,
+             {"+KEY_26", "1", "-KEY_26", "1", "+KEY_26", "+KEY_5", "1", "-KEY_26", "1", "+KEY_26",
+              "100", "-KEY_26", "100", "-KEY_5"}},
+            {"the key bouncing 4 ms, SHIFT let go at its 2nd", true, true,
+             {"+KEY_26", "50", "+KEY_5", "1", "-KEY_5", "1", "-KEY_26", "+KEY_5", "1", "-KEY_5",
+              "1", "+KEY_5", "150", "-KEY_5"}},
+            {"select, SHIFT up, the key's release touching again 7 ms on", true, true,
+             {"+KEY_26", "50", "+KEY_5", "100", "-KEY_26", "100", "-KEY_5", "7", "+KEY_5", "1",
+              "-KEY_5"}},
+            {"select, the key's release touching again 7 ms on, SHIFT held", true, true,
+             {"+KEY_26", "50", "+KEY_5", "100", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5", "100",
+              "-KEY_26"}},
+            {"the latch gesture, its release touching again 7 ms on", false, true,
+             {"+KEY_5", "100", "+KEY_26", "100", "-KEY_26", "100", "-KEY_5", "7", "+KEY_5", "1",
+              "-KEY_5"}},
+            {"a plain tap", true, false, {"+KEY_5", "60", "-KEY_5"}},
+            {"a plain tap, its release touching again 7 ms on", true, false,
+             {"+KEY_5", "60", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5"}},
+            // the compressor's key, then SHIFT: SHIFT + its key, a select, so the filter
+            // held meanwhile doesn't latch
+            {"the filter held, the compressor's key, SHIFT 3 ms later", false, false,
+             {"+KEY_5", "100", "+KEY_15", "3", "+KEY_26", "100", "-KEY_15", "-KEY_26", "100",
+              "-KEY_5"}},
+        };
+        for (const Seq& s : seqs)
+        {
+            if (((LatchedFx(Ask({0x20})) & filter) != 0) != s.latched_before)
+                Latch("KEY_5");
+            Tap("KEY_2"); // the shifter on the knobs
+            RunMs(300);
+            const unsigned before = LatchedFx(Ask({0x20}));
+            Keys(s.keys);
+            RunMs(400);
+            const std::string st = Ask({0x20});
+            const bool comp = strstr(s.what, "compressor") != nullptr;
+            Check(((before & filter) != 0) == s.latched_before && ((LatchedFx(st) & filter) != 0) == s.latched_after
+                      && st.size() > 4 && st[4] == (comp ? 14 : 4),
+                  (std::string("select-grace: ") + s.what + (s.latched_after ? ": latched" : ": unlatched")
+                   + (comp ? ", the compressor selected" : ", the filter selected")).c_str());
+        }
+    }});
+
+    // a key pressed sounds at once, the grace window (#115) or not: the filter, turned down,
+    // is heard within 10 ms of the key's contact (its debounce takes 8)
+    cases.push_back({"select-grace-at-once", [] {
+        RunMs(kReadyMs);
+        const float dry = RunMs(300);
+        Tap("KEY_5");
+        RunMs(100);
+        Turn(kKnob1Encoder, -40);
+        RunMs(500);
+        Press("KEY_5", true);
+        RunMs(10);
+        Check(RunMs(10) < dry * .5f, "select-grace-at-once: a key held sounds 10 ms after its contact");
+        Press("KEY_5", false);
+        RunMs(300);
+        // the compressor's key, then SHIFT in the window, with a save waiting for CHOMPI: SHIFT +
+        // its key, so CHOMPI let go doesn't confirm
+        const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
+        Tap("KEY_25");
+        RunMs(100);
+        Tap("KEY_17");
+        RunMs(300);
+        Keys({"+KEY_15", "3", "+KEY_26", "100", "-KEY_15", "100", "-KEY_26", "500"});
+        Check(Card("/FRIZZ/frizz_scenes.txt") == scenes,
+              "select-grace-at-once: the compressor's key, SHIFT 3 ms later: a select, no save confirmed");
+        // and a select flashes the key, also one SHIFT made late
+        Keys({"+KEY_2", "3", "+KEY_26"});
+        const std::vector<int> seen = Watch(false, kShifterKeyLed, 120);
+        RunMs(200);
+        const int held = Max(SmtLedFull(kShifterKeyLed));
+        Keys({"-KEY_2", "-KEY_26", "300"});
+        Check(*std::max_element(seen.begin(), seen.end()) > 240 && held < 80,
+              "select-grace-at-once: the shifter's key, SHIFT 3 ms later: it flashes white, then stays dim, off");
+        // a MIDI note retriggered at once on a latched effect: plain presses, as ever
+        Latch("KEY_5");
+        Trs({kNoteOn, kFilterNote, 100});
+        RunMs(100);
+        Trs({kNoteOff, kFilterNote, 0, kNoteOn, kFilterNote, 100});
+        RunMs(100);
+        Trs({kNoteOff, kFilterNote, 0});
+        RunMs(300);
+        Check((LatchedFx(Ask({0x20})) >> 4 & 1) == 0,
+              "select-grace-at-once: a MIDI note retriggered at once on a latched filter: unlatched on its last note off");
     }});
 
     // page 2's shared knobs (FxOutput.h, #40, #38): nothing sets a level by itself any more.
