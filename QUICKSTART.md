@@ -64,7 +64,7 @@ effects you've latched out at random and scrambles the loop's steps (see
 
 | White key | 1st | 2nd | 3rd | 4th | 5th | 6th | 7th | 8th | 9th | 10th | 11th | 12th | 13th | 14th | 15th |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Effect | Freezer | Shifter | Folder | Crusher | Filter | Flanger | Resonator | Slicer | Wow & flutter | Tape stop | Phaser | Delay | Reverb | Chaos | Compressor |
+| Effect | Freezer | Shifter | Folder | Crusher | Filter | Flanger | Phaser | Resonator | Slicer | Wow & flutter | Tape stop | Delay | Reverb | Chaos | Compressor |
 
 - **Hold a key:** the effect is on while you hold it.
 - **Hold a key, then SHIFT:** latch the effect on. Do it again, or just tap the key, to turn
@@ -106,14 +106,15 @@ Things to try first:
   key. Turn knob 3 for a roll that speeds up.
 - **Shifter (2nd key):** hold SHIFT, tap the key, and with SHIFT still held turn knob 1 up two
   clicks for a fifth, then hold the key to hear it.
-- **Resonator (7th key)** with the crusher or the shifter latched: the ringing goes through them on
+- **Resonator (8th key)** with the crusher or the shifter latched: the ringing goes through them on
   every pass.
-- **Phaser (11th key):** latch it, turn knob 3 (depth) up to hear the sweep and knob 2 for
+- **Phaser (7th key):** latch it, turn knob 3 (depth) up to hear the sweep and knob 2 for
   its resonance. Turn knob 1 right past the centre (its LED turns green) and the sweep locks
-  to the tempo, 1/16 first, slower as you go on.
+  to the tempo, 1/16 first, slower as you go on. With the resonator latched too, the sweep
+  moves through its ringing.
 - **Delay + reverb (the 12th and 13th keys):** turn up their knob 4, then tap them to throw echoes and
   tails onto single notes.
-- **Tape stop (10th key)** with the delay or reverb latched: hold it on a beat and the music
+- **Tape stop (11th key)** with the delay or reverb latched: hold it on a beat and the music
   winds down over half a bar while the tails ring on. Let go and it spins back up.
 
 The freezer, slicer, filter LFO, tape stop, delay, the phaser (its rate turned right of the

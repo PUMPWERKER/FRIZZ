@@ -21,10 +21,10 @@ up KEY_6
 wait 200
 turn 2 40
 wait 450
-down KEY_8
+down KEY_9
 wait 80
 tap KEY_26
-up KEY_8
+up KEY_9
 wait 200
 down KEY_2
 wait 80

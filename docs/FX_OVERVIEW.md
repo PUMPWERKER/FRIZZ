@@ -45,13 +45,13 @@ drive the VU LEDs.
   shared filter LFO and pitch LFO; voices summed → delay → reverb → output compressor →
   saturation → pan.
 - **FRIZZ** (`FxChain.h`): AUX input → input/loop mix with the looper → freezer → shifter →
-  folder → crusher → filter → flanger → slicer → wow & flutter → tape stop → phaser → delay → reverb
+  folder → crusher → filter → flanger → phaser → slicer → wow & flutter → tape stop → delay → reverb
   (fed the delay's echoes too) → master compressor (`MasterComp.h`: threshold, ratio, attack,
   release, and mix and makeup on page 2, on its own key) → output gain → safety limiter
   (`limiter.h` at its lowest setting), the only thing that sets a level by itself. Every
   insert but the resonator and tape stop sits inside page 2's Mix, Band and Level
   (`FxOutput.h`); the sends get its Band on their input. The
-  resonator's comb loops from after the flanger back to after the freezer.
+  resonator's comb loops from after the phaser back to after the freezer.
   Each effect is a punch-in key, and the keys run in this order left to right, the chaos key
   (`FxChaos.h`, no sound of its own: it gates the latched effects and scrambles the loop)
   after the sends and before the compressor. (A randomizer that played the inserts on gate
@@ -86,11 +86,11 @@ their keys' order left to right (see the FRIZZ chain above). Their controls are 
 | 4th white | Crusher (insert) | TEMPO's sample-rate reducer, plus FRIZZ's own bit quantizer and tone lowpass, and the XOR and trigger dive from Bastl Instruments' Kastle 2 FX Wizard crusher (MIT) |
 | 5th white | DJ filter (insert) | WAVE's `DJFilter.h` + `BasicMMF.h`; the triangle LFO follows WAVE's filter LFO but is synced by `TempoClock.h` |
 | 6th white | Flanger (insert) | Bastl Instruments' Kastle 2 FX Wizard flanger (MIT) |
-| 7th white | Resonator (comb loop from after the flanger back to after the freezer) | the feedback comb Bastl Instruments' Kastle 2 FX Wizard runs around every mode (MIT) |
-| 8th white | Slicer (insert) | Bastl Instruments' Kastle 2 FX Wizard slicer (MIT) |
-| 9th white | Wow & flutter (insert) | TAPE's `Warble.h` as knob 1, plus FRIZZ's own flutter, tone and stereo |
-| 10th white | Tape stop (insert) | FRIZZ's own: a varispeed read head on an SDRAM buffer, tempo-synced stop and spin-up |
-| 11th white | Phaser (insert) | FRIZZ's own (#68): six first-order allpass stages a channel with feedback, the coefficient retuned every 8 samples from a triangle LFO, free (the flanger's rate curve) or synced by `TempoClock.h` (the filter LFO's divisions) on one split knob; knobs after the SP-404MK2's Phaser and the Elektron Tonverk's Phase 98 |
+| 7th white | Phaser (insert) | FRIZZ's own (#68): six first-order allpass stages a channel with feedback, the coefficient retuned every 8 samples from a triangle LFO, free (the flanger's rate curve) or synced by `TempoClock.h` (the filter LFO's divisions) on one split knob; knobs after the SP-404MK2's Phaser and the Elektron Tonverk's Phase 98 |
+| 8th white | Resonator (comb loop from after the phaser back to after the freezer) | the feedback comb Bastl Instruments' Kastle 2 FX Wizard runs around every mode (MIT) |
+| 9th white | Slicer (insert) | Bastl Instruments' Kastle 2 FX Wizard slicer (MIT) |
+| 10th white | Wow & flutter (insert) | TAPE's `Warble.h` as knob 1, plus FRIZZ's own flutter, tone and stereo |
+| 11th white | Tape stop (insert) | FRIZZ's own: a varispeed read head on an SDRAM buffer, tempo-synced stop and spin-up |
 | 12th white | Delay (send) | TEMPO's `granularDelay.h`, clocked by FRIZZ's `TempoClock.h` (the loop, MIDI clock, taps or free running) |
 | 13th white | Reverb (send, also fed the delay's echoes) | TEMPO's `reverb.h` + `fx_engine.h` |
 | 14th white | Chaos key (no sound: gates the latched effects, scrambles the loop) | FRIZZ's own (#65), after the Red Panda Tensor's RAND and the Chase Bliss Blooper's Scrambler |

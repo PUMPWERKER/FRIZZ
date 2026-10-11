@@ -5,21 +5,19 @@
  *  key and LEDs go with each effect, FxParams.h its knobs.
  *
  *  The order follows a pedalboard's: source, pitch, dirt, filter, modulation, gate, tape,
- *  space; but for the phaser, a modulation that comes after the tape on purpose (#68), so it
- *  sweeps the tape effects too. The keys follow it, left to right:
- *   freezer -> shifter -> folder -> crusher -> filter -> flanger -> slicer -> wow & flutter
- *              |<-------------- resonator loop --------------->|
- *     -> tape stop -> phaser -> delay -> reverb
+ *  space. The keys follow it too, left to right:
+ *   freezer -> shifter -> folder -> crusher -> filter -> flanger -> phaser -> slicer
+ *              |<------------------ resonator loop ------------------>|
+ *     -> wow & flutter -> tape stop -> delay -> reverb
  *  The freezer comes first so it captures the clean sound and everything after it works on
  *  the repeats. The folder comes before the crusher, so it folds the clean signal and the
- *  crusher grinds the folds. The filter sweeps the dirt, and the flanger the harmonics it
- *  made. The slicer is the final gate: it chops everything including the resonator's
- *  ringing, and what comes after it gets the chopped sound. Wow & flutter and the tape stop
- *  come after it, so they bend everything before them; the sends after them, so a tape stop
- *  leaves the echoes and the reverb ringing. The phaser (#68) comes after the tape stop, the
- *  last insert, so it sweeps the whole sound, a tape stop's too, before the sends: the echoes
- *  and the reverb take the sweep as it was. The delay's echoes feed the reverb as well as the
- *  output.
+ *  crusher grinds the folds. The filter sweeps the dirt, and the flanger and the phaser (#68),
+ *  the two modulations side by side, the harmonics it made; both are in the resonator's loop,
+ *  so its ringing is swept on every trip. The slicer is the last insert before the tape, the
+ *  final gate: it chops everything including the resonator's ringing, and what comes after it
+ *  gets the chopped sound. Wow & flutter and the tape stop come after it, so they bend
+ *  everything before them; the sends after them, so a tape stop leaves the echoes and the
+ *  reverb ringing. The delay's echoes feed the reverb as well as the output.
  *
  *  Three kinds:
  *   - insert: replaces the signal while its key is on; only the wet amount is faded. Page 2's
@@ -27,12 +25,11 @@
  *   - send (delay, reverb): the key fades what goes into the effect, and its return is added
  *     to the signal, so tails ring out after the key is released. Page 2's Band filters what
  *     goes in; the rest of their page 2 is their own.
- *   - loop (resonator): a comb feedback loop from after the flanger back to after the
- *     freezer, so the filter is in the loop and the slicer outside it. Page 2's Band filters
+ *   - loop (resonator): a comb feedback loop from after the phaser back to after the
+ *     freezer, so the filter, flanger and phaser are in the loop and the slicer outside it. Page 2's Band filters
  *     what goes into the loop, its Level is the return's (FxResonator.h).
  *
- *  And the chaos key (FxChaos.h), last of the FxIds though its key is the 14th, after the
- *  sends: no sound and no place in the chain, it gates the others. The keys reach the
+ *  And the chaos key (FxChaos.h), last of the FxIds, its key the 14th, after the sends: no sound and no place in the chain, it gates the others. The keys reach the
  *  effects a block after they're set, together with what chaos drops (Block), so a key set
  *  from MainLoop and one chaos changes in the audio callback never cross.
  */
@@ -59,9 +56,10 @@
 namespace chompi
 {
 
-/** The effects, in the order of their keys, left to right (FxSlots.h), but for the two that
- *  came later and are numbered last, so the others keep their numbers (MIDI): the phaser on the
- *  11th white key and the chaos key on the 14th */
+/** The effects, in the order of their keys before the phaser (FxSlots.h), the two that
+ *  came later numbered last, so the others keep their numbers (MIDI): the phaser on the 7th
+ *  white key, which moved the resonator, slicer, wow & flutter and tape stop to the 8th-11th,
+ *  and the chaos key on the 14th */
 enum FxId
 {
     FX_FREEZER,
@@ -76,7 +74,7 @@ enum FxId
     FX_TAPESTOP,
     FX_DELAY,
     FX_REVERB,
-    FX_PHASER, // the 11th white key
+    FX_PHASER, // the 7th white key
     FX_CHAOS,  // the 14th, and last: no sound of its own
     kNumFx,
 };
@@ -223,7 +221,7 @@ public:
             FxSlew::coeff = kFxParamCoeff;
 
         Insert(FX_FREEZER, freezer_, l, r);
-        // the resonator's loop wraps everything from here to the flanger
+        // the resonator's loop wraps everything from here to the phaser
         resonator_.Feed(l, r);
         if (!resonator_.Idle())
             Meter(FX_RESONATOR, resonator_.Return());
@@ -233,6 +231,7 @@ public:
         Insert(FX_CRUSHER, crusher_, l, r);
         Insert(FX_FILTER, filter_, l, r);
         Insert(FX_FLANGER, flanger_, l, r);
+        Insert(FX_PHASER, phaser_, l, r);
         {
             float tl = *l, tr = *r;
             SendBand(FX_RESONATOR, resonator_.Idle(), &tl, &tr);
@@ -242,7 +241,6 @@ public:
         Insert(FX_SLICER, slicer_, l, r);
         Insert(FX_WARBLE, warble_, l, r);
         Insert(FX_TAPESTOP, tapestop_, l, r);
-        Insert(FX_PHASER, phaser_, l, r);
 
         // sends: the delay from the inserts' output, the reverb from that plus the delay's
         // return, so the echoes are reverberated. Both returns are added on top.

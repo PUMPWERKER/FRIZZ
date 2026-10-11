@@ -27,7 +27,7 @@ static const int kKnob1Led = 1, kPlayLed = 7, kLoopLed = 8;
 static const int kFilterKeyLed = 20, kShifterKeyLed = 23, kFlangerKeyLed = 19;
 static const int kVolumeEncoder = 6, kKnob1Encoder = 4; // SW6, SW4
 static const int kTransportRevLed = 5, kTransportFwdLed = 6, kVolumeLed = 9;
-static const int kSlot1Led = 1, kCompKeyLed = 10, kTapeStopKeyLed = 15;
+static const int kSlot1Led = 1, kCompKeyLed = 10, kTapeStopKeyLed = 14;
 // the settings page's (SettingsPage.h): white keys 1, 3, 11, 14, 15 (channels; the 15th is 15
 // and 16), the lower octave's D#, F#, G#, A#, the upper octave's D# and G#
 static const int kChannel1Led = 24, kChannel3Led = 22, kChannel11Led = 14, kChannel14Led = 11,
@@ -503,7 +503,7 @@ int main()
         Tap("KEY_5"); // another FX: page 1
         RunMs(100);
         Check(page() == 0, "fx-page2: another FX goes back to page 1");
-        Tap("KEY_10"); // the tape stop: a page 2 too, now every effect has one
+        Tap("KEY_11"); // the tape stop: a page 2 too, now every effect has one
         RunMs(100);
         Tap("ENC_4_SW");
         RunMs(100);
@@ -1256,18 +1256,18 @@ int main()
         RunMs(kReadyMs);
         const int off = Max(SmtLedFull(kTapeStopKeyLed));
         // the tape stop, CHOMPI held, the transport knob turned: still latched
-        Press("KEY_10", true);
+        Press("KEY_11", true);
         RunMs(80);
         Press("KEY_26", true);
         RunMs(80);
         Turn(5, 4);
         RunMs(200);
-        Press("KEY_10", false);
+        Press("KEY_11", false);
         RunMs(100);
         Press("KEY_26", false);
         RunMs(300);
         Check(Max(SmtLedFull(kTapeStopKeyLed)) > 2 * off, "latch-turn: FX key, CHOMPI held, transport turned, key let go: still latched");
-        Tap("KEY_10");
+        Tap("KEY_11");
         RunMs(300);
         // and a dark knob: the flanger's page-2 knob 1 (it has no Mix)
         const int flanger_off = Max(SmtLedFull(kFlangerKeyLed));
@@ -1421,12 +1421,13 @@ int main()
         RunMs(300);
         SetToggle(false);
         RunMs(300);
-        // the 11th white key is the phaser's there, the 14th the chaos key's: dimly in their
-        // own colours, azure and rose
-        const Rgb phaser = SmtLedFull(kChannel11Led), chaos = SmtLedFull(kChannel14Led);
-        Check(Max(phaser) < 60 && phaser.b > 2 * phaser.g && phaser.r == 0 && Max(chaos) < 60
-                  && chaos.r > 2 * chaos.g,
-              "settings-channel: back on the play page, the 11th key the phaser's, the 14th the chaos key's, dim");
+        // the 7th white key is the phaser's there, the 11th the tape stop's, the 14th the chaos
+        // key's: dimly in their own colours, violet, amber and rose
+        const Rgb phaser = SmtLedFull(18), tapestop = SmtLedFull(kChannel11Led),
+                  chaos = SmtLedFull(kChannel14Led);
+        Check(Max(phaser) < 60 && phaser.b > 2 * phaser.r && phaser.r > phaser.g && Max(tapestop) < 60
+                  && tapestop.r > 2 * tapestop.g && tapestop.b == 0 && Max(chaos) < 60 && chaos.r > 2 * chaos.g,
+              "settings-channel: back on the play page, the 7th key the phaser's, the 11th the tape stop's, the 14th the chaos key's, dim");
         SetToggle(true);
         RunMs(300);
         Tap("KEY_17"); // D#: transport following
@@ -1537,10 +1538,10 @@ int main()
         SetToggle(true);
         RunMs(kReadyMs);
         const float dry = RunMs(300);
-        Press("KEY_10", true); // the tape stop's key: channel 10 here
+        Press("KEY_11", true); // the tape stop's key: channel 11 here
         RunMs(1500);
         const float held = RunMs(300);
-        Press("KEY_10", false);
+        Press("KEY_11", false);
         Check(fabsf(held - dry) < dry * .05f,
               "settings-boot: switched on with the switch up, the keys set: the tape stop's doesn't stop");
         Check(Max(PthLedFull(kTransportRevLed)) > 0, "settings-boot: and the page shows");
@@ -2093,7 +2094,7 @@ int main()
         // at their own level: kHpGain .2 to the line out's .3
         Check(master > .05f && fabsf(hp - master * 2.f / 3.f) < .01f * master,
               "headphones: carry the master out at first, at 2/3 of its level");
-        Latch("KEY_10"); // the tape stop: silence on the master
+        Latch("KEY_11"); // the tape stop: silence on the master
         RunMs(3000);
         const float stopped = RunMs(500), hp_stopped = hp_rms;
         Check(stopped < .01f * master && hp_stopped < .01f * master,
@@ -2932,14 +2933,14 @@ int main()
     }});
 
     // the phaser (#68) on the 11th white key: its notches sweep through a sine at its centre,
-    // its key azure, its rate knob's LED in its colours while free and green once synced, its
+    // its key violet, its rate knob's LED in its colours while free and green once synced, its
     // knobs on NRPN 0/64-67 and 1/64-67
     cases.push_back({"phaser", [] {
-        static const int kPhaserKeyLed = 14;
+        static const int kPhaserKeyLed = 18;
         freq = 800.f; // the centre at its default: the middle notch sweeps across it
         RunMs(kReadyMs);
         const float dry = RunMs(300);
-        Latch("KEY_11");
+        Latch("KEY_7");
         Turn(2, 30); // knob 3 (SW2), depth .3: the notches all in, +-.75 octaves
         RunMs(500);
         float low = 1.f, high = 0.f;
@@ -2951,16 +2952,16 @@ int main()
         }
         printf("      dry %.3f; latched, 20 ms windows from %.3f to %.3f\n", dry, low, high);
         Check(low < dry * .3f && high > dry * .8f,
-              "phaser: KEY_11 latched sweeps a notch through an 800Hz sine, its centre");
-        // lit, azure, whitened by its meter as every key is
+              "phaser: KEY_7 latched sweeps a notch through an 800Hz sine, its centre");
+        // lit, violet, whitened by its meter as every key is
         const Rgb key = SmtLedFull(kPhaserKeyLed);
         printf("      its key %02x%02x%02x\n", key.r, key.g, key.b);
-        Check(key.b > 200 && key.b > key.g && key.g > key.r, "phaser: its key lit, azure");
+        Check(key.b > 200 && key.b > key.r && key.r > key.g, "phaser: its key lit, violet");
 
-        // knob 1, the rate, at .25: free, between azure and magenta; synced over NRPN: green
+        // knob 1, the rate, at .25: free, between violet and orange; synced over NRPN: green
         const Rgb free_rate = PthLedFull(kKnob1Led);
-        Check(free_rate.b > 200 && free_rate.r > 60 && free_rate.g < 100,
-              "phaser: its rate free, knob 1's LED between azure and magenta");
+        Check(free_rate.r > 120 && free_rate.b > 120 && free_rate.g > 30 && free_rate.g < 120,
+              "phaser: its rate free, knob 1's LED between violet and orange");
         Trs({kCC, 99, 0, kCC, 98, 64, kCC, 6, 64, kCC, 38, 0}); // NRPN 0/64 = 8192, the centre
         RunMs(100);
         const std::string params = Ask({0x21, 12});
@@ -2984,13 +2985,13 @@ int main()
         Check(fabsf(at0 - dry) < dry * .01f, "phaser: at depth 0 it's dry again");
 
         // off: its key dim; the 14th white key is the chaos key's
-        Latch("KEY_11");
-        Press("KEY_11", true);
+        Latch("KEY_7");
+        Press("KEY_7", true);
         RunMs(80);
-        Press("KEY_11", false);
+        Press("KEY_7", false);
         RunMs(300);
         const Rgb off = SmtLedFull(kPhaserKeyLed);
-        Check(Max(off) < 60 && off.b > off.g, "phaser: off, its key dim azure");
+        Check(Max(off) < 60 && off.b > off.g, "phaser: off, its key dim violet");
         Latch("KEY_14");
         const std::string st = Ask({0x20});
         Check(st.size() > 9 && ((static_cast<uint8_t>(st[8]) << 7 | static_cast<uint8_t>(st[9])) == 1u << 13),
