@@ -179,7 +179,8 @@ holds it for the whole sequence, so nothing slips in between:
 cd firmware && tools/builds.py && tools/chompi.py hold sh -c '
   ./flash.py --bench --no-build && ./remote.py bench --wait --out card/cpu.txt &&
   ./flash.py --test --no-build && {
-    ./remote.py play twin/scenarios/fx-each.txt --cpu; echo "play: $?"; }
+    ./remote.py play twin/scenarios/fx-each.txt --cpu; echo "play: $?"
+    ./remote.py play twin/scenarios/phaser.txt --cpu --fresh; echo "play: $?"; }
   ./flash.py --run 10'
 ```
 
@@ -191,8 +192,10 @@ by itself, and `remote.py bench --wait` follows it over USB and fetches its `cpu
 (a branch that hasn't merged `main` since) gets `sleep 150 && ./card.py --then none get`
 instead. Each `play` (several go in the `{ }`, the `--test` build's)
 ends in `;`, not `&&`: a failed `expect led` (exit 1) is judged from its output, and stops
-neither the next scenario nor `--run 10`. `play` keeps the card as it was: it first turns
-PERSIST 0 on (nothing written until FRIZZ restarts), so the scenarios that change what key 10
+neither the next scenario nor `--run 10`. Every `play` after the first gets `--fresh`, which
+starts the slot again first (~10 s, the card untouched): a scenario starts from power-on, as on
+the twin, and without it the RAM the ones before left can fail its `expect led` (#123).
+`play` keeps the card as it was: it first turns PERSIST 0 on (nothing written until FRIZZ restarts), so the scenarios that change what key 10
 shares, the settings page (`settings.txt`, #58), the compressor's knobs (`comp.txt`) and the
 scenes (`scenes.txt`, #78), play in stage 2 too. Never `--save` or `--force` on the device: a
 FRIZZ without PERSIST (key 10's from before it) is still refused, as before. The card holds

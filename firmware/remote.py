@@ -14,7 +14,7 @@
                                       or the real one again; until power-off
     ./remote.py scene get SLOT [FILE] a scene (1-4, 0 the blank one) as JSON
     ./remote.py scene put SLOT FILE   one into slot 1-4, and onto the card
-    ./remote.py play SCRIPT [--cpu] [--force] [--save]
+    ./remote.py play SCRIPT [--cpu] [--fresh] [--force] [--save]
                                       a twin script (twin/README.md) on the device
 
 and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
@@ -38,7 +38,14 @@ LEDs the device shows, dimmed as the card's led_brightness (the settings page) h
 ends. What only the twin has (the card, the input, the battery, power-on) is
 skipped, and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
 and prints the worst, the way to try a scenario for crackles on FRIZZ.bin itself rather than on
-the bench's build. A bug report (/FRIZZ/bug-N.txt) plays too, from where the device is. From
+the bench's build. A bug report (/FRIZZ/bug-N.txt) plays too, from where the device is.
+
+A script plays on FRIZZ as it stands, with what the scripts before it left in RAM since it
+started (the effect selected, its knobs, the page, the loop): a twin script starts from
+power-on, so its `expect led` lines can fail after another one (#123). --fresh starts the slot
+again first, through the launcher (tools/chompi.py), as `flash.py --run N` does: FRIZZ boots
+from the card, which a start doesn't write, and with nothing left from before. Every `play`
+after the first one since a start wants it. From
 the computer everything goes over USB, `midi` lines too: with the device's clock source on TRS,
 a script's clock and Start / Stop are ignored there (MANUAL.md, "Clock source").
 
@@ -761,6 +768,9 @@ def main():
     p = sub.add_parser("play", parents=[common])
     p.add_argument("script")
     p.add_argument("--cpu", action="store_true")
+    p.add_argument("--fresh", action="store_true",
+                   help="start the slot again first, so the script plays from power-on as on "
+                        "the twin, not after what played before (#123)")
     p.add_argument("--force", action="store_true",
                    help="with --save (or a FRIZZ from before PERSIST): play a script that changes "
                         "the card: the settings page, the compressor's knobs, a scene saved, "
@@ -790,8 +800,12 @@ def run(a):
     if a.cmd in ("bench", "ident") and not a.device and not a.slot:
         # whatever runs, the bench too, which answers as FRIZZ does
         a.device = chompi.wait_for("frizz", 30)
+    fresh = a.cmd == "play" and a.fresh
+    if fresh and (a.device or a.no_start):
+        sys.exit("--fresh starts the slot again through the launcher: not with --device or "
+                 "--no-start")
     if not a.device and not a.no_start:
-        a.device = chompi.to_frizz(a.slot)
+        a.device = chompi.to_frizz(a.slot, again=fresh)
     f = Frizz(a.device)
     if a.cmd == "state":
         show_state(f)
@@ -871,6 +885,9 @@ def run(a):
         finally:
             if ram:
                 restore(f, a)
+        if failed and not isinstance(failed, str) and not (fresh or a.device or a.no_start):
+            print("expect led judged after what played since FRIZZ started: --fresh plays the "
+                  "script from power-on (#123)", file=sys.stderr)
         sys.exit(failed if isinstance(failed, str) else 1 if failed else 0)
 
 

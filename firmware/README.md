@@ -230,6 +230,14 @@ crackles on the build that plays, not the bench's (it says how many readings wen
 if any). Whatever ends a script (an error, Ctrl-C), it lets go of the keys it holds and gives
 the mode switch back to the hand.
 
+A script plays on FRIZZ as it stands: a twin script starts from power-on, but on the device the
+scripts played before it since FRIZZ started have left the effect selected, its knobs, the
+page or a loop in RAM, so its `expect led` lines can fail after another one (#123).
+`play --fresh` first starts the slot again through the launcher, as `flash.py --run N` does:
+FRIZZ boots from the card, which a start doesn't write, with nothing left from before. Every
+`play` after the first since `flash.py` started the slot wants it (about 10 s each); a failed
+`expect led` without it says so. Not with `--device` or `--no-start`, which can't restart it.
+
 `play` first stops FRIZZ writing the card until it restarts (PERSIST 0), so a script may
 change the settings, the compressor or the scenes: they stay in RAM, and the card keeps what
 key 10's FRIZZ shares. On a slot other than the test slot (12) it starts that slot again at
