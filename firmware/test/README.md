@@ -293,7 +293,8 @@ behind the play page.
 ./unit.sh page2
 ```
 
-Each effect's own knob on page 2 and the stereo on page 1's knob 4, on the effects alone: the
+Each effect's own knob on page 1's knob 4 and the stereo on page 2's knob 2 (#117), on the
+effects alone: the
 freezer's gate leaves the start of each repeat and silences the rest, the shifter's grain
 changes the sound, the folder's, crusher's and filter's stereo are off with both sides alike
 and on make them differ, the flanger's negative polarity sounds different, the resonator's
@@ -303,9 +304,10 @@ flutter's age dips the level, the tape stop's depth slows it without stopping an
 darken takes the highs off, the delay's freeze holds its echoes at a steady level, its
 damping darkens or thins the repeats and its ducking turns them down under the input, the
 reverb's freeze holds the room, its pre-delay at the top starts it 250 ms later and its
-ducking turns it down. Then the scene file: v0.11's symmetry, XOR and LFO division move to
-page 2's knob 2 with stereo off, the tape stop's depth is a full stop, a send's page 2 from
-the first test builds goes back to its defaults (not frozen), and layout 3 round-trips.
+ducking turns it down. Then the scene file: v0.11's symmetry, XOR and LFO division stay on
+page 1's knob 4 with stereo off, the tape stop's depth is a full stop, a send's page 2 from
+the first test builds goes back to its defaults (not frozen), and layout 4 round-trips
+(`scenes` checks layout 1-3 files moving stereo to page 2's knob 2).
 
 ## Folder and slicer check
 

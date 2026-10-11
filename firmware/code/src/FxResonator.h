@@ -19,9 +19,9 @@ namespace chompi
  *  a soft clipper, a lowpass and a 50Hz highpass, which keep it bounded whatever is inside.
  *  On its own it's a comb on the dry signal. Kastle's comb is 100-2000 samples at 44kHz and
  *  at most about 40% feedback; this one is tunable and goes up to 98%.
- *  Params: 0 pitch (22-880Hz), 1 feedback, 2 tone (the loop's lowpass), 3 stereo (the right
- *  channel up to 12 semitones higher); page 2: 5 env mod, the feedback rising with the
- *  input's level (the SP-404MK2 Resonator's ENV MOD), 7 the return's level (as an insert's
+ *  Params: 0 pitch (22-880Hz), 1 feedback, 2 tone (the loop's lowpass), 3 env mod, the
+ *  feedback rising with the input's level (the SP-404MK2 Resonator's ENV MOD); page 2: 5
+ *  stereo (the right channel up to 12 semitones higher), 7 the return's level (as an insert's
  *  Level, FxOutput.h). Page 2's Band filters what goes into the loop (FxChain.h). */
 class Resonator : public FxBase
 {
@@ -31,8 +31,8 @@ public:
         PITCH,
         FEEDBACK,
         TONE,
-        STEREO,
-        ENV_MOD = 5,
+        ENV_MOD,
+        STEREO = 5,
         LEVEL = 7,
     };
 

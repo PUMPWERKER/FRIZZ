@@ -19,8 +19,8 @@ namespace chompi
  *  recovering over 0.4s. Fully wet while on (page 2's Mix blends in the dry signal). The
  *  XOR's flips and the coarsest steps are a fixed size whatever the level, so on a quiet
  *  signal they come out louder than it went in: page 2's Level (FxOutput.h) is for that.
- *  Params: 0 rate, 1 bits, 2 tone, 3 stereo (the right channel's rate up to an octave lower);
- *  page 2's own, 5 XOR (0 = off). */
+ *  Params: 0 rate, 1 bits, 2 tone, 3 XOR (0 = off); page 2: 5 stereo (the right
+ *  channel's rate up to an octave lower). */
 class Crusher : public FxBase
 {
 public:
@@ -29,8 +29,8 @@ public:
         RATE,
         BITS,
         TONE,
-        STEREO,
-        XOR = 5,
+        XOR,
+        STEREO = 5,
     };
 
     FX_ONCE void Init(float sample_rate)

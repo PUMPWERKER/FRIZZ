@@ -400,7 +400,7 @@ private:
         for (size_t fx = 0; fx < kNumFx; fx++)
         {
             for (size_t p = 0; p < kNumFxKnobs; p++) // page 1's
-                engine.SetFxParam(fx, p, .5f);
+                engine.SetFxParam(fx, Before117(fx, p), .5f);
             // page 2: its defaults, or for PAGE2 off them: an insert's half mix, its own knob
             // at .3, the band on the highs above ~1kHz and the level 6dB down; a send's
             // damping or pre-delay, band and half ducking, its freeze off
@@ -408,9 +408,9 @@ private:
             static const float kInsert2[] = {.5f, .3f, .75f, .625f};
             static const float kSend2[] = {0.f, .7f, .75f, .5f};
             for (size_t p = kNumFxKnobs; p < kNumFxParams; p++)
-                engine.SetFxParam(fx, p,
+                engine.SetFxParam(fx, Before117(fx, p),
                                   seg.flags & PAGE2 ? (send ? kSend2 : kInsert2)[p - kNumFxKnobs]
-                                                    : kFxParams[fx].defaults[p]);
+                                                    : kFxParams[fx].defaults[Before117(fx, p)]);
         }
         if (seg.flags & STRESS)
         {
@@ -451,8 +451,18 @@ private:
         do
             fx = static_cast<size_t>(Random() * kNumFx) % kNumFx;
         while (!(on & (1u << fx)));
-        engine.SetFxParam(fx, static_cast<size_t>(Random() * kNumFxKnobs) % kNumFxKnobs,
+        engine.SetFxParam(fx, Before117(fx, static_cast<size_t>(Random() * kNumFxKnobs) % kNumFxKnobs),
                           Random());
+    }
+
+    /** The parameter knob p was before #117 swapped stereo (now page 2's knob 2) and the
+     *  effect's own (now page 1's knob 4): the segments keep turning the same ones, so their
+     *  load compares with the builds before */
+    static size_t Before117(size_t fx, size_t p)
+    {
+        if (!HasStereo(fx))
+            return p;
+        return p == kFxOwnKnob ? kFxStereoParam : p == kFxStereoParam ? kFxOwnKnob : p;
     }
 
     inline float Random()

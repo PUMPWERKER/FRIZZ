@@ -27,8 +27,8 @@ namespace chompi
  *  the shift up to 2 octaves further in its direction and back. Feedback recirculates the
  *  shifted output, so each pass shifts again and the shift spirals.
  *  Params: 0 shift (kNumShifts steps, -12 to +12 semitones, the centre dry), 1 feedback,
- *  2 swoop, 3 stereo (the right channel up to a semitone higher); page 2's own, 5 grain: the
- *  taps' window, 10ms (glitchy) through 30ms (the centre) to 50ms (smooth). Page 2's Mix
+ *  2 swoop, 3 grain: the taps' window, 10ms (glitchy) through 30ms (the centre) to 50ms
+ *  (smooth); page 2: 5 stereo (the right channel up to a semitone higher). Page 2's Mix
  *  (FxOutput.h) puts the dry signal under the shifted one, a harmony. */
 class Shifter : public FxBase
 {
@@ -38,8 +38,8 @@ public:
         SHIFT,
         FEEDBACK,
         SWOOP,
-        STEREO,
-        GRAIN = 5,
+        GRAIN,
+        STEREO = 5,
     };
 
     static const size_t kNumShifts = 25; // -12..+12 semitones
