@@ -110,7 +110,10 @@ one parameter of each effect's own (decided the same day, built in #49): the fre
 the shifter's grain, the flanger's polarity, the resonator's env mod, the slicer's shuffle,
 wow & flutter's age, the tape stop's darken, the delay's damping, the reverb's pre-delay;
 the folder's symmetry, crusher's XOR and filter's LFO division moved there from page 1's
-knob 4, which is now stereo on every insert (the tape stop's: depth). The sends' page 2 is
+knob 4, which is now stereo on every insert (the tape stop's: depth). **Then swapped
+(2026-10-11, #117):** stereo, set and left, went to page 2's knob 2 and the effect's own,
+the one played, to page 1's knob 4, on every effect with stereo (the tape stop, delay and
+reverb keep theirs); page 2's knob 4 LED became the output's VU. The sends' page 2 is
 freeze, their own, Band and ducking; the resonator's env mod, Band into the loop and its
 return's Level. The compressor's: mix, a sidechain highpass on Band's knob, makeup on
 Level's.

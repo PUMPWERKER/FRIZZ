@@ -23,8 +23,8 @@ static const float kFlangerDetuneHz[] = {0.f, .5f, .2f};
  *  the top of it is pure vibrato. Pressing the key restarts the sweep (Kastle's trigger).
  *  Feedback recirculates the swept delay, a classic flanger's resonance; Kastle's Feedback
  *  is instead a short comb around every mode, at most 8% for the flanger.
- *  Params: 0 rate, 1 feedback, 2 amount, 3 stereo; page 2's own, 5 polarity: the feedback
- *  positive (metallic, as before) or negative (hollow), two steps. */
+ *  Params: 0 rate, 1 feedback, 2 amount, 3 polarity: the feedback positive
+ *  (metallic, as before) or negative (hollow), two steps; page 2: 5 stereo. */
 class Flanger : public FxBase
 {
 public:
@@ -33,8 +33,8 @@ public:
         RATE,
         FEEDBACK,
         AMOUNT,
-        STEREO,
-        POLARITY = 5,
+        POLARITY,
+        STEREO = 5,
     };
 
     FX_ONCE void Init(float sample_rate)

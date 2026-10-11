@@ -29,11 +29,11 @@ static const uint8_t kSlicerPatterns[] = {
  *  retriggers an envelope (10ms attack, then a decay) that the signal is multiplied by.
  *  Steps are counted from the clock pulses, so an 8-step pattern spans half a bar.
  *  Pressing the key also triggers it, so the signal doesn't drop out until the next step.
- *  Params: 0 pattern (kNumPatterns steps), 1 decay, 2 chance, 3 stereo (kNumPatterns steps).
- *  Chance flips every step of the pattern, on both channels, at random. Stereo plays the
- *  pattern that many patterns up on the left and down on the right. Page 2's own, 5 shuffle:
- *  the even steps late, up to two thirds of a 16th (a triplet swing), timed in samples from
- *  the pulses' spacing (the clock has only 3 pulses a 16th). */
+ *  Params: 0 pattern (kNumPatterns steps), 1 decay, 2 chance, 3 shuffle: the
+ *  even steps late, up to two thirds of a 16th (a triplet swing), timed in samples from the
+ *  pulses' spacing (the clock has only 3 pulses a 16th); page 2: 5 stereo (kNumPatterns
+ *  steps). Chance flips every step of the pattern, on both channels, at random. Stereo plays
+ *  the pattern that many patterns up on the left and down on the right. */
 class Slicer : public FxBase
 {
 public:
@@ -42,8 +42,8 @@ public:
         PATTERN,
         DECAY,
         CHANCE,
-        STEREO,
-        SHUFFLE = 5,
+        SHUFFLE,
+        STEREO = 5,
     };
 
     static const size_t kNumPatterns = sizeof(kSlicerPatterns);

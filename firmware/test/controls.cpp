@@ -651,7 +651,7 @@ static void TestMorph()
     store[1].params[FX_DELAY][3] = .6f;
     store[2].latched |= (1u << FX_REVERB) | (1u << FX_SLICER);
     store[2].params[FX_FILTER][0] = .8f;
-    store[2].params[FX_FILTER][5] = 0.f;  // stepped: the LFO division
+    store[2].params[FX_FILTER][3] = 0.f;  // stepped: the LFO division
     store[2].params[FX_REVERB][3] = .5f;
     store[2].params[FX_REVERB][0] = .9f;  // decay, not an amount knob
     store[2].params[FX_FLANGER][0] = .3f; // off in both
@@ -678,7 +678,7 @@ static void TestMorph()
     Check(plan.how[FX_FILTER][0] == MorphParam::GLIDE && plan.start[FX_FILTER][0] == .2f
               && plan.target[FX_FILTER][0] == .8f,
           "on in both: a continuous knob glides from where it is");
-    Check(plan.how[FX_FILTER][5] == MorphParam::HOLD && plan.target[FX_FILTER][5] == 0.f,
+    Check(plan.how[FX_FILTER][3] == MorphParam::HOLD && plan.target[FX_FILTER][3] == 0.f,
           "on in both: a stepped one switches at the landing");
     Check(plan.how[FX_DELAY][3] == MorphParam::FADE_OUT && plan.how[FX_DELAY][0] == MorphParam::HOLD
               && (plan.deferred >> FX_DELAY & 1) && !(plan.wake >> FX_DELAY & 1),
