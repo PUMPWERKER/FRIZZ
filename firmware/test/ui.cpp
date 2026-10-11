@@ -34,6 +34,7 @@ static const int kChannel1Led = 24, kChannel3Led = 22, kChannel11Led = 14, kChan
                  kChannel1516Led = 10, kTransportKeyLed = 1, kMonoKeyLed = 2, kFactorKeyLed = 3,
                  kBrightnessKeyLed = 4, kMidiOutKeyLed = 6, kSourceKeyLed = 8;
 static const int kSaveKeyLed = 9; // KEY_25, the play page's SAVE
+static const int kChompiKeyLed = 0; // PanelLeds.h
 
 static bool sine = true;
 static float amp = .3f, freq = 220.f, phase = 0.f;
@@ -2797,6 +2798,135 @@ int main()
         const std::string params = Ask({0x21, 4});
         Check(params.size() == 17 && fabsf(KnobOf(params[1], params[2]) - KnobOf7(100)) < 1e-3f,
               "midi automation: 3000 CCs in 1.5 s, and the cutoff lands on the last one");
+    }});
+
+    // the compressor's key again keeps its page 2, as an FX key does (#81)
+    cases.push_back({"comp-page2", [] {
+        RunMs(kReadyMs);
+        auto page = [] {
+            const std::string state = Ask({0x20});
+            return state.empty() ? -1 : state.back();
+        };
+        Tap("KEY_15"); // the compressor on the knobs
+        RunMs(100);
+        Tap("ENC_4_SW"); // its page 2
+        RunMs(100);
+        Tap("KEY_15");
+        RunMs(100);
+        Check(page() == 1, "comp-page2: pressing the compressor's key again keeps page 2");
+        Tap("KEY_2"); // an FX, and the compressor back: page 1
+        RunMs(100);
+        Tap("KEY_15");
+        RunMs(100);
+        Check(page() == 0, "comp-page2: from an FX, the compressor's key shows page 1");
+    }});
+
+    // a setting the card can't take: its key on the settings page blinks red 3 times, and
+    // again for each retry (#81)
+    cases.push_back({"settings-refused", [] {
+        SetCardPresent(false);
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_18"); // F#: mono, lit white
+        // pure red rising edges on its LED, and the moments each train starts
+        std::vector<int> trains, blinks;
+        bool was_red = false;
+        int last_red = -1000;
+        for (int t = 0; t < 9000; t++)
+        {
+            RunMs(1);
+            const Rgb c = SmtLedFull(kMonoKeyLed);
+            const bool red = c.r > 150 && c.g < 40 && c.b < 40;
+            if (red && !was_red)
+            {
+                if (t - last_red > 400)
+                {
+                    trains.push_back(t);
+                    blinks.push_back(0);
+                }
+                blinks.back()++;
+                last_red = t;
+            }
+            was_red = red;
+        }
+        printf("      red blinks at");
+        for (size_t i = 0; i < trains.size(); i++)
+            printf(" %d ms (%d)", trains[i], blinks[i]);
+        printf("\n");
+        bool threes = !blinks.empty();
+        for (int b : blinks)
+            threes &= b == 3;
+        Check(!trains.empty() && trains[0] >= 1900 && trains[0] < 2400 && threes,
+              "settings-refused: without a card, the mono key blinks red 3 times once its write fails");
+        Check(trains.size() == 4, "settings-refused: and again for each of 3 retries");
+        const Rgb mono = SmtLedFull(kMonoKeyLed);
+        Check(mono.r == mono.g && mono.g == mono.b && mono.r > 150,
+              "settings-refused: then lit white again: mono is in force");
+        Check(Max(SmtLedFull(kTransportKeyLed)) < 80, "settings-refused: the other keys don't blink");
+    }});
+
+    // a setting saved, then the card gone: the compressor's write failing blinks no setting's key
+    cases.push_back({"settings-refused-saved", [] {
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_18"); // mono, saved
+        RunMs(3000);
+        Check(Card("/FRIZZ/frizz_master.txt").find("mono 1") != std::string::npos,
+              "settings-refused-saved: mono saved");
+        SetCardPresent(false);
+        Trs({kCC, kCompAmountCC, 20}); // the compressor's write, which fails
+        int red = 0, comp_red = 0;
+        for (int t = 0; t < 3000; t++) // its first try fails 2 s on
+        {
+            RunMs(1);
+            const Rgb c = SmtLedFull(kMonoKeyLed);
+            red += c.r > 150 && c.g < 40 && c.b < 40;
+        }
+        SetToggle(false);
+        for (int t = 0; t < 2000; t++) // and its retry, on the play page
+        {
+            RunMs(1);
+            const Rgb k = SmtLedFull(kCompKeyLed);
+            comp_red += k.r > 150 && k.g < 40 && k.b < 40;
+        }
+        Check(comp_red > 0, "settings-refused-saved: the compressor's write fails (its key blinks red)");
+        Check(red == 0, "settings-refused-saved: the mono key, saved before, doesn't blink");
+    }});
+
+    // the CHOMPI key lights white while SHIFT is held on the settings page, through the bug
+    // report's hold too (#81)
+    cases.push_back({"settings-shift", [] {
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        Check(Max(PthLedFull(kChompiKeyLed)) == 0, "settings-shift: the CHOMPI key dark at first");
+        Press("KEY_26", true);
+        RunMs(100);
+        const Rgb held = PthLedFull(kChompiKeyLed);
+        Check(held.r > 150 && held.r == held.g && held.g == held.b,
+              "settings-shift: SHIFT held on the settings page lights it white");
+        Press("ENC_6_SW", true); // SHIFT + VOLUME: the bug report's hold
+        RunMs(1500);
+        const Rgb hold = PthLedFull(kChompiKeyLed);
+        Check(hold.r > 150 && hold.r == hold.g && hold.g == hold.b,
+              "settings-shift: and through SHIFT + VOLUME's hold");
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(100);
+        Check(Max(PthLedFull(kChompiKeyLed)) == 0, "settings-shift: dark again once let go");
+        // SHIFT held on the play page through the flip up: still SHIFT, still white
+        SetToggle(false);
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        SetToggle(true);
+        RunMs(300);
+        Check(Max(PthLedFull(kChompiKeyLed)) > 150, "settings-shift: SHIFT held through the flip up stays lit");
+        Press("KEY_26", false);
+        RunMs(100);
+        Check(Max(PthLedFull(kChompiKeyLed)) == 0, "settings-shift: and dark once let go there");
     }});
 
     // every scenario of ../twin/scenarios played from power-on, its expect lines holding

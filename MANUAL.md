@@ -80,7 +80,8 @@ The upper octave's other dark keys do nothing.
   read every 30 s.
 - The transport LEDs are purple, so the page can't be mistaken for the play page.
 - **SHIFT + VOLUME, held 2 s:** hold CHOMPI and press and hold the VOLUME knob, in either
-  order; after 2 s it writes a [bug report](#bug-reports), once per hold.
+  order; after 2 s it writes a [bug report](#bug-reports), once per hold. CHOMPI lights white
+  while you hold it, as on the play page.
 - Otherwise the knobs, CHOMPI, PLAY and LOOP do nothing here.
 - A key you're holding when you flip the switch stays where it went down until you let go:
   an effect you hold keeps going, and the key doesn't also change a setting. The same the
@@ -89,7 +90,9 @@ The upper octave's other dark keys do nothing.
   and you're out of the mode when you flip back down.
 - The low-battery warning dims with the LEDs too.
 - Every setting is saved on the card with the master compressor, 2 s after the last change,
-  so it comes back at power-on. None is part of a scene.
+  so it comes back at power-on. None is part of a scene. Without a card, or when the card
+  can't be written, the key you changed last blinks red 3 times, and FRIZZ tries again 2 s
+  later, up to 3 times; the setting then lasts until power-off.
 
 ### Mono input
 
@@ -243,7 +246,7 @@ the chaos key takes up its idea.)
 | Knobs 1-4 | The parameters of the most recently pressed or selected FX key, 1% per detent; stepped ones (shifter shift, filter LFO and delay divisions, freezer length and roll, slicer pattern and stereo, tape stop and spin-up times, the flanger's polarity, the chaos key's grid) move one step per 3 detents |
 | SHIFT + knobs 1-4 | Coarse: jumps to the next point of the parameter's grid per detent (see below) |
 | SHIFT + press knobs 1-4 | Resets that parameter to its default, on the page shown |
-| Press knobs 1-4 | **Page 2:** all four knobs turn over to the effect's second page, and their LEDs pulse; press any knob again for page 1. Pressing or selecting another effect, or the compressor's key, goes back to page 1; pressing the same effect's key keeps page 2. Every effect but the chaos key has one, and the compressor too. See [Page 2](#page-2) |
+| Press knobs 1-4 | **Page 2:** all four knobs turn over to the effect's second page, and their LEDs pulse; press any knob again for page 1. Pressing or selecting another effect, or the compressor's key, goes back to page 1; pressing the same effect's key, or the compressor's while it's selected, keeps page 2. Every effect but the chaos key has one, and the compressor too. See [Page 2](#page-2) |
 
 The FX keys are dimly lit in their effect's colour while off and at full brightness while
 on, where the audio coming out of the effect pushes the colour towards white, from -30 dBFS
@@ -306,7 +309,7 @@ page 2 the knob LEDs pulse, so you can't mistake which page you're turning, and 
 effect has nothing on is dark and does nothing. Every effect but the chaos key has a page 2. Selecting another
 effect or the compressor
 always brings back page 1, so the main controls are under your fingers whenever you pick an
-effect. SHIFT + turn and SHIFT + press work on page 2 as on page 1. Turning the page doesn't
+effect; pressing the key of the one already selected keeps its page. SHIFT + turn and SHIFT + press work on page 2 as on page 1. Turning the page doesn't
 edit the scene, and scenes, recalls and morphs carry page 2's values along with page 1's.
 
 Page 2 is laid out the same on every effect that has one, so your hand learns it once:
