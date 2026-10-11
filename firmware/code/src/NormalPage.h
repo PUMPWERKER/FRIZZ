@@ -88,6 +88,12 @@ namespace chompi
     static const uint16_t kVolumeEncoder = 5;
 
     static const float kPausedDim = .3f;
+    // the beat on the PLAY LED (#110): the first half of each beat this white with no loop
+    // playing; while one plays, a flash this much whiter (or darker) on each beat, more on a
+    // bar's 1
+    static const float kBeatPulse = .25f;
+    static const float kBeatFlash = .35f, kDownbeatFlash = .7f;
+    static const uint32_t kBeatFlashMs = 50;
     // waiting for something: a quantized record closing, an erase at the loop's end, a picked
     // scene slot, the CHOMPI key armed to confirm. Slower than a refusal's 3 blinks (LedSignal)
     static const uint32_t kPendingBlinkMs = 250;
@@ -1402,6 +1408,17 @@ namespace chompi
             const Looper& looper = engine_->looper;
             const Looper::State state = looper.GetState();
 
+            // the beat the effects follow (TempoClock.h), as the settings page's G# shows it:
+            // when one began, for the flash, and whether it was a bar's 1
+            const uint32_t pulse = engine_->FxClockPosition();
+            if (pulse / kPulsesPerBeat != beat_)
+            {
+                beat_ = pulse / kPulsesPerBeat;
+                beat_at_ = now;
+                downbeat_ = pulse % kPulsesPerBar < kPulsesPerBeat;
+            }
+            const float beat_half = pulse % kPulsesPerBeat < kPulsesPerBeat / 2 ? kBeatPulse : 0.f;
+
             float play = 0.f;  // PLAY LED, white level
             float loop[3] = {0.f, 0.f, 0.f};
 
@@ -1423,6 +1440,22 @@ namespace chompi
                     loop[1] = loop[2] = 0.f;
                 }
             }
+
+            // the beat on PLAY (#110): playing, a flash on each beat over where the loop is;
+            // otherwise its first half, a count for a recording and the tempo for the next
+            // the flash, as a tap's (Flash): whiter, or darker on a PLAY already this white,
+            // so the bar's 1 shows at the loop's start too
+            if (state == Looper::State::PLAYING)
+            {
+                if (now - beat_at_ < kBeatFlashMs)
+                {
+                    const float flash = downbeat_ ? kDownbeatFlash : kBeatFlash;
+                    play = play > kFlashDarkAbove ? play - flash : play + flash;
+                }
+            }
+            else
+                play += beat_half;
+            play = play > 1.f ? 1.f : (play < 0.f ? 0.f : play);
 
             // a tempo tap: a flash, over whatever LOOP was showing
             if (tap_flash_.Active(now))
@@ -1646,6 +1679,9 @@ namespace chompi
         LedSignal loop_refused_; // a refused quantized record or tap
         TapTempo tap_tempo_;
         LedSignal tap_flash_;
+        uint32_t beat_ = 0;         // the beat the PLAY LED shows (DrawLooperLeds), in pulses / beat
+        uint32_t beat_at_ = 0;      // when it began
+        bool downbeat_ = false;     // it's a bar's 1
         LedSignal select_flash_; // on the selected FX's key
         float lim_shown_ = 0.f;  // the limiter on the compressor's key, 0..1, held from lim_at_
         uint32_t lim_at_ = 0;

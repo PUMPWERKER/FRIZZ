@@ -76,7 +76,8 @@ CHANGELOG.)
 - **The beat on G#** is the tempo the effects follow right now (see [Tempo](#tempo)): with a
   loop, the loop's at its speed; otherwise the MIDI clock's, with the clock factor applied
   (a 120 BPM clock at double beats at 240); otherwise the last tempo. It's there to see the
-  tempo, not to play to: it can be a little late, up to a few hundredths of a second.
+  tempo, not to play to: it can be a little late, up to a few hundredths of a second. The
+  play page shows it on PLAY too (see [Looper](#looper)).
 
 - **VOLUME's LED** shows the battery all the time: white while the charging cable is in,
   green above 3.3 V, yellow below, red below 3 V (about to switch off unless charging). Pull
@@ -154,6 +155,19 @@ compressor's key while the safety limiter works, the input gain near 100% (VOLUM
 While a loop plays, PLAY and LOOP crossfade in white to show the position (dimmed when
 paused). The transport LEDs show speed and direction while it plays, the scrub speed in white
 while it's paused, and nothing without a loop.
+
+From v0.12 PLAY also shows the beat the effects follow (see [Tempo](#tempo)), as the settings
+page's G# does:
+
+| Looper | PLAY |
+|---|---|
+| No loop | dim white for the first half of each beat |
+| Recording | the same, a count while LOOP is red |
+| Playing | the crossfade, with a short flash on each beat (whiter, or darker where PLAY is already bright), stronger on each bar's 1 |
+| Paused | the dim position, the beat pulsing over it (the tempo runs on) |
+
+LOOP's red blinks (a recording closing, an erase waiting, a refusal) show as before. The beat
+dims with the [LED brightness](#led-brightness).
 
 ## Tempo
 
