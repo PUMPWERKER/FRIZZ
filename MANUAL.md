@@ -862,7 +862,9 @@ save again.
 A recall is meant for performing, a build-up on one scene and the drop on the next:
 
 - **The knobs land within about 25 ms** instead of gliding over 100 ms like a turned knob.
-  Stepped values (freezer length, slicer pattern, delay division …) switch at once.
+  Stepped values (freezer length, slicer pattern, delay division …) switch at once. The
+  flanger's stereo can take up to a tenth of a second: its right channel bends back onto
+  the left one rather than jumping there, which would click.
 - **An effect a recall turns on starts as if you'd pressed its key:** the freezer grabs fresh
   audio, the shifter swoops, the crusher dives, the flanger's sweep restarts, the slicer
   attacks, the tape stops.

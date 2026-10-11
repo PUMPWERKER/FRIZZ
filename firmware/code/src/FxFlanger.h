@@ -85,9 +85,13 @@ public:
         // the stereo knob's glide moves the right sweep onto the left one's (or away), up to
         // the whole depth apart: no faster than kMaxGlideFrames a sample, or its delay would
         // race through the buffer, a click, on a recall's fast slew far more (#130)
-        const float spread = kCentreFrames * depth * fabsf(lfo[0] - lfo[1]);
-        const float most = kMaxGlideFrames / fmaxf(spread, kMaxGlideFrames);
-        stereo_mix_.value = mix_before + fclamp(stereo_mix_.value - mix_before, -most, most);
+        const float glide = stereo_mix_.value - mix_before;
+        if (glide != 0.f)
+        {
+            const float spread = kCentreFrames * depth * fabsf(lfo[0] - lfo[1]);
+            if (fabsf(glide) * spread > kMaxGlideFrames)
+                stereo_mix_.value = mix_before + copysignf(kMaxGlideFrames / spread, glide);
+        }
         const float stereo_mix = stereo_mix_.value;
         // Kastle: the right LFO is the left one until stereo is turned up. Re-synced once the
         // glide back has all but arrived, where the right one's share is too small to jump

@@ -107,12 +107,16 @@ public:
     }
 
     /** Once per sample, before the gate is used: the fade, 0..1. Fading in, it lands on 1
-     *  (kFxGateFull), so a fully wet effect carries none of its input (#45) */
+     *  (kFxGateFull), so a fully wet effect carries none of its input (#45); landed (on at 1,
+     *  or asleep at 0) there's nothing to do */
     float Process()
     {
-        fonepole(value_, target_, kFxGateCoeff);
-        if (on_ && value_ > 1.f - kFxGateFull)
-            value_ = 1.f;
+        if (value_ != target_)
+        {
+            fonepole(value_, target_, kFxGateCoeff);
+            if (on_ && value_ > 1.f - kFxGateFull)
+                value_ = 1.f;
+        }
         return value_;
     }
 
