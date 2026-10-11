@@ -9,9 +9,11 @@
  *    them, so by the clock factor: at half every other one, at double one more halfway to the
  *    next, timed by the clock's period. Start, Continue and Stop from that input go out too.
  *  - Generating: with a loop, or without a clock, two ticks per pulse of the tempo clock
- *    (TempoClock.h, 12 PPQN), one on the pulse and one halfway to the next. With a loop they
- *    come from its play position, so beat 1 is the loop's start, at its speed (in reverse the
- *    clock runs on: it can't count down); paused, its grid runs on by itself.
+ *    (TempoClock.h, 12 PPQN), one on the pulse and one halfway to the next, so by the clock
+ *    factor as the effects are. With a loop they come from its play position, so beat 1 is
+ *    the loop's start, at its speed (in reverse the clock runs on: it can't count down);
+ *    paused, its grid runs on by itself. At x1/2 a loop of an odd number of beats has its
+ *    grid over two passes, beat 1 on every other start, and the Song Position counts in it.
  *  With a loop, the transport is the loop's, and nothing that comes in is passed on:
  *  - a new loop starting to play sends Start with its first tick, unless the gear already
  *    plays from a Start passed on: the ticks then just carry on (a quantized loop starts on

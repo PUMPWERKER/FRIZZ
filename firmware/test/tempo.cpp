@@ -910,6 +910,224 @@ static void TestDelayOnLoopBeat()
           "delay on a loop of 86.49 BPM: a 1/4 is the loop's beat");
 }
 
+/** The clock factor (#116) on every source of the FX's tempo: the loop's, a clock's, the
+ *  tapped and the last one; the loop itself as it was */
+static void TestFactor()
+{
+    MidiClock midi;
+    TempoClock clock;
+    clock.Init(kSr, &midi);
+
+    // taps: the factor times the tapped tempo, as the FX get it; the tempo to fit a loop to
+    // stays the tapped one
+    clock.Tap(100.f);
+    midi.factor = ClockFactor::DOUBLE;
+    clock.Process(kBlock);
+    Check(clock.GetTempo() == 200 && clock.GetFxBpm() == 200.f && clock.GetBpm() == 100.f,
+          "factor: x2 doubles a tapped 100 BPM to 200, a loop still fits to 100");
+    Check(fabsf(clock.PulseSamples() - 60.f * kSr / (200.f * kPulsesPerBeat)) < .01f,
+          "factor: and the pulses come at 200");
+    midi.factor = ClockFactor::HALF;
+    clock.Process(kBlock);
+    Check(clock.GetTempo() == 50, "factor: x1/2 halves it to 50");
+    clock.Tap(101.f);
+    Check(clock.GetFxBpm() == 50.5f && clock.GetTempo() == 51, "factor: x1/2 of 101 is 50.5, not rounded");
+
+    // the 50-300 BPM limit after the factor
+    clock.Tap(400.f);
+    Check(clock.GetTempo() == 200, "factor: x1/2 of a tapped 400 is 200, the limit after the factor");
+    midi.factor = ClockFactor::DOUBLE;
+    clock.Tap(40.f);
+    Check(clock.GetTempo() == 80, "factor: x2 of a tapped 40 is 80");
+    midi.factor = ClockFactor::ONE;
+    clock.Process(kBlock);
+    Check(clock.GetTempo() == kMinBpm, "factor: and x1 of it 50, the limit");
+    midi.factor = ClockFactor::DOUBLE;
+    clock.Tap(200.f);
+    Check(clock.GetTempo() == kMaxBpm, "factor: x2 of 200 is 300, the limit");
+
+    // a tapped beat stays on its beats when the factor changes between them: 100 BPM, a beat
+    // every 28800 samples from the tap; at x2 every 14400, at x1/2 every 57600
+    midi.factor = ClockFactor::ONE;
+    clock.Tap(100.f);
+    size_t now = 0;
+    auto beats_on_grid = [&](size_t until, size_t every) {
+        bool on = true;
+        int n = 0;
+        for (; now < until; now += kBlock)
+            for (uint32_t pos : Pulses(clock, 0.f, 1.f))
+                if (pos % kPulsesPerBeat == 0)
+                {
+                    const size_t off = now % every;
+                    on &= off < 2 * kBlock || every - off < 2 * kBlock;
+                    n++;
+                }
+        return on && n > 0;
+    };
+    Check(beats_on_grid(28800 * 3 + 9000, 28800), "factor: x1, the beats on the tap's");
+    midi.factor = ClockFactor::DOUBLE;
+    Check(beats_on_grid(28800 * 6 + 20000, 14400), "factor: x2 from between two beats, on the tap's and halfway");
+    midi.factor = ClockFactor::HALF;
+    const size_t half_from = now;
+    Check(beats_on_grid(now + 57600 * 3, 28800), "factor: x1/2, on the tap's beats");
+    // which of the tap's beats are the half tempo's, the position knows: every other one
+    now = half_from;
+    bool every_other = true;
+    int seen = 0;
+    size_t first = 0;
+    for (; now < half_from + 57600 * 4; now += kBlock)
+        for (uint32_t pos : Pulses(clock, 0.f, 1.f))
+            if (pos % kPulsesPerBeat == 0)
+            {
+                if (seen++ == 0)
+                    first = now;
+                const size_t off = (now - first) % 57600;
+                every_other &= off < 2 * kBlock || 57600 - off < 2 * kBlock;
+            }
+    Check(every_other && seen >= 3, "factor: x1/2, a beat every other tapped one");
+
+    // a loop of 2 s, 4 beats: x2 gives 8 beats a pass at 240, x1/2 2 beats at 60; the loop
+    // (its length, its 4 beats) stays
+    midi.factor = ClockFactor::ONE;
+    const size_t length = 2 * 48000;
+    clock.SetLoop(length, 4);
+    Pulses(clock, 0.f, 1.f);
+    Check(clock.GetTempo() == 120 && clock.LoopPulses() == 48, "factor loop: x1, 4 beats at 120");
+    Pulses(clock, 24.5f / 48.f, 1.f);
+    midi.factor = ClockFactor::DOUBLE;
+    std::vector<uint32_t> p = Pulses(clock, 24.5f / 48.f, 1.f);
+    Check(p.empty() && clock.GetTempo() == 240 && clock.LoopPulses() == 96,
+          "factor loop: x2 halfway through, 8 beats at 240, no burst of pulses");
+    p = Pulses(clock, 50.2f / 96.f, 1.f);
+    Check(p.size() == 1 && p[0] == 50, "factor loop: the next pulse on the loop's position at x2");
+    p = Pulses(clock, 95.5f / 96.f, 1.f);
+    p = Pulses(clock, .2f / 96.f, 1.f);
+    Check(p.size() == 1 && p[0] == 0, "factor loop: beat 1 on the loop's start at x2");
+    Check(fabsf(clock.GetFxBpm() - 240.f) < .01f, "factor loop: the FX's times at 240");
+    midi.factor = ClockFactor::HALF;
+    Pulses(clock, 12.5f / 24.f, 1.f);
+    Check(clock.GetTempo() == 60 && clock.LoopPulses() == 24, "factor loop: x1/2, 2 beats at 60");
+    p = Pulses(clock, 23.5f / 24.f, 1.f);
+    p = Pulses(clock, .2f / 24.f, 1.f);
+    Check(p.size() == 1 && p[0] == 0, "factor loop: beat 1 on the loop's start at x1/2");
+    clock.ClearLoop();
+    Check(clock.GetBpm() == 120.f && clock.GetTempo() == 60,
+          "factor loop: erased, the loop's 120 kept, the FX at x1/2 of it");
+
+    // an odd number of beats at x1/2: 3 beats are 1.5 a pass, so the grid runs over two
+    // passes, steady, its beat 1 on every other loop start (decided in #116)
+    const size_t odd = 3 * 24000; // 1.5 s, 120 BPM
+    clock.SetLoop(odd, 3);
+    std::vector<uint32_t> odd_seen;
+    for (int pass = 0; pass < 3; pass++)
+        for (size_t f = 0; f < odd; f += kBlock)
+            for (uint32_t pos : Pulses(clock, static_cast<float>(f) / odd, 1.f))
+                odd_seen.push_back(pos);
+    bool steady = odd_seen.size() == 54;
+    for (size_t i = 0; steady && i < odd_seen.size(); i++)
+        steady = odd_seen[i] == i % 36;
+    Check(clock.LoopPulses() == 18 && steady,
+          "factor odd: 3 beats at x1/2, 36 pulses over two passes, 0 on every other start");
+    p = Pulses(clock, .2f / 18.f, 1.f);
+    Check(p.size() == 1 && p[0] == 18, "factor odd: into the second pass, 18");
+    p = Pulses(clock, 17.5f / 18.f, -1.f);
+    Check(p.size() == 1 && p[0] == 18, "factor odd: reverse back across the start, 18 as forward has it");
+    p = Pulses(clock, 16.5f / 18.f, -1.f);
+    Check(p.size() == 1 && p[0] == 17, "factor odd: and on into the first pass's end, 17");
+    // taken back to its start in its second pass (MIDI's Start): beat 1 of the grid again
+    Pulses(clock, 17.5f / 18.f, 1.f);
+    Pulses(clock, .2f / 18.f, 1.f); // into the second pass
+    p = Pulses(clock, 5.5f / 18.f, 1.f);
+    Check(!p.empty() && p.back() == 23, "factor odd: 5 pulses into the second pass, 23");
+    clock.Rewound();
+    p = Pulses(clock, .1f / 18.f, 1.f);
+    Check(p.size() == 1 && p[0] == 0, "factor odd: rewound in the second pass, beat 1 of the grid");
+    p = Pulses(clock, 1.1f / 18.f, 1.f);
+    Check(p.size() == 1 && p[0] == 1, "factor odd: and on from there");
+    clock.ClearLoop();
+
+    // paused, the grid runs on: a factor scales it around its place
+    midi.factor = ClockFactor::ONE;
+    clock.SetLoop(length, 4);
+    Pulses(clock, 0.f, 1.f);
+    Pulses(clock, 10.5f / 48.f, 1.f);
+    Pulses(clock, 10.5f / 48.f, 1.f, true);
+    midi.factor = ClockFactor::DOUBLE;
+    p.clear();
+    for (size_t f = 0; f < 48000 && p.empty(); f += kBlock)
+        p = Pulses(clock, 10.5f / 48.f, 1.f, true);
+    Check(p.size() == 1 && p[0] == 22 && clock.GetTempo() == 240,
+          "factor paused: x2, the grid on from twice its place (10.5 pulses: 21), at 240");
+    clock.ClearLoop();
+
+    // a clock counts by the factor already (MidiClock.h): its tempo isn't doubled twice
+    midi.has_clock = true;
+    midi.bpm = 200.f; // 100 sent, at x2
+    clock.Process(kBlock);
+    Check(clock.GetTempo() == 200 && clock.GetBpm() == 100.f,
+          "factor clock: 100 BPM sent at x2 is 200, not 400; a loop fits to the 100 sent");
+    midi.bpm = 300.f;
+    midi.locks++;
+    clock.Process(kBlock);
+    midi.has_clock = false;
+    midi.factor = ClockFactor::ONE;
+    clock.Process(kBlock);
+    Check(clock.GetTempo() == 150, "factor clock: gone, x1 again: the 150 sent, not 300 / 2 clamped");
+}
+
+/** A loop recorded to a clock at a factor: its beats as FRIZZ counted them, as the clock was
+ *  sent, and a Song Position read by the factor it was recorded at, whatever it is now */
+static void TestFactorQuantized()
+{
+    static int16_t mem[kLoopMemSize];
+    MidiClock midi;
+    chompi::Looper looper;
+    looper.Init(mem, &midi);
+    // 120 BPM sent, at x2: the ticks as MidiClock counts them, every 500 samples
+    const float period = 500.f;
+    midi.has_clock = true;
+    midi.factor = ClockFactor::DOUBLE;
+    midi.tick_period = period;
+    midi.bpm = kSr * 60.f / (period * kTicksPerBeat);
+    float in[kBlock] = {}, out_l[kBlock], out_r[kBlock];
+    size_t now = 0;
+    auto block = [&]() {
+        now += kBlock;
+        midi.ticks = static_cast<uint32_t>(now / period);
+        midi.last_tick_time = static_cast<uint32_t>(midi.ticks * period);
+        looper.Process(in, in, out_l, out_r, kBlock);
+    };
+    looper.StartRecording(true);
+    block();
+    while (now < 60000) // into FRIZZ's 2nd bar (48000 samples each), the sender's first
+        block();
+    looper.StopRecording();
+    while (looper.GetState() == chompi::Looper::State::RECORDING && now < 200000)
+        block();
+    Check(looper.GetBeats() == 8 && looper.GetSenderBeats() == 4,
+          "factor quantized: at x2, a bar sent is 2 bars of FRIZZ's, 8 beats; 4 as sent");
+
+    // the factor back to x1, paused: Song Position 8 (the sender's 2nd half-bar) is halfway
+    midi.factor = ClockFactor::ONE;
+    looper.TogglePlay();
+    for (int i = 0; i < 400; i++)
+        block();
+    looper.Follow(0xF2, 8, midi.last_tick_time);
+    Check(looper.GetState() == chompi::Looper::State::PAUSED
+              && fabsf(looper.GetPosition() - .5f) < .001f,
+          "factor quantized: Song Position 8 halfway through, by the factor it was recorded at");
+
+    // to the tempo clock in the sender's beats: at x2 8 beats a pass again, as recorded
+    MidiClock still;
+    still.factor = ClockFactor::DOUBLE;
+    TempoClock clock;
+    clock.Init(kSr, &still);
+    clock.SetLoop(looper.GetLength(), looper.GetSenderBeats());
+    Pulses(clock, 0.f, 1.f);
+    Check(clock.LoopPulses() == 8 * kPulsesPerBeat && clock.GetTempo() == 240,
+          "factor quantized: the FX at 240 on its 8 beats, as before the factor applied to loops");
+}
+
 int main()
 {
     TestTaps();
@@ -925,5 +1143,7 @@ int main()
     TestDelayReverse();
     TestDelayTempoJump();
     TestDelayOnLoopBeat();
+    TestFactor();
+    TestFactorQuantized();
     return Finish();
 }
