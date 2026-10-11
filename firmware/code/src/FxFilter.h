@@ -34,7 +34,7 @@ public:
 
     static const size_t kNumLfoDivisions = sizeof(kLfoDivisionPulses) / sizeof(kLfoDivisionPulses[0]);
 
-    void Init(float sample_rate)
+    FX_ONCE void Init(float sample_rate)
     {
         filter_.Init(sample_rate);
         filter_.SetSlew(1.f); // the cutoff is slewed here, so the LFO isn't smoothed away

@@ -48,15 +48,15 @@ public:
 
     static const size_t kNumPatterns = sizeof(kSlicerPatterns);
 
-    void Init(float sample_rate)
+    FX_ONCE void Init(float sample_rate)
     {
         sample_rate_ = sample_rate;
         attack_inc_ = 1.f / (.01f * sample_rate);
         gate_.Init();
         env_[0].Reset();
         env_[1].Reset();
-        pattern_pos_ = 0;
         step_ = false;
+        skipped_ = 0;
         rng_.Seed(0x2545F491u);
 
         for (size_t i = 0; i < kNumFxParams; i++)
@@ -68,11 +68,10 @@ public:
     /** One call per clock pulse, with the clock's position (TempoClock::Pulse) */
     void ClockPulse(uint32_t pos)
     {
-        pattern_pos_ = pos % (kPulsesPer16th * kNumSteps);
         if (pos % kPulsesPer16th == 0)
         {
             // the odd steps on the 16th, the even ones (2, 4 ...) shuffle_ of one late
-            const uint32_t step = pattern_pos_ / kPulsesPer16th;
+            const uint32_t step = pos / kPulsesPer16th % kNumSteps;
             if ((step & 1) && shuffle_ > 0.f)
             {
                 late_step_ = step;
@@ -89,6 +88,12 @@ public:
     void Process(float* l, float* r)
     {
         const float gate = gate_.Process();
+        // off and faded out, it passes its input and only keeps count: the steps and their
+        // chances still come, so the pattern goes on as ever, and the envelopes catch up on
+        // what they slept through when a step presses them or the key wakes them
+        const bool asleep = gate_.Asleep();
+        if (!asleep)
+            CatchUp();
 
         if (gate_.TakePress())
         {
@@ -104,6 +109,7 @@ public:
         if (step_)
         {
             step_ = false;
+            CatchUp();
             const uint32_t step = step_idx_;
             const bool flip = rng_.Uniform() < chance_;
 
@@ -119,6 +125,12 @@ public:
                 if (hit != flip)
                     env_[c].Press();
             }
+        }
+
+        if (asleep)
+        {
+            skipped_++;
+            return;
         }
 
         float* const io[2] = {l, r};
@@ -160,10 +172,19 @@ public:
 private:
     static const uint32_t kNumSteps = 8;
 
+    /** The envelopes over the samples it slept through, at once */
+    inline void CatchUp()
+    {
+        if (skipped_ == 0)
+            return;
+        env_[0].Skip(skipped_, attack_inc_, decay_coeff_);
+        env_[1].Skip(skipped_, attack_inc_, decay_coeff_);
+        skipped_ = 0;
+    }
+
     float sample_rate_;
     float attack_inc_;
     PressEnvelope env_[2];
-    uint32_t pattern_pos_; // pulses into the pattern, kNumSteps 16ths
     bool step_; // ClockPulse and Process both run in the audio callback
     Rng rng_;
     size_t pattern_ = 0;
@@ -174,6 +195,7 @@ private:
     uint32_t late_ = 0;          // samples until a late step, 0: none waiting
     uint32_t late_step_ = 0, step_idx_ = 0;
     float decay_coeff_ = 0.f;
+    uint32_t skipped_ = 0; // samples the envelopes slept through (CatchUp)
 };
 
 } // namespace chompi

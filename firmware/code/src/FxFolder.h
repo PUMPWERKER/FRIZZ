@@ -36,7 +36,7 @@ public:
         SYMMETRY = 5,
     };
 
-    void Init(float sample_rate)
+    FX_ONCE void Init(float sample_rate)
     {
         sample_rate_ = sample_rate;
         asleep_ = true;
@@ -57,19 +57,20 @@ public:
     void Process(float* l, float* r)
     {
         const float gate = gate_.Process();
+        // off and faded out: nothing to do, the knobs where they're going. Back on, the fold
+        // starts from this sample (its first one plain, no step to average over); the
+        // fade-in covers the tone's start
+        if (gate_.Asleep())
+        {
+            SnapParams();
+            asleep_ = true;
+            return;
+        }
         const float drive_l = drive_.Process();
         const float drive_r = drive_l * stereo_.Process();
         const float shape = shape_.Process();
         const float bias = bias_.Process();
         const float tone_coeff = tone_coeff_.Process();
-
-        // off and faded out: nothing to do. Back on, the fold starts from this sample (its
-        // first one plain, no step to average over); the fade-in covers the tone's start
-        if (gate_.Asleep())
-        {
-            asleep_ = true;
-            return;
-        }
         float* const io[2] = {l, r};
         // the sine's slope at 0 is pi/2, the triangle's 1: both brought to 1
         const float unity = kSineUnity + shape * (1.f - kSineUnity);

@@ -116,6 +116,12 @@ public:
     /** Off their defaults or still slewing: at rest at the defaults, the effect runs alone
      *  and FxChain.h leaves this out (SetParam makes it busy again) */
     inline bool Busy() const { return moving_ || !neutral_; }
+    /** A knob turned and not yet settled */
+    inline bool Moving() const { return moving_; }
+    /** The effect comes on again after it was quiet: the crossovers start afresh from the
+     *  next sample, not from what they held when it went quiet. A send's Band (FxChain::
+     *  SendBand) isn't run while the effect is idle, so only this tells it */
+    inline void Rest() { awake_ = false; }
 
     /** The knobs' slewed values jump to their targets (tests) */
     void Snap()
@@ -141,14 +147,8 @@ public:
         for (size_t c = 0; c < 2; c++)
         {
             if (!awake_)
-            {
-                // the crossovers start from here once the knob turns
-                lp_hi_[c] = *io[c];
-                lp_lo_[c] = 0.f;
-            }
-            lp_hi_[c] += hi_.value * (*io[c] - lp_hi_[c]);
-            lp_lo_[c] += lo_.value * (*io[c] - lp_lo_[c]);
-            *io[c] = lp_hi_[c] - lp_lo_[c];
+                Wake(c, *io[c]); // the crossovers start from here once the knob turns
+            *io[c] = Crossover(c, *io[c]);
         }
         awake_ = true;
         return Banding();
@@ -202,13 +202,10 @@ private:
         float* const io[2] = {l, r};
         for (size_t c = 0; c < 2; c++)
         {
+            // the crossovers start from here: only the effect's share fades in, so whatever
+            // they held from before can't be heard
             if (!awake_)
-            {
-                // the crossovers start from here: only the effect's share fades in, so
-                // whatever they held from before can't be heard
-                lp_hi_[c] = *io[c];
-                lp_lo_[c] = 0.f;
-            }
+                Wake(c, *io[c]);
             x_[c] = *io[c];
         }
         awake_ = true;
@@ -216,11 +213,24 @@ private:
             return; // the effect gets it all: the signal as it is (Join takes x_ for the band)
         for (size_t c = 0; c < 2; c++)
         {
-            lp_hi_[c] += hi_.value * (x_[c] - lp_hi_[c]);
-            lp_lo_[c] += lo_.value * (x_[c] - lp_lo_[c]);
-            b_[c] = lp_hi_[c] - lp_lo_[c];
+            b_[c] = Crossover(c, x_[c]);
             *io[c] = b_[c];
         }
+    }
+
+    /** Channel c's x through the crossovers: the band between them, the upper one's
+     *  lowpass less the lower one's */
+    FRIZZ_HOT inline float Crossover(size_t c, float x)
+    {
+        lp_hi_[c] += hi_.value * (x - lp_hi_[c]);
+        lp_lo_[c] += lo_.value * (x - lp_lo_[c]);
+        return lp_hi_[c] - lp_lo_[c];
+    }
+    /** They start from x, as if it had always been there: the band passes it whole */
+    inline void Wake(size_t c, float x)
+    {
+        lp_hi_[c] = x;
+        lp_lo_[c] = 0.f;
     }
 
     /** After it: the signal, with the band crossfaded by Mix into the effect's output at its

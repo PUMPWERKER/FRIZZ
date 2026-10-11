@@ -4,18 +4,21 @@
 box and looper for whatever you plug into its AUX input.
 
 - **A looper:** free-length loops, or loops locked to whole bars of an incoming MIDI clock.
-  Varispeed in fifths and octaves, reverse and scrub on the big transport knob.
+  Varispeed in semitones (fifths and octaves with SHIFT), reverse and scrub on the big
+  transport knob.
 - **Twelve punch-in effects on the white keys:** freezer, pitch shifter, wavefolder, bitcrusher,
   DJ filter, flanger, resonator, slicer, wow & flutter, tape stop, tempo-synced delay and reverb. Hold a key to play an effect,
-  hold it and press SHIFT to latch it. Knobs 1-4 shape the last effect you touched.
+  hold it and press SHIFT to latch it. Knobs 1-4 shape the last effect you touched. A chaos
+  key next to them drops latched effects out at random and scrambles the loop's steps.
 - **Four FX scenes on the dark keys:** save every effect's settings and latches, recall them
-  at once for a drop, copy and delete them. Kept on the SD card. A fifth key clears every
-  effect at once.
+  at once for a drop, morph to them on the bar line or crossfade by hand on the transport
+  knob, copy and delete them. Kept on the SD card. A fifth key clears every effect at once.
 - **An input/loop mix** between the live input and the loop, plus input gain, output gain and a
   headphone feed that can carry the dry input alone, all on the VOLUME knob.
 - **A master compressor** on its own key, and a safety limiter on every output.
 - **MIDI** over TRS or USB: clock for quantized loops and the tempo-synced effects; from
-  v0.11 also notes playing the keys, CCs setting every parameter, program changes recalling scenes.
+  v0.11 also notes playing the keys, CCs setting every parameter, program changes recalling scenes;
+  from v0.12 FRIZZ can send its clock and the loop's Start and Stop too.
 
 FRIZZ is installed from the SD card like any CHOMPI firmware. It doesn't touch the bootloader,
 and you can go back to the stock firmware the same way.
