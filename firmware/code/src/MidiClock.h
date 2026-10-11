@@ -20,7 +20,8 @@
  *
  *  The tempo factor (the settings page, SettingsPage.h) makes FRIZZ follow the clock at half
  *  or double its tempo: what the looper and TempoClock read (the ticks, their period, the
- *  tempo) counts every tick twice, or every other one. The event log keeps what was sent
+ *  tempo) counts every tick twice, or every other one. TempoClock applies it to the other
+ *  tempos (a loop's, a tapped one) itself. The event log keeps what was sent
  *  (SenderBpm, SenderLocks), since a bug report's card carries the factor.
  *
  *  One other message is read: the SysEx F0 7D 43 48 10 F7 asks for a restart, so a computer

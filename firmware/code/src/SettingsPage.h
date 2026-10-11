@@ -14,7 +14,8 @@
  *    D#                  the effect channels (1-15) over the jack too, on / off
  *                                                            light blue, lit when on
  *    F#                  MIDI transport following, on / off  green, lit when on
- *    G#                  the clock's tempo factor, each press the next: x1, x2, x1/2
+ *    G#                  the tempo factor, each press the next: x1, x2, x1/2, on a clock,
+ *                        a loop or a tapped tempo alike (TempoClock.h)
  *                                                            yellow, red, light blue,
  *                        lit for the first half of every beat the effects follow, else dim
  *    A#                  the clock source, each press the next: Auto, TRS, USB, internal

@@ -216,6 +216,25 @@ static void Latch(const char* key)
     RunMs(200);
 }
 
+/** Keys pressed and let go to the ms: "+KEY_5" down, "-KEY_5" up, a number waits that many
+ *  ms; keys in a row go down in the same ms */
+static void Keys(const std::vector<const char*>& steps)
+{
+    for (const char* s : steps)
+    {
+        if (*s == '+' || *s == '-')
+            Press(s + 1, *s == '+');
+        else
+            RunMs(static_cast<uint32_t>(atoi(s)));
+    }
+}
+
+/** The FX latched, a bit each (FxId), as SysEx 0x20 answers them */
+static unsigned LatchedFx(const std::string& st)
+{
+    return st.size() > 9 ? static_cast<uint8_t>(st[8]) << 7 | static_cast<uint8_t>(st[9]) : ~0u;
+}
+
 /** SAVE, a slot (1-4), CHOMPI to confirm */
 static void Save(int slot)
 {
@@ -417,6 +436,127 @@ int main()
         Check(changed, "select: SHIFT + a key puts its effect on the knobs");
         Check(fabsf(RunMs(300) - dry) < dry * .05f, "select: without switching it on");
         Check(Max(SmtLedFull(kShifterKeyLed)) < 80, "select: its key stays dim");
+    }});
+
+    // SHIFT and an FX key nearly together (#115): within kShiftGraceMs (15 ms) of the key's
+    // press, SHIFT going down or let go counts as SHIFT first, a select, and a key's release
+    // bouncing back is taken back; the latch gesture, key then SHIFT, has more time between.
+    // Each from the filter latched (or not), the shifter on the knobs; the debounce sees a
+    // press 8 ms after contact, a release 7 ms after
+    cases.push_back({"select-grace", [] {
+        RunMs(kReadyMs);
+        const unsigned filter = 1u << 4;
+        struct Seq
+        {
+            const char* what;
+            bool latched_before, latched_after;
+            std::vector<const char*> keys;
+        };
+        const std::vector<Seq> seqs = {
+            {"SHIFT let go 1 ms after the key's contact", true, true,
+             {"+KEY_26", "50", "+KEY_5", "1", "-KEY_26", "150", "-KEY_5"}},
+            {"SHIFT let go in the key's ms", true, true,
+             {"+KEY_26", "50", "+KEY_5", "-KEY_26", "150", "-KEY_5"}},
+            {"SHIFT let go 40 ms before the key: a plain press", true, false,
+             {"+KEY_26", "50", "-KEY_26", "40", "+KEY_5", "150", "-KEY_5"}},
+            {"key and SHIFT in the same ms", true, true,
+             {"+KEY_5", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"key, SHIFT 1 ms later", true, true,
+             {"+KEY_5", "1", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"key, SHIFT 5 ms later", true, true,
+             {"+KEY_5", "5", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"key, SHIFT 12 ms later", true, true,
+             {"+KEY_5", "12", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"key, SHIFT 5 ms later, unlatched", false, false,
+             {"+KEY_5", "5", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"key, SHIFT 25 ms later: the latch gesture unlatches", true, false,
+             {"+KEY_5", "25", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"key, SHIFT 25 ms later: the latch gesture latches", false, true,
+             {"+KEY_5", "25", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
+            {"SHIFT bouncing 4 ms, the key at its 2nd", true, true,
+             {"+KEY_26", "1", "-KEY_26", "1", "+KEY_26", "+KEY_5", "1", "-KEY_26", "1", "+KEY_26",
+              "100", "-KEY_26", "100", "-KEY_5"}},
+            {"the key bouncing 4 ms, SHIFT let go at its 2nd", true, true,
+             {"+KEY_26", "50", "+KEY_5", "1", "-KEY_5", "1", "-KEY_26", "+KEY_5", "1", "-KEY_5",
+              "1", "+KEY_5", "150", "-KEY_5"}},
+            {"select, SHIFT up, the key's release touching again 7 ms on", true, true,
+             {"+KEY_26", "50", "+KEY_5", "100", "-KEY_26", "100", "-KEY_5", "7", "+KEY_5", "1",
+              "-KEY_5"}},
+            {"select, the key's release touching again 7 ms on, SHIFT held", true, true,
+             {"+KEY_26", "50", "+KEY_5", "100", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5", "100",
+              "-KEY_26"}},
+            {"the latch gesture, its release touching again 7 ms on", false, true,
+             {"+KEY_5", "100", "+KEY_26", "100", "-KEY_26", "100", "-KEY_5", "7", "+KEY_5", "1",
+              "-KEY_5"}},
+            {"a plain tap", true, false, {"+KEY_5", "60", "-KEY_5"}},
+            {"a plain tap, its release touching again 7 ms on", true, false,
+             {"+KEY_5", "60", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5"}},
+            // the compressor's key, then SHIFT: SHIFT + its key, a select, so the filter
+            // held meanwhile doesn't latch
+            {"the filter held, the compressor's key, SHIFT 3 ms later", false, false,
+             {"+KEY_5", "100", "+KEY_15", "3", "+KEY_26", "100", "-KEY_15", "-KEY_26", "100",
+              "-KEY_5"}},
+        };
+        for (const Seq& s : seqs)
+        {
+            if (((LatchedFx(Ask({0x20})) & filter) != 0) != s.latched_before)
+                Latch("KEY_5");
+            Tap("KEY_2"); // the shifter on the knobs
+            RunMs(300);
+            const unsigned before = LatchedFx(Ask({0x20}));
+            Keys(s.keys);
+            RunMs(400);
+            const std::string st = Ask({0x20});
+            const bool comp = strstr(s.what, "compressor") != nullptr;
+            Check(((before & filter) != 0) == s.latched_before && ((LatchedFx(st) & filter) != 0) == s.latched_after
+                      && st.size() > 4 && st[4] == (comp ? 14 : 4),
+                  (std::string("select-grace: ") + s.what + (s.latched_after ? ": latched" : ": unlatched")
+                   + (comp ? ", the compressor selected" : ", the filter selected")).c_str());
+        }
+    }});
+
+    // a key pressed sounds at once, the grace window (#115) or not: the filter, turned down,
+    // is heard within 10 ms of the key's contact (its debounce takes 8)
+    cases.push_back({"select-grace-at-once", [] {
+        RunMs(kReadyMs);
+        const float dry = RunMs(300);
+        Tap("KEY_5");
+        RunMs(100);
+        Turn(kKnob1Encoder, -40);
+        RunMs(500);
+        Press("KEY_5", true);
+        RunMs(10);
+        Check(RunMs(10) < dry * .5f, "select-grace-at-once: a key held sounds 10 ms after its contact");
+        Press("KEY_5", false);
+        RunMs(300);
+        // the compressor's key, then SHIFT in the window, with a save waiting for CHOMPI: SHIFT +
+        // its key, so CHOMPI let go doesn't confirm
+        const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
+        Tap("KEY_25");
+        RunMs(100);
+        Tap("KEY_17");
+        RunMs(300);
+        Keys({"+KEY_15", "3", "+KEY_26", "100", "-KEY_15", "100", "-KEY_26", "500"});
+        Check(Card("/FRIZZ/frizz_scenes.txt") == scenes,
+              "select-grace-at-once: the compressor's key, SHIFT 3 ms later: a select, no save confirmed");
+        // and a select flashes the key, also one SHIFT made late
+        Keys({"+KEY_2", "3", "+KEY_26"});
+        const std::vector<int> seen = Watch(false, kShifterKeyLed, 120);
+        RunMs(200);
+        const int held = Max(SmtLedFull(kShifterKeyLed));
+        Keys({"-KEY_2", "-KEY_26", "300"});
+        Check(*std::max_element(seen.begin(), seen.end()) > 240 && held < 80,
+              "select-grace-at-once: the shifter's key, SHIFT 3 ms later: it flashes white, then stays dim, off");
+        // a MIDI note retriggered at once on a latched effect: plain presses, as ever
+        Latch("KEY_5");
+        Trs({kNoteOn, kFilterNote, 100});
+        RunMs(100);
+        Trs({kNoteOff, kFilterNote, 0, kNoteOn, kFilterNote, 100});
+        RunMs(100);
+        Trs({kNoteOff, kFilterNote, 0});
+        RunMs(300);
+        Check((LatchedFx(Ask({0x20})) >> 4 & 1) == 0,
+              "select-grace-at-once: a MIDI note retriggered at once on a latched filter: unlatched on its last note off");
     }});
 
     // page 2's shared knobs (FxOutput.h, #40, #38): nothing sets a level by itself any more.
@@ -3563,6 +3703,148 @@ int main()
         Check(st.size() > 9 && ((static_cast<uint8_t>(st[8]) << 7 | static_cast<uint8_t>(st[9])) == 1u << 13),
               "phaser: KEY_14 latches the chaos key (FxId 13), the phaser off");
     }});
+
+    // ===== #116: the clock factor times every tempo the effects follow, not only a clock's =====
+    {
+        // SHIFT + LOOP, 5 taps ms apart
+        static auto tap_tempo = [](uint32_t ms) {
+            Press("KEY_26", true);
+            for (int i = 0; i < 5; i++)
+            {
+                Tap("KEY_28");
+                RunMs(ms - 60);
+            }
+            Press("KEY_26", false);
+            RunMs(300);
+        };
+        // the settings page's G#, presses times (x1 -> x2 -> x1/2 -> x1), and back to play
+        static auto factor = [](int presses) {
+            SetToggle(true);
+            RunMs(300);
+            for (int i = 0; i < presses; i++)
+            {
+                Tap("KEY_19");
+                RunMs(100);
+            }
+            SetToggle(false);
+            RunMs(300);
+        };
+
+        // the use case: a song on AUX, its tempo tapped, the effects at double or half of it
+        cases.push_back({"factor-tap", [] {
+            RunMs(kReadyMs);
+            tap_tempo(600);
+            Check(Probe().tempo == 100, "factor-tap: 100 BPM tapped, no clock");
+            SetToggle(true);
+            RunMs(300);
+            Tap("KEY_19"); // x2
+            RunMs(500);
+            Check(Probe().tempo == 200 && Probe().fx_bpm == 200.f, "factor-tap: x2, the effects at 200");
+            // G# on the effects' beats: lit half a beat of 200, 150 ms
+            std::vector<int> runs = Runs(Watch(false, kFactorKeyLed, 2000), 100);
+            bool on = runs.size() >= 4;
+            for (int r : runs)
+                on &= r >= 125 && r <= 175;
+            Check(on, "factor-tap: G# beats at 200");
+            Tap("KEY_19"); // x1/2
+            RunMs(500);
+            Check(Probe().tempo == 50, "factor-tap: x1/2, the effects at 50");
+            Tap("KEY_19"); // x1
+            RunMs(500);
+            Check(Probe().tempo == 100, "factor-tap: x1, the tapped 100 again");
+            // past 300 after the factor: 200 tapped, x2 is 300
+            SetToggle(false);
+            RunMs(300);
+            tap_tempo(300);
+            factor(1);
+            Check(Probe().tempo == 300, "factor-tap: 200 tapped at x2 is 300, the limit after the factor");
+            factor(1); // x1/2
+            Check(Probe().tempo == 100, "factor-tap: and x1/2 of it 100");
+        }});
+
+        // a loop recorded without a clock: the effects at the factor of its tempo, the loop as
+        // it was
+        cases.push_back({"factor-loop", [] {
+            RunMs(kReadyMs);
+            Tap("KEY_28");
+            RunMs(2000);
+            Tap("KEY_28");
+            RunMs(1000);
+            const ClockState c = Probe();
+            printf("      loop: %zu frames, the effects at %.2f BPM\n", c.loop_length, c.fx_bpm);
+            Check(c.loop_state == 2 && fabsf(c.fx_bpm - 120.f) < 6.f, "factor-loop: a 2 s loop, 4 beats of about 120 guessed");
+            factor(1); // x2
+            Check(fabsf(Probe().fx_bpm - 2.f * c.fx_bpm) < .01f, "factor-loop: x2, the effects at twice its tempo");
+            factor(1); // x1/2
+            const ClockState h = Probe();
+            Check(fabsf(h.fx_bpm - .5f * c.fx_bpm) < .01f, "factor-loop: x1/2, the effects at half its tempo");
+            Check(h.loop_length == c.loop_length && h.loop_beats == c.loop_beats,
+                  "factor-loop: the loop as it was, its length and beats");
+        }});
+
+        // a loop recorded to a clock at x2: as before, the effects at the factor of the clock,
+        // not twice; then the factor follows on the loop
+        cases.push_back({"factor-clock-loop", [] {
+            clock_bpm = 120.f;
+            RunMs(kReadyMs);
+            RunMs(2000);
+            factor(1); // x2
+            RunMs(2000);
+            Check(Probe().tempo == 240, "factor-clock-loop: a 120 BPM clock at x2, 240");
+            Press("KEY_27", true);
+            RunMs(100);
+            Tap("KEY_28");
+            Press("KEY_27", false);
+            RunMs(1500);
+            Tap("KEY_28"); // closes at the bar's end
+            RunMs(2000);
+            const ClockState c = Probe();
+            Check(c.loop_state == 2 && c.loop_beats > 0 && c.tempo == 240,
+                  "factor-clock-loop: a quantized loop at x2, the effects at 240 as before, not 480");
+            factor(1); // x1/2
+            const ClockState h = Probe();
+            Check(h.tempo == 60, "factor-clock-loop: x1/2 on the loop, the effects at 60");
+            Check(h.loop_length == c.loop_length && h.loop_beats == c.loop_beats,
+                  "factor-clock-loop: the loop as it was, its length and beats");
+            printf("      loop: %zu frames, %u beats\n", c.loop_length, c.loop_beats);
+        }});
+
+        // 3 beats at x1/2 are a beat and a half a pass: the effects' grid runs over two passes,
+        // beat 1 on every other loop start, the other start halfway through a beat (decided in
+        // #116)
+        cases.push_back({"factor-odd", [] {
+            RunMs(kReadyMs);
+            tap_tempo(500); // 120
+            Tap("KEY_28");
+            RunMs(1500);
+            Tap("KEY_28"); // 1.5 s: 3 beats of 120
+            RunMs(500);
+            const float one = Probe().fx_bpm;
+            factor(2); // x1/2
+            printf("      the effects at %.2f BPM, at x1/2 %.2f\n", one, Probe().fx_bpm);
+            Check(fabsf(one - 120.f) < 6.f && fabsf(Probe().fx_bpm - .5f * one) < .01f,
+                  "factor-odd: 3 beats of about 120, at x1/2 the effects at half that");
+            // the grid's position just after each loop start
+            std::vector<uint32_t> at_start;
+            float last = Probe().loop_pos;
+            for (int ms = 0; ms < 8000 && at_start.size() < 4; ms += 5)
+            {
+                RunMs(5);
+                const ClockState c = Probe();
+                if (c.loop_pos < last)
+                    at_start.push_back(c.position);
+                last = c.loop_pos;
+            }
+            printf("      at the loop's starts:");
+            for (uint32_t pos : at_start)
+                printf(" %u", pos);
+            printf("\n");
+            bool alternate = at_start.size() == 4;
+            for (size_t i = 0; alternate && i < at_start.size(); i++)
+                alternate = (at_start[i] == 0 || at_start[i] == 18) && (i == 0 || at_start[i] != at_start[i - 1]);
+            Check(alternate, "factor-odd: the loop starts on the grid's 0 and 18 in turn");
+        }});
+    }
 
     // every scenario of ../twin/scenarios played from power-on, its expect lines holding
     static std::vector<std::string> scenarios;

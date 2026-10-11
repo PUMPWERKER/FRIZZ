@@ -27,7 +27,7 @@ STRESS=1 ./run.sh work out.bin
 | `midisuite` | `../tools/midisuite.py` itself against the virtual CHOMPI, as `remote` does remote.py: USB and the TRS jack each on a pseudo-terminal, the jack wired both ways, only its out (A), only its in (B) or not at all, the twin at the wall clock's pace: every case passes on the firmware as it is (`--quick`), the wiring is found, what it can't show is a SKIP listed for the other wiring, MIDI out seen on TRS or over USB as the wiring has it. It checks the suite's logic, not the firmware's timing (`sync`, `midiout` and the device do): the pseudo-terminals' bytes reach the twin at the times they came, and a case that failed on `[timing]` checks alone isn't judged when the twin fell over 5 ms behind the wall clock (all.sh's load); `MIDISUITE="ARGS" ./unit.sh midisuite` runs it once with ARGS; needs `python3` |
 | `bench` | the CPU bench's firmware on the twin: it runs through and writes its file (the loads themselves need the device) |
 | `midi`, `sync` | MIDI in on the twin: ticks among and inside other messages, the jack and USB, which clock locks, a clock in pairs started late; (N)RPN turning no knob, a key tapped within a block, a Song Position after a program change, a SysEx in a bug report; and timing against a clock with a real sender's jitter: the FX's tempo, quantized loops' length and drift, the clock lost or switched mid-recording, the 2:45 limit, tap tempo, the loop following Start, Continue, Stop and Song Position |
-| `midiout` | MIDI out on the twin (`MidiOut.h`), timed as the UART sends: off at first; an incoming clock passed on tick for tick, by the clock factor (also a host's ticks in pairs), never back to its input; nothing late from the boot screen; a free clock at the last tempo; a loop's Start, Stop, Song Position and Continue; the handover from a DAW's clock to a quantized loop |
+| `midiout` | MIDI out on the twin (`MidiOut.h`), timed as the UART sends: off at first; an incoming clock passed on tick for tick, by the clock factor (also a host's ticks in pairs), never back to its input; nothing late from the boot screen; a free clock at the last tempo; a loop's Start, Stop, Song Position and Continue; the handover from a DAW's clock to a quantized loop; the clock factor on the free clock and a loop's (#116), a loop of 3 beats at half steady across its starts |
 
 A check prints `KNOWN` for a fault it has found in the firmware that isn't fixed yet (`Known()` in
 `check.h`): that doesn't fail it, so `all.sh` stays green while the faults are listed. Once one
@@ -274,8 +274,10 @@ recording plays back frame for frame at its length, play / pause, erase, the spe
 the refused quantized record. `unit.sh tempo` checks the FX's tempo: tap tempo (`TapTempo.h`), how
 a loop's beats are fitted or guessed, the tempo clock locked to a loop (`TempoClock.h`: beat 1
 on the loop's start, counting down in reverse, standing still when paused, the tempo times the
-speed, a tap refitting the beats, the loop overriding MIDI clock) and the beats of a loop
-recorded quantized to a faked clock, and the looper's tick period (`Looper.h`'s line through the
+speed, a tap refitting the beats, the loop overriding MIDI clock), the clock factor on each
+source (#116: taps, a loop, a clock not doubled twice, the limit after it, the beat kept in
+place when it changes, a grid over two passes for an odd number of beats at half) and the beats
+of a loop recorded quantized to a faked clock (in the sender's beats too, for Song Position), and the looper's tick period (`Looper.h`'s line through the
 ticks): a bar from jittered USB-like ticks within 12 samples of its length, the end following a
 clock that slows after the press, and an end already passed when refitted closing at once,
 within the post-roll; then the bar lines (free, on 2-, 4- and 6-beat loops, in
