@@ -271,7 +271,7 @@ SDRAM (`DSY_SDRAM_BSS`), cleared by `ZeroSDRAM()` at boot because startup code d
 buffers live in internal RAM, 32-byte aligned, written in whole sectors (`EventLog::Flush`).
 
 **Memory**: the firmware runs from SRAM, loaded by CHOMPI's bootloader (`APP_TYPE=BOOT_SRAM`).
-Code has about 51 KB left (`SRAM_EXEC`), the bench build ~34 KB, and its data only ~5.5 KB; `docs/CAPACITY.md` lists every
+Code has about 59 KB left (`SRAM_EXEC`), the bench build ~42 KB, and its data only ~5.5 KB; `docs/CAPACITY.md` lists every
 region and the ways to make room. Never use `make program-boot`, and never swap in upstream
 libDaisy: the vendored copy is patched (`THIRD_PARTY.md`).
 `__attribute__((optimize("-O0")))` and similar per-function overrides (`ProcessAllControls`)
