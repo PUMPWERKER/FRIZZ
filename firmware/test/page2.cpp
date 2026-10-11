@@ -118,7 +118,7 @@ static void TestStereo()
     fo.SetParam(chompi::Folder::STEREO, 1.f);
     fo.SnapParams();
     const float wide = StereoSpread(fo, .3f);
-    Check(mono == 0.f && wide > .1f, "folder: knob 4 is stereo: off both sides alike, on they differ");
+    Check(mono == 0.f && wide > .1f, "folder: page 2's knob 2 is stereo: off both sides alike, on they differ");
 
     static chompi::Crusher cr;
     cr.Init(kSr);
@@ -129,7 +129,7 @@ static void TestStereo()
     const float cmono = StereoSpread(cr, .3f);
     cr.SetParam(chompi::Crusher::STEREO, 1.f);
     const float cwide = StereoSpread(cr, .3f);
-    Check(cmono == 0.f && cwide > .05f, "crusher: knob 4 is stereo, the right rate lower");
+    Check(cmono == 0.f && cwide > .05f, "crusher: page 2's knob 2 is stereo, the right rate lower");
 
     static chompi::Filter fi;
     fi.Init(kSr);
@@ -153,13 +153,14 @@ static void TestStereo()
                 (pass ? fw : fm).Add(l, r);
         }
     }
-    Check(fm.Rel() == 0.f && fw.Rel() > .05f, "filter: knob 4 is stereo, the right LFO lagging");
+    Check(fm.Rel() == 0.f && fw.Rel() > .05f, "filter: page 2's knob 2 is stereo, the right LFO lagging");
 
-    // the old knob 4s are page 2's knob 2: symmetry, XOR, LFO division
-    Check(kFxParams[FX_FOLDER].defaults[chompi::Folder::SYMMETRY] == 0.f && chompi::Folder::SYMMETRY == 5
-              && chompi::Crusher::XOR == 5 && chompi::Filter::LFO_DIVISION == 5
-              && kFxParams[FX_FILTER].steps[5] == chompi::Filter::kNumLfoDivisions,
-          "folder, crusher, filter: symmetry, XOR and the LFO division on page 2's knob 2");
+    // their own on page 1's knob 4 (#117): symmetry, XOR, LFO division
+    Check(kFxParams[FX_FOLDER].defaults[chompi::Folder::SYMMETRY] == 0.f && chompi::Folder::SYMMETRY == 3
+              && chompi::Crusher::XOR == 3 && chompi::Filter::LFO_DIVISION == 3
+              && kFxParams[FX_FILTER].steps[3] == chompi::Filter::kNumLfoDivisions
+              && kFxParams[FX_FILTER].steps[5] == 0,
+          "folder, crusher, filter: symmetry, XOR and the LFO division on page 1's knob 4");
 }
 
 // ======== the flanger's polarity ========
@@ -431,7 +432,7 @@ static void TestReverb()
     Check(ducked < free * .3f, "reverb: ducking turns the room down under the input");
 }
 
-// ======== the scene file: layout 3 ========
+// ======== the scene file: layout 3, and 4 (#117) ========
 
 static void TestLayout()
 {
@@ -455,23 +456,23 @@ static void TestLayout()
         "folder 1 500000 0 1000000 400000 1000000 0 500000 500000\n";
     FxScene s[kNumScenes];
     Check(ParseScenes(old, defaults, s), "layout: reads older files");
-    Check(s[0].params[FX_FOLDER][5] == .4f && s[0].params[FX_FOLDER][3] == 0.f
-              && s[0].params[FX_CRUSHER][5] == .3f && s[0].params[FX_CRUSHER][3] == 0.f
-              && s[0].params[FX_FILTER][5] == .5f && s[0].params[FX_FILTER][3] == 0.f,
-          "layout: v0.11's symmetry, XOR and LFO division move to page 2's knob 2, stereo off");
+    Check(s[0].params[FX_FOLDER][3] == .4f && s[0].params[FX_FOLDER][5] == 0.f
+              && s[0].params[FX_CRUSHER][3] == .3f && s[0].params[FX_CRUSHER][5] == 0.f
+              && s[0].params[FX_FILTER][3] == .5f && s[0].params[FX_FILTER][5] == 0.f,
+          "layout: v0.11's symmetry, XOR and LFO division stay on page 1's knob 4, stereo off");
     Check(s[0].params[FX_TAPESTOP][3] == 1.f, "layout: the tape stop's depth a full stop");
     Check(s[1].params[FX_DELAY][4] == 0.f && s[1].params[FX_DELAY][5] == .5f
               && s[1].params[FX_DELAY][7] == 0.f && s[1].params[FX_DELAY][3] == .3f,
           "layout 2: a send's page 2 on its defaults (not frozen), page 1 kept");
     Check(s[1].params[FX_FOLDER][7] == .5f && s[1].params[FX_FOLDER][4] == 1.f
-              && s[1].params[FX_FOLDER][5] == .4f,
-          "layout 2: an insert's Mix and Level kept, its symmetry moved");
+              && s[1].params[FX_FOLDER][3] == .4f && s[1].params[FX_FOLDER][5] == 0.f,
+          "layout 2: an insert's Mix and Level kept, its symmetry on page 1's knob 4");
     char buf[kSceneFileMax];
     FormatScenes(s, buf, sizeof(buf));
     FxScene back[kNumScenes];
-    Check(strstr(buf, "layout 3\n") && ParseScenes(buf, defaults, back)
-              && back[1].params[FX_FOLDER][5] == .4f && back[0].params[FX_FOLDER][3] == 0.f,
-          "layout 3: written, and read back as written");
+    Check(strstr(buf, "layout 4\n") && ParseScenes(buf, defaults, back)
+              && back[1].params[FX_FOLDER][3] == .4f && back[0].params[FX_FOLDER][5] == 0.f,
+          "layout 4: written, and read back as written");
 }
 
 // ======== the chain: an effect's key coming on again ========

@@ -278,13 +278,50 @@ int main()
               "the chaos key's line: latched, its knobs");
     }
     {
-        const char* phaser = "FRIZZ scenes 1\nlayout 3\nscene 3\nphaser 1 750000 500000 1000000 0 1000000 250000\n";
+        const char* phaser = "FRIZZ scenes 1\nlayout 4\nscene 3\nphaser 1 750000 500000 1000000 0 1000000 250000\n";
         FxScene c[kNumScenes];
         Check(ParseScenes(phaser, defaults, c) && (c[2].latched == 1u << FX_PHASER)
                   && fabsf(c[2].params[FX_PHASER][0] - .75f) < 1e-6f
                   && fabsf(c[2].params[FX_PHASER][5] - .25f) < 1e-6f
                   && c[2].params[FX_PHASER][7] == defaults[FX_PHASER][7],
               "the phaser's line: latched, its knobs, the rest on its defaults");
+    }
+
+    // layout 4 (#117): stereo moved from page 1's knob 4 to page 2's knob 2 and the effect's
+    // own the other way. A file from before loads with the two swapped, the knobs a line lacks
+    // on the defaults of their places now, and the tape stop and the sends as they were
+    {
+        const char* v3 = "FRIZZ scenes 1\nlayout 3\nscene 1\n"
+                         "shifter 1 500000 0 0 300000 1000000 100000 500000 750000\n"
+                         "tapestop 1 600000 600000 0 900000 1000000 200000 500000 750000\n"
+                         "delay 1 250000 400000 500000 300000 0 500000 500000 0\n"
+                         "scene 2\n"
+                         "phaser 1 250000 400000 0 300000\n";
+        FxScene m[kNumScenes];
+        Check(ParseScenes(v3, defaults, m) && m[0].params[FX_SHIFTER][5] == .3f
+                  && m[0].params[FX_SHIFTER][3] == .1f && m[0].params[FX_SHIFTER][4] == 1.f,
+              "layout 3: stereo to page 2's knob 2, the effect's own to page 1's knob 4");
+        Check(m[0].params[FX_TAPESTOP][3] == .9f && m[0].params[FX_TAPESTOP][5] == .2f
+                  && m[0].params[FX_DELAY][3] == .3f && m[0].params[FX_DELAY][5] == .5f,
+              "layout 3: the tape stop and the delay keep their knobs");
+        Check(m[1].params[FX_PHASER][5] == .3f
+                  && m[1].params[FX_PHASER][3] == defaults[FX_PHASER][3]
+                  && m[1].params[FX_PHASER][7] == defaults[FX_PHASER][7],
+              "layout 3, page 2 left out: its own on its default, on page 1's knob 4");
+
+        const char* v2 = "FRIZZ scenes 1\nlayout 2\nscene 1\n"
+                         "shifter 1 500000 0 0 300000 1000000 0 500000 750000\n";
+        const char* v1 = "FRIZZ scenes 1\nscene 1\n"
+                         "shifter 1 500000 0 0 300000\n"
+                         "filter 1 500000 500000 0 600000\n";
+        Check(ParseScenes(v2, defaults, m) && m[0].params[FX_SHIFTER][5] == .3f
+                  && m[0].params[FX_SHIFTER][3] == defaults[FX_SHIFTER][3],
+              "layout 2: stereo to page 2's knob 2, the new own knob on its default");
+        Check(ParseScenes(v1, defaults, m) && m[0].params[FX_SHIFTER][5] == .3f
+                  && m[0].params[FX_SHIFTER][3] == defaults[FX_SHIFTER][3]
+                  && m[0].params[FX_FILTER][3] == .6f
+                  && m[0].params[FX_FILTER][5] == defaults[FX_FILTER][5],
+              "v0.11: stereo to page 2's knob 2, the filter's LFO division stays on knob 4");
     }
 
     // 4. not a scene file, and an empty one

@@ -19,15 +19,16 @@
  *  2" marks page 2's shared knobs (FxOutput.h); a file without it was written when page 2
  *  had only the shifter's Mix, which it keeps, and the rest of its page 2 values (zeros for
  *  knobs nothing used) load as defaults. "layout 3" adds page 2's own knobs and moves three
- *  of page 1's knob 4 there (UpgradeTo3). Millionths because a coarse grid's points must come
- *  back on the grid: the resonator's pitch grid is .0157 apart and counts a value within
- *  1.6e-4 as on a point.
+ *  of page 1's knob 4 there (UpgradeTo3). "layout 4" swaps stereo, page 1's knob 4 until then,
+ *  with the effect's own on page 2's knob 2 (#117, SwapStereo). Millionths because a coarse
+ *  grid's points must come back on the grid: the resonator's pitch grid is .0157 apart and
+ *  counts a value within 1.6e-4 as on a point.
  */
 #pragma once
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include "FxChain.h"
+#include "FxParams.h"
 
 namespace chompi
 {
@@ -57,8 +58,9 @@ namespace scenefile
 static const char kHeader[] = "FRIZZ scenes 1";
 static const char kLayout[] = "layout";
 // 2: page 2's shared knobs; 3: page 2's own knobs, and stereo on page 1's knob 4 of the
-// folder, crusher and filter, whose old knob 4 moved to page 2's knob 2
-static const long kLayoutNow = 3;
+// folder, crusher and filter, whose old knob 4 moved to page 2's knob 2; 4: stereo on page
+// 2's knob 2, the effect's own on page 1's knob 4 (#117)
+static const long kLayoutNow = 4;
 static const float kScale = 1000000.f;
 
 /** Appends s to buf at pos, keeping room for the terminator */
@@ -171,6 +173,17 @@ inline __attribute__((noinline, optimize("Os"))) void UpgradeTo3(size_t fx, floa
         v[3] = defaults[3];
 }
 
+/** Stereo and the effect's own swapped, on the effects with stereo: a line from before layout
+ *  4 to the knobs now, and the defaults now to those before, for the upgrades above */
+inline void SwapStereo(size_t fx, float* v)
+{
+    if (!HasStereo(fx))
+        return;
+    const float own = v[kFxOwnKnob];
+    v[kFxOwnKnob] = v[kFxStereoParam];
+    v[kFxStereoParam] = own;
+}
+
 // once at boot, or on a save: small rather than fast, as the code space is tight
 
 /** The used scenes as the file's text, into buf (terminated). Returns its length, or 0 if it
@@ -279,14 +292,25 @@ inline __attribute__((noinline, optimize("Os"))) bool ParseScenes(const char* te
             if (latch && *latch == '1')
                 scene->latched |= static_cast<uint16_t>(1u << fx);
             float* const v = scene->params[fx];
+            // a line from before layout 4 is read in its layout, what it lacks on the defaults
+            // in their places then, and swapped after the upgrades before, which work in it too
+            if (layout < 4)
+                SwapStereo(fx, v);
             ReadValues(p, v, kNumFxParams);
-            // before the shared knobs, page 2 was the shifter's Mix alone
-            if (layout < 2)
-                for (size_t i = kNumFxKnobs; i < kNumFxParams; i++)
-                    if (!(fx == FX_SHIFTER && i == kNumFxKnobs))
-                        v[i] = defaults[fx][i];
-            if (layout < 3)
-                UpgradeTo3(fx, v, defaults[fx]);
+            if (layout < 4)
+            {
+                float old[kNumFxParams];
+                memcpy(old, defaults[fx], sizeof(old));
+                SwapStereo(fx, old);
+                // before the shared knobs, page 2 was the shifter's Mix alone
+                if (layout < 2)
+                    for (size_t i = kNumFxKnobs; i < kNumFxParams; i++)
+                        if (!(fx == FX_SHIFTER && i == kNumFxKnobs))
+                            v[i] = old[i];
+                if (layout < 3)
+                    UpgradeTo3(fx, v, old);
+                SwapStereo(fx, v);
+            }
             break;
         }
     }

@@ -25,9 +25,9 @@ static const float kFlutterWeights[2] = {1.f / 1.4f, .4f / 1.4f};
  *  with the input, so the pitch drifts like a worn tape's. Knob 1 is TAPE's knob: it sets how
  *  often the delay wanders and the mix together. Flutter adds a fast, shallow wobble; it
  *  brings the wet signal in over the first quarter of its knob, so it works on its own.
- *  Params: 0 wow, 1 flutter, 2 tone, 3 stereo; page 2's own, 5 age: worn tape's dropouts,
- *  the level dipping at random, more often, deeper and longer as it turns up (Cassette
- *  Sim's AGE on the SP-404MK2). */
+ *  Params: 0 wow, 1 flutter, 2 tone, 3 age: worn tape's dropouts, the level dipping
+ *  at random, more often, deeper and longer as it turns up (Cassette Sim's AGE on the
+ *  SP-404MK2); page 2: 5 stereo. */
 class Warble : public FxBase
 {
 public:
@@ -36,8 +36,8 @@ public:
         WOW,
         FLUTTER,
         TONE,
-        STEREO,
-        AGE = 5,
+        AGE,
+        STEREO = 5,
     };
 
     FX_ONCE void Init(float sample_rate)
