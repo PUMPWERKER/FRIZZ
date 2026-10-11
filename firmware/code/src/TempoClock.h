@@ -22,6 +22,12 @@
  *     and pulses come from an internal phase at that tempo. A tap sets the tempo and puts a
  *     beat on the tap.
  *
+ *  The clock factor (the settings page, MidiClock.h) times the tempo of each: a loop's, its
+ *  beats as they were (a quantized one's as the clock was sent); the tapped and the last
+ *  one; a clock's ticks count by it already. 50-300 BPM is the limit after it. A new factor
+ *  keeps the grid in place: a loop's beat 1 on its start, a tapped beat on the tap's beats.
+ *  At x1/2, a loop of an odd number of beats has a grid over two passes (SetLoopBeats).
+ *
  *  Pulse() counts the pulses into one position, so every effect that follows the clock
  *  shares one grid: the 16ths, the delay's 8th-note edges (where it rolls its random events)
  *  and the bars are all counted from the same pulse. Without a loop, the count runs from
@@ -93,7 +99,10 @@ public:
     {
         sample_rate_ = sample_rate;
         midi_clock_ = midi_clock;
+        factor_ = ClockFactor::ONE;
+        scale_ = 1.f;
         bpm_ = kDefaultBpm;
+        free_bpm_ = kDefaultBpm;
         tempo_ = kDefaultBpm;
         tempo_set_ = false;
         phase_ = 0.f;
@@ -107,16 +116,20 @@ public:
     /** A loop closed: it's the clock from now on, length frames holding beats beats */
     void SetLoop(size_t length, uint32_t beats)
     {
+        SyncFactor();
         loop_length_ = length;
         SetLoopBeats(beats);
         // one step before the start, so the first block pulses beat 1
-        loop_idx_ = loop_pulses_ - 1;
+        pass_ = 0;
+        loop_pos_ = 0.f;
+        loop_idx_ = grid_pulses_ - 1;
         paused_ = false;
     }
 
     /** The loop was erased: back to the MIDI clock, or to free running at the loop's tempo */
     void ClearLoop()
     {
+        SyncFactor();
         // the free clock runs at the whole BPM the FX use, so their times stay on its grid
         SetFreeTempo(loop_bpm_);
         loop_length_ = 0;
@@ -132,7 +145,8 @@ public:
     inline uint32_t LoopPulses() const { return HasLoop() ? loop_pulses_ : 0; }
     /** Whether a tempo was set (by a clock, a loop or taps), for fitting a new loop to */
     inline bool TempoSet() const { return tempo_set_; }
-    /** The tempo without a loop: the clock's or the free one, for fitting a new loop to */
+    /** The tempo without a loop and before the factor: the clock's as sent or the free one,
+     *  for fitting a new loop to */
     inline float GetBpm() const { return bpm_; }
     /** Whether a tap would be taken: with a loop always, otherwise only without MIDI clock */
     inline bool CanTap() const { return HasLoop() || !midi_clock_->HasClock(); }
@@ -140,6 +154,7 @@ public:
     /** A tapped tempo: refits a loop's beats, or sets the free tempo with a beat now */
     void Tap(float bpm)
     {
+        SyncFactor();
         if (bpm <= 0.f || !CanTap())
             return;
         if (HasLoop())
@@ -162,6 +177,7 @@ public:
     uint32_t Process(size_t size, float loop_pos = 0.f, float loop_speed = 1.f,
                      bool loop_paused = false)
     {
+        SyncFactor();
         if (HasLoop())
             return ProcessLoop(size, loop_pos, loop_speed, loop_paused);
 
@@ -173,7 +189,7 @@ public:
             // 0 between the first and second tick of a new lock: keep the last tempo
             const float bpm = midi_clock_->GetBpm();
             if (bpm > 0.f)
-                FollowClock(bpm);
+                FollowClock(bpm); // by the factor already, as the ticks are
 
             const uint32_t ticks = midi_clock_->GetTicks();
             if (!had_clock_)
@@ -185,7 +201,7 @@ public:
         else
         {
             counting_ = false;
-            pulses = FreePulses(size, bpm_);
+            pulses = FreePulses(size, free_bpm_);
         }
 
         had_clock_ = has_clock;
@@ -197,22 +213,22 @@ public:
     {
         if (HasLoop() && paused_)
         {
-            free_idx_ = (free_idx_ + 1) % loop_pulses_;
+            free_idx_ = (free_idx_ + 1) % grid_pulses_;
             loop_pulse_ = free_idx_;
             pulse_count_ = free_idx_ % kPulsesPerCycle;
             return pulse_count_;
         }
         if (HasLoop())
         {
-            // pulse b sits where the position crosses b / loop_pulses_: forward, that's the
-            // index entered; in reverse, the one left
+            // pulse b sits where the position crosses b / loop_pulses_ (in its pass of the
+            // grid): forward, that's the index entered; in reverse, the one left
             uint32_t crossed;
             if (dir_ > 0)
-                crossed = loop_idx_ = (loop_idx_ + 1) % loop_pulses_;
+                crossed = loop_idx_ = (loop_idx_ + 1) % grid_pulses_;
             else
             {
                 crossed = loop_idx_;
-                loop_idx_ = (loop_idx_ + loop_pulses_ - 1) % loop_pulses_;
+                loop_idx_ = (loop_idx_ + grid_pulses_ - 1) % grid_pulses_;
             }
             loop_pulse_ = crossed;
             pulse_count_ = crossed % kPulsesPerCycle;
@@ -233,13 +249,13 @@ public:
             return loop_idx_ % kPulsesPerBar + 1; // the next pulse crosses loop_idx_
         const uint32_t idx = paused_ ? free_idx_ : loop_idx_;
         const uint32_t to_bar = kPulsesPerBar - idx % kPulsesPerBar;
-        const uint32_t to_wrap = loop_pulses_ - idx;
+        const uint32_t to_wrap = grid_pulses_ - idx;
         return to_bar < to_wrap ? to_bar : to_wrap;
     }
     /** The pulses between two bar lines: a bar, or a loop shorter than one */
     inline uint32_t PulsesPerBarLine() const
     {
-        return HasLoop() && loop_pulses_ < kPulsesPerBar ? loop_pulses_ : kPulsesPerBar;
+        return HasLoop() && grid_pulses_ < kPulsesPerBar ? grid_pulses_ : kPulsesPerBar;
     }
     /** Whether a position Pulse() returned is on a bar line: every loop wrap is one too */
     static inline bool IsBarLine(uint32_t pos) { return pos % kPulsesPerBar == 0; }
@@ -247,7 +263,7 @@ public:
      *  can be slower than kMinBpm, which only limits the FX's tempo), else the tempo's */
     inline float PulseSamples() const
     {
-        const float bpm = HasLoop() ? pulse_bpm_ : static_cast<float>(tempo_);
+        const float bpm = HasLoop() ? pulse_bpm_ : free_bpm_;
         return bpm > 0.f ? 60.f * sample_rate_ / (bpm * kPulsesPerBeat) : 1e9f;
     }
     /** The position the last Pulse() returned */
@@ -261,24 +277,86 @@ public:
     {
         if (dir_ < 0)
             return loop_idx_ - loop_idx_ % every; // the next pulse crosses loop_idx_
-        const uint32_t next = (loop_idx_ + 1) % loop_pulses_;
-        return (next + (every - next % every) % every) % loop_pulses_;
+        const uint32_t next = (loop_idx_ + 1) % grid_pulses_;
+        return (next + (every - next % every) % every) % grid_pulses_;
     }
 
     /** The FX's tempo, whole BPM */
     inline int GetTempo() const { return tempo_; }
     /** The FX's tempo for their times (delay, freezer, tape stop): a loop's exact one, so
-     *  the echoes stay on its beats however long it is; else the whole BPM */
-    inline float GetFxBpm() const { return HasLoop() ? loop_fx_bpm_ : static_cast<float>(tempo_); }
+     *  the echoes stay on its beats however long it is; else the whole BPM, by the factor
+     *  (a half at x1/2) */
+    inline float GetFxBpm() const { return HasLoop() ? loop_fx_bpm_ : free_bpm_; }
     /** Whether the pulses count down: a loop playing in reverse */
     inline bool Reverse() const { return HasLoop() && !paused_ && dir_ < 0; }
 
 private:
-    /** Without a loop: the tempo, rounded to whole BPM so the FX's times don't wobble */
+    static inline float Scale(ClockFactor factor)
+    {
+        return factor == ClockFactor::HALF ? .5f : factor == ClockFactor::DOUBLE ? 2.f : 1.f;
+    }
+
+    /** Takes up a new factor (the settings page's, MidiClock.h): the tempo and the grid are
+     *  the source's times it from here, and the position keeps its beat. A loop's grid is
+     *  counted from its position again, so beat 1 stays its start; the free one is scaled
+     *  around its last pulse, so a tapped beat stays on its beats. A clock's ticks count by
+     *  the factor already (MidiClock::SetFactor), and FollowClock takes the new tempo */
+    void SyncFactor()
+    {
+        const ClockFactor factor = midi_clock_->Factor();
+        if (factor == factor_)
+            return;
+        const float ratio = Scale(factor) / scale_;
+        factor_ = factor;
+        scale_ = Scale(factor);
+        if (HasLoop())
+        {
+            SetLoopBeats(loop_beats_);
+            loop_idx_ = PulseIndex(loop_pos_);
+            if (paused_)
+                free_idx_ = ScalePosition(free_idx_, ratio, grid_pulses_);
+        }
+        else if (!midi_clock_->HasClock())
+        {
+            pulse_count_ = ScalePosition(pulse_count_, ratio, kPulsesPerCycle);
+            SetFreeBpm();
+        }
+    }
+
+    /** A pulse position plus the phase towards the next, times ratio, mod cycle: the new
+     *  position, and phase_ the new one's */
+    uint32_t ScalePosition(uint32_t pos, float ratio, uint32_t cycle)
+    {
+        const float at = (static_cast<float>(pos) + phase_) * ratio;
+        const float whole = floorf(at);
+        phase_ = at - whole;
+        return static_cast<uint32_t>(whole) % cycle;
+    }
+
+    /** Without a loop: the tempo before the factor, rounded to whole BPM so the FX's times
+     *  don't wobble. It may be past 50-300 by the factor: the FX's limit applies after it */
     void SetFreeTempo(float bpm)
     {
+        const float min = .5f * kMinBpm, max = 2.f * kMaxBpm;
+        bpm_ = floorf((bpm < min ? min : (bpm > max ? max : bpm)) + .5f);
+        tempo_set_ = true;
+        SetFreeBpm();
+    }
+    /** The FX's tempo from bpm_ and the factor: whole BPM, or a half at x1/2 */
+    void SetFreeBpm()
+    {
+        free_bpm_ = ClampBpm(bpm_ * scale_);
+        tempo_ = static_cast<int>(free_bpm_ + .5f);
+    }
+
+    /** From a clock: its tempo by the factor, to whole BPM for the FX, and as sent for
+     *  fitting a new loop to (GetBpm) */
+    void SetClockTempo(float bpm)
+    {
         tempo_ = static_cast<int>(ClampBpm(bpm) + .5f);
-        bpm_ = static_cast<float>(tempo_);
+        free_bpm_ = static_cast<float>(tempo_);
+        // unclamped: x1 again after a clock at 280 x2 gives 280, not 150
+        bpm_ = floorf(bpm + .5f) / scale_;
         tempo_set_ = true;
     }
 
@@ -309,7 +387,7 @@ private:
             count_locks_ = locks;
             count_last_ = ticks;
             counting_ = true;
-            SetFreeTempo(smoothed);
+            SetClockTempo(smoothed);
             return;
         }
         if (at - count_[1].at0 >= kTempoSpan)
@@ -318,7 +396,7 @@ private:
             count_[1].Start(ticks, at);
         }
         if (fabsf(ClampBpm(counted) - static_cast<float>(tempo_)) > .5f + kTempoMargin)
-            SetFreeTempo(counted);
+            SetClockTempo(counted);
     }
 
     /** How far a clock's smoothed tempo strays at bpm, at most, from a DAW over USB: its
@@ -338,30 +416,43 @@ private:
         return pulses;
     }
 
+    /** A loop's beats before the factor. At x1/2 an odd number of them is a beat and a half,
+     *  two and a half ... a pass: the grid then runs over two passes (decided in #116), so
+     *  the beats stay even and the clock MIDI out sends steady, and beat 1 is the loop's
+     *  start every other pass */
     void SetLoopBeats(uint32_t beats)
     {
         loop_beats_ = beats < 1 ? 1 : beats;
-        loop_pulses_ = loop_beats_ * kPulsesPerBeat;
+        loop_pulses_ = factor_ == ClockFactor::HALF     ? loop_beats_ * kPulsesPerBeat / 2
+                       : factor_ == ClockFactor::DOUBLE ? loop_beats_ * kPulsesPerBeat * 2
+                                                        : loop_beats_ * kPulsesPerBeat;
+        const bool two = factor_ == ClockFactor::HALF && loop_beats_ % 2 != 0;
+        grid_pulses_ = two ? 2 * loop_pulses_ : loop_pulses_;
+        if (!two)
+            pass_ = 0;
         loop_bpm_ = LoopBpm(loop_length_, sample_rate_, loop_beats_);
     }
 
     inline uint32_t PulseIndex(float pos) const
     {
         const uint32_t idx = static_cast<uint32_t>(pos * loop_pulses_);
-        return idx < loop_pulses_ ? idx : loop_pulses_ - 1;
+        return pass_ * loop_pulses_ + (idx < loop_pulses_ ? idx : loop_pulses_ - 1);
     }
 
     /** The pulses the play position crossed since the last block, in its direction; while
      *  paused, the pulses of the grid running on by itself */
     uint32_t ProcessLoop(size_t size, float pos, float speed, bool paused)
     {
+        // a grid over two passes: the position wrapping, either way, is the other pass
+        if (!paused && grid_pulses_ != loop_pulses_ && fabsf(pos - loop_pos_) > .5f)
+            pass_ ^= 1;
         loop_pos_ = pos;
-        const float bpm = ClampBpm(loop_bpm_ * fabsf(speed));
+        const float bpm = ClampBpm(loop_bpm_ * scale_ * fabsf(speed));
         tempo_ = static_cast<int>(bpm + .5f);
         loop_fx_bpm_ = bpm;
         had_clock_ = false;
         // the pulses' real rate: paused, the grid's own; playing, the loop's, unclamped
-        pulse_bpm_ = paused ? bpm : loop_bpm_ * fabsf(speed);
+        pulse_bpm_ = paused ? bpm : loop_bpm_ * scale_ * fabsf(speed);
 
         if (paused)
         {
@@ -382,7 +473,7 @@ private:
             loop_idx_ = PulseIndex(pos);
         }
 
-        const int32_t pulses = static_cast<int32_t>(loop_pulses_);
+        const int32_t pulses = static_cast<int32_t>(grid_pulses_);
         int32_t delta = static_cast<int32_t>(PulseIndex(pos)) - static_cast<int32_t>(loop_idx_);
         // across the loop point: the short way round
         if (delta > pulses / 2)
@@ -397,8 +488,11 @@ private:
 
     float sample_rate_;
     MidiClock* midi_clock_;
-    float bpm_;     // without a loop: the clock's or the free tempo
-    int tempo_;     // what the FX get
+    ClockFactor factor_; // the clock factor the tempo is by (SyncFactor)
+    float scale_;        // and as a multiple
+    float bpm_;      // without a loop: the clock's as sent or the free tempo, before the factor
+    float free_bpm_; // without a loop: what the FX get, by the factor
+    int tempo_;      // what the FX get, whole BPM
     bool tempo_set_;
     float phase_;
     bool had_clock_;
@@ -442,7 +536,9 @@ private:
     size_t loop_length_;
     uint32_t loop_beats_;
     uint32_t loop_pulses_; // per pass
-    float loop_bpm_;       // at 1x
+    uint32_t grid_pulses_; // the grid's, over one pass or two (SetLoopBeats)
+    uint32_t pass_ = 0;    // which of the two the position is in
+    float loop_bpm_;       // at 1x, before the factor
     float loop_pos_ = 0.f;
     uint32_t loop_idx_;    // the pulse interval the position was last counted in
     int32_t dir_;          // the pulses' direction, -1 in reverse

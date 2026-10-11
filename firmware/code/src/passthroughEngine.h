@@ -297,8 +297,8 @@ private:
     }
 
     /** Hands a loop that just closed to the tempo clock, and takes an erased one away. A
-     *  quantized loop knows its beats; an unquantized one fits the tempo set before it, or
-     *  is guessed */
+     *  quantized loop knows its beats, as the clock was sent (the tempo clock applies the
+     *  factor); an unquantized one fits the tempo set before it, or is guessed */
     void SyncLoopTempo()
     {
         const chompi::Looper::State state = looper.GetState();
@@ -307,7 +307,7 @@ private:
         if (loop && !tempo_clock_.HasLoop())
         {
             const size_t length = looper.GetLength();
-            uint32_t beats = looper.GetBeats();
+            uint32_t beats = looper.GetSenderBeats();
             if (beats == 0)
                 beats = tempo_clock_.TempoSet()
                             ? chompi::FitBeats(length, sample_rate_, tempo_clock_.GetBpm())
