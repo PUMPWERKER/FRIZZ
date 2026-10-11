@@ -1,6 +1,7 @@
 // ui.cpp: plays keys, knobs and MIDI into the virtual CHOMPI (twin/twin.h), FRIZZ's whole
 // firmware from power-on with its play page, LEDs and debouncing, and checks what the LEDs show
-// and what comes out. Each case boots its own device (a forked process). Run by unit.sh ui.
+// and what comes out. Each case boots its own device (a forked process, cases.h). Run by
+// unit.sh ui.
 #include <sys/wait.h>
 #include <unistd.h>
 #include <cmath>
@@ -10,11 +11,11 @@
 #include <fstream>
 #include <algorithm>
 #include <functional>
-#include <list>
 #include <map>
 #include <sstream>
 #include <string>
 #include <vector>
+#include "cases.h"
 #include "check.h"
 #include "script.h"
 #include "twin.h"
@@ -84,6 +85,7 @@ static float RunMs(uint32_t ms)
     hp_rms = ms ? sqrtf(hp_sum / (ms * 2 * kBlockSize)) : 0.f;
     return ms ? sqrtf(sum / (ms * 2 * kBlockSize)) : 0.f;
 }
+#include "twintest.h" // after RunMs, which its Tap runs
 
 /** The largest step between two samples of the master out over ms */
 static float StepMs(uint32_t ms)
@@ -126,30 +128,6 @@ static std::vector<int> Runs(const std::vector<int>& seen, int lit_above)
     return runs;
 }
 
-// The card across power cycles: a case can leave its card for the next (the cases run in order)
-static std::string card_file;
-static void KeepCard()
-{
-    std::ofstream f(card_file, std::ios::binary);
-    for (auto& c : CardFiles())
-        f << c.first << '\n' << c.second.size() << '\n' << c.second;
-}
-static void TakeCard()
-{
-    std::ifstream f(card_file, std::ios::binary);
-    std::string path, len;
-    while (std::getline(f, path) && std::getline(f, len))
-    {
-        std::string body(std::stoul(len), '\0');
-        f.read(&body[0], body.size());
-        CardFiles()[path] = body;
-    }
-}
-static std::string Card(const char* path)
-{
-    auto it = CardFiles().find(path);
-    return it == CardFiles().end() ? "" : it->second;
-}
 // a scene file's latch for an effect in a slot ("scene 2", "filter"): -1 if it isn't there
 static int SavedLatch(const std::string& file, int slot, const char* fx)
 {
@@ -164,13 +142,6 @@ static int SavedLatch(const std::string& file, int slot, const char* fx)
             return line[strlen(fx) + 1] - '0';
     }
     return -1;
-}
-
-static void Tap(const char* key, uint32_t ms = 60)
-{
-    Press(key, true);
-    RunMs(ms);
-    Press(key, false);
 }
 
 static int Max(const Rgb& c) { return std::max(c.r, std::max(c.g, c.b)); }
@@ -290,11 +261,6 @@ static std::string Ask(const std::vector<int>& query)
         return "";
     return out.substr(5, out.size() - 6);
 }
-
-// boot, the rainbow, and the play page ready
-static const uint32_t kReadyMs = 6000;
-
-static std::vector<std::pair<const char*, std::function<void()>>> cases;
 
 int main()
 {
@@ -3049,51 +3015,21 @@ int main()
     Check(scenarios.size() >= 10, "scenarios: found in twin/scenarios");
     for (const std::string& path : scenarios)
     {
-        static std::list<std::string> names; // the cases keep pointers into it
         const std::string file = path.substr(path.rfind('/') + 1);
-        names.push_back("scenario:" + file.substr(0, file.size() - 4));
-        cases.push_back({names.back().c_str(), [path] {
+        cases.push_back({"scenario:" + file.substr(0, file.size() - 4), [path] {
             std::ifstream script(path);
             const int failed = PlayScript(script, nullptr, nullptr);
             Check(failed == 0, (path.substr(path.rfind('/') + 1) + ": played from power-on, every expect holds").c_str());
         }});
     }
 
-    char card_name[] = "/tmp/frizz-ui-card-XXXXXX";
-    const int card_fd = mkstemp(card_name);
-    close(card_fd);
-    card_file = card_name;
-
-    // CASES="a b": only those, while working on them (a case that takes the card from the one
-    // before it needs that one too)
-    const char* only = getenv("CASES");
-    int failed = 0;
-    for (auto& c : cases)
-    {
-        if (only && !strstr((" " + std::string(only) + " ").c_str(), (" " + std::string(c.first) + " ").c_str()))
-            continue;
-        fflush(stdout);
-        const pid_t pid = fork();
-        if (pid == 0)
-        {
-            // a replay boots by its script
-            if (strncmp(c.first, "bug-replay", 10) != 0 && strncmp(c.first, "scenario:", 9) != 0)
-                Boot();
-            c.second();
-            fflush(stdout);
-            _exit(failures > 255 ? 255 : failures);
-        }
-        int status = 0;
-        waitpid(pid, &status, 0);
-        if (!WIFEXITED(status))
-        {
-            printf("FAIL  %s: crashed\n", c.first);
-            failed++;
-        }
-        else
-            failed += WEXITSTATUS(status);
-    }
-    unlink(card_name);
-    failures += failed;
+    // the cases that take the card one before them kept (KeepCard, TakeCard)
+    Chain({"clock-source-log", "bug-replay-usb"});
+    Chain({"card-1", "card-2", "card-3", "bug-log", "bug-full", "bug-replay"});
+    Chain({"midi-transport", "midi-kept"});
+    // a replay boots by its script
+    RunAllCases([](const Case& c) {
+        return c.name.compare(0, 10, "bug-replay") != 0 && c.name.compare(0, 9, "scenario:") != 0;
+    });
     return Finish();
 }

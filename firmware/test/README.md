@@ -34,10 +34,22 @@ passes it prints `FIXED` and fails the run, and becomes a plain `Check()` with t
 
 `all.sh` runs the checks side by side, one per core (`JOBS=N` sets how many), once it has
 built DaisySP and the twins they share; their lines come in the order above. On 12 cores it
-takes about 75 s, `sync` alone a minute of it; the first run longer, as it builds DaisySP and
-the twin for the host (into `build/` here and `../twin/build/`, both ignored by git). `remote`
-starts once at most two others still run, as it plays the twin at the wall clock's pace
-against `remote.py`'s timeouts. `CASES` (`ui.cpp`'s) is ignored there: `unit.sh ui` takes it.
+takes about 30 s, the bench's 20 s on the twin the longest; the first run longer, as it builds
+DaisySP and the twin for the host (into `build/` here and `../twin/build/`, both ignored by
+git). `remote`, which plays the twin at the wall clock's pace against `remote.py`'s timeouts,
+and `bench` start first, at the normal priority; the others run behind them (`nice`). `CASES`
+is ignored there: `unit.sh` takes it.
+
+The checks on the twin with many cases (`ui`, `midi`, `sync`, `midiout`) run them through
+`cases.h`: each case on a freshly booted device, a forked process, as many at once as there are
+cores (`CASE_JOBS=N` sets how many), their output in the order the cases were declared. A case
+that takes the card another one kept (`KeepCard()`, `TakeCard()`) runs after it, on the same
+card: `Chain()` in `ui.cpp` names those cases, and a `TakeCard()` with no card kept before it
+fails. A case still running after `CASE_TIMEOUT` seconds (60) is stopped and fails by its name,
+with what it printed. `CASES="a b" ./unit.sh ui` (or `midi`, `sync`, `midiout`) runs only those
+cases, and the ones before them in their chains; a name that no case has fails the run.
+`twintest.h` has the helpers these checks and `remote.cpp` share: `kReadyMs`, `Card()`, `Hex()`
+and `Tap()`.
 
 ## Engine harness
 
@@ -389,7 +401,8 @@ loop recorded across it is as long as it was recorded, the compressor's knob tur
 is saved after it, a scene saves and CHOMPI's pending blink keeps its pace after it. And every
 scenario of `../twin/scenarios/` played from power-on, with its `expect` lines.
 
-`CASES="scene-leds scene-morph" ./unit.sh ui` runs only those cases, while working on them.
+`CASES="scene-leds scene-morph" ./unit.sh ui` runs only those cases (and the cases before them
+in their chains, `Chain()`), while working on them.
 
 The flicker #7 fixed in the transport LED (a value just over 1 wrapping to dark) doesn't show
 on the twin before the fix either, so that check guards only what it can see.
@@ -478,9 +491,9 @@ loads are 0 there (no time passes on the twin while the callback runs): the numb
 the device only. A check asks for a twin with defines of its own with a
 `// twin defines: ...` line, which builds it into `../twin/build/NAME`.
 
-`timing.h` is what `midi.cpp` and `sync.cpp` share: two clocks into the twin (the jack's and
-USB's), `twin::Probe()` block by block, each case on a fresh device, and `Record()`, a
-measurement handed back to `main()` for a check over all cases.
+`timing.h` is what `midi.cpp`, `sync.cpp` and `midiout.cpp` share: two clocks into the twin
+(the jack's and USB's), `twin::Probe()` block by block, each case on a fresh device
+(`cases.h`), and `Record()`, a measurement handed back to `main()` for a check over all cases.
 
 `host/` holds the stand-ins for the parts of libDaisy the engine touches: `daisy.h` (two sample
 conversions), `MidiClock.h` (no clock, unless a test sets its fields, as `tempo.cpp`
