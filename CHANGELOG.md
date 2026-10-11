@@ -26,9 +26,9 @@ what FRIZZ does.
   1/4, 1/2, a bar, 2 bars and 4 bars at the top (its LED green to yellow), a step every 3
   detents, and with SHIFT a step every detent. Knob 2 is feedback (the resonance), knob 3
   depth (at 0 the phaser is dry; turning it up brings the notches in and widens the sweep, up
-  to 2.5 octaves either way), knob 4 stereo (the right channel's sweep up to half a cycle
-  behind). Page 2: Mix, the centre the sweep moves around (100 Hz to 6.4 kHz, 800 Hz in the
-  middle), Band and Level. Its key is violet. Over MIDI it's channel 7, its latch CC 108 on
+  to 2.5 octaves either way), knob 4 the centre the sweep moves around (100 Hz to 6.4 kHz,
+  800 Hz in the middle). Page 2: Mix, stereo (the right channel's sweep up to half a cycle
+  behind), Band and Level. Its key is violet. Over MIDI it's channel 7, its latch CC 108 on
   the global channel. Scene files from before it load with the phaser off, on its defaults.
   See MANUAL.md, "Phaser".
 - **The chaos key** on the 14th white key (#65), after the Red Panda Tensor's RAND and the
@@ -53,17 +53,19 @@ what FRIZZ does.
   effect's output, off to +12 dB). The flanger has Band and Level; on the delay and reverb,
   knob 1 is Freeze and knob 4 Ducking. At the defaults every effect sounds as before. See
   MANUAL.md, "Page 2".
-- **Each effect's own setting on page 2's knob 2** (#40), after the SP-404MK2 and the
-  Elektron Tonverk: the freezer's gate (a stutter), the shifter's grain, the flanger's
-  polarity, the resonator's env mod (its own Band and Level too), the slicer's shuffle, wow
-  & flutter's age (dropouts), the tape stop's darken, the delay's damping (left thinner,
-  right darker repeats) and the reverb's pre-delay (up to 250 ms).
+- **Each effect's own setting on knob 4, stereo on page 2's knob 2** (#40, #117), after the
+  SP-404MK2 and the Elektron Tonverk: knob 4 is what you play, the freezer's gate (a
+  stutter), the shifter's grain, the flanger's polarity, the resonator's env mod, the slicer's
+  shuffle, wow & flutter's age (dropouts); the folder's symmetry, the crusher's XOR and the
+  filter's LFO division stay there. Stereo, which you set and leave, moved from knob 4 to page
+  2's knob 2, and the folder (the right channel driven harder), the crusher (its right rate
+  lower) and the filter (its right LFO lagging) have it too now. The tape stop (its darken),
+  the delay (its damping: left thinner, right darker repeats) and the reverb (its pre-delay,
+  up to 250 ms) have their own setting on page 2's knob 2; the resonator its own Band and
+  Level too. Saved scenes are moved along, and so is MIDI: CC 17 is knob 4, CC 19 page 2's
+  knob 2.
 - **Freeze and ducking on the delay and reverb** (page 2's knobs 1 and 4): freeze holds the
   echoes or the room, by degrees; ducking turns them down while you play.
-- **Stereo on page 1's knob 4 of the folder, crusher and filter**, so knob 4 is stereo on
-  every insert but the tape stop (its depth): the folder drives the right channel harder,
-  the crusher's right rate runs lower, the filter's right LFO lags. Their old knob 4 (symmetry, XOR, LFO division) moved
-  to page 2's knob 2; saved scenes are moved along.
 - **Depth on the tape stop's knob 4:** from a full stop (as before) to slowing down to half
   speed.
 - **A page 2 for the master compressor:** Mix, a sidechain highpass (off, or 20 to 500 Hz,
@@ -122,6 +124,11 @@ what FRIZZ does.
 
 ### Changed
 
+- **Stereo moved from knob 4 to page 2's knob 2** (#117) on the freezer, shifter, flanger,
+  resonator, slicer and wow & flutter (and the phaser and, since v0.12-beta.1, the folder,
+  crusher and filter): knob 4 is the effect's own setting now, the one you play (see Added).
+  Scenes saved before load with every value where its knob went; over MIDI, CC 17 on an
+  effect's channel is that setting, CC 19 stereo.
 - **The MIDI map is new** (#97): everything a DAW automates is a plain CC (DAWs automate NRPN
   poorly, Ableton Live not at all), effects have channels of their own, and nothing collides
   with what hosts and keyboards send by themselves. A setup made for v0.11 needs its numbers

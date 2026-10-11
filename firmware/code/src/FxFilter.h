@@ -17,9 +17,9 @@ static_assert(kPulsesPerCycle % 192 == 0, "the longest LFO cycle must divide the
 /** The DJ filter shared by TAPE, TEMPO and WAVE (DJFilter.h, WAVE's copy): lowpass below the
  *  centre of the cutoff knob, highpass above, flat in the middle. Plus a triangle LFO on the
  *  cutoff, like WAVE's filter LFO but locked to the tempo clock (TempoClock.h).
- *  Params: 0 cutoff, 1 resonance, 2 LFO depth, 3 stereo (the right LFO up to half a cycle
- *  behind, Tonverk's LAG; only heard with the LFO); page 2's own, 5 LFO division
- *  (kNumLfoDivisions steps). */
+ *  Params: 0 cutoff, 1 resonance, 2 LFO depth, 3 LFO division (kNumLfoDivisions
+ *  steps); page 2: 5 stereo (the right LFO up to half a cycle behind, Tonverk's LAG; only
+ *  heard with the LFO). */
 class Filter : public FxBase
 {
 public:
@@ -28,8 +28,8 @@ public:
         CUTOFF,
         RESONANCE,
         LFO_DEPTH,
-        STEREO,
-        LFO_DIVISION = 5,
+        LFO_DIVISION,
+        STEREO = 5,
     };
 
     static const size_t kNumLfoDivisions = sizeof(kLfoDivisionPulses) / sizeof(kLfoDivisionPulses[0]);

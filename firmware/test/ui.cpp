@@ -738,8 +738,8 @@ int main()
         Save(1);
         RunMs(2500);
         const std::string file = Card("/FRIZZ/frizz_scenes.txt");
-        Check(file.find("layout 3\n") != std::string::npos
-                  && file.find("shifter 0 500000 0 0 0 500000 500000 500000 750000") != std::string::npos,
+        Check(file.find("layout 4\n") != std::string::npos
+                  && file.find("shifter 0 500000 0 0 500000 500000 0 500000 750000") != std::string::npos,
               "fx-page2: a scene keeps page 2 on the card, after page 1's four");
         Tap("ENC_4_SW");
         RunMs(100);

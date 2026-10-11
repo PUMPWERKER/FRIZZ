@@ -26,6 +26,7 @@
 #include <cmath>
 #include <string>
 #include "passthroughEngine.h"
+#include "FxParams.h"
 
 static const float kSr = 48000.f;
 static const size_t kBlock = 24;
@@ -44,6 +45,13 @@ static float tapestop_mem_r[kTapeStopFrames];
 #endif
 static chompi::MidiClock midi_clock;
 static PassthroughEngine engine;
+
+// The parameter on page 1's knob p (0-3) as the knobs were before #117 moved stereo from
+// page 1's knob 4 to page 2's knob 2: the harness turns the same ones as on the builds before
+static size_t Knob(size_t fx, size_t p)
+{
+    return p == chompi::kFxOwnKnob && chompi::HasStereo(fx) ? chompi::kFxStereoParam : p;
+}
 
 static uint32_t lcg = 12345;
 static float Rnd()
@@ -111,7 +119,7 @@ int main(int argc, char** argv)
     // the defaults NormalPage pushes don't matter here: every parameter is set below
     for (size_t i = 0; i < kNum; i++)
         for (size_t p = 0; p < 4; p++)
-            engine.SetFxParam(kAll[i], p, .5f);
+            engine.SetFxParam(kAll[i], Knob(kAll[i], p), .5f);
 
     if (getenv("STRESS"))
     {
@@ -162,7 +170,7 @@ int main(int argc, char** argv)
                 engine.SetFxOn(kAll[i], on[i]);
             was_on[i] = on[i];
             if (on[i] && t % knob_every == 0)
-                engine.SetFxParam(kAll[i], static_cast<size_t>(Rnd() * 4.f) % 4, Rnd());
+                engine.SetFxParam(kAll[i], Knob(kAll[i], static_cast<size_t>(Rnd() * 4.f) % 4), Rnd());
         }
 
         for (size_t i = 0; i < kBlock; i++)
