@@ -72,7 +72,7 @@ public:
             comp_[p] = (kCompParams.knobs >> p) & 1 ? -1.f : kCompParams.defaults[p];
             SetComp(p, kCompParams.defaults[p]);
         }
-        comp_changed_ = false;
+        comp_changed_ = 0;
         ClearChunks();
         chunk_shift_ = false;
         selected_ = 0;
@@ -132,14 +132,21 @@ public:
      *  With SHIFT, a select as an FX key's would be */
     void CompKeyPressed(bool shift)
     {
-        if (selected_ != kCompSelected)
+        Select(kCompSelected);
+        if (shift)
+            ShiftUsed();
+    }
+
+    /** fx, or kCompSelected, selected for the knobs without its key (MIDI's focus), on page 1
+     *  unless it already was */
+    void Select(size_t fx)
+    {
+        if (selected_ != fx)
         {
             ClearChunks();
             page_ = 0;
         }
-        selected_ = kCompSelected;
-        if (shift)
-            ShiftUsed();
+        selected_ = fx;
     }
 
     /** SHIFT going down: every FX key held will toggle its latch on release. True if one
@@ -544,22 +551,24 @@ public:
 
     inline float Param(size_t fx, size_t param) const { return params_[fx][param]; }
     inline float CompParam(size_t param) const { return comp_[param]; }
-    /** A compressor parameter set, from the card or MIDI; clamped and sent */
-    void SetComp(size_t param, float val)
+    /** A compressor parameter set, from its knob, the card or SysEx: clamped and sent, and
+     *  kept (TakeCompChanged). keep false: MIDI's CCs, which the card never gets (#97 D6) */
+    void SetComp(size_t param, float val, bool keep = true)
     {
         if (param >= kNumFxParams || !((kCompParams.knobs >> param) & 1))
             return;
         val = fclamp(val, 0.f, 1.f);
-        if (val != comp_[param])
-            comp_changed_ = true;
+        if (keep && val != comp_[param])
+            comp_changed_ |= 1u << param;
         comp_[param] = val;
         engine_->SetCompParam(param, val);
     }
-    /** True once after the compressor's knobs changed, so the play page can keep them */
-    bool TakeCompChanged()
+    /** The compressor's parameters changed to be kept since last asked, a bit each, so the
+     *  play page can keep those */
+    uint8_t TakeCompChanged()
     {
-        const bool changed = comp_changed_;
-        comp_changed_ = false;
+        const uint8_t changed = comp_changed_;
+        comp_changed_ = 0;
         return changed;
     }
     inline bool IsLatched(size_t fx) const { return latched_[fx]; }
@@ -687,7 +696,7 @@ private:
     size_t selected_ = 0;
     size_t page_ = 0;           // the knobs' page, 0 or 1 (ParamOf)
     float comp_[kNumFxParams];  // the master compressor's parameters, both pages
-    bool comp_changed_ = false; // since the last TakeCompChanged
+    uint8_t comp_changed_ = 0;  // a bit a parameter, since the last TakeCompChanged
     float chunk_[kNumFxKnobs];  // detents towards the next step or grid point
     bool chunk_shift_ = false;  // whether they were turned with SHIFT
     bool edited_ = false;

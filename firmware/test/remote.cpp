@@ -607,9 +607,9 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
         RunMs(300);
         for (int i = 0; i < presses; i++)
         {
-            Press("KEY_20", true);
+            Press("KEY_24", true);
             RunMs(60);
-            Press("KEY_20", false);
+            Press("KEY_24", false);
             RunMs(100);
         }
         SetToggle(false);
@@ -664,11 +664,11 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, "page       settings; the mode switch stands down, SysEx holds it up"),
           "remote: switch up shows the settings page, and state says so");
-    Write(script, "booted\ntap KEY_18\nwait 100\n"); // F#: mono
+    Write(script, "booted\ntap KEY_23\nwait 100\n"); // the upper F#: mono
     rc = Remote({"play", script, "--save"}, out);
     const std::string refused = out;
     Remote({"state"}, out);
-    Check(rc != 0 && Has(refused, "line 2: tap KEY_18 on the settings page") && Has(refused, "--force")
+    Check(rc != 0 && Has(refused, "line 2: tap KEY_23 on the settings page") && Has(refused, "--force")
               && !Has(out, ", mono"),
           "remote: play refuses a key on the settings page the device shows, saying why, and sends none (#58)");
     if (rc == 0 || !Has(refused, "--force"))
@@ -679,9 +679,9 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc == 0 && Has(out, ", mono") && Has(out, "page       play; the mode switch stands down\n"),
           "remote: a SysEx key there sets mono; switch hand, the play page again");
     // a script's toggle: up and down over SysEx, the real switch again at its end
-    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_18\nwait 100\ntoggle 0\nwait 100\n");
+    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_23\nwait 100\ntoggle 0\nwait 100\n");
     rc = Remote({"play", script, "--save"}, out);
-    Check(rc != 0 && Has(out, "line 4: tap KEY_18 on the settings page"),
+    Check(rc != 0 && Has(out, "line 4: tap KEY_23 on the settings page"),
           "remote: and one the script toggles up to, by the line (#58)");
     rc = Remote({"play", script, "--save", "--force"}, out);
     const int played = rc;
@@ -730,10 +730,15 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc == 0, "remote: an effect selected first, its knob turns, played");
     if (rc != 0)
         printf("%s\n", out.c_str());
-    Write(script, "booted\nmidi B0 34 40\n"); // CC 52: the compressor's knob 1
+    Write(script, "booted\nmidi BF 18 40 BE 0E 40\n"); // CC 24 and channel 15's 14: the compressor's knob 1
     rc = Remote({"play", script, "--save"}, out);
-    Check(rc != 0 && Has(out, "line 2: the compressor's knob over MIDI (CC 52)"),
-          "remote: and its knob over MIDI is refused (#78)");
+    Check(rc == 0, "remote: its knob over MIDI is played: CCs never reach the card (#97)");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
+    Write(script, "booted\ntap KEY_5\nwait 100\nmidi BF 17 0F\nturn 1 2\nwait 300\n");
+    rc = Remote({"play", script, "--save"}, out);
+    Check(rc != 0 && Has(out, "line 5: turn 1 with the compressor selected"),
+          "remote: a knob turned once CC 23 put the compressor in focus is refused (#78)");
     Write(script, "booted\ntap KEY_25\nwait 100\ntap KEY_17\nwait 100\ntap KEY_26\nwait 500\n");
     rc = Remote({"play", script, "--save"}, out);
     const std::string refused_save = out;
@@ -748,7 +753,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     // a channel over SysEx, the compressor's knob and a scene saved change FRIZZ, not its files
     const std::string master_file = CardFiles()["/FRIZZ/frizz_master.txt"];
     const std::string scenes_file = CardFiles()["/FRIZZ/frizz_scenes.txt"];
-    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_18\nwait 100\ntoggle 0\nwait 100\n"
+    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_23\nwait 100\ntoggle 0\nwait 100\n"
                   "midi F0 7D 43 48 13 00 05 F7\ntap KEY_15\nwait 100\nturn 4 10\nwait 100\n"
                   "tap KEY_25\nwait 100\ntap KEY_18\nwait 100\ntap KEY_26\nwait 2500\n");
     rc = Remote({"play", script}, out);

@@ -252,6 +252,65 @@ int main()
         }
     }});
 
+    // a DAW's Start, followed (#97 D4): the loop recorded to its clock goes back to its start,
+    // and so does the gear behind: Start goes out with that tick, the clock steady through it
+    cases.push_back({"follow-start", [] {
+        StartUsb(Clock(120., 0., true));
+        RunMs(kReadyMs);
+        SetOut(1);
+        for (uint8_t b : {0xF0, 0x7D, 0x43, 0x48, 0x13, 0x01, 0x01, 0xF7}) // transport following
+            UsbMidi(b);
+        Press("KEY_27", true); // PLAY held, LOOP: quantized
+        RunMs(80);
+        Tap("KEY_28");
+        Press("KEY_27", false);
+        RunMs(2500);
+        Tap("KEY_28"); // closes at the end of bar 2
+        RunUntil([] { return Probe().loop_state == 2; }, 2500);
+        RunMs(2600);
+        TakeSent();
+        UsbMidi(0xFA);
+        RunMs(1000);
+        const Sent s = TakeSent();
+        double mean, worst;
+        Gaps(s.trs, mean, worst);
+        std::string seq;
+        for (const MidiOutByte& b : s.trs)
+            if (b.byte != 0xF8)
+            {
+                char h[8];
+                snprintf(h, sizeof(h), "%02X ", b.byte);
+                seq += h;
+            }
+        Report("follow-start: out %s; a tick every %.3f ms (+-%.2f)", seq.c_str(), mean, worst);
+        size_t start = 0;
+        while (start < s.trs.size() && s.trs[start].byte != 0xFA)
+            start++;
+        Check(start + 1 < s.trs.size() && s.trs[start + 1].byte == 0xF8
+                  && s.trs[start + 1].ms - s.trs[start].ms < .5 && Count(s.trs, 0xFA) == 1,
+              "follow-start: the loop back at its start sends Start, with its tick");
+        Check(fabs(mean - kTick120) < .1 && worst < .8, "follow-start: the clock steady through it");
+        // paused, Start plays it from its start: as PLAY does, Song Position of the next 16th
+        // (the first after the start, 1), then Continue on its tick
+        UsbMidi(0xFC);
+        RunMs(500);
+        TakeSent();
+        UsbMidi(0xFA);
+        RunMs(500);
+        const Sent p = TakeSent();
+        size_t spp = 0, cont = 0;
+        while (spp < p.trs.size() && p.trs[spp].byte != 0xF2)
+            spp++;
+        while (cont < p.trs.size() && p.trs[cont].byte != 0xFB)
+            cont++;
+        const bool both = spp + 2 < p.trs.size() && cont < p.trs.size();
+        Report("follow-start: paused, Start: Song Position %d, Continue %.1f ms after it",
+               both ? p.trs[spp + 1].byte : -1, both ? p.trs[cont].ms - p.trs[spp].ms : 0.);
+        Check(both && p.trs[spp + 1].byte == 1 && p.trs[spp + 2].byte == 0
+                  && fabs(p.trs[cont].ms - p.trs[spp].ms - 125.) < 2. && Count(p.trs, 0xFA) == 0,
+              "follow-start: paused, Start: Song Position 1, Continue a 16th after, on the loop's 16th 1");
+    }});
+
     // a DAW's Start was passed on, then a quantized loop: no second Start, and the ticks carry
     // on, its start on the clock's bar line
     cases.push_back({"handover", [] {

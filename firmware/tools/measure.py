@@ -11,10 +11,10 @@
         sends them): generated material into AUX,
         PLAY + LOOP over SysEx, the line out recorded, then the loop's length against the
         clock's bars and its drift in ms a minute
-    ./measure.py fx KEY [--level CC] [--seconds 30] [--material FILE] --out NAME
-        an effect latched (KEY: its key, KEY_1 .. KEY_13), its level knob set over CC on the
-        channel FRIZZ listens on (the sends start at 0: 113 the delay, 117 the reverb),
-        material into AUX, the line out recorded to NAME.f32
+    ./measure.py fx KEY [--cc CC=VALUE ...] [--seconds 30] [--material FILE] --out NAME
+        an effect latched (KEY: its key, KEY_1 .. KEY_13), CCs on its own MIDI channel (its
+        key's number, MANUAL.md "MIDI": 14-17 page 1's knobs, 18-21 page 2's; the sends' level
+        starts at 0: --cc 17=100), material into AUX, the line out recorded to NAME.f32
     ./measure.py compare A.f32 B.f32
         two recordings' levels and octave bands, B against A, in dB
     ./measure.py material [--music FILE ...] --out FILE.wav
@@ -57,11 +57,9 @@ except ImportError:
              "~/.venvs/frizz/bin/pip install numpy")
 
 SR = 48000
-def cc_status(f):
-    """A CC's status byte on the channel FRIZZ listens on (the settings, kCmdSettings): 16, its
-    default, when it listens on all"""
-    channel = f.ask(remote.SETTINGS)[0]
-    return 0xB0 | ((channel or 16) - 1)
+def cc_status(key):
+    """A CC's status byte on an effect's own channel, its white key's number (MidiControl.h)"""
+    return 0xB0 | (int(key.split("_")[1]) - 1)
 
 
 # ======== the devices ========
@@ -359,8 +357,9 @@ def cmd_fx(a):
     p = play(material)
     time.sleep(1)
     latch(f, a.key)
-    if a.level:
-        f.raw([cc_status(f), a.level, 100])
+    for cc in a.cc or []:
+        number, value = (int(x) for x in cc.split("="))
+        f.raw([cc_status(a.key), number, value])
     time.sleep(2)
     y = record(a.seconds, a.out + ".f32")
     p.terminate()
@@ -419,7 +418,8 @@ def main():
     p.add_argument("--out", help="keep the recording as OUT.f32 and the material as OUT.material.wav")
     p = sub.add_parser("fx", parents=[on_frizz])
     p.add_argument("key", choices=["KEY_%d" % i for i in range(1, 14)])
-    p.add_argument("--level", type=int, help="CC of the effect's level knob, set to 100")
+    p.add_argument("--cc", action="append", metavar="CC=VALUE",
+                   help="a CC on the effect's own channel, e.g. 17=100 a send's level")
     p.add_argument("--seconds", type=float, default=30.)
     p.add_argument("--material", help="a WAV into AUX (measure.py material); generated if not given")
     p.add_argument("--out", required=True)

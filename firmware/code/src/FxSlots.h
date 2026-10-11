@@ -55,6 +55,32 @@ static_assert(sizeof(kFxSlots) / sizeof(kFxSlots[0]) == kNumFx, "one per FxId");
 // The master compressor's key (MasterComp.h), the last white key: white, lighting up with
 // its gain reduction. Its knob LEDs at 0 / .5 / 1
 static const Hardware::SwId kCompKey = Hardware::SwId::KEY_15;
+
+// The white keys, left to right: MIDI's effect channels 1-15 (MidiControl.h)
+static const size_t kNumWhiteKeys = 15;
+/** The FxId on white key 0-14, kNumFx on the compressor's */
+inline size_t FxOnWhiteKey(size_t white)
+{
+    // KEY_1-KEY_15 aren't in order in SwId (the shift registers' wiring)
+    static const Hardware::SwId kWhite[kNumWhiteKeys] = {
+        Hardware::SwId::KEY_1,  Hardware::SwId::KEY_2,  Hardware::SwId::KEY_3,
+        Hardware::SwId::KEY_4,  Hardware::SwId::KEY_5,  Hardware::SwId::KEY_6,
+        Hardware::SwId::KEY_7,  Hardware::SwId::KEY_8,  Hardware::SwId::KEY_9,
+        Hardware::SwId::KEY_10, Hardware::SwId::KEY_11, Hardware::SwId::KEY_12,
+        Hardware::SwId::KEY_13, Hardware::SwId::KEY_14, Hardware::SwId::KEY_15};
+    for (size_t fx = 0; fx < kNumFx; fx++)
+        if (white < kNumWhiteKeys && kFxSlots[fx].key == kWhite[white])
+            return fx;
+    return kNumFx;
+}
+/** The white key 0-14 of an FxId, or of the compressor (kNumFx) */
+inline size_t WhiteKeyOfFx(size_t fx)
+{
+    for (size_t w = 0; w < kNumWhiteKeys; w++)
+        if (FxOnWhiteKey(w) == fx)
+            return w;
+    return kNumWhiteKeys - 1;
+}
 static const uint8_t kCompKeyLed = 10;
 static const float* const kCompKnobColors[3] = {med_blue, white, orange};
 

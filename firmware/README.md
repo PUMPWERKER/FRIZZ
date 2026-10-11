@@ -267,7 +267,7 @@ The groups of GET and SET: `00`-`1F` an effect's knobs by its FxId (`FxParams.h`
 (0 output gain, 1 input gain, 2 mix, 3 headphone feed), `23` the card's settings as
 `masterfile::kLines` lists them (`MasterSettings.h`: mono, MIDI channel, transport, clock
 factor, clock source, MIDI out, LED brightness), their values as `frizz_master.txt` has them.
-The groups don't follow the MIDI map (CCs, NRPN), so a tool keeps working when it changes. SETs
+The groups don't follow the MIDI map (CCs), so a tool keeps working when it changes. SETs
 aren't in the event log: a bug report taken after them won't replay them.
 
 **From the card:** copy `build/FRIZZ.bin` to the SD card and power on, as described in
@@ -291,7 +291,7 @@ cd firmware/tools
 ~/.venvs/frizz/bin/python measure.py clock --mode pairs --bpm 120     # FRIZZ's tempo from a USB clock
 ~/.venvs/frizz/bin/python measure.py drift --bpm 174 --seconds 180    # a 1-bar loop against a TRS clock
 ~/.venvs/frizz/bin/python measure.py material --music a.wav b.wav --out music.wav
-~/.venvs/frizz/bin/python measure.py fx KEY_13 --level 117 --material music.wav --out rev-main
+~/.venvs/frizz/bin/python measure.py fx KEY_13 --cc 17=100 --material music.wav --out rev-main
 ~/.venvs/frizz/bin/python measure.py compare rev-main.f32 rev-branch.f32
 ```
 

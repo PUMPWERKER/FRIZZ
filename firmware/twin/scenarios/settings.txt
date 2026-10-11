@@ -16,40 +16,42 @@ tap KEY_1
 wait 300
 # channel 1 lit
 expect led smt 24 00d4fc
-tap KEY_17
-wait 300
-# transport following on
-expect led smt 1 00fc00
+# the effect channels over the jack: lit at first
+expect led smt 1 00d4fc
 tap KEY_18
 wait 300
+# transport following on
+expect led smt 2 00fc00
+tap KEY_23
+wait 300
 # mono
-expect led smt 2 fcfcfc
+expect led smt 7 fcfcfc
 tap KEY_19
 wait 300
 # the clock factor doubled: red, but pulsing on the beat, whose phase on the device is
 # anyone's: test/ui.cpp checks it (settings-factor, settings-beat)
 # the clock source: Auto, white
-expect led smt 8 fcfcfc
-tap KEY_24
-wait 300
-# TRS: orange
-expect led smt 8 fc983c
-tap KEY_24
-wait 300
-# USB: blue
-expect led smt 8 0000fc
-tap KEY_24
-wait 300
-# internal: pink
-expect led smt 8 fc589c
-tap KEY_24
-wait 300
-# and Auto again
-expect led smt 8 fcfcfc
+expect led smt 4 fcfcfc
 tap KEY_20
 wait 300
+# TRS: orange
+expect led smt 4 fc983c
+tap KEY_20
+wait 300
+# USB: blue
+expect led smt 4 0000fc
+tap KEY_20
+wait 300
+# internal: pink
+expect led smt 4 fc589c
+tap KEY_20
+wait 300
+# and Auto again
+expect led smt 4 fcfcfc
+tap KEY_24
+wait 300
 # the LEDs at 75 %
-expect led smt 4 6c08bc
+expect led smt 8 6c08bc
 tap KEY_10 1500
 wait 1000
 toggle 0

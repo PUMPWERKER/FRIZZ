@@ -13,6 +13,7 @@ public:
     inline bool HasClock() const { return has_clock; }
     inline uint32_t GetTicks() const { return ticks; }
     inline uint32_t GetLastTickTime() const { return last_tick_time; }
+    inline uint32_t GetLastTick() const { return last_tick_time; }
     inline float GetTickPeriod() const { return tick_period; }
     inline float GetBpm() const { return bpm; }
     inline uint32_t GetLocks() const { return locks; }

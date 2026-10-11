@@ -199,18 +199,22 @@ static void TestMasterFormat()
     a.clock_source = 2;
     a.midi_out = 1;
     a.led_brightness = 75;
+    a.midi_block_trs = false;
     char buf[kMasterFileMax];
     const size_t len = FormatMaster(a, buf, sizeof(buf));
     const std::string want = "FRIZZ master 1\n"
                              "compressor2 0 125000 250000 375000 500000 625000 750000 875000\n"
                              "mono 1\nmidi_channel 3\nmidi_transport 1\nclock_factor 50\n"
-                             "clock_source 2\nmidi_out 1\nled_brightness 75\n";
+                             "clock_source 2\nmidi_out 1\nled_brightness 75\nmidi_block_trs 0\n";
     Check(std::string(buf) == want && len == want.size(), "master: the file's text, line for line");
     a.Reset();
     FormatMaster(a, buf, sizeof(buf));
     Check(std::string(buf).find("\nmono 0\nmidi_channel 16\nmidi_transport 0\nclock_factor 100\n"
-                                "clock_source 0\nmidi_out 0\nled_brightness 100\n") != std::string::npos,
+                                "clock_source 0\nmidi_out 0\nled_brightness 100\nmidi_block_trs 1\n")
+              != std::string::npos,
           "master: the defaults' text");
+    Check(ParseMaster("FRIZZ master 1\nmono 1\n", b) && b.midi_block_trs,
+          "master: a file from before midi_block_trs has the effect channels over the jack too");
 
     Check(ParseMaster("FRIZZ master 1\nmono 7\nmidi_transport -1\n", b) && b.mono && b.midi_transport,
           "master: a switch is on for any number but 0");

@@ -29,10 +29,11 @@ static const int kVolumeEncoder = 6, kKnob1Encoder = 4; // SW6, SW4
 static const int kTransportRevLed = 5, kTransportFwdLed = 6, kVolumeLed = 9;
 static const int kSlot1Led = 1, kCompKeyLed = 10, kTapeStopKeyLed = 14;
 // the settings page's (SettingsPage.h): white keys 1, 3, 11, 14, 15 (channels; the 15th is 15
-// and 16), the lower octave's D#, F#, G#, A#, the upper octave's D# and G#
+// and 16), the lower octave's D#, F#, G#, A#, the upper octave's C#, F# and G#
 static const int kChannel1Led = 24, kChannel3Led = 22, kChannel11Led = 14, kChannel14Led = 11,
-                 kChannel1516Led = 10, kTransportKeyLed = 1, kMonoKeyLed = 2, kFactorKeyLed = 3,
-                 kBrightnessKeyLed = 4, kMidiOutKeyLed = 6, kSourceKeyLed = 8;
+                 kChannel1516Led = 10, kBlockTrsKeyLed = 1, kTransportKeyLed = 2, kFactorKeyLed = 3,
+                 kSourceKeyLed = 4, kMidiOutKeyLed = 5, kMonoKeyLed = 7, kBrightnessKeyLed = 8;
+static const int kNumFxProbe = 15; // kCmdParams' effects and the compressor
 static const int kSaveKeyLed = 9; // KEY_25, the play page's SAVE
 static const int kChompiKeyLed = 0; // PanelLeds.h
 
@@ -238,8 +239,11 @@ static void Usb(const std::vector<int>& bytes)
 static const int kNoteOn = 0x9F, kNoteOff = 0x8F, kCC = 0xBF, kPC = 0xCF;
 static const int kFilterNote = 55; // KEY_5, the 5th white key: G above the base note, 48
 static const int kChompiNote = 45; // the CHOMPI key: SHIFT
-static const int kFilterLatchCC = 24, kFilterCutoffCC = 86, kCompAmountCC = 52;
-static const int kHpCueCC = 59, kMonoCCNum = 60; // the headphone feed: 0 the master out, 127 the input alone
+// the global channel's latch of the filter's key, 5, and the compressor's threshold; the
+// filter's own channel, 5, and its cutoff there, knob 1
+static const int kFilterLatchCC = 106, kCompAmountCC = 24;
+static const int kFilterCC = 0xB4, kFilterCutoffCC = 14;
+static const int kHpCueCC = 89; // the headphone feed: 127 the master out, 0 the input alone
 /** 14 bits of an answer as a knob's 0-1 (MidiControl.h's MidiToKnob), and 7 bits of a CC */
 static float KnobOf(int hi, int lo)
 {
@@ -375,21 +379,20 @@ int main()
         RunMs(800);
         Check(RunMs(300) < down * .9f, "fx-level: page 2's knob 3 moves the folder off a 220Hz sine's band");
 
-        // the compressor: threshold off, makeup +12dB by NRPN 1/55: only that gain
+        // the compressor: threshold off, makeup +12dB by CC 31: only that gain
         Latch("KEY_3"); // the folder off again
         RunMs(300);
         const float flat = RunMs(300);
-        Trs({kCC, 99, 1, kCC, 98, 55, kCC, 6, 64, kCC, 38, 0});
+        Trs({kCC, 31, 64});
         RunMs(300);
         const std::string comp = Ask({0x21, 14});
         Check(comp.size() == 17 && comp[15] == 64 && comp[16] == 0,
-              "fx-level: NRPN 1/55 is the compressor's page-2 knob 4, its makeup");
+              "fx-level: CC 31 is the compressor's page-2 knob 4, its makeup");
         const float made_up = RunMs(300);
         printf("      makeup .5: %.1fdB\n", 20.f * log10f(made_up / flat));
         Check(fabsf(20.f * log10f(made_up / flat) - 12.f) < .5f,
               "fx-level: the compressor's makeup at .5 is +12dB, and nothing else changes");
-        Trs({kCC, 52, 40}); // a threshold, no makeup: quieter, nothing gives it back
-        Trs({kCC, 99, 1, kCC, 98, 55, kCC, 6, 0, kCC, 38, 0});
+        Trs({kCC, 24, 40, kCC, 31, 0}); // a threshold, no makeup: quieter, nothing gives it back
         RunMs(1500);
         Check(RunMs(300) <= flat * 1.01f, "fx-level: compressing without makeup is never louder");
         amp = .3f;
@@ -540,18 +543,18 @@ int main()
         RunMs(300);
         Check(fabsf(mix() - .5f) < 1e-3f, "fx-page2: recalling the scene brings it back");
         Check(page() == 1, "fx-page2: a recall keeps the page");
-        // MIDI: the knob press's note turns the page; page 2 by NRPN in bank 1
+        // MIDI: the knob press's note turns the page; page 2 by CC 18-21 on the effect's channel
         Trs({kNoteOn, 36, 100});
         RunMs(50);
         Trs({kNoteOff, 36, 0});
         RunMs(50);
         Check(page() == 0, "fx-page2: note 36, knob 1's press, turns the page too");
-        Trs({kCC, 99, 1, kCC, 98, 74, kCC, 6, 0, kCC, 38, 0}); // the shifter's knob 1: CC 74
+        Trs({0xB1, 18, 0}); // the shifter's channel, 2
         RunMs(50);
-        Check(mix() == 0.f, "fx-page2: NRPN 1/74 is the shifter's page-2 knob 1");
-        Trs({kCC, 99, 1, kCC, 98, kFilterLatchCC, kCC, 6, 127}); // not a knob: nothing
+        Check(mix() == 0.f, "fx-page2: CC 18 on channel 2 is the shifter's page-2 knob 1");
+        Trs({kFilterCC, 23, 127, kFilterCC, 102, 127}); // the global channel's, not an effect's
         RunMs(50);
-        Check(Max(SmtLedFull(kFilterKeyLed)) < 80, "fx-page2: NRPN 1 outside the knobs does nothing");
+        Check(Max(SmtLedFull(kFilterKeyLed)) < 80, "fx-page2: the global CCs do nothing on an effect's channel");
     }});
 
     // a scene file from v0.11, four values a line: page 2 loads on its defaults, so a latched
@@ -888,16 +891,16 @@ int main()
         Check(open_off == 0 && Max(SmtLedFull(kFilterKeyLed)) > 200,
               "chaos-gates: chaos unlatched, the filter steady");
 
-        // over MIDI: CC 119 latches it, NRPN 0/122 its FX chance
+        // over MIDI: CC 115 latches it, CC 14 on its channel, 14, its FX chance
         const std::string before = Ask({0x21, 13});
-        Trs({kCC, 99, 0, kCC, 98, 122, kCC, 6, 0, kCC, 38, 0});
-        Trs({kCC, 119, 127});
+        Trs({0xBD, 14, 0});
+        Trs({kCC, 115, 127});
         RunMs(300);
         const std::string st = Ask({0x20}), after = Ask({0x21, 13});
         Check(st.size() > 9 && ((static_cast<uint8_t>(st[8]) << 7 | static_cast<uint8_t>(st[9])) >> 13 & 1),
-              "chaos-gates: CC 119 latches the chaos key");
+              "chaos-gates: CC 115 latches the chaos key");
         Check(before.size() > 2 && after.size() > 2 && before[1] != 0 && after[1] == 0 && after[2] == 0,
-              "chaos-gates: NRPN 0/122 sets its FX chance (to 0)");
+              "chaos-gates: CC 14 on channel 14 sets its FX chance (to 0)");
         int open_midi = 0;
         for (int w = 0; w < 32; w++)
             open_midi += RunMs(62) > dry * .5f;
@@ -1048,7 +1051,7 @@ int main()
         RunMs(300);
     }});
 
-    // the crossfader over MIDI (CC 118): a morph started by CC 62, taken to where the CC says
+    // the crossfader over MIDI (CC 80): a morph started by CC 3, taken to where the CC says
     cases.push_back({"midi-fader", [] {
         freq = 3000.f; // high, so the filter halfway open still takes some
         RunMs(kReadyMs);
@@ -1060,36 +1063,36 @@ int main()
         Save(1);
         RunMs(1000);
         const float closed = RunMs(300);
-        Trs({kCC, 62, 0}); // to the blank scene, gliding over a bar
+        Trs({kCC, 3, 0}); // to the blank scene, gliding over a bar
         RunMs(20);
-        Trs({kCC, 118, 0});
+        Trs({kCC, 80, 0});
         RunMs(3000);
         Check(state().size() > 6 && (state()[6] & 2) && RunMs(300) < closed * 1.3f,
-              "midi fader: CC 118 takes the morph; at 0 it waits at the start, past the bar line");
-        Trs({kCC, 118, 64});
+              "midi fader: CC 80 takes the morph; at 0 it waits at the start, past the bar line");
+        Trs({kCC, 80, 64});
         RunMs(400);
         const float half = RunMs(300);
         printf("      dry %.3f, closed %.3f, at 64 %.3f\n", dry, closed, half);
         Check(half > closed * 1.5f && half < dry * .9f, "midi fader: at 64, halfway");
-        Trs({kCC, 118, 0});
+        Trs({kCC, 80, 0});
         RunMs(300);
         std::string st = state();
         Check(st.size() > 9 && !(st[6] & 3) && st[5] == 2 && (st[9] & (1 << 4)),
               "midi fader: back to 0, scene 1 as it was");
-        Trs({kCC, 62, 0});
+        Trs({kCC, 3, 127, kCC, 3, 0}); // 127 is no scene, so 0 is a change again
         RunMs(20);
-        Trs({kCC, 118, 127});
+        Trs({kCC, 80, 127});
         RunMs(300);
         st = state();
         Check(st.size() > 9 && !(st[6] & 3) && st[5] == 1 && st[9] == 0 && RunMs(300) > dry * .85f,
               "midi fader: at 127, landed on the blank scene");
-        Trs({kCC, 118, 64});
+        Trs({kCC, 80, 64});
         RunMs(300);
         Check(state().size() > 6 && !(state()[6] & 2), "midi fader: without a morph, nothing");
     }});
 
-    // a CHOMPI tap while CC 118 holds a morph: the morph stays MIDI's (only the hand's fader
-    // ends where SHIFT is let go), so CC 118 still lands it, and at 0 the tap doesn't take it
+    // a CHOMPI tap while CC 80 holds a morph: the morph stays MIDI's (only the hand's fader
+    // ends where SHIFT is let go), so CC 80 still lands it, and at 0 the tap doesn't take it
     // back to where it started
     cases.push_back({"midi-fader-tap", [] {
         freq = 3000.f;
@@ -1107,46 +1110,46 @@ int main()
         Save(1);
         RunMs(1000);
 
-        Trs({kCC, 62, 0}); // to the blank scene
+        Trs({kCC, 3, 0}); // to the blank scene
         RunMs(20);
-        Trs({kCC, 118, 64});
+        Trs({kCC, 80, 64});
         RunMs(400);
         Tap("KEY_26");
         RunMs(300);
         Check(state().size() > 6 && (state()[6] & 2),
-              "midi-fader-tap: halfway, a CHOMPI tap leaves CC 118 its morph");
-        Trs({kCC, 118, 127});
+              "midi-fader-tap: halfway, a CHOMPI tap leaves CC 80 its morph");
+        Trs({kCC, 80, 127});
         RunMs(300);
-        Check(landed(), "midi-fader-tap: and CC 118 at 127 then lands it");
+        Check(landed(), "midi-fader-tap: and CC 80 at 127 then lands it");
 
         Tap("KEY_17"); // scene 1 again
         RunMs(300);
-        Trs({kCC, 62, 0});
+        Trs({kCC, 3, 127, kCC, 3, 0}); // 127 is no scene, so 0 is a change again
         RunMs(20);
-        Trs({kCC, 118, 0});
+        Trs({kCC, 80, 0});
         RunMs(400);
         Tap("KEY_26");
         RunMs(300);
         Check(state().size() > 6 && (state()[6] & 2),
               "midi-fader-tap: at 0, the tap doesn't take the morph back");
-        Trs({kCC, 118, 127});
+        Trs({kCC, 80, 127});
         RunMs(300);
-        Check(landed(), "midi-fader-tap: and CC 118 at 127 lands it");
+        Check(landed(), "midi-fader-tap: and CC 80 at 127 lands it");
 
-        // CC 62 to the scene it runs to: no bar more while the fader has it, nothing else
+        // CC 3 to the scene it runs to: no bar more while the fader has it, nothing else
         Tap("KEY_17");
         RunMs(300);
-        Trs({kCC, 62, 0});
+        Trs({kCC, 3, 127, kCC, 3, 0}); // 127 is no scene, so 0 is a change again
         RunMs(20);
-        Trs({kCC, 118, 64});
+        Trs({kCC, 80, 64});
         RunMs(400);
-        Trs({kCC, 62, 0});
+        Trs({kCC, 3, 0});
         RunMs(300);
         Check(state().size() > 6 && (state()[6] & 2),
-              "midi-fader-tap: CC 62 to the same scene meanwhile leaves CC 118 its morph");
-        Trs({kCC, 118, 127});
+              "midi-fader-tap: CC 3 sent again meanwhile changes nothing: CC 80 keeps its morph");
+        Trs({kCC, 80, 127});
         RunMs(300);
-        Check(landed(), "midi-fader-tap: which CC 118 at 127 lands");
+        Check(landed(), "midi-fader-tap: which CC 80 at 127 lands");
     }});
 
     // a scene sent over SysEx into the active slot: the sound stays, so it's edited (as COPY
@@ -1294,10 +1297,10 @@ int main()
         SetToggle(true);
         RunMs(300);
         const Rgb stereo = SmtLedFull(kMonoKeyLed);
-        Tap("KEY_18"); // F#: mono
+        Tap("KEY_23"); // the upper F#: mono
         RunMs(3000);
         Check(Card("/FRIZZ/frizz_master.txt").find("mono 1") != std::string::npos,
-              "settings-mono: F# of the lower octave switches the input to mono, and it's saved");
+              "settings-mono: F# of the upper octave switches the input to mono, and it's saved");
         const Rgb mono = SmtLedFull(kMonoKeyLed);
         Check(mono.r == mono.g && mono.g == mono.b && Max(mono) > 2 * Max(stereo),
               "settings-mono: its key is lit white while mono, dim while stereo");
@@ -1380,7 +1383,7 @@ int main()
         const float dry = RunMs(300);
         SetToggle(true);
         RunMs(300);
-        Usb({kCC, kFilterCutoffCC, 0});
+        Usb({kFilterCC, kFilterCutoffCC, 0});
         Usb({kNoteOn, kFilterNote, 100});
         RunMs(500);
         Check(RunMs(300) < dry * .5f, "settings-midi: a note punches the filter in with the switch up");
@@ -1430,7 +1433,7 @@ int main()
               "settings-channel: back on the play page, the 7th key the phaser's, the 11th the tape stop's, the 14th the chaos key's, dim");
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_17"); // D#: transport following
+        Tap("KEY_18"); // F#: transport following
         RunMs(3000);
         const std::string master = Card("/FRIZZ/frizz_master.txt");
         Check(master.find("midi_channel 1\n") != std::string::npos
@@ -1508,13 +1511,13 @@ int main()
         SetToggle(true);
         RunMs(300);
         const int key_full = Max(SmtLed(kBrightnessKeyLed));
-        Tap("KEY_20"); // A#: 75 %
+        Tap("KEY_24"); // upper G#: 75 %
         RunMs(300);
         const int key_75 = Max(SmtLed(kBrightnessKeyLed));
-        Tap("KEY_20"); // 50 %
+        Tap("KEY_24"); // 50 %
         RunMs(3000);
         Check(Card("/FRIZZ/frizz_master.txt").find("led_brightness 50") != std::string::npos,
-              "settings-brightness: A# pressed twice steps 100, 75, 50 %, saved");
+              "settings-brightness: the upper G# pressed twice steps 100, 75, 50 %, saved");
         const int key_50 = Max(SmtLed(kBrightnessKeyLed));
         Check(key_full > key_75 && key_75 > key_50 && key_50 > 0,
               "settings-brightness: its own key dims with every LED, so it shows the level");
@@ -1527,7 +1530,7 @@ int main()
               "settings-brightness: the panel's dimmer too, still lit");
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_20"); // and round to 100 %
+        Tap("KEY_24"); // and round to 100 %
         SetToggle(false);
         RunMs(300);
         Check(Same(SmtLed(kFilterKeyLed), filter), "settings-brightness: a third press is back to full");
@@ -1679,18 +1682,18 @@ int main()
               "clock-source: Auto at first: the jack ticked first, so its 120 counts");
         SetToggle(true);
         RunMs(300);
-        Check(Same(SmtLedFull(kSourceKeyLed), Rgb{252, 252, 252}), "clock-source: upper G# white for Auto");
-        Tap("KEY_24"); // TRS
+        Check(Same(SmtLedFull(kSourceKeyLed), Rgb{252, 252, 252}), "clock-source: lower A# white for Auto");
+        Tap("KEY_20"); // TRS
         RunMs(2000);
         Check(Probe().source == 1 && Probe().tempo == 120 && Same(SmtLedFull(kSourceKeyLed), Rgb{252, 152, 60}),
               "clock-source: TRS: the jack's still, the key orange");
-        Tap("KEY_24"); // USB
+        Tap("KEY_20"); // USB
         RunMs(300);
         Check(Probe().source == 2, "clock-source: USB: the lock moves to USB's ticks at once");
         RunMs(2000);
         Check(Probe().tempo == 90 && Same(SmtLedFull(kSourceKeyLed), Rgb{0, 0, 252}),
               "clock-source: and the effects follow its 90, the key blue");
-        Tap("KEY_24"); // internal
+        Tap("KEY_20"); // internal
         RunMs(1000);
         Check(!Probe().has_clock && Probe().tempo == 90 && Same(SmtLedFull(kSourceKeyLed), Rgb{252, 88, 156}),
               "clock-source: internal: no clock while both run, the last tempo kept, the key pink");
@@ -1714,23 +1717,23 @@ int main()
         printf("      tapped: %d BPM\n", Probe().tempo);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_24"); // Auto again
+        Tap("KEY_20"); // Auto again
         RunMs(2000);
         Check(Probe().has_clock, "clock-source: a fourth press is Auto again: a clock counts");
     }});
 
-    // MIDI out (MidiOut.h): off, the jack, the jack and USB, on the upper D#
+    // MIDI out (MidiOut.h): off, the jack, the jack and USB, on the upper C#
     cases.push_back({"midi-out-key", [] {
         RunMs(kReadyMs);
         SetToggle(true);
         RunMs(300);
         const Rgb off = SmtLedFull(kMidiOutKeyLed);
         Check(off.r == off.g && off.g == off.b && off.r > 0 && off.r < 60,
-              "midi-out-key: upper D# dim white: off at first");
+              "midi-out-key: upper C# dim white: off at first");
         TakeMidiOut();
         RunMs(500);
         Check(TakeMidiOut().empty(), "midi-out-key: and nothing goes out");
-        Tap("KEY_22");
+        Tap("KEY_21");
         RunMs(500);
         std::vector<MidiOutByte> sent = TakeMidiOut();
         bool trs = !sent.empty(), usb = false;
@@ -1738,7 +1741,7 @@ int main()
             usb = usb || m.usb;
         Check(Same(SmtLedFull(kMidiOutKeyLed), Rgb{252, 152, 60}) && trs && !usb,
               "midi-out-key: a press: the jack, orange, its clock going out");
-        Tap("KEY_22");
+        Tap("KEY_21");
         RunMs(500);
         sent = TakeMidiOut();
         usb = false;
@@ -1749,7 +1752,7 @@ int main()
         RunMs(2500);
         Check(Card("/FRIZZ/frizz_master.txt").find("midi_out 2") != std::string::npos,
               "midi-out-key: saved");
-        Tap("KEY_22");
+        Tap("KEY_21");
         RunMs(300);
         TakeMidiOut();
         RunMs(500);
@@ -1966,16 +1969,15 @@ int main()
         Check(near(speed(), -48), "transport-semitones: SHIFT + right: forward again");
         Tap("ENC_5_SW"); // the transport's press: back to 1x
         Check(near(speed(), 0), "transport-semitones: press: 1x");
-        // over MIDI: CC 18 turns in semitones; with the CHOMPI key's note held, along the ladder
-        Trs({kCC, 18, 1, kCC, 18, 1});
-        Check(near(speed(), 1), "transport-semitones: CC 18, 2 detents: a semitone");
-        Trs({kNoteOn, kChompiNote, 100});
-        RunMs(60);
-        for (int i = 0; i < 4; i++)
-            Trs({kCC, 18, 1});
-        RunMs(60);
-        Trs({kNoteOn, kChompiNote, 0});
-        Check(near(speed(), 7), "transport-semitones: CHOMPI's note held, CC 18 x4: the ladder, +7");
+        // over MIDI: CC 90 sets it outright, in semitones: 0 1/16x, 64 1x, 127 2x
+        Trs({kCC, 90, 69});
+        Check(near(speed(), 1), "transport-semitones: CC 90 at 69: a semitone up");
+        Trs({kCC, 90, 127});
+        Check(near(speed(), 12), "transport-semitones: CC 90 at 127: 2x");
+        Trs({kCC, 90, 0});
+        Check(near(speed(), -48), "transport-semitones: CC 90 at 0: 1/16x");
+        Trs({kCC, 90, 64});
+        Check(near(speed(), 0), "transport-semitones: CC 90 at 64: 1x");
     }});
 
     cases.push_back({"flanger-click", [] {
@@ -2099,12 +2101,12 @@ int main()
         const float stopped = RunMs(500), hp_stopped = hp_rms;
         Check(stopped < .01f * master && hp_stopped < .01f * master,
               "headphones: a latched tape stop silences them with the master");
-        Usb({kCC, kHpCueCC, 127});
+        Usb({kCC, kHpCueCC, 0});
         RunMs(300);
         const float cued = RunMs(500), hp_cued = hp_rms;
         Check(cued < .01f * master && hp_cued > .5f * master,
-              "headphones: with the cue up, the input alone, while the master stays silent");
-        Usb({kCC, kHpCueCC, 0});
+              "headphones: CC 89 at 0, as VOLUME's knob turned left: the input alone, while the master stays silent");
+        Usb({kCC, kHpCueCC, 127});
         RunMs(300);
         RunMs(500);
         Check(hp_rms < .01f * master, "headphones: the cue back down, the master out again");
@@ -2197,7 +2199,7 @@ int main()
         Tap("KEY_6");
         run(1000);
         // MIDI: a note holding the filter, a CC, FRIZZ's SysEx key, all played in again
-        Trs({kNoteOn, kFilterNote, 100, kCC, kFilterCutoffCC, 20});
+        Trs({kNoteOn, kFilterNote, 100, kFilterCC, kFilterCutoffCC, 20});
         run(300);
         Trs({kNoteOff, kFilterNote, 0});
         Usb({0xF0, 0x7D, 0x43, 0x48, 0x11, 15, 1, 0xF7});
@@ -2252,7 +2254,7 @@ int main()
         Check(log.find("\nturn 5 1\n") != std::string::npos && log.find("\nup KEY_28\n") != std::string::npos,
               "bug log: and the session's keys and knobs");
         Check(log.find("\nmidi 9F 37 64\n") != std::string::npos
-                  && log.find("\nmidi BF 56 14\n") != std::string::npos
+                  && log.find("\nmidi B4 0E 14\n") != std::string::npos
                   && log.find("\nmidi F0 7D 43 48 11 0F 01 F7\n") != std::string::npos,
               "bug log: and the MIDI that came, as it came");
         // every line one the twin reads, over all its sectors
@@ -2428,9 +2430,10 @@ int main()
         Trs({kNoteOn, kFilterNote, 100});
         RunMs(100);
         Check(Max(SmtLedFull(kFilterKeyLed)) > 2 * off, "midi notes: a note on channel 16 holds its key: the filter");
-        Trs({kCC, kFilterCutoffCC, 0});
+        Trs({kCC, 14, 0});
         RunMs(500);
-        Check(RunMs(300) < dry * .5f, "midi notes: and a CC closes its cutoff");
+        Check(RunMs(300) < dry * .5f,
+              "midi notes: and the global channel's CC 14 closes its cutoff: its key put it in focus");
         Press("KEY_5", true);
         RunMs(100);
         Trs({kNoteOn, kFilterNote, 0}); // a note on at velocity 0 is a note off
@@ -2451,37 +2454,159 @@ int main()
         Check(PthLedFull(kLoopLed).r > 100, "midi notes: note 47 is LOOP");
     }});
 
-    // controllers: latches, parameters, knob turns, the compressor, the mix
+    // controllers: latches, an effect's channel, the focus, the compressor, a gain
     cases.push_back({"midi-cc", [] {
         RunMs(kReadyMs);
         const float dry = RunMs(300);
-        Trs({kCC, kFilterCutoffCC, 10, kCC, kFilterLatchCC, 127});
+        Trs({kFilterCC, kFilterCutoffCC, 10, kCC, kFilterLatchCC, 127});
         RunMs(500);
-        Check(RunMs(300) < dry * .5f, "midi cc: CC 24 latches the filter, CC 86 sets its cutoff");
+        Check(RunMs(300) < dry * .5f,
+              "midi cc: CC 106 latches the filter, CC 14 on its channel, 5, sets its cutoff");
         Check(Max(SmtLedFull(kFilterKeyLed)) > 80, "midi cc: its key lit");
         Trs({kCC, kFilterLatchCC, 0});
         RunMs(300);
-        Check(fabsf(RunMs(300) - dry) < dry * .05f, "midi cc: CC 24 at 0 unlatches it");
-        // relative: CC 14 turns knob 1 as its detents do, here the filter's
-        Tap("KEY_5");
-        RunMs(200);
-        const Rgb before = PthLedFull(kKnob1Led);
-        Trs({kCC, 14, 127, kCC, 14, 127, kCC, 14, 127}); // -1, three times
-        RunMs(100);
-        Check(!Same(PthLedFull(kKnob1Led), before), "midi cc: CC 14 turns knob 1");
-        // NRPN: CC 86 in 14 bits, the cutoff's centre exactly
-        Trs({kCC, 99, 0, kCC, 98, kFilterCutoffCC, kCC, 6, 64, kCC, 38, 0});
+        Check(fabsf(RunMs(300) - dry) < dry * .05f, "midi cc: CC 106 at 0 unlatches it");
+        Trs({kFilterCC, 22, 127});
+        RunMs(300);
+        Check(RunMs(300) < dry * .5f, "midi cc: CC 22 on its channel latches it too");
+        // a latch acts as its lane crosses 64, not on every value: an automation lane sending
+        // 127 again doesn't take back what the hand did
+        Latch("KEY_5");
+        RunMs(300);
+        Trs({kFilterCC, 22, 127, kFilterCC, 22, 100});
+        RunMs(300);
+        Check(fabsf(RunMs(300) - dry) < dry * .05f,
+              "midi cc: unlatched by hand, CC 22 at 127 again leaves it off: it acts as it crosses 64");
+        Trs({kFilterCC, 22, 0, kFilterCC, 22, 127});
+        RunMs(300);
+        Check(RunMs(300) < dry * .5f, "midi cc: down and up again, it latches");
+        // the focus: CC 23 picks a key, and the global CC 14 right after it goes there
+        Trs({kCC, 23, 5, kCC, 14, 64});
         RunMs(50);
-        const std::string params = Ask({0x21, 4});
+        const std::string params = Ask({0x21, 4}), st = Ask({0x20});
         Check(params.size() == 17 && params[1] == 64 && params[2] == 0,
-              "midi cc: NRPN 86 sets the cutoff in 14 bits, 8192 its centre");
+              "midi cc: CC 23 at 5 focuses the filter, and CC 14 right after sets its cutoff (64, its centre)");
+        Check(st.size() > 4 && st[4] == 4, "midi cc: the knobs edit it, as SHIFT + its key would");
         Trs({kCC, kCompAmountCC, 127});
         RunMs(50);
-        const std::string comp = Ask({0x21, 14});
-        Check(comp.size() == 17 && comp[1] == 127, "midi cc: CC 52 is the compressor's threshold");
-        Trs({kCC, 56, 0}); // output gain
+        std::string comp = Ask({0x21, 14});
+        Check(comp.size() == 17 && comp[1] == 127, "midi cc: CC 24 is the compressor's threshold");
+        Trs({0xBE, 14, 0});
+        RunMs(50);
+        comp = Ask({0x21, 14});
+        Check(comp.size() == 17 && comp[1] == 0, "midi cc: and CC 14 on its channel, 15");
+        Trs({kCC, 85, 0}); // output gain
         RunMs(300);
-        Check(RunMs(300) < .001f, "midi cc: CC 56 sets the output gain");
+        Check(RunMs(300) < .001f, "midi cc: CC 85 sets the output gain");
+    }});
+
+    // the channels (#97): the global one's map wins on it; all channels, the global map only;
+    // the effect channels over the jack only if the settings page lets them
+    cases.push_back({"midi-channels", [] {
+        RunMs(kReadyMs);
+        auto param = [](int fx, int p = 0) {
+            const std::string d = Ask({0x21, fx});
+            return d.size() == 17 ? d[1 + 2 * p] << 7 | d[2 + 2 * p] : -1;
+        };
+        const int freezer = param(0), filter = param(4);
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 0, 5, 0xF7}); // the global channel: 5
+        RunMs(50);
+        Trs({0xB4, 14, 0, 0xB4, 106, 127});
+        RunMs(300);
+        Check(param(4) == filter && param(0) == 0 && Max(SmtLedFull(kFilterKeyLed)) > 80,
+              "midi-channels: global on 5, its CC 14 is the focus's (the freezer), 106 latches the filter");
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 0, 0, 0xF7}); // all channels
+        RunMs(50);
+        Trs({0xB2, 15, 64, 0xB2, 106, 0}); // channel 3: the folder's, if the block counted
+        RunMs(300);
+        Check(param(0, 1) == 64 << 7 && param(2, 1) != 64 << 7 && Max(SmtLedFull(kFilterKeyLed)) < 80,
+              "midi-channels: on all channels, channel 3 is the global map too: the focus and the latches");
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 0, 16, 0xF7});
+        RunMs(50);
+        // the block over the jack switched off on the settings page's lower D#, USB's still counts
+        SetToggle(true);
+        RunMs(300);
+        Check(Max(SmtLedFull(kBlockTrsKeyLed)) > 80, "midi-channels: the lower D# lit: the block over the jack, at first");
+        Tap("KEY_17");
+        RunMs(100);
+        Check(Max(SmtLedFull(kBlockTrsKeyLed)) < 80, "midi-channels: pressed, dim");
+        SetToggle(false);
+        RunMs(300);
+        Trs({0xB4, 14, 20});
+        RunMs(50);
+        Check(param(4) == filter, "midi-channels: the block off over the jack: channel 5's CC 14 does nothing there");
+        Usb({0xB4, 14, 20});
+        RunMs(50);
+        Check(param(4) == 20 << 7, "midi-channels: and still counts over USB");
+        RunMs(2500);
+        Check(Card("/FRIZZ/frizz_master.txt").find("midi_block_trs 0\n") != std::string::npos,
+              "midi-channels: kept on the card");
+        (void)freezer;
+    }});
+
+    // nothing that comes in by CC goes to the card (#97 D6): the compressor's CC changes it,
+    // but what's kept is the hand's
+    cases.push_back({"midi-not-kept", [] {
+        RunMs(kReadyMs);
+        const std::string before = Card("/FRIZZ/frizz_master.txt");
+        Trs({kCC, kCompAmountCC, 100, kCC, 85, 10});
+        RunMs(2500);
+        const std::string comp = Ask({0x21, 14});
+        Check(comp.size() == 17 && comp[1] > 90 && Card("/FRIZZ/frizz_master.txt") == before,
+              "midi-not-kept: CC 24 sets the compressor's threshold, and nothing's written");
+        Tap("KEY_15");
+        Turn(1, 10); // its ratio, by hand
+        RunMs(2500);
+        const std::string master = Card("/FRIZZ/frizz_master.txt");
+        Check(master.find("\ncompressor2 0 ") != std::string::npos,
+              "midi-not-kept: a knob turned by hand writes the card, with the threshold as the hand left it");
+    }});
+
+    // a DAW chasing every lane as it starts: more latches in one USB packet than the queue
+    // of what acts once holds, every one as its last message said
+    cases.push_back({"midi-latch-burst", [] {
+        RunMs(kReadyMs);
+        std::vector<int> burst;
+        for (int key = 0; key < 13; key++) // all on, all off, keys 1-7 on again
+            burst.insert(burst.end(), {kCC, 102 + key, 127});
+        for (int key = 0; key < 13; key++)
+            burst.insert(burst.end(), {kCC, 102 + key, 0});
+        for (int key = 0; key < 7; key++)
+            burst.insert(burst.end(), {kCC, 102 + key, 127});
+        burst.insert(burst.end(), {0xB0, 22, 0, 0xB0, 22, 127}); // the freezer's own channel too
+        Usb(burst);
+        RunMs(300);
+        const std::string st = Ask({0x20});
+        const int latched = st.size() > 9 ? static_cast<uint8_t>(st[8]) << 7 | static_cast<uint8_t>(st[9]) : -1;
+        // keys 1-7: the freezer, shifter, folder, crusher, filter, flanger (FxId 0-5), phaser (12)
+        const int want = 0x3f | 1 << 12;
+        printf("      latched %04x, want %04x\n", latched, want);
+        Check(latched == want, "midi-latch-burst: 41 latch messages in one packet, each latch as its last said");
+    }});
+
+    // what hosts send by themselves reaches nothing: an RPN (a DAW's pitch-bend range) with its
+    // data entry and the null RPN, on the global channel and an effect's; data increment;
+    // keyboards' CC 1, 7, 64, 71, 74, 91, 93; Reset All Controllers (#97)
+    cases.push_back({"midi-ignored", [] {
+        RunMs(kReadyMs);
+        std::string before[kNumFxProbe];
+        for (int fx = 0; fx < kNumFxProbe; fx++)
+            before[fx] = Ask({0x21, fx});
+        const std::string state = Ask({0x20});
+        for (int status : {kCC, 0xB7, 0xB8})
+        {
+            Trs({status, 101, 0, status, 100, 0, status, 6, 12, status, 38, 0, status, 96, 1,
+                 status, 97, 1, status, 101, 127, status, 100, 127});
+            Trs({status, 1, 100, status, 7, 100, status, 64, 127, status, 71, 100, status, 74, 20,
+                 status, 91, 100, status, 93, 100, status, 121, 0, status, 98, 3, status, 99, 1});
+        }
+        RunMs(300);
+        bool same = true;
+        for (int fx = 0; fx < kNumFxProbe; fx++)
+            same = same && Ask({0x21, fx}) == before[fx];
+        const std::string after = Ask({0x20});
+        Check(same && after.size() > 20 && after.substr(8, 13) == state.substr(8, 13),
+              "midi-ignored: (N)RPN, data entry, keyboards' CCs and Reset All Controllers change nothing");
     }});
 
     // FRIZZ's SysEx: keys, detents and the settings in, the state, LEDs, load out over USB
@@ -2587,9 +2712,10 @@ int main()
         const std::string settings = Ask({0x3E, 2, 14, 0x23});
         Check(factor.size() == 5 && factor[2] == 0 && dim.size() == 5 && dim[2] == 1,
               "midi dev: SET a setting, a value it doesn't take refused");
-        Check(settings.size() == 5 + 14 && settings[4] == 7 && settings[11] == 1 && settings[12] == 200 - 128
-                  && settings[17] == 0 && settings[18] == 100 && settings[7] == 0 && settings[8] == 16,
-              "midi dev: GET the settings: the clock factor x2, the LEDs at 100 %, channel 16");
+        Check(settings.size() == 5 + 16 && settings[4] == 8 && settings[11] == 1 && settings[12] == 200 - 128
+                  && settings[17] == 0 && settings[18] == 100 && settings[7] == 0 && settings[8] == 16
+                  && settings[19] == 0 && settings[20] == 1,
+              "midi dev: GET the settings: the clock factor x2, the LEDs at 100 %, channel 16, the effect channels over the jack");
         Check(Ask({0x3E, 3, 15, 0x23, 9, 0, 1})[2] == 1 && Ask({0x3E, 2, 16, 0x30})[2] == 1
                   && Ask({0x3E, 9, 17})[2] == 1,
               "midi dev: no such setting, group or sub-command: refused, answered");
@@ -2674,22 +2800,22 @@ int main()
         Trs({kPC, 0});
         RunMs(500);
         Check(fabsf(RunMs(300) - dry) < dry * .05f, "midi scenes: program change 0, the blank scene");
-        Trs({kCC, 62, 1}); // morph to it: over a bar at 120 BPM, 2 s
+        Trs({kCC, 3, 1}); // morph to it: over a bar at 120 BPM, 2 s
         RunMs(200);
         const float midway = RunMs(100);
         RunMs(3000);
-        Check(midway > dry * .5f && RunMs(300) < dry * .5f, "midi scenes: CC 62 morphs to it, landing on the bar");
+        Check(midway > dry * .5f && RunMs(300) < dry * .5f, "midi scenes: CC 3 morphs to it, landing on the bar");
         Usb({0xF0, 0x7D, 0x43, 0x48, 0x31, 0, 8, 1, 0, 0, 0xF7});
         RunMs(20);
         const std::string refused = TakeUsbOut();
         Check(refused.size() == 9 && refused[7] == 1, "midi scenes: never into the blank scene");
 
-        // CC 61 sets a morph's bars: the same morph 4 bars later (the same phase of the bar,
+        // CC 9 sets a morph's bars: the same morph 4 bars later (the same phase of the bar,
         // 2 s each at 120 BPM) over 2 bars lands a bar later than over 1
         auto morph_ms = [](int bars) {
             Trs({kPC, 0});
             RunMs(500);
-            Trs({kCC, 61, bars, kCC, 62, 1});
+            Trs({kCC, 9, bars, kCC, 3, 127, kCC, 3, 1});
             const uint32_t start = NowMs();
             std::string state;
             do
@@ -2703,7 +2829,7 @@ int main()
         const uint32_t two = morph_ms(2);
         printf("      morph over 1 bar: %u ms, over 2: %u ms\n", one, two);
         Check(one <= 2100 && two > one + 1900 && two < one + 2100,
-              "midi scenes: CC 61 = 2 makes a CC 62 morph land a bar later");
+              "midi scenes: CC 9 = 2 makes a CC 3 morph land a bar later");
     }});
 
     // MIDI Start / Stop play and pause the loop, once switched on
@@ -2769,72 +2895,88 @@ int main()
         Tap("KEY_28");
         RunMs(300);
         const float speed = Probe().loop_speed;
-        for (int i = 0; i < 24; i++)
-            Trs({kCC, 18, 1});
-        RunMs(1000);
-        Check(Probe().loop_speed > 1.9f * speed, "midi cc more: CC 18 turns the transport: the loop speeds up");
-        for (int i = 0; i < 24; i++)
-            Trs({kCC, 18, 127});
-        RunMs(1000);
-        Check(fabsf(Probe().loop_speed - speed) < .02f, "midi cc more: and back down (the speed glides there)");
+        Trs({kCC, 90, 127});
+        RunMs(2000);
+        Check(Probe().loop_speed > 1.9f * speed, "midi cc more: CC 90 at 127: the loop at 2x");
+        Trs({kCC, 90, 64});
+        RunMs(2000);
+        Check(fabsf(Probe().loop_speed - speed) < .02f, "midi cc more: and at 64 back to 1x (the speed glides there)");
         Tap("KEY_28"); // erase it
         RunMs(1000);
         Check(Probe().loop_state == 0, "midi cc more: (the loop erased)");
+        Trs({kCC, 90, 127});
+        RunMs(300);
+        Check(fabsf(Probe().loop_speed - 1.f) < .001f, "midi cc more: without a loop, CC 90 does nothing");
         const int out_gain = at14(state(), 15);
-        for (int i = 0; i < 20; i++)
-            Trs({kCC, 19, 127});
+        Trs({kCC, 85, 32});
         RunMs(500);
-        Check(at14(state(), 15) < out_gain && RunMs(300) < dry * .8f,
-              "midi cc more: CC 19 turns VOLUME: the master out down");
-        for (int i = 0; i < 20; i++)
-            Trs({kCC, 19, 1});
-        RunMs(500);
-        Check(at14(state(), 15) == out_gain, "midi cc more: and up again");
+        Check(at14(state(), 15) == 4096 && at14(state(), 15) != out_gain && RunMs(300) < dry * .8f,
+              "midi cc more: CC 85 sets the master out: down");
 
-        Trs({kCC, 53, 0, kCC, 54, 64, kCC, 55, 127});
+        Trs({kCC, 25, 0, kCC, 26, 64, kCC, 27, 127});
         RunMs(50);
         const std::string comp = Ask({0x21, 14});
         Check(comp.size() == 17 && at14(comp, 3) == 0 && at14(comp, 5) == 8192 && at14(comp, 7) == 16383,
-              "midi cc more: CCs 53-55 are the compressor's knobs 2-4");
+              "midi cc more: CCs 25-27 are the compressor's knobs 2-4");
 
         const int in_gain = at14(state(), 17);
-        Trs({kCC, 57, 0});
+        Trs({kCC, 86, 0});
         RunMs(300);
-        Check(at14(state(), 17) == 0 && RunMs(300) < .001f, "midi cc more: CC 57 sets the input gain: 0 silences it");
-        Trs({kCC, 57, 127});
+        Check(at14(state(), 17) == 0 && RunMs(300) < .001f, "midi cc more: CC 86 sets the input gain: 0 silences it");
+        Trs({kCC, 86, 127});
         RunMs(300);
         Check(at14(state(), 17) == 16383 && at14(state(), 17) != in_gain,
               "midi cc more: and 127 turns it all the way up");
-        Trs({kCC, 58, 32});
+        Trs({kCC, 87, 32});
         RunMs(50);
-        Check(at14(state(), 13) == 4096, "midi cc more: CC 58 sets the mix");
-        Trs({kCC, kMonoCCNum, 127});
+        Check(at14(state(), 13) == 4096, "midi cc more: CC 87 sets the mix");
+        Trs({kCC, 60, 127});
         RunMs(50);
-        Check(state().size() > 6 && (state()[6] & 32), "midi cc more: CC 60 at 127 makes the input mono");
-        Trs({kCC, kMonoCCNum, 0});
-        RunMs(50);
-        Check(state().size() > 6 && !(state()[6] & 32), "midi cc more: and at 0 stereo");
+        Check(state().size() > 6 && !(state()[6] & 32), "midi cc more: CC 60 doesn't make the input mono any more");
 
-        // CC 61 past 8 is 8 bars: a morph over CC 62 still going after 15 s, landed by 17 s
+        // CC 9 past 8 is 8 bars: a morph over CC 3 still going after 15 s, landed by 17 s
         Latch("KEY_5");
         Save(1);
         RunMs(1000);
         Tap("KEY_5");
         RunMs(300);
-        Trs({kCC, 61, 127, kCC, 62, 1});
+        Trs({kCC, 9, 127, kCC, 3, 1});
         RunMs(15000);
         const bool going = state().size() > 6 && (state()[6] & 2);
         RunMs(2500);
-        Check(going && !(state()[6] & 2), "midi cc more: CC 61 above 8 makes a morph take 8 bars");
-        // CC 63 stops one where it is
+        Check(going && !(state()[6] & 2), "midi cc more: CC 9 above 8 makes a morph take 8 bars");
+        // CC 81 stops one where it is
         Tap("KEY_5");
         RunMs(300);
-        Trs({kCC, 61, 1, kCC, 62, 1});
+        Trs({kCC, 9, 1, kCC, 3, 127, kCC, 3, 1});
         RunMs(500);
         const bool started = state()[6] & 2;
-        Trs({kCC, 63, 127});
+        Trs({kCC, 81, 127});
         RunMs(50);
-        Check(started && !(state()[6] & 2), "midi cc more: CC 63 stops a morph before its bar");
+        Check(started && !(state()[6] & 2), "midi cc more: CC 81 stops a morph before its bar");
+        // as it crosses 64 upward, not again while it stays up
+        Tap("KEY_5");
+        RunMs(300);
+        Trs({kCC, 3, 127, kCC, 3, 1});
+        RunMs(300);
+        Trs({kCC, 81, 127});
+        RunMs(50);
+        const bool still = state()[6] & 2;
+        Trs({kCC, 81, 0, kCC, 81, 127});
+        RunMs(50);
+        Check(still && !(state()[6] & 2), "midi cc more: CC 81 at 127 again doesn't stop the next morph; down and up does");
+
+        // CC 82: a tap a crossing of 64 upward, timed as it came: 4 at 120 BPM
+        for (int i = 0; i < 4; i++)
+        {
+            Trs({kCC, 82, 127, kCC, 82, 127}); // the second isn't a crossing
+            RunMs(250);
+            Trs({kCC, 82, 0});
+            RunMs(250);
+        }
+        const int bpm10 = at14(state(), 21);
+        printf("      tapped %.1f BPM\n", bpm10 / 10.);
+        Check(abs(bpm10 - 1200) <= 10, "midi cc more: CC 82 taps the tempo: 4 at 500 ms, 120 BPM");
 
         // CC 120: every key MIDI holds let go, by note and by FRIZZ's SysEx
         Tap("KEY_5"); // the filter off, as the morph left it
@@ -2869,12 +3011,12 @@ int main()
         RunMs(300);
         Turn(kKnob1Encoder, -50); // 0.5 down over 400 ms, 1% a detent
         const float by_hand = StepMs(600);
-        Trs({kCC, kFilterCutoffCC, 64});
+        Trs({kFilterCC, kFilterCutoffCC, 64});
         RunMs(500);
         max_step = 0.f;
         for (int v = 63; v >= 0; v--) // 0.5 down over 400 ms, 1/128 a message
         {
-            Trs({kCC, kFilterCutoffCC, v});
+            Trs({kFilterCC, kFilterCutoffCC, v});
             RunMs(6);
         }
         RunMs(200);
@@ -2884,10 +3026,10 @@ int main()
         // 3000 controllers over USB in 1.5 s, twice a ms, then a last one
         for (int i = 0; i < 1500; i++)
         {
-            Usb({kCC, kFilterCutoffCC, (i * 37) % 128, kCC, kFilterCutoffCC + 1, (i * 11) % 128});
+            Usb({kFilterCC, kFilterCutoffCC, (i * 37) % 128, kFilterCC, kFilterCutoffCC + 1, (i * 11) % 128});
             RunMs(1);
         }
-        Usb({kCC, kFilterCutoffCC, 100});
+        Usb({kFilterCC, kFilterCutoffCC, 100});
         RunMs(100);
         const std::string params = Ask({0x21, 4});
         Check(params.size() == 17 && fabsf(KnobOf(params[1], params[2]) - KnobOf7(100)) < 1e-3f,
@@ -2922,7 +3064,7 @@ int main()
         RunMs(kReadyMs);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_18"); // F#: mono, lit white
+        Tap("KEY_23"); // the upper F#: mono, lit white
         // pure red rising edges on its LED, and the moments each train starts
         std::vector<int> trains, blinks;
         bool was_red = false;
@@ -2965,12 +3107,13 @@ int main()
         RunMs(kReadyMs);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_18"); // mono, saved
+        Tap("KEY_23"); // mono, saved
         RunMs(3000);
         Check(Card("/FRIZZ/frizz_master.txt").find("mono 1") != std::string::npos,
               "settings-refused-saved: mono saved");
         SetCardPresent(false);
-        Trs({kCC, kCompAmountCC, 20}); // the compressor's write, which fails
+        // the compressor set over SysEx (kCmdDev's SET), kept as its knob is: a write, which fails
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x3E, 3, 1, 0x20, 0, 20, 0, 0xF7});
         int red = 0, comp_red = 0;
         for (int t = 0; t < 3000; t++) // its first try fails 2 s on
         {
@@ -3049,27 +3192,27 @@ int main()
         printf("      its key %02x%02x%02x\n", key.r, key.g, key.b);
         Check(key.b > 200 && key.b > key.r && key.r > key.g, "phaser: its key lit, violet");
 
-        // knob 1, the rate, at .25: free, between violet and orange; synced over NRPN: green
+        // knob 1, the rate, at .25: free, between violet and orange; synced over CC 14 on its
+        // channel, 7: green
         const Rgb free_rate = PthLedFull(kKnob1Led);
         Check(free_rate.r > 120 && free_rate.b > 120 && free_rate.g > 30 && free_rate.g < 120,
               "phaser: its rate free, knob 1's LED between violet and orange");
-        Trs({kCC, 99, 0, kCC, 98, 64, kCC, 6, 64, kCC, 38, 0}); // NRPN 0/64 = 8192, the centre
+        Trs({0xB6, 14, 64}); // the centre
         RunMs(100);
         const std::string params = Ask({0x21, 12});
         const Rgb synced = PthLedFull(kKnob1Led);
         Check(params.size() == 17 && params[0] == 12 && params[1] == 64 && params[2] == 0,
-              "phaser: NRPN 0/64 sets its rate, the centre the first division");
+              "phaser: CC 14 on channel 7 sets its rate, the centre the first division");
         Check(synced.g > 200 && synced.r < 40 && synced.b < 40, "phaser: synced, knob 1's LED green");
-        Trs({kCC, 99, 0, kCC, 98, 64, kCC, 6, 127, kCC, 38, 127}); // the top: 4 bars
+        Trs({0xB6, 14, 127}); // the top: 4 bars
         RunMs(100);
         const Rgb bars4 = PthLedFull(kKnob1Led);
         Check(bars4.r > 200 && bars4.g > 200 && bars4.b < 40, "phaser: 4 bars, knob 1's LED yellow");
-        Trs({kCC, 99, 1, kCC, 98, 65, kCC, 6, 0, kCC, 38, 0}); // NRPN 1/65: the centre to 100Hz
-        Trs({kCC, 99, 0, kCC, 98, 66, kCC, 6, 0, kCC, 38, 0}); // NRPN 0/66: depth 0, dry
+        Trs({0xB6, 19, 0, 0xB6, 16, 0}); // page 2's knob 2: the centre to 100Hz; knob 3: depth 0, dry
         RunMs(100);
         const std::string page2 = Ask({0x21, 12});
         Check(page2.size() == 17 && page2[11] == 0 && page2[12] == 0 && page2[5] == 0 && page2[6] == 0,
-              "phaser: NRPN 1/65 sets its centre (page 2's knob 2), 0/66 its depth");
+              "phaser: CC 19 sets its centre (page 2's knob 2), CC 16 its depth");
         RunMs(300);
         const float at0 = RunMs(300);
         printf("      depth 0 over MIDI: %.4f (dry %.4f)\n", at0, dry);

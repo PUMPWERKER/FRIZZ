@@ -100,7 +100,7 @@ their keys' order left to right (see the FRIZZ chain above). Their controls are 
 
 Candidates for the second knob page: all four knobs switched together by pressing any of
 them, and back to page 1 when another effect is pressed or selected. #35 built that page
-(parameters 4-7 of every effect, `FxParams.h`, in scenes, morphs, NRPN bank 1 and SysEx).
+(parameters 4-7 of every effect, `FxParams.h`, in scenes, morphs, CC 18-21 and SysEx).
 
 **Decided (2026-10-10), the first round:** page 2 is the same on every effect (`FxOutput.h`),
 after the SP-404MK2's BALANCE and LEVEL and Elektron's per-machine MIX: knob 1 **Mix**, knob 3

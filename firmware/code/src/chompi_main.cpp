@@ -162,6 +162,10 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
 #endif
     midi_clock.Process(sample_clock);
     sample_clock += size;
+    // MIDI's Start, Stop, Continue and Song Position, for the loop before it plays this block
+    MidiControl::Sync sync;
+    while(midi_control.TakeSync(sync))
+        engine.looper.Follow(sync.msg, sync.spp, sync.tick);
     BENCH_MARK(MIDI);
 
     if(!main_reads_keys)

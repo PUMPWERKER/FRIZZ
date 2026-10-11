@@ -49,7 +49,9 @@ TAPE's monitor-routing modes.
 - 4/4 fixed. One bar = **96 MIDI clock ticks** (24 PPQN).
 - **The start is not quantized.** The press that starts recording is the downbeat of bar 1.
   MIDI Start and Song Position neither start nor align a recording. (With transport following
-  switched on, Start/Continue and Stop play and pause a recorded loop: MANUAL.md, *Start and Stop*.)
+  switched on, Start/Continue and Stop play and pause a recorded loop, Start takes a quantized
+  one back to its start on the next tick and Song Position while paused moves it: MANUAL.md,
+  *Start and Stop*, `Looper::Follow`.)
 - **The end is quantized, strictly.** Pressing `LOOP` records to the end of the bar in progress.
   There's no grace window: a press one tick after a bar line records almost a full extra bar.
 - The loop is always a whole number of bars, minimum 1.

@@ -419,7 +419,12 @@ static void TestComp()
     fx.KnobTurned(0, 10.f, false);
     Check(Near(fx.CompParam(0), .1f) && Near(e.comp[0], .1f) && fx.Param(FX_FILTER, 0) == filter,
           "compressor: a fine turn moves its knob, not the FX's");
-    Check(fx.TakeCompChanged() && !fx.TakeCompChanged(), "compressor: a turn is a change, once");
+    Check(fx.TakeCompChanged() == 1 && !fx.TakeCompChanged(), "compressor: a turn is a change, once, of its knob");
+    fx.SetComp(1, .9f, false);
+    Check(Near(fx.CompParam(1), .9f) && Near(e.comp[1], .9f) && !fx.TakeCompChanged(),
+          "compressor: set by MIDI's CC it changes, but isn't a change to keep (#97)");
+    fx.SetComp(1, kCompParams.defaults[1]);
+    fx.TakeCompChanged();
     Check(!fx.Edited(), "compressor: not part of a scene, so the scene isn't edited");
 
     // coarse: the ratio's grid points

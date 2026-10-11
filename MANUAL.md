@@ -57,17 +57,20 @@ set the rest:
 
 | Keys | Setting | Colour |
 |---|---|---|
-| White keys 1 to 14 | [MIDI channel](#channel) 1 to 14; the one in force lit, the others dim | light blue |
+| White keys 1 to 14 | [MIDI channel](#channels) 1 to 14; the one in force lit, the others dim | light blue |
 | White key 15 (the last) | Channel 15; pressed again 16, again 15, and so on (default 16) | light blue for 15, white for 16, dim for neither |
 | C# (lower octave) | MIDI on every channel: lit when on. It only switches it on; a channel key switches it off | light blue |
-| D# | [MIDI transport following](#start-and-stop): on (lit) / off (dim) | green |
-| F# | [Mono input](#mono-input): mono (lit) / stereo (dim) | white |
+| D# | [Effect channels over TRS](#channels): on (lit, default) / off (dim). Over USB they always count | light blue |
+| F# | [MIDI transport following](#start-and-stop): on (lit) / off (dim) | green |
 | G# | [Clock factor](#midi-clock), each press the next: as sent (default), double, half. It also shows the [beat](#tempo): lit for the first half of every beat, dim for the second | yellow (as sent), red (double), light blue (half) |
-| A# | [LED brightness](#led-brightness), each press the next: 100 % (default), 75 %, 50 % | purple, as bright as the LEDs are |
-| D# (upper octave) | [MIDI out](#midi-out), each press the next: off (default), TRS, TRS and USB | dim (off), orange (TRS), white (TRS and USB) |
-| G# (upper octave) | [Clock source](#clock-source), each press the next: Auto (default), TRS, USB, internal | white (Auto), orange (TRS), blue (USB), pink (internal) |
+| A# | [Clock source](#clock-source), each press the next: Auto (default), TRS, USB, internal | white (Auto), orange (TRS), blue (USB), pink (internal) |
+| C# (upper octave) | [MIDI out](#midi-out), each press the next: off (default), TRS, TRS and USB | dim (off), orange (TRS), white (TRS and USB) |
+| F# (upper octave) | [Mono input](#mono-input): mono (lit) / stereo (dim) | white |
+| G# (upper octave) | [LED brightness](#led-brightness), each press the next: 100 % (default), 75 %, 50 % | purple, as bright as the LEDs are |
 
-The upper octave's other dark keys do nothing.
+The dark keys are grouped by topic: the lower octave's are MIDI in, the upper octave's MIDI out
+and the rest. The upper octave's D# and A# do nothing. (Before v0.12 they sat elsewhere: see the
+CHANGELOG.)
 
 - **The beat on G#** is the tempo the effects follow right now (see [Tempo](#tempo)): with a
   loop, the loop's at its speed; otherwise the MIDI clock's, with the clock factor applied
@@ -98,14 +101,13 @@ The upper octave's other dark keys do nothing.
 
 Mono is for a mono (TS) cable, such as one from a Lyra-8 or a guitar pedal: the plug grounds
 the right channel, so in stereo the source is heard on the left only. In mono the left channel
-feeds both sides, and the effects' stereo knobs spread it from there. Its key (F# of the lower
-octave) toggles it;
-MIDI CC 60 sets it too.
+feeds both sides, and the effects' stereo knobs spread it from there. Its key (F# of the upper
+octave) toggles it.
 
 ### LED brightness
 
-At 75 % or 50 % every LED is dimmer by that much, for a dark stage. A# steps through the
-three; its own LED dims with all the others, so it shows where you are. The dim colours keep their
+At 75 % or 50 % every LED is dimmer by that much, for a dark stage. The upper octave's G#
+steps through the three; its own LED dims with all the others, so it shows where you are. The dim colours keep their
 hue, and nothing lit at 100 % goes dark. Full is as bright as FRIZZ has always been.
 
 ## Looper
@@ -539,9 +541,9 @@ two above; a triangle LFO sweeps them up and down in octaves around the centre (
   every trip, so the sweep moves through the resonances.
 - **Level:** a phaser takes some of the sound into its notches, about 3 dB of a full mix,
   more with feedback up; page 2's Level is there for it.
-- Over MIDI it has no CCs and no latch CC yet (they come with a rework of the MIDI map):
-  NRPN MSB 0, LSB 64-67 set knobs 1-4, NRPN MSB 1, LSB 64-67 its page 2 (see
-  [Controllers](#controllers)). Its key's note (B, 59) holds it as any key's does.
+- Over MIDI it's channel 7 (CC 14-21 its knobs, CC 22 its latch), and CC 108 latches it on the
+  global channel (see [Controllers](#controllers)). Its key's note (B, 59) holds it as any
+  key's does.
 - A scene file from before it loads with it off, on its defaults.
 - LEDs: the key is violet; the knobs go violet to orange, the rate's synced half green to
   yellow.
@@ -590,7 +592,8 @@ in two ways:
 - Effects that react to coming on do so each time chaos lets them back in: the freezer
   grabs, the tape stop stops, the slicer attacks. A latched tape stop under chaos makes
   random stops.
-- Over MIDI: CC 119 latches it, and its knobs are NRPN only (see [Controllers](#controllers)).
+- Over MIDI it's channel 14 (CC 14-17 its knobs, CC 22 its latch), and CC 114 latches it on
+  the global channel (see [Controllers](#controllers)).
 - LEDs: the key is rose; the knobs go light blue to rose.
 
 ## Master compressor
@@ -802,7 +805,7 @@ and the bar lines don't count while you hold it.
 - Letting go without turning is a morph as before: it glides to the bar line. While you
   hold a morph, SHIFT + turn crossfades instead of stepping the speed in 5ths and octaves;
   once you've let go, the transport knob is back to speed and scrub at once.
-- Over MIDI, CC 118 is the crossfader (see [Controllers](#controllers)).
+- Over MIDI, CC 80 is the crossfader (see [Controllers](#controllers)).
 
 ## MIDI
 
@@ -819,7 +822,7 @@ Quantized recording, and the effects' tempo while there's no loop, follow MIDI c
 
 ### Clock source
 
-The upper octave's G# on the [settings page](#settings-page) picks whose clock counts, each
+The lower octave's A# on the [settings page](#settings-page) picks whose clock counts, each
 press the next:
 
 - **Auto** (the default, and how FRIZZ always did it): whichever input ticks first, TRS or
@@ -833,8 +836,8 @@ press the next:
 
 Switching to a source that leaves out the clock FRIZZ was following lets go of it at once, as
 a clock that stops: a quantized recording ends where it is. Notes, controllers, program
-changes and FRIZZ's own SysEx come in from both inputs whatever the source; MIDI Start and
-Stop come only from the chosen input (see [Start and Stop](#start-and-stop)). It's kept as
+changes and FRIZZ's own SysEx come in from both inputs whatever the source; MIDI Start, Stop,
+Continue and Song Position come only from the chosen input (see [Start and Stop](#start-and-stop)). It's kept as
 `clock_source` in `FRIZZ/frizz_master.txt` (0 Auto, 1 TRS, 2 USB, 3 internal), and
 `firmware/remote.py source auto|trs|usb|internal` sets it too.
 
@@ -844,13 +847,31 @@ round. It counts for everything that follows the clock: the bars of a quantized 
 the effects' tempo. A loop, once there is one, keeps its own tempo. Changing it while a
 quantized recording ends that recording where it is, as a lost clock does.
 
-### Channel
+### Channels
 
-Notes, controllers and program changes count on one channel: **16** at first, the one a
-setup sending notes to other instruments over the same cable uses least. FRIZZ keeps it on
-the card, in `FRIZZ/frizz_master.txt` (`midi_channel 16`; 0 listens on every channel). Change
-it on the [settings page](#settings-page), in the file, or from a computer with
+From v0.12 FRIZZ listens on 16 channels, with two kinds of map:
+
+- **The global channel**, **16** at first: notes (the keys), program changes (scenes), the
+  looper, the scenes, the gains, every effect's latch, the compressor, and the knobs of the
+  effect in focus. That alone covers FRIZZ from a hardware controller or a TRS chain.
+- **The effect channels 1-15**, one per white key, left to right: 1 freezer, 2 shifter,
+  3 folder, 4 crusher, 5 filter, 6 flanger, 7 phaser, 8 resonator, 9 slicer, 10 wow & flutter,
+  11 tape stop, 12 delay, 13 reverb, 14 chaos key, 15 master compressor. Each has the same
+  CCs, so in a DAW one MIDI track per effect has the same automation lanes everywhere.
+
+On the global channel, its own map wins: set it to 5, and channel 5 is the global channel,
+with the filter reached through the focus (CC 23 and CC 14-22) and its latch (CC 106). Set to
+every channel (0), only the global map counts, on all of them, and the effect channels are off.
+
+Change the global channel on the [settings page](#settings-page), in `FRIZZ/frizz_master.txt`
+(`midi_channel 16`; 0 listens on every channel), or from a computer with
 `firmware/remote.py channel N`.
+
+**A shared TRS chain:** over USB, FRIZZ is a port of its own. Over TRS, the effect channels
+take channels 1-15 of the cable too, so other gear on the same chain that listens or sends on
+them reaches FRIZZ's effects. If that gets in the way, switch the effect channels off over TRS
+with the settings page's lower D# (`midi_block_trs 0` in `FRIZZ/frizz_master.txt`); over USB
+they still count, and the global channel works over both.
 
 ### Notes: the keys
 
@@ -874,41 +895,53 @@ or C2 in Ableton Live): the white keys from 48 up, the dark keys on the sharps. 
 
 ### Controllers
 
+**On each effect channel (1-15)**, and on the global channel for the effect in focus:
+
 | CC | Function |
 |---|---|
-| 14, 15, 16, 17 | Knob 1, 2, 3, 4 turned, relative: 1-63 turns that many detents right, 127-65 that many left (two's complement). SHIFT held turns coarsely, as by hand |
-| 18 | The transport knob turned, relative, in detents as by hand: 2 per semitone. SHIFT held (the CHOMPI key's note, 45) turns it in 5ths and octaves, 4 detents a step |
-| 19 | VOLUME turned, relative, on the page it's on |
-| 20-31 | An effect's latch, by effect: 20 the freezer, 21 shifter, 22 folder, 23 crusher, 24 filter, 25 flanger, 26 resonator, 27 slicer, 28 wow & flutter, 29 tape stop, 30 delay, 31 reverb (their keys' order before the phaser; the phaser and the chaos key have none): 64 and above latched, below off |
-| 52, 53, 54, 55 | The master compressor's threshold, ratio, attack and release (page 2: NRPN, below) |
-| 56 | Output gain |
-| 57 | Input gain |
-| 58 | Input/loop mix |
-| 59 | Headphone feed: 0 the master out, 127 the AUX input on its own (the other way round from VOLUME's page 3, where turning left goes towards the input) |
-| 60 | Mono input: 64 and above mono, below stereo |
-| 61 | How many bars a morph over CC 62 takes, 1-8 (1 at first) |
-| 62 | Morph to scene 0-4 (0 the blank one): as SHIFT + its key, landing on the bar line |
-| 63 | 64 and above: stops a morph where it is |
-| 70-117 | An effect's knob, set outright: 70 + 4 × the effect + the knob − 1, the effects counted from 0 in the order of CC 20-31 (their keys' order before the phaser), the phaser and the chaos key left out: the freezer 70-73, shifter 74-77, folder 78-81, crusher 82-85, filter 86-89, flanger 90-93, resonator 94-97, slicer 98-101, wow & flutter 102-105, tape stop 106-109, delay 110-113, reverb 114-117 |
-| 118 | The [crossfader](#crossfading-by-hand): takes a running morph (CC 62's, or one you hold) to where it says, 0 the scene it started from, 127 the scene it goes to. Reaching 127 lands it; reaching 0 after being away from it goes back to where it started; in between it waits |
-| 119 | The [chaos key](#chaos-key)'s latch: 64 and above latched, below off. Its knobs have no CCs: NRPN MSB 0, LSB 122-125 set knobs 1-4 |
-| — | The [phaser](#phaser) has no CCs yet, and no latch CC: NRPN MSB 0, LSB 64-67 set its knobs 1-4 (rate, feedback, depth, stereo), NRPN MSB 1, LSB 64-67 its page 2 (mix, centre, band, level). On the rate, values from 8192 (the centre) up are its divisions, the nearest one taken |
+| 14, 15, 16, 17 | Page 1's knobs 1-4, set outright |
+| 18, 19, 20, 21 | [Page 2](#page-2)'s knobs 1-4 (mix, band, level, its own), set outright |
+| 22 | Latch: 64 and above on, below off, acting as the value crosses 64. The compressor (channel 15) has none |
 
-- **Set outright** (CC 20-117), a value does what the knob or key would: the LEDs follow, the
-  scene key pulses as edited, a morph lands where the CC put the parameter, a send ringing out
-  takes it when its key next comes on. The knobs stay on the effect you picked. 64 is a knob's
-  centre exactly (the filter's flat cutoff, a delay's random off), 127 its top. Stepped
-  parameters take the nearest step.
-- **14 bits:** NRPN with the CC's number as the parameter (NRPN MSB 0, LSB the CC) sets it
-  in 16,384 steps (8192 the centre): CC 99 0, CC 98 the CC number, CC 6 the value's top 7
-  bits, CC 38 its bottom 7 (after a new CC 99 or 98, the top 7 start at 0). An RPN (CC 101
-  and 100, a DAW's pitch-bend range) ends the NRPN: CC 6 and 38 after it change nothing.
-- **[Page 2](#page-2)** of an effect's or the compressor's knobs has no CCs (too few are free):
-  NRPN MSB 1 with the same knob's page-1 CC number as LSB sets it, so the shifter's page-2
-  knob 1 (its mix) is CC 99 1, CC 98 74, and the compressor's makeup CC 99 1, CC 98 55,
-  then CC 6 and CC 38 as above. Notes 36-39, the knob presses, turn the
-  page as your hand does.
-- Mod wheel, pitch bend, aftertouch and other controllers are ignored.
+**On the global channel:**
+
+| CC | Function |
+|---|---|
+| 14-22 | The effect in focus, as on its own channel |
+| 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the compressor). It's the effect the knobs edit, as SHIFT + its key picks it, and it follows when you pick one by hand |
+| 24-31 | The master compressor's knobs: 24-27 page 1 (threshold, ratio, attack, release), 28-31 page 2 (as channel 15's 14-21) |
+| 85 | Output gain |
+| 86 | Input gain |
+| 87 | Input/loop mix |
+| 89 | Headphone feed, as VOLUME's page 3: 127 the master out, 0 the AUX input on its own |
+| 90 | The loop's speed in semitones, set outright: 64 as recorded (1×), 0 the slowest (1/16×), 127 double. Only with a loop; forward or in reverse as it runs |
+| 3 | Morph to scene 0-4 (0 the blank one), as SHIFT + its key, landing on the bar line. It acts as the value changes: to morph to the same scene again, send another value first (127, no scene) |
+| 9 | How many bars a morph over CC 3 takes, 1-8 (1 at first) |
+| 80 | The [crossfader](#crossfading-by-hand): takes a running morph (CC 3's, or one you hold) to where it says, 0 the scene it started from, 127 the scene it goes to. Reaching 127 lands it; reaching 0 after being away from it goes back to where it started; in between it waits |
+| 81 | Stops a morph where it is, as the value crosses 64 upward |
+| 82 | A [tempo tap](#tempo), as the value crosses 64 upward: a button sending 127 and 0 |
+| 102-115 | The latch of white key 1-14 (102 the freezer … 108 the phaser … 114 the chaos key), as CC 22 |
+| 120, 123 | All Sound Off, All Notes Off: let go of every key MIDI holds |
+
+- **Set outright**, a value does what the knob or key would: the LEDs follow, the scene key
+  pulses as edited, a morph lands where the CC put the parameter, a send ringing out takes it at
+  once. The knobs stay on the effect you picked (except with CC 23). 64 is a knob's centre
+  exactly (the filter's flat cutoff, a delay's random off), 127 its top. Stepped parameters
+  take the nearest step.
+- **Switches act as they change** (latches, CC 3, 81, 82): an automation lane that sends the
+  same value again does nothing, so a latch you switched by hand stays as you left it until the
+  lane crosses 64 again. Use 0 and 127.
+- **Automation isn't saved:** nothing that comes in by CC goes to the card. After a restart the
+  compressor is as you left it by hand (its knobs, the settings page, or FRIZZ's SysEx), and
+  the gains at their power-on levels. Scenes you save keep what the CCs set, as ever.
+- **Left free on purpose**, so what hosts and keyboards send by themselves reaches nothing:
+  bank select (0, 32), mod wheel (1), volume (7), pan (10), expression (11), the pedals
+  (64-69), keyboards' sound controllers (70-79), NRPN and RPN with their data entry (6, 38,
+  96-101: a DAW's pitch-bend range doesn't turn a knob), effects depths (91-95), Reset All
+  Controllers (121). CC 46-53 stay free for a 14-bit mode later.
+- Notes 36-39, the knob presses, turn the page as your hand does. Mod wheel, pitch bend,
+  aftertouch and other controllers are ignored. Notes and program changes count on the global
+  channel only.
 
 ### Program changes
 
@@ -917,18 +950,30 @@ delete mode the slot. 5 and above are ignored.
 
 ### Start and Stop
 
-With transport following on, MIDI Start and Continue play the loop and Stop pauses it, so
-a DAW's play button starts and stops the loop with the song. It's off at first; switch it on
-on the [settings page](#settings-page) (D# of the lower octave), with `firmware/remote.py
-transport on`, or `midi_transport 1` in `FRIZZ/frizz_master.txt`.
-Start plays on from where the loop is, as Continue does: the loop doesn't jump to its start.
-With the [clock source](#clock-source) on TRS or USB, Start and Stop count only from that
-input; on Auto or internal, from both.
+With transport following on, a DAW's play button starts and stops the loop with the song. It's
+off at first; switch it on on the [settings page](#settings-page) (F# of the lower octave),
+with `firmware/remote.py transport on`, or `midi_transport 1` in `FRIZZ/frizz_master.txt`.
+
+| Message | A loop recorded to the clock (quantized) | A free loop |
+|---|---|---|
+| **Start** | back to its start, playing from the next clock tick (playing, it glides there) | plays on from where it is |
+| **Continue** | plays on from where it is, from the next clock tick | plays on |
+| **Stop** | pauses | pauses |
+| **Song Position**, while paused | moves it there, by its length in 16ths (a 2-bar loop is 32: position 36 is 4 in) | ignored |
+
+So a DAW's Start lines the loop up with its bar 1, and moving its playhead while stopped takes
+the loop along. A loop counts as recorded to the clock if its recording ended on the clock's
+bars (PLAY held + LOOP with a clock coming in); one closed early because the clock stopped
+counts as free. Song Position while playing is ignored, as are MIDI Machine Control and MIDI
+Time Code. Without a clock coming in, Start and Continue play at once.
+
+With the [clock source](#clock-source) on TRS or USB, Start, Stop, Continue and Song Position
+count only from that input; on Auto or internal, from both.
 
 ### MIDI out
 
 From v0.12. FRIZZ sends its clock, so a drum machine, a sequencer or a synth's arpeggio plays
-in time with it, and with the loop. The upper octave's D# on the [settings
+in time with it, and with the loop. The upper octave's C# on the [settings
 page](#settings-page) switches it, each press the next: **off** (the default, dim), **TRS**
 (the TRS MIDI output, orange), **TRS and USB** (white). It's kept as `midi_out` in
 `FRIZZ/frizz_master.txt` (0 off, 1 TRS, 2 TRS and USB), and `firmware/remote.py out
@@ -955,6 +1000,8 @@ the beat on the settings page's G#:
   and then **Continue** on that 16th, so the gear goes on where the loop does. Gear that
   ignores Song Position goes on where it stopped, which is the same place, unless the loop
   moved while paused.
+- A loop taken back to its start by a DAW's Start (with [transport
+  following](#start-and-stop) on) sends **Start** with that tick, so the gear starts over with it.
 - Without a loop, Start, Continue and Stop that come in from the clock's input are passed on.
 - Erasing the loop sends nothing: the gear plays on, to the clock that's coming in or the
   loop's tempo.
