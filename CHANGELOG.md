@@ -149,6 +149,8 @@ what FRIZZ does.
 - **A long-held tape stop with Depth below the top:** held for more than about 12 s (Depth
   at 0.8) to 22 s (at 0), the slowed tape suddenly played sound from 11 s before at full
   speed. It now jumps back to the live sound in a short crossfade and plays on slowed.
+- **A MIDI clock that sends its ticks two at a time** (some DAWs over USB) no longer locks
+  FRIZZ to half its tempo when it starts while FRIZZ is already running (#92).
 
 ## v0.11 (2026-10-10)
 
