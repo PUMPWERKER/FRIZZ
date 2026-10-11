@@ -220,9 +220,13 @@ line, said when it isn't 100 %).
 With `--cpu` it reports the worst load FRIZZ.bin itself had, measured in the audio callback as
 the bench does, so a scenario can be tried for crackles on the build that plays, not the
 bench's (it says how many readings went unanswered, if any). Whatever ends a script (an
-error, Ctrl-C), it lets go of the keys it holds and gives the mode switch back to the hand. It refuses a script that uses the settings page (`twin/scenarios/settings.txt`, most
-bug reports): FRIZZ saves those settings to `/FRIZZ/frizz_master.txt` on the card that key 10's
-FRIZZ shares, with no `.bak` (#58); `--force` plays it anyway. Linux only, Python 3, no
+error, Ctrl-C), it lets go of the keys it holds and gives the mode switch back to the hand. It refuses a script that would change what FRIZZ keeps on the card that key 10's FRIZZ
+shares, saying which line and which file: the settings page (`twin/scenarios/settings.txt`, most
+bug reports, #58) and the compressor's knobs (`comp.txt`: its key, then knobs 1-4; or its CCs
+over MIDI) go to `/FRIZZ/frizz_master.txt`, with no `.bak`; SAVE / COPY / DELETE confirmed
+(`scenes.txt`) or a scene put over SysEx to `/FRIZZ/frizz_scenes.txt`, whose `.bak` keeps only
+the one before (#78). It reads where the device stands first (the page, what the knobs edit,
+the scene mode); `--force` plays it anyway. Linux only, Python 3, no
 packages, like `flash.py`.
 
 **From the card:** copy `build/FRIZZ.bin` to the SD card and power on, as described in

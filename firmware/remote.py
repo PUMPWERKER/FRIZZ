@@ -29,11 +29,15 @@ the bench's build. A bug report (/FRIZZ/bug-N.txt) plays too, from where the dev
 the computer everything goes over USB, `midi` lines too: with the device's clock source on TRS,
 a script's clock and Start / Stop are ignored there (MANUAL.md, "Clock source").
 
-`play` refuses a script that uses the settings page (twin/scenarios/settings.txt, most bug
-reports, which end with SHIFT + VOLUME held there): a key or knob while the mode switch is up,
-or a settings SysEx. FRIZZ saves what the keys there change to /FRIZZ/frizz_master.txt 2 s
-later, on the card the FRIZZ on key 10 shares, with no .bak to go back to (#58). It reads where
-the device's switch stands before it decides; --force plays it anyway.
+`play` refuses a script that would change what FRIZZ keeps on the card the FRIZZ on key 10
+shares, naming the line and the file (card_use). /FRIZZ/frizz_master.txt, saved 2 s after the
+last change, with no .bak to go back to: the settings page (twin/scenarios/settings.txt, most
+bug reports, which end with SHIFT + VOLUME held there), a key or knob while the mode switch is
+up, or a settings SysEx (#58); knobs 1-4 turned with the compressor selected (comp.txt), its
+knobs or mono over MIDI. /FRIZZ/frizz_scenes.txt, whose .bak keeps only the one before: SAVE /
+COPY / DELETE confirmed with CHOMPI once a slot is picked (scenes.txt), or a scene put over
+SysEx (#78). It reads where the device stands before it decides (the page, what the knobs edit,
+the scene mode); --force plays it anyway.
 
 It plays on the FRIZZ that runs, and says which slot that is (10 FRIZZ, 12 FRIZZ-TEST), as
 the tools that started it noted (tools/chompi.py); --slot N plays on that one, started if it
@@ -78,6 +82,23 @@ FX_NAMES = ["freezer", "shifter", "folder", "crusher", "filter", "flanger", "res
             "slicer", "warble", "tapestop", "delay", "reverb", "chaos"]
 LOOPER = ["empty", "recording", "playing", "paused"]
 MODES = ["none", "save", "copy", "delete"]
+
+# What a script can change on the card (#58, #78), and what keeps the one before
+MASTER = "frizz_master.txt", "with no .bak"
+SCENES = "frizz_scenes.txt", "whose .bak keeps only the one before"
+# the play page's keys that matter there (NormalPage.h, FxSlots.h): the compressor's, the
+# effects', the scene slots and SAVE / COPY / DELETE (MODES' order)
+COMP_KEY = "KEY_15"
+FX_KEYS = {"KEY_%d" % k for k in range(1, 14)}
+SLOT_KEYS = {"KEY_%d" % k for k in range(16, 21)}
+MODE_KEYS = {"KEY_25": 1, "KEY_24": 2, "KEY_23": 3}
+# MidiControl.h's midimap: the compressor's knobs (CC, or NRPN in bank 0 or 1), mono, the
+# morph to a scene, the relative turns of knobs 1-4, the notes
+COMP_CC, MONO_CC, MORPH_CC, TURN_CC = 52, 60, 62, 14
+NRPN_MSB_CC, NRPN_LSB_CC, DATA_MSB_CC, DATA_LSB_CC = 99, 98, 6, 38
+RPN_CCS = (101, 100)
+BASE_NOTE, CHOMPI_NOTE = 48, 45
+
 PAGES = ["output gain", "input gain", "headphone feed"]
 # the LED parts kCmdLeds answers: (panel?, count)
 LED_PARTS = [(True, 10), (False, 9), (False, 8), (False, 8)]
@@ -282,25 +303,132 @@ def script_lines(path):
                 yield line_no, words[0], words[1:]
 
 
-def settings_use(path, up):
-    """Where a script uses the settings page, (line, what), or None: a key or a knob while the
-    mode switch is up (up: where it stands when the script starts), or a SETTING SysEx"""
+def note_key(note):
+    """The key a MIDI note presses (MidiControl::NoteKey), or None"""
+    if CHOMPI_NOTE <= note < CHOMPI_NOTE + 3:
+        return ("KEY_26", "KEY_27", "KEY_28")[note - CHOMPI_NOTE]
+    if not BASE_NOTE <= note <= BASE_NOTE + 24:
+        return None
+    octave, semi = divmod(note - BASE_NOTE, 12)
+    white = [0, None, 1, None, 2, 3, None, 4, None, 5, None, 6][semi]
+    if white is not None:
+        return "KEY_%d" % (1 + octave * 7 + white)
+    return "KEY_%d" % (16 + octave * 5 + [None, 0, None, 1, None, None, 2, None, 3, None, 4][semi])
+
+
+def midi_messages(data):
+    """A script's midi / usb bytes, one message at a time, running status kept"""
+    status, msg = None, []
+    for b in data:
+        if b >= 0xF8:  # real time, between anything
+            yield [b]
+        elif b == 0xF0:
+            status, msg = 0xF0, [b]
+        elif b == 0xF7 and status == 0xF0:
+            yield msg + [b]
+            status, msg = None, []
+        elif b >= 0x80:
+            status, msg = b, [b]
+            if b >= 0xF4:
+                yield msg
+        elif status is not None:
+            if not msg:
+                msg = [status]
+            msg.append(b)
+            if status != 0xF0 and len(msg) == (2 if status & 0xF0 in (0xC0, 0xD0) else 3):
+                yield msg
+                msg = []
+
+
+def card_use(path, up, comp, mode):
+    """Where a script would change what FRIZZ keeps on the card, (line, what, (file, its
+    .bak)), or None. Where the device stands when the script starts: up, the settings page
+    shown; comp, the compressor's knobs selected; mode, a scene mode (MODES), its slot taken
+    as picked.
+
+    The settings page: a key or a knob while the mode switch is up, or a setting over SysEx
+    (frizz_master.txt, #58). The play page: knobs 1-4 turned with the compressor selected, its
+    knobs or mono over MIDI (frizz_master.txt), SAVE / COPY / DELETE confirmed with the CHOMPI
+    key once a slot is picked, or a scene put over SysEx (frizz_scenes.txt, #78). The hand's
+    and SysEx's keys and knobs reach the page the switch shows, MIDI's notes and controllers
+    the play page always"""
     by_toggle = up
+    picked = mode != 0
+    nrpn = [0, 0]  # MSB, LSB
+
+    def key(name, what):
+        nonlocal comp, mode, picked
+        if name == COMP_KEY:
+            comp = True
+        elif name in FX_KEYS:
+            comp = False
+        elif name in MODE_KEYS:
+            mode = 0 if mode == MODE_KEYS[name] else MODE_KEYS[name]
+            picked = False
+        elif name in SLOT_KEYS and mode:
+            picked = True
+        elif name == "KEY_26" and mode and picked:
+            return "%s confirmed (%s)" % (MODES[mode].upper(), what), SCENES
+        return None
+
     for line_no, cmd, args in script_lines(path):
+        used = None
         if cmd == "toggle":
             up = by_toggle = bool(int(args[0]))
+            if up:
+                mode = 0  # the settings page shown leaves the scene mode (NormalPage::Draw)
         elif cmd in ("down", "tap", "turn") and up:
-            return line_no, "%s %s on the settings page" % (cmd, args[0])
+            used = "%s %s on the settings page" % (cmd, args[0]), MASTER
+        elif cmd in ("down", "tap"):
+            used = key(args[0], "%s %s" % (cmd, args[0]))
+        elif cmd == "turn" and comp and 1 <= int(args[0]) <= 4:
+            used = "turn %s with the compressor selected" % args[0], MASTER
         elif cmd in ("midi", "usb"):
-            data = [int(b, 16) for b in args]
-            if bytes(data[:4]) != midi_send.HEADER or len(data) < 6:
-                continue
-            if data[4] == SETTING:
-                return line_no, "a setting over SysEx"
-            if data[4] == SWITCH:
-                up = {0: by_toggle, 1: False, 2: True}.get(data[5], up)
-            elif data[4] == KEY and up:
-                return line_no, "a SysEx key on the settings page"
+            for m in midi_messages([int(b, 16) for b in args]):
+                kind = m[0] & 0xF0
+                if m[0] == 0xF0 and bytes(m[1:4]) == midi_send.HEADER[1:] and len(m) > 5:
+                    if m[4] == SETTING:
+                        used = "a setting over SysEx", MASTER
+                    elif m[4] == SCENE_PUT:
+                        used = "a scene put over SysEx", SCENES
+                    elif m[4] == SWITCH:
+                        up = {0: by_toggle, 1: False, 2: True}.get(m[5], up)
+                        if up:
+                            mode = 0
+                    elif m[4] == KEY and up:
+                        used = "a SysEx key on the settings page", MASTER
+                    elif m[4] == KEY and m[6:7] != [0] and m[5] < len(SW_NAMES):
+                        used = key(SW_NAMES[m[5]], "a SysEx key")
+                    elif m[4] == TURN and not up and comp and 1 <= m[5] <= 4:
+                        used = "a SysEx turn with the compressor selected", MASTER
+                elif kind == 0x90 and len(m) == 3 and m[2] and note_key(m[1]):
+                    used = key(note_key(m[1]), "note %d" % m[1])
+                elif kind == 0xC0 and mode:
+                    picked = True  # a program change is its scene key, pressed
+                elif kind == 0xB0 and len(m) == 3:
+                    cc, v = m[1], m[2]
+                    if cc == MORPH_CC and mode:
+                        picked = True  # likewise in a mode
+                    elif COMP_CC <= cc < COMP_CC + 4:
+                        used = "the compressor's knob over MIDI (CC %d)" % cc, MASTER
+                    elif cc == MONO_CC:
+                        used = "mono over MIDI (CC %d)" % cc, MASTER
+                    elif TURN_CC <= cc < TURN_CC + 4 and comp and v not in (0, 64):
+                        used = "knob %d turned over MIDI with the compressor selected" % (
+                            cc - TURN_CC + 1), MASTER
+                    elif cc == NRPN_MSB_CC:
+                        nrpn[0] = v
+                    elif cc == NRPN_LSB_CC:
+                        nrpn[1] = v
+                    elif cc in RPN_CCS:
+                        nrpn[0] = 0x7F
+                    elif cc in (DATA_MSB_CC, DATA_LSB_CC) and nrpn[0] in (0, 1) \
+                            and COMP_CC <= nrpn[1] < COMP_CC + 4:
+                        used = "the compressor's knob over MIDI (NRPN %d)" % nrpn[1], MASTER
+                if used:
+                    break
+        if used:
+            return (line_no,) + used
     return None
 
 
@@ -468,7 +596,8 @@ def main():
     p.add_argument("script")
     p.add_argument("--cpu", action="store_true")
     p.add_argument("--force", action="store_true",
-                   help="play a script that uses the settings page, which saves to the card")
+                   help="play a script that changes the card: the settings page, the compressor's "
+                        "knobs, a scene saved, copied or deleted")
     a = ap.parse_args()
 
     try:
@@ -524,13 +653,15 @@ def run(a):
             scene_put(f, a.slot, json.load(src))
     elif a.cmd == "play":
         if not a.force:
-            # the page the device shows (STATE's flags, bit 6), where the script's keys land
-            # until it toggles
-            used = settings_use(a.script, bool(f.state()[6] & 64))
+            # where the device stands: the page it shows (STATE's flags, bit 6), where the
+            # script's keys land until it toggles; what the knobs edit; the scene mode
+            d = f.state()
+            used = card_use(a.script, bool(d[6] & 64), d[4] == len(FX_NAMES), d[7])
             if used:
-                sys.exit("line %d: %s. FRIZZ would save it to /FRIZZ/frizz_master.txt, on the card "
-                         "the FRIZZ on key 10 shares, with no .bak (#58): not played. --force "
-                         "plays it anyway" % used)
+                line_no, what, (name, bak) = used
+                sys.exit("line %d: %s. FRIZZ would save it to /FRIZZ/%s, on the card the FRIZZ on "
+                         "key 10 shares, %s (#58, #78): not played. --force plays it anyway"
+                         % (line_no, what, name, bak))
         try:
             sys.exit(1 if play(f, a.script, a.cpu) else 0)
         except KeyboardInterrupt:
