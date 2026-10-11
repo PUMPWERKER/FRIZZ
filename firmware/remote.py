@@ -58,8 +58,9 @@ COPY / DELETE confirmed with CHOMPI once a slot is picked (scenes.txt), or a sce
 SysEx (#78). It reads where the device stands before it decides (the page, what the knobs edit,
 the scene mode); --force plays it anyway.
 
-It plays on the FRIZZ that runs, and says which slot that is (10 FRIZZ, 12 FRIZZ-TEST), as
-the tools that started it noted (tools/chompi.py); --slot N plays on that one, started if it
+It plays on the FRIZZ that runs, and says which slot that is (10 FRIZZ, 12 FRIZZ-TEST): by
+the build it runs (IDENT) and the builds flash.py sent, or, from a FRIZZ before IDENT, as the
+tools that started it noted (tools/chompi.py); --slot N plays on that one, started if it
 isn't the one running. FRIZZ is started first if the CHOMPI is elsewhere: at the launcher's
 picker, in its USB storage firmware, or in the bench, which answers as FRIZZ does but measures
 no load: the slot last started in this hold (tools/chompi.py hold), or FRIZZ's. --no-start
@@ -366,9 +367,11 @@ def dev_set(f, name, index, value):
         sys.exit("SET %s %s %s: %s" % (name, index, value, chompi.DEV_STATUS.get(got[0], got[0])))
 
 
-def bench_state(f):
-    """The bench's state (Bench::Report), or exits"""
+def bench_state(f, missing_ok=False):
+    """The bench's state (Bench::Report), or exits; None if unanswered and MISSING_OK"""
     got = f.dev(chompi.BENCH, [0])
+    if not got and missing_ok:
+        return None
     if not got:
         sys.exit("no answer to BENCH: a FRIZZ from before it")
     if got[0] != chompi.OK:
@@ -390,9 +393,13 @@ def bench_text(f, length):
     return text.decode("ascii")
 
 
+BENCH_SILENT = 60  # s the bench may leave unanswered: a segment over 100 % starves MainLoop
+
+
 def bench(f, wait, out):
     st = bench_state(f)
-    said = None
+    said = silent = None
+    answered = time.monotonic()
     while wait and (st["running"] or not st["written"]):
         line = "segment %d of %d%s" % (st["segment"] + 1, st["segments"],
                                        ", waiting for the effects to rest" if st["settling"] else "")
@@ -400,7 +407,14 @@ def bench(f, wait, out):
             print(line, flush=True)
             said = line
         time.sleep(2)
-        st = bench_state(f)
+        got = bench_state(f, missing_ok=True)
+        if got:
+            st, answered = got, time.monotonic()
+        elif time.monotonic() - answered > BENCH_SILENT:
+            sys.exit("the bench hasn't answered for %d s" % BENCH_SILENT)
+        elif silent != said:
+            print("  no answer: over 100 %, MainLoop starved; waiting", flush=True)
+            silent = said
     if st["running"] or not st["written"]:
         print("running: segment %d of %d" % (st["segment"] + 1, st["segments"]))
         return

@@ -175,20 +175,29 @@ holds it for the whole sequence, so nothing slips in between:
 
 ```bash
 cd firmware && tools/builds.py && tools/chompi.py hold sh -c '
-  ./flash.py --bench --no-build && sleep 150 && ./card.py --then none get &&
+  ./flash.py --bench --no-build && ./remote.py bench --wait --out card/cpu.txt &&
   ./flash.py --test --no-build && {
     ./remote.py play twin/scenarios/fx-each.txt --cpu; echo "play: $?"; }
   ./flash.py --run 10' && tools/builds.py cpu
 ```
 
-(it builds before taking the CHOMPI; the bench runs ~100 s by itself; `card.py get` fetches
-its `cpu.txt` into `card/`, and `builds.py cpu` files that as `bin/cpu.txt`), and leaves FRIZZ
-on key 10 running at the end. Each `play` (several go in the `{ }`, the `--test` build's)
+(it builds before taking the CHOMPI; `flash.py` checks that the build it started is the one
+it sent (FRIZZ's IDENT, the developers' SysEx: `firmware/README.md`); the bench runs ~100 s
+by itself, and `remote.py bench --wait` follows it over USB and fetches its `cpu.txt` into
+`card/`, byte for byte what it wrote to the card; `builds.py cpu` files that as
+`bin/cpu.txt`), and leaves FRIZZ on key 10 running at the end. A bench build from before that
+(a branch that hasn't merged `main` since) gets `sleep 150 && ./card.py --then none get`
+instead. Each `play` (several go in the `{ }`, the `--test` build's)
 ends in `;`, not `&&`: a failed `expect led` (exit 1) is judged from its output, and stops
-neither the next scenario nor `--run 10`. Stage 2 plays no scenario that writes the card key 10
-shares: the settings page (`settings.txt`, #58), the compressor's knobs (`comp.txt`) or a scene
-saved, copied or deleted (`scenes.txt`, #78); `remote.py play` refuses them without
-`--force`. The user takes the CHOMPI for playing with `tools/chompi.py hold` (until Ctrl-C),
+neither the next scenario nor `--run 10`. `play` keeps the card as it was: it first turns
+PERSIST 0 on (nothing written until FRIZZ restarts), so the scenarios that change what key 10
+shares, the settings page (`settings.txt`, #58), the compressor's knobs (`comp.txt`) and the
+scenes (`scenes.txt`, #78), play in stage 2 too. Never `--save` or `--force` on the device: a
+FRIZZ without PERSIST (key 10's from before it) is still refused, as before. The card holds
+the user's own settings, which a session never changes; `expect led` lines are judged at the
+card's LED brightness, so on the device `settings.txt` fails the lines its brightness key
+changes from there, and the battery's (VOLUME white on USB, green on the twin). The user takes
+the CHOMPI for playing with `tools/chompi.py hold` (until Ctrl-C),
 or by telling a session, which then runs it for them.
 Within that, stage 2 needs no asking. Ask the user first only for what needs their hands or
 changes what they play: sending to key 10, anything when the lock's holder is the user, a

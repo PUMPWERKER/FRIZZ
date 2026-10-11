@@ -463,9 +463,18 @@ def wait_for(wanted, timeout, device=None, hint=None, hint_after=8):
     sys.exit("the CHOMPI didn't get to %s within %d s" % (wanted, timeout))
 
 
+BUSY = 20  # s a FRIZZ (or the bench) may leave unanswered before it's taken for another firmware
+
+
 def to_launcher(timeout=120, device=None):
     """The launcher's raw MIDI node, from wherever the CHOMPI is"""
     now, where = state(device)
+    # a FRIZZ that doesn't answer for a while looks like another firmware: the bench, its
+    # audio callback over 100 % in a segment, leaves MainLoop no time (BUSY s at most)
+    busy = time.monotonic() + BUSY
+    while now == "other" and time.monotonic() < busy:
+        time.sleep(1)
+        now, where = state(device)
     if now == "launcher":
         return where
     if now == "frizz":

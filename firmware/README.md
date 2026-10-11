@@ -158,12 +158,16 @@ it first reaches for the CHOMPI, and waits while another has it, saying who; wha
 touch it (`measure.py compare`) never waits. `tools/chompi.py hold CMD` keeps it over a whole
 sequence of tools, `tools/chompi.py hold` until Ctrl-C (for playing it by hand).
 
-**Which slot runs** no firmware says: FRIZZ, FRIZZ-TEST and the bench all answer FRIZZ's SysEx
-(the bench with a load of 0). So the tools note the slot they last started, beside the lock,
-and go by it: `flash.py` waits after sending a FRIZZ (or the bench) until it answers, `remote.py` and
-`measure.py` say which slot they play on and take `--slot 10|12` for one in particular,
-started unless it's the one running, and never take the bench for FRIZZ. A slot started by
-hand isn't noted (`hold` without a command forgets the note).
+**Which build runs** FRIZZ says itself (the developers' SysEx's IDENT, below): the CRC-32 and
+length of the image it runs, which `tools/builds.py` prints next to the md5, and whether it's
+the bench. `flash.py` notes the build it sends to a slot, beside the lock, and after sending
+asks the build running and fails if it isn't the one sent; `--run N` says which build it
+started. `remote.py` and `measure.py` find the slot of the build running by those notes (one
+started by hand too), say which it is, take `--slot 10|12` for one in particular, started
+unless it's the one running, and never take the bench for FRIZZ. A FRIZZ from before IDENT
+(or a build the tools didn't send) can't say, and answers as FRIZZ-TEST and the bench do; for
+those the tools go by the slot they last started, also noted beside the lock (`hold` without
+a command forgets that note).
 
 **Garbled USB names** (#88): now and then (2 in ~310 starts) FRIZZ comes up with its USB
 names one string off (product `Љ`, maker `FrizZ`); the tools find it by the Daisy's USB id
@@ -211,23 +215,60 @@ another firmware running, switch the CHOMPI off and on when they say so (they wa
 minutes). Mounting needs udisks, as any desktop has.
 
 **Remote control over USB MIDI.** `./remote.py` talks to a running FRIZZ over its SysEx
-(`code/src/MidiControl.h`): `state`, `leds`, `load [--every S]`, `settings`, `channel N`,
-`transport on|off`, `source auto|trs|usb|internal`, `out off|trs|all`, `scene get|put SLOT FILE`, and `play SCRIPT [--cpu]`, which plays a twin
+(`code/src/MidiControl.h`): `state`, `leds`, `load [--every S]` (with the blocks that took
+longer than a block, which crackle), `settings`, `channel N`, `transport on|off`,
+`source auto|trs|usb|internal`, `out off|trs|all`, `scene get|put SLOT FILE`, the developers'
+`ident`, `ram-only`, `get GROUP`, `set GROUP INDEX VALUE` and `bench [--wait] [--out FILE]`
+(below), and `play SCRIPT [--cpu]`, which plays a twin
 script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over SysEx at the
 script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs, at the
 brightness the card's `led_brightness` sets (100, 75 or 50 %: the one level that fits every
 line, said when it isn't 100 %).
 With `--cpu` it reports the worst load FRIZZ.bin itself had, measured in the audio callback as
-the bench does, so a scenario can be tried for crackles on the build that plays, not the
-bench's (it says how many readings went unanswered, if any). Whatever ends a script (an
-error, Ctrl-C), it lets go of the keys it holds and gives the mode switch back to the hand. It refuses a script that would change what FRIZZ keeps on the card that key 10's FRIZZ
-shares, saying which line and which file: the settings page (`twin/scenarios/settings.txt`, most
-bug reports, #58) and the compressor's knobs (`comp.txt`: its key, then knobs 1-4; or its CCs
-over MIDI) go to `/FRIZZ/frizz_master.txt`, with no `.bak`; SAVE / COPY / DELETE confirmed
-(`scenes.txt`) or a scene put over SysEx to `/FRIZZ/frizz_scenes.txt`, whose `.bak` keeps only
-the one before (#78). It reads where the device stands first (the page, what the knobs edit,
-the scene mode); `--force` plays it anyway. Linux only, Python 3, no
-packages, like `flash.py`.
+the bench does, and how many blocks took longer than a block, so a scenario can be tried for
+crackles on the build that plays, not the bench's (it says how many readings went unanswered,
+if any). Whatever ends a script (an error, Ctrl-C), it lets go of the keys it holds and gives
+the mode switch back to the hand.
+
+`play` first stops FRIZZ writing the card until it restarts (PERSIST 0), so a script may
+change the settings, the compressor or the scenes: they stay in RAM, and the card keeps what
+key 10's FRIZZ shares. On a slot other than the test slot (12) it starts that slot again at
+the end, from the card, so it saves again. `--save` leaves the card written as FRIZZ writes
+it. A FRIZZ from before PERSIST, or `--save`, gets the old guard: `play` refuses a script that
+would change what FRIZZ keeps on the card, saying which line and which file: the settings
+page (`twin/scenarios/settings.txt`, most bug reports, #58) and the compressor's knobs
+(`comp.txt`: its key, then knobs 1-4; or its CCs over MIDI) go to `/FRIZZ/frizz_master.txt`,
+with no `.bak`; SAVE / COPY / DELETE confirmed (`scenes.txt`) or a scene put over SysEx to
+`/FRIZZ/frizz_scenes.txt`, whose `.bak` keeps only the one before (#78). It reads where the
+device stands first (the page, what the knobs edit, the scene mode); `--force` plays it
+anyway. Linux only, Python 3, no packages, like `flash.py`.
+
+**The developers' SysEx** (`0x3E`, `MidiControl.h`'s `namespace dev`) is for the tools, not
+for players (MANUAL.md lists it only briefly): `F0 7D 43 48 3E SUB SEQ ARGS F7`, over USB
+only, answered `F0 7D 43 48 7E SUB SEQ STATUS DATA F7`. SEQ comes back, so a tool matches its
+answer; STATUS is 0 ok, 1 refused (an unknown sub-command, group, index, or a value a setting
+doesn't take), 2 not in this build, 3 not yet. Requests wait in a queue of their own (8), apart
+from the other queries' one slot that `play --cpu`'s load readings use, and MainLoop answers
+one every 2 ms; a request that finds the queue full gets no answer, so the tools ask again
+(every request can be repeated: they set, never step). Numbers go in 7-bit groups, the highest
+first; a knob's value in 14 bits, as `0x21` has them.
+
+| SUB | Asks | Answers |
+|---|---|---|
+| `00` IDENT | — | version (1), kind (0 FRIZZ, 1 the bench), the image's CRC-32 (5 groups) and length (3) as the bootloader loaded it (`zlib.crc32` of the `.bin`; 0 on the twin), uptime ms (5), MainLoop's passes (5), `RCC_RSR` at boot (5, as the bootloader left it, not cleared), flags (1: RAM only) |
+| `01` PERSIST | `00` | flags. From now until a restart nothing is written to the card: a scene saved, copied or deleted, the master settings, as if written (the page shows them saved). One way: a restart (`flash.py --run N`) writes again, reading the card as it was. Bug reports (`bug-N.txt`) are still written: a new file each, never one key 10 reads |
+| `02` GET | GROUP | GROUP, COUNT, then COUNT values in 14 bits |
+| `03` SET | GROUP INDEX VALUE(2) | GROUP INDEX; applied in MainLoop through the setters the knobs and keys use, and saved as theirs are (unless RAM only) |
+| `04` BENCH | `00` | the bench's state: running, settling, the segment, how many, written, stored, `cpu.txt`'s length (3) |
+| | `01` OFFSET(3) | up to 32 bytes of `cpu.txt` from OFFSET, as it went to the card (status 3 while it runs); FRIZZ.bin answers status 2 |
+
+The groups of GET and SET: `00`-`1F` an effect's knobs by its FxId (`FxParams.h`: 0-3 page 1,
+4-7 page 2), `20` the compressor's, `21` the latches (index by FxId, 0 or 1), `22` VOLUME's
+(0 output gain, 1 input gain, 2 mix, 3 headphone feed), `23` the card's settings as
+`masterfile::kLines` lists them (`MasterSettings.h`: mono, MIDI channel, transport, clock
+factor, clock source, MIDI out, LED brightness), their values as `frizz_master.txt` has them.
+The groups don't follow the MIDI map (CCs, NRPN), so a tool keeps working when it changes. SETs
+aren't in the event log: a bug report taken after them won't replay them.
 
 **From the card:** copy `build/FRIZZ.bin` to the SD card and power on, as described in
 [`INSTALL.md`](../INSTALL.md). FRIZZ is a `BOOT_SRAM` app: CHOMPI's bootloader copies it from
@@ -293,14 +334,16 @@ make BENCH=1      # build-bench/FRIZZ-bench.bin; the normal build is untouched
    per segment, green below 80% load, amber below 95%, red above; the one running blinks white.
 3. At the end every panel LED is green (all below 95%) or red. Blinking red: `cpu.txt`
    couldn't be written (no card?).
-4. On the computer (with the launcher: `./card.py get`), `FRIZZ/cpu.txt` has every segment's highest and mean load, any effect
+4. On the computer, `./remote.py bench --wait --out card/cpu.txt` follows it over USB until
+   it's done and fetches the `cpu.txt` it wrote (the developers' SysEx, BENCH); from the card,
+   with the launcher: `./card.py get`. `FRIZZ/cpu.txt` has every segment's highest and mean load, any effect
    still working outside its segment (a tail), and whether the loop played. Below, where each
    segment's mean goes: the clock the chip ran at, and the mean split into the callback's
    parts (MIDI, the controls, the UI's events, the input, the looper, the tempo, the FX chain,
    the compressor, the output and limiters), counted in the core's cycles (`BenchProfile.h`).
    Put `FRIZZ.bin` back on the card to play again. `tools/builds.py cpu` files the
-   `cpu.txt` that `./card.py get` fetched as `bin/cpu.txt`, headed by the md5 of the bench
-   build it measured (and refuses one from another source).
+   `cpu.txt` in `card/` as `bin/cpu.txt`, headed by the md5 of the bench build it measured
+   (and refuses one from another source).
 
 The segments: nothing on, each effect alone (its knobs moving every 0.25 s), the compressor,
 the inserts together, recording a loop, the loop alone, with the inserts, with the delay, with
@@ -391,7 +434,7 @@ TapTempo.h             tap tempo
 Looper.h               the looper: recording, quantized end, playback, speed, scrub
 MidiClock.h            MIDI clock input over TRS and USB; hands the rest to MidiControl.h
 MidiControl.h          MIDI control: notes as keys, CCs, program changes, FRIZZ's SysEx (keys,
-                       knobs, queries answered over USB for remote.py)
+                       knobs, queries answered over USB for remote.py, the developers' 0x3E)
 MidiOut.h              MIDI out: the clock and the loop's Start, Stop, Continue, Song Position,
                        out of the jack and over USB, if the settings page asks
 NormalPage.h           the play page: routes the controls (VOLUME, PLAY/LOOP, transport, FX and scene keys) and draws the LEDs

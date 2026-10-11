@@ -865,6 +865,39 @@ flash.main()
     if (rc != 0 || !Has(out, "it runs the build sent"))
         printf("%s\n", out.c_str());
 
+    // the bench followed over USB (remote.py bench --wait): a segment over 100 % starves
+    // MainLoop, whose silence is waited out; cpu.txt then fetched in chunks. And a FRIZZ that
+    // doesn't answer for a while isn't taken for another firmware: it's restarted once it does
+    rc = Python(R"(
+import sys, time, chompi, remote
+text = b"FRIZZ cpu bench, source 1\n" + b"x" * 70 + b"\n"
+states = [bytes([1, 0, 3, 25, 0, 0, 0, 0, 0]), None, None,
+          bytes([0, 0, 25, 25, 1, 1, 0, len(text) >> 7, len(text) & 0x7F])]
+class F:
+    def dev(self, sub, args=()):
+        if args[0] == 0:
+            got = states.pop(0) if len(states) > 1 else states[0]
+            return got and (0, got)
+        at = args[1] << 14 | args[2] << 7 | args[3]
+        return 0, text[at:at + 32]
+time.sleep = lambda s: None
+remote.bench(F(), True, "cpu.txt")
+print("same" if open("cpu.txt", "rb").read() == text else "differs")
+log = []
+seq = [("other", "x"), ("other", "x"), ("frizz", "node")]
+chompi.state = lambda device=None: seq.pop(0) if len(seq) > 1 else seq[0]
+chompi.restart = lambda node: log.append("restart " + node)
+chompi.wait_for = lambda wanted, *rest, **kw: log.append("wait " + wanted) or "l"
+print(chompi.to_launcher(), log)
+)", out);
+    Check(rc == 0 && Has(out, "segment 4 of 25\n") && Has(out, "segment 4 of 25\n  no answer: over 100 %, MainLoop starved; waiting\n")
+              && Has(out, "done; cpu.txt on the card, 97 B") && Has(out, "same\n"),
+          "tools: remote.py bench --wait waits out a starved MainLoop, then fetches cpu.txt as sent");
+    Check(Has(out, "l ['restart node', 'wait launcher']"),
+          "tools: a FRIZZ silent for a while is restarted once it answers, not taken for another firmware");
+    if (rc != 0 || !Has(out, "same") || !Has(out, "waiting\n"))
+        printf("%s\n", out.c_str());
+
     unlink(blank.c_str());
     unlink(mine.c_str());
     unlink(back.c_str());
