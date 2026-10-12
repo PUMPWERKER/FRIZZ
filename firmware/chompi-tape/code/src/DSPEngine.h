@@ -1727,20 +1727,33 @@ namespace daisy
                         }
                         else
                         {
-                            GetFileNameForSlot(s + 1, b, VoiceMode(m), fname);
-                            file_exists[m][b][s] = f_stat(fname, nullptr) == FR_OK;
-                            if(m == int(VoiceMode::JAMMI) && !file_exists[m][b][s]) // an OP-1 .aif instead
-                            {
-                                KitName(fname);
-                                if(f_stat(fname, nullptr) == FR_OK)
-                                {
-                                    chompi::kit_slots[b] |= 1 << (s + 1);
-                                    file_exists[m][b][s] = true;
-                                }
-                            }
+                            UpdateFileExists(s, b, VoiceMode(m));
                         }
                     }
                 }
+            }
+        }
+
+        // one slot (0..13), read from the card
+        void UpdateFileExists(size_t slot, size_t bank, VoiceMode mode)
+        {
+            if(slot >= 14)
+                return;
+            char name[32];
+            GetFileNameForSlot(slot + 1, bank, mode, name);
+            const bool wav = f_stat(name, nullptr) == FR_OK;
+            KitName(name);
+            SetSlotFiles(slot, bank, mode, wav, f_stat(name, nullptr) == FR_OK);
+        }
+
+        // a slot holds its .wav, else in JAMMI an OP-1 .aif
+        void SetSlotFiles(size_t slot, size_t bank, VoiceMode mode, bool wav, bool aif)
+        {
+            SetFileExists(slot, bank, mode, wav);
+            if(!wav && aif && mode == VoiceMode::JAMMI)
+            {
+                file_exists[int(mode)][bank][slot] = true;
+                chompi::kit_slots[bank] |= 1 << (slot + 1);
             }
         }
 

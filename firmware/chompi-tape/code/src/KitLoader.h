@@ -5,14 +5,14 @@
 #include <stdio.h>
 #include <algorithm>
 #include "fatfs.h"
+#include "SdDma.h"
 #include "RamBuffer.h"
 #include "AiffKit.h"
 
 namespace chompi
 {
     static constexpr size_t kKitMaxFrames = 12 * 48000; // the OP-1 limit is 12 s
-    static constexpr size_t kKitChunk     = 2048;       // frames per SD timer tick
-    static constexpr size_t kKitBounce    = kKitChunk * 4 + 4;
+    static constexpr size_t kKitBounce    = SdDma::kBuffer;
     static constexpr uint32_t kKitSaveDelay = 1000;     // ms after the last edit
 
     extern daisy::RamBufferMemory kit_buff; // the loaded kit, stereo, played from RAM
@@ -26,18 +26,19 @@ namespace chompi
         strcpy(name + (n < 4 ? n : n - 4), ext);
     }
 
-    // Loads a JAMMI slot's OP-1 kit into kit_buff a chunk per SD timer tick and keeps its slice edits
+    // Loads a JAMMI slot's OP-1 kit into kit_buff by DMA, a chunk per transfer, and keeps its slice edits
     // in the sidecar. Everything here runs on the SD timer, except Request, Edit and Forget.
     // The SD DMA can't reach DTCM and wants aligned addresses, so reads go through a bounce buffer in SDRAM.
     class KitLoader
     {
       public:
-        void Init(FIL *fil, uint8_t *bounce)
+        void Init(SdFile *file, uint8_t *bounce)
         {
-            fil_ = fil;
+            file_ = file;
+            fil_ = &file->fil;
             bounce_ = bounce;
             name_[0] = want_[0] = '\0';
-            pending_ = loading_ = dirty_ = failed_ = false;
+            pending_ = loading_ = reading_ = dirty_ = failed_ = false;
             frames_ = done_ = size_ = 0;
             last_slice_ = -1;
         }
@@ -171,16 +172,15 @@ namespace chompi
             pending_ = false;
             if(name_[0] && !strcmp(want_, name_)) // loaded or loading
                 return;
-            if(loading_)
-                f_close(fil_);
-            loading_ = false;
+            file_->Close();
+            loading_ = reading_ = false;
             if(dirty_) // the edits of the kit before
                 Write();
             kit_buff.length = 0; // silent until loaded
             last_slice_ = -1;
             failed_ = false;
             strcpy(name_, want_);
-            if(f_open(fil_, name_, FA_READ) != FR_OK)
+            if(!file_->Open(name_))
             {
                 name_[0] = '\0';
                 failed_ = true;
@@ -188,10 +188,9 @@ namespace chompi
             }
 
             // the JSON scratch is the kit memory, the audio comes after the parse
-            size_ = f_size(fil_);
+            size_ = file_->Size();
             auto read = [this](uint32_t pos, void *dst, uint32_t n) { return Read(pos, dst, n); };
-            if(!ParseAiff(read, size_, slot_aiff, reinterpret_cast<char *>(kit_buff.mem), kKitBounce - 4)
-               || f_lseek(fil_, slot_aiff.data_offset) != FR_OK)
+            if(!ParseAiff(read, size_, slot_aiff, reinterpret_cast<char *>(kit_buff.mem), kKitBounce - 4))
             {
                 Fail();
                 return;
@@ -201,48 +200,50 @@ namespace chompi
             loading_ = true;
         }
 
+        // a chunk per transfer, converted to stereo when it is in
         void Load()
         {
+            const AiffInfo &a = slot_aiff;
+            const uint32_t frame = a.channels * 2;
+            if(reading_)
+            {
+                reading_ = false;
+                if(file_->Failed())
+                {
+                    Fail();
+                    return;
+                }
+                const uint8_t *src = bounce_ + skip_;
+                int16_t *dst = kit_buff.mem + done_ * 2;
+                for(uint32_t i = 0; i < chunk_; i++)
+                {
+                    const uint8_t *l = src + i * frame, *r = l + frame - 2;
+                    dst[2 * i] = a.little_endian ? l[0] | l[1] << 8 : l[0] << 8 | l[1];
+                    dst[2 * i + 1] = a.little_endian ? r[0] | r[1] << 8 : r[0] << 8 | r[1];
+                }
+                done_ += chunk_;
+                if(done_ >= frames_)
+                {
+                    file_->Close();
+                    loading_ = false;
+                    ReadSidecar();
+                    __DMB(); // the voices must not see the length before the audio
+                    kit_buff.length = frames_ * 2;
+                    return;
+                }
+            }
             if(!name_[0]) // forgotten
             {
-                f_close(fil_);
+                file_->Close();
                 loading_ = false;
                 return;
             }
-            const AiffInfo &a = slot_aiff;
-            const size_t channels = a.channels;
-            const size_t n = frames_ - done_ < kKitChunk ? frames_ - done_ : kKitChunk;
-            const uint32_t pad = f_tell(fil_) & 3;
-            UINT br = 0;
-            if(f_read(fil_, bounce_ + pad, n * channels * 2, &br) != FR_OK || br != n * channels * 2)
-            {
+            chunk_ = std::min<uint32_t>(frames_ - done_, SdDma::kChunk / frame);
+            const uint32_t pos = a.data_offset + done_ * frame;
+            skip_ = pos % 512;
+            reading_ = sd_dma.Read(*file_, pos - skip_, bounce_, skip_ + chunk_ * frame);
+            if(!reading_)
                 Fail();
-                return;
-            }
-
-            const int16_t *src = reinterpret_cast<const int16_t *>(bounce_ + pad);
-            int16_t *dst = kit_buff.mem + done_ * 2;
-            for(size_t i = 0; i < n; i++)
-            {
-                uint16_t l = src[i * channels], r = src[i * channels + channels - 1];
-                if(!a.little_endian)
-                {
-                    l = __builtin_bswap16(l);
-                    r = __builtin_bswap16(r);
-                }
-                dst[2 * i] = l;
-                dst[2 * i + 1] = r;
-            }
-
-            done_ += n;
-            if(done_ >= frames_)
-            {
-                f_close(fil_);
-                loading_ = false;
-                ReadSidecar();
-                __DMB(); // the voices must not see the length before the audio
-                kit_buff.length = frames_ * 2;
-            }
         }
 
         // slice edits from an earlier session, if they belong to this file; a .tmp is a save cut short
@@ -278,20 +279,21 @@ namespace chompi
 
         void Fail()
         {
-            f_close(fil_);
-            loading_ = false;
+            file_->Close();
+            loading_ = reading_ = false;
             name_[0] = '\0';
             failed_ = true;
         }
 
-        FIL *fil_;
+        SdFile *file_;
+        FIL *fil_; // the same file's FIL, for the small reads and the sidecar
         uint8_t *bounce_;
         char name_[32], want_[32], json_[32];
         volatile bool pending_;
-        bool loading_, failed_;
+        bool loading_, reading_, failed_;
         volatile bool dirty_;
         int8_t last_slice_;
-        uint32_t frames_, done_, size_, edit_time_;
+        uint32_t frames_, done_, size_, edit_time_, chunk_, skip_;
     };
 
     extern KitLoader kit_loader;

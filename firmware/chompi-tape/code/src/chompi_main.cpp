@@ -35,9 +35,12 @@ uint16_t DSY_DTCMRAM_BSS chompi::kit_slots[5];
 RamBufferMemory DSY_DTCMRAM_BSS chompi::kit_buff;
 KitLoader DSY_DTCMRAM_BSS chompi::kit_loader;
 int16_t DSY_SDRAM_BSS kit_mem[kKitMaxFrames * 2];
-FIL DSY_SDRAM_BSS kit_fil; // the SD DMA can't reach DTCM
+SdDma DSY_DTCMRAM_BSS chompi::sd_dma;
 SampleFifo __attribute__((section(".d2_bss"))) daisy::voice_fifos[kMaxPoly]; // D2 is clocked before the constructors run
+SdFile DSY_SDRAM_BSS kit_file, copy_files[2]; // the SD DMA can't reach DTCM
 uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) kit_bounce[kKitBounce];
+uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) copy_in[SdDma::kBuffer];
+uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) copy_out[SdDma::kBuffer];
 chompi::InterpolatedDelayLine::AudioSample DSY_SDRAM_BSS del_mem[kMaxDelayTime];
 
 // the heap ends at _eheap: the default _sbrk runs past the end of RAM
@@ -172,6 +175,9 @@ void CheckSDCardMounted()
 
 void SDCallback(void* data)
 {
+    if(sd_dma.Busy()) // a transfer owns the card
+        return;
+
     const uint32_t now = System::GetNow();
     if (now - sd_checkt > 1000 && !no_sd_card && !booting)
     {
@@ -187,7 +193,6 @@ void SDCallback(void* data)
         return;
     }
 
-    kit_loader.Step();
     engine.ProcessFileRequests();
 
     if(now - pret > 50 && !engine.AnyVoicesPlaying())
@@ -195,7 +200,9 @@ void SDCallback(void* data)
         pret = now;
         ui.WritePresets();
         kit_loader.Save(now);
-    }    
+    }
+
+    kit_loader.Step(); // last, it may start a transfer
 }
 
 uint32_t uit, now, pre_startt;
@@ -356,7 +363,8 @@ int main(void)
     std::fill(kit_slots, kit_slots + 5, 0);
     kit_buff = RamBufferMemory();
     kit_buff.Init(kit_mem);
-    kit_loader.Init(&kit_fil, kit_bounce);
+    sd_dma.Init();
+    kit_loader.Init(&kit_file, kit_bounce);
     hw.Init();
     // System::Delay(100);
 
@@ -451,7 +459,8 @@ int main(void)
     daisy::System::Delay(1); // Wait a sec
     hw.usb_sw.Write(true);     // take USB control
     
-    copier.Init(hw.seed.AudioSampleRate(), &engine, &chompi_buff, &loop_buff);
+    copier.Init(hw.seed.AudioSampleRate(), &engine, &chompi_buff, &loop_buff,
+                {&copy_files[0], &copy_files[1], copy_in, copy_out});
     engine.FillDefaultSample(hw.seed.AudioSampleRate());
 
     while (1)
