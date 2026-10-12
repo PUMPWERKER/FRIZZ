@@ -66,6 +66,16 @@ export const usage = [
       '<b>SHIFT + FX knob</b>: note values, 1/16 to 1/2'],
   },
   {
+    id: 'grains', title: 'Grains', colour: 'magenta', keys: ['FX KNOB', '_turn or hold'],
+    panel: { hl: ['knob3'], leds: { knob3: LED.magenta }, labels: { knob3: ['turn / hold', 1, -90] } },
+    text: 'Keep turning the knob past full reverb and grains take over: small pieces of the last seconds, '
+      + 'played back as a cloud. The further you turn, the denser and wider it gets, with octaves and fifths '
+      + 'mixed in. The reverb fades to a soft tail and the LED turns from blue to magenta. '
+      + 'The delay time sets the grain length, and when the delay is synced, the grains follow the beat. '
+      + 'Hold the knob to freeze the cloud, hold again to let it go. '
+      + 'If the FX go into the loop, the freeze ends when a recording or overdub ends.',
+  },
+  {
     id: 'threshold', title: 'Recording threshold', colour: 'yellow', keys: ['LEFT KNOB', '_turn', '→', 'CHOMPI', '_tap'],
     panel: { hl: ['knob0', 'shift'], leds: { knob0: LED.red }, labels: { shift: ['tap', -1, -90], knob0: ['turn', 0, -90] } },
     diagram: { type: 'flow', steps: [['WAITING', 'vu'], ['LOUD'], ['RECORDING', LED.red]], blink: true },
@@ -88,6 +98,7 @@ const card = Object.fromEntries(usage.map((c) => [c.id, c]));
 export const groups = [
   ['Looper', ['transport', 'length', 'step', 'undo', 'bake', 'copy', 'tempo']],
   ['Sampling', ['threshold', 'mono']],
+  ['Effects', ['grains']],
   ['Drum kits', ['kits']],
 ].map(([title, ids]) => ({ title, cards: ids.map((id) => card[id]) }));
 
