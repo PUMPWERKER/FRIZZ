@@ -185,8 +185,14 @@ class Daw:
         if name:
             self.outs_named = self.ins_named = [name]
         elif card:
+            # the one REAPER takes in this mode first, so it starts once
             self.outs_named = ["hw:%s" % card, "Midi-Bridge:%s: MIDI 1 (playback)" % card]
             self.ins_named = ["hw:%s" % card, "Midi-Bridge:%s: MIDI 1 (capture)" % card]
+            if card.startswith("/"):  # the host check's pseudo-terminal, for its stand-in
+                self.outs_named, self.ins_named = self.outs_named[:1], self.ins_named[:1]
+            elif audio == "jack":
+                self.outs_named.reverse()
+                self.ins_named.reverse()
         else:
             self.outs_named = self.ins_named = []
         self.dir = tempfile.mkdtemp(prefix="frizz-reaper-")
@@ -246,11 +252,12 @@ class Daw:
         with open(os.path.join(self.dir, "reaper.ini"), "w") as f:
             f.write("\n".join(cfg) + "\n")
         # the device caches (ALSA's raw MIDI, JACK's): its names first, so REAPER numbers them 0
-        for i, name in enumerate(("reaper-midihw-alsa.ini", "reaper-midihw-linux.ini")):
+        for name, bridge in (("reaper-midihw-alsa.ini", False), ("reaper-midihw-linux.ini", True)):
             cache = ["[mididevcache]"]
             if self.outs_named:
-                cache += ["ot0=1", "on0=" + self.outs_named[min(i, len(self.outs_named) - 1)],
-                          "it0=1", "in0=" + self.ins_named[min(i, len(self.ins_named) - 1)]]
+                pick = lambda names: next((n for n in names if n.startswith("Midi-Bridge:") == bridge),  # noqa: E731
+                                          names[0])
+                cache += ["ot0=1", "on0=" + pick(self.outs_named), "it0=1", "in0=" + pick(self.ins_named)]
             with open(os.path.join(self.dir, name), "w") as f:
                 f.write("\n".join(cache) + "\n")
         plan = dict(log=self.log_path, cmds=self.cmds_path, project=os.path.join(self.dir, "run.rpp"),
@@ -275,6 +282,10 @@ class Daw:
                "-nosplash", "-new", "-newinst", "-ignoreerrors"]
         if self.audio == "jack" and shutil.which("pw-jack") and not os.environ.get("FRIZZ_REAPER"):
             cmd = ["pw-jack"] + cmd
+        if shutil.which("setpriv"):
+            # killed with this tool, however it ends: REAPER left running would keep FRIZZ's
+            # USB node from everyone (pw-jack execs, so REAPER keeps it)
+            cmd = ["setpriv", "--pdeathsig", "KILL"] + cmd
         self.stdout = open(os.path.join(self.dir, "stdout.log"), "w")
         launched = time.monotonic()
         self.proc = subprocess.Popen(cmd, stdout=self.stdout, stderr=subprocess.STDOUT,
@@ -905,6 +916,9 @@ def main():
     ap.add_argument("--list", action="store_true", help="the cases, and leave")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        # stopped from outside: put things back and close REAPER as at the end
+        signal.signal(sig, lambda n, _: sys.exit(128 + n))
     a.long = False
     a.seconds = a.seconds or (4. if a.quick else 30.)
     audios = a.audio.split(",")
