@@ -129,7 +129,7 @@ GROUPS = dict({n: i for i, n in enumerate(FX_NAMES)}, comp=GROUP_COMP, latch=GRO
               volume=GROUP_VOLUME, settings=GROUP_SETTINGS)
 SETTING_NAMES = ["mono", "midi_channel", "midi_transport", "clock_factor", "clock_source",
                  "midi_out", "led_brightness", "midi_block_trs", "midi_feedback", "aux_dry",
-                 "gain_aux", "gain_mic"]
+                 "gain_aux", "gain_mic", "mic_dry", "aux_live", "mic_live"]
 VOLUME_NAMES = ["out", "in", "mix", "headphones"]
 LOOPER = ["empty", "recording", "playing", "paused"]
 MODES = ["none", "save", "copy", "delete"]
@@ -150,7 +150,7 @@ MORPH_CC, FOCUS_CC, COMP_FOCUS = 3, 23, 15
 BASE_NOTE, CHOMPI_NOTE = 48, 45
 
 PAGES = ["output gain", "input gain", "headphone feed"]
-INPUTS = ["AUX through the effects", "AUX dry", "the mic"]  # PassthroughEngine::Input
+
 # the LED parts kCmdLeds answers: (panel?, count)
 LED_PARTS = [(True, 10), (False, 9), (False, 8), (False, 8)]
 
@@ -253,19 +253,19 @@ def led_line(pth, smt):
     return "pth " + hexes(pth, 11) + " | smt " + hexes(smt, 4)
 
 
-# the LEDs' brightness the settings page sets (led_brightness on the card), in quarters of
-# full as LedDim takes them (code/src/temp_led_stuff.h)
-LED_QUARTERS = (4, 3, 2)
+# the LEDs' brightness the settings page sets (led_brightness on the card), in percent of
+# full as LedDim takes them (code/src/temp_led_stuff.h): 25-100 by 5 (#176)
+LED_PERCENTS = tuple(range(100, 20, -5))
 
 
-def led_dim(v, div, quarters):
+def led_dim(v, div, percent):
     """A colour byte on the chain, as LedDim makes it"""
-    d = v * quarters // (4 * div)
+    d = v * percent // (100 * div)
     return 1 if d == 0 and v >= div else d
 
 
-def led_levels(want, chain, rgb, levels=LED_QUARTERS):
-    """The brightnesses (quarters, of LEVELS) at which the device's chain bytes RGB show the
+def led_levels(want, chain, rgb, levels=LED_PERCENTS):
+    """The brightnesses (percent, of LEVELS) at which the device's chain bytes RGB show the
     colour WANT ("RRGGBB" at full scale, as the twin's LED log and expect led have it): any
     colour byte that the log shows as WANT's, dimmed as LedDim does"""
     div = 11 if chain == "pth" else 4
@@ -275,11 +275,11 @@ def led_levels(want, chain, rgb, levels=LED_QUARTERS):
                    for w, got in zip(want, rgb))]
 
 
-def led_full(want, chain, quarters):
-    """WANT ("RRGGBB" at full scale) dimmed to QUARTERS, at full scale again: about what the
+def led_full(want, chain, percent):
+    """WANT ("RRGGBB" at full scale) dimmed to PERCENT, at full scale again: about what the
     device's LED shows at that brightness"""
     div = 11 if chain == "pth" else 4
-    return "%02x%02x%02x" % tuple(min(255, led_dim(int(want[i:i + 2], 16), div, quarters) * div)
+    return "%02x%02x%02x" % tuple(min(255, led_dim(int(want[i:i + 2], 16), div, percent) * div)
                                   for i in (0, 2, 4))
 
 
@@ -314,7 +314,10 @@ def show_state(f):
             "settings" if flags & 64 else "play", "up" if d[23] & 1 else "down",
             {0: "", 2: ", SysEx holds it down", 4: ", SysEx holds it up"}.get(d[23] & 6, "")))
     if len(d) > 25:
-        print("input      %s" % (INPUTS[d[25]] if d[25] < len(INPUTS) else d[25]))
+        # the source, its effects and live (#177)
+        print("input      %s, %s, %s" % ("the mic" if d[25] & 1 else "AUX",
+                                         "dry" if d[25] & 2 else "through the effects",
+                                         "live" if d[25] & 4 else "not live"))
 
 
 def load(f, required=True):
@@ -742,7 +745,7 @@ def card_use(path, up, comp, mode, page=0):
                         volume(SW_NAMES[m[5]], m[6:7] != [0])
                         if m[6:7] != [0]:
                             used = key(SW_NAMES[m[5]], "a SysEx key")
-                    elif m[4] == TURN and up and m[5] == VOLUME_KNOB:
+                    elif m[4] == TURN and up and m[5] in (4, VOLUME_KNOB):  # SW4: knob 1, the brightness
                         used = "a SysEx turn on the settings page", MASTER
                     elif (m[4] == TURN and m[5] == VOLUME_KNOB and page == INPUT_GAIN_PAGE
                           and not shift):
@@ -839,7 +842,7 @@ def play(f, path, cpu):
     skipped = set()
     at_base = 0.0
     toggled = False
-    levels = list(LED_QUARTERS)  # the brightnesses that fit every expect led so far
+    levels = list(LED_PERCENTS)  # the brightnesses that fit every expect led so far
     try:
         for line_no, cmd, args in script_lines(path):
             now_ms = (time.monotonic() - start) * 1000
@@ -882,8 +885,8 @@ def play(f, path, cpu):
                                                  for c in rgb)
                     print("line %d: %s %d is %s, not %s%s" % (
                         line_no, chain, index, got, want, "".join(
-                            ", ~%s at %d %%" % (led_full(want, chain, q), 25 * q)
-                            for q in levels if q != 4)), file=sys.stderr)
+                            ", ~%s at %d %%" % (led_full(want, chain, q), q)
+                            for q in levels if q != 100)), file=sys.stderr)
                     failed += 1
             else:
                 if cmd not in skipped:
@@ -899,9 +902,9 @@ def play(f, path, cpu):
                 f.send(SWITCH, [0])  # the real switch again
         except OSError:
             pass  # the device went away: what ended the run says more
-    if levels != [4] and len(levels) < len(LED_QUARTERS):
+    if levels != [100] and len(levels) < len(LED_PERCENTS):
         print("expect led: the LEDs at %s %% brightness (led_brightness on the card)"
-              % " or ".join(str(25 * q) for q in levels))
+              % " or ".join(str(q) for q in levels))
     if cpu:
         last = load(f, required=False)
         if last:

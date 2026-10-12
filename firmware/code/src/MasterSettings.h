@@ -1,9 +1,9 @@
 /** @file MasterSettings.h
  *  @brief What the play page keeps on the card outside the scenes: the master compressor's
  *  knobs (MasterComp.h), the settings page's (SettingsPage.h: the mono input, the MIDI
- *  settings, the clock's tempo factor and source, MIDI out, the LEDs' brightness, AUX's
- *  variant), the input gain of each source, and their text format (SceneStore.h writes it). No
- *  hardware here, so the format can be tested on the host.
+ *  settings, the clock's tempo factor and source, MIDI out, the LEDs' brightness, each
+ *  source's effects and live), the input gain of each source, and their text format
+ *  (SceneStore.h writes it). No hardware here, so the format can be tested on the host.
  *
  *  The file, one line per setting, keyed by its name, the values in millionths as in the
  *  scene file (FxScenes.h):
@@ -22,17 +22,24 @@
  *    aux_dry 0
  *    gain_aux 75
  *    gain_mic 75
+ *    mic_dry 0
+ *    aux_live 1
+ *    mic_live 0
  *
  *  clock_factor is the effects' tempo in percent of its source's, a MIDI clock's, a loop's
  *  or the tapped or last one (TempoClock.h): 50, 100 or 200;
  *  clock_source whose clock it follows (ClockSource, MidiClock.h): 0 Auto, 1 TRS, 2 USB, 3
  *  internal; midi_out where MIDI out goes (MidiOutPorts): 0 off, 1 the jack, 2 the jack and
- *  USB; led_brightness the LEDs' in percent of FRIZZ's full: 100, 75 or 50; midi_block_trs
+ *  USB; led_brightness the LEDs' in percent of FRIZZ's full, 25-100 (the settings page steps it
+ *  by 5; a file from before has 100, 75 or 50); midi_block_trs
  *  whether the effect channels 1-15 count over the jack too, not only USB (MidiControl.h);
- *  midi_feedback whether the panel's changes go out as CCs (MidiFeedback.h); aux_dry whether
- *  AUX goes past the effects rather than through them (passthroughEngine.h's Input);
- *  gain_aux and gain_mic each source's input gain in percent, 0-100 (VOLUME's page 2). Another
- *  value keeps the default. compressor2 has the compressor's eight parameters, both pages
+ *  midi_feedback whether the panel's changes go out as CCs (MidiFeedback.h); aux_dry and
+ *  mic_dry whether that source goes past the effects rather than through them, aux_live and
+ *  mic_live whether it's on the outputs at all (passthroughEngine.h, #177; a file from before
+ *  has aux_dry only, the mic then was never live); gain_aux and gain_mic each source's input
+ *  gain in percent, 0-100 (VOLUME's page 2). A number the setting doesn't take keeps the
+ *  default; a word where the number belongs makes the file unreadable (SceneStore.h keeps it
+ *  as frizz_master.bak), rather than a garbled gain silencing an input. compressor2 has the compressor's eight parameters, both pages
  *  (MasterComp.h); a file from before has "compressor" with four, threshold, ratio, speed and
  *  mix, which loads with the speed as both attack and release and the makeup at 0dB (it was
  *  automatic then).
@@ -60,12 +67,15 @@ struct MasterSettings
     uint8_t clock_factor;   // percent of the tempo the effects follow: 50, 100, 200
     uint8_t clock_source;   // whose clock: 0 Auto, 1 TRS, 2 USB, 3 internal (MidiClock.h's ClockSource)
     uint8_t midi_out;       // where MIDI out goes: 0 off, 1 the jack, 2 and USB (MidiOutPorts)
-    uint8_t led_brightness; // percent: 100, 75, 50
+    uint8_t led_brightness; // percent, 25-100
     bool midi_block_trs;    // the effect channels over the jack too (MidiControl.h)
     bool midi_feedback;     // the panel's changes out as CCs (MidiFeedback.h)
     bool aux_dry;           // AUX past the effects and the compressor (#152)
     uint8_t gain_aux;       // the input gain in percent, AUX's
     uint8_t gain_mic;       // and the mic's
+    bool mic_dry;           // the mic past them, as aux_dry (#177)
+    bool aux_live;          // AUX on the outputs
+    bool mic_live;          // the mic on them: off unless asked for, a speaker would feed it back
 
     /** Every setting on its default */
     void Reset()
@@ -83,6 +93,9 @@ struct MasterSettings
         midi_feedback = false;
         aux_dry = false;
         gain_aux = gain_mic = kDefaultInGain;
+        mic_dry = false;
+        aux_live = true;
+        mic_live = false;
     }
 
     // the last channel, which a setup sending notes to other instruments uses least
@@ -123,13 +136,16 @@ static const Line kLines[] = {
     {"clock_factor", offsetof(MasterSettings, clock_factor), Line::CHOICE, 50, 100, 200},
     {"clock_source", offsetof(MasterSettings, clock_source), Line::RANGE, 0, 0, 3},
     {"midi_out", offsetof(MasterSettings, midi_out), Line::RANGE, 0, 0, 2},
-    {"led_brightness", offsetof(MasterSettings, led_brightness), Line::CHOICE, 50, 75, 100},
+    {"led_brightness", offsetof(MasterSettings, led_brightness), Line::RANGE, 25, 0, 100},
     // last, so kCmdDev's indices stay
     {"midi_block_trs", offsetof(MasterSettings, midi_block_trs), Line::SWITCH, 0, 0, 1},
     {"midi_feedback", offsetof(MasterSettings, midi_feedback), Line::SWITCH, 0, 0, 1},
     {"aux_dry", offsetof(MasterSettings, aux_dry), Line::SWITCH, 0, 0, 1},
     {"gain_aux", offsetof(MasterSettings, gain_aux), Line::RANGE, 0, 0, 100},
     {"gain_mic", offsetof(MasterSettings, gain_mic), Line::RANGE, 0, 0, 100},
+    {"mic_dry", offsetof(MasterSettings, mic_dry), Line::SWITCH, 0, 0, 1},
+    {"aux_live", offsetof(MasterSettings, aux_live), Line::SWITCH, 0, 0, 1},
+    {"mic_live", offsetof(MasterSettings, mic_live), Line::SWITCH, 0, 0, 1},
 };
 
 inline uint8_t* Field(MasterSettings& settings, const Line& line)
@@ -165,7 +181,8 @@ inline size_t FormatMaster(const MasterSettings& settings, char* buf, size_t siz
 }
 
 /** Reads the file's text into settings, which start on their defaults. Returns false, with
- *  every setting on its default, if it isn't a settings file */
+ *  every setting on its default, if it isn't a settings file, or a setting's value isn't a
+ *  number (#168) */
 inline bool ParseMaster(const char* text, MasterSettings& settings)
 {
     using namespace scenefile;
@@ -192,8 +209,16 @@ inline bool ParseMaster(const char* text, MasterSettings& settings)
         if (found)
         {
             const char* num = Word(p, len);
-            const long v = num ? strtol(num, nullptr, 10) : 0;
-            if (num && found->Takes(v))
+            if (!num)
+                continue;
+            char* end;
+            const long v = strtol(num, &end, 10);
+            if (end != num + len)
+            {
+                settings.Reset();
+                return false;
+            }
+            if (found->Takes(v))
                 *Field(settings, *found) = static_cast<uint8_t>(found->kind == Line::SWITCH ? v != 0 : v);
             continue;
         }

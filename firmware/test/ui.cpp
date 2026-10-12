@@ -31,10 +31,12 @@ static const int kVolumeEncoder = 6, kKnob1Encoder = 4; // SW6, SW4
 static const int kTransportRevLed = 5, kTransportFwdLed = 6, kVolumeLed = 9;
 static const int kSlot1Led = 3, kCompKeyLed = 10, kTapeStopKeyLed = 14;
 // the settings page's (SettingsPage.h): white keys 1, 3, 11, 14, 15 (channels; the 15th is 15
-// and 16), the lower octave's D#, F#, G#, A#, the upper octave's C#, F# and G#
+// and 16), the lower octave's D#, F#, G#, A#, the upper octave's C#, F#, G# and A#: the input's
+// source (SHIFT: mono), effects and live (#177)
 static const int kChannel1Led = 24, kChannel3Led = 22, kChannel11Led = 14, kChannel14Led = 11,
                  kChannel1516Led = 10, kBlockTrsKeyLed = 1, kTransportKeyLed = 2, kFactorKeyLed = 3,
-                 kSourceKeyLed = 4, kMidiOutKeyLed = 5, kMonoKeyLed = 7, kBrightnessKeyLed = 8;
+                 kSourceKeyLed = 4, kMidiOutKeyLed = 5, kMonoKeyLed = 7, kInSourceKeyLed = 7,
+                 kInFxKeyLed = 8, kLiveKeyLed = 9;
 static const int kNumFxProbe = 15; // kCmdParams' effects and the compressor
 static const int kFeedbackKeyLed = 6; // the settings page's upper D#: MIDI feedback
 static const int kSaveKeyLed = 7; // KEY_23, the play page's SAVE
@@ -52,6 +54,7 @@ static float usb_clock_bpm = 0.f; // and one over USB
 static double usb_clock_next = 0.;
 static float last_out[2] = {0.f, 0.f}, max_step = 0.f; // the master out's largest step, L or R
 static float hp_rms = 0.f; // the headphones' (left) RMS over the last RunMs
+static float out_peak = 0.f; // the master out's largest sample, L or R, since it was set to 0
 static float mic_amp = 0.f, mic_freq = 1000.f, mic_phase = 0.f; // a sine into the mic
 
 /** Runs blocks (half a ms each) with a sine (or silence) into AUX, and one into the mic
@@ -90,6 +93,7 @@ static float RunBlocks(uint32_t blocks)
             {
                 const float v = out[i * kChannels + 2 + c];
                 max_step = std::max(max_step, fabsf(v - last_out[c]));
+                out_peak = std::max(out_peak, fabsf(v));
                 last_out[c] = v;
             }
         }
@@ -99,6 +103,23 @@ static float RunBlocks(uint32_t blocks)
 }
 static float RunMs(uint32_t ms) { return RunBlocks(ms * 2); }
 #include "twintest.h" // after RunMs, which its Tap runs
+
+/** SHIFT + the settings page's upper F#: AUX mono on / off (#177) */
+static void TapMono()
+{
+    Press("KEY_26", true);
+    RunMs(60);
+    Tap("KEY_23");
+    RunMs(60);
+    Press("KEY_26", false);
+}
+
+/** Knob 1 turned on the settings page: the LEDs' brightness, 5 % a detent (#176) */
+static void TurnBrightness(int detents)
+{
+    Turn(kKnob1Encoder, detents);
+    RunMs(8 * static_cast<uint32_t>(abs(detents)) + 100);
+}
 
 /** The largest step between two samples of the master out over ms */
 static float StepMs(uint32_t ms)
@@ -909,9 +930,7 @@ int main()
         RunMs(kReadyMs);
         SetToggle(true);
         RunMs(200);
-        Tap("KEY_24");
-        RunMs(100);
-        Tap("KEY_24"); // 50 %
+        TurnBrightness(-10); // 50 %
         SetToggle(false);
         RunMs(300);
         SetBattery(2.9f, false);
@@ -1664,14 +1683,23 @@ int main()
         RunMs(kReadyMs);
         SetToggle(true);
         RunMs(300);
+        Press("KEY_26", true); // SHIFT: F# shows mono
+        RunMs(100);
         const Rgb stereo = SmtLedFull(kMonoKeyLed);
-        Tap("KEY_23"); // the upper F#: mono
+        Tap("KEY_23"); // SHIFT + the upper F#: mono
+        RunMs(100);
+        const Rgb mono = SmtLedFull(kMonoKeyLed);
+        Press("KEY_26", false);
+        RunMs(100);
+        const Rgb source = SmtLedFull(kMonoKeyLed);
         RunMs(3000);
         Check(Card("/FRIZZ/frizz_master.txt").find("mono 1") != std::string::npos,
-              "settings-mono: F# of the upper octave switches the input to mono, and it's saved");
-        const Rgb mono = SmtLedFull(kMonoKeyLed);
-        Check(mono.r == mono.g && mono.g == mono.b && Max(mono) > 2 * Max(stereo),
-              "settings-mono: its key is lit white while mono, dim while stereo");
+              "settings-mono: SHIFT + F# of the upper octave switches AUX to mono, and it's saved");
+        Check(mono.r == mono.g && mono.g == mono.b && Max(mono) > 2 * Max(stereo)
+                  && stereo.r == stereo.g && stereo.g == stereo.b,
+              "settings-mono: while SHIFT is held its key is white, lit while mono, dim while stereo");
+        Check(source.g > 200 && source.r < 40 && source.b < 40,
+              "settings-mono: SHIFT let go, it shows the source again: AUX, green");
         const std::string state = Ask({0x20});
         Check(state.size() > 6 && (state[6] & 32), "settings-mono: the play page's state says mono");
         // VOLUME's pages are three now: out, in, headphones, and back to out
@@ -1872,24 +1900,31 @@ int main()
         SetBattery(3.8f, false, false);
     }});
 
-    // the LEDs' brightness: 100, 75, 50 %, no colour gone dark
+    // the LEDs' brightness (#176): knob 1 on the settings page, 25-100 % by 5 % a detent,
+    // SHIFT + turn by quarters, SHIFT + press 100 %; no colour gone dark
+    static auto brightness_saved = [](int percent) {
+        return Card("/FRIZZ/frizz_master.txt").find("\nled_brightness " + std::to_string(percent) + "\n")
+               != std::string::npos;
+    };
     cases.push_back({"settings-brightness", [] {
         RunMs(kReadyMs);
         RunMs(300);
         const Rgb filter = SmtLed(kFilterKeyLed), vu = PthLed(kVolumeLed);
         SetToggle(true);
         RunMs(300);
-        const int key_full = Max(SmtLed(kBrightnessKeyLed));
-        Tap("KEY_24"); // upper G#: 75 %
-        RunMs(300);
-        const int key_75 = Max(SmtLed(kBrightnessKeyLed));
-        Tap("KEY_24"); // 50 %
+        const Rgb knob_full = PthLed(kKnob1Led);
+        Check(knob_full.r == knob_full.g && knob_full.g == knob_full.b && knob_full.r > 0
+                  && Max(PthLed(2)) == 0 && Max(PthLed(3)) == 0 && Max(PthLed(4)) == 0,
+              "settings-brightness: knob 1's LED white, knobs 2-4 dark");
+        TurnBrightness(-1); // 95 %
         RunMs(3000);
-        Check(Card("/FRIZZ/frizz_master.txt").find("led_brightness 50") != std::string::npos,
-              "settings-brightness: the upper G# pressed twice steps 100, 75, 50 %, saved");
-        const int key_50 = Max(SmtLed(kBrightnessKeyLed));
-        Check(key_full > key_75 && key_75 > key_50 && key_50 > 0,
-              "settings-brightness: its own key dims with every LED, so it shows the level");
+        Check(brightness_saved(95), "settings-brightness: a detent down is 95 %, saved 2 s after");
+        TurnBrightness(-9); // 50 %
+        const int knob_50 = Max(PthLed(kKnob1Led));
+        RunMs(3000);
+        Check(brightness_saved(50), "settings-brightness: nine more is 50 %, saved");
+        Check(knob_50 > 0 && knob_50 < Max(knob_full),
+              "settings-brightness: its own LED dims with every LED, so it shows the level");
         SetToggle(false);
         RunMs(300);
         const Rgb half = SmtLed(kFilterKeyLed);
@@ -1899,10 +1934,70 @@ int main()
               "settings-brightness: the panel's dimmer too, still lit");
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_24"); // and round to 100 %
+        TurnBrightness(-30); // past the bottom
+        RunMs(3000);
+        Check(brightness_saved(25), "settings-brightness: it stops at 25 %");
         SetToggle(false);
         RunMs(300);
-        Check(Same(SmtLed(kFilterKeyLed), filter), "settings-brightness: a third press is back to full");
+        const Rgb low = SmtLed(kFilterKeyLed);
+        SetToggle(true);
+        RunMs(300);
+        printf("      an FX key that's off: full %d %d %d, at 25 %% %d %d %d\n", filter.r, filter.g, filter.b,
+               low.r, low.g, low.b);
+        Check((low.r > 0) == (filter.r > 0) && (low.g > 0) == (filter.g > 0) && (low.b > 0) == (filter.b > 0),
+              "settings-brightness: at 25 % an FX key that's off keeps its colour");
+        TurnBrightness(2); // 35 %
+        Press("KEY_26", true);
+        RunMs(100);
+        TurnBrightness(1); // SHIFT: the next quarter up, 50 %
+        RunMs(3000);
+        const bool up50 = brightness_saved(50);
+        TurnBrightness(1); // 75 %
+        TurnBrightness(-1); // and down again, 50 %
+        TurnBrightness(-1); // 25 %
+        RunMs(3000);
+        const bool down25 = brightness_saved(25);
+        TurnBrightness(4); // 100 %, not past it
+        RunMs(3000);
+        const bool up100 = brightness_saved(100);
+        Press("KEY_26", false);
+        RunMs(100);
+        Check(up50 && down25 && up100,
+              "settings-brightness: SHIFT + turn steps by quarters, 35 % up to 50, then 75, 50, 25, and up to 100");
+        TurnBrightness(-3); // 85 %
+        RunMs(3000);
+        Tap("ENC_1_SW"); // a press alone: nothing
+        RunMs(3000);
+        const bool kept = brightness_saved(85);
+        Press("KEY_26", true);
+        RunMs(100);
+        Tap("ENC_1_SW"); // SHIFT + press: 100 %
+        RunMs(100);
+        Press("KEY_26", false);
+        RunMs(3000);
+        Check(kept && brightness_saved(100), "settings-brightness: knob 1 pressed does nothing, SHIFT + press is 100 %");
+        SetToggle(false);
+        RunMs(300);
+        Check(Same(SmtLed(kFilterKeyLed), filter), "settings-brightness: at 100 % as full as before");
+    }});
+
+    // an old file's brightness loads as it was, the upper G# no longer sets it (#176)
+    cases.push_back({"settings-brightness-old", [] {
+        CardFiles()["/FRIZZ/frizz_master.txt"] = "FRIZZ master 1\nled_brightness 75\n";
+        RunMs(kReadyMs);
+        RunMs(300);
+        const Rgb dim = SmtLed(kFilterKeyLed);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_24"); // the upper G#: the source's effects now
+        RunMs(3000);
+        Check(brightness_saved(75), "settings-brightness-old: a file's 75 % loads, and the upper G# leaves it");
+        TurnBrightness(5);
+        SetToggle(false);
+        RunMs(300);
+        printf("      an FX key that's off: at 75 %% %d, 5 detents up %d\n", Max(dim), Max(SmtLed(kFilterKeyLed)));
+        Check(Max(SmtLed(kFilterKeyLed)) > Max(dim),
+              "settings-brightness-old: the LEDs at 75 % from it, and up from there by the knob");
     }});
 
     // the switch up from power-on: the settings page once booted
@@ -3212,9 +3307,7 @@ int main()
         const int full = top();
         SetToggle(true);
         RunMs(200);
-        Tap("KEY_24");
-        RunMs(100);
-        Tap("KEY_24"); // 50 %
+        TurnBrightness(-10); // 50 %
         SetToggle(false);
         RunMs(300);
         const int half = top();
@@ -3344,18 +3437,19 @@ int main()
         RunMs(300);
         Check(dry > .01f && RunMs(300) < .001f, "midi dev: SET VOLUME's output gain");
         Ask({0x3E, 3, 11, 0x22, 0, 0x40, 0});
-        // the settings by masterfile::kLines: clock_factor (3) to 200, led_brightness (6) 60 refused
+        // the settings by masterfile::kLines: clock_factor (3) to 200, led_brightness (6) 20 refused
         const std::string factor = Ask({0x3E, 3, 12, 0x23, 3, 1, 200 - 128});
-        const std::string dim = Ask({0x3E, 3, 13, 0x23, 6, 0, 60});
+        const std::string dim = Ask({0x3E, 3, 13, 0x23, 6, 0, 20});
         const std::string settings = Ask({0x3E, 2, 14, 0x23});
         Check(factor.size() == 5 && factor[2] == 0 && dim.size() == 5 && dim[2] == 1,
               "midi dev: SET a setting, a value it doesn't take refused");
-        Check(settings.size() == 5 + 24 && settings[4] == 12 && settings[11] == 1 && settings[12] == 200 - 128
+        Check(settings.size() == 5 + 30 && settings[4] == 15 && settings[11] == 1 && settings[12] == 200 - 128
                   && settings[17] == 0 && settings[18] == 100 && settings[7] == 0 && settings[8] == 16
                   && settings[19] == 0 && settings[20] == 1 && settings[21] == 0 && settings[22] == 0
-                  && settings[24] == 0 && settings[26] == 75 && settings[28] == 75,
-              "midi dev: GET the settings: the clock factor x2, the LEDs at 100 %, channel 16, the effect channels over the jack, no feedback, AUX through the effects, both input gains 75 %");
-        Check(Ask({0x3E, 3, 15, 0x23, 12, 0, 1})[2] == 1 && Ask({0x3E, 2, 16, 0x30})[2] == 1
+                  && settings[24] == 0 && settings[26] == 75 && settings[28] == 75
+                  && settings[30] == 0 && settings[32] == 1 && settings[34] == 0,
+              "midi dev: GET the settings: the clock factor x2, the LEDs at 100 %, channel 16, the effect channels over the jack, no feedback, AUX through the effects, both input gains 75 %, the mic through them, AUX live, the mic not");
+        Check(Ask({0x3E, 3, 15, 0x23, 15, 0, 1})[2] == 1 && Ask({0x3E, 2, 16, 0x30})[2] == 1
                   && Ask({0x3E, 0x30, 17})[2] == 1,
               "midi dev: no such setting, group or sub-command: refused, answered");
         RunMs(2500);
@@ -3891,7 +3985,7 @@ int main()
         RunMs(kReadyMs);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_23"); // the upper F#: mono, lit white
+        TapMono(); // SHIFT + the upper F#: mono
         // pure red rising edges on its LED, and the moments each train starts
         std::vector<int> trains, blinks;
         bool was_red = false;
@@ -3923,9 +4017,10 @@ int main()
         Check(!trains.empty() && trains[0] >= 1900 && trains[0] < 2400 && threes,
               "settings-refused: without a card, the mono key blinks red 3 times once its write fails");
         Check(trains.size() == 4, "settings-refused: and again for each of 3 retries");
-        const Rgb mono = SmtLedFull(kMonoKeyLed);
-        Check(mono.r == mono.g && mono.g == mono.b && mono.r > 150,
-              "settings-refused: then lit white again: mono is in force");
+        const Rgb source = SmtLedFull(kMonoKeyLed);
+        const std::string state = Ask({0x20});
+        Check(source.g > 150 && source.r < 40 && source.b < 40 && state.size() > 6 && (state[6] & 32),
+              "settings-refused: then green again (the source, AUX): mono is in force");
         Check(Max(SmtLedFull(kTransportKeyLed)) < 80, "settings-refused: the other keys don't blink");
     }});
 
@@ -3934,7 +4029,7 @@ int main()
         RunMs(kReadyMs);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_23"); // mono, saved
+        TapMono(); // mono, saved
         RunMs(3000);
         Check(Card("/FRIZZ/frizz_master.txt").find("mono 1") != std::string::npos,
               "settings-refused-saved: mono saved");
@@ -4169,13 +4264,13 @@ int main()
         Check(param(3) == 0.f && param(5) == 1.f, "cc-stereo: CC 17 turns the grain");
     }});
 
-    // ---- the built-in mic (#113): AUX's jack picks the input at power-on and on each change,
-    // the settings page's upper A# the other until the next; TAPE's gain and filter ----
-    static const int kInputKeyLed = 9; // the settings page's upper A# (the play page's SAVE)
+    // ---- the built-in mic (#113): AUX's jack picks the source at power-on and on each change,
+    // the settings page's upper F# the other until the next (#177); TAPE's gain and filter ----
+    static const int kInputKeyLed = kInSourceKeyLed; // the settings page's upper F#: the source
     static auto green_led = [](const Rgb& c) { return c.g > 150 && c.r < 40 && c.b < 40; };
     static auto magenta_led = [](const Rgb& c) { return c.r > 150 && c.b > 150 && c.g < 40; };
     // what the input carries of AUX's sine on its own, then of the mic's on its own: on the
-    // headphones' cue, the input alone, as the mic is never on the master (#152)
+    // headphones' cue, the input alone, as the mic isn't live unless asked for (#177)
     static auto heard = [](float& aux, float& mic) {
         const float a = amp, m = mic_amp;
         Usb({kCC, kHpCueCC, 0});
@@ -4210,7 +4305,7 @@ int main()
         Check(is_mic("no cable"), "mic-boot: no cable in AUX at power-on: the mic is the input, AUX unheard");
         SetToggle(true);
         RunMs(300);
-        Check(magenta_led(SmtLedFull(kInputKeyLed)), "mic-boot: the settings page's upper A# is magenta");
+        Check(magenta_led(SmtLedFull(kInputKeyLed)), "mic-boot: the settings page's upper F# is magenta");
     }});
 
     cases.push_back({"mic-jack", [] {
@@ -4219,7 +4314,7 @@ int main()
         Check(is_aux("a cable"), "mic-jack: a cable in AUX at power-on: AUX is the input, the mic unheard");
         SetToggle(true);
         RunMs(300);
-        Check(green_led(SmtLedFull(kInputKeyLed)), "mic-jack: the settings page's upper A# is green");
+        Check(green_led(SmtLedFull(kInputKeyLed)), "mic-jack: the settings page's upper F# is green");
         SetToggle(false);
         RunMs(300);
         // a bounce shorter than the debouncing (20 ms) changes nothing
@@ -4236,63 +4331,43 @@ int main()
         Check(is_aux("plugged again"), "mic-jack: plugged in again: AUX");
     }});
 
-    // the upper A# (#152): AUX through the effects, AUX dry, the mic, round again; AUX's
-    // variant to the card, the source not; the jack picks AUX in the variant chosen last
+    // the upper F# (#177): the source, AUX, the mic, round again, not to the card; the jack
+    // picks again at its next change
     static auto white_led = [](const Rgb& c) { return c.r > 150 && c.g > 150 && c.b > 150; };
     cases.push_back({"mic-key", [] {
         mic_amp = .1f;
         RunMs(kReadyMs);
+        const std::string card = Card("/FRIZZ/frizz_master.txt");
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_25");
+        Tap("KEY_23");
         RunMs(100);
-        Check(white_led(SmtLedFull(kInputKeyLed)) && is_aux("the key once"),
-              "mic-key: the upper A# with a cable in: AUX dry, its key white");
+        Check(magenta_led(SmtLedFull(kInputKeyLed)) && is_mic("the key once"),
+              "mic-key: the upper F# with a cable in: the mic, its key magenta");
+        Tap("KEY_23");
+        RunMs(100);
+        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("the key twice"),
+              "mic-key: again: AUX, its key green");
+        Tap("KEY_23");
         RunMs(3000);
-        Check(Card("/FRIZZ/frizz_master.txt").find("\naux_dry 1\n") != std::string::npos,
-              "mic-key: AUX dry goes to the card");
-        Tap("KEY_25");
-        RunMs(100);
-        Check(magenta_led(SmtLedFull(kInputKeyLed)) && is_mic("the key twice"),
-              "mic-key: again: the mic, its key magenta");
-        const std::string master = Card("/FRIZZ/frizz_master.txt");
-        Tap("KEY_25");
-        RunMs(100);
-        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("three times"),
-              "mic-key: again: AUX through the effects, its key green");
-        // AUX's variant goes to the card, and nothing blinks red for it
-        bool red = false;
-        for (int t = 0; t < 3000; t++)
-        {
-            RunMs(1);
-            const Rgb c = SmtLedFull(kInputKeyLed);
-            red |= c.r > 150 && c.g < 40 && c.b < 40;
-        }
-        const std::string after = Card("/FRIZZ/frizz_master.txt");
-        Check(master.find("\naux_dry 1\n") != std::string::npos && after.find("\naux_dry 0\n") != std::string::npos
-                  && !red,
-              "mic-key: the mic leaves the card as it was, AUX through the effects saved, no red blink");
-        // the jack's next change decides again: pulled, the mic; plugged, AUX as chosen last
-        Tap("KEY_25"); // AUX dry
-        RunMs(100);
+        Check(Card("/FRIZZ/frizz_master.txt") == card, "mic-key: the source isn't saved");
+        // the jack's next change decides again: plugged, AUX; pulled, the mic
         SetJack(false);
         RunMs(100);
-        Check(magenta_led(SmtLedFull(kInputKeyLed)) && is_mic("the key, then pulled"),
-              "mic-key: then the cable pulled: the mic");
         SetJack(true);
         RunMs(100);
-        Check(white_led(SmtLedFull(kInputKeyLed)) && is_aux("plugged again"),
-              "mic-key: plugged in again: AUX, dry as chosen last");
-        // on the play page the key is DELETE again, not the input
+        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("the key, then pulled and plugged"),
+              "mic-key: the mic by the key, then the cable pulled and plugged in again: AUX");
+        // on the play page the key is SAVE again, not the source
         SetToggle(false);
         RunMs(300);
-        Tap(kDeleteKey);
+        Tap(kSaveKey);
         RunMs(100);
-        Tap(kDeleteKey);
+        Tap(kSaveKey);
         RunMs(300);
         SetToggle(true);
         RunMs(300);
-        Check(white_led(SmtLedFull(kInputKeyLed)), "mic-key: on the play page the upper A# doesn't switch the input");
+        Check(green_led(SmtLedFull(kInputKeyLed)), "mic-key: on the play page the upper F# doesn't switch the source");
     }});
 
     cases.push_back({"mic-loop", [] {
@@ -4321,12 +4396,12 @@ int main()
         amp = 0.f;
         mic_amp = .05f;
         RunMs(kReadyMs);
-        // the mic is never on the master (#152): on the headphones' cue, the input alone
+        // the mic isn't live out of the box (#177): on the headphones' cue, the input alone
         Usb({kCC, kHpCueCC, 0});
         RunMs(100);
         const float on_master = RunMs(500);
         const float m1k = hp_rms;
-        Check(on_master < 1e-4f && m1k > .01f, "mic-level: the mic on the headphones' cue, never on the master");
+        Check(on_master < 1e-4f && m1k > .01f, "mic-level: the mic on the headphones' cue, not on the master unless live");
         mic_freq = 50.f;
         RunMs(100);
         RunMs(500);
@@ -4370,7 +4445,7 @@ int main()
         Check(fabsf(l2 - r2) < l2 * .001f, "mic-level: the mic on both sides alike");
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_23"); // mono
+        TapMono();
         RunMs(300);
         SetToggle(false);
         RunMs(300);
@@ -4441,7 +4516,7 @@ int main()
 
     // ---- the routing (#152): AUX dry past the effects and the compressor, CC 84, the mix's
     // automatism, VOLUME on the settings page, the input's meter ----
-    static const int kSourceCC = 84, kInGainCC = 86;
+    static const int kSourceCC = 84, kInGainCC = 86, kDryCC = 116, kLiveCC = 117;
     static auto mix_now = [] {
         const std::string st = Ask({0x20});
         return st.size() > 14 ? KnobOf(st[13], st[14]) : -1.f;
@@ -4451,7 +4526,7 @@ int main()
         const std::string card = Card("/FRIZZ/frizz_master.txt");
         const float fx = RunMs(500);
         const float steady = StepMs(300);
-        Usb({kCC, kSourceCC, 64}); // AUX dry
+        Usb({kCC, kDryCC, 127}); // AUX dry
         const float to_dry = StepMs(300);
         const float dry = RunMs(500);
         Usb({kCC, 24, 127}); // the compressor's threshold all the way down
@@ -4461,7 +4536,7 @@ int main()
         Latch("KEY_11"); // the tape stop: silence for what goes through the effects
         RunMs(3000);
         const float dry_stopped = RunMs(500);
-        Usb({kCC, kSourceCC, 0}); // through the effects again
+        Usb({kCC, kDryCC, 0}); // through the effects again
         RunMs(500);
         const float fx_stopped = RunMs(500);
         Latch("KEY_11");
@@ -4476,7 +4551,7 @@ int main()
               "aux-dry: nor do the effects: the tape stop silences AUX through them only");
         Check(to_dry < steady * 1.5f, "aux-dry: switching to AUX dry crossfades, no click");
         // VOLUME and the mix still have it
-        Usb({kCC, kSourceCC, 84}); // still AUX dry, the top of its range
+        Usb({kCC, kDryCC, 64}); // AUX dry, the bottom of its range
         Usb({kCC, 85, 0});         // the output gain to 0
         RunMs(500);
         const float muted = RunMs(300);
@@ -4492,13 +4567,13 @@ int main()
         Check(muted < 1e-4f, "aux-dry: VOLUME turns it down");
         Check(loop_only < 1e-4f && half > dry * .6f && half < dry * .8f,
               "aux-dry: the mix's input share scales it, equal-power");
-        // CC 84 and 86 aren't kept on the card (#97), also when the hand saves something else
+        // CC 116 and 86 aren't kept on the card (#97), also when the hand saves something else
         Usb({kCC, kInGainCC, 32});
         RunMs(3000);
-        Check(Card("/FRIZZ/frizz_master.txt") == card, "aux-dry: CC 84 leaves the card as it was");
+        Check(Card("/FRIZZ/frizz_master.txt") == card, "aux-dry: CC 116 leaves the card as it was");
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_23"); // mono, by hand: the settings go to the card
+        TapMono(); // mono, by hand: the settings go to the card
         RunMs(3000);
         const std::string saved = Card("/FRIZZ/frizz_master.txt");
         Check(saved.find("\nmono 1\n") != std::string::npos && saved.find("\naux_dry 0\n") != std::string::npos
@@ -4510,7 +4585,7 @@ int main()
     // its erase back to the input alone
     cases.push_back({"aux-dry-loop", [] {
         RunMs(kReadyMs);
-        Usb({kCC, kSourceCC, 64});
+        Usb({kCC, kDryCC, 127});
         RunMs(300);
         const float live = RunMs(300);
         Tap("KEY_28"); // record
@@ -4534,6 +4609,204 @@ int main()
               "aux-dry-loop: a recording closes on the loop alone: AUX dry silent, not heard twice");
         Check(mix_erased == 0.f && fabsf(again - live) < live * .01f,
               "aux-dry-loop: an erase goes back to the input alone, AUX dry");
+    }});
+
+    // ---- the input per source (#177): the settings page's upper F# the source, G# its
+    // effects (through / dry, dark while not live), A# it live; each source's own, saved ----
+    static auto key_lit = [](int led) { return Max(SmtLedFull(led)) > 150; };
+    static auto key_dim = [](int led) { const int m = Max(SmtLedFull(led)); return m > 0 && m < 80; };
+    static auto key_dark = [](int led) { return Max(SmtLedFull(led)) == 0; };
+    // the master's level of the source alone, and whether the effects have it: the tape stop
+    // latched silences what goes through them
+    struct Heard
+    {
+        float master, stopped, phones;
+    };
+    static auto heard_on_master = [] {
+        Heard h;
+        SetToggle(false); // the play page, for the tape stop's key
+        RunMs(300);
+        h.master = RunMs(300);
+        Usb({kCC, kHpCueCC, 0}); // the headphones: the input alone
+        RunMs(300);
+        RunMs(300);
+        h.phones = hp_rms;
+        Usb({kCC, kHpCueCC, 127});
+        Latch("KEY_11");
+        RunMs(3000);
+        h.stopped = RunMs(300);
+        Latch("KEY_11");
+        RunMs(3000);
+        SetToggle(true);
+        RunMs(300);
+        return h;
+    };
+    // every combination of the table in MANUAL.md, the mix at the input: AUX through, dry,
+    // off; then the mic, off as it starts, through, dry
+    cases.push_back({"input-combos", [] {
+        mic_amp = 0.f;
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        const bool aux_through_keys = green_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed)
+                                      && green_led(SmtLedFull(kInSourceKeyLed));
+        const Heard aux_through = heard_on_master();
+        Tap("KEY_24"); // dry
+        RunMs(100);
+        const bool aux_dry_keys = white_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
+        const Heard aux_dry = heard_on_master();
+        Tap("KEY_25"); // off
+        RunMs(100);
+        const bool aux_off_keys = key_dark(kInFxKeyLed) && key_dim(kLiveKeyLed);
+        const Heard aux_off = heard_on_master();
+        printf("      AUX through: %.4f, the tape stop %.4f, headphones %.4f; dry: %.4f, %.4f, %.4f; "
+               "off: %.4f, %.4f, %.4f\n", aux_through.master, aux_through.stopped, aux_through.phones,
+               aux_dry.master, aux_dry.stopped, aux_dry.phones, aux_off.master, aux_off.stopped,
+               aux_off.phones);
+        Check(aux_through_keys && aux_through.master > .01f && aux_through.stopped < aux_through.master * .01f
+                  && aux_through.phones > .01f,
+              "input-combos: AUX through the effects, live (F# green, G# green, A# lit): through the effects");
+        Check(aux_dry_keys && fabsf(aux_dry.stopped - aux_dry.master) < aux_dry.master * .001f
+                  && aux_dry.master > .01f && aux_dry.phones > .01f,
+              "input-combos: AUX dry, live (G# white): past the effects");
+        Check(aux_off_keys && aux_off.master < 1e-5f && aux_off.stopped < 1e-5f && aux_off.phones > .01f,
+              "input-combos: AUX not live (G# dark, A# dim): silent on the master, on the headphones' input feed");
+
+        amp = 0.f;
+        mic_amp = .05f;
+        Tap("KEY_23"); // the mic
+        RunMs(100);
+        const bool mic_off_keys = magenta_led(SmtLedFull(kInSourceKeyLed)) && key_dark(kInFxKeyLed)
+                                  && key_dim(kLiveKeyLed);
+        const Heard mic_off = heard_on_master();
+        Tap("KEY_25"); // live
+        RunMs(100);
+        const bool mic_through_keys = green_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
+        const Heard mic_through = heard_on_master();
+        Tap("KEY_24"); // dry
+        RunMs(100);
+        const bool mic_dry_keys = white_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
+        const Heard mic_dry = heard_on_master();
+        printf("      the mic off: %.4f, %.4f, headphones %.4f; through: %.4f, %.4f, %.4f; dry: %.4f, %.4f, %.4f\n",
+               mic_off.master, mic_off.stopped, mic_off.phones, mic_through.master, mic_through.stopped,
+               mic_through.phones, mic_dry.master, mic_dry.stopped, mic_dry.phones);
+        Check(mic_off_keys && mic_off.master < 1e-5f && mic_off.phones > .01f,
+              "input-combos: the mic as it starts, not live (F# magenta, G# dark, A# dim): on the headphones' input feed only");
+        Check(mic_through_keys && mic_through.master > .01f && mic_through.stopped < mic_through.master * .01f,
+              "input-combos: the mic live, through the effects: the tape stop has it");
+        Check(mic_dry_keys && mic_dry.master > .01f && fabsf(mic_dry.stopped - mic_dry.master) < mic_dry.master * .001f,
+              "input-combos: the mic live, dry: past the effects");
+    }});
+
+    // each source keeps its own G# and A#: the jack (or F#) brings up the other's; all four
+    // saved, the source not
+    cases.push_back({"input-per-source", [] {
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_24"); // AUX dry
+        RunMs(100);
+        Tap("KEY_25"); // AUX off
+        RunMs(100);
+        SetJack(false); // the mic: its own, through and off
+        RunMs(100);
+        const bool mic_own = magenta_led(SmtLedFull(kInSourceKeyLed)) && key_dark(kInFxKeyLed)
+                             && key_dim(kLiveKeyLed);
+        Tap("KEY_25"); // the mic live
+        RunMs(100);
+        const bool mic_live = green_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
+        SetJack(true); // AUX: dry and off, as left
+        RunMs(100);
+        const bool aux_kept = green_led(SmtLedFull(kInSourceKeyLed)) && key_dark(kInFxKeyLed)
+                              && key_dim(kLiveKeyLed);
+        Tap("KEY_25"); // AUX live again: dry, as left
+        RunMs(100);
+        const bool aux_dry = white_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
+        Tap("KEY_23"); // F#: the mic, live through the effects, as left
+        RunMs(100);
+        const bool mic_kept = magenta_led(SmtLedFull(kInSourceKeyLed)) && green_led(SmtLedFull(kInFxKeyLed))
+                              && key_lit(kLiveKeyLed);
+        RunMs(3000);
+        const std::string card = Card("/FRIZZ/frizz_master.txt");
+        Check(mic_own, "input-per-source: AUX dry and off, the jack pulled: the mic's own, through the effects, not live");
+        Check(mic_live, "input-per-source: the mic's A#: live, its G# lit green");
+        Check(aux_kept, "input-per-source: the cable back: AUX's as it was left, off, G# dark");
+        Check(aux_dry, "input-per-source: AUX live again: dry, as it was left");
+        Check(mic_kept, "input-per-source: F# to the mic: live through the effects, as it was left");
+        Check(card.find("\naux_dry 1\n") != std::string::npos && card.find("\nmic_dry 0\n") != std::string::npos
+                  && card.find("\naux_live 1\n") != std::string::npos
+                  && card.find("\nmic_live 1\n") != std::string::npos,
+              "input-per-source: all four on the card");
+    }});
+
+    // ... and come back from the card at power-on, the jack picking the source
+    cases.push_back({"input-per-source-boot", [] {
+        CardFiles()["/FRIZZ/frizz_master.txt"] = "FRIZZ master 1\naux_dry 1\nmic_dry 1\naux_live 0\nmic_live 1\n";
+        SetJack(false);
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        const bool mic = magenta_led(SmtLedFull(kInSourceKeyLed)) && white_led(SmtLedFull(kInFxKeyLed))
+                         && key_lit(kLiveKeyLed);
+        SetJack(true);
+        RunMs(100);
+        const bool aux = green_led(SmtLedFull(kInSourceKeyLed)) && key_dark(kInFxKeyLed) && key_dim(kLiveKeyLed);
+        Check(mic && aux, "input-per-source-boot: from the card: the mic dry and live, AUX off");
+    }});
+
+    // the upper G# while dark (not live): it changes nothing and blinks red 3 times
+    cases.push_back({"input-dark-fx", [] {
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_25"); // AUX off: G# dark
+        RunMs(3000);
+        const std::string card = Card("/FRIZZ/frizz_master.txt");
+        Tap("KEY_24");
+        int blinks = 0;
+        bool was_red = false;
+        for (int t = 0; t < 2000; t++)
+        {
+            RunMs(1);
+            const Rgb c = SmtLedFull(kInFxKeyLed);
+            const bool red = c.r > 150 && c.g < 40 && c.b < 40;
+            blinks += red && !was_red;
+            was_red = red;
+        }
+        const bool dark = key_dark(kInFxKeyLed);
+        RunMs(2000);
+        Tap("KEY_25"); // live again: through, as it was
+        RunMs(100);
+        Check(blinks == 3 && dark, "input-dark-fx: G# dark pressed: 3 red blinks, then dark again");
+        Check(Card("/FRIZZ/frizz_master.txt") == card && green_led(SmtLedFull(kInFxKeyLed)),
+              "input-dark-fx: and it changed nothing: through the effects when live again, the card as it was");
+    }});
+
+    // #168: the mic not live leaks nothing onto the master while the jack switches the source
+    // back and forth, whether AUX goes through the effects or dry (a single gate on the
+    // crossfaded input let up to a quarter of it through)
+    cases.push_back({"mic-leak", [] {
+        amp = 0.f; // AUX silent: only the mic could reach the master
+        mic_amp = .3f;
+        RunMs(kReadyMs);
+        float peaks[2];
+        for (int dry = 0; dry < 2; dry++)
+        {
+            if (dry)
+                Usb({kCC, kDryCC, 127});
+            RunMs(300);
+            out_peak = 0.f;
+            for (int k = 0; k < 6; k++)
+            {
+                SetJack(k % 2 == 1); // pulled, plugged, ...
+                RunMs(100);
+            }
+            peaks[dry] = out_peak;
+        }
+        printf("      the master's peak while the jack switches, the mic not live: AUX through %g, dry %g\n",
+               peaks[0], peaks[1]);
+        Check(peaks[0] == 0.f, "mic-leak: AUX through the effects: nothing of the mic on the master, ever");
+        Check(peaks[1] == 0.f, "mic-leak: AUX dry: nothing of the mic on the master, ever");
     }});
 
     // VOLUME on the settings page (#152): page 1 the output, page 2 the input gain, no page 3;
@@ -4628,7 +4901,8 @@ int main()
         Check(turned.b > 40 && Max(after) < 40, "input-vu: a turn shows the gain for a second, then the meter");
     }});
 
-    // MIDI feedback (#109): the upper A# sends CC 84; CC 84 that came isn't sent back
+    // MIDI feedback (#109): the upper F#, G# and A# send CC 84, 116 and 117 (#177); what came
+    // isn't sent back
     cases.push_back({"source-feedback", [] {
         RunMs(kReadyMs);
         Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 3, 2, 0xF7}); // MIDI out: the jack and USB
@@ -4638,19 +4912,28 @@ int main()
         RunMs(300);
         TrsCcs();
         UsbCcs();
-        Tap("KEY_25"); // AUX dry
+        Tap("KEY_24"); // AUX dry
         RunMs(300);
-        Check(HasCc(TrsCcs(), 0xBF, kSourceCC, 64) && HasCc(UsbCcs(), 0xBF, kSourceCC, 64),
-              "source-feedback: the upper A# to AUX dry sends CC 84 at 64");
-        Usb({kCC, kSourceCC, 127}); // the mic
+        Check(HasCc(TrsCcs(), 0xBF, kDryCC, 127) && HasCc(UsbCcs(), 0xBF, kDryCC, 127),
+              "source-feedback: the upper G# to AUX dry sends CC 116 at 127");
+        Tap("KEY_25"); // AUX not live
         RunMs(300);
-        Check(TrsCcs().empty() && UsbCcs().empty() && magenta_led(SmtLedFull(kInputKeyLed)),
-              "source-feedback: CC 84 picks the mic, and isn't sent back");
-        SetJack(false); // the mic already: nothing to send
-        RunMs(100);
-        SetJack(true);
+        Check(HasCc(UsbCcs(), 0xBF, kLiveCC, 0), "source-feedback: the upper A# AUX off sends CC 117 at 0");
+        Tap("KEY_23"); // the mic: its own, through and not live
         RunMs(300);
-        Check(HasCc(UsbCcs(), 0xBF, kSourceCC, 64), "source-feedback: the jack's AUX (dry, as last chosen) sends it too");
+        const auto ccs = UsbCcs();
+        Check(HasCc(ccs, 0xBF, kSourceCC, 127) && HasCc(ccs, 0xBF, kDryCC, 0) && !HasCc(ccs, 0xBF, kLiveCC, 127),
+              "source-feedback: the upper F# to the mic sends CC 84 at 127 and the mic's CC 116 at 0");
+        Usb({kCC, kSourceCC, 0}); // AUX
+        RunMs(300);
+        const auto back = UsbCcs(), trs = TrsCcs();
+        printf("      after CC 84 at 0: %zu CCs back over USB, %zu over TRS\n", back.size(), trs.size());
+        Check(!HasCc(back, 0xBF, kSourceCC, 0) && !HasCc(trs, 0xBF, kSourceCC, 0) && HasCc(back, 0xBF, kDryCC, 127)
+                  && green_led(SmtLedFull(kInputKeyLed)),
+              "source-feedback: CC 84 picks AUX, and isn't sent back; AUX's own CC 116 (dry) is");
+        SetJack(false); // the jack: the mic
+        RunMs(300);
+        Check(HasCc(UsbCcs(), 0xBF, kSourceCC, 127), "source-feedback: the jack's mic sends it too");
     }});
 
     // a bug report knows AUX's jack: as it was at power-on, and each change; its replay plays
@@ -4664,7 +4947,7 @@ int main()
         RunMs(500);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_25"); // AUX, by hand
+        Tap("KEY_23"); // AUX, by hand
         RunMs(300);
         Press("KEY_26", true);
         RunMs(100);
@@ -4692,6 +4975,10 @@ int main()
         // no cable, a cable, none, the key: AUX, as in the session (without the jack's lines
         // it would be the mic)
         mic_amp = .1f;
+        // the log ends in the report's hold, SHIFT down: let go, F# shows the source again
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(300);
         Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("replayed"),
               "mic-bug-log: played back, it ends on AUX by the key, as the session did");
     }});

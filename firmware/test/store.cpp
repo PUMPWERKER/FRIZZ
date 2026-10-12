@@ -17,6 +17,7 @@ static FATFS fs;
 static const std::string kScenes = "/FRIZZ/frizz_scenes.txt";
 static const std::string kScenesBak = "/FRIZZ/frizz_scenes.bak";
 static const std::string kMaster = "/FRIZZ/frizz_master.txt";
+static const std::string kMasterBak = "/FRIZZ/frizz_master.bak";
 
 static void NewCard(bool present)
 {
@@ -204,19 +205,22 @@ static void TestMasterFormat()
     a.aux_dry = true;
     a.gain_aux = 100;
     a.gain_mic = 36;
+    a.mic_dry = true;
+    a.aux_live = false;
+    a.mic_live = true;
     char buf[kMasterFileMax];
     const size_t len = FormatMaster(a, buf, sizeof(buf));
     const std::string want = "FRIZZ master 1\n"
                              "compressor2 0 125000 250000 375000 500000 625000 750000 875000\n"
                              "mono 1\nmidi_channel 3\nmidi_transport 1\nclock_factor 50\n"
                              "clock_source 2\nmidi_out 1\nled_brightness 75\nmidi_block_trs 0\nmidi_feedback 1\n"
-                             "aux_dry 1\ngain_aux 100\ngain_mic 36\n";
+                             "aux_dry 1\ngain_aux 100\ngain_mic 36\nmic_dry 1\naux_live 0\nmic_live 1\n";
     Check(std::string(buf) == want && len == want.size(), "master: the file's text, line for line");
     a.Reset();
     FormatMaster(a, buf, sizeof(buf));
     Check(std::string(buf).find("\nmono 0\nmidi_channel 16\nmidi_transport 0\nclock_factor 100\n"
                                 "clock_source 0\nmidi_out 0\nled_brightness 100\nmidi_block_trs 1\nmidi_feedback 0\n"
-                                "aux_dry 0\ngain_aux 75\ngain_mic 75\n")
+                                "aux_dry 0\ngain_aux 75\ngain_mic 75\nmic_dry 0\naux_live 1\nmic_live 0\n")
               != std::string::npos,
           "master: the defaults' text");
     Check(ParseMaster("FRIZZ master 1\nmono 1\n", b) && b.midi_block_trs,
@@ -224,6 +228,9 @@ static void TestMasterFormat()
     Check(ParseMaster("FRIZZ master 1\ncompressor2 0 0 0 0 0 0 0 0\nmono 1\nmidi_channel 3\nmidi_feedback 1\n", b)
               && !b.aux_dry && b.gain_aux == 75 && b.gain_mic == 75 && b.mono && b.midi_feedback,
           "master: a file from before #152 loads, AUX through the effects, both input gains at 75 %");
+    Check(ParseMaster("FRIZZ master 1\naux_dry 1\ngain_aux 60\n", b) && b.aux_dry && !b.mic_dry
+              && b.aux_live && !b.mic_live,
+          "master: a file from before #177 loads, its aux_dry AUX's effects, AUX live, the mic through them, not live");
     Check(ParseMaster(buf, b) && !b.aux_dry && b.gain_aux == 75,
           "master: the defaults read back");
     Check(ParseMaster("FRIZZ master 1\naux_dry 1\ngain_aux 101\ngain_mic 0\n", b) && b.aux_dry
@@ -250,19 +257,52 @@ static void TestMasterFormat()
     Check(ParseMaster("FRIZZ master 1\nmono\nmidi_channel\nclock_factor\n", b) && !b.mono
               && b.midi_channel == 16 && b.clock_factor == 100,
           "master: a setting without its number keeps its default");
-    Check(ParseMaster("FRIZZ master 1\nmidi_channel x\nclock_source x\nmidi_out x\n", b)
-              && b.midi_channel == 0 && b.clock_source == 0 && b.midi_out == 0,
-          "master: a word for a number reads as 0 (strtol), where 0 is allowed");
-    Check(ParseMaster("FRIZZ master 1\nclock_factor 150\nled_brightness 60\nmidi_channel -1\n"
+    Check(!ParseMaster("FRIZZ master 1\nmono 1\nmidi_channel x\n", b) && !b.mono
+              && b.midi_channel == 16,
+          "master: a word for a number makes the file unreadable, every setting on its default (#168)");
+    Check(!ParseMaster("FRIZZ master 1\ngain_aux 7O\n", b) && b.gain_aux == 75,
+          "master: so does a number with a letter in it: a garbled gain isn't a silent input");
+    Check(ParseMaster("FRIZZ master 1\nmidi_channel 0\n", b) && b.midi_channel == 0,
+          "master: 0 is still read where it's allowed");
+    Check(ParseMaster("FRIZZ master 1\nclock_factor 150\nled_brightness 20\nmidi_channel -1\n"
                       "clock_source -1\nmidi_out -2\n", b)
               && b.clock_factor == 100 && b.led_brightness == 100 && b.midi_channel == 16
               && b.clock_source == 0 && b.midi_out == 0,
           "master: values between or below the allowed ones keep the defaults");
+    Check(ParseMaster("FRIZZ master 1\nled_brightness 25\n", b) && b.led_brightness == 25
+              && ParseMaster("FRIZZ master 1\nled_brightness 60\n", b) && b.led_brightness == 60
+              && ParseMaster("FRIZZ master 1\nled_brightness 101\n", b) && b.led_brightness == 100,
+          "master: the brightness reads 25-100 (#176), over it keeps the default");
     Check(ParseMaster("FRIZZ master 1\nclock_factor 200\nled_brightness 50\nmidi_channel 16\n"
                       "clock_source 3\nmidi_out 2\nmono 0\nmidi_channel_x 4\n", b)
               && b.clock_factor == 200 && b.led_brightness == 50 && b.midi_channel == 16
               && b.clock_source == 3 && b.midi_out == 2,
           "master: the highest allowed values are read, a longer name isn't its setting");
+}
+
+/** A master file that's there but can't be read (#168) is kept as frizz_master.bak by the
+ *  next master save, not overwritten */
+static void TestMasterUnreadable()
+{
+    NewCard(true);
+    card.dirs["/FRIZZ"] = true;
+    const std::string garbled = "FRIZZ master 1\nmono 1\ngain_aux 7O\n";
+    card.files[kMaster] = garbled;
+    SceneStore store;
+    store.Init(&fs, "");
+    Check(!store.master.mono && store.master.gain_aux == 75,
+          "master unreadable: every setting on its default");
+    Check(card.files[kMaster] == garbled, "... and the card untouched at boot");
+    store.master.mono = true;
+    store.RequestMasterSave();
+    store.Process();
+    Check(!store.TakeMasterFailed() && card.files[kMasterBak] == garbled
+              && card.files[kMaster].find("\nmono 1\n") != std::string::npos,
+          "master unreadable: the next save keeps it as frizz_master.bak and writes the new one");
+    card.files[kMasterBak] = "older";
+    store.RequestMasterSave();
+    store.Process();
+    Check(card.files[kMasterBak] == "older", "... once: the save after that leaves the .bak alone");
 }
 
 /** A file from before the phaser (#68): its scenes load with the phaser off on its defaults,
@@ -315,5 +355,6 @@ int main()
     TestUnreadable();
     TestNotRead();
     TestMasterFormat();
+    TestMasterUnreadable();
     return Finish();
 }
