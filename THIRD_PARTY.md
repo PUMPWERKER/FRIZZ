@@ -67,6 +67,9 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with three changes:
   - A System Common message ends running status.
   - Its data bytes are counted by its own type, so a Song Position after a program change isn't
     read as one byte and a program change.
+  - A status byte other than F7 inside a SysEx ends it, cut short, and starts a message of its
+    own: the SysEx is dropped. It was kept as data, and everything up to the next F7 with it
+    (#166).
 - `src/hid/usb_midi.cpp` sends a Song Position over USB once: WAVE's packed it, then fell
   through into its SysEx branch and packed it again, so hosts read it twice (#157).
 
@@ -75,7 +78,8 @@ Its prebuilt `build/libdaisy.a` is WAVE's with only those three objects, `usbd_d
 libDaisy's own flags (`make build/midi_parser.o` in its folder, then `arm-none-eabi-ar r
 build/libdaisy.a build/midi_parser.o`). These reproduce WAVE's objects from WAVE's source: the
 same code, only the debug information's paths differ, and FRIZZ.bin comes out byte for byte
-the same (checked for `usb_midi.o`, #157). A changed `libdaisy.a` (or `libdaisysp.a`) links
+the same (checked for `usb_midi.o`, #157; `midi_parser.o` rebuilt from the source before #166
+disassembles as the archive's). A changed `libdaisy.a` (or `libdaisysp.a`) links
 FRIZZ again on the next `make` (#161).
 
 The bootloader's copy, `reference/firmware/chompi-bootloader-v6.4-beta/libs/libDaisy/`, is the same adaptation plus

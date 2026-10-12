@@ -432,6 +432,53 @@ int main()
         Check(worst < .5 * kTick120, "handover: the ticks carry on across the loop's start");
     }});
 
+    // Start came in on the jack and went out over USB only, then a loop: the jack's gear never
+    // got a Start, so it gets the loop's; USB's already plays, so not it (#166)
+    cases.push_back({"handover-trs", [] {
+        RunMs(kReadyMs);
+        SetOut(2);
+        StartTrs(Clock(120.));
+        RunMs(1000);
+        Midi(0xFA);
+        RunMs(500);
+        TakeSent();
+        RecordLoop(2000);
+        RunMs(1000);
+        const Sent s = TakeSent();
+        Report("handover-trs: Start %d to the jack, %d over USB", Count(s.trs, 0xFA), Count(s.usb, 0xFA));
+        Check(Count(s.trs, 0xFA) == 1, "handover-trs: the loop's Start goes to the jack, which had none");
+        Check(Count(s.usb, 0xFA) == 0, "handover-trs: not over USB, whose gear already plays");
+    }});
+
+    // MainLoop held up (a scene written to a slow card) while the loop pauses and plays on:
+    // USB's ring fills with ticks, but the transport still has room in it, and goes out once
+    // MainLoop runs again; ticks are dropped instead (#166)
+    cases.push_back({"usb-held", [] {
+        RunMs(kReadyMs);
+        SetOut(2);
+        for (uint8_t b : {0xF0, 0x7D, 0x43, 0x48, 0x13, 0x01, 0x01, 0xF7}) // transport following on
+            UsbMidi(b);
+        RunMs(20);
+        RecordLoop(2000);
+        RunMs(1000);
+        TakeSent();
+        HoldMain(1500);
+        RunMs(800);
+        Midi(0xFC); // the jack's Stop pauses the loop, in the audio callback
+        RunMs(200);
+        Midi(0xFB); // and its Continue plays on
+        RunMs(1500);
+        const Sent s = TakeSent();
+        std::string usb;
+        for (const MidiOutByte& b : s.usb)
+            if (b.byte != 0xF8)
+                usb += (usb.empty() ? "" : " ") + std::to_string(b.byte);
+        Report("usb-held: USB's transport after the hold: \"%s\", %d ticks", usb.c_str(), Count(s.usb, 0xF8));
+        Check(Count(s.trs, 0xFC) == 1 && Count(s.trs, 0xFB) == 1, "usb-held: the jack sends Stop and Continue meanwhile");
+        Check(Count(s.usb, 0xFC) == 1 && Count(s.usb, 0xF2) == 1 && Count(s.usb, 0xFB) == 1,
+              "usb-held: USB's Stop, Song Position and Continue go out after the hold, none dropped");
+    }});
+
     // a clock on the jack isn't sent back there, but a loop leads, and its clock goes out
     cases.push_back({"lead", [] {
         RunMs(kReadyMs);

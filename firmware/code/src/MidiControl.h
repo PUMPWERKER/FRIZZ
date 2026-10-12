@@ -33,8 +33,9 @@
  *  card's scenes.
  *
  *  SysEx: F0 7D 43 48 CMD DATA F7, the launcher's header (MidiClock.h). FRIZZ's commands start
- *  at 0x10, above the launcher's 01-07, and an answer is the command | 0x40, as the
- *  launcher's are: 0x50 and up, so no answer of FRIZZ's passes as the launcher's.
+ *  at 0x10 (the restart, which MidiClock.h takes), above the launcher's 01-07, and an answer
+ *  is the command | 0x40, as the launcher's are: 0x50 and up, so no answer of FRIZZ's passes
+ *  as the launcher's.
  *
  *  0x3E is the developers' (kCmdDev, firmware/README.md): F0 7D 43 48 3E SUB SEQ ARGS F7, over
  *  USB only, answered F0 7D 43 48 7E SUB SEQ STATUS DATA F7, SEQ the request's, so a tool
@@ -109,6 +110,28 @@ enum Value : uint8_t
     kNumValues,
 };
 } // namespace midimap
+
+// MIDI feedback (MidiFeedback.h) sends what these CCs set on the CCs that set it
+namespace feedback
+{
+static_assert(Cc(0) == midimap::kKnobCC && Cc(kLatchSlot) == midimap::kLatchCC
+                  && kLatchSlot == midimap::kKeyParams && kKeys == midimap::kBlockChannels,
+              "a key's knobs, then its latch, on its channel");
+static_assert(Cc(kGlobalLatches) == midimap::kKeyLatchCC && Cc(kFocusItems) == midimap::kKnobCC
+                  && Cc(kCompItems) == midimap::kCompCC && Cc(kFocus) == midimap::kFocusCC,
+              "the latches, the effect in focus, the compressor");
+static_assert(Cc(kOutGain) == midimap::kOutGainCC && Cc(kInGain) == midimap::kInGainCC
+                  && Cc(kMix) == midimap::kMixCC && Cc(kHpCue) == midimap::kHpCueCC
+                  && Cc(kSpeed) == midimap::kSpeedCC && Cc(kFader) == midimap::kFaderCC
+                  && Cc(kSource) == midimap::kSourceCC && Cc(kDry) == midimap::kDryCC
+                  && Cc(kLive) == midimap::kLiveCC,
+              "the global CCs");
+// NormalPage.h takes a gain's item as kOutGain + its midimap::Value, or its dev:: index
+static_assert(kInGain - kOutGain == midimap::kInGain - midimap::kOutGain
+                  && kMix - kOutGain == midimap::kMix - midimap::kOutGain
+                  && kHpCue - kOutGain == midimap::kHpCue - midimap::kOutGain,
+              "the gains in midimap's order");
+} // namespace feedback
 
 // FRIZZ's SysEx commands (after F0 7D 43 48)
 enum MidiCmd : uint8_t
@@ -272,7 +295,6 @@ static const uint8_t kMidiHeader[] = {0x7D, 0x43, 0x48};
 static const size_t kFxPerPart = 4;
 static const size_t kFxParts = 4;
 static const size_t kSceneParts = 2 * kFxParts + 1;
-static const uint16_t kMidiMax14 = 16383;
 
 /** A MIDI value as a knob's 0-1, with the centre exactly on .5: 7 bits (64) or 14 (8192) */
 inline float MidiToKnob(uint16_t v, bool fine)
@@ -665,8 +687,9 @@ private:
                     && !Push(cc == kMorphCC ? Event::MORPH : Event::DROP,
                              static_cast<uint8_t>(v | morph_bars_ << 3))))
                 return false;
+            // one past the scenes re-arms: logged too, so a replay morphs again as here (#166)
             last = v;
-            return v < kNumSlots;
+            return true;
         }
         case kMorphBarsCC:
             morph_bars_ = v < 1 ? 1 : (v > kMorphBarsMax ? kMorphBarsMax : v);

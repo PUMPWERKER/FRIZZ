@@ -655,5 +655,7 @@ bool Powered() { return powered; }
 
 bool MainLoopRunning() { return main_loop_running; }
 
+void HoldMain(double ms) { main_ns = std::max(main_ns, block_ns) + static_cast<uint64_t>(ms * 1e6); }
+
 bool Restarted() { return ::restarted; }
 } // namespace twin
