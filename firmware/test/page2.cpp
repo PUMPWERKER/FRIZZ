@@ -427,6 +427,22 @@ static void TestReverb()
     ReverbRun(0.f, 1.f, 0.f, 0, 30000, false, &pre_on);
     printf("  reverb onset: %zu, with 250ms pre-delay %zu\n", plain_on, pre_on);
     Check(pre_on > plain_on + 11000 && pre_on < plain_on + 13000, "reverb: pre-delay at the top: 250ms later");
+    {
+        // turned back to 0, the pre-delay switches off: its slew lands on 0 instead of
+        // stalling on a denormal above it, the SDRAM written and read for good (#167)
+        static chompi::ReverbSend v;
+        v.Init(kSr, &reverb);
+        v.SetOn(true);
+        v.SetParam(chompi::ReverbSend::PRE_DELAY, .5f);
+        float l = 0.f, r = 0.f;
+        for (size_t i = 0; i < 48000; i++)
+            v.Process(Sine(i), Sine(i), &l, &r);
+        const bool up = v.PreDelaying();
+        v.SetParam(chompi::ReverbSend::PRE_DELAY, 0.f);
+        for (size_t i = 0; i < 96000; i++)
+            v.Process(0.f, 0.f, &l, &r);
+        Check(up && !v.PreDelaying(), "reverb: the pre-delay turned back to 0 switches off");
+    }
     const float free = ReverbRun(0.f, 0.f, 0.f, 24000, 48000, true);
     const float ducked = ReverbRun(0.f, 0.f, 1.f, 24000, 48000, true);
     Check(ducked < free * .3f, "reverb: ducking turns the room down under the input");

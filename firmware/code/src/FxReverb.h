@@ -70,9 +70,12 @@ public:
         float wl = in_l * in_gain;
         float wr = in_r * in_gain;
         // the pre-delay, only while it's up: writing SDRAM every sample would push the rest
-        // out of the cache. What it hasn't written since it came up reads as silence
-        const float pre = pre_.Process();
-        if (pre > 0.f || pre_.target > 0.f)
+        // out of the cache. What it hasn't written since it came up reads as silence. It
+        // settles, so turned back to 0 it switches off: the slew alone would stall just above
+        // it, a denormal, for good (#167)
+        pre_.Settle();
+        const float pre = pre_.value;
+        if (PreDelaying())
         {
             float* const pl = reverb_pre_delay_mem[0];
             float* const pr = reverb_pre_delay_mem[1];
@@ -103,6 +106,8 @@ public:
 
     /** Off and its tail rung out: nothing to add, and its meter isn't needed */
     inline bool Sleeping() const { return tail_.quiet >= kSleepSamples; }
+    /** The pre-delay up, or still on its way down: its buffer written and read */
+    inline bool PreDelaying() const { return pre_.value > 0.f || pre_.target > 0.f; }
 
     void SetParam(size_t param, float val) override
     {
