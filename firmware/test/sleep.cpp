@@ -153,6 +153,38 @@ static void TestResonator()
     Check(rings && !reso.Idle(), "resonator: on again, it rings");
 }
 
+/** A Smoothed lands on its target exactly, so what waits on it (Settle, the flanger's
+ *  glide, the reverb's pre-delay, the shifter's dry centre) comes to rest: up to 1, where a
+ *  step falls below a float's resolution, down to 0, through the denormals, and between; at
+ *  the knobs' slew and a recall's (#167) */
+static void TestSmoothed()
+{
+    struct Move
+    {
+        float from, to, coeff;
+    } moves[] = {
+        {0.f, 1.f, chompi::kFxParamCoeff},   {1.f, 0.f, chompi::kFxParamCoeff},
+        {.3f, .7f, chompi::kFxParamCoeff},   {0.f, 1.f, chompi::kFxRecallCoeff},
+        {1.f, 0.f, chompi::kFxRecallCoeff},  {2400.f, 480.f, chompi::kFxParamCoeff},
+        {1e-4f, 0.f, chompi::kFxParamCoeff},
+    };
+    bool all = true;
+    for (const Move& m : moves)
+    {
+        chompi::Smoothed s;
+        s.Reset(m.from);
+        s.target = m.to;
+        long at = -1;
+        for (long i = 0; i < 10 * 48000 && at < 0; i++)
+            if (s.Process(m.coeff) == m.to)
+                at = i;
+        printf("      Smoothed %g to %g at %g: there after %ld samples\n", m.from, m.to, m.coeff,
+               at);
+        all = all && at > 0 && at < 48000;
+    }
+    Check(all, "Smoothed: lands on its target exactly, within a second");
+}
+
 static float delay_mem[480000 * 2];
 
 /** The delay: off, it keeps ringing out; it sleeps only after its whole buffer of silence,
@@ -273,6 +305,7 @@ int main()
     TestSkip();
     TestTapeStop();
     TestResonator();
+    TestSmoothed();
     TestDelay();
     TestReverb();
     return Finish();
