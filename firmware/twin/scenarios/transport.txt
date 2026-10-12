@@ -1,0 +1,55 @@
+# The transport knob through a standstill (#174): a loop slowed in semitones to 1/16x, 2 detents
+# more to a standstill (the loop silent, both transport LEDs red), a morph to the blank scene
+# landing meanwhile on the beat that runs on at 50 BPM, then 4 detents on into reverse, and the
+# press back to 1x. The filter and the crusher latched by hand; nothing is saved. (turn: 5 is
+# the transport, 4 knob 1; detents play out 8 ms each)
+input sine 220 0.3
+at 6000
+tap KEY_28
+wait 1500
+tap KEY_28
+wait 500
+input off
+down KEY_5
+wait 80
+tap KEY_26
+up KEY_5
+wait 200
+down KEY_4
+wait 80
+tap KEY_26
+up KEY_4
+wait 500
+turn 5 -96
+wait 4000
+# 1/16x forward: the forward LED red-orange, the reverse one red
+expect led pth 6 fd1600
+expect led pth 5 d10000
+turn 5 -2
+wait 3000
+# a standstill: both red
+expect led pth 5 fd0000
+expect led pth 6 fd0000
+# SHIFT + the blank scene, let go: lands on a bar line within 2 bars at 50 BPM (9.6 s)
+down KEY_26
+wait 80
+tap KEY_18
+wait 80
+up KEY_26
+wait 10000
+# landed: the blank scene active, the filter and crusher off; still standing
+expect led smt 2 fcfcfc
+expect led smt 20 240c14
+expect led smt 21 241408
+expect led pth 5 fd0000
+expect led pth 6 fd0000
+# 4 detents on: 1/16x reverse
+turn 5 -4
+wait 3000
+expect led pth 5 fd1600
+expect led pth 6 d10000
+# the press: 1x forward
+tap ENC_5_SW
+wait 1500
+expect led pth 6 79f200
+expect led pth 5 000000

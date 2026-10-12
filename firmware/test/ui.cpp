@@ -1182,7 +1182,7 @@ int main()
               "scene-keys: note 56, the lower G#, recalls scene 1");
     }});
 
-    // a morph: its key blinks on the beat; SHIFT + another scene key, or a 9th bar, blinks red
+    // a morph: its key blinks on the beat; SHIFT + an empty slot, or a 9th bar, blinks red
     cases.push_back({"scene-morph", [] {
         RunMs(kReadyMs);
         Latch("KEY_5");
@@ -1207,9 +1207,9 @@ int main()
             printf(" %d", r);
         printf(" ms\n");
         Check(on_beat, "scene-morph: the key it morphs to blinks on the beat, 250 ms at 120 BPM");
-        // another scene key: refused, 3 red blinks on it
-        Check(RedBlinks(kSceneKeys[1], kSlot1Led) == 3 && Ask({0x20}).size() > 6 && (Ask({0x20})[6] & 2),
-              "scene-morph: SHIFT + another scene key during it blinks that key red 3 times, and it morphs on");
+        // an empty slot: refused, 3 red blinks on it (another saved one is a build-up, #175)
+        Check(RedBlinks(kSceneKeys[3], kSlot1Led + 2) == 3 && Ask({0x20}).size() > 6 && (Ask({0x20})[6] & 2),
+              "scene-morph: SHIFT + an empty slot during it blinks that key red 3 times, and it morphs on");
         // the same key again adds bars, 8 in all; a 9th is refused
         int refused = 0;
         for (int bar = 2; bar <= 8; bar++)
@@ -2391,8 +2391,9 @@ int main()
         Check(*std::min_element(rev.begin(), rev.end()) > 0, "transport-leds: nor at full speed in reverse");
     }});
 
-    // the transport while a loop plays: semitones, 2 detents each, stopping at 2x and 1/16x;
-    // SHIFT + turn the ladder of roots and fifths, 4 detents a step, the only way to reverse
+    // the transport while a loop plays: semitones, 2 detents each, stopping at 2x either way and
+    // running on from 1/16x through a standstill into reverse (#174); SHIFT + turn the ladder of
+    // roots and fifths, 4 detents a step, which flips at 1/16x
     cases.push_back({"transport-semitones", [] {
         RunMs(kReadyMs);
         Tap("KEY_28");
@@ -2424,9 +2425,21 @@ int main()
         Check(near(speed(), 0), "transport-semitones: detents don't carry over from SHIFT to the semitones");
         Turn(5, 100);
         Check(near(speed(), 12), "transport-semitones: all the way right: 2x");
-        Turn(5, -200);
-        const float slowest = speed();
-        Check(near(slowest, -48), "transport-semitones: all the way left: 1/16x, still forward");
+        Tap("ENC_5_SW"); // 1x, and no half step left over from the 1 detent above
+        Turn(5, -300); // 48 semitones, the standstill's 2 steps and 1 more, 60 again: 222
+        RunMs(3000); // the detents take their time, the glide after them
+        Check(speed() < 0.f && near(-Probe().loop_speed, 12),
+              "transport-semitones: all the way left: on through a standstill to 2x reverse (#174)");
+        Turn(5, 120);
+        RunMs(3000);
+        Check(Probe().loop_speed == -1.f / 16.f, "transport-semitones: 120 detents back: 1/16x reverse");
+        Turn(5, 2);
+        RunMs(1000); // the glide onto 0x exactly: ~1.8 s
+        Check(speed() == 0.f, "transport-semitones: 2 more right: a standstill");
+        Turn(5, 2);
+        Check(speed() == 0.f, "transport-semitones: 4: still standing");
+        Turn(5, 2);
+        Check(near(speed(), -48), "transport-semitones: 6: 1/16x forward");
         shift_turn(-4);
         Check(speed() < 0.f && near(-Probe().loop_speed, -48), "transport-semitones: SHIFT + left from there: reverse");
         shift_turn(4);
@@ -2442,6 +2455,69 @@ int main()
         Check(near(speed(), -48), "transport-semitones: CC 90 at 0: 1/16x");
         Trs({kCC, 90, 64});
         Check(near(speed(), 0), "transport-semitones: CC 90 at 64: 1x");
+    }});
+
+    // #174: the standstill between 1/16x and 1/16x reverse. The loop glides to 0x and fades
+    // with it, silent there, both transport LEDs red; the FX clock runs on by itself as in a
+    // pause, at the slowest speed's tempo (50 BPM), so a morph lands meanwhile; turned on, the
+    // loop plays in reverse, heard again, and the clock follows it
+    cases.push_back({"transport-standstill", [] {
+        RunMs(kReadyMs);
+        auto state = [] { return Ask({0x20}); };
+        Latch("KEY_5"); // the filter, for a scene to morph to
+        Save(1);
+        Tap(kSceneKeys[0]);
+        RunMs(300);
+        Tap("KEY_28");
+        RunMs(2000);
+        Tap("KEY_28");
+        RunMs(300);
+        sine = false; // the loop alone
+        RunMs(500);
+        const float loud = RunMs(500);
+        Turn(5, -96); // 48 semitones: 1/16x
+        RunMs(3000);
+        Check(fabsf(Probe().loop_speed - 1.f / 16.f) < 1e-4f && RunMs(300) > 0.f,
+              "transport-standstill: 1/16x, still heard");
+        max_step = 0.f;
+        Turn(5, -2);
+        RunMs(200);
+        const float gliding = RunMs(100);
+        RunMs(3000);
+        const float step = max_step;
+        const float still = RunMs(500);
+        printf("      loop %.4f, gliding %.4f, standing %.6f, largest step %.4f\n", loud, gliding, still, step);
+        Check(Probe().loop_speed == 0.f && still == 0.f, "transport-standstill: 2 detents more: 0x, silent");
+        Check(gliding > 0.f && step < .02f, "transport-standstill: faded with the glide, no click");
+        const Rgb rev = PthLedFull(kTransportRevLed), fwd = PthLedFull(kTransportFwdLed);
+        Check(rev.r > 200 && rev.g < 40 && fwd.r > 200 && fwd.g < 40, "transport-standstill: both transport LEDs red");
+        Check(Probe().tempo == 50, "transport-standstill: the FX at the slowest speed's tempo, 50 BPM");
+        const uint32_t pos = Probe().position;
+        RunMs(1000);
+        Check(Probe().position != pos, "transport-standstill: the FX clock runs on by itself");
+        // a morph to scene 1, started just after a bar line: the next one 4.8 s later at 50 BPM
+        for (int b = 0; b < 20000 && Probe().position % 48 != 1; b++)
+            RunBlocks(1);
+        Press("KEY_26", true);
+        RunMs(60);
+        Tap(kSceneKeys[1]);
+        RunMs(60);
+        Press("KEY_26", false);
+        RunMs(3500);
+        const bool morphing = state().size() > 6 && (state()[6] & 2);
+        RunMs(1500);
+        Check(morphing && !(state()[6] & 2) && state()[5] == 2 && Probe().loop_speed == 0.f,
+              "transport-standstill: a morph meanwhile lands on the clock's bar line, the loop still standing");
+        Turn(5, -4);
+        RunMs(3000);
+        Check(fabsf(Probe().loop_speed + 1.f / 16.f) < 1e-4f && RunMs(500) > 0.f,
+              "transport-standstill: 4 detents on: 1/16x reverse, heard again");
+        const float at = Probe().loop_pos;
+        RunMs(2000);
+        Check(Probe().loop_pos < at || Probe().loop_pos > at + .5f, "transport-standstill: the loop runs backwards");
+        Tap("ENC_5_SW");
+        RunMs(2000);
+        Check(Probe().loop_speed == 1.f && Probe().tempo != 50, "transport-standstill: press: 1x, the loop's tempo again");
     }});
 
     cases.push_back({"flanger-click", [] {
@@ -5471,7 +5547,8 @@ int main()
         }});
     }
 
-    // ===== #153: a hard drop to a scene on the next bar line: SHIFT + scene key + PLAY =====
+    // ===== #153, #175: a hard drop to a scene on a bar line: SHIFT + scene key, the transport
+    // pressed, SHIFT let go; the bars count from the release =====
     {
         // scene 1 (kSceneKeys[1]): the filter on and closed, much quieter than dry; then the blank
         // scene (kSceneKeys[0]), dry. A 2 kHz sine, a period a block, so a block's level is steady
@@ -5496,9 +5573,10 @@ int main()
                 pos = now;
             }
         };
-        // the gesture, all let go: SHIFT, the scene key taps times, PLAY. The level's largest
-        // change meanwhile, relative to where it was
-        static auto drop = [](const char* key, int taps) {
+        // the gesture, all let go: SHIFT, the scene key taps times, the transport pressed, the
+        // scene key after more times. The level's largest change meanwhile, relative to where
+        // it was
+        static auto drop = [](const char* key, int taps, int after = 0) {
             const float level = RunBlocks(1);
             float moved = 0.f;
             auto run = [&](uint32_t ms) { moved = std::max(moved, fabsf(RunMs(ms) - level) / level); };
@@ -5511,10 +5589,17 @@ int main()
                 Press(key, false);
                 run(40);
             }
-            Press("KEY_27", true);
+            Press("ENC_5_SW", true);
             run(60);
-            Press("KEY_27", false);
+            Press("ENC_5_SW", false);
             run(40);
+            for (int t = 0; t < after; t++)
+            {
+                Press(key, true);
+                run(60);
+                Press(key, false);
+                run(40);
+            }
             Press("KEY_26", false);
             run(100);
             return moved;
@@ -5599,7 +5684,7 @@ int main()
             const Watched w = watch(dry, 3000);
             lines(w);
             Check(moved < .03f && w.lines.size() >= 1 && w.changed == w.lines[0],
-                  (std::string(name) + ": nothing at PLAY, the scene in the next bar line's block").c_str());
+                  (std::string(name) + ": nothing at the press, the scene in the next bar line's block").c_str());
         };
         cases.push_back({"scene-drop-clock", [] {
             clock_bpm = 100.f;
@@ -5624,7 +5709,7 @@ int main()
             on_line("scene-drop-tap");
         }});
 
-        // with a loop: on its end, when that's the next line; PLAY's release doesn't pause it
+        // with a loop: on its end, when that's the next line; the press doesn't touch the loop
         cases.push_back({"scene-drop-loop", [] {
             RunMs(kReadyMs);
             filter_scene();
@@ -5646,10 +5731,12 @@ int main()
             printf("      loop %.3f s, at %.4f of it on the line\n", len / kSampleRate, w.loop_pos);
             Check(w.lines.size() >= 1 && w.changed == w.lines[0] && w.loop_pos < .01f,
                   "scene-drop-loop: the scene on the loop's end, in its block");
-            Check(Probe().loop_state == 2, "scene-drop-loop: PLAY's release didn't pause it");
+            Check(Probe().loop_state == 2 && Probe().loop_speed == 1.f,
+                  "scene-drop-loop: the loop plays on at 1x");
         }});
 
-        // three taps: the third bar line; a tap after PLAY one more; a plain key takes it back
+        // three taps: the third bar line; a tap after the press one more; SHIFT + its key in a
+        // later hold takes it back, as does a plain scene key
         cases.push_back({"scene-drop-bars", [state] {
             RunMs(kReadyMs);
             filter_scene();
@@ -5662,15 +5749,24 @@ int main()
             Tap(kSceneKeys[0]);
             RunMs(500);
             past_line();
+            drop(kSceneKeys[1], 1, 1);
+            w = watch(dry, 4500);
+            lines(w);
+            Check(w.lines.size() >= 2 && w.changed == w.lines[1],
+                  "scene-drop-bars: its key tapped again after the press, a bar later");
+            Tap(kSceneKeys[0]);
+            RunMs(500);
+            past_line();
             drop(kSceneKeys[1], 1);
+            RunMs(500);
             Press("KEY_26", true);
             RunMs(60);
             Tap(kSceneKeys[1]);
             Press("KEY_26", false);
-            w = watch(dry, 4500);
-            lines(w);
-            Check(w.lines.size() >= 2 && w.changed == w.lines[1],
-                  "scene-drop-bars: SHIFT + its key after PLAY, a bar later");
+            RunMs(100);
+            w = watch(dry, 2500);
+            Check(w.changed < 0 && !(state()[6] & 2) && state()[5] == 2 && (state()[6] & 1),
+                  "scene-drop-bars: SHIFT + its red key in a later hold: no drop, the scene edited");
             Tap(kSceneKeys[0]);
             RunMs(500);
             past_line();
@@ -5713,9 +5809,10 @@ int main()
                   "scene-drop-off: the filter quiet 30 ms before the line, gone by it");
         }});
 
-        // build-up, then drop: a morph to scene 1 gliding, SHIFT + the blank scene refused (red,
-        // as ever), then PLAY: the morph goes on to the line, the blank scene lands there.
-        // SHIFT + PLAY without a scene key in the hold stops a morph, as ever
+        // build-up, then drop: SHIFT + scene 1, then the blank scene, let go: the morph to scene 1
+        // (the filter closing) glides over the bar, scene 1's key white on the beat, the blank
+        // scene's red, and the blank scene lands on the line, dry. SHIFT + a blinking key in a
+        // later hold stops a sequence where it is
         cases.push_back({"scene-drop-morph", [state] {
             RunMs(kReadyMs);
             filter_scene();
@@ -5725,20 +5822,23 @@ int main()
             RunMs(60);
             Tap(kSceneKeys[1]);
             RunMs(40);
-            Press("KEY_26", false);
-            RunMs(500);
-            Press("KEY_26", true);
-            RunMs(60);
-            const int red = RedBlinks(kSceneKeys[0], kSlot1Led - 1);
-            Check(red == 3 && (state()[6] & 2) && state()[5] == 2,
-                  "scene-drop-morph: SHIFT + another scene key during a morph: red, it morphs on");
-            const float at_play = RunBlocks(1);
-            Press("KEY_27", true);
-            RunMs(60);
-            Press("KEY_27", false);
+            Tap(kSceneKeys[0]);
+            RunMs(40);
             Press("KEY_26", false);
             RunMs(20);
-            Check(state()[5] == 1 && (state()[6] & 2), "scene-drop-morph: then PLAY, a drop to it");
+            Check(state()[5] == 1 && (state()[6] & 2), "scene-drop-morph: SHIFT + scene 1, then the blank one: a build-up");
+            Rgb a = {}, b = {};
+            for (int t = 0; t < 600; t++)
+            {
+                RunMs(1);
+                if (Max(SmtLedFull(kSlot1Led)) > Max(a))
+                    a = SmtLedFull(kSlot1Led);
+                if (Max(SmtLedFull(kSlot1Led - 1)) > Max(b))
+                    b = SmtLedFull(kSlot1Led - 1);
+            }
+            printf("      blinking: scene 1 %s, the blank scene %s\n", Hex(a).c_str(), Hex(b).c_str());
+            Check(a.r > 200 && a.g > 200 && a.b > 200 && b.r > 200 && b.g == 0 && b.b == 0,
+                  "scene-drop-morph: scene 1 blinks white, the blank scene red");
             std::vector<float> level;
             uint32_t pos = Probe().position;
             for (int b = 0; b < 5000; b++)
@@ -5750,15 +5850,20 @@ int main()
                 pos = now;
             }
             const size_t n = level.size();
-            printf("      dry %.4f, at PLAY %.4f, 100 blocks before the line %.4f, at it %.4f\n", dry,
-                   at_play, level[n - 101], level[n - 1]);
-            Check(level[n - 101] < at_play * .9f, "scene-drop-morph: the morph glides on after PLAY");
-            Check(fabsf(level[n - 1] - dry) < .03f * dry && n > 200,
-                  "scene-drop-morph: the blank scene on the line, dry");
+            printf("      dry %.4f, 100 blocks before the line %.4f, 2 %.4f, at it %.4f\n", dry,
+                   level[n - 101], level[n - 2], level[n - 1]);
+            // a glide: the level passes through the middle on its way down, not a jump
+            bool middle = false;
+            for (size_t i = 0; i < n / 2; i++)
+                middle |= level[i] > dry * .2f && level[i] < dry * .8f;
+            Check(n > 1000 && middle && level[n - 101] < dry * .1f,
+                  "scene-drop-morph: the morph to scene 1 glides on to the line");
+            Check(fabsf(level[n - 1] - dry) < .03f * dry, "scene-drop-morph: the blank scene on the line, dry");
             RunMs(300);
-            Check(!(state()[6] & 2) && state()[5] == 1, "scene-drop-morph: landed on the blank scene");
+            Check(!(state()[6] & 2) && state()[5] == 1 && !(state()[6] & 1),
+                  "scene-drop-morph: landed on the blank scene");
 
-            // SHIFT + scene 1 in one hold, let go; SHIFT + PLAY in another: stopped where it is
+            // SHIFT + scene 1 in one hold, let go; SHIFT + scene 1 in another: stopped where it is
             past_line();
             Press("KEY_26", true);
             RunMs(60);
@@ -5767,15 +5872,127 @@ int main()
             RunMs(1000);
             Press("KEY_26", true);
             RunMs(60);
-            Press("KEY_27", true);
-            RunMs(60);
-            Press("KEY_27", false);
+            Tap(kSceneKeys[1]);
             Press("KEY_26", false);
             RunMs(100);
             const float stopped = RunMs(300);
             RunMs(2500);
-            Check(!(state()[6] & 2) && fabsf(RunMs(300) - stopped) < .05f * stopped,
-                  "scene-drop-morph: SHIFT + PLAY without a scene key: the morph stopped where it was");
+            Check(!(state()[6] & 2) && (state()[6] & 1) && state()[5] == 2
+                      && fabsf(RunMs(300) - stopped) < .05f * stopped && stopped < dry * .9f,
+                  "scene-drop-morph: SHIFT + its blinking key in a later hold: stopped where it was, edited");
+
+            // a build-up stopped by its red key
+            Tap(kSceneKeys[0]);
+            RunMs(300);
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap(kSceneKeys[1]);
+            RunMs(40);
+            Tap(kSceneKeys[0]);
+            Press("KEY_26", false);
+            RunMs(300);
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap(kSceneKeys[0]);
+            Press("KEY_26", false);
+            RunMs(100);
+            Check(!(state()[6] & 2), "scene-drop-morph: SHIFT + the build-up's red key stops it too");
+        }});
+
+        // SHIFT + another scene in a later hold: the sequence running stopped where it got to,
+        // a new one from there, without a jump
+        cases.push_back({"scene-replace", [state] {
+            RunMs(kReadyMs);
+            filter_scene();
+            const float dry = RunBlocks(1);
+            past_line();
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap(kSceneKeys[1]);
+            RunMs(40);
+            Tap(kSceneKeys[1]);
+            Press("KEY_26", false);
+            RunMs(150); // over 2 bars: some way down
+            const float before = RunMs(20);
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap(kSceneKeys[0]);
+            Press("KEY_26", false);
+            const float after = RunMs(20);
+            printf("      dry %.4f, before %.4f, after %.4f\n", dry, before, after);
+            // where it got to isn't scene 1's closed filter: landing that first would fall silent
+            Check(before > dry * .1f && fabsf(after - before) < .05f * before && state()[5] == 1
+                      && (state()[6] & 2),
+                  "scene-replace: SHIFT + another scene: a morph to it from where the other got to");
+            RunMs(4500);
+            Check(!(state()[6] & 2) && state()[5] == 1 && fabsf(RunMs(300) - dry) < .03f * dry,
+                  "scene-replace: and it lands there");
+        }});
+
+        // the crossfader's protection: 2 detents with a press within 150 ms are a drop; 2
+        // detents alone take the crossfader 150 ms later; 1 detent nothing
+        cases.push_back({"scene-fader-guard", [state] {
+            RunMs(kReadyMs);
+            filter_scene();
+            auto fader_shown = [] {
+                const Rgb rev = PthLedFull(kTransportRevLed);
+                return rev.r > 100 && rev.r == rev.g && rev.g == rev.b;
+            };
+            past_line();
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap(kSceneKeys[1]);
+            Turn(5, 2);
+            RunMs(60);
+            Tap("ENC_5_SW");
+            RunMs(400);
+            Check(!fader_shown() && (state()[6] & 2), "scene-fader-guard: 2 detents and a press within 150 ms: no crossfader");
+            Press("KEY_26", false);
+            Rgb red = {};
+            for (int t = 0; t < 600; t++)
+            {
+                RunMs(1);
+                if (Max(SmtLedFull(kSlot1Led)) > Max(red))
+                    red = SmtLedFull(kSlot1Led);
+            }
+            Check(red.r > 200 && red.g == 0, "scene-fader-guard: a drop, its key red");
+            Tap(kSceneKeys[0]);
+            RunMs(300);
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap(kSceneKeys[1]);
+            Turn(5, 1);
+            RunMs(400);
+            Check(!fader_shown(), "scene-fader-guard: 1 detent: nothing");
+            Turn(5, 1);
+            RunMs(100);
+            Check(!fader_shown(), "scene-fader-guard: 2: not yet within 150 ms");
+            RunMs(200);
+            Check(fader_shown(), "scene-fader-guard: then the crossfader, the transport LEDs white");
+            Tap("ENC_5_SW");
+            Press("KEY_26", false);
+            RunMs(300);
+            Check(!(state()[6] & 2) && (state()[6] & 1), "scene-fader-guard: a press after it no drop; let go, it stops where it is");
+        }});
+
+        // PLAY has no part in the scene gestures any more: SHIFT + PLAY pauses the loop, the
+        // morph held runs on
+        cases.push_back({"scene-play", [state] {
+            RunMs(kReadyMs);
+            filter_scene();
+            Tap("KEY_28");
+            RunMs(1440);
+            Tap("KEY_28");
+            RunMs(500);
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap(kSceneKeys[1]);
+            Tap("KEY_27");
+            RunMs(100);
+            Check(Probe().loop_state == 3 && (state()[6] & 2), "scene-play: SHIFT + PLAY pauses, the morph held");
+            Press("KEY_26", false);
+            RunMs(4000);
+            Check(!(state()[6] & 2) && state()[5] == 2, "scene-play: let go, the morph lands");
         }});
 
         // CC 83 (channel 16): a drop to the scene given, on the next bar line, CC 9's later

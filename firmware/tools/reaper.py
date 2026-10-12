@@ -740,6 +740,57 @@ def daw_automation(r, d):
             "; ".join(kept[:4]) + (" ..." if len(kept) > 4 else "") if kept else "all %d" % n, "all stay")
 
 
+@case("daw-scenes", "8: #175 from REAPER's tracks on channel 16: CC 83 + CC 9 a drop; CC 3 during it "
+      "stops it and morphs instead; CC 83 during a morph a drop of its own; CC 81 stops one")
+def daw_scenes(r, d):
+    midisuite.two_scenes(r)
+    g = 0xB0 | (midisuite.GLOBAL - 1)
+    A = midisuite.A
+
+    def playing(events, seconds):
+        d.clear()
+        d.lane(4, events)
+        d.tempo(120)
+        d.locate(0)
+        d.play()
+        time.sleep(seconds)
+
+    def shown(s):
+        return "scene %d%s" % (s["scene"], ", morphing" if s["morphing"] else "")
+
+    # just after beat 0: a drop to scene 2 over 2 bars (CC 9 2, CC 83 2), so none lands before
+    # it's looked at; beat 1 (0.5 s): CC 3 1, a morph to scene 1
+    playing([(.1, g, 9, 2), (.1, g, 83, 127), (.12, g, 83, 2), (1., g, 3, 127), (1.02, g, 3, 1)], .3)
+    s = r.state()
+    r.check("beat 0, CC 83 2: a drop to scene 2 waits", s["morphing"] and s["scene"] == 2, shown(s), "scene 2, morphing")
+    time.sleep(.5)
+    s = r.state()
+    r.check("beat 1, CC 3 1: a morph to scene 1 instead", s["morphing"] and s["scene"] == 1, shown(s), "scene 1, morphing")
+    d.stop_transport()
+    s, k = midisuite.landed(r), r.knob("filter", 0)
+    r.check("it lands on scene 1, no drop to 2", abs(k - A) <= .01 and not s["morphing"],
+            "%.3f%s" % (k, ", morphing" if s["morphing"] else ""), "%.1f, scene 1's" % A)
+    # beat 0: a morph to scene 2; beat 1: CC 83 1, a drop to scene 1
+    playing([(.1, g, 3, 127), (.12, g, 3, 2), (1., g, 83, 127), (1.02, g, 83, 1)], .3)
+    s = r.state()
+    r.check("beat 0, CC 3 2: a morph to scene 2", s["morphing"] and s["scene"] == 2, shown(s), "scene 2, morphing")
+    time.sleep(.5)
+    s = r.state()
+    r.check("beat 1, CC 83 1 during the morph to 2: a drop to scene 1", s["morphing"] and s["scene"] == 1,
+            shown(s), "scene 1, morphing")
+    d.stop_transport()
+    s, k = midisuite.landed(r), r.knob("filter", 0)
+    r.check("it lands on scene 1", abs(k - A) <= .01 and not s["morphing"],
+            "%.3f%s" % (k, ", morphing" if s["morphing"] else ""), "%.1f, scene 1's" % A)
+    # beat 0: a morph to scene 2; beat 1: CC 81 up through 64
+    playing([(.1, g, 3, 127), (.12, g, 3, 2), (1., g, 81, 0), (1.02, g, 81, 127), (1.2, g, 81, 0)], .9)
+    d.stop_transport()
+    s = r.state()
+    r.check("beat 1, CC 81: stopped where it is, scene 2 edited",
+            not s["morphing"] and s["scene"] == 2 and s["flags"] & 1,
+            shown(s) + (", edited" if s["flags"] & 1 else ""), "scene 2, edited, no morph")
+
+
 @case("daw-ccreset", "8 (for MANUAL): REAPER as it comes sends each CC its tracks used back to 0 "
       "when it stops (\"Reset MIDI CC/Pitch on: playback stop\"), so the knobs automated go to 0; "
       "the other cases have it off", last=True)
@@ -1108,13 +1159,13 @@ def reference(r):
 
 # ======== running them ========
 
-def reset(r, d, snap):
+def reset(r, d, snap, scenes=False):
     if d.proc.poll() is None:
         d.cmd("stop")
         d.cmd("loop", "off")
         d.cmd("trace", "off")
         d.cmd("clear")
-    midisuite.reset(r, snap, False)
+    midisuite.reset(r, snap, scenes)
 
 
 def run_case(r, d, c, snap):
@@ -1145,7 +1196,7 @@ def run_case(r, d, c, snap):
     finally:
         try:
             if not midisuite.card_lost(r):
-                reset(r, d, snap)
+                reset(r, d, snap, c.id == "daw-scenes")  # its scenes put back, as midisuite's morphs'
         except (Exception, SystemExit) as e:
             print("   (putting things back: %s)" % e, file=sys.stderr)
     if r.lost:

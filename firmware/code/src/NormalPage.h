@@ -34,13 +34,12 @@
  *
  *  Scenes: a recall sends only the parameters that change, within one audio block and at the
  *  fast slew (FxChain::FastSlew), so an FX the two scenes share runs on untouched. SHIFT +
- *  a scene key morphs to it instead (FxMorph.h), landing on a bar line; the engine times it.
- *  SHIFT + a scene key, then PLAY drops to it hard on the bar line (#153, SceneControls::Drop),
- *  its key blinking red on the beat until then; SHIFT + PLAY without a scene key tapped stops a
- *  morph where it is; without one, PLAY works as ever. The transport knob
- *  turned while SHIFT still holds a morph is its crossfader (#66, SceneControls::FaderTurned):
- *  the glide in the hand, until SHIFT is let go (ReleaseMorph); the transport LEDs show it.
- *  A morph on MIDI's crossfader (CC 80) stays MIDI's: letting go of SHIFT doesn't end it.
+ *  a scene key starts a timed sequence instead (#175, SceneControls.h): a morph (FxMorph.h),
+ *  landing on a bar line, which the engine times; with SHIFT still held, the transport pressed
+ *  makes it a drop, turned its crossfader (#66: the glide in the hand, until SHIFT is let go,
+ *  ReleaseMorph; the transport LEDs show it), a second scene key a build-up to that one.
+ *  The scene morphed to blinks white on the beat, the one it drops to red. PLAY has no part
+ *  in it. A morph on MIDI's crossfader (CC 80) stays MIDI's: letting go of SHIFT doesn't end it.
  *  The card is written from MainLoop (SceneStore::Process), never here.
  *
  *  MIDI (MidiControl.h): notes and FRIZZ's SysEx keys and detents come as the hand's do (ui.h);
@@ -331,7 +330,10 @@ namespace chompi
                 // a release whose press the boot page had lets go of nothing
                 const bool held = Shift();
                 if (rising)
+                {
+                    ScopedIrqBlocker irq;
                     scene_ctl_.ShiftDown();
+                }
                 keys_.Chompi(rising);
                 if (!rising && held)
                     ReleaseMorph();
@@ -406,11 +408,22 @@ namespace chompi
             // something count as a SHIFT combo (keys_.Used): a key without a function doesn't
             // cancel a confirm or a latch in the making.
 
-            // transport press: back to 1x forward; SHIFT + press does nothing (it wrote a bug
-            // report until v0.11, now held on the settings page)
+            // transport press: back to 1x forward; SHIFT + press makes a held scene morph a drop
+            // (#175), and otherwise does nothing (it wrote a bug report until v0.11, now held on
+            // the settings page)
             if (buttonID == ENC_5_SW)
             {
-                if (!Shift() && LoopExists())
+                if (Shift())
+                {
+                    bool dropped;
+                    {
+                        ScopedIrqBlocker irq;
+                        dropped = scene_ctl_.TransportPressed();
+                    }
+                    if (dropped)
+                        keys_.Used();
+                }
+                else if (LoopExists())
                 {
                     keys_.Used();
                     engine_->looper.ResetSpeed();
@@ -556,10 +569,8 @@ namespace chompi
             switch (e.kind)
             {
             case Event::MORPH:
-                RemoteMorph(e.arg & 7, e.arg >> 3);
-                break;
             case Event::DROP:
-                RemoteDrop(e.arg & 7, e.arg >> 3);
+                RemoteMorph(e.arg & 7, e.arg >> 3, e.kind == Event::DROP);
                 break;
             case Event::STOP_MORPH:
                 FreezeMorph();
@@ -762,25 +773,24 @@ namespace chompi
                            });
         }
 
-        /** A morph over MIDI: as SHIFT + the scene key, tapped once per bar, and SHIFT let go,
-         *  unless the hand holds it, whose release then lets it glide */
-        void RemoteMorph(size_t slot, uint8_t bars)
+        /** A morph (CC 3) or a drop (CC 83) over MIDI: as SHIFT + the scene key, tapped once per
+         *  bar, for a drop the transport pressed, and SHIFT let go, unless the hand holds it,
+         *  whose release then starts it (SceneControls::Remote) */
+        void RemoteMorph(size_t slot, uint8_t bars, bool drop)
         {
             static_assert(midimap::kMorphBarsMax == kMaxMorphBars, "MIDI's bars, the morph's");
-            const auto result = ScenePressed(slot, true, bars);
-            if (result != SceneControls<PassthroughEngine>::Slot::REFUSED && !Shift())
-                ReleaseMorph();
-        }
-
-        /** A drop over MIDI (CC 83): as SHIFT + the scene key, tapped once per bar, then PLAY */
-        void RemoteDrop(size_t slot, uint8_t bars)
-        {
-            bool dropped;
+            bool started;
             {
                 ScopedIrqBlocker irq;
-                dropped = scene_ctl_.DropTo(slot, bars);
+                started = scene_ctl_.Remote(slot, bars, drop);
+                if (started)
+                {
+                    hand_fader_ = false; // a new morph: no fader has it yet
+                    if (!Shift())
+                        engine_->ReleaseFxMorph();
+                }
             }
-            if (!dropped)
+            if (!started)
                 SceneRefusedBlink(slot);
         }
 
@@ -1307,23 +1317,19 @@ namespace chompi
             return true;
         }
         inline void ShiftUsed() { fx_.ShiftUsed(); }
+        /** CC 81: the sequence stopped where it is */
         bool FreezeMorph()
         {
             ScopedIrqBlocker irq;
             return scene_ctl_.FreezeMorph();
         }
-        bool DropScene()
-        {
-            ScopedIrqBlocker irq;
-            return scene_ctl_.Drop();
-        }
-        /** SHIFT let go: a morph started with it glides now (FxMorph::Release), or the hand's
-         *  crossfader ends where it is (SceneControls::EndFade). One on MIDI's crossfader
-         *  (CC 80) stays MIDI's */
+        /** SHIFT let go: a sequence started with it runs now, its bars counted from here
+         *  (FxMorph::Release), or the hand's crossfader ends where it is
+         *  (SceneControls::EndFade). One on MIDI's crossfader (CC 80) stays MIDI's */
         void ReleaseMorph()
         {
             ScopedIrqBlocker irq;
-            if (!(hand_fader_ && scene_ctl_.EndFade()))
+            if (!(scene_ctl_.ShiftUp() && scene_ctl_.EndFade()))
                 engine_->ReleaseFxMorph();
             hand_fader_ = false;
         }
@@ -1351,6 +1357,14 @@ namespace chompi
         /** Once per frame, before drawing: what follows from time and the looper's state */
         void Update(uint32_t now)
         {
+            // the detents counted for the crossfader, once they're old enough (#175)
+            if (scene_ctl_.FaderWaiting())
+            {
+                ScopedIrqBlocker irq;
+                if (scene_ctl_.Tick(now))
+                    hand_fader_ = true;
+            }
+
             // an erase starting, now or at the loop's end: the input fades in while the loop
             // fades out. A fade too short to be seen still ends in an empty looper.
             const Looper::State looper_state = engine_->looper.GetState();
@@ -1569,10 +1583,8 @@ namespace chompi
             engine_->SetMix(mix_);
         }
 
-        /** A scene key, the hand's or MIDI's: a new morph runs over bars bar lines. A refusal
-         *  blinks the slot */
-        SceneControls<PassthroughEngine>::Slot ScenePressed(size_t slot, bool shift,
-                                                            uint8_t bars = 1)
+        /** A scene key, the hand's or a program change's. A refusal blinks the slot */
+        SceneControls<PassthroughEngine>::Slot ScenePressed(size_t slot, bool shift)
         {
             SceneControls<PassthroughEngine>::Slot result;
             {
@@ -1580,11 +1592,7 @@ namespace chompi
                 ScopedIrqBlocker irq;
                 result = scene_ctl_.Press(slot, shift);
                 if (result == SceneControls<PassthroughEngine>::Slot::MORPH)
-                {
                     hand_fader_ = false; // a new morph: no fader has it yet
-                    for (uint8_t bar = 1; bar < bars; bar++)
-                        scene_ctl_.MorphMore();
-                }
             }
             if (result == SceneControls<PassthroughEngine>::Slot::REFUSED)
                 SceneRefusedBlink(slot);
@@ -1672,10 +1680,11 @@ namespace chompi
                         mix = fmaxf(mix, 1.f - t);
                     level = kFxOffLevel + (1.f - kFxOffLevel) * mix;
                 }
-                else if (s == scene_ctl_.Morphing())
+                else if (s == scene_ctl_.Morphing() || s == scene_ctl_.DropSlot())
                 {
-                    // morphing to it: blinking on the FX clock's beats; red for a drop
-                    if (scene_ctl_.Dropping())
+                    // morphing to it: blinking on the FX clock's beats; red for what a drop
+                    // lands on (#175: the build-up's B, white its A)
+                    if (s == scene_ctl_.DropSlot())
                         color = red;
                     const uint32_t pos = engine_->FxClockPosition();
                     level = pos % kPulsesPerBeat < kPulsesPerBeat / 2 ? 1.f : 0.f;
@@ -1917,21 +1926,21 @@ namespace chompi
 
         /** Playing: a turn steps the speed in semitones, SHIFT + turn along the ladder (see
          *  Looper::StepSpeed). Paused: a turn scrubs, SHIFT + turn does nothing. SHIFT + turn
-         *  while SHIFT holds a morph: the crossfader, loop or not */
+         *  while SHIFT holds a scene sequence: the crossfader's, loop or not, or nothing
+         *  (SceneControls::TransportTurned) */
         void TransportTurned(int16_t turns)
         {
-            // SHIFT still holding a morph, or the crossfader already in the hand: the
-            // crossfader, with or without a loop
             if (Shift())
             {
-                bool fader;
+                bool scenes;
                 {
                     ScopedIrqBlocker irq;
-                    fader = scene_ctl_.FaderTurned(turns);
+                    scenes = scene_ctl_.TransportTurned(turns, System::GetNow());
+                    if (scene_ctl_.HandFader())
+                        hand_fader_ = true;
                 }
-                if (fader)
+                if (scenes)
                 {
-                    hand_fader_ = true;
                     keys_.Used();
                     return;
                 }

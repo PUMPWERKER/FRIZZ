@@ -670,6 +670,80 @@ int main()
               "follow: at half the clock's tempo, Song Position in the sender's 16ths");
     }});
     // a free loop plays on through Start, and isn't moved by Song Position
+    // ======== #175: a drop on the clock's bar line, counted from SHIFT's release ========
+
+    // SHIFT + the blank scene twice, the transport pressed, SHIFT let go: its key lit white (the
+    // blank scene active) on the second bar line from the release, under a sequencer's and a
+    // DAW's jitter; the key shows it at the next frame, a few ms on
+    for (const Sender* s : {&kSequencer, &kDaw})
+        cases.push_back({"drop-line", [s] {
+            StartClock(*s, 120.);
+            RunMs(kReadyMs);
+            RunMs(3000);
+            // a third into a bar, so the release isn't near a line
+            RunUntil([] { return Probe().position % 48 == 16; }, 3000);
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap("KEY_18");
+            RunMs(40);
+            Tap("KEY_18");
+            RunMs(40);
+            Tap("ENC_5_SW");
+            Press("KEY_26", false);
+            uint32_t pos = Probe().position, lines = 0;
+            double second = 0., lit = 0.;
+            while (lit == 0. && BlockMs() < 30000.)
+            {
+                RunBlocks(1);
+                const uint32_t now = Probe().position;
+                if (now != pos && now % 48 == 0 && ++lines == 2)
+                    second = BlockMs();
+                pos = now;
+                // from the first line on: before it, the key blinks (white until the press shows)
+                const Rgb c = SmtLedFull(2);
+                if (lines > 0 && c.r > 200 && c.g > 200 && c.b > 200)
+                    lit = BlockMs();
+            }
+            Report("%sthe second bar line at %.1f ms, the key white at %.1f ms", Name("drop", *s, 120.).c_str(),
+                   second, lit);
+            Check(second > 0. && lit >= second && lit - second < 20.,
+                  (Name("drop-line", *s, 120.) + "the drop lands on the second bar line from the release").c_str());
+        }});
+
+    // ======== #174: a standstill: the grid runs on at 50 BPM, then snaps back onto the loop ========
+
+    cases.push_back({"standstill", [] {
+        StartTrs(Clock(120.));
+        RunMs(kReadyMs);
+        StopAt(StartQuantized(), 1990.); // a bar at 120
+        RunUntil([] { return Probe().loop_state == 2; }, 3000);
+        RunMs(1000);
+        Turn(5, -98); // 1/16x, then a standstill
+        RunMs(4000);
+        PulseCounter pulses;
+        pulses.Reset();
+        const double from = BlockMs();
+        while (BlockMs() < from + 6000.)
+        {
+            RunBlocks(1);
+            pulses.Step();
+        }
+        const ClockState still = Probe();
+        Report("standstill: speed %.4f, FX at %d BPM, %llu pulses in 6 s (60 at 50 BPM)", still.loop_speed,
+               still.tempo, static_cast<unsigned long long>(pulses.count));
+        Check(still.loop_speed == 0.f && still.tempo == 50 && pulses.count >= 59 && pulses.count <= 61,
+              "standstill: the loop stands, the grid runs on at 50 BPM");
+        Tap("ENC_5_SW"); // 1x
+        RunMs(3000);
+        const ClockState c = Probe();
+        const int loop_pulses = static_cast<int>(c.loop_beats * 12);
+        const int on_loop = static_cast<int>(c.loop_pos * static_cast<float>(loop_pulses));
+        const int grid = static_cast<int>(c.position) % loop_pulses;
+        Report("standstill: back at 1x, the loop (%d pulses) at pulse %d, the grid at %d", loop_pulses, on_loop, grid);
+        Check(c.tempo == 120 && (grid - on_loop + loop_pulses) % loop_pulses <= 1,
+              "standstill: turned out of it, the grid back on the loop, at its tempo");
+    }});
+
     cases.push_back({"follow-free", [] {
         RunMs(kReadyMs);
         Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 1, 1, 0xF7});

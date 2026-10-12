@@ -168,7 +168,7 @@ public:
             tempo_clock_.Tap(tap);
         const uint32_t pulses = tempo_clock_.Process(
             size, looper.GetPosition(), looper.GetActualSpeed(),
-            looper.GetState() == chompi::Looper::State::PAUSED);
+            looper.GetState() == chompi::Looper::State::PAUSED || looper.Standing());
         fx_.SetTempo(tempo_clock_.GetFxBpm(), tempo_clock_.PulseSamples());
         // where the loop was before this block's pulses, for MIDI out's next 16th (MidiOut.h)
         next_16th_ = tempo_clock_.HasLoop() ? tempo_clock_.NextLoopPulseOn(chompi::kPulsesPer16th) : 0;
@@ -361,12 +361,12 @@ public:
     }
     bool AddFxMorphBar() { return morph_.AddBar(tempo_clock_.PulsesPerBarLine()); }
     void LandFxMorph() { morph_.Land(); }
-    /** Makes the morph a drop (FxMorph::Drop) on the FX clock's next bar line; with the
-     *  audio interrupt blocked */
+    /** Makes the held morph a drop on its landing, gliding there first for a build-up
+     *  (FxMorph::Drop); with the audio interrupt blocked */
     bool DropFxMorph(const float to[chompi::kNumFx][chompi::kNumFxParams], uint16_t ui_on,
-                     uint16_t on)
+                     uint16_t on, bool glide)
     {
-        return morph_.Drop(to, ui_on, on, tempo_clock_.PulsesToBarLine());
+        return morph_.Drop(to, ui_on, on, glide);
     }
     inline bool FxDropping() const { return morph_.Dropping(); }
     /** Stops the morph where it is (FxMorph::Freeze); with the audio interrupt blocked */

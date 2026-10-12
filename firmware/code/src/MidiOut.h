@@ -20,6 +20,7 @@
  *    the clock's bar line, and a Start would throw longer patterns back to their bar 1);
  *  - a pause sends Stop; playing on sends Song Position at the next 16th right away, then
  *    Continue with that 16th's tick, so gear that ignores Song Position resumes in step too;
+ *    a standstill (the transport knob's hold zone, Looper::Standing) does the same;
  *  - a playing loop taken back to its start by MIDI's Start (Looper::Follow) sends Start with
  *    its first tick again.
  *  Erasing the loop sends nothing: the out passes the incoming clock on again, or runs on at
@@ -60,7 +61,9 @@ public:
         ports_ = ports;
         const TempoClock& tempo = engine.Tempo();
         const bool loop = tempo.HasLoop();
-        const bool paused = loop && engine.looper.GetState() == Looper::State::PAUSED;
+        // a standstill (the transport's hold zone, #174) is a pause to the gear behind too
+        const bool paused = loop && (engine.looper.GetState() == Looper::State::PAUSED
+                                     || engine.looper.Standing());
         const bool passing = clock_->HasClock() && !loop;
         MidiClock::Source in_from;
         const uint8_t in = clock_->TakeTransport(in_from);

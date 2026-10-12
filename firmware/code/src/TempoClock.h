@@ -7,7 +7,9 @@
  *     beat 1 is the loop's start and the grid follows the transport: faster, slower,
  *     reversed (the positions then count down). While the loop is paused, the grid runs on
  *     by itself at that tempo, so the FX keep working on the live input; scrubbing doesn't
- *     move it, and on resume it snaps back to the loop's position at the next pulse. The
+ *     move it, and on resume it snaps back to the loop's position at the next pulse. So
+ *     does it at a standstill (the transport's hold zone, Looper::Standing, #174): there the
+ *     tempo is the slowest speed's, which kMinBpm holds, and a morph lands on time. The
  *     tempo is the loop's times its speed. A quantized loop knows its beats; an
  *     unquantized one fits the tempo set before it (FitBeats) or, if none was, a guess at
  *     80-160 BPM (GuessBeats). A tap (Tap) refits the beats.
