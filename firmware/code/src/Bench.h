@@ -143,7 +143,7 @@ public:
     {
         if (!running_)
             return in;
-        inputs_[0] = in[0];
+        inputs_[0] = mic_ ? in_l_ : in[0]; // the tune into the mic, in its segment
         inputs_[1] = in[1];
         inputs_[2] = in_l_;
         inputs_[3] = in_r_;
@@ -327,7 +327,7 @@ public:
 
 private:
     // what a segment plays
-    enum Flags : uint8_t
+    enum Flags : uint16_t
     {
         LOOP = 1,     // a loop plays (recorded just before the first of these)
         STRESS = 2,   // the harness's STRESS: every feedback at the top
@@ -339,12 +339,14 @@ private:
         PAGE2 = 32,   // page 2 off its defaults on every effect: its Mix, Band and Level, so
                       // FxOutput.h's crossover and blend run (at their defaults they don't),
                       // and each effect's own knobs (the sends' freeze stays off)
+        DRY = 128,    // AUX dry (#152): the input past the effects and the compressor
+        MIC = 256,    // the mic (#152): the tune into it, not on the master
     };
     struct Segment
     {
         const char* name;
         uint16_t fx; // bit FxId: on
-        uint8_t flags;
+        uint16_t flags;
     };
     static constexpr uint16_t Bit(int fx) { return static_cast<uint16_t>(1u << fx); }
     // the effects with a sound: the chaos key has a segment of its own
@@ -355,7 +357,7 @@ private:
     static const uint16_t kScene4 = (1u << FX_SHIFTER) | (1u << FX_FOLDER) | (1u << FX_CRUSHER)
                                     | (1u << FX_SLICER);
 
-    static constexpr size_t kNumSegments = 25;
+    static constexpr size_t kNumSegments = 27;
     static const Segment kSegments[kNumSegments];
 
     static const size_t kMaxBlock = 48;
@@ -391,11 +393,18 @@ private:
             for (size_t fx = 0; fx < kNumFx; fx++)
                 engine.SetFxOn(fx, false);
             engine.SetMix(0.f);
+            mic_ = false;
+            engine.SetMicInput(false);
+            engine.SetAuxDry(false);
             return;
         }
         const Segment& seg = kSegments[s];
         engine.SetMainGain(.75f);
-        engine.SetInputGain(.75f);
+        engine.SetInputGain(false, .75f);
+        engine.SetInputGain(true, .75f);
+        engine.SetAuxDry(seg.flags & DRY);
+        mic_ = seg.flags & MIC;
+        engine.SetMicInput(mic_);
         engine.SetCompParam(MasterComp::kThreshold, seg.flags & (COMP | SCENE4) ? 1.f : .3f);
         for (size_t fx = 0; fx < kNumFx; fx++)
         {
@@ -491,7 +500,7 @@ private:
      *  each time keeps only the bytes from `from` on that fit buf */
     struct Text
     {
-        static const size_t kMax = 8192;    // the file at most
+        static const size_t kMax = 12288;   // the file at most (three windows)
         static const size_t kWindow = 4096; // whole sectors, so each write starts on one
         alignas(32) char buf[kWindow]; // whole cache lines for the SD DMA, as SceneStore's
         size_t pos = 0;  // in the file
@@ -698,6 +707,7 @@ private:
     FATFS* fs_ = nullptr;
     const char* path_ = nullptr;
     volatile bool started_ = false, running_ = false;
+    bool mic_ = false; // the tune goes into the mic (MIC)
     bool settling_ = false;
     bool written_ = false, stored_ = false;
     volatile size_t segment_ = 0;
@@ -755,6 +765,9 @@ const Bench::Segment Bench::kSegments[Bench::kNumSegments] = {
     // the chaos key gating the inserts on the loop, every 16th, and scrambling it (after the
     // others, as it came later)
     {"loop+inserts+chaos", Bench::kInserts | Bench::Bit(FX_CHAOS), Bench::LOOP | Bench::CHAOS},
+    // the inputs (#152): loop+inserts with AUX dry beside them, and with the mic
+    {"loop+inserts+dry", Bench::kInserts, Bench::LOOP | Bench::DRY},
+    {"loop+inserts+mic", Bench::kInserts, Bench::LOOP | Bench::MIC},
     // last: the segment after it would start with every insert's page 2 settling back to its
     // defaults, page 2's cost, as the chaos segment did after it (114 % for a block)
     {"loop+everything+page2", Bench::kEverything, Bench::LOOP | Bench::COMP | Bench::PAGE2},

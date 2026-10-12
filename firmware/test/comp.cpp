@@ -229,7 +229,7 @@ static void TestCeiling()
                 freezer_mem_l, freezer_mem_r, kFreezerFrames,
                 tapestop_mem_l, tapestop_mem_r, kTapeStopFrames);
     engine.SetMainGain(1.f);
-    engine.SetInputGain(1.f);
+    engine.SetInputGain(false, 1.f);
     engine.SetCompParam(MasterComp::kThreshold, 1.f);
     engine.SetCompParam(MasterComp::kRatio, 0.f);
     engine.SetCompParam(MasterComp::kAttack, 1.f);

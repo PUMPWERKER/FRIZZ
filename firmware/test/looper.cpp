@@ -1,7 +1,8 @@
 // looper.cpp: checks the looper (Looper.h) on the host, without MIDI clock: a free recording
 // plays back what was recorded at its length, play / pause, erase, the speed ladder and the
-// refused quantized record, a glide that lands exactly on its speed, and memory that wasn't
-// cleared at boot sounding the same as cleared. Exits 0 when everything passes. Run by unit.sh looper.
+// refused quantized record, a glide that lands exactly on its speed, memory that wasn't cleared at
+// boot sounding the same as cleared, and the soft limit on what's written. Exits 0 when everything
+// passes. Run by unit.sh looper.
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -419,6 +420,61 @@ static void TestUnclearedMemory()
           "memory not cleared before Init: the loop sounds the same, sample for sample");
 }
 
+/** Records amp * a 500 Hz sine (left; the right at half) for blocks, plays it back once: the
+ *  playback's peak, and its worst departure from the sine scaled by the gain the peak shows
+ *  (past the start's attack and the loop-point crossfade) */
+static void SineLoop(float amp, size_t blocks, float& peak, float& worst)
+{
+    looper.Erase();
+    for (int b = 0; b < 1000 && looper.GetState() != Looper::State::EMPTY; b++)
+        Block();
+    looper.StartRecording(false);
+    float in_l[kBlock], in_r[kBlock], out_l[kBlock], out_r[kBlock];
+    size_t n = 0;
+    for (size_t b = 0; b <= blocks; b++)
+    {
+        if (b == blocks)
+            looper.StopRecording();
+        for (size_t i = 0; i < kBlock; i++, n++)
+        {
+            in_l[i] = amp * sinf(2.f * 3.14159265f * 500.f * n / 48000.f);
+            in_r[i] = .5f * in_l[i];
+        }
+        looper.Process(in_l, in_r, out_l, out_r, kBlock);
+    }
+    std::vector<float> got;
+    for (size_t b = 0; b < blocks - 1; b++)
+    {
+        float zl[kBlock] = {}, zr[kBlock] = {};
+        looper.Process(zl, zr, out_l, out_r, kBlock);
+        got.insert(got.end(), out_l, out_l + kBlock);
+    }
+    peak = 0.f;
+    for (size_t i = got.size() / 2; i < got.size(); i++)
+        peak = fmaxf(peak, fabsf(got[i]));
+    const float gain = peak / amp;
+    worst = 0.f;
+    for (size_t i = got.size() / 2; i < got.size(); i++)
+        worst = fmaxf(worst, fabsf(got[i] - gain * amp * sinf(2.f * 3.14159265f * 500.f * (i + kBlock) / 48000.f)));
+}
+
+/** The soft limit (#152): a hot input is held under kLoopCeiling, its shape kept (not
+ *  clipped); one under the ceiling is recorded as it came; a loud recording leaves the next
+ *  one alone */
+static void TestSoftLimit()
+{
+    looper.Init(mem, &midi_clock);
+    float peak, worst;
+    SineLoop(.9f, 1000, peak, worst);
+    Check(fabsf(peak - .9f) < .001f && worst < .001f, "under the ceiling: recorded as it came");
+    SineLoop(2.25f, 1000, peak, worst);
+    printf("      2.25 in: peak %.4f, worst departure from a sine %.5f\n", peak, worst);
+    Check(peak <= kLoopCeiling + .0001f && peak > kLoopCeiling - .01f, "a hot input: held at the ceiling");
+    Check(worst < .002f, "a hot input: a sine still, not clipped");
+    SineLoop(.5f, 1000, peak, worst);
+    Check(fabsf(peak - .5f) < .001f && worst < .001f, "after a loud recording: the next as it came");
+}
+
 int main()
 {
     TestRecordAndPlay();
@@ -428,5 +484,6 @@ int main()
     TestEraseAtEnd();
     TestGlideArrives();
     TestUnclearedMemory();
+    TestSoftLimit();
     return Finish();
 }

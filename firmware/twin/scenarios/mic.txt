@@ -1,11 +1,17 @@
-# The input (#113): a cable in AUX picks AUX; the settings page's upper A# picks the mic by
-# hand, and AUX again, not saved. On the device AUX has its cable in, as the twin has at first
+# The input (#113, #152): a cable in AUX picks AUX; the settings page's upper A# steps by hand
+# through AUX through the effects, AUX dry and the mic, and round again. AUX's variant is
+# saved (on the device play keeps it in RAM), the source isn't. On the device AUX has its
+# cable in, as the twin has at first
 input sine 220 0.3
 at 6000
 toggle 1
 wait 300
-# AUX: the upper A# green
+# AUX through the effects: the upper A# green
 expect led smt 9 00fc00
+tap KEY_25
+wait 300
+# AUX dry: white
+expect led smt 9 fcfcfc
 tap KEY_25
 wait 300
 # the mic: magenta

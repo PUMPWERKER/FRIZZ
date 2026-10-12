@@ -5,9 +5,13 @@
  *  routes the hardware to it and draws. MANUAL.md describes every control; what's here is what the manual doesn't say.
  *
  *  SHIFT is the CHOMPI key held. VOLUME's page 3 sets the headphone feed, from the master out
- *  to the dry input (passthroughEngine.h). The mode switch up shows the settings page instead
+ *  to the dry input (passthroughEngine.h). Its page 2 sets the input gain of the source heard
+ *  (SettingsPage.h keeps one per source, on the card); its LED there is the input's meter, red
+ *  where the loop's soft limit takes it (Looper.h's kLoopCeiling), the gain's colour for
+ *  kGainShownMs after a turn. The mode switch up shows the settings page instead
  *  (SettingsPage.h, ShowSettings): the hand's keys go there, while MIDI's still come here,
- *  and its settings go to the master file as the compressor's knobs do.
+ *  and its settings go to the master file as the compressor's knobs do. VOLUME works there
+ *  too, handled here: its turns and presses, pages 1 and 2 only.
  *
  *  The CHOMPI, PLAY and LOOP keys' rules are in PlayKeys.h: SHIFT, the confirm tap in a scene
  *  mode, the looper's combos, tap tempo (TapTempo.h). This page is its Host. Every other key
@@ -79,7 +83,6 @@ namespace chompi
     static const uint16_t kSettingsKeyBase = 64;
 
     static const float kDefaultOutGain = .75f;
-    static const float kDefaultInGain = .75f;
     static const float kDefaultMix = 0.f; // fully dry at power-on, nothing recorded yet
 
     // VOLUME's pages, in the order a press steps through them
@@ -172,6 +175,15 @@ namespace chompi
     static const uint32_t kScenePulseMs = 1000;     // the active scene, edited
 
     static const float kVuDim[3] = {.1f, .1f, .1f}; // the VU meter's floor
+    // the input's meter on VOLUME's page 2: dim to green to yellow from kInMeterFloorDb to the
+    // loop's ceiling, red at it, held kInRedMs; the gain's colour kGainShownMs after a turn
+    static const float kInMeterFloorDb = -40.f;
+    static const float kInMeterFall = .9f; // a frame's, ~20 ms each
+    static const uint32_t kInRedMs = 300;
+    static const uint32_t kGainShownMs = 1000;
+    // the settings page's VOLUME LED shows its page this long after a turn or press, then
+    // the battery again
+    static const uint32_t kSettingsVolumeMs = 2000;
 
     class NormalPage : public daisy::UiPage
     {
@@ -189,7 +201,6 @@ namespace chompi
 
             // the engine only hears about a value when it changes, so push them all now
             SetOutGain(kDefaultOutGain);
-            SetInGain(kDefaultInGain);
             SetMix(kDefaultMix);
             SetHpCue(0.f); // the headphones mirror the master at power-on
 
@@ -198,7 +209,8 @@ namespace chompi
             for (size_t p = 0; p < kNumFxParams; p++)
                 fx_.SetComp(p, scenes_->master.comp[p]);
             fx_.TakeCompChanged();
-            // and the settings page's: the mono input, the clock's factor, the LEDs
+            // and the settings page's: the mono input, the clock's factor, the LEDs, the input
+            // gains and AUX's variant
             settings_.Init(engine_, midi_, hw_, scenes_->master);
             scene_ctl_.Init(scenes_->scenes, &fx_);
             keys_.Init(this);
@@ -260,31 +272,25 @@ namespace chompi
                 if (settings_.BugReportHeld(now))
                     log_->RequestWrite();
                 settings_.Draw(now, Shift());
+                // VOLUME's page for a while after it was touched, over the battery
+                const bool volume = now - vol_touched_ < kSettingsVolumeMs;
+                MeterInput(now, volume && SettingsVolumePage() == kInGainPage);
+                if (volume)
+                    DrawVolumeLed(now, SettingsVolumePage());
                 DrawLogLeds(now);
                 fill_led_data();
                 return;
             }
 
-            float rgb[3];
-
+            MeterInput(now, page_ == kInGainPage);
             if (Shift())
+            {
+                float rgb[3];
                 Xfade(green, purple, mix_, rgb);
-            else if (page_flash_.Active(now))
-            {
-                // a page picked: blinks its number in white
-                rgb[0] = rgb[1] = rgb[2] = page_flash_.BlinkLit(now) ? 1.f : 0.f;
+                SetPthLedFloat(kVolumeLed, rgb[0], rgb[1], rgb[2]);
             }
-            else if (page_ == kOutGainPage)
-            {
-                Xfade4(kVuDim, green, yellow, pink, engine_->GetVUSample(), rgb);
-                for (float& c : rgb)
-                    c *= out_gain_;
-            }
-            else if (page_ == kInGainPage)
-                Xfade(blue, red, in_gain_, rgb);
             else
-                Xfade(white, green, hp_cue_, rgb);
-            SetPthLedFloat(kVolumeLed, rgb[0], rgb[1], rgb[2]);
+                DrawVolumeLed(now, page_);
 
             DrawLooperLeds(now);
             DrawLogLeds(now);
@@ -309,9 +315,12 @@ namespace chompi
             if (buttonID >= kSettingsKeyBase)
             {
                 const int key = buttonID - kSettingsKeyBase;
-                settings_.Held(key, rising, System::GetNow());
-                if (rising && settings_.Key(key))
-                    MasterChanged(System::GetNow());
+                const uint32_t now = System::GetNow();
+                settings_.Held(key, rising, now);
+                if (key == static_cast<int>(Hardware::SwId::ENC_6_SW))
+                    SettingsVolumePressed(rising, now);
+                else if (rising && settings_.Key(key))
+                    MasterChanged(now);
                 return true;
             }
             switch (buttonID)
@@ -464,6 +473,11 @@ namespace chompi
             }
             else if (encoderID == kVolumeEncoder)
             {
+                if (show_settings_)
+                {
+                    SettingsVolumeTurned(turns);
+                    return true;
+                }
                 keys_.Used();
                 VolumeTurned(turns);
             }
@@ -569,12 +583,20 @@ namespace chompi
                     fx_.SetComp(param, value, false);
                 HeardKey(id / kKeyParams, param);
             }
+            else if (id == kSource)
+            {
+                // CC 84: 0-42 AUX through the effects, 43-84 AUX dry, 85-127 the mic; as A#
+                // on the settings page, but the card doesn't get it (#97)
+                using Input = PassthroughEngine::Input;
+                settings_.SetInput(raw < 43 ? Input::AUX_FX : raw < 85 ? Input::AUX_DRY : Input::MIC);
+                Heard(feedback::kSource);
+            }
             else if (id <= kHpCue)
             {
                 if (id == kOutGain)
                     SetOutGain(value);
                 else if (id == kInGain)
-                    SetInGain(value);
+                    SetInGain(value, false); // not for the card (#97)
                 else if (id == kMix)
                     SetMix(value);
                 else
@@ -627,7 +649,7 @@ namespace chompi
                 v = KnobTo7(out_gain_);
                 return true;
             case kInGain:
-                v = KnobTo7(in_gain_);
+                v = KnobTo7(settings_.InGain());
                 return true;
             case kMix:
                 v = KnobTo7(mix_);
@@ -641,6 +663,9 @@ namespace chompi
             case kFader:
                 v = KnobTo7(scene_ctl_.FaderPos());
                 return hand_fader_;
+            case kSource:
+                v = kSourceTo7[static_cast<uint8_t>(engine_->GetInput())];
+                return true;
             }
             return false;
         }
@@ -775,12 +800,13 @@ namespace chompi
                 d[n++] = page_;
                 n = Put14(d, n, KnobToMidi14(mix_));
                 n = Put14(d, n, KnobToMidi14(out_gain_));
-                n = Put14(d, n, KnobToMidi14(in_gain_));
+                n = Put14(d, n, KnobToMidi14(settings_.InGain()));
                 n = Put14(d, n, KnobToMidi14(hp_cue_));
                 n = Put14(d, n, static_cast<uint16_t>(engine_->FxBpm() * 10.f + .5f));
                 // the mode switch: 1 if it stands up, plus SysEx's setting (kCmdSwitch) x2
                 d[n++] = static_cast<uint8_t>((hw_->GetToggleState() ? 0 : 1) | midi_->Switch() << 1);
                 d[n++] = static_cast<uint8_t>(fx_.Page()); // the FX knobs' page, 0 or 1
+                d[n++] = static_cast<uint8_t>(engine_->GetInput()); // AUX, AUX dry, the mic
                 break;
             }
             case kCmdParams:
@@ -1099,7 +1125,7 @@ namespace chompi
             }
             if (group == kGroupVolume)
             {
-                const float gains[] = {out_gain_, in_gain_, mix_, hp_cue_};
+                const float gains[] = {out_gain_, settings_.InGain(), mix_, hp_cue_};
                 for (size_t i = 0; i < 4; i++)
                     v[i] = KnobToMidi14(gains[i]);
                 return 4;
@@ -1142,7 +1168,10 @@ namespace chompi
                 if (index == 0)
                     SetOutGain(value);
                 else if (index == 1)
-                    SetInGain(value);
+                {
+                    SetInGain(value); // as VOLUME's page 2: to the card
+                    MasterChanged(System::GetNow());
+                }
                 else if (index == 2)
                     SetMix(value);
                 else
@@ -1372,7 +1401,10 @@ namespace chompi
             else if (page_ == kOutGainPage)
                 SetOutGain(out_gain_ + inc);
             else if (page_ == kInGainPage)
-                SetInGain(in_gain_ + inc);
+            {
+                SetInGain(settings_.InGain() + inc);
+                MasterChanged(System::GetNow());
+            }
             else
                 SetHpCue(hp_cue_ - detents * kHpCueStep); // left towards the dry input
         }
@@ -1406,10 +1438,100 @@ namespace chompi
             out_gain_ = fclamp(gain, 0.f, 1.f);
             engine_->SetMainGain(out_gain_);
         }
-        void SetInGain(float gain)
+        /** The input gain of the source heard (SettingsPage::SetInGain), kept for the card unless
+         *  MIDI's (keep false); its colour on VOLUME's LED for kGainShownMs, instead of the meter */
+        void SetInGain(float gain, bool keep = true)
         {
-            in_gain_ = fclamp(gain, 0.f, 1.f);
-            engine_->SetInputGain(in_gain_);
+            settings_.SetInGain(gain, keep);
+            gain_turned_ = System::GetNow();
+        }
+
+        /** VOLUME's page on the settings page: 1 or 2, page 3 shown as 1 there */
+        inline uint8_t SettingsVolumePage() const
+        {
+            return page_ == kInGainPage ? kInGainPage : kOutGainPage;
+        }
+        /** VOLUME turned on the settings page: page 1 or 2 as on the play page, SHIFT + turn
+         *  nothing */
+        void SettingsVolumeTurned(int16_t detents)
+        {
+            vol_touched_ = System::GetNow();
+            if (Shift() || settings_.ShiftHeld())
+                return;
+            if (SettingsVolumePage() == kInGainPage)
+            {
+                SetInGain(settings_.InGain() + detents * kVolumeStep);
+                MasterChanged(vol_touched_);
+            }
+            else
+                SetOutGain(out_gain_ + detents * kVolumeStep);
+        }
+        /** VOLUME pressed on the settings page: on its release, page 1 or 2, unless it was SHIFT
+         *  + press (the bug report's hold, SettingsPage::Held) */
+        void SettingsVolumePressed(bool down, uint32_t now)
+        {
+            vol_touched_ = now;
+            if (down)
+            {
+                vol_down_ = true;
+                vol_shift_ = Shift() || settings_.ShiftHeld();
+                return;
+            }
+            if (vol_down_ && !vol_shift_)
+            {
+                page_ = SettingsVolumePage() == kInGainPage ? kOutGainPage : kInGainPage;
+                page_flash_.Start(now, (page_ + 1) * 2 * kSignalBlinkMs);
+            }
+            vol_down_ = false;
+        }
+
+        /** The input's meter while page 2 shows it: the engine's peaks, falling back slowly */
+        void MeterInput(uint32_t now, bool on)
+        {
+            engine_->MeterInput(on);
+            const float peak = engine_->TakeInputPeak();
+            if (!on)
+            {
+                in_meter_ = 0.f;
+                return;
+            }
+            in_meter_ = fmaxf(peak, in_meter_ * kInMeterFall);
+            if (peak >= kLoopCeiling)
+                in_red_at_ = now;
+        }
+
+        /** VOLUME's LED on a page: the page's number blinking after a press, the output's VU
+         *  meter as bright as the output gain, the input's meter (the gain after a turn), the
+         *  headphone feed */
+        void DrawVolumeLed(uint32_t now, uint8_t page)
+        {
+            float rgb[3];
+            if (page_flash_.Active(now))
+            {
+                // a page picked: blinks its number in white
+                rgb[0] = rgb[1] = rgb[2] = page_flash_.BlinkLit(now) ? 1.f : 0.f;
+            }
+            else if (page == kOutGainPage)
+            {
+                Xfade4(kVuDim, green, yellow, pink, engine_->GetVUSample(), rgb);
+                for (float& c : rgb)
+                    c *= out_gain_;
+            }
+            else if (page == kInGainPage)
+            {
+                if (now - gain_turned_ < kGainShownMs)
+                    Xfade(blue, red, settings_.InGain(), rgb);
+                else if (now - in_red_at_ < kInRedMs)
+                    Xfade(red, red, 1.f, rgb); // the loop would clip here, without its limit
+                else
+                {
+                    const float db = 20.f * log10f(fmaxf(in_meter_ / kLoopCeiling, 1e-6f));
+                    Xfade3(kVuDim, green, yellow, fclamp(1.f - db / kInMeterFloorDb, 0.f, 1.f), rgb);
+                }
+            }
+            else
+                Xfade(white, green, hp_cue_, rgb);
+            SetPthLedFloat(kVolumeLed, rgb[0], rgb[1], rgb[2]);
         }
         void SetHpCue(float cue)
         {
@@ -1921,7 +2043,6 @@ namespace chompi
         bool last_erasing_ = false;
 
         float out_gain_;
-        float in_gain_;
         float mix_;
         float hp_cue_; // headphones: 0 = the master's mirror, 1 = the dry input
         uint8_t page_;
@@ -1964,12 +2085,20 @@ namespace chompi
 
         bool vol_down_ = false;     // VOLUME's press was seen here, not by the boot page
         bool vol_shift_ = false;    // VOLUME's press was SHIFT + press
+        uint32_t vol_touched_ = 0;  // VOLUME last turned or pressed on the settings page
+        uint32_t gain_turned_ = 0;  // the input gain last set
+        float in_meter_ = 0.f;      // the input's meter, full scale 1
+        uint32_t in_red_at_ = 0;    // the input last reached the loop's ceiling
+        // CC 84's value for each input, PassthroughEngine::Input's order (MidiControl.h)
+        static constexpr uint8_t kSourceTo7[3] = {0, 64, 127};
         bool hand_fader_ = false;   // the transport knob has had the crossfader since SHIFT
                                     // went down (TransportTurned)
         LedSignal page_flash_;      // a page picked: its number in blinks
         LedSignal knob_page_flash_; // the FX knobs' page turned: its number in blinks
         size_t knob_flash_page_ = 0; // the page knob_page_flash_ blinks for
     };
+
+    constexpr uint8_t NormalPage::kSourceTo7[];
 
 } // namespace chompi
 

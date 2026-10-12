@@ -340,6 +340,11 @@ cd firmware/tools
   two recordings' level and octave bands, for an A/B of two builds. Real music
   (`material --music`) is the better test here.
 
+`tools/loopclip.py [--source aux|signal]` asks whether the loop distorts where the live input
+doesn't (#152): a 1 kHz sine at rising levels, into AUX or as FRIZZ's own test signal
+(`remote.py signal`), the line out recorded with the input alone and then with a loop of it
+alone, the two recordings' THD side by side. Run it on an empty looper.
+
 For an A/B, send each build to slot 10 in turn (`flash.py FILE --slot 10`) and measure from a
 fresh start each time; `remote.py load` and `remote.py play SCRIPT --cpu` give the load.
 

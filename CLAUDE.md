@@ -198,7 +198,7 @@ first (~10 s, the card untouched): a scenario starts from power-on, as on the tw
 without it the RAM the ones before left can fail its `expect led` (#123). `play` keeps the
 card as it was: it first turns PERSIST 0 on (nothing written until FRIZZ restarts), so the
 scenarios that change what key 10 shares, the settings page (`settings.txt`, #58), the
-compressor's knobs (`comp.txt`) and the scenes (`scenes.txt`, #78), play in stage 2 too. Never `--save` or `--force` on the device: a
+compressor's knobs (`comp.txt`), the scenes (`scenes.txt`, #78) and the input (`mic.txt`, `volume.txt`, #152), play in stage 2 too. Never `--save` or `--force` on the device: a
 FRIZZ without PERSIST (key 10's from before it) is still refused, as before. The card holds
 the user's own settings, which a session never changes; `expect led` lines are judged at the
 card's LED brightness, so on the device `settings.txt` fails the lines its brightness key

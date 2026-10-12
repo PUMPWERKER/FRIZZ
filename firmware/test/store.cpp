@@ -201,21 +201,49 @@ static void TestMasterFormat()
     a.led_brightness = 75;
     a.midi_block_trs = false;
     a.midi_feedback = true;
+    a.aux_dry = true;
+    a.gain_aux = 100;
+    a.gain_mic = 36;
     char buf[kMasterFileMax];
     const size_t len = FormatMaster(a, buf, sizeof(buf));
     const std::string want = "FRIZZ master 1\n"
                              "compressor2 0 125000 250000 375000 500000 625000 750000 875000\n"
                              "mono 1\nmidi_channel 3\nmidi_transport 1\nclock_factor 50\n"
-                             "clock_source 2\nmidi_out 1\nled_brightness 75\nmidi_block_trs 0\nmidi_feedback 1\n";
+                             "clock_source 2\nmidi_out 1\nled_brightness 75\nmidi_block_trs 0\nmidi_feedback 1\n"
+                             "aux_dry 1\ngain_aux 100\ngain_mic 36\n";
     Check(std::string(buf) == want && len == want.size(), "master: the file's text, line for line");
     a.Reset();
     FormatMaster(a, buf, sizeof(buf));
     Check(std::string(buf).find("\nmono 0\nmidi_channel 16\nmidi_transport 0\nclock_factor 100\n"
-                                "clock_source 0\nmidi_out 0\nled_brightness 100\nmidi_block_trs 1\nmidi_feedback 0\n")
+                                "clock_source 0\nmidi_out 0\nled_brightness 100\nmidi_block_trs 1\nmidi_feedback 0\n"
+                                "aux_dry 0\ngain_aux 75\ngain_mic 75\n")
               != std::string::npos,
           "master: the defaults' text");
     Check(ParseMaster("FRIZZ master 1\nmono 1\n", b) && b.midi_block_trs,
           "master: a file from before midi_block_trs has the effect channels over the jack too");
+    Check(ParseMaster("FRIZZ master 1\ncompressor2 0 0 0 0 0 0 0 0\nmono 1\nmidi_channel 3\nmidi_feedback 1\n", b)
+              && !b.aux_dry && b.gain_aux == 75 && b.gain_mic == 75 && b.mono && b.midi_feedback,
+          "master: a file from before #152 loads, AUX through the effects, both input gains at 75 %");
+    Check(ParseMaster(buf, b) && !b.aux_dry && b.gain_aux == 75,
+          "master: the defaults read back");
+    Check(ParseMaster("FRIZZ master 1\naux_dry 1\ngain_aux 101\ngain_mic 0\n", b) && b.aux_dry
+              && b.gain_aux == 75 && b.gain_mic == 0,
+          "master: an input gain over 100 keeps its default, 0 is read");
+    {
+        // the longest file there can be still fits
+        MasterSettings m;
+        m.Reset();
+        for (size_t p = 0; p < kNumFxParams; p++)
+            m.comp[p] = .123456f;
+        m.midi_channel = 16;
+        m.clock_factor = 200;
+        m.led_brightness = 100;
+        m.gain_aux = m.gain_mic = 100;
+        char big[kMasterFileMax];
+        const size_t n = FormatMaster(m, big, sizeof(big));
+        printf("      the longest settings file: %zu of %zu bytes\n", n, kMasterFileMax);
+        Check(n > 0 && n < kMasterFileMax - 64, "master: the longest file fits, with room to spare");
+    }
 
     Check(ParseMaster("FRIZZ master 1\nmono 7\nmidi_transport -1\n", b) && b.mono && b.midi_transport,
           "master: a switch is on for any number but 0");

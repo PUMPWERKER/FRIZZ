@@ -20,12 +20,29 @@ what FRIZZ does.
   "Dropping to a scene".
 - **The built-in microphone as an input** (#113), as on TAPE and TEMPO: with no cable in AUX,
   FRIZZ hears CHOMPI's mic, and records it into the looper like AUX. Plugging a cable into AUX
-  switches to AUX, pulling it out back to the mic; at power-on the jack decides. On the
-  settings page, A# of the upper octave picks the other input by hand (green: AUX, magenta:
-  the mic) until the next cable goes in or out; it isn't saved. The input gain, the headphone
-  feed and the effects take the mic as they take AUX; it's mono, 5 times the input gain and
-  through a highpass at about 150 Hz, as on TAPE (without TAPE's narrow notches, #127), and the
-  mono setting doesn't touch it. See MANUAL.md, "Input: AUX or the mic".
+  switches to AUX, pulling it out back to the mic; at power-on the jack decides. The mic is
+  never live on the master (#152): a speaker would feed it back. Record it and play the loop;
+  hear it live on the headphones' input-only feed (VOLUME's page 3). It's mono, 5 times the
+  input gain and through a highpass at about 150 Hz, as on TAPE (without TAPE's narrow
+  notches, #127), and the mono setting doesn't touch it. See MANUAL.md, "Input: AUX or the
+  mic".
+- **AUX dry** (#152): AUX can go past the effects and the master compressor, straight to
+  VOLUME and the safety limiter, so a drum machine or a finished song plays as it is while you
+  play the loop through the effects. The mix knob still sets the balance (its input share is
+  the dry AUX), and the mix's automatism stays: a recording finishes on the loop alone, an
+  erase goes back to the input alone. On the settings page, A# of the upper octave steps
+  through the inputs: AUX through the effects (green), AUX dry (white), the mic (magenta),
+  until the next cable goes in or out of AUX, which picks AUX in the variant chosen last, or
+  the mic. Which AUX you chose is saved; AUX or the mic isn't. MIDI CC 84 picks one too (0-42,
+  43-84, 85-127), without saving it, and MIDI feedback sends it. See MANUAL.md, "Input: AUX or
+  the mic".
+- **An input gain for each input, saved** (#152): AUX and the mic each have their own input
+  gain (VOLUME's page 2), kept on the card; switching the input picks its gain. VOLUME works on
+  the settings page too: page 1 the output, page 2 the input gain, a press the other page; its
+  LED shows the page for 2 s, then the battery again.
+- **An input meter** (#152): VOLUME's page 2 LED shows the input as the looper records it, dim
+  to green to yellow, red where the loop would clip (its limiter takes it, see Fixed); for a
+  second after a turn it shows the gain, blue to red, as before.
 - **A scene crossfader by hand** (#66), after the Octatrack's: SHIFT + a scene key, and
   while you still hold SHIFT, turn the transport knob: the morph is in your hand, the scene
   you're in on the left, the one you picked on the right, back and forth as often as you
@@ -255,6 +272,11 @@ what FRIZZ does.
 
 ### Fixed
 
+- **A hot input no longer distorts in the loop** (#152). Live it sounded clean, but the loop is
+  stored at 16 bits and clipped hard: at the default input gain from about 7 dB below the
+  input's full scale (measured: 1 kHz at full scale, the loop 26 % distortion, live under 1 %). Now
+  a limiter holds what the looper records just under full scale instead; below that the loop
+  is what came in, as before. Both inputs, AUX and the mic.
 - **MIDI out over USB sent the Song Position twice** (#157): after a pause, PLAY sent it two
   times over USB (once out of TRS, as it should), so a DAW following FRIZZ got it twice. Now
   once.

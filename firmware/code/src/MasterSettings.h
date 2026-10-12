@@ -1,8 +1,8 @@
 /** @file MasterSettings.h
  *  @brief What the play page keeps on the card outside the scenes: the master compressor's
  *  knobs (MasterComp.h), the settings page's (SettingsPage.h: the mono input, the MIDI
- *  settings, the clock's tempo factor and source, MIDI out, the LEDs' brightness), and their text
- *  format (SceneStore.h writes it). No
+ *  settings, the clock's tempo factor and source, MIDI out, the LEDs' brightness, AUX's
+ *  variant), the input gain of each source, and their text format (SceneStore.h writes it). No
  *  hardware here, so the format can be tested on the host.
  *
  *  The file, one line per setting, keyed by its name, the values in millionths as in the
@@ -19,6 +19,9 @@
  *    led_brightness 100
  *    midi_block_trs 1
  *    midi_feedback 0
+ *    aux_dry 0
+ *    gain_aux 75
+ *    gain_mic 75
  *
  *  clock_factor is the effects' tempo in percent of its source's, a MIDI clock's, a loop's
  *  or the tapped or last one (TempoClock.h): 50, 100 or 200;
@@ -26,7 +29,9 @@
  *  internal; midi_out where MIDI out goes (MidiOutPorts): 0 off, 1 the jack, 2 the jack and
  *  USB; led_brightness the LEDs' in percent of FRIZZ's full: 100, 75 or 50; midi_block_trs
  *  whether the effect channels 1-15 count over the jack too, not only USB (MidiControl.h);
- *  midi_feedback whether the panel's changes go out as CCs (MidiFeedback.h). Another
+ *  midi_feedback whether the panel's changes go out as CCs (MidiFeedback.h); aux_dry whether
+ *  AUX goes past the effects rather than through them (passthroughEngine.h's Input);
+ *  gain_aux and gain_mic each source's input gain in percent, 0-100 (VOLUME's page 2). Another
  *  value keeps the default. compressor2 has the compressor's eight parameters, both pages
  *  (MasterComp.h); a file from before has "compressor" with four, threshold, ratio, speed and
  *  mix, which loads with the speed as both attack and release and the makeup at 0dB (it was
@@ -58,6 +63,9 @@ struct MasterSettings
     uint8_t led_brightness; // percent: 100, 75, 50
     bool midi_block_trs;    // the effect channels over the jack too (MidiControl.h)
     bool midi_feedback;     // the panel's changes out as CCs (MidiFeedback.h)
+    bool aux_dry;           // AUX past the effects and the compressor (#152)
+    uint8_t gain_aux;       // the input gain in percent, AUX's
+    uint8_t gain_mic;       // and the mic's
 
     /** Every setting on its default */
     void Reset()
@@ -73,10 +81,13 @@ struct MasterSettings
         led_brightness = 100;
         midi_block_trs = true;
         midi_feedback = false;
+        aux_dry = false;
+        gain_aux = gain_mic = kDefaultInGain;
     }
 
     // the last channel, which a setup sending notes to other instruments uses least
     static const uint8_t kDefaultMidiChannel = 16;
+    static const uint8_t kDefaultInGain = 75; // percent, as the play page's VOLUME starts
 };
 
 namespace masterfile
@@ -116,6 +127,9 @@ static const Line kLines[] = {
     // last, so kCmdDev's indices stay
     {"midi_block_trs", offsetof(MasterSettings, midi_block_trs), Line::SWITCH, 0, 0, 1},
     {"midi_feedback", offsetof(MasterSettings, midi_feedback), Line::SWITCH, 0, 0, 1},
+    {"aux_dry", offsetof(MasterSettings, aux_dry), Line::SWITCH, 0, 0, 1},
+    {"gain_aux", offsetof(MasterSettings, gain_aux), Line::RANGE, 0, 0, 100},
+    {"gain_mic", offsetof(MasterSettings, gain_mic), Line::RANGE, 0, 0, 100},
 };
 
 inline uint8_t* Field(MasterSettings& settings, const Line& line)
