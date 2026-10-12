@@ -4,9 +4,9 @@
 // wrapping it), shifting up and down as far as the swoop and the stereo offset take it, both
 // must pick the same lag for every one of kTrials searches; and so must the search spread
 // over two blocks as the shifter runs it, with a block written to the ring in between.
-// Then the shifter itself, at the ends of its shift, grain, swoop and stereo, from power-on
-// and after the shift was turned while it was off: no sounding tap may run into the end of
-// its delay (#137, #140). Built and run by unit.sh splice.
+// Then the shifter itself, at the ends of its shift, grain, swoop and stereo, from power-on,
+// after the shift was turned while it was off, and turned from the centre while it plays: no
+// sounding tap may run into the end of its delay (#137, #140). Built and run by unit.sh splice.
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -194,7 +194,7 @@ int main()
                 for (size_t t = 0; t < 2; t++)
                 {
                     const float d = shifter.delay_[c][t];
-                    const bool at_end = !shifter.asleep_ && weight[t] > .01f
+                    const bool at_end = !shifter.still_[c] && weight[t] > .01f
                                         && (d <= 1.f || d >= max_delay);
                     stuck += at_end;
                     waiting_stuck += at_end && shifter.waiting_[c];
@@ -242,7 +242,7 @@ int main()
         play(48000);
         shifter.SetOn(false);
         play(24000);
-        const bool asleep = shifter.asleep_;
+        const bool asleep = shifter.still_[0] && shifter.still_[1];
         float before[2][2], window[2];
         for (size_t c = 0; c < 2; c++)
         {
@@ -269,6 +269,24 @@ int main()
                  "%s: the taps %s, a sounding tap at the end of its delay %d samples",
                  turn.name, went_on ? "go on" : "start afresh", stuck);
         Check(asleep && went_on == !turn.afresh && stuck == 0, line);
+    }
+    // punched in at the centre (its own speed: the taps stand still), then turned while it
+    // plays: up and down, as a player turns knob 1 (#140)
+    for (float to : {1.f, 0.f, .5f + 7.f / 24})
+    {
+        shifter.Init(48000.f);
+        shifter.SetParam(chompi::Shifter::SHIFT, .5f);
+        shifter.SetOn(true);
+        play(24000);
+        shifter.SetParam(chompi::Shifter::SHIFT, to);
+        waits = waiting_stuck = stuck = 0;
+        play(48000 * 2);
+        char line[160];
+        snprintf(line, sizeof(line),
+                 "at the centre, then %+d while it plays: a sounding tap at the end of its delay "
+                 "%d samples",
+                 static_cast<int>(lroundf(to * 24.f)) - 12, stuck);
+        Check(waits > 0 && stuck == 0, line);
     }
     return Finish();
 }
