@@ -71,7 +71,8 @@ written as FRIZZ writes it. A FRIZZ from before PERSIST, or --save, gets the old
 shares, naming the line and the file (card_use). /FRIZZ/frizz_master.txt, saved 2 s after the
 last change, with no .bak to go back to: the settings page (twin/scenarios/settings.txt, most
 bug reports, which end with SHIFT + VOLUME held there), a key or knob while the mode switch is
-up (the upper A# too: AUX's variant is saved, #152, so mic.txt), or a settings SysEx (#58);
+up (the upper G# and A# too: each source's effects and live are saved, #177, so mic.txt; knob 1, the
+brightness, #176), or a settings SysEx (#58);
 VOLUME turned on its page 2, the input gain (#152, volume.txt); knobs 1-4 turned with the
 compressor selected (comp.txt, or in focus by CC 23); MIDI's CCs never (#97). /FRIZZ/frizz_scenes.txt, whose .bak keeps only the one before: SAVE /
 COPY / DELETE confirmed with CHOMPI once a slot is picked (scenes.txt), or a scene put over
