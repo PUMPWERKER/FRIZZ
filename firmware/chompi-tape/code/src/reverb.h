@@ -41,10 +41,12 @@ class Reverb {
 
  void Init(float sample_rate) {
     engine_.Init(buffer_);
+    engine_.Clear(); // the reverb may live in memory that isn't zeroed
     engine_.SetLFOFrequency(LFO_1, 0.5f / sample_rate);
     engine_.SetLFOFrequency(LFO_2, 0.3f / sample_rate);
     lp_ = 0.7f;
     diffusion_ = 0.625f;
+    lp_decay_1_ = lp_decay_2_ = 0.f;
   }
   
   void Process(float* left, float* right) {
