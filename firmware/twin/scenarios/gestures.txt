@@ -3,7 +3,8 @@
 # blank scene (the lower F#, KEY_18) recalled. Then a build-up (SHIFT + slot 1, then the blank
 # scene: the filter closes over the bar, the blank scene drops on the line), a drop with 2
 # detents turned while pressing (the press wins, no crossfader), and a morph replaced by another
-# in a later hold (it ends on the new one). (turn: 4 is knob 1, 5 the transport)
+# in a later hold (it ends on the new one). The waits hold a bar at the clock factor x1/2 too
+# (60 BPM, which a device's card may have). (turn: 4 is knob 1, 5 the transport)
 input sine 220 0.3
 at 6000
 down KEY_5
@@ -23,7 +24,7 @@ wait 500
 # the blank scene active, the filter off
 expect led smt 2 fcfcfc
 expect led smt 20 240c14
-# a build-up: SHIFT + slot 1, then the blank scene, let go; lands within 2 s at 120 BPM
+# a build-up: SHIFT + slot 1, then the blank scene, let go; lands on the next bar line
 down KEY_26
 wait 80
 tap KEY_19
@@ -31,7 +32,7 @@ wait 40
 tap KEY_18
 wait 40
 up KEY_26
-wait 3000
+wait 4500
 expect led smt 2 fcfcfc
 expect led smt 3 242424
 expect led smt 20 240c14
@@ -44,7 +45,7 @@ wait 30
 tap ENC_5_SW
 wait 300
 up KEY_26
-wait 3000
+wait 4500
 expect led smt 3 fcfcfc
 expect led smt 2 242424
 # a morph to the blank scene over 2 bars, replaced in a later hold by one to slot 1
@@ -59,6 +60,6 @@ down KEY_26
 wait 80
 tap KEY_19
 up KEY_26
-wait 3000
+wait 4500
 expect led smt 3 fcfcfc
 expect led smt 2 242424

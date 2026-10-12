@@ -4,8 +4,9 @@
 # scene (the first dark key, on every card): its key blinks red on the beat until the line,
 # where everything goes off. Then a loop of 3 beats, the crusher latched again, and a drop to
 # the blank scene on the loop's end (a loop shorter than a bar: its end is every line), the
-# press not touching the loop. The keys show the scene at once, as in a morph. Nothing is saved. (turn: 4
-# is knob 1)
+# press not touching the loop. The keys show the scene at once, as in a morph. Nothing is
+# saved. The waits hold a bar at the clock factor x1/2 too (60 BPM, which a device's card may
+# have). (turn: 4 is knob 1)
 input sine 220 0.3
 at 6000
 down KEY_5
@@ -32,7 +33,7 @@ wait 40
 tap ENC_5_SW
 wait 40
 up KEY_26
-wait 2500
+wait 4500
 # landed: the blank scene active, the filter and crusher off
 expect led smt 2 fcfcfc
 expect led smt 20 240c14
@@ -54,7 +55,7 @@ wait 40
 tap ENC_5_SW
 wait 40
 up KEY_26
-wait 2000
+wait 3500
 # landed on the loop's end
 expect led smt 2 fcfcfc
 expect led smt 21 241408
