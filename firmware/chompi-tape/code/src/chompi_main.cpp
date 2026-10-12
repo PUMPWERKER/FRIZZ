@@ -429,7 +429,7 @@ int main(void)
     batt = now;
     #endif
 
-    // get any junk out of the SRs, takes .5s
+    // get any junk out of the SRs, .5s while the buttons for shipping or test mode are held
     uint32_t vol_state = 0;
     uint32_t sleep_state = 0;
 
@@ -442,6 +442,9 @@ int main(void)
                         && hw.button_sr.State(int(Hardware::SwId::KEY_28));
 
         System::DelayUs(100);
+        const uint32_t left = 5000 - 1 - i;
+        if(vol_state + left <= 4000 && sleep_state + left <= 4000) // neither can be held long enough any more
+            break;
     }
 
     if(sleep_state > 4000)
