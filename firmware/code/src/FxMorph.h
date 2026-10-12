@@ -78,10 +78,14 @@ inline uint8_t MorphFades(size_t fx, bool in)
     return ((in ? kMixFadesIn : kMixFadesOut) >> fx) & 1 ? 1u << FxOutput::kMix
                                                           : kFxParams[fx].fade;
 }
-/** Where a fading parameter leaves fx neutral: its default, or for Mix dry */
+/** Where a fading parameter leaves fx neutral: its default, or for Mix dry, or for a send's
+ *  Level mute (its default is 0dB, #172) */
 inline float MorphNeutral(size_t fx, size_t p)
 {
-    return p == FxOutput::kMix && ((kMixFadesOut >> fx) & 1) ? 0.f : kFxParams[fx].defaults[p];
+    return (p == FxOutput::kMix && ((kMixFadesOut >> fx) & 1))
+                   || (p == FxOutput::kLevel && ((kFxSends >> fx) & 1))
+               ? 0.f
+               : kFxParams[fx].defaults[p];
 }
 
 /** What a parameter does during a morph */

@@ -347,7 +347,7 @@ static float DelayTail(float freeze, float damping, float ducking, size_t from, 
     d.SetParam(chompi::DelaySend::DIVISION, .25f);
     d.SetParam(chompi::DelaySend::FEEDBACK, .5f);
     d.SetParam(chompi::DelaySend::RANDOM, .5f);
-    d.SetParam(chompi::DelaySend::LEVEL, 1.f);
+    d.SetParam(chompi::DelaySend::LEVEL, kP2Level);
     d.SetParam(chompi::DelaySend::DAMPING, damping);
     d.SetParam(chompi::DelaySend::DUCKING, ducking);
     d.SetOn(true);
@@ -394,7 +394,7 @@ static float ReverbRun(float freeze, float pre, float ducking, size_t from, size
     static chompi::ReverbSend v;
     v.Init(kSr, &reverb);
     v.SetParam(chompi::ReverbSend::DECAY, .5f);
-    v.SetParam(chompi::ReverbSend::LEVEL, 1.f);
+    v.SetParam(chompi::ReverbSend::LEVEL, kP2Level);
     v.SetParam(chompi::ReverbSend::PRE_DELAY, pre);
     v.SetParam(chompi::ReverbSend::DUCKING, ducking);
     v.SetOn(true);
@@ -427,6 +427,22 @@ static void TestReverb()
     ReverbRun(0.f, 1.f, 0.f, 0, 30000, false, &pre_on);
     printf("  reverb onset: %zu, with 250ms pre-delay %zu\n", plain_on, pre_on);
     Check(pre_on > plain_on + 11000 && pre_on < plain_on + 13000, "reverb: pre-delay at the top: 250ms later");
+    {
+        // turned back to 0, the pre-delay switches off: its slew lands on 0 instead of
+        // stalling on a denormal above it, the SDRAM written and read for good (#167)
+        static chompi::ReverbSend v;
+        v.Init(kSr, &reverb);
+        v.SetOn(true);
+        v.SetParam(chompi::ReverbSend::PRE_DELAY, .5f);
+        float l = 0.f, r = 0.f;
+        for (size_t i = 0; i < 48000; i++)
+            v.Process(Sine(i), Sine(i), &l, &r);
+        const bool up = v.PreDelaying();
+        v.SetParam(chompi::ReverbSend::PRE_DELAY, 0.f);
+        for (size_t i = 0; i < 96000; i++)
+            v.Process(0.f, 0.f, &l, &r);
+        Check(up && !v.PreDelaying(), "reverb: the pre-delay turned back to 0 switches off");
+    }
     const float free = ReverbRun(0.f, 0.f, 0.f, 24000, 48000, true);
     const float ducked = ReverbRun(0.f, 0.f, 1.f, 24000, 48000, true);
     Check(ducked < free * .3f, "reverb: ducking turns the room down under the input");
@@ -462,17 +478,20 @@ static void TestLayout()
           "layout: v0.11's symmetry, XOR and LFO division stay on page 1's knob 4, stereo off");
     Check(s[0].params[FX_TAPESTOP][3] == 1.f, "layout: the tape stop's depth a full stop");
     Check(s[1].params[FX_DELAY][4] == 0.f && s[1].params[FX_DELAY][5] == .5f
-              && s[1].params[FX_DELAY][7] == 0.f && s[1].params[FX_DELAY][3] == .3f,
-          "layout 2: a send's page 2 on its defaults (not frozen), page 1 kept");
+              && s[1].params[FX_DELAY][3] == 0.f
+              && s[1].params[FX_DELAY][7] == LevelKnob(.3f),
+          "layout 2: a send's page 2 on its defaults (not frozen), page 1 kept (its level, a "
+          "gain of .3, on page 2's knob 4 in dB since layout 5, its ducking off)");
     Check(s[1].params[FX_FOLDER][7] == .5f && s[1].params[FX_FOLDER][4] == 1.f
               && s[1].params[FX_FOLDER][3] == .4f && s[1].params[FX_FOLDER][5] == 0.f,
           "layout 2: an insert's Mix and Level kept, its symmetry on page 1's knob 4");
     char buf[kSceneFileMax];
     FormatScenes(s, buf, sizeof(buf));
     FxScene back[kNumScenes];
-    Check(strstr(buf, "layout 4\n") && ParseScenes(buf, defaults, back)
-              && back[1].params[FX_FOLDER][3] == .4f && back[0].params[FX_FOLDER][5] == 0.f,
-          "layout 4: written, and read back as written");
+    Check(strstr(buf, "layout 5\n") && ParseScenes(buf, defaults, back)
+              && back[1].params[FX_FOLDER][3] == .4f && back[0].params[FX_FOLDER][5] == 0.f
+              && fabsf(back[1].params[FX_DELAY][7] - LevelKnob(.3f)) < 1e-6f,
+          "layout 5: written, and read back as written");
 }
 
 // ======== the chain: an effect's key coming on again ========
@@ -541,7 +560,7 @@ static void TestKeyOnBand()
     ChainInit();
     size_t n = 0;
     chain.SetParam(chompi::FX_DELAY, 1, 0.f);   // no feedback: one echo
-    chain.SetParam(chompi::FX_DELAY, 3, 1.f);   // its level
+    chain.SetParam(chompi::FX_DELAY, chompi::FxOutput::kLevel, kP2Level); // its level, 0dB
     chain.SetParam(chompi::FX_DELAY, chompi::FxOutput::kBand, .2f); // the lows
     chain.SetOn(chompi::FX_DELAY, true);
     auto offset = [](size_t) { return .5f; };

@@ -1,0 +1,47 @@
+# The freezer's roll (#173) on a sine against a MIDI clock: latched at 1/4 bar, the roll turned
+# right a step a beat, 1/2, 1/4, 1/8 and 1/16 of the length, back to off in one move; let go
+# with the roll on 1/4, and latched again: that capture starts on 1/4. Nothing is saved.
+# (turn: 4 is knob 1, 1-3 knobs 2-4; one step per 3 detents)
+input sine 220 0.3
+clock 120
+at 6000
+# latched, its length from 1 bar to 1/4
+down KEY_1
+wait 80
+tap KEY_26
+up KEY_1
+wait 200
+turn 4 -9
+wait 1000
+# the roll a step a beat: each takes at the next repeat's start
+turn 2 3
+wait 500
+turn 2 3
+wait 500
+turn 2 3
+wait 500
+turn 2 3
+wait 1000
+# length 1/4, the roll on 1/16, its last colour
+expect led pth 1 3779fd
+expect led pth 3 00d1fd
+# back to off in one move: the whole 1/4 again
+turn 2 -12
+wait 1500
+# on 1/4, let go, latched again: the new capture repeats a quarter of the length
+turn 2 6
+wait 300
+tap KEY_1
+wait 600
+down KEY_1
+wait 80
+tap KEY_26
+up KEY_1
+wait 2000
+# the roll on 1/4
+expect led pth 3 426efd
+# off again
+turn 2 -6
+wait 300
+tap KEY_1
+wait 1000

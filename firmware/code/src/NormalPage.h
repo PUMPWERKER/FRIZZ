@@ -1785,16 +1785,14 @@ namespace chompi
 
         /** Page 2's knob 4 of an effect: its output's VU meter, in VOLUME's colours, as bright
          *  as its Level turns it, as VOLUME's is on its page 1. An effect that's off (or dropped
-         *  by the chaos key) shows nothing but the floor; a send shows its return, tails too,
-         *  at full brightness, as its knob 4 there is Ducking */
+         *  by the chaos key) shows nothing but the floor; a send shows its return, tails too */
         void FxVu(size_t fx, float* rgb)
         {
             const bool send = kFxSlots[fx].kind == FxKind::SEND;
             const bool sounds = send || (fx_.IsOn(fx) && !(engine_->FxDropped() >> fx & 1));
             Xfade4(kVuDim, green, yellow, pink, sounds ? FxMeter(fx) : 0.f, rgb);
-            if (!send)
-                for (int c = 0; c < 3; c++)
-                    rgb[c] *= fx_.Knob(kVuKnob);
+            for (int c = 0; c < 3; c++)
+                rgb[c] *= fx_.Knob(kVuKnob);
         }
 
         void DrawLooperLeds(uint32_t now)
