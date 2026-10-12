@@ -131,7 +131,7 @@ def main():
         if not os.path.isfile(made) or builds.stale(made) or builds.md5(made) != builds.md5(image):
             sys.exit("%s isn't the build of %s made here (make in code/src): not sent to key %d"
                      % (image, tag, slot))
-    name = args.name or ("FRIZZ-BENCH" if args.bench
+    name = args.name or ("FRIZZ-BENCH" if args.bench or slot == chompi.BENCH_SLOT
                          else "FRIZZ-TEST" if slot == chompi.TEST_SLOT
                          else "FRIZZ-BETA" if slot == chompi.BETA_SLOT else "FRIZZ")
 

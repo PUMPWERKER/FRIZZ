@@ -1216,6 +1216,7 @@ case("the bench to 13", "--bench", "--slot", "13")
 tag[0] = None
 case("test", "--test")
 case("file to 12", "other.bin", "--slot", "12")
+case("file to 11", "other.bin", "--slot", "11")
 )", out);
     Check(rc == 0 && Has(out, "tagged beta: None\n") && Has(out, "tagged v9.9.9: v9.9.9\n")
               && Has(out, "tagged, code changed: None\n") && Has(out, "tagged, a file added in code: None\n")
@@ -1237,8 +1238,9 @@ case("file to 12", "other.bin", "--slot", "12")
               && Has(out, "the bench to 13: []\n"),
           "tools: another file isn't, nor the bench, on a tag too");
     Check(Has(out, "test: ['build', 'launcher', 'tag.bin --slot 12 --name FRIZZ-TEST --device l']\n")
-              && Has(out, "file to 12: ['launcher', 'other.bin --slot 12 --name FRIZZ-TEST --device l']\n"),
-          "tools: a branch's build goes to the test slot as before, as FRIZZ-TEST");
+              && Has(out, "file to 12: ['launcher', 'other.bin --slot 12 --name FRIZZ-TEST --device l']\n")
+              && Has(out, "file to 11: ['launcher', 'other.bin --slot 11 --name FRIZZ-BENCH --device l']\n"),
+          "tools: a branch's build goes to the test slot as before, as FRIZZ-TEST; a file to 11 as FRIZZ-BENCH");
     if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 
