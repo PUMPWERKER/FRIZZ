@@ -160,8 +160,10 @@ public:
     inline uint32_t Written() const { return written_; }
     inline uint32_t Failed() const { return failed_; }
 
-    /** From MainLoop: follows the MIDI clock, and writes a requested file a chunk at a time */
-    EVENT_LOG_ONCE void Process(uint32_t now, const MidiClock& clock)
+    /** From MainLoop: follows the MIDI clock, and writes a requested file a chunk at a time.
+     *  In RAM only (kCmdDev's PERSIST 0, SceneStore::InRam: a test on the device) the card
+     *  isn't written, a bug report neither: one asked for then counts as failed */
+    EVENT_LOG_ONCE void Process(uint32_t now, const MidiClock& clock, bool in_ram)
     {
         if (started_)
             FollowClock(now, clock);
@@ -169,6 +171,11 @@ public:
         if (requested_ && !writing_)
         {
             requested_ = false;
+            if (in_ram)
+            {
+                failed_++;
+                return;
+            }
             end_ = count_;
             next_ = 0;
             at_ = 0;

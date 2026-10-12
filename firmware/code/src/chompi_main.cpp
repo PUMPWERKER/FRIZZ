@@ -277,8 +277,9 @@ void MainLoop(void* data)
 
     // a scene saved, copied or deleted: the card is written here, never in the audio callback
     scene_store.Process();
-    // a bug report asked for: written a chunk per pass, also from MainLoop only
-    event_log.Process(now, midi_clock);
+    // a bug report asked for: written a chunk per pass, also from MainLoop only; not with
+    // the card kept out of it (PERSIST 0)
+    event_log.Process(now, midi_clock, scene_store.InRam());
 
     // a restart asked for over MIDI (MidiClock.h), once no report is being written and the
     // master settings that were waiting are on the card, or a second after it was asked for
