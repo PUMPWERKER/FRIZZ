@@ -4657,20 +4657,28 @@ int main()
                 pos = now;
             }
         };
-        // the gesture, all let go: SHIFT, the scene key taps times, PLAY
+        // the gesture, all let go: SHIFT, the scene key taps times, PLAY. The level's largest
+        // change meanwhile, relative to where it was
         static auto drop = [](const char* key, int taps) {
+            const float level = RunBlocks(1);
+            float moved = 0.f;
+            auto run = [&](uint32_t ms) { moved = std::max(moved, fabsf(RunMs(ms) - level) / level); };
             Press("KEY_26", true);
-            RunMs(60);
+            run(60);
             for (int t = 0; t < taps; t++)
             {
-                Tap(key);
-                RunMs(40);
+                Press(key, true);
+                run(60);
+                Press(key, false);
+                run(40);
             }
             Press("KEY_27", true);
-            RunMs(60);
+            run(60);
             Press("KEY_27", false);
-            RunMs(40);
+            run(40);
             Press("KEY_26", false);
+            run(100);
+            return moved;
         };
         // block by block, up to ms: the blocks in which the FX clock crossed a bar line, and the
         // first whose level is off `level` by more than 3 %
@@ -4713,8 +4721,9 @@ int main()
             filter_scene();
             const float dry = RunBlocks(1);
             past_line();
-            drop("KEY_17", 1);
-            RunMs(100);
+            const float moved = drop("KEY_17", 1);
+            printf("      the level moved %.4f during the gesture\n", moved);
+            Check(moved < .03f, "scene-drop: the gesture itself changes nothing in the sound");
             const std::vector<int> beat = Watch(false, kSlot1Led, 1000);
             const std::vector<int> runs = Runs(beat, 128);
             bool on_beat = runs.size() >= 2;
@@ -4747,11 +4756,11 @@ int main()
         static auto on_line = [](const char* name) {
             const float dry = RunBlocks(1);
             past_line();
-            drop("KEY_17", 1);
+            const float moved = drop("KEY_17", 1);
             const Watched w = watch(dry, 3000);
             lines(w);
-            Check(w.lines.size() >= 1 && w.changed == w.lines[0],
-                  (std::string(name) + ": the scene in the next bar line's block").c_str());
+            Check(moved < .03f && w.lines.size() >= 1 && w.changed == w.lines[0],
+                  (std::string(name) + ": nothing at PLAY, the scene in the next bar line's block").c_str());
         };
         cases.push_back({"scene-drop-clock", [] {
             clock_bpm = 100.f;
@@ -4789,7 +4798,7 @@ int main()
             Check(Probe().loop_state == 2, "scene-drop-loop: a loop playing");
             // into its last bar line before the end: the end is the next one
             const float len = Probe().loop_length;
-            for (int b = 0; b < 20000 && Probe().loop_pos * len < len - .3f * kSampleRate; b++)
+            for (int b = 0; b < 20000 && Probe().loop_pos * len < len - .55f * kSampleRate; b++)
                 RunBlocks(1);
             const float dry = RunBlocks(1);
             drop("KEY_17", 1);

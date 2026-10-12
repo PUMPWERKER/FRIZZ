@@ -23,7 +23,9 @@ wait 500
 expect led smt 0 242424
 expect led smt 20 fc60a0
 expect led smt 21 fcd4b0
-# SHIFT, the blank scene's key, PLAY, all let go
+# SHIFT, the blank scene's key, PLAY, all let go, early in a bar (the free tempo's lines
+# fall at about 7.67 s and 9.67 s): nothing changes until the line
+at 7800
 down KEY_26
 wait 60
 tap KEY_16
