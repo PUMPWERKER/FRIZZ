@@ -75,8 +75,8 @@ Its prebuilt `build/libdaisy.a` is WAVE's with only those three objects, `usbd_d
 libDaisy's own flags (`make build/midi_parser.o` in its folder, then `arm-none-eabi-ar r
 build/libdaisy.a build/midi_parser.o`). These reproduce WAVE's objects from WAVE's source: the
 same code, only the debug information's paths differ, and FRIZZ.bin comes out byte for byte
-the same (checked for `usb_midi.o`, #157). FRIZZ's Makefile doesn't link again when only
-`libdaisy.a` changed: delete `code/src/build/FRIZZ.elf` first.
+the same (checked for `usb_midi.o`, #157). A changed `libdaisy.a` (or `libdaisysp.a`) links
+FRIZZ again on the next `make` (#161).
 
 The bootloader's copy, `reference/firmware/chompi-bootloader-v6.4-beta/libs/libDaisy/`, is the same adaptation plus
 the changes that bootloader needs, listed in its `LIBDAISY_PATCH.md`.
