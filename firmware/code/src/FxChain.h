@@ -213,70 +213,62 @@ public:
     /** Its grid in clock pulses, for the scramble's steps */
     inline uint32_t ChaosGridPulses() const { return chaos_.GridPulses(); }
 
-    /** One sample through the chain. The meters follow each insert's output and each send's
-     *  return, so the send keys show the tails. */
-    FRIZZ_HOT void Process(float* l, float* r)
+    /** n samples through the chain, in place. Effect by effect, each over a run of up to
+     *  kFxMaxBlock samples before the next (Run), so its code stays in the I-cache for the run:
+     *  the audio callback is bound by the I-cache (#51, #136). Sample for sample the same as
+     *  one at a time. The meters follow each insert's output and each send's return, so the
+     *  send keys show the tails. */
+    FRIZZ_HOT void Process(float* l, float* r, size_t n)
     {
-        if (fast_slew_left_ > 0 && --fast_slew_left_ == 0)
-            FxSlew::coeff = kFxParamCoeff;
-
-        Insert(FX_FREEZER, freezer_, l, r);
-        // the resonator's loop wraps everything from here to the phaser
-        resonator_.Feed(l, r);
-        if (!resonator_.Idle())
-            Meter(FX_RESONATOR, resonator_.Return());
-        BENCH_MARK_FX(FX_RESONATOR);
-        Insert(FX_SHIFTER, shifter_, l, r);
-        Insert(FX_FOLDER, folder_, l, r);
-        Insert(FX_CRUSHER, crusher_, l, r);
-        Insert(FX_FILTER, filter_, l, r);
-        Insert(FX_FLANGER, flanger_, l, r);
-        Insert(FX_PHASER, phaser_, l, r);
+        while (n > 0)
         {
-            float tl = *l, tr = *r;
-            SendBand(FX_RESONATOR, resonator_.Idle(), &tl, &tr);
-            resonator_.Tap(tl, tr);
+            size_t run = n < kFxMaxBlock ? n : kFxMaxBlock;
+            // a recall's fast slew (FastSlew) ends on its last sample, which runs at the knobs'
+            // own slew: a run stops before it, so FxSlew::coeff holds for the whole run
+            if (fast_slew_left_ == 1)
+            {
+                fast_slew_left_ = 0;
+                FxSlew::coeff = kFxParamCoeff;
+            }
+            else if (fast_slew_left_ > 0)
+            {
+                if (run >= fast_slew_left_)
+                    run = fast_slew_left_ - 1;
+                fast_slew_left_ -= run;
+            }
+            Run(l, r, run);
+            l += run;
+            r += run;
+            n -= run;
         }
-        BENCH_MARK_FX(FX_RESONATOR);
-        Insert(FX_SLICER, slicer_, l, r);
-        Insert(FX_WARBLE, warble_, l, r);
-        Insert(FX_TAPESTOP, tapestop_, l, r);
-
-        // sends: the delay from the inserts' output, the reverb from that plus the delay's
-        // return, so the echoes are reverberated. Both returns are added on top.
-        const float sendl = *l, sendr = *r;
-        float inl = sendl, inr = sendr;
-        SendBand(FX_DELAY, delay_.Idle(), &inl, &inr); // what goes in is faded with the key
-        delay_.Process(inl, inr, l, r);
-        const float delayl = *l, delayr = *r;
-        if (!delay_.Sleeping())
-            Meter(FX_DELAY, delayl - sendl + delayr - sendr);
-        BENCH_MARK_FX(FX_DELAY);
-        inl = delayl;
-        inr = delayr;
-        SendBand(FX_REVERB, reverb_.Idle(), &inl, &inr);
-        reverb_.Process(inl, inr, l, r);
-        if (!reverb_.Sleeping())
-            Meter(FX_REVERB, *l - delayl + *r - delayr);
-        BENCH_MARK_FX(FX_REVERB);
     }
+    /** One sample, for the tests */
+    inline void Process(float* l, float* r) { Process(l, r, 1); }
 
-    /** One insert, with its page 2's Mix, Band and Level (out_[fx]) while they're Busy, and
-     *  its meter. The effect's own Process in one place, so it's inlined once */
+    /** One insert over n samples, with its page 2's Mix, Band and Level (out_[fx]) while
+     *  they're Busy, and its meter. The effect's own Process in one place, so it's inlined
+     *  once */
     template <class Fx>
-    inline void Insert(size_t fx, Fx& effect, float* l, float* r)
+    inline void Insert(size_t fx, Fx& effect, float* l, float* r, size_t n)
     {
-        // the busy case out of line and at the end, so a chain at its defaults runs through
-        // as little code as without page 2: the audio callback is bound by the I-cache (#51)
-        const bool busy = __builtin_expect((OutBusy() & (1u << fx)) != 0, 0);
-        bool split = false;
-        if (busy)
-            split = OutBegin(fx, effect.Quiet(), l, r);
-        effect.Process(l, r);
-        if (busy)
-            OutEnd(fx, split, effect.Fade(), l, r);
-        if (!effect.Idle())
-            Meter(fx, *l + *r);
+        for (size_t i = 0; i < n; i++)
+        {
+            float sl = l[i], sr = r[i];
+            // the busy case out of line and at the end, so a chain at its defaults runs
+            // through as little code as without page 2: the audio callback is bound by the
+            // I-cache (#51)
+            const bool busy = __builtin_expect((OutBusy() & (1u << fx)) != 0, 0);
+            bool split = false;
+            if (busy)
+                split = OutBegin(fx, effect.Quiet(), &sl, &sr);
+            effect.Process(&sl, &sr);
+            if (busy)
+                OutEnd(fx, split, effect.Fade(), &sl, &sr);
+            if (!effect.Idle())
+                Meter(fx, sl + sr);
+            l[i] = sl;
+            r[i] = sr;
+        }
         BENCH_MARK_FX(fx);
     }
     __attribute__((noinline, cold)) bool OutBegin(size_t fx, bool idle, float* l, float* r)
@@ -361,6 +353,71 @@ public:
     }
 
 private:
+    /** n <= kFxMaxBlock samples through the chain, each effect over all of them before the
+     *  next */
+    FRIZZ_HOT void Run(float* l, float* r, size_t n)
+    {
+        Insert(FX_FREEZER, freezer_, l, r, n);
+        // the resonator's loop wraps everything from here to the phaser: its Feeds, the
+        // inserts in it, then its Taps (Resonator::Feed)
+        uint32_t res_idle = 0; // bit i: idle after Feed i, for what goes into the loop then
+        for (size_t i = 0; i < n; i++)
+        {
+            resonator_.Feed(&l[i], &r[i], i);
+            if (resonator_.Idle())
+                res_idle |= 1u << i;
+            else
+                Meter(FX_RESONATOR, resonator_.Return());
+        }
+        BENCH_MARK_FX(FX_RESONATOR);
+        Insert(FX_SHIFTER, shifter_, l, r, n);
+        Insert(FX_FOLDER, folder_, l, r, n);
+        Insert(FX_CRUSHER, crusher_, l, r, n);
+        Insert(FX_FILTER, filter_, l, r, n);
+        Insert(FX_FLANGER, flanger_, l, r, n);
+        Insert(FX_PHASER, phaser_, l, r, n);
+        for (size_t i = 0; i < n; i++)
+        {
+            float tl = l[i], tr = r[i];
+            SendBand(FX_RESONATOR, res_idle >> i & 1, &tl, &tr);
+            resonator_.Tap(tl, tr, i);
+        }
+        BENCH_MARK_FX(FX_RESONATOR);
+        Insert(FX_SLICER, slicer_, l, r, n);
+        Insert(FX_WARBLE, warble_, l, r, n);
+        Insert(FX_TAPESTOP, tapestop_, l, r, n);
+
+        // sends: the delay from the inserts' output, the reverb from that plus the delay's
+        // return, so the echoes are reverberated. Both returns are added on top.
+        float delayl[kFxMaxBlock], delayr[kFxMaxBlock];
+        for (size_t i = 0; i < n; i++)
+        {
+            const float sendl = l[i], sendr = r[i];
+            float inl = sendl, inr = sendr;
+            SendBand(FX_DELAY, delay_.Idle(), &inl, &inr); // what goes in is faded with the key
+            float outl = sendl, outr = sendr; // the return's added to it
+            delay_.Process(inl, inr, &outl, &outr);
+            delayl[i] = outl;
+            delayr[i] = outr;
+            if (!delay_.Sleeping())
+                Meter(FX_DELAY, outl - sendl + outr - sendr);
+        }
+        BENCH_MARK_FX(FX_DELAY);
+        for (size_t i = 0; i < n; i++)
+        {
+            float inl = delayl[i], inr = delayr[i];
+            SendBand(FX_REVERB, reverb_.Idle(), &inl, &inr);
+            float outl = delayl[i], outr = delayr[i];
+            reverb_.Process(inl, inr, &outl, &outr);
+            l[i] = outl;
+            r[i] = outr;
+            if (!reverb_.Sleeping())
+                Meter(FX_REVERB, outl - delayl[i] + outr - delayr[i]);
+        }
+        BENCH_MARK_FX(FX_REVERB);
+    }
+    static_assert(kFxMaxBlock <= 32, "Run's res_idle, a bit per sample");
+
     inline void Meter(size_t fx, float sum) { meter_[fx].Process(sum * kFxMeterScale); }
     inline uint16_t OutBusy() const { return out_busy_.load(std::memory_order_relaxed); }
     inline void ClearOutBusy(size_t fx)

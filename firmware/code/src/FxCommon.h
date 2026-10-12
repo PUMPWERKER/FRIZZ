@@ -23,6 +23,10 @@ static const size_t kNumFxKnobs = 4;
 static const size_t kNumFxPages = 2;
 static const size_t kNumFxParams = kNumFxKnobs * kNumFxPages;
 
+// The most samples the chain runs an effect over before the next one (FxChain::Process):
+// the audio block (hardware.h); a longer call goes in runs of this
+static const size_t kFxMaxBlock = 24;
+
 // fonepole coefficients at 48kHz. A coefficient c has a time constant of 1 / (48000 c) and
 // settles (to under 1%) in about 5 of them.
 // The punch-in fade: a time constant of ~5ms, settled in ~25ms
@@ -381,8 +385,12 @@ struct StereoRing
                 buf[c][i] = 0.f;
         pos = 0;
     }
-    /** delay frames behind the last frame written, interpolated */
-    inline float Read(size_t c, float delay) const { return ReadFrac(buf[c], kMask, pos - 1, delay); }
+    /** delay frames behind the last frame written, interpolated; or, ahead > 0, behind the
+     *  frame that many writes on, for a block's reads ahead of its writes (FxResonator.h) */
+    inline float Read(size_t c, float delay, size_t ahead = 0) const
+    {
+        return ReadFrac(buf[c], kMask, pos - 1 + ahead, delay);
+    }
     /** This sample's frame, one channel at a time; Advance once both are written */
     inline void Write(size_t c, float x) { buf[c][pos] = x; }
     inline void Advance() { pos = (pos + 1) & kMask; }

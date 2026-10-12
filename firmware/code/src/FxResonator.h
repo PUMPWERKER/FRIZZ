@@ -46,6 +46,8 @@ public:
             hp_[c].Init(sample_rate);
             ret_[c] = 0.f;
         }
+        for (size_t i = 0; i < kFxMaxBlock; i++)
+            lp_at_[i] = 0.f;
         gate_.Init();
 
         for (size_t i = 0; i < kNumFxParams; i++)
@@ -57,8 +59,12 @@ public:
         SnapParams();
     }
 
-    /** After the freezer: adds the loop's return, scaling the input down as Kastle does */
-    void Feed(float* l, float* r)
+    /** After the freezer: adds the loop's return, scaling the input down as Kastle does.
+     *  The chain runs a block's Feeds before its Taps (FxChain::Run): i is the sample's place
+     *  in the block, so Feed reads the ring as if the block's i Taps before it had written it.
+     *  They hadn't, but the loop is longer than a block (kHighestHz), so it reads only frames
+     *  earlier blocks wrote */
+    void Feed(float* l, float* r, size_t i = 0)
     {
         const float gate = gate_.Process();
         // off and faded out: no loop, so nothing to read. Tap still fills the ring, so a
@@ -66,11 +72,12 @@ public:
         if (gate_.Asleep())
         {
             SnapParams();
+            lp_at_[i] = lp_coeff_.value;
             ret_[0] = ret_[1] = 0.f;
             return;
         }
         const float feedback = feedback_.Process();
-        lp_coeff_.Process();
+        lp_at_[i] = lp_coeff_.Process();
 
         float fb = gate * feedback;
         float* const io[2] = {l, r};
@@ -87,18 +94,19 @@ public:
         for (size_t c = 0; c < 2; c++)
         {
             const float delay = delay_[c].Process();
-            ret_[c] = level * fb * ring_.Read(c, delay - 1.f);
+            ret_[c] = level * fb * ring_.Read(c, delay - 1.f, i);
             *io[c] = *io[c] * (1.f - .5f * fb) + ret_[c];
         }
     }
 
-    /** After the phaser: into the loop through the clipper and filters */
-    void Tap(float l, float r)
+    /** After the phaser: into the loop through the clipper and filters, at the lowpass Feed i
+     *  left */
+    void Tap(float l, float r, size_t i = 0)
     {
         const float in[2] = {l, r};
         for (size_t c = 0; c < 2; c++)
         {
-            lp_[c] += lp_coeff_.value * (SoftClip(in[c]) - lp_[c]);
+            lp_[c] += lp_at_[i] * (SoftClip(in[c]) - lp_[c]);
             ring_.Write(c, hp_[c].Process(lp_[c]));
         }
         ring_.Advance();
@@ -141,7 +149,7 @@ public:
             level_.target = FxOutput::LevelGain(val);
             break;
         case STEREO:
-            stereo_ratio_ = powf(2.f, val);
+            stereo_ratio_ = powf(kMaxStereoRatio, val);
             break;
         default:
             break;
@@ -154,7 +162,12 @@ private:
     static const size_t kBufSize = 4096; // > 48kHz / 22Hz
     static constexpr float kLowestHz = 22.f;   // Kastle's 2000 samples at 44kHz
     static constexpr float kHighestHz = 880.f; // Kastle stops at 440Hz
+    static constexpr float kMaxStereoRatio = 2.f; // the right channel up to an octave higher
     static constexpr float kMaxFeedback = .98f;
+    // A block's Feeds read before its Taps write (Feed): the loop, at its highest pitch and
+    // stereo, longer than a block, a frame to spare (25 frames at 48kHz, 1920Hz)
+    static_assert(kHighestHz * kMaxStereoRatio < 48000.f / (kFxMaxBlock + 1),
+                  "the resonator's loop longer than a block");
 
     /** The loop's highpass: a one-pole at 50Hz, Kastle's */
     struct Highpass
@@ -182,6 +195,7 @@ private:
     float env_mod_ = 0.f;
     float env_ = 0.f, env_att_ = 0.f, env_rel_ = 0.f; // the input's level, for the env mod
     Smoothed lp_coeff_; // set in Feed, used in Tap
+    float lp_at_[kFxMaxBlock]; // lp_coeff_ at each of a block's Feeds, for its Taps
     Smoothed delay_[2]; // frames, per channel
     float pitch_hz_ = kLowestHz;
     float stereo_ratio_ = 1.f; // 2 ^ the stereo knob: the right channel's pitch over the left's
