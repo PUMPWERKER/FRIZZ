@@ -20,8 +20,7 @@
  *
  *  Host is NormalPage on the device, a fake on the host. It needs: SceneArmed(),
  *  ConfirmScene(), ShiftPressed() (true if it queued a latch) and ShiftUsed() (FxControls'),
- *  Tap(), Refused() (LOOP can't do it), Now() in ms,
- *  and the looper's LooperState(), CanRecordQuantized(), StartRecording(quantized),
+ *  Tap(ms), Refused() (LOOP can't do it), and the looper's LooperState(), CanRecordQuantized(), StartRecording(quantized),
  *  StopRecording(), TogglePlay(), Erase(), EraseAtEnd(), CancelErase(), ErasePending().
  */
 #pragma once
@@ -101,7 +100,9 @@ public:
             host_->TogglePlay();
     }
 
-    void Loop(bool down)
+    /** at: when the audio callback saw it go down, in ms, so a tap and the erase lock don't
+     *  move with MainLoop's delays (a card write) */
+    void Loop(bool down, uint32_t at)
     {
         if (down)
         {
@@ -112,17 +113,17 @@ public:
             {
                 if (play_down_)
                     play_combo_ = true;
-                host_->Tap();
+                host_->Tap(at);
                 return;
             }
-            LoopPressed();
+            LoopPressed(at);
         }
     }
 
     static const uint32_t kEraseLockMs = 500;
 
 private:
-    void LoopPressed()
+    void LoopPressed(uint32_t at)
     {
         if (play_down_)
             play_combo_ = true; // PLAY's release must not toggle
@@ -141,12 +142,12 @@ private:
         case Looper::State::RECORDING:
             host_->StopRecording();
             stopped_ = true;
-            stop_time_ = host_->Now();
+            stop_time_ = at;
             break;
 
         case Looper::State::PLAYING:
         case Looper::State::PAUSED:
-            if (stopped_ && host_->Now() - stop_time_ < kEraseLockMs)
+            if (stopped_ && at - stop_time_ < kEraseLockMs)
                 break;
             stopped_ = false; // the lock is over, also once the ms count wraps
             if (play_down_ && !host_->ErasePending())

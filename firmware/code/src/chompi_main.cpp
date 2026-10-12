@@ -245,9 +245,7 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
 
 uint32_t uit, now, boot_start;
 
-#if !NO_BATT
 uint32_t batt;
-#endif
 
 void MainLoop(void* data)
 {
@@ -276,7 +274,7 @@ void MainLoop(void* data)
     midi_out.FlushUsb();
 
     // a scene saved, copied or deleted: the card is written here, never in the audio callback
-    scene_store.Process();
+    scene_store.Process(event_log.Writing());
     // a bug report asked for: written a chunk per pass, also from MainLoop only; not with
     // the card kept out of it (PERSIST 0)
     event_log.Process(now, midi_clock, scene_store.InRam());
@@ -301,8 +299,6 @@ void MainLoop(void* data)
     if (loading_screen && now - boot_start > kBootScreenMs)
         loading_screen = false;
 
-    #if !NO_BATT
-
     if(ui.InRainbows())
     {
         batt = now;
@@ -312,7 +308,6 @@ void MainLoop(void* data)
         hw.LowBatteryLockoutCheck();
         batt = now;
     }
-    #endif
 
     System::DelayUs(10);
 }
@@ -395,9 +390,7 @@ int main(void)
     uit = now;
     boot_start = now;
 
-    #if !NO_BATT
     batt = now;
-    #endif
 
     // get any junk out of the SRs, takes .5s; CHOMPI, PLAY and LOOP held throughout: shipping mode
     uint32_t sleep_state = 0;

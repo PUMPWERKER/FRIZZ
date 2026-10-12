@@ -1,7 +1,9 @@
 // Host stand-in for FatFs: an SD card in memory, just enough for SceneStore.h. The card can be
 // taken out (card.present), filled and read back (card.files, keyed by full path), made to
 // refuse writes (card.read_only) or run full (card.space: bytes a write can still add), and it
-// counts the files open (card.open), so a check sees one left open.
+// counts the files open (card.open), so a check sees one left open. As in ff.c, a mount
+// (f_mount, also of the volume already mounted) makes the files open before it invalid: their
+// reads, writes and close fail with FR_INVALID_OBJECT.
 #pragma once
 #include <algorithm>
 #include <cstdint>
@@ -20,6 +22,7 @@ enum FRESULT
     FR_NO_FILE,
     FR_EXIST,
     FR_DENIED,
+    FR_INVALID_OBJECT,
 };
 
 #define FA_READ 0x01
@@ -37,6 +40,7 @@ struct FIL
     std::string path;
     size_t fptr = 0;
     bool write = false;
+    uint32_t mount = 0; // the mount it was opened on (ff.c's obj.id)
 };
 #define f_eof(fp) ((int)((fp)->fptr == FakeCard::Get().files[(fp)->path].size()))
 
@@ -46,6 +50,8 @@ struct FakeCard
     bool read_only = false;
     size_t space = SIZE_MAX;
     int open = 0;
+    uint32_t mount = 0; // counts the mounts (ff.c's fs->id)
+    void (*write_time)(size_t bytes) = nullptr; // a write taking time (the twin's), if set
     std::string cwd = "";
     std::map<std::string, std::string> files;
     std::map<std::string, bool> dirs;
@@ -65,6 +71,7 @@ inline FRESULT f_mount(FATFS*, const char*, BYTE)
 {
     FakeCard& c = FakeCard::Get();
     c.cwd = "";
+    c.mount++;
     return c.present ? FR_OK : FR_NOT_READY;
 }
 inline FRESULT f_chdir(const char* path)
@@ -123,6 +130,7 @@ inline FRESULT f_open(FIL* f, const char* name, BYTE mode)
     f->path = c.Path(name);
     f->fptr = 0;
     f->write = mode & FA_WRITE;
+    f->mount = c.mount;
     if (f->write)
     {
         if (c.read_only)
@@ -138,6 +146,9 @@ inline FRESULT f_open(FIL* f, const char* name, BYTE mode)
 }
 inline FRESULT f_read(FIL* f, void* buf, UINT n, UINT* read)
 {
+    *read = 0;
+    if (f->mount != FakeCard::Get().mount)
+        return FR_INVALID_OBJECT;
     const std::string& data = FakeCard::Get().files[f->path];
     const size_t len = std::min<size_t>(n, data.size() - f->fptr);
     memcpy(buf, data.data() + f->fptr, len);
@@ -155,6 +166,11 @@ static const size_t kSectorSize = 512;
 inline FRESULT f_write(FIL* f, const void* buf, UINT n, UINT* written)
 {
     FakeCard& c = FakeCard::Get();
+    *written = 0;
+    if (f->mount != c.mount)
+        return FR_INVALID_OBJECT;
+    if (c.write_time)
+        c.write_time(n);
     // a full card: FatFs writes what fits and says so in *written, with FR_OK
     n = static_cast<UINT>(std::min<size_t>(n, c.space));
     c.space -= n;
@@ -171,9 +187,9 @@ inline FRESULT f_write(FIL* f, const void* buf, UINT n, UINT* written)
     *written = n;
     return FR_OK;
 }
-inline FRESULT f_close(FIL*)
+inline FRESULT f_close(FIL* f)
 {
     FakeCard& c = FakeCard::Get();
     c.open -= c.open > 0;
-    return FR_OK;
+    return f->mount == c.mount ? FR_OK : FR_INVALID_OBJECT;
 }

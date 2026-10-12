@@ -122,8 +122,9 @@ public:
         return failed;
     }
 
-    /** From MainLoop */
-    void Process()
+    /** From MainLoop. log_open: a bug report is being written (EventLog::Writing); a remount
+     *  would make its open file invalid, so a write that needs one waits for it */
+    void Process(bool log_open)
     {
         if (in_ram_)
         {
@@ -132,13 +133,13 @@ public:
             master_pending_ = false;
             return;
         }
-        if (save_state_ == SaveState::PENDING)
+        if (save_state_ == SaveState::PENDING && !(log_open && RemountDue()))
         {
             Remount();
             failed_ = !(loaded_ && mounted_ && Save());
             save_state_ = failed_ ? SaveState::FAILED : SaveState::OK;
         }
-        if (master_pending_)
+        if (master_pending_ && !(log_open && RemountDue()))
         {
             master_pending_ = false;
             Remount();
@@ -279,9 +280,10 @@ private:
     }
 
     /** After a failure: mount the card read at boot again */
+    inline bool RemountDue() const { return loaded_ && (!mounted_ || failed_); }
     void Remount()
     {
-        if (loaded_ && (!mounted_ || failed_))
+        if (RemountDue())
             Mount();
     }
 
