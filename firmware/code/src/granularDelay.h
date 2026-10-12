@@ -17,7 +17,7 @@
  *     that far back and fed that back, so every repeat came that much later, the 5th echo at
  *     1/4 and 120 BPM 100ms off the beat on the left (#167). The voices read both channels at
  *     the read head now, for the feedback, and the output is that, the offset later
- *     (delay_out_mem): each echo the offset late and no more.
+ *     (delay_out_l, delay_out_r): each echo the offset late and no more.
  */
 #pragma once
 #include "FrizzHot.h"
@@ -36,12 +36,21 @@ constexpr float kTempoJump = .02f; // a tempo change this much of the delay time
 // FRIZZ: the stereo offset, on the output only (granularDelay::read)
 constexpr uint32_t delayStereoOffsetLeft = 960;
 constexpr uint32_t delayStereoOffsetRight = 480;
-constexpr uint32_t kDelayOutFrames = 1024; // a power of 2 past the longer offset
-static_assert(delayStereoOffsetLeft < kDelayOutFrames && delayStereoOffsetRight < kDelayOutFrames,
+// the output's line, per channel: what the voices read, the offset later; a power of 2 past
+// each offset
+constexpr uint32_t kDelayOutLeft = 1024, kDelayOutRight = 512;
+static_assert(delayStereoOffsetLeft < kDelayOutLeft && delayStereoOffsetRight < kDelayOutRight,
               "the offsets fit the output's line");
-// the output's line, per channel: what the voices read, the offset later (in SDRAM, cleared
-// by Init)
-__attribute__((weak)) float delay_out_mem[2][kDelayOutFrames] DSY_SDRAM_BSS;
+// In DTCMRAM (6 KB), as the reverb (chompi_main.cpp): read and written every sample, in SDRAM
+// it took the cache from the other effects (the bench's "everything" +0.9 points for the
+// delay, #167). Not zeroed at startup: Init clears it
+#if defined(__arm__)
+#define FRIZZ_DTCM_BSS __attribute__((section(".dtcmram_bss")))
+#else
+#define FRIZZ_DTCM_BSS
+#endif
+__attribute__((weak)) float delay_out_l[kDelayOutLeft] FRIZZ_DTCM_BSS;
+__attribute__((weak)) float delay_out_r[kDelayOutRight] FRIZZ_DTCM_BSS;
 
 namespace chompi {
     /** The frame at read_head, interpolated, added to out_l and out_r */
@@ -342,10 +351,11 @@ class granularDelay {
         SetTempo(120);
         delay_samples_ = delay_samples_target_ = BarSamples() * delayDivs[kStartDiv];
         cur_sig_l_ = cur_sig_r_ = 0.f;
-        for (size_t c = 0; c < 2; ++c) {
-            for (uint32_t i = 0; i < kDelayOutFrames; ++i) {
-                delay_out_mem[c][i] = 0.f;
-            }
+        for (uint32_t i = 0; i < kDelayOutLeft; ++i) {
+            delay_out_l[i] = 0.f;
+        }
+        for (uint32_t i = 0; i < kDelayOutRight; ++i) {
+            delay_out_r[i] = 0.f;
         }
         out_pos_ = 0;
 
@@ -481,11 +491,11 @@ class granularDelay {
         }
         // FRIZZ: the output, the stereo offset later; not fed back, so the echoes stay on the
         // beat (#167)
-        delay_out_mem[0][out_pos_] = fb_l;
-        delay_out_mem[1][out_pos_] = fb_r;
-        *out_l = delay_out_mem[0][(out_pos_ - delayStereoOffsetLeft) & (kDelayOutFrames - 1)];
-        *out_r = delay_out_mem[1][(out_pos_ - delayStereoOffsetRight) & (kDelayOutFrames - 1)];
-        out_pos_ = (out_pos_ + 1) & (kDelayOutFrames - 1);
+        delay_out_l[out_pos_ & (kDelayOutLeft - 1)] = fb_l;
+        delay_out_r[out_pos_ & (kDelayOutRight - 1)] = fb_r;
+        *out_l = delay_out_l[(out_pos_ - delayStereoOffsetLeft) & (kDelayOutLeft - 1)];
+        *out_r = delay_out_r[(out_pos_ - delayStereoOffsetRight) & (kDelayOutRight - 1)];
+        out_pos_ = (out_pos_ + 1) & (kDelayOutLeft - 1);
 
         cur_sig_l_ = fb_l * delay_feedback_amt_;
         cur_sig_r_ = fb_r * delay_feedback_amt_;
@@ -590,7 +600,7 @@ class granularDelay {
     uint32_t buffer_size_;
     float delay_samples_, delay_samples_target_;
     float cur_sig_l_, cur_sig_r_;
-    uint32_t out_pos_; // in delay_out_mem
+    uint32_t out_pos_; // in delay_out_l and delay_out_r
     float delay_feedback_amt_;
     float damp_hi_ = 1.f, damp_lo_ = 0.f;
     float damp_lp_l_ = 0.f, damp_lp_r_ = 0.f, damp_hp_l_ = 0.f, damp_hp_r_ = 0.f;
