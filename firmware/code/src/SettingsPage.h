@@ -71,6 +71,7 @@
 #include "MasterSettings.h"
 #include "MidiClock.h"
 #include "MidiControl.h"
+#include "PanelKeys.h"
 #include "PanelLeds.h"
 #include "passthroughEngine.h"
 
@@ -450,20 +451,6 @@ private:
         SmtLed(KeyLedOf(key), color, on ? 1.f : kFxOffLevel);
     }
 
-    /** A key's SMT LED: the white keys right to left from 24, the dark keys left to right
-     *  from 0 (FxSlots.h, NormalPage.h's scene keys) */
-    static uint8_t KeyLedOf(Hardware::SwId key)
-    {
-        const int k = static_cast<int>(key);
-        for (uint8_t w = 0; w < 15; w++)
-            if (k == static_cast<int>(kWhiteKeys[w]))
-                return 24 - w;
-        for (uint8_t d = 0; d < 10; d++)
-            if (k == static_cast<int>(kDarkKeys[d]))
-                return d;
-        return 0;
-    }
-
     static const uint8_t kNumChannelKeys = 14; // white keys 1-14; the 15th is 15 and 16
     static const Hardware::SwId kChannel15Key = Hardware::SwId::KEY_15;
     static const uint8_t kShiftHeld = 1, kBothHeld = 3; // Held's bits: SHIFT 1, VOLUME 2
@@ -490,17 +477,6 @@ private:
     static constexpr const float* kFactorColors[3] = {med_blue, yellow, red};
     // the source's, by ClockSource: Auto white, TRS orange, USB blue, internal pink
     static constexpr const float* kSourceColors[kNumClockSources] = {white, orange, blue, pink};
-    static constexpr Hardware::SwId kWhiteKeys[15] = {
-        Hardware::SwId::KEY_1,  Hardware::SwId::KEY_2,  Hardware::SwId::KEY_3,
-        Hardware::SwId::KEY_4,  Hardware::SwId::KEY_5,  Hardware::SwId::KEY_6,
-        Hardware::SwId::KEY_7,  Hardware::SwId::KEY_8,  Hardware::SwId::KEY_9,
-        Hardware::SwId::KEY_10, Hardware::SwId::KEY_11, Hardware::SwId::KEY_12,
-        Hardware::SwId::KEY_13, Hardware::SwId::KEY_14, Hardware::SwId::KEY_15};
-    static constexpr Hardware::SwId kDarkKeys[10] = {
-        Hardware::SwId::KEY_16, Hardware::SwId::KEY_17, Hardware::SwId::KEY_18,
-        Hardware::SwId::KEY_19, Hardware::SwId::KEY_20, Hardware::SwId::KEY_21,
-        Hardware::SwId::KEY_22, Hardware::SwId::KEY_23, Hardware::SwId::KEY_24,
-        Hardware::SwId::KEY_25};
     // the battery's level, by Hardware::BatteryLevel
     static constexpr const float* kBatteryColors[4] = {white, green, yellow, red};
 
@@ -527,8 +503,6 @@ private:
 constexpr const float* SettingsPage::kFactorColors[];
 constexpr const float* SettingsPage::kSourceColors[];
 constexpr uint8_t SettingsPage::kKnobLeds[];
-constexpr Hardware::SwId SettingsPage::kWhiteKeys[];
-constexpr Hardware::SwId SettingsPage::kDarkKeys[];
 constexpr const float* SettingsPage::kBatteryColors[];
 
 } // namespace chompi

@@ -147,30 +147,21 @@ namespace chompi
     // outside in red (TAPE's and TEMPO's preset keys go the other way). The lower C# and D# are
     // free on this page. One language for all three: the mode's colour shows what will happen
     // (the slots it can act on, the pick, the CHOMPI key that confirms), white that it's done,
-    // red that it was refused or isn't on the card
-    struct SceneKey
-    {
-        Hardware::SwId key;
-        uint8_t led;
-    };
-    static const SceneKey kSceneKeys[kNumSlots] = {
-        {Hardware::SwId::KEY_18, 2},
-        {Hardware::SwId::KEY_19, 3},
-        {Hardware::SwId::KEY_20, 4},
-        {Hardware::SwId::KEY_21, 5},
-        {Hardware::SwId::KEY_22, 6},
+    // red that it was refused or isn't on the card. Their LEDs: KeyLedOf (PanelKeys.h)
+    static const Hardware::SwId kSceneKeys[kNumSlots] = {
+        Hardware::SwId::KEY_18, Hardware::SwId::KEY_19, Hardware::SwId::KEY_20,
+        Hardware::SwId::KEY_21, Hardware::SwId::KEY_22,
     };
     struct SceneModeKey
     {
         SceneMode mode;
         Hardware::SwId key;
-        uint8_t led;
         const float* color;
     };
     static const SceneModeKey kSceneModeKeys[] = {
-        {SceneMode::SAVE, Hardware::SwId::KEY_23, 7, green},
-        {SceneMode::COPY, Hardware::SwId::KEY_24, 8, blue},
-        {SceneMode::DELETE, Hardware::SwId::KEY_25, 9, red},
+        {SceneMode::SAVE, Hardware::SwId::KEY_23, green},
+        {SceneMode::COPY, Hardware::SwId::KEY_24, blue},
+        {SceneMode::DELETE, Hardware::SwId::KEY_25, red},
     };
     static const uint32_t kScenePulseMs = 1000;     // the active scene, edited
 
@@ -434,7 +425,7 @@ namespace chompi
             }
             for (size_t slot = 0; slot < kNumSlots; slot++)
             {
-                if (buttonID == static_cast<uint16_t>(kSceneKeys[slot].key))
+                if (buttonID == static_cast<uint16_t>(kSceneKeys[slot]))
                 {
                     keys_.Used();
                     ScenePressed(slot, Shift());
@@ -1642,7 +1633,7 @@ namespace chompi
             const SceneMode mode = scene_ctl_.Mode();
             const float* mode_color = SceneModeColor();
             for (const SceneModeKey& key : kSceneModeKeys)
-                SmtLed(key.led, key.color, mode == key.mode ? 1.f : kFxOffLevel);
+                SmtLed(KeyLedOf(key.key), key.color, mode == key.mode ? 1.f : kFxOffLevel);
 
             const bool blink_on = BlinkOn(now, kPendingBlinkMs);
             for (size_t slot = 0; slot < kNumSlots; slot++)
@@ -1701,7 +1692,7 @@ namespace chompi
                 }
                 else if (scenes_->scenes[slot].used)
                     level = kFxOffLevel;
-                SmtLed(kSceneKeys[slot].led, color, level);
+                SmtLed(KeyLedOf(kSceneKeys[slot]), color, level);
             }
         }
 
@@ -1753,7 +1744,7 @@ namespace chompi
                 // a select (SHIFT + the key): a flash
                 if (fx == selected && select_flash_.Active(now))
                     Flash(rgb);
-                SetSmtLedFloat(kFxSlots[fx].key_led, rgb[0], rgb[1], rgb[2]);
+                SetSmtLedFloat(KeyLedOf(kFxSlots[fx].key), rgb[0], rgb[1], rgb[2]);
             }
 
             // the compressor's key: its gain reduction, from dim up to full, white; turning red
