@@ -295,6 +295,10 @@ what FRIZZ does.
 
 ### Fixed
 
+- **A SysEx cut short no longer deafens MIDI in** (#166): one that broke off (its sender
+  unplugged mid-message) swallowed every note, CC, program change and Song Position after it
+  until the next SysEx ended, so a note held then hung. Now the next message ends it, as MIDI
+  has it; the clock was never affected.
 - **With the mix at the loop alone, none of the input is left** (#168): a trace of it, about
   86 dB down, stayed on the master; the headphone feed likewise settles exactly on the master
   or the input now.

@@ -160,6 +160,23 @@ int main()
         Check(Restarted(), "restart: FRIZZ's restart SysEx with a clock tick inside it still restarts (#18)");
     }});
 
+    // a SysEx cut short (its sender unplugged mid-message) ends at the next status byte, which
+    // starts a message of its own: the notes and CCs after it are heard, as is a SysEx (#166)
+    cases.push_back({"sysex-cut", [] {
+        RunMs(kReadyMs);
+        Trs({0xF0, 0x7D, 0x43, 0x9F, 47, 100, 0x8F, 47, 0}); // then LOOP tapped
+        RunMs(100);
+        const int loop = Probe().loop_state;
+        Usb({0xF0, 0x7E, 0x00, kCC, 116, 127}); // then AUX dry, over USB
+        RunMs(50);
+        Usb({0xF0, 0x01, 0x02}); // then STATE asked
+        const std::string st = Ask({0x20});
+        const int input = st.size() > 25 ? st[25] : -1;
+        Report("sysex-cut: the looper's state %d, the input %d", loop, input);
+        Check(loop == 1, "sysex-cut: a note after a cut SysEx is heard: LOOP records");
+        Check(input == 6, "sysex-cut: a CC after one over USB is heard, and a SysEx after one answered");
+    }});
+
     // Start, Stop, Continue and Song Position are ignored (LOOPER.md 1.4): they don't reset or
     // stop the count, nor the tempo
     cases.push_back({"transport", [] {
