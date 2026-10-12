@@ -21,7 +21,10 @@ namespace chompi
  *  then every offset around the best, comparing 16 samples spread over 128). Without that, the two
  *  taps cross in an arbitrary phase relation, which pulls the pitch off by up to most of a
  *  semitone and makes the level wobble. (Kastle's shifter has one tap that fades out and in
- *  at every wrap, which is what made it buzz.)
+ *  at every wrap, which is what made it buzz.) The search is the shifter's costliest moment,
+ *  so it's spread over two audio blocks (#137): it starts when a tap falls silent, which
+ *  then stays silent at the crossing for a block, the other alone, and the rest of the
+ *  search places it as far on as the other tap has moved since.
  *
  *  Swoop is Kastle's trigger envelope (0.1s up, 1s down), fired by the key press, pushing
  *  the shift up to 2 octaves further in its direction and back. Feedback recirculates the
@@ -54,6 +57,8 @@ public:
             delay_[c][1] = kGuard + static_cast<float>(kSearch) + .5f * kWindowFrames;
         }
         window_frames_ = kWindowFrames;
+        for (size_t c = 0; c < 2; c++)
+            waiting_[c] = held_[c] = 0;
         gate_.Init();
         env_.Reset();
         env_attack_inc_ = 1.f / (.1f * sample_rate);
@@ -78,6 +83,9 @@ public:
         // knobs where they're going
         if (gate_.Asleep())
         {
+            for (size_t c = 0; c < 2; c++)
+                if (waiting_[c])
+                    FinishSplice(c);
             SnapParams();
             ring_.WriteFrame(SoftClip(*l), SoftClip(*r));
             return;
@@ -118,14 +126,27 @@ public:
             d[0] = fclamp(d[0] + 1.f - ratio, 1.f, max_delay);
             d[1] = fclamp(d[1] + 1.f - ratio, 1.f, max_delay);
             const float prev = window_[c];
-            float w = prev + fabsf(1.f - ratio) / window_frames_;
-            if (w >= 1.f)
+            float w = prev;
+            if (waiting_[c])
             {
-                w -= 1.f;
-                d[0] = Splice(c, d[1], ratio, up); // tap 0 is silent here
+                // a tap waits, silent, for the rest of its search, a block after its start
+                if (++held_[c] >= kSpliceHold)
+                    FinishSplice(c);
             }
-            else if (prev < .5f && w >= .5f)
-                d[1] = Splice(c, d[0], ratio, up); // tap 1 is silent here
+            else
+            {
+                w = prev + fabsf(1.f - ratio) / window_frames_;
+                if (w >= 1.f)
+                {
+                    w = 0.f; // tap 0 is silent here
+                    StartSplice(c, 0, ratio, up);
+                }
+                else if (prev < .5f && w >= .5f)
+                {
+                    w = .5f; // tap 1 is silent here
+                    StartSplice(c, 1, ratio, up);
+                }
+            }
             window_[c] = w;
 
             // triangles: tap 0 peaks mid-window and is silent at the wrap, tap 1 the reverse
@@ -190,68 +211,203 @@ private:
     // candidates read up to 120 samples on, times the speed, which is below 1 going down
     static constexpr float kGuard = 130.f;
     static constexpr float kMaxWindowFrames = kWindowFrames * 5.f / 3.f; // grain at the top
+    static const uint8_t kSpliceHold = 24; // samples a tap waits for its splice: a block
+    // a tap lives through two waits for a splice, at its start and halfway, moving on by
+    // 1 - ratio a sample through them: going up, it starts that much further back
+    static constexpr float kMaxRatio = 8.5f; // 37 semitones: shift, swoop and stereo at the top
+    static constexpr float kHoldsPast = 2.f * kSpliceHold * (kMaxRatio - 1.f);
     // a tap's longest delay is the grain's window plus this; the buffer holds the longest
-    static constexpr float kDelayPast = kGuard + 2.f * kSearch + kFineRange + 2.f;
+    static constexpr float kDelayPast = kGuard + 2.f * kSearch + kFineRange + 2.f + kHoldsPast;
     static_assert(kMaxWindowFrames + kDelayPast < kBufSize, "the longest grain fits the buffer");
     static constexpr float kSwoopSemitones = 24.f; // how far the swoop pushes at the top
 
-    /** Where a tap that's starting over should start: its nominal start (the far end of
-     *  the window going up, the near end going down) moved by up to kSearch to where its next
-     *  samples best match the other tap's, by normalised correlation. Once per window, so
-     *  out of line: inlined twice, it made Process three times the size */
-    __attribute__((noinline)) float Splice(size_t c, float other, float ratio, bool up) const
+    /** Where tap t, falling silent, starts over: its nominal start (the far end of the
+     *  window going up, the near end going down) moved by up to kSearch to where its next
+     *  samples best match the other tap's, by normalised correlation (SpliceSearch). The
+     *  first kFirstGroups of the search's groups now, the rest in FinishSplice. Once per
+     *  window, so out of line: inlined twice, the search made Process three times the size */
+    __attribute__((noinline)) void StartSplice(size_t c, int t, float ratio, bool up)
     {
-        const float* const b = ring_.buf[c];
-        const size_t last = ring_.Last();
-        const float nominal = (up ? window_frames_ : 0.f) + kGuard + kSearch;
-
-        // k samples on, both taps will have moved k * ratio through the input: the other
-        // tap's samples, and where a candidate at lag 0 reads, once for every lag
-        float ref[kCorrPoints];
-        size_t start[kCorrPoints];
-        for (size_t k = 0; k < kCorrPoints; k++)
-        {
-            const float ahead = static_cast<float>(k * kCorrStep) * ratio;
-            ref[k] = b[(last - static_cast<size_t>(fmaxf(other - ahead, 1.f))) & kBufMask];
-            start[k] = last - static_cast<size_t>(nominal - ahead);
-        }
-
-        // a lag adds to the delay, so the candidate reads lag samples further back
-        auto score = [&](int lag) {
-            float dot = 0.f, energy = 0.f;
-            for (size_t k = 0; k < kCorrPoints; k++)
-            {
-                const float x = b[(start[k] - static_cast<size_t>(lag)) & kBufMask];
-                dot += x * ref[k];
-                energy += x * x;
-            }
-            return dot / sqrtf(energy + 1e-9f);
-        };
-
-        int best = 0;
-        float best_score = -1e30f;
-        for (int lag = -kSearch; lag <= kSearch; lag += kCoarseStep)
-        {
-            const float v = score(lag);
-            if (v > best_score)
-            {
-                best_score = v;
-                best = lag;
-            }
-        }
-        const int coarse = best;
-        for (int lag = coarse - kFineRange; lag <= coarse + kFineRange; lag++)
-        {
-            const float v = score(lag);
-            if (v > best_score)
-            {
-                best_score = v;
-                best = lag;
-            }
-        }
-        return nominal + static_cast<float>(best);
+        const float other = delay_[c][1 - t];
+        nominal_[c] = (up ? window_frames_ + 2.f * kSpliceHold * (ratio - 1.f) : 0.f) + kGuard
+                      + kSearch;
+        search_[c].Begin(ring_.buf[c], ring_.Last(), nominal_[c], other, ratio);
+        search_[c].Run(kFirstGroups);
+        other_at_[c] = other;
+        waiting_[c] = static_cast<uint8_t>(1 + t);
+        held_[c] = 0;
     }
 
+    /** The rest of channel c's search, and the waiting tap starts where it found, as far on
+     *  as the other tap has moved since: the two in the relation it chose. The search's reads
+     *  are all behind where the write head was when it began, so the block written since
+     *  changes none of them: it finds what it would have found all at once */
+    __attribute__((noinline)) void FinishSplice(size_t c)
+    {
+        const int t = waiting_[c] - 1;
+        float* const d = delay_[c];
+        search_[c].Run(SpliceSearch::kGroups);
+        d[t] = nominal_[c] + static_cast<float>(search_[c].best.lag) + (d[1 - t] - other_at_[c]);
+        waiting_[c] = 0;
+    }
+
+public:
+    /** A splice search: the lag from a tap's nominal start, in buffer b, whose next samples
+     *  best match those of the other tap. Every kCoarseStep-th lag, then every lag around the
+     *  best, in groups of kGroup lags, which Run can take a few at a time.
+     *
+     *  It's what the peak block costs, so it's made cheap without changing a score: a group's
+     *  sums are separate chains, each still added up point by point in the same order; the
+     *  reads go off a pointer where the search's reach doesn't wrap the ring; and a lag's
+     *  sqrtf and division run only where it can beat the best (Best). The splice check
+     *  (test/splice.cpp) holds it against the search as it was (#137) */
+    struct SpliceSearch
+    {
+        /** What the search compares: k samples on, both taps will have moved k * ratio
+         *  through the input: the other tap's samples (at delay other), and where a
+         *  candidate at lag 0 reads (the nominal start), once for every lag */
+        void Begin(const float* buf, size_t last, float nominal, float other, float ratio)
+        {
+            b = buf;
+            for (size_t k = 0; k < kCorrPoints; k++)
+            {
+                const float ahead = static_cast<float>(k * kCorrStep) * ratio;
+                ref[k] = b[(last - static_cast<size_t>(fmaxf(other - ahead, 1.f))) & kBufMask];
+                start[k] = last - static_cast<size_t>(nominal - ahead);
+            }
+            wraps = false;
+            for (size_t k = 0; k < kCorrPoints; k++)
+            {
+                wraps |= ((start[k] - kMaxLag) & kBufMask) + (kMaxLag - kMinLag) > kBufMask;
+                at[k] = b + (start[k] & kBufMask);
+            }
+            best = Best();
+            group = 0;
+        }
+
+        /** Scores up to n more groups; true once every lag is scored, the best in best.lag */
+        __attribute__((noinline)) bool Run(int n)
+        {
+            return wraps ? Run<true>(n) : Run<false>(n);
+        }
+
+        /** The best lag so far and its score, dot / sqrt(energy + 1e-9) */
+        struct Best
+        {
+            int lag = 0;
+            float score = -1e30f;
+            // dot / sqrtf(e) > score > 0 needs dot > 0 and dot^2 > score^2 * e: a lag clearly
+            // short of that can't win, and skips the sqrtf and the division. The margin is
+            // far above their rounding (a few parts in 2^24), so no lag that wins is skipped.
+            // Only for a score over 1e-6, which keeps the right side clear of underflow;
+            // below, below and floor let every lag through
+            float below = -__builtin_inff(); // a dot at most this can't win
+            float floor = 0.f;               // nor one whose dot^2 is under this times e
+
+            /** A lag that beats the best takes its place; ties keep the earlier one */
+            inline void Offer(int l, float dot, float energy)
+            {
+                const float e = energy + 1e-9f;
+                if (dot > below && dot * dot >= floor * e)
+                    Score(l, dot, e);
+            }
+
+            /** The few lags that may win, out of line: Offer is inlined kGroup times */
+            __attribute__((noinline)) void Score(int l, float dot, float e)
+            {
+                const float v = dot / sqrtf(e);
+                if (v > score)
+                {
+                    score = v;
+                    lag = l;
+                    const bool skips = score > 1e-6f;
+                    below = skips ? 0.f : -__builtin_inff();
+                    floor = skips ? kSkipMargin * score * score : 0.f;
+                }
+            }
+        };
+
+        static const int kGroup = 4; // lags scored at once
+        static const int kCoarseGroups = (2 * kSearch / kCoarseStep + kGroup) / kGroup;
+        static const int kFineGroups = (2 * kFineRange + kGroup) / kGroup;
+        static const int kGroups = kCoarseGroups + kFineGroups;
+        // the lags it reads: a group past the last lag scores lags beyond it, unoffered
+        static const int kMinLag = -kSearch - kFineRange;
+        static const int kMaxLag = -kSearch + (kCoarseGroups * kGroup - 1) * kCoarseStep;
+        static_assert(kFineGroups * kGroup - kFineRange <= kMaxLag - kSearch,
+                      "the fine pass reads within the coarse pass's reach");
+
+        const float* b;
+        float ref[kCorrPoints];
+        size_t start[kCorrPoints];    // the ring's index (unmasked) of each candidate at lag 0
+        const float* at[kCorrPoints]; // the same, a pointer, for reads that don't wrap
+        bool wraps;
+        Best best;
+        int group; // the next group to score
+        int coarse;
+
+    private:
+        static constexpr float kSkipMargin = .9999f;
+
+        template <bool kWraps>
+        bool Run(int n)
+        {
+            for (; n > 0 && group < kGroups; n--, group++)
+            {
+                if (group < kCoarseGroups)
+                {
+                    ScoreGroup<kCoarseStep, kWraps>(
+                        -kSearch + group * kGroup * kCoarseStep, kSearch);
+                    if (group == kCoarseGroups - 1)
+                        coarse = best.lag;
+                }
+                else
+                    ScoreGroup<1, kWraps>(
+                        coarse - kFineRange + (group - kCoarseGroups) * kGroup,
+                        coarse + kFineRange);
+            }
+            return group == kGroups;
+        }
+
+        /** Scores the kGroup lags lag, lag + kStep, ... and offers those up to last_lag to
+         *  best, in that order. A lag adds to the delay, so the candidate reads lag samples
+         *  further back; masked only where the search's reads wrap the ring */
+        template <int kStep, bool kWraps>
+        inline __attribute__((always_inline)) void ScoreGroup(int lag, int last_lag)
+        {
+            float dot[kGroup] = {}, energy[kGroup] = {};
+            for (size_t k = 0; k < kCorrPoints; k++)
+            {
+                const size_t i = (start[k] - static_cast<size_t>(lag)) & kBufMask;
+                const float* p = at[k] - lag;
+                // opaque, so the reads go off p with offsets, not a register each (GCC's habit)
+                asm("" : "+r"(p));
+                const float r = ref[k];
+                for (int j = 0; j < kGroup; j++)
+                {
+                    const float x = kWraps ? b[(i - j * kStep) & kBufMask] : *(p - j * kStep);
+                    dot[j] += x * r;
+                    energy[j] += x * x;
+                }
+            }
+            for (int j = 0; j < kGroup; j++)
+                if (lag + j * kStep <= last_lag)
+                    best.Offer(lag + j * kStep, dot[j], energy[j]);
+        }
+    };
+
+    /** The whole search at once (Splice, the splice check) */
+    static int SpliceLag(const float* b, size_t last, float nominal, float other, float ratio)
+    {
+        SpliceSearch s;
+        s.Begin(b, last, nominal, other, ratio);
+        s.Run(SpliceSearch::kGroups);
+        return s.best.lag;
+    }
+
+private:
+    // the search's groups at its start, the rest a block later: about half its time each
+    static const int kFirstGroups = SpliceSearch::kGroups / 2;
     /** Each channel's speed: 2^(semitones/12), the right channel stereo semitones higher */
     void UpdateRatios(float semitones)
     {
@@ -260,6 +416,11 @@ private:
     }
 
     StereoRing<kBufSize> ring_;
+    // per channel: the splice search under way, its nominal start, the other tap's delay
+    // when it began, the tap waiting for it (1 + tap, 0 none) and how long it has waited
+    SpliceSearch search_[2];
+    float nominal_[2], other_at_[2];
+    uint8_t waiting_[2], held_[2];
     float window_[2];   // through the taps' lives, 0..1; tap 0 starts over at 0, tap 1 at .5
     float delay_[2][2]; // per channel, per tap, frames behind the last write
     float ratio_[2] = {1.f, 1.f};
