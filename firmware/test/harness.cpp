@@ -50,7 +50,20 @@ static PassthroughEngine engine;
 // page 1's knob 4 to page 2's knob 2: the harness turns the same ones as on the builds before
 static size_t Knob(size_t fx, size_t p)
 {
+    // the sends' level, page 1's knob 4 until #172, is on page 2's knob 4 now
+    if (p == chompi::kFxOwnKnob && (fx == chompi::FX_DELAY || fx == chompi::FX_REVERB))
+        return chompi::FxOutput::kLevel;
     return p == chompi::kFxOwnKnob && chompi::HasStereo(fx) ? chompi::kFxStereoParam : p;
+}
+
+// knob p (one of page 1's, as they were before #117 and #172) to val: a send's level, a gain
+// then, on the Level knob's dB scale now
+static void SetKnob(size_t fx, size_t p, float val)
+{
+    const size_t param = Knob(fx, p);
+    const bool level = (fx == chompi::FX_DELAY || fx == chompi::FX_REVERB)
+                       && param == chompi::FxOutput::kLevel;
+    engine.SetFxParam(fx, param, level ? chompi::LevelKnob(val) : val);
 }
 
 static uint32_t lcg = 12345;
@@ -119,7 +132,7 @@ int main(int argc, char** argv)
     // the defaults NormalPage pushes don't matter here: every parameter is set below
     for (size_t i = 0; i < kNum; i++)
         for (size_t p = 0; p < 4; p++)
-            engine.SetFxParam(kAll[i], Knob(kAll[i], p), .5f);
+            SetKnob(kAll[i], p, .5f);
 
     if (getenv("STRESS"))
     {
@@ -136,7 +149,7 @@ int main(int argc, char** argv)
         engine.SetFxParam(chompi::FX_SHIFTER, 1, 1.f);
         engine.SetFxParam(chompi::FX_DELAY, 1, 1.f);
         engine.SetFxParam(chompi::FX_REVERB, 0, 1.f);
-        engine.SetFxParam(chompi::FX_REVERB, 3, 1.f);
+        SetKnob(chompi::FX_REVERB, 3, 1.f);
     }
     // per-fx solo segments of 3s, then 3s of all inserts, 6s of everything, then tails
     const size_t seg = static_cast<size_t>(3.f * kSr / kBlock);
@@ -170,7 +183,7 @@ int main(int argc, char** argv)
                 engine.SetFxOn(kAll[i], on[i]);
             was_on[i] = on[i];
             if (on[i] && t % knob_every == 0)
-                engine.SetFxParam(kAll[i], Knob(kAll[i], static_cast<size_t>(Rnd() * 4.f) % 4), Rnd());
+                SetKnob(kAll[i], static_cast<size_t>(Rnd() * 4.f) % 4, Rnd());
         }
 
         for (size_t i = 0; i < kBlock; i++)

@@ -772,7 +772,7 @@ int main()
         Save(1);
         RunMs(2500);
         const std::string file = Card("/FRIZZ/frizz_scenes.txt");
-        Check(file.find("layout 4\n") != std::string::npos
+        Check(file.find("layout 5\n") != std::string::npos
                   && file.find("shifter 0 500000 0 0 500000 500000 0 500000 750000") != std::string::npos,
               "fx-page2: a scene keeps page 2 on the card, after page 1's four");
         Tap("ENC_4_SW");
@@ -4228,7 +4228,7 @@ int main()
     }});
 
     // page 2's knob 4 (Level) shows the effect's output as a VU meter in VOLUME's colours, as
-    // bright as Level turns it; a send's (Ducking there) shows its return at full brightness
+    // bright as Level turns it; a send's its return, its tail too
     cases.push_back({"fx-vu", [] {
         RunMs(kReadyMs);
         Latch("KEY_2"); // the shifter at 0 semitones: the input through it
@@ -4249,20 +4249,201 @@ int main()
         Check(Max(on) > 120 && on.b < Max(on) / 2, "fx-vu: on page 2, knob 4 is the output's VU, not Level's white");
         Check(Max(down) < Max(on) / 2, "fx-vu: Level turned down, it dims");
         Check(Max(off) < 40, "fx-vu: the effect off: down to the floor");
-        Latch("KEY_12"); // the delay, its level (page 1's knob 4) up
-        Turn(3, 60); // 8 ms a detent
-        RunMs(600);
+        Latch("KEY_12"); // the delay, at its defaults (#172)
         Tap("ENC_4_SW");
         RunMs(1500);
         const Rgb echoes = PthLedFull(kKnob1Led + 3);
+        Turn(3, -40); // its Level, as an insert's, from 0dB (.75) to .35
+        RunMs(800);
+        const Rgb quieter = PthLedFull(kKnob1Led + 3);
+        Turn(3, 40);
         amp = 0.f; // the input stops: the echoes die away
         RunMs(4000);
         const Rgb gone = PthLedFull(kKnob1Led + 3);
         amp = .3f;
-        printf("      delay's return: %02x%02x%02x, gone %02x%02x%02x\n", echoes.r, echoes.g,
-               echoes.b, gone.r, gone.g, gone.b);
+        printf("      delay's return: %02x%02x%02x, Level down %02x%02x%02x, gone %02x%02x%02x\n",
+               echoes.r, echoes.g, echoes.b, quieter.r, quieter.g, quieter.b, gone.r, gone.g, gone.b);
         Check(Max(echoes) > 120 && Max(gone) < 40,
-              "fx-vu: the delay's knob 4 there (Ducking at 0): its return, at full brightness");
+              "fx-vu: the delay's knob 4 there (its Level, #172): its return");
+        Check(Max(quieter) < Max(echoes) / 2, "fx-vu: the delay's Level turned down, it dims as an insert's");
+    }});
+
+    // the freezer's roll (#173): a divider of the length by hand, off, 1/2, 1/4, 1/8, 1/16; a
+    // step takes at the next repeat's start, on the capture's 16th grid; off is the whole
+    // length again; the knob is the state, so the next capture starts on it
+    cases.push_back({"freezer-roll", [] {
+        RunMs(kReadyMs);
+        freq = 233.f; // no whole number of its cycles in the lengths below
+        static uint32_t seed = 7;
+        static std::vector<float> e;      // the master out's RMS, block by block
+        static std::vector<uint32_t> pos; // and the FX clock's pulse then
+        static std::vector<double> ms;    // and the twin's time
+        e.clear();
+        pos.clear();
+        ms.clear();
+        // the input's level random block by block, so the repeats' envelope shows their length
+        auto run = [](size_t blocks) {
+            for (size_t b = 0; b < blocks; b++)
+            {
+                seed = seed * 1664525u + 1013904223u;
+                amp = .05f + .25f * static_cast<float>(seed >> 8) / 16777216.f;
+                ms.push_back(BlockMs());
+                e.push_back(RunBlocks(1));
+                pos.push_back(Probe().position);
+            }
+        };
+        // the shortest of 1/32 to 1/4 bar (125 to 1000 blocks at 120 BPM) the last `over`
+        // blocks repeat in
+        auto period = [](size_t over) {
+            for (size_t p : {125u, 250u, 500u, 1000u})
+            {
+                float worst = 0.f;
+                for (size_t t = e.size() - over; t < e.size(); t++)
+                    worst = std::max(worst, fabsf(e[t] - e[t - p]));
+                if (worst < 1e-5f)
+                    return static_cast<int>(p);
+            }
+            return -1;
+        };
+        auto roll = [] {
+            const std::string p = Ask({0x21, 0});
+            return p.size() == 17 ? KnobOf(p[5], p[6]) : -1.f;
+        };
+        // turned at block `at` from repeats of `from` blocks to `to`: where the new length took.
+        // Both start the same, from the capture's start: the first block that parts from the
+        // old repeats, less the shorter length
+        auto took = [](size_t at, size_t from, size_t to) {
+            for (size_t t = at; t < e.size(); t++)
+                if (fabsf(e[t] - e[t - from]) > 1e-5f)
+                    return static_cast<long>(t - std::min(from, to));
+            return -1L;
+        };
+        auto on_16th = [](long b) {
+            for (long t = b - 2; t <= b + 2; t++)
+                if (t > 0 && static_cast<size_t>(t) < pos.size() && pos[t] != pos[t - 1]
+                    && pos[t] % 3 == 0)
+                    return true;
+            return false;
+        };
+        printf("      the FX's tempo: %.1f BPM\n", Probe().fx_bpm);
+        run(100);
+        Latch("KEY_1");
+        Turn(kKnob1Encoder, -9); // the length from 1 bar to 1/4
+        run(600);
+        run(3000);
+        Check(period(2000) == 1000, "freezer-roll: off, it repeats the length (1/4 bar)");
+        struct Step
+        {
+            int detents;
+            float knob;
+            int len;
+            const char* what;
+        };
+        const Step steps[] = {{3, .25f, 500, "1/2"}, {3, .5f, 250, "1/4"}, {3, .75f, 125, "1/8"}};
+        int was = 1000;
+        long last = -1; // where the last step took
+        for (const Step& st : steps)
+        {
+            const size_t at = e.size();
+            Turn(2, st.detents);
+            run(3000);
+            const long b = took(at, static_cast<size_t>(was), static_cast<size_t>(st.len));
+            const int len = period(1500);
+            // Ask runs the twin on, unrecorded: a stretch recorded after it before the next turn
+            const float knob = roll();
+            printf("      roll %s: knob %.3f, repeats of %d blocks, from block %ld (turned at %zu, pulse %u)\n",
+                   st.what, knob, len, b, at, b >= 0 ? pos[b] : 0u);
+            Check(fabsf(knob - st.knob) < .01f && len == st.len,
+                  (std::string("freezer-roll: a step right, ") + st.what + " of the length").c_str());
+            Check(b >= static_cast<long>(at) && on_16th(b),
+                  (std::string("freezer-roll: ") + st.what + " takes at a repeat's start, on the 16th grid").c_str());
+            run(1200);
+            was = st.len;
+            last = b;
+        }
+        Turn(2, -9); // back to off in one move
+        const size_t at = e.size();
+        run(4000);
+        const long b = took(at, 125, 1000);
+        const int len = period(2000);
+        // the 1/8 repeats are 1/32 notes, 62.5 ms: off takes at one of their starts
+        const double since = b >= 0 && last >= 0 ? ms[b] - ms[last] : -1.;
+        const double off_grid = fabs(since - 62.5 * floor(since / 62.5 + .5));
+        printf("      roll off: repeats of %d blocks, from block %ld (turned at %zu), %.1f ms after 1/8 took\n",
+               len, b, at, since);
+        Check(roll() == 0.f && len == 1000 && b >= static_cast<long>(at) && off_grid <= 1.,
+              "freezer-roll: back to off, the whole length again, from a 1/8 repeat's start");
+
+        // the knob is the state: still on 1/4, the next capture repeats a quarter from the start
+        Turn(2, 6);
+        run(200);
+        Tap("KEY_1"); // unlatched
+        run(1000);
+        Latch("KEY_1");
+        run(2500);
+        const int next = period(1500);
+        printf("      the next capture, the roll on %.2f: repeats of %d blocks\n", roll(), next);
+        Check(fabsf(roll() - .5f) < .01f && next == 250,
+              "freezer-roll: still on 1/4 at the next capture, it repeats 1/4 of the length");
+        freq = 220.f;
+        amp = .3f;
+    }});
+
+    // the sends (#172): heard at once at their defaults, as every effect is: their Level on
+    // page 2's knob 4 at 0dB, on the inserts' scale; their Ducking on page 1's knob 4. The MIDI
+    // map follows: CC 21 on their channel is Level, CC 17 Ducking
+    cases.push_back({"send-level", [] {
+        RunMs(kReadyMs);
+        // what a send returns after a 300 ms burst of the sine: its echoes or its room alone
+        auto tail = [] {
+            amp = .3f;
+            RunMs(300);
+            amp = 0.f;
+            RunMs(100);
+            const float t = RunMs(600);
+            RunMs(5000); // rung out
+            amp = .3f;
+            return t;
+        };
+        auto param = [](int fx, int i) {
+            const std::string p = Ask({0x21, fx});
+            return p.size() == 17 ? KnobOf(p[1 + 2 * i], p[2 + 2 * i]) : -1.f;
+        };
+        amp = 0.f;
+        RunMs(500);
+        const float silence = RunMs(600);
+        Latch("KEY_12"); // the delay, at its defaults
+        const float echoes = tail();
+        printf("      the delay at its defaults: echoes %.4f (silence %.6f)\n", echoes, silence);
+        Check(echoes > .02f && silence < 1e-4f, "send-level: the delay's key at its defaults: its echoes heard");
+        Check(fabsf(param(10, 7) - .75f) < 1e-3f && param(10, 3) == 0.f,
+              "send-level: the delay's Level on page 2's knob 4 at 0dB, Ducking on page 1's knob 4 off");
+        Tap("ENC_4_SW"); // page 2
+        RunMs(100);
+        Turn(3, -25); // knob 4, Level: 0dB to -12dB
+        RunMs(800);
+        const float down = tail();
+        printf("      Level at -12dB: %.4f (%.1fdB)\n", down, 20.f * log10f(down / echoes));
+        Check(fabsf(param(10, 7) - .5f) < .011f && fabsf(20.f * log10f(down / echoes) + 12.f) < 1.f,
+              "send-level: page 2's knob 4 is the delay's Level, -12dB");
+        Turn(3, -100); // all the way down: muted
+        RunMs(800);
+        Check(param(10, 7) == 0.f && tail() < 1e-4f, "send-level: Level at the bottom mutes the echoes");
+        Latch("KEY_12"); // off again
+        RunMs(5000);
+
+        Latch("KEY_13"); // the reverb, at its defaults
+        const float room = tail();
+        printf("      the reverb at its defaults: its room %.4f\n", room);
+        Check(room > .01f && fabsf(param(11, 7) - .75f) < 1e-3f && param(11, 3) == 0.f,
+              "send-level: the reverb's key at its defaults: its room heard, Level at 0dB on page 2");
+        // MIDI: CC 21 on its channel (13) is Level, CC 17 Ducking
+        Trs({0xBC, 21, 32, 0xBC, 17, 100});
+        RunMs(100);
+        Check(fabsf(param(11, 7) - KnobOf7(32)) < .01f && fabsf(param(11, 3) - KnobOf7(100)) < .01f,
+              "send-level: CC 21 on the reverb's channel is its Level, CC 17 its Ducking");
+        Latch("KEY_13");
+        amp = .3f;
     }});
 
     // the MIDI map follows the knobs: CC 17 on an effect's channel is page 1's knob 4, its own

@@ -6,20 +6,22 @@
  *
  *  Every effect's knobs follow one pattern, so they're guessable without labels: knob 1 is the
  *  main control, 2 feedback (or resonance), 3 tone or colour, 4 a setting of the effect's own,
- *  the one played (#117), or a send's level. An effect without one of these puts its odd
+ *  the one played (#117), or a send's ducking. An effect without one of these puts its odd
  *  parameter there. Page 2 (parameters 4-7, a knob press away, FxControls.h) holds what is set
  *  and left, laid out the same on every effect too (FxOutput.h): knob 1 Mix, knob 2 stereo,
- *  knob 3 Band, knob 4 Level. The sends have freeze, their own, Band and ducking there (their
- *  level is page 1's knob 4), the resonator stereo, Band into its loop and its return's level.
+ *  knob 3 Band, knob 4 Level. The sends have freeze, their own, Band and their return's level
+ *  there (until #172 ducking was on page 2's knob 4 and the level on page 1's, FxScenes.h's
+ *  layout 5), the resonator stereo, Band into its loop and its return's level.
  *  The tape stop has no stereo: its depth is on page 1's knob 4, its own (darken) on page 2's
  *  knob 2 (HasStereo). The compressor's page 2 has Mix, a sidechain highpass and Makeup on the
  *  knobs of Mix, Band and Level.
  *
- *  The defaults leave every effect silent or nearly so: the knob that brings it in (shift,
- *  drive, rate and bits, cutoff, amount, feedback, wow and flutter, level) starts neutral, the
+ *  The defaults leave every insert silent or nearly so: the knob that brings it in (shift,
+ *  drive, rate and bits, cutoff, amount, feedback, wow and flutter) starts neutral, the
  *  others where they sound good, so one turn brings the effect in. The freezer and slicer
  *  can't be neutral: they start at their most transparent setting. Nor can the tape stop:
- *  every press stops the tape.
+ *  every press stops the tape. The sends are heard at once: their key brings them in, their
+ *  Level at 0dB as everyone's (#172).
  */
 #pragma once
 #include "FxChain.h"
@@ -116,7 +118,9 @@ struct FxParams
                                   // (page 2's knob 4, FxOutput.h), which at 0dB leaves a
                                   // neutral effect's sound alone. A scene morph fades the
                                   // effect in and out with them (FxMorph.h); 0: none, the
-                                  // freezer, shifter and slicer fade with Mix (MorphFades)
+                                  // freezer, shifter and slicer fade with Mix (MorphFades).
+                                  // A send's is its Level alone, which a morph fades from
+                                  // and to mute (MorphNeutral)
     uint8_t bipolar;              // bit p: a knob with its neutral point at its default (the
                                   // centre, or Level's 0dB), white there on its LED, blue
                                   // below and orange above (NormalPage.h)
@@ -137,6 +141,17 @@ static constexpr float kP2Mix = FxOutput::kMixDefault, kP2Band = FxOutput::kBand
                        kP2Level = FxOutput::kLevelDefault;
 // and Band and Level are bipolar, around those defaults
 static const uint8_t kP2Bipolar = 0x40 | 0x80;
+
+/** The Level knob (FxOutput::LevelGain) for a gain: its inverse, 0 for one under its -36dB.
+ *  For the sends' level from before #172, a gain from 0 to 1 (FxScenes.h's layout 5) */
+inline float LevelKnob(float gain)
+{
+    if (gain == 1.f)
+        return FxOutput::kLevelDefault;
+    if (gain <= 0.f)
+        return 0.f;
+    return fclamp(FxOutput::kLevelDefault + 20.f * log10f(gain) / 48.f, 0.f, 1.f);
+}
 
 static const FxParams kFxParams[] = {
     // freezer: length (1 bar: a tap shorter than that hears the live signal), feedback (pure
@@ -191,16 +206,16 @@ static const FxParams kFxParams[] = {
     {0xff, {.6f, .6f, 0.f, 1.f, kP2Mix, 0.f, kP2Band, kP2Level}, {TapeStop::kNumStops, TapeStop::kNumStarts, 0, 0},
      {GRID_TAPE_STOP, GRID_TAPE_START, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
      0, kP2Bipolar},
-    // delay: division (1/4), feedback, random (off), level (off); page 2: freeze (off),
-    // damping (none, the centre: lows cut left, highs right), band (all), ducking (off)
-    {0xff, {.25f, .4f, .5f, 0.f, 0.f, .5f, kP2Band, 0.f}, {DelaySend::kNumDivisions, 0, 0, 0},
-     {GRID_DELAY_DIVISION, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10},
-     0x8, 0x04 | 0x20 | 0x40},
-    // reverb: decay, diffusion, tone, level (off); page 2: freeze (off), pre-delay (none),
-    // band (all), ducking (off)
-    {0xff, {.6f, .6f, .6f, 0.f, 0.f, 0.f, kP2Band, 0.f}, {0, 0, 0, 0},
-     {GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10},
-     0x8, 0x40},
+    // delay: division (1/4), feedback, random (off), ducking (off); page 2: freeze (off),
+    // damping (none, the centre: lows cut left, highs right), band (all), level (0dB)
+    {0xff, {.25f, .4f, .5f, 0.f, 0.f, .5f, kP2Band, kP2Level}, {DelaySend::kNumDivisions, 0, 0, 0},
+     {GRID_DELAY_DIVISION, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
+     0x80, kP2Bipolar | 0x04 | 0x20},
+    // reverb: decay, diffusion, tone, ducking (off); page 2: freeze (off), pre-delay (none),
+    // band (all), level (0dB)
+    {0xff, {.6f, .6f, .6f, 0.f, 0.f, 0.f, kP2Band, kP2Level}, {0, 0, 0, 0},
+     {GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
+     0x80, kP2Bipolar},
     // phaser: rate (.7Hz, free), feedback, depth (off: dry), centre (800Hz); page 2's stereo
     // (off). Rate is split: free on the left, the tempo's divisions on the right; coarse
     // centre: octaves
@@ -221,6 +236,9 @@ static_assert(Freezer::STEREO == kFxStereoParam && Shifter::STEREO == kFxStereoP
                   && Warble::STEREO == kFxStereoParam && Phaser::STEREO == kFxStereoParam,
               "stereo on page 2's knob 2 (HasStereo)");
 static_assert(kNumFxParams <= 8, "a bit per parameter in knobs and fade");
+static_assert(DelaySend::LEVEL == FxOutput::kLevel && ReverbSend::LEVEL == FxOutput::kLevel
+                  && DelaySend::DUCKING == kFxOwnKnob && ReverbSend::DUCKING == kFxOwnKnob,
+              "the sends' level on page 2's knob 4, their ducking on page 1's (#172)");
 
 // The master compressor's knobs (MasterComp.h), edited like an FX's from its own key, but
 // always on and not part of a scene: threshold (off), ratio (4:1), attack (5.5ms), release
