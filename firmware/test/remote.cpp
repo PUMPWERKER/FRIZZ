@@ -1062,6 +1062,7 @@ def to_frizz(slot=None, timeout=120, device=None, again=False):
 chompi.to_frizz = to_frizz
 persist = [True]  # PERSIST 0 answered (None: a FRIZZ from before it)
 kept = [True]  # IDENT's RAM only flag: False once FRIZZ restarted
+refuse = [False]  # SET refused
 class F:
     class link:
         fd = None
@@ -1070,6 +1071,8 @@ class F:
     def ram_only(self):
         return persist[0]
     def dev(self, sub, args=()):
+        if sub == chompi.SET and refuse[0]:
+            return 1, b""
         return (0, bytes(25) + bytes([1 if kept[0] else 0])) if persist[0] else None
     def send(self, cmd, payload=b""):
         print("sent 0x%02X" % cmd)
@@ -1104,8 +1107,14 @@ persist[0] = None
 case(12, 0, cmd="out", ports="trs")
 case(12, 0, cmd="out", ports="trs", save=True)
 persist[0] = True
-# FRIZZ restarted meanwhile (IDENT: not RAM only): said, failed, before it's started again
+# however a setter ends, key 10's FRIZZ is started again: a value refused, no file
+print("-- refused")
+refuse[0] = True
+case(10, 0, cmd="set", group="settings", index="led_brightness", value="60")
+refuse[0] = False
+case(10, 0, cmd="scene", action="put", scene_slot=2, file=None)
 print("-- lost")
+# FRIZZ restarted meanwhile (IDENT: not RAM only): said, failed, before it's started again
 kept[0] = False
 case(12, 0)
 case(10, 0, cmd="channel", channel=7)
@@ -1125,6 +1134,12 @@ kept[0] = True
     {
         const std::string setters = out.substr(std::min(out.size(), out.find("-- setters")));
         const std::string lost = out.substr(std::min(out.size(), out.find("-- lost")));
+        const std::string refused = out.substr(std::min(out.size(), out.find("-- refused")));
+        Check(Has(refused, "slot 10\nthe card isn't written until FRIZZ restarts (PERSIST 0): kept in RAM; --save writes "
+                           "it to the card\nstarting slot 10 again, from the card, so it saves again: what was set is "
+                           "gone (--save keeps it)\nstart 10\nexit SET settings led_brightness 60: refused\n")
+                  && Has(refused, "is gone (--save keeps it)\nstart 10\nexit scene put SLOT FILE\n"),
+              "tools: however a setter ends (a value refused, no file), key 10's FRIZZ is started again from the card (#171)");
         Check(Has(setters, "slot 10\nthe card isn't written until FRIZZ restarts (PERSIST 0): kept in RAM; --save writes "
                            "it to the card\nsent 0x13\nstarting slot 10 again, from the card, so it saves again: what "
                            "was set is gone (--save keeps it)\nstart 10\nslot 12\nthe card isn't written until FRIZZ "

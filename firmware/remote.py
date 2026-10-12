@@ -966,7 +966,8 @@ def main():
     p.add_argument("pos", choices=["up", "down", "hand"])
     p = sub.add_parser("scene", parents=[common])
     p.add_argument("action", choices=["get", "put"])
-    p.add_argument("slot", type=int, choices=range(5))
+    # not "slot": that is --slot, the FRIZZ slot (#171)
+    p.add_argument("scene_slot", metavar="SLOT", type=int, choices=range(5))
     p.add_argument("file", nargs="?")
     p.add_argument("--save", **save)
     p = sub.add_parser("play", parents=[common])
@@ -1011,6 +1012,14 @@ def main():
 
 
 def run(a):
+    try:
+        command(a)
+    finally:
+        if getattr(a, "kept", False):
+            after_setter(a.frizz, a)
+
+
+def command(a):
     if a.cmd in ("bench", "ident") and not a.device and not a.slot:
         # whatever runs, the bench too, which answers as FRIZZ does
         a.device = chompi.wait_for("frizz", 30)
@@ -1024,7 +1033,9 @@ def run(a):
     if a.found:
         a.device = chompi.to_frizz(a.slot, again=fresh)
     f = Frizz(a.device)
-    kept = writes_card(a) and keep_in_ram(f, a)
+    # a setter FRIZZ saves: kept in RAM, FRIZZ started again however it ends (run)
+    a.kept = writes_card(a) and keep_in_ram(f, a)
+    a.frizz = f
     if a.cmd == "state":
         show_state(f)
     elif a.cmd == "leds":
@@ -1056,7 +1067,7 @@ def run(a):
     elif a.cmd == "switch":
         f.send(SWITCH, [{"hand": 0, "down": 1, "up": 2}[a.pos]])
     elif a.cmd == "scene" and a.action == "get":
-        text = json.dumps(scene_get(f, a.slot), indent=1)
+        text = json.dumps(scene_get(f, a.scene_slot), indent=1)
         if a.file:
             with open(a.file, "w") as out:
                 out.write(text + "\n")
@@ -1066,7 +1077,7 @@ def run(a):
         if not a.file:
             sys.exit("scene put SLOT FILE")
         with open(a.file) as src:
-            scene_put(f, a.slot, json.load(src))
+            scene_put(f, a.scene_slot, json.load(src))
     elif a.cmd == "ident":
         show_ident(f)
     elif a.cmd == "ram-only":
@@ -1091,12 +1102,7 @@ def run(a):
         reseed(f, a.seed)
     elif a.cmd == "battery":
         battery(f)
-    if kept:
-        lost = in_ram(f)
-        restore(f, a, setter=True)
-        if lost:
-            sys.exit("%s: what was set may be on the card" % lost)
-    if a.cmd == "play":
+    elif a.cmd == "play":
         ram = None if a.save else f.ram_only()
         if ram:
             print("the card isn't written until FRIZZ restarts (PERSIST 0): what the script "
@@ -1171,6 +1177,16 @@ def in_ram(f):
         return None
     return ("FRIZZ restarted (up %.1f s, reset: %s): it writes the card again"
             % (info["uptime"], chompi.reset_cause(info["reset"])))
+
+
+def after_setter(f, a):
+    """After a setter kept in RAM, however it ended (a value refused too): whether FRIZZ still
+    kept the card out of it, and FRIZZ started again from the card (restore)"""
+    a.kept = False
+    lost = in_ram(f)
+    restore(f, a, setter=True)
+    if lost:
+        sys.exit("%s: what was set may be on the card" % lost)
 
 
 def restore(f, a, setter=False):
