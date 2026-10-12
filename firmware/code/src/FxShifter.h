@@ -56,9 +56,12 @@ public:
             delay_[c][0] = kGuard + static_cast<float>(kSearch);
             delay_[c][1] = kGuard + static_cast<float>(kSearch) + .5f * kWindowFrames;
         }
-        window_frames_ = kWindowFrames;
+        grain_frames_ = kWindowFrames;
         for (size_t c = 0; c < 2; c++)
+        {
+            window_frames_[c] = kWindowFrames;
             waiting_[c] = held_[c] = 0;
+        }
         still_[0] = still_[1] = true;
         gate_.Init();
         env_.Reset();
@@ -85,8 +88,11 @@ public:
         if (gate_.Asleep())
         {
             for (size_t c = 0; c < 2; c++)
+            {
                 if (waiting_[c])
                     FinishSplice(c);
+                window_frames_[c] = grain_frames_; // no tap sounds: the grain at once
+            }
             SnapParams();
             ring_.WriteFrame(SoftClip(*l), SoftClip(*r));
             still_[0] = still_[1] = true;
@@ -126,7 +132,8 @@ public:
 
             // both taps' delays move by 1 - ratio a sample; the window moves through their
             // lives at the same pace, so each tap covers the grain's window of delay per life
-            const float max_delay = window_frames_ + kDelayPast;
+            const float window = window_frames_[c];
+            const float max_delay = window + kDelayPast;
             d[0] = fclamp(d[0] + 1.f - ratio, 1.f, max_delay);
             d[1] = fclamp(d[1] + 1.f - ratio, 1.f, max_delay);
             const float prev = window_[c];
@@ -139,7 +146,7 @@ public:
             }
             else
             {
-                w = prev + fabsf(1.f - ratio) / window_frames_;
+                w = prev + fabsf(1.f - ratio) / window;
                 if (w >= 1.f)
                 {
                     w = 0.f; // tap 0 is silent here
@@ -192,9 +199,10 @@ public:
             stereo_semitones_ = val;
             break;
         case GRAIN:
-            // 30ms in the middle, 10ms to 50ms at the ends; picked up at the next splice
-            window_frames_ = val < .5f ? kWindowFrames * (1.f / 3.f + 4.f / 3.f * val)
-                                       : kWindowFrames * (1.f + 4.f / 3.f * (val - .5f));
+            // 30ms in the middle, 10ms to 50ms at the ends; picked up at the next splices
+            // (NextWindow)
+            grain_frames_ = val < .5f ? kWindowFrames * (1.f / 3.f + 4.f / 3.f * val)
+                                      : kWindowFrames * (1.f + 4.f / 3.f * (val - .5f));
             return; // the speeds don't change
         default:
             break;
@@ -224,6 +232,9 @@ private:
     static constexpr float kDelayPast = kGuard + 2.f * kSearch + kFineRange + 2.f + kHoldsPast;
     static_assert(kMaxWindowFrames + kDelayPast < kBufSize, "the longest grain fits the buffer");
     static constexpr float kSwoopSemitones = 24.f; // how far the swoop pushes at the top
+    // the closest a tap that goes on with a new window comes to the write head (NextWindow):
+    // a few samples, for a swoop that speeds up through the wait
+    static constexpr float kTapFloor = 8.f;
 
     /** A channel's taps stand still while the shifter is off and while the channel runs at
      *  its own speed (ratio 1); they move again with the speed they move at now. Where a tap
@@ -243,20 +254,19 @@ private:
             const bool up = ratio > 1.f;
             float* const d = delay_[c];
             const float w = window_[c];
+            const float window = window_frames_[c];
             // what's left of each tap's life, in delay (tap 0's ends at w 1, tap 1's at .5),
             // and its waits for a splice
-            const float left[2] = {(1.f - w) * window_frames_,
-                                   (w < .5f ? .5f - w : 1.5f - w) * window_frames_};
+            const float left[2] = {(1.f - w) * window, (w < .5f ? .5f - w : 1.5f - w) * window};
             const float holds = 2.f * kSpliceHold * fabsf(1.f - ratio);
-            const float max_delay = window_frames_ + kDelayPast;
+            const float max_delay = window + kDelayPast;
             bool runs_out = false;
             for (size_t t = 0; t < 2; t++)
                 runs_out |= up ? d[t] - left[t] - holds < 1.f : d[t] + left[t] + holds > max_delay;
             if (!runs_out)
                 continue;
             window_[c] = 0.f;
-            d[1] = (up ? window_frames_ + holds : 0.f) + kGuard + kSearch
-                   + (up ? -.5f : .5f) * window_frames_;
+            d[1] = (up ? window + holds : 0.f) + kGuard + kSearch + (up ? -.5f : .5f) * window;
             StartSplice(c, 0, ratio, up);
         }
     }
@@ -269,13 +279,32 @@ private:
     __attribute__((noinline)) void StartSplice(size_t c, int t, float ratio, bool up)
     {
         const float other = delay_[c][1 - t];
-        nominal_[c] = (up ? window_frames_ + 2.f * kSpliceHold * (ratio - 1.f) : 0.f) + kGuard
+        window_frames_[c] = NextWindow(other, ratio, up);
+        nominal_[c] = (up ? window_frames_[c] + 2.f * kSpliceHold * (ratio - 1.f) : 0.f) + kGuard
                       + kSearch;
         search_[c].Begin(ring_.buf[c], ring_.Last(), nominal_[c], other, ratio);
         search_[c].Run(kFirstGroups);
         other_at_[c] = other;
         waiting_[c] = static_cast<uint8_t>(1 + t);
         held_[c] = 0;
+    }
+
+    /** The window for the life a tap starts now, at a splice: the grain, as far as the other
+     *  tap fits it. That one is halfway through its life, placed for the window so far, and
+     *  lives the rest of it at the new one, after this splice's wait. Its delay has to stay
+     *  within the new window's reach (Process's clamp): going up it shrinks, by half the new
+     *  window and the wait, from where it is, which a shorter window may already have left
+     *  behind; going down it grows by them. Where a turn of the grain would run it into either
+     *  end, where it plays unshifted, a click (#167), the window goes as far as it fits, and
+     *  the rest of the way at the next splices; the window it had always fits */
+    float NextWindow(float other, float ratio, bool up) const
+    {
+        const float wait = kSpliceHold * fabsf(1.f - ratio);
+        // a sample inside, so the clamp doesn't touch it
+        const float lowest = up ? other + 1.f - kDelayPast
+                                : 2.f * (other + wait + 1.f - kDelayPast);
+        const float highest = up ? 2.f * (other - wait - kTapFloor) : kBufSize;
+        return fminf(fmaxf(grain_frames_, lowest), highest);
     }
 
     /** The rest of channel c's search, and the waiting tap starts where it found, as far on
@@ -474,7 +503,8 @@ private:
     uint32_t swoop_tick_ = 0;
     static const uint32_t kSwoopUpdate = 8; // samples between the swoop's speed updates
     float stereo_semitones_ = 0.f;
-    float window_frames_ = kWindowFrames; // the grain
+    float grain_frames_ = kWindowFrames; // the grain, from the knob
+    float window_frames_[2];             // per channel, the taps' window now (NextWindow)
     Smoothed dry_;
     Smoothed feedback_;
     PressEnvelope env_;

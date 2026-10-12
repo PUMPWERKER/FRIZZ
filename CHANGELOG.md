@@ -295,6 +295,10 @@ what FRIZZ does.
 
 ### Fixed
 
+- **No click when the shifter's Grain jumps** (#167): a scene recall, MIDI or a fast turn of
+  Grain while the shifter plays could let one of its two voices play unshifted for up to
+  20 ms, a click (worst with a long grain after a short one, shifting up). The new grain now
+  comes in as the voices start over, within a few of their lives (a split second).
 - **The crusher's dive after a quick tap** (#167): a tap shorter than the dive's 0.1 s fall,
   then a pause, and the next press started the dive from too high a rate, as if the first
   fall had been cut off where the tap ended. It now picks up where it would have got to.
