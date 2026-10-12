@@ -1,0 +1,121 @@
+# Page 2 off its defaults (#142): a loop under seven effects, each with its page 2's Mix, Band
+# and Level turned (the resonator, delay and reverb: their Band), so FxOutput.h's crossovers and
+# blend run on every one of them; then one reset to its defaults (SHIFT + press), the keys let
+# go one by one while page 2 is still off its defaults, and the tails.
+# (turn: 4 is knob 1, 1-3 knobs 2-4; detents play out 8 ms each. Page 2: Mix on knob 1, Band
+# on knob 3, Level on knob 4)
+input sine 220 0.3
+at 6000
+tap KEY_28
+wait 2000
+tap KEY_28
+wait 500
+# the folder, latched: page 2, half mix, the highs, a little down
+down KEY_3
+wait 80
+tap KEY_26
+up KEY_3
+wait 200
+turn 1 20
+wait 300
+tap ENC_4_SW
+wait 200
+turn 4 -12
+turn 2 10
+turn 3 -6
+wait 400
+# the crusher: the lows, louder
+down KEY_4
+wait 80
+tap KEY_26
+up KEY_4
+wait 200
+tap ENC_4_SW
+wait 200
+turn 2 -10
+turn 3 4
+wait 400
+# the filter: half mix
+down KEY_5
+wait 80
+tap KEY_26
+up KEY_5
+wait 200
+turn 4 -15
+wait 300
+tap ENC_4_SW
+wait 200
+turn 4 -10
+wait 400
+# the flanger and the phaser: the highs
+down KEY_6
+wait 80
+tap KEY_26
+up KEY_6
+wait 200
+tap ENC_4_SW
+wait 200
+turn 2 14
+wait 300
+down KEY_7
+wait 80
+tap KEY_26
+up KEY_7
+wait 200
+tap ENC_4_SW
+wait 200
+turn 2 8
+turn 3 -10
+wait 400
+# the resonator's loop, the delay's and the reverb's input: their Band
+down KEY_8
+wait 80
+tap KEY_26
+up KEY_8
+wait 200
+tap ENC_4_SW
+wait 200
+turn 2 -12
+wait 300
+down KEY_12
+wait 80
+tap KEY_26
+up KEY_12
+wait 200
+tap ENC_4_SW
+wait 200
+turn 2 12
+wait 300
+down KEY_13
+wait 80
+tap KEY_26
+up KEY_13
+wait 200
+tap ENC_4_SW
+wait 200
+turn 2 -14
+wait 3000
+# the reverb's Band back to the middle (SHIFT + press): it rests at its default again
+down KEY_26
+wait 50
+tap ENC_2_SW
+wait 50
+up KEY_26
+wait 1500
+# the keys let go one by one, page 2 still off its defaults
+tap KEY_3
+wait 700
+tap KEY_5
+wait 700
+tap KEY_8
+wait 700
+tap KEY_4
+wait 700
+tap KEY_6
+wait 700
+tap KEY_7
+wait 700
+tap KEY_12
+wait 700
+tap KEY_13
+wait 3000
