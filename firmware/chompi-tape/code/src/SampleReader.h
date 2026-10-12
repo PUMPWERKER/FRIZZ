@@ -396,6 +396,7 @@ namespace daisy
         void PopStereoSamps(float *l, float *r)
         {
             float env_sig = env_.Process(env_gate_);
+            env_level_ = env_sig;
 
             if(open_requests_ == 0 && deferred_jump)
             {
@@ -862,6 +863,9 @@ namespace daisy
             return env_.IsRunning() || env_gate_;
         }
 
+        bool IsHeld() const { return env_gate_; }
+        float Level() const { return env_level_ * velocity * gain_; } // without pan
+
         bool is_buffered = false;
         uint32_t last_cache;
         inline void CacheSamples() {             
@@ -939,6 +943,7 @@ namespace daisy
         int16_t read_right_a_, read_right_b_;
 
         bool env_gate_;
+        float env_level_ = 0.f;
         float click_env = 1.f;
         float click_dec = .01f;
 

@@ -839,18 +839,17 @@ namespace daisy
                 }
             }
 
-            /** No available voice, take over oldest */
+            /** No available voice: a released one before a held one, the quietest of the released, else the oldest */
             if (free_idx < 0)
             {
                 free_idx = 0;
-                uint32_t oldest_time = play_start_time[0];
                 for(size_t i = 1; i < kMaxPoly; i++)
                 {
-                    if(play_start_time[i] <= oldest_time)
-                    {
+                    const auto &v = chompi_voice[i], &best = chompi_voice[free_idx];
+                    if(v.IsHeld() != best.IsHeld() ? !v.IsHeld()
+                       : !v.IsHeld() && v.Level() != best.Level() ? v.Level() < best.Level()
+                                                                   : play_start_time[i] <= play_start_time[free_idx])
                         free_idx = i;
-                        oldest_time = play_start_time[i];
-                    }
                 }
             }
 
