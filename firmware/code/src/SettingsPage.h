@@ -26,11 +26,18 @@
  *    F# (upper octave)   mono input, on / off                white, lit when on
  *    G# (upper octave)   the LEDs' brightness, each press the next: 100, 75, 50 %
  *                                                            purple, dimmed as all are
- *    A# (upper octave)   the input, AUX / the built-in mic   green (AUX), magenta (mic)
+ *    A# (upper octave)   the input, each press the next: AUX through the effects, AUX dry
+ *                        (past them and the compressor), the built-in mic (#152)
+ *                                                            green, white, magenta
  *
- *  The input isn't saved: AUX's jack picks it at power-on and whenever a cable goes in or
- *  out (chompi_main.cpp); its key picks the other until then.
+ *  AUX's jack picks AUX or the mic at power-on and whenever a cable goes in or out
+ *  (chompi_main.cpp), AUX in the variant chosen last, which is saved; the key picks the next
+ *  until then. The source itself isn't saved. Each source has its own input gain, saved too:
+ *  VOLUME's page 2, here and on the play page, sets the one heard.
  *
+ *    VOLUME              turned: page 1 the output, page 2 the input gain, as on the play
+ *                        page (NormalPage.h, which handles it); a press, page 1 or 2; no
+ *                        page 3, and SHIFT + turn does nothing here
  *    SHIFT + VOLUME press, both held 2 s     a bug report (EventLog.h), once per hold;
  *                                            the transport LEDs blink as on the play page
  *
@@ -39,9 +46,10 @@
  *  again with each retry. A key that went down on the play page stays the play page's until
  *  it's let go, and the other way round (ui.h), so flipping the switch with a key held doesn't
  *  let go of it. A scene mode (SAVE, COPY, DELETE) is left as the switch goes up.
- *  VOLUME's LED shows the battery's level throughout (Hardware's
+ *  VOLUME's LED shows the battery's level (Hardware's
  *  BatteryLevel: white while the charging cable is in, green above 3.3 V, yellow below, red
- *  below 3 V); the transport LEDs are purple, so the page is never taken for the play page.
+ *  below 3 V), but for 2 s after VOLUME was turned or pressed, when it shows its page as the
+ *  play page does; the transport LEDs are purple, so the page is never taken for the play page.
  *
  *  Each setting goes to the card as the master settings do (MasterSettings.h).
  */
@@ -84,6 +92,9 @@ public:
         midi_->SetFeedback(master.midi_feedback);
         quarters_ = master.led_brightness / 25;
         SetLedQuarters(quarters_);
+        engine_->SetAuxDry(master.aux_dry);
+        SetGain(false, master.gain_aux / 100.f);
+        SetGain(true, master.gain_mic / 100.f);
     }
 
     /** A key going down on the page. True if it changed a setting, which then goes to the card */
@@ -91,10 +102,13 @@ public:
     {
         if (key == static_cast<int>(kInputKey))
         {
-            engine_->SetMicInput(!engine_->MicInput()); // not for the card
-            return false;
+            // AUX through the effects, AUX dry, the mic, ...: AUX's variant goes to the card
+            using Input = PassthroughEngine::Input;
+            const Input in = engine_->GetInput();
+            if (!SetInput(in == Input::AUX_FX ? Input::AUX_DRY : in == Input::AUX_DRY ? Input::MIC : Input::AUX_FX))
+                return false;
         }
-        if (!Apply(key))
+        else if (!Apply(key))
             return false;
         unsaved_key_ = key;
         return true;
@@ -198,6 +212,24 @@ public:
         return true;
     }
 
+    /** The input (CC 84 too, which the card doesn't get): true if AUX's variant changed */
+    bool SetInput(PassthroughEngine::Input in)
+    {
+        using Input = PassthroughEngine::Input;
+        engine_->SetMicInput(in == Input::MIC);
+        if (in == Input::MIC || engine_->AuxDry() == (in == Input::AUX_DRY))
+            return false;
+        engine_->SetAuxDry(in == Input::AUX_DRY);
+        return true;
+    }
+
+    /** The input gain of the source heard now, 0..1, and setting it: VOLUME's page 2 */
+    inline float InGain() const { return gain_[engine_->MicInput()]; }
+    inline void SetInGain(float gain) { SetGain(engine_->MicInput(), gain); }
+
+    /** SHIFT (the CHOMPI key) held on this page */
+    inline bool ShiftHeld() const { return held_ & kShiftHeld; }
+
     /** The mono input, from its key. True if it changed */
     bool SetMono(bool mono)
     {
@@ -240,6 +272,9 @@ public:
         master.midi_block_trs = midi_->BlockTrs();
         master.midi_feedback = midi_->Feedback();
         master.led_brightness = quarters_ * 25;
+        master.aux_dry = engine_->AuxDry();
+        master.gain_aux = static_cast<uint8_t>(gain_[0] * 100.f + .5f);
+        master.gain_mic = static_cast<uint8_t>(gain_[1] * 100.f + .5f);
     }
 
     /** Every LED; the panel's were cleared. shift: SHIFT held from the play page */
@@ -263,7 +298,7 @@ public:
         KeyLed(kBlockTrsKey, med_blue, midi_->BlockTrs());
         KeyLed(kFeedbackKey, med_blue, midi_->Feedback());
         KeyLed(kBrightnessKey, purple, true); // dimmed with every LED: it shows itself
-        KeyLed(kInputKey, engine_->MicInput() ? magenta : green, true);
+        KeyLed(kInputKey, kInputColors[static_cast<uint8_t>(engine_->GetInput())], true);
 
         const unsigned level = hw_->GetBatteryLevel();
         const float* battery = level < 4 ? kBatteryColors[level] : green;
@@ -277,6 +312,12 @@ public:
     }
 
 private:
+    void SetGain(bool mic, float gain)
+    {
+        gain_[mic] = gain < 0.f ? 0.f : (gain > 1.f ? 1.f : gain);
+        engine_->SetInputGain(mic, gain_[mic]);
+    }
+
     bool SetChannel(uint8_t channel)
     {
         if (channel == midi_->Channel())
@@ -326,6 +367,9 @@ private:
     static constexpr const float* kFactorColors[3] = {med_blue, yellow, red};
     // the source's, by ClockSource: Auto white, TRS orange, USB blue, internal pink
     static constexpr const float* kSourceColors[kNumClockSources] = {white, orange, blue, pink};
+    // the input's, by PassthroughEngine::Input: AUX through the effects green, AUX dry white,
+    // the mic magenta
+    static constexpr const float* kInputColors[3] = {green, white, magenta};
     static constexpr Hardware::SwId kWhiteKeys[15] = {
         Hardware::SwId::KEY_1,  Hardware::SwId::KEY_2,  Hardware::SwId::KEY_3,
         Hardware::SwId::KEY_4,  Hardware::SwId::KEY_5,  Hardware::SwId::KEY_6,
@@ -346,6 +390,7 @@ private:
     bool mono_ = false;
     ClockFactor factor_ = ClockFactor::ONE;
     uint8_t quarters_ = 4;
+    float gain_[2] = {.75f, .75f}; // the input gain, AUX's and the mic's
     uint8_t held_ = 0;          // SHIFT and VOLUME's press down on the page, by Held's bits
     uint32_t held_since_ = 0;   // since when both are
     bool reported_ = false;     // this hold has asked for its bug report
@@ -355,6 +400,7 @@ private:
 
 constexpr const float* SettingsPage::kFactorColors[];
 constexpr const float* SettingsPage::kSourceColors[];
+constexpr const float* SettingsPage::kInputColors[];
 constexpr Hardware::SwId SettingsPage::kWhiteKeys[];
 constexpr Hardware::SwId SettingsPage::kDarkKeys[];
 constexpr const float* SettingsPage::kBatteryColors[];

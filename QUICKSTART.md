@@ -6,19 +6,23 @@ Your first ten minutes with FRIZZ. Every detail is in the [manual](MANUAL.md).
 
 ```
 AUX in or mic -> input gain -+-----------------+
-                             |                 +-> input/loop mix -> effects (white keys) -> compressor -> output volume -> out
-                             +-> looper -------+
+                             |                 +-> input/loop mix -> effects (white keys) -> compressor -+-> output volume -> out
+                             +-> looper -------+         |                                               |
+                                                         +-- AUX dry: past effects and compressor -------+
 ```
 
 The looper records the input **before** the effects, so you can play effects over a loop and
 nothing gets printed into it. The effects come **after** the mix, so they act on everything you
-hear, the live input as well as the loop. The mix knob balances input against loop; there's no
-dry path around the effects on the master out. The headphones carry the same as the master
-out, or, from VOLUME's page 3, only the dry input (no loop, no effects).
+hear, the live input as well as the loop. The mix knob balances input against loop. The
+headphones carry the same as the master out, or, from VOLUME's page 3, only the dry input (no
+loop, no effects).
 
 The input is AUX while a cable is plugged in there, and CHOMPI's built-in microphone while
-none is: pull the cable to record your voice or the room. To pick the other one by hand, flip
-the mode switch **up** and press A# of the upper octave (green: AUX, magenta: the mic).
+none is: pull the cable to record your voice or the room. The mic is never live on the master
+(a speaker would feed back): record it, then play the loop; hear it live on the headphones'
+page 3. Flip the mode switch **up** and press A# of the upper octave to step through the
+inputs: green AUX through the effects, white **AUX dry** (past the effects and the
+compressor, for a drum machine or a finished song next to your loop), magenta the mic.
 
 **SHIFT** means holding the CHOMPI key. The key lights white while it acts as SHIFT.
 
@@ -27,7 +31,7 @@ the mode switch **up** and press A# of the upper octave (green: AUX, magenta: th
 | Do this | To set |
 |---|---|
 | Turn VOLUME | Output volume. The LED is a level meter |
-| Press VOLUME, then turn | Input gain. The LED runs from blue to red |
+| Press VOLUME, then turn | Input gain, AUX's and the mic's each their own. The LED is the input's meter, red where the loop would clip; while you turn, blue to red for the gain |
 | Press again, then turn | Headphones: white = the master out, green = only the dry input |
 | Press again | Back to output volume |
 | SHIFT + turn VOLUME | Input/loop mix: green = only the input, purple = only the loop |

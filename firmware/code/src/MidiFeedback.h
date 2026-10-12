@@ -70,6 +70,7 @@ enum Item : uint8_t
     kHpCue,
     kSpeed,
     kFader,
+    kSource,
     kNumItems,
 };
 static const uint8_t kNone = 0xFF; // in the table: not sent yet
@@ -157,7 +158,7 @@ private:
     static uint8_t Cc(uint8_t item)
     {
         using namespace feedback;
-        static const uint8_t kGlobal[] = {23, 85, 86, 87, 89, 90, 80}; // kFocus .. kFader
+        static const uint8_t kGlobal[] = {23, 85, 86, 87, 89, 90, 80, 84}; // kFocus .. kSource
         if (item < kGlobalLatches)
             return static_cast<uint8_t>(14 + item % kKeySlots);
         if (item < kFocusItems)

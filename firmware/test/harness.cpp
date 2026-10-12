@@ -108,7 +108,7 @@ int main(int argc, char** argv)
 #endif
                 );
     engine.SetMainGain(.75f);
-    engine.SetInputGain(.75f);
+    engine.SetInputGain(false, .75f);
     // the master compressor at work: its amount where the old one-knob compressor was
 #if __has_include("MasterComp.h")
     engine.SetCompParam(chompi::MasterComp::kThreshold, .3f);

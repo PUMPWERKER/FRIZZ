@@ -81,6 +81,7 @@ static const uint8_t kCompCC = 24;      // 24-31: the compressor's knobs, as cha
 static const uint8_t kFaderCC = 80;     // the crossfader: a running morph from its start to its scene
 static const uint8_t kStopMorphCC = 81; // stops a morph where it is, crossing 64 upward
 static const uint8_t kTapCC = 82;       // a tempo tap, crossing 64 upward
+static const uint8_t kSourceCC = 84;   // the input: 0-42 AUX through the FX, 43-84 AUX dry, 85-127 the mic
 static const uint8_t kOutGainCC = 85, kInGainCC = 86, kMixCC = 87;
 static const uint8_t kHpCueCC = 89;     // the headphone feed as VOLUME's knob: 0 the input, 127 the master
 static const uint8_t kSpeedCC = 90;     // the loop's speed in semitones: 0 1/16x, 64 1x, 127 2x
@@ -102,6 +103,7 @@ enum Value : uint8_t
     kHpCue,
     kSpeed,
     kFader,
+    kSource,
     kNumValues,
 };
 } // namespace midimap
@@ -692,6 +694,9 @@ private:
             return true;
         case kFaderCC:
             Set(kFader, v);
+            return true;
+        case kSourceCC:
+            Set(kSource, v);
             return true;
         default:
             return false;

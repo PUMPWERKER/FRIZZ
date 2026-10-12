@@ -71,8 +71,9 @@ written as FRIZZ writes it. A FRIZZ from before PERSIST, or --save, gets the old
 shares, naming the line and the file (card_use). /FRIZZ/frizz_master.txt, saved 2 s after the
 last change, with no .bak to go back to: the settings page (twin/scenarios/settings.txt, most
 bug reports, which end with SHIFT + VOLUME held there), a key or knob while the mode switch is
-up but the input's (the upper A#, not saved), or a settings SysEx (#58); knobs 1-4 turned with the compressor selected (comp.txt, or
-in focus by CC 23); MIDI's CCs never (#97). /FRIZZ/frizz_scenes.txt, whose .bak keeps only the one before: SAVE /
+up (the upper A# too: AUX's variant is saved, #152, so mic.txt), or a settings SysEx (#58);
+VOLUME turned on its page 2, the input gain (#152, volume.txt); knobs 1-4 turned with the
+compressor selected (comp.txt, or in focus by CC 23); MIDI's CCs never (#97). /FRIZZ/frizz_scenes.txt, whose .bak keeps only the one before: SAVE /
 COPY / DELETE confirmed with CHOMPI once a slot is picked (scenes.txt), or a scene put over
 SysEx (#78). It reads where the device stands before it decides (the page, what the knobs edit,
 the scene mode); --force plays it anyway.
@@ -141,12 +142,14 @@ COMP_KEY = "KEY_15"
 FX_KEYS = {"KEY_%d" % k for k in range(1, 15)}
 SLOT_KEYS = {"KEY_%d" % k for k in range(16, 21)}
 MODE_KEYS = {"KEY_25": 1, "KEY_24": 2, "KEY_23": 3}
-INPUT_KEY = "KEY_25"  # the settings page's upper A#: AUX or the mic, not saved
+VOLUME_KNOB, VOLUME_KEY, SHIFT_KEY = 6, "ENC_6_SW", "KEY_26"
+INPUT_GAIN_PAGE = 1  # VOLUME's page 2 (PAGES), the input gain, saved (#152)
 # MidiControl.h's midimap: the morph to a scene, the focus (15 the compressor), the notes
 MORPH_CC, FOCUS_CC, COMP_FOCUS = 3, 23, 15
 BASE_NOTE, CHOMPI_NOTE = 48, 45
 
 PAGES = ["output gain", "input gain", "headphone feed"]
+INPUTS = ["AUX through the effects", "AUX dry", "the mic"]  # PassthroughEngine::Input
 # the LED parts kCmdLeds answers: (panel?, count)
 LED_PARTS = [(True, 10), (False, 9), (False, 8), (False, 8)]
 
@@ -309,6 +312,8 @@ def show_state(f):
         print("page       %s; the mode switch stands %s%s" % (
             "settings" if flags & 64 else "play", "up" if d[23] & 1 else "down",
             {0: "", 2: ", SysEx holds it down", 4: ", SysEx holds it up"}.get(d[23] & 6, "")))
+    if len(d) > 25:
+        print("input      %s" % (INPUTS[d[25]] if d[25] < len(INPUTS) else d[25]))
 
 
 def load(f, required=True):
@@ -657,20 +662,33 @@ def midi_messages(data):
                 msg = []
 
 
-def card_use(path, up, comp, mode):
+def card_use(path, up, comp, mode, page=0):
     """Where a script would change what FRIZZ keeps on the card, (line, what, (file, its
     .bak)), or None. Where the device stands when the script starts: up, the settings page
     shown; comp, the compressor's knobs selected; mode, a scene mode (MODES), its slot taken
-    as picked.
+    as picked; page, VOLUME's (PAGES).
 
-    The settings page: a key or a knob while the mode switch is up, but the input's (not
-    saved), or a setting over SysEx (frizz_master.txt, #58). The play page: knobs 1-4 turned with the compressor selected, by
+    The settings page: a key or a knob while the mode switch is up, or a setting over SysEx
+    (frizz_master.txt, #58). The play page: VOLUME turned on its page 2 without SHIFT, the
+    input gain (#152), knobs 1-4 turned with the compressor selected, by
     its key or MIDI's focus (frizz_master.txt), SAVE / COPY / DELETE confirmed with the CHOMPI
     key once a slot is picked, or a scene put over SysEx (frizz_scenes.txt, #78). The hand's
     and SysEx's keys and knobs reach the page the switch shows, MIDI's notes and controllers
     the play page always"""
     by_toggle = up
     picked = mode != 0
+    shift = vol_shift = False
+
+    def volume(name, down):
+        """VOLUME's page as its press steps it on the play page: on the release of one
+        without SHIFT"""
+        nonlocal page, shift, vol_shift
+        if name == SHIFT_KEY:
+            shift = down
+        elif name == VOLUME_KEY and down:
+            vol_shift = shift
+        elif name == VOLUME_KEY and not vol_shift:
+            page = (page + 1) % len(PAGES)
 
     def key(name, what):
         nonlocal comp, mode, picked
@@ -694,10 +712,15 @@ def card_use(path, up, comp, mode):
             if up:
                 mode = 0  # the settings page shown leaves the scene mode (NormalPage::Draw)
         elif cmd in ("down", "tap", "turn") and up:
-            if cmd == "turn" or args[0] != INPUT_KEY:
-                used = "%s %s on the settings page" % (cmd, args[0]), MASTER
-        elif cmd in ("down", "tap"):
-            used = key(args[0], "%s %s" % (cmd, args[0]))
+            used = "%s %s on the settings page" % (cmd, args[0]), MASTER
+        elif cmd in ("down", "tap", "up"):
+            volume(args[0], cmd != "up")
+            if cmd == "tap":
+                volume(args[0], False)
+            if cmd != "up":
+                used = key(args[0], "%s %s" % (cmd, args[0]))
+        elif cmd == "turn" and int(args[0]) == VOLUME_KNOB and page == INPUT_GAIN_PAGE and not shift:
+            used = "turn %s on VOLUME's page 2, the input gain" % args[0], MASTER
         elif cmd == "turn" and comp and 1 <= int(args[0]) <= 4:
             used = "turn %s with the compressor selected" % args[0], MASTER
         elif cmd in ("midi", "usb"):
@@ -713,10 +736,16 @@ def card_use(path, up, comp, mode):
                         if up:
                             mode = 0
                     elif m[4] == KEY and up:
-                        if m[5] >= len(SW_NAMES) or SW_NAMES[m[5]] != INPUT_KEY:
-                            used = "a SysEx key on the settings page", MASTER
-                    elif m[4] == KEY and m[6:7] != [0] and m[5] < len(SW_NAMES):
-                        used = key(SW_NAMES[m[5]], "a SysEx key")
+                        used = "a SysEx key on the settings page", MASTER
+                    elif m[4] == KEY and m[5] < len(SW_NAMES):
+                        volume(SW_NAMES[m[5]], m[6:7] != [0])
+                        if m[6:7] != [0]:
+                            used = key(SW_NAMES[m[5]], "a SysEx key")
+                    elif m[4] == TURN and up and m[5] == VOLUME_KNOB:
+                        used = "a SysEx turn on the settings page", MASTER
+                    elif (m[4] == TURN and m[5] == VOLUME_KNOB and page == INPUT_GAIN_PAGE
+                          and not shift):
+                        used = "a SysEx turn on VOLUME's page 2, the input gain", MASTER
                     elif m[4] == TURN and not up and comp and 1 <= m[5] <= 4:
                         used = "a SysEx turn with the compressor selected", MASTER
                 elif kind == 0x90 and len(m) == 3 and m[2] and note_key(m[1]):
@@ -1050,7 +1079,7 @@ def run(a):
             # where the device stands: the page it shows (STATE's flags, bit 6), where the
             # script's keys land until it toggles; what the knobs edit; the scene mode
             d = f.state()
-            used = card_use(a.script, bool(d[6] & 64), d[4] == len(FX_NAMES), d[7])
+            used = card_use(a.script, bool(d[6] & 64), d[4] == len(FX_NAMES), d[7], d[12])
             if used:
                 line_no, what, (name, bak) = used
                 sys.exit("line %d: %s. FRIZZ would save it to /FRIZZ/%s, on the card the FRIZZ on "

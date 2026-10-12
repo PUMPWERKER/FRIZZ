@@ -54,7 +54,7 @@ static void RecallJump(bool fast, float* max_step, float* settle_ms)
                 freezer_mem_l, freezer_mem_r, kFreezerFrames,
                 tapestop_mem_l, tapestop_mem_r, kTapeStopFrames);
     engine.SetMainGain(1.f);
-    engine.SetInputGain(1.f);
+    engine.SetInputGain(false, 1.f);
     engine.SetMix(0.f);
     engine.SetCompParam(MasterComp::kThreshold, 0.f);
     engine.SetFxParam(FX_FILTER, 0, .05f);
