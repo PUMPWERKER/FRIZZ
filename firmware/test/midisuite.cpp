@@ -21,7 +21,10 @@
 namespace
 {
 /** midisuite.py ARGS against the twin (ptytwin.h) */
-int Suite(const std::string& args, std::string& out, int limit) { return Tool("midisuite.py", args, out, limit); }
+int Suite(const std::string& args, std::string& out, int limit, const std::string& stop_at = "", int stop_signal = 0)
+{
+    return Tool("midisuite.py", args, out, limit, {}, stop_at, stop_signal);
+}
 
 bool Has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
 
@@ -73,6 +76,7 @@ void Run(const std::string& name, bool in, bool out_wired, const std::vector<std
     for (const std::string& id : ids)
         list += (list.empty() ? "" : ",") + id;
     std::string out;
+    const auto card = CardFiles();
     const auto t0 = std::chrono::steady_clock::now();
     const int rc = Suite("--quick -v --cases " + list, out, 55);
     printf("%s: %ld s\n", name.c_str(),
@@ -83,6 +87,7 @@ void Run(const std::string& name, bool in, bool out_wired, const std::vector<std
     bool ok = rc == exit_code || (rc == 1 && !unjudged.empty() && !Has(out, "error:") && !Has(out, "stopped:"));
     Check(ok, (name + ": exit " + std::to_string(rc) + ", not " + std::to_string(exit_code)).c_str());
     Expect(out, ids, want, name);
+    Check(CardFiles() == card, (name + ": the card as it was (PERSIST 0)").c_str());
     for (const std::string& line : lines)
     {
         Check(Has(out, line), (name + ": says \"" + line + "\"").c_str());
@@ -145,6 +150,18 @@ int main()
     // no TRS MIDI at all: USB only
     cases.push_back({"usb only", [] {
         Run("no TRS", false, false, {"sources-trs", "out-factor"}, "SKIP", {"wiring: no TRS MIDI (USB only)"}, 0);
+    }});
+    // stopped from outside (Ctrl-C) in a case: things put back, the summary, exit 130, not 0
+    // (#171)
+    cases.push_back({"interrupted", [] {
+        trs_in = trs_out = true;
+        std::string out;
+        const int rc = Suite("--quick --wiring both --cases out-idle,out-pass", out, 55, "-- out-idle", SIGINT);
+        Check(rc == 130 && Has(out, "interrupted") && !Has(out, "putting things back:") && !Has(out, "not put back")
+                  && Has(out, "### MIDI suite") && !Has(out, "-- out-pass"),
+              "interrupted: Ctrl-C in a case stops the run, things put back, exit 130");
+        if (rc != 130)
+            printf("exit %d\n%s\n", rc, out.c_str());
     }});
     // the processes mostly wait on the wall clock: all at once, not a core each
     setenv("CASE_JOBS", "16", 0);

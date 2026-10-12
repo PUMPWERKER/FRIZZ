@@ -423,7 +423,7 @@ os.remove("image.bin")
     Check(Has(out, "launcher, this hold: started [12]\n")
               && Has(out, "launcher, another: started [10]\n"),
           "tools: from the launcher, the FRIZZ last started in this hold, else FRIZZ's");
-    Check(Has(out, "FRIZZ answers on slot 12") && Has(out, "noted 12\n"),
+    Check(Has(out, "FRIZZ-TEST answers on slot 12") && Has(out, "noted 12\n"),
           "tools: flash.py waits until the FRIZZ it sent answers, and notes its slot");
     Check(Has(out, "FRIZZ-BENCH answers on slot 11") && Has(out, "left [('frizz', 'node')]\n"),
           "tools: and until the bench answers, so a tool run right after finds it");
@@ -559,18 +559,18 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc != 0 && Has(out, "--fresh starts the slot again through the launcher: not with --device"),
           "remote: play --fresh, which starts the slot again, is refused with --device (#123)");
 
-    Remote({"channel", "5"}, out);
-    Remote({"transport", "on"}, out);
+    Remote({"channel", "5", "--save"}, out);
+    Remote({"transport", "on", "--save"}, out);
     rc = Remote({"settings"}, out);
     Check(rc == 0 && out == "channel 5, transport on, clock auto, out off\n",
           "remote: channel and transport set, settings reads them");
-    Remote({"channel", "0"}, out);
+    Remote({"channel", "0", "--save"}, out);
     rc = Remote({"settings"}, out);
     Check(rc == 0 && out == "channel all, transport on, clock auto, out off\n", "remote: channel 0 is every channel");
-    Remote({"source", "usb"}, out);
+    Remote({"source", "usb", "--save"}, out);
     rc = Remote({"settings"}, out);
     Check(rc == 0 && out == "channel all, transport on, clock usb, out off\n", "remote: source sets the clock source");
-    Remote({"out", "trs"}, out);
+    Remote({"out", "trs", "--save"}, out);
     rc = Remote({"settings"}, out);
     Check(rc == 0 && out == "channel all, transport on, clock usb, out trs\n", "remote: out sets MIDI out");
     RunMs(2500);
@@ -579,7 +579,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
           "remote: and they go to the card");
 
     // MIDI out over USB: its clock comes between the answers, and remote.py reads past it
-    Remote({"out", "all"}, out);
+    Remote({"out", "all", "--save"}, out);
     RunMs(200);
     TakeMidiOut();
     rc = Remote({"state"}, out);
@@ -590,7 +590,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
           "remote: with MIDI out over USB, its clock comes in between, and state still reads");
     if (rc != 0)
         printf("%s\n", out.c_str());
-    Remote({"out", "off"}, out);
+    Remote({"out", "off", "--save"}, out);
 
     // a scene: the blank one read, the filter closed and latched in it, sent to slot 2
     const std::string blank = tmp_dir + "/blank.json", mine = tmp_dir + "/mine.json",
@@ -604,7 +604,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     const size_t latched = json.find("\"latched\": [") + 12;
     json.insert(latched, "\"filter\"");
     Write(mine, json);
-    rc = Remote({"scene", "put", "2", mine}, out);
+    rc = Remote({"scene", "put", "2", mine, "--save"}, out);
     RunMs(2500);
     const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
     Check(rc == 0 && Has(scenes, "scene 2\n") && Has(scenes, "filter 1 250"),
@@ -615,7 +615,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     json = Read(back);
     Check(rc == 0 && fabsf(JsonParam(json, "filter", 0) - .25f) < 1e-4f && Has(json, "\"filter\"\n"),
           "remote: and scene get reads it back, the same within 14 bits");
-    rc = Remote({"scene", "put", "0", mine}, out);
+    rc = Remote({"scene", "put", "0", mine, "--save"}, out);
     Check(rc != 0 && Has(out, "refused"), "remote: never into the blank scene");
     Check(fabsf(JsonParam(json, "shifter", 4) - 1.f) < 1e-4f,
           "remote: a scene has both pages, the shifter's mix 5th, on its default");
@@ -626,7 +626,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
         old += std::string(fx[0] == 'f' && fx[1] == 'r' ? "" : ", ") + "\"" + fx
                + "\": [0.5, 0.5, 0.5, 0.5]";
     Write(mine, old + "}}");
-    rc = Remote({"scene", "put", "3", mine}, out);
+    rc = Remote({"scene", "put", "3", mine, "--save"}, out);
     rc |= Remote({"scene", "get", "3", back}, out);
     json = Read(back);
     Check(rc == 0 && fabsf(JsonParam(json, "shifter", 0) - .5f) < 1e-4f
@@ -861,6 +861,24 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     if (rc == 0 || !Has(refused_save, "frizz_scenes"))
         printf("%s\n", refused_save.c_str());
 
+    // a setter FRIZZ saves keeps the card out of it the same way, unless --save (#171): the
+    // channel changes in RAM, the master file stays as it was; --save after that can't write
+    {
+        const std::string master = CardFiles()["/FRIZZ/frizz_master.txt"];
+        rc = Remote({"channel", "7"}, out);
+        const std::string kept = out;
+        RunMs(2500);
+        Remote({"settings"}, out);
+        Check(rc == 0 && Has(kept, "kept in RAM; --save writes it") && Has(out, "channel 7,")
+                  && CardFiles()["/FRIZZ/frizz_master.txt"] == master && !master.empty(),
+              "remote: a setter keeps the change in RAM (PERSIST 0), the card's master file as it was (#171)");
+        if (rc != 0)
+            printf("%s\n", kept.c_str());
+        rc = Remote({"channel", "0", "--save"}, out);
+        Check(rc == 0 && Has(out, "--save writes nothing until it restarts"),
+              "remote: --save then says it writes nothing until FRIZZ restarts");
+    }
+
     // since PERSIST 0, play keeps the card as it was (#58, #78): the settings page's mono key,
     // a channel over SysEx, the compressor's knob and a scene saved change FRIZZ, not its files
     const std::string master_file = CardFiles()["/FRIZZ/frizz_master.txt"];
@@ -1042,13 +1060,22 @@ def to_frizz(slot=None, timeout=120, device=None, again=False):
     chompi.frizz_slot = running[0]
     return "node"
 chompi.to_frizz = to_frizz
+persist = [True]  # PERSIST 0 answered (None: a FRIZZ from before it)
+kept = [True]  # IDENT's RAM only flag: False once FRIZZ restarted
+refuse = [False]  # SET refused
 class F:
     class link:
         fd = None
     def __init__(self, device):
         pass
     def ram_only(self):
-        return True
+        return persist[0]
+    def dev(self, sub, args=()):
+        if sub == chompi.SET and refuse[0]:
+            return 1, b""
+        return (0, bytes(25) + bytes([1 if kept[0] else 0])) if persist[0] else None
+    def send(self, cmd, payload=b""):
+        print("sent 0x%02X" % cmd)
 remote.Frizz = F
 remote.os.close = lambda fd: None
 def case(slot, failed, **given):
@@ -1068,6 +1095,30 @@ case(None, 0)
 case(12, 2)
 case(10, 0, device="/dev/x")
 case(12, 2, fresh=True)
+# the setters FRIZZ saves (#171): PERSIST 0 first, key 10's started again afterwards, the
+# change gone; the test slot's kept; a knob isn't saved, no PERSIST; --save as before
+print("-- setters")
+case(10, 0, cmd="channel", channel=7)
+case(12, 0, cmd="transport", on="on")
+case(10, 0, cmd="set", group="filter", index="1", value="0.5")
+case(12, 0, cmd="set", group="volume", index="in", value="0.5")
+case(10, 0, cmd="channel", channel=7, save=True)
+persist[0] = None
+case(12, 0, cmd="out", ports="trs")
+case(12, 0, cmd="out", ports="trs", save=True)
+persist[0] = True
+# however a setter ends, key 10's FRIZZ is started again: a value refused, no file
+print("-- refused")
+refuse[0] = True
+case(10, 0, cmd="set", group="settings", index="led_brightness", value="60")
+refuse[0] = False
+case(10, 0, cmd="scene", action="put", scene_slot=2, file=None)
+print("-- lost")
+# FRIZZ restarted meanwhile (IDENT: not RAM only): said, failed, before it's started again
+kept[0] = False
+case(12, 0)
+case(10, 0, cmd="channel", channel=7)
+kept[0] = True
 )", out);
     Check(rc == 0 && Has(out, "slot 10\nthe card isn't written until FRIZZ restarts (PERSIST 0): what the script changes "
                              "stays in RAM\nstarting slot 10 again, from the card, so it saves again\nstart 10\nexit 0\n")
@@ -1080,7 +1131,197 @@ case(12, 2, fresh=True)
               && Has(out, "slot 12\nthe card isn't written until FRIZZ restarts (PERSIST 0): what the script changes "
                           "stays in RAM\nexit 1\n"),
           "tools: a failed expect led says --fresh, not after it; with --device, key 10's FRIZZ isn't started, but said");
-    if (rc != 0 || !Has(out, "start 10"))
+    {
+        const std::string setters = out.substr(std::min(out.size(), out.find("-- setters")));
+        const std::string lost = out.substr(std::min(out.size(), out.find("-- lost")));
+        const std::string refused = out.substr(std::min(out.size(), out.find("-- refused")));
+        Check(Has(refused, "slot 10\nthe card isn't written until FRIZZ restarts (PERSIST 0): kept in RAM; --save writes "
+                           "it to the card\nstarting slot 10 again, from the card, so it saves again: what was set is "
+                           "gone (--save keeps it)\nstart 10\nexit SET settings led_brightness 60: refused\n")
+                  && Has(refused, "is gone (--save keeps it)\nstart 10\nexit scene put SLOT FILE\n"),
+              "tools: however a setter ends (a value refused, no file), key 10's FRIZZ is started again from the card (#171)");
+        Check(Has(setters, "slot 10\nthe card isn't written until FRIZZ restarts (PERSIST 0): kept in RAM; --save writes "
+                           "it to the card\nsent 0x13\nstarting slot 10 again, from the card, so it saves again: what "
+                           "was set is gone (--save keeps it)\nstart 10\nslot 12\nthe card isn't written until FRIZZ "
+                           "restarts (PERSIST 0): kept in RAM; --save writes it to the card\nsent 0x13\nslot 10\n"),
+              "tools: a setter FRIZZ saves keeps it in RAM (PERSIST 0), key 10's started again after, the test slot's not (#171)");
+        Check(Has(setters, "slot 12\nthe card isn't written until FRIZZ restarts (PERSIST 0): kept in RAM; --save "
+                           "writes it to the card\nslot 10\nFRIZZ keeps the card out of it already (PERSIST 0): --save "
+                           "writes nothing until it restarts (./flash.py --run N)\nsent 0x13\nslot 12\nexit a FRIZZ "
+                           "from before PERSIST")
+                  && Has(setters, "--save sends it anyway\nslot 12\nsent 0x13\n"),
+              "tools: VOLUME's input gain too, an effect's knob not, --save as before; a FRIZZ from before PERSIST "
+              "refused without --save, nothing sent");
+        Check(Has(lost, "slot 12\nthe card isn't written until FRIZZ restarts (PERSIST 0): what the script changes "
+                        "stays in RAM\nexit FRIZZ restarted (up 0.0 s, reset: none): it writes the card again: what "
+                        "the script changed after that may be on the card\n")
+                  && Has(lost, "starting slot 10 again, from the card, so it saves again: what was set is gone (--save "
+                               "keeps it)\nstart 10\nexit FRIZZ restarted"),
+              "tools: a FRIZZ that restarted during play or a setter (IDENT: no longer RAM only) fails, saying so (#171)");
+    }
+    if (rc != 0 || !Has(out, "start 10") || failures)
+        printf("%s\n", out.c_str());
+
+    // keys 10 and 13 are the user's (#171): flash.py sends there only when the key is named, and
+    // only the build of a clean v* tag's checkout; refused before anything is built or the
+    // CHOMPI restarted (to_launcher). A bare ./flash.py sends nothing
+    rc = Python(R"(
+import os, subprocess, sys, builds, chompi, flash, midi_send
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr = sys.stdout
+def git(*args):
+    subprocess.run(["git", "-C", "repo", "-c", "user.name=t", "-c", "user.email=t@t", "-c",
+                    "commit.gpgsign=false", "-c", "tag.gpgsign=false"] + list(args), check=True,
+                   capture_output=True)
+os.makedirs("repo/code")
+open("repo/code/a.h", "w").write("1\n")
+open("repo/notes.md", "w").write("1\n")
+git("init", "-q")
+git("add", ".")
+git("commit", "-qm", "one")
+git("tag", "beta")
+print("tagged beta:", flash.tagged("repo"))
+git("tag", "v9.9.9")
+print("tagged v9.9.9:", flash.tagged("repo"))
+open("repo/code/a.h", "w").write("2\n")
+print("tagged, code changed:", flash.tagged("repo"))
+git("checkout", "code/a.h")
+open("repo/code/b.h", "w").write("new\n")
+print("tagged, a file added in code:", flash.tagged("repo"))
+os.remove("repo/code/b.h")
+open("repo/notes.md", "w").write("2\n")
+print("tagged, outside code changed:", flash.tagged("repo"))
+git("commit", "-qam", "two")
+print("a commit after:", flash.tagged("repo"))
+
+log = []
+chompi.to_launcher = lambda *rest: log.append("launcher") or "l"
+chompi.slot_file = lambda *rest: None
+chompi.wait_for = lambda *rest: "node"
+chompi.renamed = lambda slot, node, *rest: node
+chompi.ident = lambda node: None
+midi_send.main = lambda: log.append(" ".join(sys.argv[1:]))
+open("tag.bin", "wb").write(b"the tag's build")
+open("other.bin", "wb").write(b"another")
+builds.build = lambda bench: log.append("build") or "tag.bin"
+builds.built = lambda bench: "tag.bin"
+builds.image = lambda bench: "tag.bin"
+builds.stale = lambda path: False
+builds.describe = lambda path: path
+tag = [None]
+flash.tagged = lambda where=None: tag[0]
+def case(name, *argv):
+    log.clear()
+    sys.argv = ["flash.py"] + list(argv)
+    try:
+        flash.main()
+    except SystemExit as e:
+        print("exit:", e)
+    print("%s: %s" % (name, log))
+case("bare")
+case("10 untagged", "--slot", "10")
+case("13 untagged", "--no-build", "--slot", "13")
+case("file to 10 untagged", "other.bin", "--slot", "10")
+tag[0] = "v1.0.0"
+case("13 tagged", "--slot", "13")
+case("10 tagged", "--no-build", "--slot", "10")
+case("its file to 10", "tag.bin", "--slot", "10")
+case("another file to 10", "other.bin", "--slot", "10")
+case("the bench to 13", "--bench", "--slot", "13")
+tag[0] = None
+case("test", "--test")
+case("file to 12", "other.bin", "--slot", "12")
+case("file to 11", "other.bin", "--slot", "11")
+)", out);
+    Check(rc == 0 && Has(out, "tagged beta: None\n") && Has(out, "tagged v9.9.9: v9.9.9\n")
+              && Has(out, "tagged, code changed: None\n") && Has(out, "tagged, a file added in code: None\n")
+              && Has(out, "tagged, outside code changed: v9.9.9\n") && Has(out, "a commit after: None\n"),
+          "tools: flash.py's tagged(): a v* tag on HEAD, nothing changed or added in code/ (#171)");
+    Check(Has(out, "exit: which slot?") && Has(out, "bare: []\n")
+              && Has(out, "exit: key 10 is the latest release, the user's: only a release's or a beta's build")
+              && Has(out, "10 untagged: []\n") && Has(out, "exit: key 13 is the latest beta, the user's")
+              && Has(out, "13 untagged: []\n") && Has(out, "file to 10 untagged: []\n"),
+          "tools: flash.py sends nothing without a slot, nor an untagged build to 10 or 13, before restarting "
+          "the CHOMPI (#171)");
+    Check(Has(out, "sending tag.bin to key 13, v1.0.0's\n")
+              && Has(out, "13 tagged: ['build', 'launcher', 'tag.bin --slot 13 --name FRIZZ-BETA --device l']\n")
+              && Has(out, "10 tagged: ['launcher', 'tag.bin --slot 10 --name FRIZZ --device l']\n")
+              && Has(out, "its file to 10: ['launcher', 'tag.bin --slot 10 --name FRIZZ --device l']\n"),
+          "tools: a v* tag's build goes to 13 (FRIZZ-BETA) or 10 when the key is named, its file too");
+    Check(Has(out, "exit: other.bin isn't the build of v1.0.0 made here") && Has(out, "another file to 10: []\n")
+              && Has(out, "exit: key 13 is the latest beta, the user's: never the bench")
+              && Has(out, "the bench to 13: []\n"),
+          "tools: another file isn't, nor the bench, on a tag too");
+    Check(Has(out, "test: ['build', 'launcher', 'tag.bin --slot 12 --name FRIZZ-TEST --device l']\n")
+              && Has(out, "file to 12: ['launcher', 'other.bin --slot 12 --name FRIZZ-TEST --device l']\n")
+              && Has(out, "file to 11: ['launcher', 'other.bin --slot 11 --name FRIZZ-BENCH --device l']\n"),
+          "tools: a branch's build goes to the test slot as before, as FRIZZ-TEST; a file to 11 as FRIZZ-BENCH");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
+    // midisuite.py and reaper.py (#171): FRIZZ asked before each case and before putting things
+    // back whether it still keeps the card out of it; one that restarted stops the run, nothing
+    // put back. SIGTERM isn't taken for a case's FAIL but stops the run as Ctrl-C does; the
+    // exit codes
+    rc = Python(R"(
+import os, signal, sys, time, types, midisuite
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr = sys.stdout
+kept = [True]
+class F:
+    def dev(self, sub, args=()):
+        return 0, bytes(25) + bytes([1 if kept[0] else 0])
+log = []
+midisuite.reset = lambda r, snap, scenes: log.append("reset")
+class Snap:
+    def restore_settings(self, r):
+        log.append("settings")
+def rig():
+    return types.SimpleNamespace(f=F(), lost=None, wiring=set(), args=types.SimpleNamespace(verbose=False))
+def checked(r):
+    r.checks.append((True, "x", 1, 1))
+def restarts(r):
+    checked(r)
+    kept[0] = False
+def term(r):
+    os.kill(os.getpid(), signal.SIGTERM)
+    time.sleep(2)
+def run(name, fn):
+    r = rig()
+    log.clear()
+    try:
+        got = midisuite.run_case(r, midisuite.Case(name, "item", fn), Snap())
+    except KeyboardInterrupt as e:
+        got = "interrupted %s" % getattr(e, "signum", "")
+    print("%s: %s %s%s" % (name, got, log, ", lost" if r.lost else ""))
+    return r
+run("fine", checked)
+r = run("restarts", restarts)
+run("restarted before", checked)
+log.clear()
+print("put back, lost:", midisuite.put_back(r, Snap()), log)
+kept[0] = True
+log.clear()
+print("put back:", midisuite.put_back(rig(), Snap()), log)
+midisuite.stop_on_signals()
+run("sigterm", term)
+print("then ignored:", signal.getsignal(signal.SIGTERM) == signal.SIG_IGN)
+print("exit codes:", midisuite.exit_code(False, None), midisuite.exit_code(True, None),
+      midisuite.exit_code(False, signal.SIGTERM), midisuite.exit_code(True, signal.SIGINT))
+)", out);
+    Check(rc == 0 && Has(out, "fine: ('PASS', '') ['reset', 'reset']\n")
+              && Has(out, "restarts: ('FAIL', 'stopped: FRIZZ restarted (up 0.0 s, reset: none): it writes the card "
+                          "again') ['reset'], lost\n")
+              && Has(out, "restarted before: ('FAIL', 'not run: FRIZZ restarted") && Has(out, "') [], lost\n"),
+          "tools: midisuite's cases ask IDENT first and after: one that restarted stops the run, its settings not "
+          "put back (#171)");
+    Check(Has(out, "not put back: FRIZZ restarted") && Has(out, "put back, lost: False []\n")
+              && Has(out, "put back: True ['reset', 'settings']\n"),
+          "tools: and nothing put back at the end then, which fails the run");
+    Check(Has(out, "sigterm: interrupted 15 ['reset', 'reset']\n") && Has(out, "then ignored: True\n")
+              && Has(out, "exit codes: 0 1 143 130\n"),
+          "tools: SIGTERM in a case isn't its FAIL: things put back, the run stopped, exit 128 + 15 (#171)");
+    if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 
     unlink(blank.c_str());

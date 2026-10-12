@@ -31,7 +31,11 @@ FRIZZ's settings (channel 16, transport following, the clock factor and source, 
 feedback, the effect channels over TRS) are set by each case, over FRIZZ's SysEx, with the
 card kept out of it first (PERSIST 0: refused if FRIZZ can't); the knobs, latches, VOLUME's
 levels and scenes 1-2 it changes are put back after each case, the settings at the end, all
-in RAM. --quick shortens the long cases (the host check, test/midisuite.cpp), --long runs the
+in RAM. Before each case and before putting things back it asks FRIZZ (IDENT) whether it still
+keeps the card out of it: one that restarted meanwhile would write the card, so the run stops
+there, a FAIL, nothing put back (#171). Ctrl-C, SIGTERM or SIGHUP stop it too, things put back
+first: it exits 130, 143 or 129 then, 1 for a FAIL or a failed putting back, 0 otherwise.
+--quick shortens the long cases (the host check, test/midisuite.cpp), --long runs the
 "over a few minutes" ones for 3 minutes. It plays on the FRIZZ on --slot (12, the test slot,
 by default), started if it isn't the one running, under the lock (tools/chompi.py).
 
@@ -39,6 +43,7 @@ Linux (ALSA raw MIDI), Python 3 without packages.
 """
 import argparse
 import os
+import signal
 import sys
 import threading
 import time
@@ -119,6 +124,30 @@ class Skip(Exception):
     pass
 
 
+class Stopped(KeyboardInterrupt):
+    """SIGTERM or SIGHUP: stopped from outside, things put back as after Ctrl-C (a
+    KeyboardInterrupt, which run_case lets through), exiting 128 + the signal"""
+    def __init__(self, signum):
+        super().__init__(signum)
+        self.signum = signum
+
+
+def stop_on_signals():
+    """SIGTERM and SIGHUP raise Stopped, once: putting things back isn't cut short by another"""
+    def stop(n, _):
+        for sig in (signal.SIGTERM, signal.SIGHUP):
+            signal.signal(sig, signal.SIG_IGN)
+        raise Stopped(n)
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, stop)
+
+
+def exit_code(failed, stopped):
+    """128 + the signal that stopped the run (SIGINT for Ctrl-C), else 1 if anything FAILed or
+    wasn't put back, else 0"""
+    return 128 + stopped if stopped else 1 if failed else 0
+
+
 # ======== the rig: FRIZZ, its two ports, what comes back ========
 
 class Rig:
@@ -138,6 +167,7 @@ class Rig:
         self.checks = []
         self.notes = []
         self.timing_fails = 0
+        self.lost = None  # why FRIZZ no longer keeps the card out of it (card_lost)
         # --quick, the host check's: the twin's pseudo-terminals, under all.sh's load, jitter
         # by tens of ms, so the tolerances on jitter (slack) and on rates and tempos (loose)
         # widen: there it checks the suite's logic, the device its timing
@@ -1225,6 +1255,50 @@ def detect_wiring(r):
     return found
 
 
+WIRINGS = {"out": {"out"}, "in": {"in"}, "both": {"in", "out"}, "none": set()}
+
+
+def chosen(cases, a):
+    """--cases' cases (all without), in CASES' order; exits naming one there's none of"""
+    if not a.cases:
+        return cases
+    wanted = a.cases.split(",")
+    unknown = [w for w in wanted if w not in {c.id for c in cases}]
+    if unknown:
+        sys.exit("no case %s (--list)" % ", ".join(unknown))
+    return [c for c in cases if c.id in wanted]
+
+
+def list_cases(cases):
+    for c in cases:
+        print("%-15s %-7s %s" % (c.id, "/".join(c.needs) or "usb", c.item))
+
+
+def keep_card(f):
+    """PERSIST 0 before anything (exits for a FRIZZ that can't), then IDENT: 'build X'; waits
+    out the boot of a FRIZZ just started"""
+    if not f.ram_only():
+        sys.exit("FRIZZ can't keep the card out of it (PERSIST 0): a build from before it; not run")
+    print("the card isn't written until FRIZZ restarts (PERSIST 0): everything stays in RAM", flush=True)
+    got = f.dev(chompi.IDENT)
+    info = chompi.parse_ident(got[1]) if got and got[0] == chompi.OK else None
+    if info and info["uptime"] < READY:
+        time.sleep(READY - info["uptime"])  # just started: the play page isn't ready yet
+    return "build %08x" % info["crc"] if info else "?"
+
+
+def card_lost(r):
+    """None while FRIZZ still keeps the card out of it (remote.in_ram); else why not, kept in
+    r.lost, which stops the run: a FRIZZ that restarted would write the card with every setting
+    and scene put after it (#171)"""
+    try:
+        why = remote.in_ram(r.f)
+    except (Exception, SystemExit) as e:
+        why = "IDENT: %s" % e
+    r.lost = r.lost or why
+    return why
+
+
 def runnable(c, wiring):
     """None, or why it can't run with this wiring"""
     for need in c.needs:
@@ -1281,6 +1355,8 @@ def run_case(r, c, snap):
     print("-- %s: %s" % (c.id, c.item), flush=True)
     status = None
     r.started = time.monotonic()
+    if card_lost(r):
+        return "FAIL", "not run: %s" % r.lost
     try:
         reset(r, snap, False)
         c.run(r)
@@ -1294,9 +1370,12 @@ def run_case(r, c, snap):
             traceback.print_exc()
     finally:
         try:
-            reset(r, snap, c.id.startswith("morph"))
+            if not card_lost(r):
+                reset(r, snap, c.id.startswith("morph"))
         except (Exception, SystemExit) as e:
             print("   (putting things back: %s)" % e, file=sys.stderr)
+    if r.lost:
+        return "FAIL", "stopped: %s" % r.lost
     if status is None:
         if not r.checks:
             status, detail = "FAIL", "nothing checked"
@@ -1347,13 +1426,28 @@ def wiring_text(w):
             frozenset(["in", "out"]): "both ways"}[frozenset(w)]
 
 
+def put_back(r, snap):
+    """The knobs, latches, levels, scenes 1-2 and settings as they were, in RAM; False if that
+    failed, or wasn't done: FRIZZ no longer keeps the card out of it"""
+    if card_lost(r):
+        print("not put back: %s" % r.lost, file=sys.stderr)
+        return False
+    try:
+        reset(r, snap, True)
+        snap.restore_settings(r)
+        return True
+    except (Exception, SystemExit) as e:
+        print("putting things back: %s" % e, file=sys.stderr)
+        return False
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--slot", type=int, choices=chompi.FRIZZ_SLOTS, default=chompi.TEST_SLOT,
                     help="the FRIZZ slot (12 by default), started unless it runs")
     ap.add_argument("--device", help="FRIZZ's raw MIDI node (as remote.py's; the twin's for the host check)")
     ap.add_argument("--trs", help="the raw MIDI node on the TRS jack (FRIZZ_TRS_MIDI; found by name)")
-    ap.add_argument("--wiring", choices=["auto", "out", "in", "both", "none"], default="auto")
+    ap.add_argument("--wiring", choices=["auto"] + list(WIRINGS), default="auto")
     ap.add_argument("--cases", help="only these, by id, comma separated")
     ap.add_argument("--quick", action="store_true", help="the long cases short (the host check)")
     ap.add_argument("--long", action="store_true", help="the 'over a few minutes' cases for 3 minutes")
@@ -1362,38 +1456,23 @@ def main():
     ap.add_argument("-v", "--verbose", action="store_true", help="every check as it's made")
     a = ap.parse_args()
     if a.list:
-        for c in CASES:
-            print("%-15s %-7s %s" % (c.id, "/".join(c.needs) or "usb", c.item))
+        list_cases(CASES)
         return
-    cases = CASES
-    if a.cases:
-        wanted = a.cases.split(",")
-        unknown = [w for w in wanted if w not in {c.id for c in CASES}]
-        if unknown:
-            sys.exit("no case %s (--list)" % ", ".join(unknown))
-        cases = [c for c in CASES if c.id in wanted]
+    cases = chosen(CASES, a)
+    stop_on_signals()
 
     device = a.device or chompi.to_frizz(a.slot)
     f = remote.Frizz(device)
     trs_node = a.trs or (None if a.wiring == "none" else midiport.trs_midi())
     trs_fd = os.open(trs_node, os.O_RDWR | os.O_NONBLOCK) if trs_node else None
     r = Rig(f, trs_fd, a)
-    if not f.ram_only():
-        sys.exit("FRIZZ can't keep the card out of it (PERSIST 0): a build from before it; not run")
-    print("the card isn't written until FRIZZ restarts (PERSIST 0): everything stays in RAM", flush=True)
-    got = f.dev(chompi.IDENT)
-    info = chompi.parse_ident(got[1]) if got and got[0] == chompi.OK else None
-    ident = "build %08x" % info["crc"] if info else "?"
-    if info and info["uptime"] < READY:
-        time.sleep(READY - info["uptime"])  # just started: the play page isn't ready yet
+    ident = keep_card(f)
     snap = Snapshot(r)
     results, timing_only = [], []
+    stopped, restored = None, False
     try:
         reset(r, snap, False)
-        if a.wiring == "auto":
-            r.wiring = detect_wiring(r)
-        else:
-            r.wiring = {"out": {"out"}, "in": {"in"}, "both": {"in", "out"}, "none": set()}[a.wiring]
+        r.wiring = detect_wiring(r) if a.wiring == "auto" else WIRINGS[a.wiring]
         print("wiring: %s%s" % (wiring_text(r.wiring), " (found)" if a.wiring == "auto" else ""), flush=True)
         for c in cases:
             status, detail = run_case(r, c, snap)
@@ -1405,14 +1484,15 @@ def main():
                     print("       %s: %s, want %s" % (what, got_, want), flush=True)
             if status == "FAIL" and not detail and r.timing_fails == sum(1 for ok, *_ in r.checks if not ok):
                 timing_only.append(c.id)
-    except KeyboardInterrupt:
-        print("interrupted", file=sys.stderr)
+            if r.lost:
+                print("stopped: %s" % r.lost, file=sys.stderr)
+                break
+    except KeyboardInterrupt as e:
+        stopped = getattr(e, "signum", signal.SIGINT)
+        print("interrupted" if stopped == signal.SIGINT else "stopped (signal %d)" % stopped,
+              file=sys.stderr)
     finally:
-        try:
-            reset(r, snap, True)
-            snap.restore_settings(r)
-        except (Exception, SystemExit) as e:
-            print("putting things back: %s" % e, file=sys.stderr)
+        restored = put_back(r, snap)
         r.usb.close()
         if r.trs:
             r.trs.close()
@@ -1427,7 +1507,7 @@ def main():
     if not a.device and chompi.frizz_slot not in (None, chompi.TEST_SLOT):
         print("FRIZZ on slot %d keeps what the suite changed in RAM until it restarts: "
               "./flash.py --run %d" % (chompi.frizz_slot, chompi.frizz_slot), file=sys.stderr)
-    sys.exit(1 if any(s == "FAIL" for _, s, *_ in results) else 0)
+    sys.exit(exit_code(any(s == "FAIL" for _, s, *_ in results) or not restored, stopped))
 
 
 if __name__ == "__main__":

@@ -2871,6 +2871,24 @@ int main()
         Check(bugs() == short_hold + 1, "bug hold: VOLUME + SHIFT held 5 s writes one report");
     }});
 
+    // with the card kept out of it (kCmdDev's PERSIST 0, a test on the device) the hold
+    // writes no report either: a bug report played there leaves the card as it was (#171)
+    cases.push_back({"bug-ram-only", [] {
+        RunMs(kReadyMs);
+        const auto files = CardFiles();
+        Check(Ask({0x3E, 1, 1, 0}) == std::string("\x01\x01\x00\x01", 4), "bug ram only: PERSIST 0");
+        SetToggle(true);
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(3000);
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(1000);
+        Check(CardFiles() == files, "bug ram only: SHIFT + VOLUME held 3 s on the settings page writes nothing");
+    }});
+
     // notes press the keys, on FRIZZ's channel only, and a key held by the hand and by MIDI
     // is one press
     cases.push_back({"midi-notes", [] {

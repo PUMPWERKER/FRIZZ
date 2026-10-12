@@ -173,6 +173,11 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   its md5.
 - Cut one only when the user asks for a test build; a release for everyone is a normal
   release on `main`, its `FRIZZ.bin` built the same way at its tag, its md5 in the notes.
+- On the CHOMPI (decided 2026-10-13, #171): a beta goes to **key 13** (`FRIZZ-BETA`), a release
+  to **key 10** (`FRIZZ`), each on the user's word once it's cut, from the clean worktree of
+  its tag: `./flash.py --slot 13` (or `--slot 10`) there. `flash.py` sends to 10 or 13 nothing
+  else: only when the key is named, and only the build of a clean `v*` tag's checkout. Until
+  `v1.0.0`, key 10 keeps v1.0.0-beta.1.
 
 ## The CHOMPI is shared: the lock and the slots
 
@@ -212,12 +217,18 @@ changes from there, and the battery's (VOLUME white on USB, green on the twin). 
 the CHOMPI for playing with `tools/chompi.py hold` (until Ctrl-C),
 or by telling a session, which then runs it for them.
 Within that, stage 2 needs no asking. Ask the user first only for what needs their hands or
-changes what they play: sending to key 10, anything when the lock's holder is the user, a
-cable to plug.
+changes what they play: sending to key 10 or 13, `flash.py --list` (it restarts FRIZZ into
+the launcher: a loop in RAM is lost), anything when the lock's holder is the user, a cable to
+plug.
 
-The slots: FRIZZ on key 10 is the user's and gets only `main`'s or a release's build, when
-they ask; a branch's build goes to the **test slot, key 12** (`flash.py --test`, as
-`FRIZZ-TEST`); the bench on 11, USB storage on 15. Never send to another slot. The tools
+The slots (#171): keys 10 and 13 are the user's, **10 the latest release, 13 the latest beta**
+(*Releases*); sessions never send there unasked, and `flash.py` refuses anything but a clean
+`v*` tag's build there, and only with the key named (`--slot 10`, `--slot 13`; a bare
+`./flash.py` sends nothing). A branch's build goes to the **test slot, key 12** (`flash.py
+--test`, as `FRIZZ-TEST`); the bench on 11, USB storage on 15. Never send to another slot.
+`remote.py`'s setters that FRIZZ saves (`channel`, `transport`, `source`, `out`, `scene put`,
+`set` for settings, the compressor and the input gain) keep the card out of it as `play` does
+(PERSIST 0) unless `--save`, which a session never gives. The tools
 reach the device over USB through the multi-firmware launcher (`firmware/README.md`, *Put it
 on the CHOMPI*); while it is switched off, they can't.
 `firmware/tools/measure.py` measures timing and sound there (a MIDI clock in pairs, a loop's
@@ -246,7 +257,7 @@ checks need only `g++` and `python3`; the browser twin needs Emscripten in `~/op
 
 ## Tests: the host checks and the virtual CHOMPI
 
-`firmware/test/all.sh` runs everything, side by side (about 30 s): `check.sh` (the engine against HEAD;
+`firmware/test/all.sh` runs everything, side by side (about a minute; the first run ~80 s): `check.sh` (the engine against HEAD;
 a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
 `pitch`, `tape`, `block`, `crusher`, `freezer`, `scenes`, `store`, `clicks`, `delay`, `controls`, `keys`, `looper`, `tempo`,
 `comp`, `level`, `sleep`, `inserts`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `splice`, `usbmidi`. A new check is just a new

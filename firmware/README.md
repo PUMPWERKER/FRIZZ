@@ -97,7 +97,7 @@ Nothing else gets installed: the first run builds DaisySP and the twin for the c
 
 ```bash
 cd firmware/test
-./all.sh          # everything, side by side, one line each: about 30 s on 12 cores, the first time more
+./all.sh          # everything, side by side, one line each: about a minute on 12 cores, the first ~80 s
 ./check.sh        # engine at HEAD vs the working tree: a refactor must print "bit-identical"
 ./unit.sh tempo   # one unit check (each NAME.cpp; ui runs the whole firmware on the twin)
 ```
@@ -143,15 +143,26 @@ it takes a firmware over USB MIDI, writes it to its slot and starts it:
 
 ```bash
 cd firmware
-./flash.py            # builds FRIZZ.bin, restarts the CHOMPI into the launcher, sends it to slot 10
+./flash.py --test     # builds FRIZZ.bin, restarts the CHOMPI into the launcher, sends it to the
+                      # test slot (12), as FRIZZ-TEST: a branch's build
 ./flash.py --bench    # FRIZZ-bench.bin to slot 11
 ./flash.py --no-build # the build that's in code/src/build/ (build-bench/ with --bench), as it is
 ./flash.py --run 11   # starts what's in slot 11 already, sending nothing
-./flash.py --test     # a branch's build to the test slot (12), as FRIZZ-TEST
-./flash.py --list     # what's on each key
+./flash.py --slot 13  # a beta's build, from a worktree of its v* tag, to key 13 (below)
+./flash.py --list     # what's on each key: restarts FRIZZ into the launcher, a loop in RAM lost
 ```
 
 Each send prints the md5 of what it sends, the name of that build in a pull request.
+
+**The keys** (#171): 10 is the latest release (`FRIZZ`), 13 the latest beta (`FRIZZ-BETA`),
+both the user's; 12 a branch's build under test (`FRIZZ-TEST`), 11 the bench, 15 the USB
+storage firmware. `flash.py` sends to 10 or 13 only when the key is named (`--slot 10`,
+`--slot 13`) and only a release's or a beta's build: the checkout stands on a `v*` tag with
+nothing changed or added in `code/`, and what's sent is the build `make` makes there (a file
+named too: the same bytes). So a release or a beta goes on from a worktree of its tag (`git
+worktree add ../FrizZ-v1.0.0 v1.0.0`, then `./flash.py --slot 10` there), when the user asks.
+A bare `./flash.py` sends nothing and says which options there are; the bench never goes to 10
+or 13. Sessions never send to 10 or 13 unasked (CLAUDE.md).
 
 **One at a time.** Every tool here takes a lock (`tools/chompi.py`, in `/run/user/UID`) when
 it first reaches for the CHOMPI, and waits while another has it, saying who; what doesn't
@@ -163,7 +174,7 @@ length of the image it runs, which `tools/builds.py` prints next to the md5, and
 the bench. `flash.py` notes the build it sends to a slot, beside the lock, and after sending
 asks the build running and fails if it isn't the one sent; `--run N` says which build it
 started. `remote.py` and `measure.py` find the slot of the build running by those notes (one
-started by hand too), say which it is, take `--slot 10|12` for one in particular, started
+started by hand too), say which it is, take `--slot 10|12|13` for one in particular, started
 unless it's the one running, and never take the bench for FRIZZ. A FRIZZ from before IDENT
 (or a build the tools didn't send) can't say, and answers as FRIZZ-TEST and the bench do; for
 those the tools go by the slot they last started, also noted beside the lock (`hold` without
@@ -171,14 +182,15 @@ a command forgets that note).
 
 **Garbled USB names** (#88): now and then (2 in ~310 starts) FRIZZ comes up with its USB
 names one string off (product `Љ`, maker `FrizZ`); the tools find it by the Daisy's USB id
-then, and say so. A tool that starts FRIZZ, FRIZZ-TEST or the bench (`flash.py`, `--run`,
+then, and say so. A tool that starts FRIZZ, FRIZZ-BETA, FRIZZ-TEST or the bench (`flash.py`, `--run`,
 `card.py --then`, `remote.py`) and finds it so starts the slot again from the launcher, twice
 at most, sending nothing, then asks for the power switch. `tools/chompi.py fix-name [SLOT]`
-does it for one found running so: it starts the slot noted as running (10, 11 or 12) again.
+does it for one found running so: it starts the slot noted as running (10, 11, 12 or 13) again.
 
-Sending replaces whatever is in that slot, so set yours (`FRIZZ_SLOT=4 ./flash.py`,
-`BENCH_SLOT`, `TEST_SLOT`, or `--slot`) if FRIZZ isn't on key 10. Without `--slot`, it
-refuses a key that holds another firmware than FRIZZ (`--slot` replaces it anyway). Linux only (ALSA), Python 3, no
+Sending replaces whatever is in that slot, so set yours (`FRIZZ_SLOT`, `BETA_SLOT`,
+`BENCH_SLOT`, `TEST_SLOT`, or `--slot`) if your keys differ. Without `--slot` (`--test`,
+`--bench`), it refuses a key that holds another firmware than FRIZZ (`--slot` replaces it
+anyway). Linux only (ALSA), Python 3, no
 packages; it uses the launcher's own client, `tools/midi_send.py`. On macOS or Windows, the
 launcher's web page (https://ugrossek.github.io/CHOMPI/, Chrome or Edge) does the same.
 FRIZZ keeps its files in `/FRIZZ`, so it shares the card with the other firmwares.
@@ -245,10 +257,21 @@ key 10's FRIZZ shares. On a slot other than the test slot (12) it starts that sl
 the end, from the card, so it saves again. `--save` leaves the card written as FRIZZ writes
 it. A FRIZZ from before PERSIST, or `--save`, gets the old guard: `play` refuses a script that
 would change what FRIZZ keeps on the card, saying which line and which file: the settings
-page (`twin/scenarios/settings.txt`, most bug reports, #58) and the compressor's knobs
-(`comp.txt`: its key, then knobs 1-4; or its CCs over MIDI) go to `/FRIZZ/frizz_master.txt`,
-with no `.bak`; SAVE / COPY / DELETE confirmed (`scenes.txt`) or a scene put over SysEx to
-`/FRIZZ/frizz_scenes.txt`, whose `.bak` keeps only the one before (#78). It reads where the
+page (`twin/scenarios/settings.txt`, most bug reports, #58; its upper A# too, as AUX's
+variant is saved, `mic.txt`, #152), VOLUME turned on its page 2, the input gain
+(`volume.txt`, #152), and the compressor's knobs (`comp.txt`: its key, then knobs 1-4, or with
+it in focus by CC 23; its CCs themselves never reach the card, #97) go to
+`/FRIZZ/frizz_master.txt`, with no `.bak`; SAVE / COPY / DELETE confirmed (`scenes.txt`) or a
+scene put over SysEx to `/FRIZZ/frizz_scenes.txt`, whose `.bak` keeps only the one before
+(#78).
+
+The setters FRIZZ saves (`channel`, `transport`, `source`, `out`, `scene put`, and `set` for
+`settings`, `comp` and VOLUME's input gain) keep the card out of it the same way unless
+`--save`: the change stays in RAM, and on a slot other than the test slot FRIZZ is started
+again from the card afterwards, so it saves again, the change gone (#171). A FRIZZ from before
+PERSIST is refused without `--save`. Before that restart, and at the end of a script, `IDENT`
+says whether FRIZZ still keeps the card out of it: one that restarted meanwhile (which ends
+PERSIST 0) wrote what came after to the card, and the command fails, saying so. It reads where the
 device stands first (the page, what the knobs edit, the scene mode); `--force` plays it
 anyway. Linux only, Python 3, no packages, like `flash.py`.
 
@@ -265,7 +288,7 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | SUB | Asks | Answers |
 |---|---|---|
 | `00` IDENT | — | version (1), kind (0 FRIZZ, 1 the bench), the image's CRC-32 (5 groups) and length (3) as the bootloader loaded it (`zlib.crc32` of the `.bin`; 0 on the twin), uptime ms (5), MainLoop's passes (5), `RCC_RSR` at boot (5, as the bootloader left it, not cleared), flags (1: RAM only) |
-| `01` PERSIST | `00` | flags. From now until a restart nothing is written to the card: a scene saved, copied or deleted, the master settings, as if written (the page shows them saved). One way: a restart (`flash.py --run N`) writes again, reading the card as it was. Bug reports (`bug-N.txt`) are still written: a new file each, never one key 10 reads |
+| `01` PERSIST | `00` | flags. From now until a restart nothing is written to the card: a scene saved, copied or deleted, the master settings, as if written (the page shows them saved). One way: a restart (`flash.py --run N`) writes again, reading the card as it was. Nor a bug report (`bug-N.txt`): SHIFT + VOLUME's hold then counts as failed (#171) |
 | `02` GET | GROUP | GROUP, COUNT, then COUNT values in 14 bits |
 | `03` SET | GROUP INDEX VALUE(2) | GROUP INDEX; applied in MainLoop through the setters the knobs and keys use, and saved as theirs are (unless RAM only) |
 | `04` BENCH | `00` | the bench's state: running, settling, the segment, how many, written, stored, `cpu.txt`'s length (3) |
@@ -345,8 +368,8 @@ doesn't (#152): a 1 kHz sine at rising levels, into AUX or as FRIZZ's own test s
 (`remote.py signal`), the line out recorded with the input alone and then with a loop of it
 alone, the two recordings' THD side by side. Run it on an empty looper.
 
-For an A/B, send each build to slot 10 in turn (`flash.py FILE --slot 10`) and measure from a
-fresh start each time; `remote.py load` and `remote.py play SCRIPT --cpu` give the load.
+For an A/B, send each build to the test slot in turn (`flash.py FILE --slot 12`) and measure
+from a fresh start each time; `remote.py load` and `remote.py play SCRIPT --cpu` give the load.
 
 ### The MIDI suite: the release test's MIDI items, unattended
 
@@ -368,7 +391,7 @@ tag, md5 checked) goes to the test slot instead of the branch's build:
 
 ```bash
 cd firmware && tools/chompi.py hold sh -c '
-  ./flash.py FRIZZ.bin --slot 12 --name FRIZZ-TEST &&
+  ./flash.py FRIZZ.bin --slot 12 &&
   { tools/midisuite.py --out card/midisuite.md; echo "suite: $?"; }
   ./flash.py --run 10'
 tools/midisuite.py --list                           # the cases, and what wiring each needs
@@ -385,7 +408,13 @@ tools/midisuite.py --cases out-loop,start-spp -v    # a few, every check as it's
 - **The card stays out of it:** it asks for PERSIST 0 first and refuses a FRIZZ without it.
   Each case sets the settings it needs (from the global channel 16, everything else off), and
   the knobs, latches, VOLUME's levels and the scenes 1-2 the morph cases put are set back
-  after each case, the settings at the end, in RAM. It plays on slot 12 (`--slot`).
+  after each case, the settings at the end, in RAM. Before each case and before putting
+  things back it asks FRIZZ (IDENT) whether it still keeps the card out of it: one that
+  restarted meanwhile would write the card with every setting after, so the run stops there
+  (FAIL), nothing put back (#171). It plays on slot 12 (`--slot`).
+- **Stopped:** Ctrl-C, SIGTERM or SIGHUP put things back first, then the summary; it exits
+  130, 143 or 129 then, 1 for a FAIL or a failed putting back, 0 otherwise (`reaper.py`
+  alike).
 - **How long:** about 7 minutes. `loop-drift` and `out-x2` ("over a few minutes") measure
   40 s; `--long` makes it 3 minutes each, `--quick` 8 s (the host check). `loop-drift`
   records 4 bars: a 1-bar loop's length, taken from a USB clock's ticks, scattered by up to
@@ -453,7 +482,11 @@ tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouc
   play rate (1.0) and varies its speed to keep its beats on the clock's, holding still about
   a second first (it seeks 1 s ahead), and only within about half to twice its tempo (seen
   smooth at 0.8x and 1.6x): x1/2 against its 120 (0.4x) goes in jumps, as did x2 against a
-  project at 60 (3.3x, a try by hand), so x1/2 is judged with its project at 60.
+  project at 60 (3.3x, a try by hand), so x1/2 is judged with its project at 60. `--quick`
+  (the host check) leaves out the x1/2 against 120, which is only noted, and listens 2 s to
+  each clock factor instead of 4.
+- **Stopped and restarted** as `midisuite.py`: Ctrl-C, SIGTERM or SIGHUP put things back and
+  close REAPER first (exit 130, 143, 129), and a FRIZZ that restarted stops the run (#171).
 - `test/reaper.cpp` runs it on the twin with `test/reaper_stub.py` in REAPER's place, and
   `REAPERCHECK="--cases ID -v" test/unit.sh reaper` plays it there once.
 
