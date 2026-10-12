@@ -13,9 +13,11 @@
  *   - a jump in tempo crossfades to the new delay time instead of sliding to it.
  *   - the tempo is a float (TEMPO's was whole BPM in microseconds per beat), so on a loop
  *     whose tempo isn't whole the echoes don't drift off its beats.
- *   - the stereo offset (20ms left, 10ms right) is on the output only: TEMPO fed it back, so
- *     every repeat came that much later, the 5th echo at 1/4 and 120 BPM 100ms off the beat
- *     on the left (#167). Now each echo is the offset late and no more.
+ *   - the stereo offset (20ms left, 10ms right) is on the output only: TEMPO read the voices
+ *     that far back and fed that back, so every repeat came that much later, the 5th echo at
+ *     1/4 and 120 BPM 100ms off the beat on the left (#167). The voices read both channels at
+ *     the read head now, for the feedback, and the output is that, the offset later
+ *     (delay_out_mem): each echo the offset late and no more.
  */
 #pragma once
 #include "FrizzHot.h"
@@ -31,49 +33,41 @@ constexpr uint32_t kMaxCrossfadeSamps = 256;       // a division change
 constexpr uint32_t kMaxEventCrossfadeSamps = 1024; // a random event's fade in and out
 constexpr float kTempoJump = .02f; // a tempo change this much of the delay time crossfades
 
-constexpr float delayStereoOffsetLeft = 960.f;
-constexpr float delayStereoOffsetRight = 480.f;
+// FRIZZ: the stereo offset, on the output only (granularDelay::read)
+constexpr uint32_t delayStereoOffsetLeft = 960;
+constexpr uint32_t delayStereoOffsetRight = 480;
+constexpr uint32_t kDelayOutFrames = 1024; // a power of 2 past the longer offset
+static_assert(delayStereoOffsetLeft < kDelayOutFrames && delayStereoOffsetRight < kDelayOutFrames,
+              "the offsets fit the output's line");
+// the output's line, per channel: what the voices read, the offset later (in SDRAM, cleared
+// by Init)
+__attribute__((weak)) float delay_out_mem[2][kDelayOutFrames] DSY_SDRAM_BSS;
 
 namespace chompi {
-    /** The frame at read_head, each channel offset_l and offset_r (whole samples) further
-     *  back, added to out_l and out_r */
-    inline void getSample(float *buffer, float read_head, float offset_l, float offset_r,
-                          float *out_l, float *out_r, size_t buffer_size) {
-        float right_read_head = read_head - offset_r;
-        if (right_read_head < 0.f) {
-            right_read_head += static_cast<float>(buffer_size);
+    /** The frame at read_head, interpolated, added to out_l and out_r */
+    inline void getSample(float *buffer, float read_head, float *out_l, float *out_r, size_t buffer_size) {
+        // a head can be behind the buffer's start (an event's, or a crossfade's, at a long
+        // delay): TEMPO's offset subtraction wrapped it
+        if (read_head < 0.f) {
+            read_head += static_cast<float>(buffer_size);
         }
-        float left_read_head = read_head - offset_l;
-        if (left_read_head < 0.f) {
-            left_read_head += static_cast<float>(buffer_size);
+        size_t i0 = static_cast<int>(read_head);
+        if (i0 >= buffer_size) {
+            i0 -= buffer_size;
         }
-
-        size_t i0_l = static_cast<int>(left_read_head);
-        if (i0_l >= buffer_size) {
-            i0_l -= buffer_size;
-        }
-        size_t i1_l = (i0_l + 1);
-        if (i1_l >= buffer_size) {
-            i1_l -= buffer_size;
+        size_t i1 = (i0 + 1);
+        if (i1 >= buffer_size) {
+            i1 -= buffer_size;
         }
 
-        size_t i0_r = static_cast<int>(right_read_head);
-        if (i0_r >= buffer_size) {
-            i0_r -= buffer_size;
-        }
-        size_t i1_r = (i0_r + 1);
-        if (i1_r >= buffer_size) {
-            i1_r -= buffer_size;
-        }
-
-        float frac = left_read_head - static_cast<float>(i0_l);
+        float frac = read_head - static_cast<float>(i0);
 
         // Read interleaved stereo
-        float a_l = buffer[i0_l * 2];
-        float b_l = buffer[i1_l * 2];
+        float a_l = buffer[i0 * 2];
+        float b_l = buffer[i1 * 2];
 
-        float a_r = buffer[i0_r * 2 + 1];
-        float b_r = buffer[i1_r * 2 + 1];
+        float a_r = buffer[i0 * 2 + 1];
+        float b_r = buffer[i1 * 2 + 1];
 
         *out_l += (a_l + frac * (b_l - a_l));
         *out_r += (a_r + frac * (b_r - a_r));
@@ -188,9 +182,7 @@ class delayVoice {
         return true;
     }
 
-    /** Adds the voice to the output (out, with the stereo offset) and to what's fed back (fb,
-     *  without it) */
-    void Read(float *out_l, float *out_r, float *fb_l, float *fb_r) {
+    void Read(float *out_l, float *out_r) {
 
         if (!active_) {
             return;
@@ -263,15 +255,9 @@ class delayVoice {
             }
         }
 
-        const float gain = crossfade_env * div_env;
-        chompi::getSample(buffer_, read_head_, delayStereoOffsetLeft, delayStereoOffsetRight,
-                          &sig_l, &sig_r, buffer_size_);
-        *out_l += sig_l * gain * panL;
-        *out_r += sig_r * gain * panR;
-        sig_l = sig_r = 0.f;
-        chompi::getSample(buffer_, read_head_, 0.f, 0.f, &sig_l, &sig_r, buffer_size_);
-        *fb_l += sig_l * gain * panL;
-        *fb_r += sig_r * gain * panR;
+        chompi::getSample(buffer_, read_head_, &sig_l, &sig_r, buffer_size_);
+        *out_l += sig_l * crossfade_env * div_env * panL;
+        *out_r += sig_r * crossfade_env * div_env * panR;
 
         if (div_crossfade_) {
 
@@ -304,17 +290,11 @@ class delayVoice {
                 div_read_head_ -= static_cast<float>(buffer_size_);
             }
 
-            const float c_gain = crossfade_env * (1.f - div_env);
             float c_sig_l = 0.f;
             float c_sig_r = 0.f;
-            chompi::getSample(buffer_, div_read_head_, delayStereoOffsetLeft,
-                              delayStereoOffsetRight, &c_sig_l, &c_sig_r, buffer_size_);
-            *out_l += c_sig_l * c_gain * panL;
-            *out_r += c_sig_r * c_gain * panR;
-            c_sig_l = c_sig_r = 0.f;
-            chompi::getSample(buffer_, div_read_head_, 0.f, 0.f, &c_sig_l, &c_sig_r, buffer_size_);
-            *fb_l += c_sig_l * c_gain * panL;
-            *fb_r += c_sig_r * c_gain * panR;
+            chompi::getSample(buffer_, div_read_head_, &c_sig_l, &c_sig_r, buffer_size_);
+            *out_l += c_sig_l * crossfade_env * (1.f - div_env) * panL;
+            *out_r += c_sig_r * crossfade_env * (1.f - div_env) * panR;
         }
     }
 
@@ -362,6 +342,12 @@ class granularDelay {
         SetTempo(120);
         delay_samples_ = delay_samples_target_ = BarSamples() * delayDivs[kStartDiv];
         cur_sig_l_ = cur_sig_r_ = 0.f;
+        for (size_t c = 0; c < 2; ++c) {
+            for (uint32_t i = 0; i < kDelayOutFrames; ++i) {
+                delay_out_mem[c][i] = 0.f;
+            }
+        }
+        out_pos_ = 0;
 
         division_ = kStartDiv;
         shimmer_ = false;
@@ -488,11 +474,18 @@ class granularDelay {
             myVoices[nextIdx].startFadeOut();
         }
 
-        // FRIZZ: the stereo offset on the output only, the feedback without it (#167)
+        // the voices at the read head, as they're fed back
         float fb_l = 0.f, fb_r = 0.f;
         for (size_t i = 0; i < 2; ++i) {
-            myVoices[i].Read(out_l, out_r, &fb_l, &fb_r);
+            myVoices[i].Read(&fb_l, &fb_r);
         }
+        // FRIZZ: the output, the stereo offset later; not fed back, so the echoes stay on the
+        // beat (#167)
+        delay_out_mem[0][out_pos_] = fb_l;
+        delay_out_mem[1][out_pos_] = fb_r;
+        *out_l = delay_out_mem[0][(out_pos_ - delayStereoOffsetLeft) & (kDelayOutFrames - 1)];
+        *out_r = delay_out_mem[1][(out_pos_ - delayStereoOffsetRight) & (kDelayOutFrames - 1)];
+        out_pos_ = (out_pos_ + 1) & (kDelayOutFrames - 1);
 
         cur_sig_l_ = fb_l * delay_feedback_amt_;
         cur_sig_r_ = fb_r * delay_feedback_amt_;
@@ -597,6 +590,7 @@ class granularDelay {
     uint32_t buffer_size_;
     float delay_samples_, delay_samples_target_;
     float cur_sig_l_, cur_sig_r_;
+    uint32_t out_pos_; // in delay_out_mem
     float delay_feedback_amt_;
     float damp_hi_ = 1.f, damp_lo_ = 0.f;
     float damp_lp_l_ = 0.f, damp_lp_r_ = 0.f, damp_hp_l_ = 0.f, damp_hp_r_ = 0.f;
