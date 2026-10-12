@@ -170,35 +170,30 @@ public:
         const float to_dry = !mic && aux_dry_ ? 1.f : 0.f;
         const bool routed = in_fx_ == 1.f && in_dry_ == 0.f && to_fx == 1.f; // as ever
         const bool bypass = in_dry_ != 0.f || to_dry != 0.f;
-        for (size_t i = 0; i < size; i++)
-        {
-            // equal-power crossfade so the middle of the knob doesn't dip in level; the
-            // cosf and sinf only while the knob slews, the mix usually sits still
-            if (mix_ != mix_target_)
+        if (routed)
+            for (size_t i = 0; i < size; i++)
             {
-                fonepole(mix_, mix_target_, .001f);
-                if (fabsf(mix_ - mix_target_) < 1e-5f)
-                    mix_ = mix_target_;
-                dry_amt_ = cosf(mix_ * HALFPI_F);
-                wet_amt_ = sinf(mix_ * HALFPI_F);
-            }
-            const float dry_amt = dry_amt_;
-            const float wet_amt = wet_amt_;
-            if (routed)
-            {
+                MixStep();
+                const float dry_amt = dry_amt_;
+                const float wet_amt = wet_amt_;
                 sigl[i] = dryl[i] * dry_amt + wetl[i] * wet_amt;
                 sigr[i] = dryr[i] * dry_amt + wetr[i] * wet_amt;
-                continue;
             }
-            in_fx_ = Toward(in_fx_, to_fx);
-            in_dry_ = Toward(in_dry_, to_dry);
-            const float fx_amt = dry_amt * in_fx_;
-            sigl[i] = dryl[i] * fx_amt + wetl[i] * wet_amt;
-            sigr[i] = dryr[i] * fx_amt + wetr[i] * wet_amt;
-            const float dry_branch = dry_amt * in_dry_;
-            bypl[i] = dryl[i] * dry_branch;
-            bypr[i] = dryr[i] * dry_branch;
-        }
+        else
+            for (size_t i = 0; i < size; i++)
+            {
+                MixStep();
+                const float dry_amt = dry_amt_;
+                const float wet_amt = wet_amt_;
+                in_fx_ = Toward(in_fx_, to_fx);
+                in_dry_ = Toward(in_dry_, to_dry);
+                const float fx_amt = dry_amt * in_fx_;
+                sigl[i] = dryl[i] * fx_amt + wetl[i] * wet_amt;
+                sigr[i] = dryr[i] * fx_amt + wetr[i] * wet_amt;
+                const float dry_branch = dry_amt * in_dry_;
+                bypl[i] = dryl[i] * dry_branch;
+                bypr[i] = dryr[i] * dry_branch;
+            }
         BENCH_MARK(OUTPUT);
 
         // punch-in FX, on the mix so they work on the input, the loop or both, and before the
@@ -413,6 +408,20 @@ private:
             const float r = dcblock_line_in_r_.Process(in_r * aux_gain_ * kLineInGain);
             dryl[i] = l + (m - l) * mic_fade_;
             dryr[i] = r + (m - r) * mic_fade_;
+        }
+    }
+
+    /** The mix's sample: equal-power, so the middle of the knob doesn't dip in level; the cosf
+     *  and sinf only while the knob slews, the mix usually sits still */
+    __attribute__((always_inline)) inline void MixStep()
+    {
+        if (mix_ != mix_target_)
+        {
+            fonepole(mix_, mix_target_, .001f);
+            if (fabsf(mix_ - mix_target_) < 1e-5f)
+                mix_ = mix_target_;
+            dry_amt_ = cosf(mix_ * HALFPI_F);
+            wet_amt_ = sinf(mix_ * HALFPI_F);
         }
     }
 
