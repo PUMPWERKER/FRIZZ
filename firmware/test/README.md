@@ -112,9 +112,10 @@ noise, tones, their mixes, near-silence and clicks, at random places in the ring
 of them with reads that wrap it, the masked path), shifting up and down as far as the swoop
 and the stereo offset go. Every search must pick the same lag, and so must the search spread
 over two blocks as the shifter runs it, with a block of new samples written in between. Then
-the shifter itself at the ends of its shift, grain, swoop and stereo: a tap that sounds must
-never sit at the end of its delay (1 or the longest), counted from the end of the taps' first
-lives (those start from `Init`'s delays). Built with `-mfma` instead, as the CHOMPI fuses its
+the shifter itself at the ends of its shift, grain, swoop and stereo, from power-on,
+punched in again after the shift was turned while it was off, and turned from the centre
+while it plays: a tap that sounds must never sit at the end of its delay (1 or the longest),
+and waking in the direction it was left in, the taps go on where they were (#140). Built with `-mfma` instead, as the CHOMPI fuses its
 multiply-adds, the searches come out the same too (checked by hand, not by `all.sh`).
 
 ## Tape FX check

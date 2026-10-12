@@ -1,0 +1,17 @@
+# The shifter woken with its shift already set (#140): +12 over MIDI while it's off, then
+# latched on (CC 22 on its channel, 2); off, turned to -12 while off, and on again. Going up
+# from power-on, its first voice used to run into the newest input, unshifted
+input sine 220 0.3
+at 2000
+midi B1 0E 7F
+wait 200
+midi B1 16 7F
+wait 2000
+midi B1 16 00
+wait 1500
+midi B1 0E 00
+wait 200
+midi B1 16 7F
+wait 2000
+midi B1 16 00
+wait 1000
