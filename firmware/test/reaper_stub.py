@@ -10,7 +10,8 @@ comes in on its MIDI device, which here is the twin's USB pseudo-terminal (the d
     while stopped; Stop, Song Position, Continue when it's located while playing, and at each
     turn of the loop range;
   - a lane's CCs at their beats while playing, and each CC a lane used back to 0 on stop
-    (REAPER's "Reset MIDI CC/Pitch on play stop/start", on by default);
+    and at a turn of the loop range (REAPER's "Reset MIDI CC/Pitch on: playback stop /
+    playback loop/skip", on by default), unless reaper.ini's ccresettab has "=-1";
   - a monitored track sends back what comes in, but the clock.
 It checks reaper.py's logic, not REAPER.
 """
@@ -39,8 +40,8 @@ def plan_of(path):
 
 
 class Stub:
-    def __init__(self, plan):
-        self.plan = plan
+    def __init__(self, plan, resets):
+        self.plan, self.resets = plan, resets
         self.t0 = time.perf_counter()
         self.out = open(plan["log"], "w")
         self.lock = threading.Lock()
@@ -101,8 +102,12 @@ class Stub:
             return
         self.playing = False
         self.write(bytes([STOP]) + self.spp(self.cursor))
-        for cc in sorted({(m[0], m[1]) for _, m in self.lanes}):
-            self.write([cc[0], cc[1], 0])
+        self.reset()
+
+    def reset(self):
+        if self.resets:
+            for cc in sorted({(m[0], m[1]) for _, m in self.lanes}):
+                self.write([cc[0], cc[1], 0])
 
     def locate(self, beat):
         self.cursor = beat
@@ -125,6 +130,7 @@ class Stub:
             if self.loop and beat >= self.loop[1]:
                 self.at_beat, self.at_time = self.loop[0], now
                 self.write(bytes([STOP]) + self.spp(self.loop[0]) + bytes([CONTINUE]))
+                self.reset()
                 last = None
                 continue
             if last is not None:
@@ -220,7 +226,9 @@ class Stub:
 def main():
     cfg = sys.argv[sys.argv.index("-cfgfile") + 1]
     plan = plan_of(os.path.join(os.path.dirname(cfg), "Scripts", "__startup.lua"))
-    Stub(plan).main()
+    with open(cfg) as f:
+        resets = not re.search(r"^ccresettab=.*=-1", f.read(), re.M)
+    Stub(plan, resets).main()
 
 
 if __name__ == "__main__":

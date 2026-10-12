@@ -166,16 +166,28 @@ class Daw:
     whose card REAPER sends its clock and the commands' bytes to, and whose input it logs
     (tap: what FRIZZ sends over USB, as it's read from the log); None for none"""
 
-    def __init__(self, audio="jack", node=None, verbose=False, name=None):
-        """name: a MIDI device by REAPER's name for it instead (virtual: REAPER's own port)"""
+    def __init__(self, audio="jack", node=None, verbose=False, name=None, settings=None):
+        """name: a MIDI device by REAPER's name for it instead (virtual: REAPER's own port);
+        settings: more of reaper.ini's [reaper] keys, {key: value}"""
         self.audio, self.verbose = audio, verbose
+        # REAPER's own "Reset MIDI CC/Pitch on: playback stop / playback loop/skip" (on by
+        # default: each CC a track sent goes back to 0) off, through "CC reset overrides"
+        self.settings = dict(dict(ccresettab="cc0-120=-1"), **(settings or {}))
         self.exe = binary()
         if not self.exe:
             raise ReaperError("no REAPER (~/Apps/REAPER/reaper, FRIZZ_REAPER)")
         card = card_id(node) if node else None
         if node and not card:
             raise ReaperError("no sound card for %s" % node)
-        self.name = name or ("hw:%s" % card if card else None)
+        # REAPER's names for it, out and in: ALSA's raw node (hw:FrizZ), or under JACK the
+        # PipeWire bridge's ports, which it takes when it finds them
+        if name:
+            self.outs_named = self.ins_named = [name]
+        elif card:
+            self.outs_named = ["hw:%s" % card, "Midi-Bridge:%s: MIDI 1 (playback)" % card]
+            self.ins_named = ["hw:%s" % card, "Midi-Bridge:%s: MIDI 1 (capture)" % card]
+        else:
+            self.outs_named = self.ins_named = []
         self.dir = tempfile.mkdtemp(prefix="frizz-reaper-")
         license_file = os.path.join(USER_CONFIG, LICENSE)
         if os.path.exists(license_file):
@@ -190,16 +202,19 @@ class Daw:
         self.proc = None
         atexit.register(self.kill)  # never left running after this tool
         try:
-            # where REAPER numbers the device: the cache seeded with it first, else as it says
-            self.index = 0 if self.name else None
+            # where REAPER numbers the device: the caches seeded with it first, else as it says
+            self.out_name, self.in_name = (self.outs_named + [None])[0], (self.ins_named + [None])[0]
+            self.out_index = self.in_index = 0 if self.out_name else None
             self.start()
-            if self.errors() and self.name:
-                outs = self.devices()[0]
+            if self.errors() and self.out_name:
+                outs, ins = self.devices()
                 self.stop()
-                self.index = outs.get(self.name)
-                if self.index is None:
-                    raise ReaperError("REAPER doesn't list %s (%s)" % (
-                        self.name, ", ".join(sorted(outs)) or "no MIDI outputs"))
+                self.out_name = next((n for n in self.outs_named if n in outs), None)
+                self.in_name = next((n for n in self.ins_named if n in ins), None)
+                if self.out_name is None or self.in_name is None:
+                    raise ReaperError("REAPER lists no %s" % " or ".join(
+                        self.outs_named if self.out_name is None else self.ins_named))
+                self.out_index, self.in_index = outs[self.out_name], ins[self.in_name]
                 self.start()
                 if self.errors():
                     raise ReaperError("REAPER's devices: %s" % "; ".join(self.errors()))
@@ -211,7 +226,8 @@ class Daw:
 
     # ---- REAPER's process ----
     def write_config(self):
-        mask = 0 if self.index is None else 1 << self.index
+        bit = lambda i: 0 if i is None else 1 << i  # noqa: E731
+        mask = bit(self.out_index)
         cfg = [
             "[reaper]",
             "linux_audio_mode=%d" % AUDIO_MODES[self.audio],
@@ -220,20 +236,24 @@ class Daw:
             "linux_audio_bits=32", "alsa_indev=frizz_none", "alsa_outdev=frizz_none",
             "jack_options=2",  # REAPER links its ports to nothing by itself
             "midiouts=%d" % mask, "midiouts_clock=%d" % mask, "midiouts_noreset=%d" % mask,
-            "midiins=%d" % mask,
+            "midiins=%d" % bit(self.in_index),
             "splashlog=0", "lastproject=", "projecttab1=",
+        ] + ["%s=%s" % kv for kv in sorted(self.settings.items())] + [
             "",
             "[verchk]", "lastt=%d" % int(time.time()), "",
         ]
         with open(os.path.join(self.dir, "reaper.ini"), "w") as f:
             f.write("\n".join(cfg) + "\n")
-        cache = ["[mididevcache]"] + (["ot0=1", "on0=" + self.name, "it0=1", "in0=" + self.name]
-                                      if self.name else [])
-        for name in ("reaper-midihw-alsa.ini", "reaper-midihw-linux.ini"):
+        # the device caches (ALSA's raw MIDI, JACK's): its names first, so REAPER numbers them 0
+        for i, name in enumerate(("reaper-midihw-alsa.ini", "reaper-midihw-linux.ini")):
+            cache = ["[mididevcache]"]
+            if self.outs_named:
+                cache += ["ot0=1", "on0=" + self.outs_named[min(i, len(self.outs_named) - 1)],
+                          "it0=1", "in0=" + self.ins_named[min(i, len(self.ins_named) - 1)]]
             with open(os.path.join(self.dir, name), "w") as f:
                 f.write("\n".join(cache) + "\n")
         plan = dict(log=self.log_path, cmds=self.cmds_path, project=os.path.join(self.dir, "run.rpp"),
-                    out=self.index, out_name=self.name, input=self.index, in_name=self.name)
+                    out=self.out_index, out_name=self.out_name, input=self.in_index, in_name=self.in_name)
         with open(RUNNER) as f:
             runner = f.read()
         with open(os.path.join(self.dir, "Scripts", "__startup.lua"), "w") as f:
@@ -454,11 +474,12 @@ def frizz_through(daw):
 CASES = []
 
 
-def case(id, item, needs=(), every=False):
-    """every: in each REAPER (audio mode), not only the first"""
+def case(id, item, needs=(), every=False, last=False):
+    """every: in each REAPER (audio mode), not only the first; last: only in the last, when it
+    isn't the first, which runs with REAPER's preferences as they come"""
     def add(fn):
         c = midisuite.Case(id, item, fn, needs)
-        c.every = every
+        c.every, c.last = every, last
         CASES.append(c)
         return fn
     return add
@@ -614,40 +635,58 @@ def daw_automation(r, d):
         d.lane(4, events)
     d.tempo(120)
     d.locate(0)
+    before, _ = read()
     d.play()
     time.sleep(1.2)  # the last values at 0.5 s, the latches at 0.63; the lanes go on to 2 s
     played, latches = read()
     d.stop_transport()
-    # REAPER's own: "Reset MIDI CC/Pitch on play stop/start" (Preferences, Audio, Playback; on
-    # by default) sends each CC the lanes used back to its default on stop
     time.sleep(.3)
-    stopped, stopped_latches = read()
+    stopped, _ = read()
     d.clear()
     # the same values sent as CCs straight away: where each knob should be
     for ch in range(1, 16):
         d.send(b"".join(bytes([status(ch), 14 + k, automation_value(ch, k)]) for k in range(8)))
     time.sleep(.3)
     direct, _ = read()
-    bad, n, moved = [], 0, 0
+    bad, kept, n, moved = [], [], 0, 0
     for ch in range(1, 16):
         fx = groups[ch - 1]
         for k in range(8):
             if (fx, k) in EMPTY:
                 continue
             n += 1
-            moved += abs(played[fx][k] - stopped[fx][k]) > .01
+            moved += abs(played[fx][k] - before[fx][k]) > .01
             if abs(played[fx][k] - direct[fx][k]) > .002:
                 bad.append("ch %d CC %d: %.3f, sent: %.3f" % (ch, 14 + k, played[fx][k], direct[fx][k]))
+            if abs(stopped[fx][k] - played[fx][k]) > .002:
+                kept.append("ch %d CC %d: %.3f -> %.3f" % (ch, 14 + k, played[fx][k], stopped[fx][k]))
         if ch < 15 and not latches[remote.FX_NAMES.index(fx)]:
             bad.append("ch %d: not latched" % ch)
     r.check("15 tracks playing: each knob where its lane's last CC, sent straight, puts it; CC 22 latched",
             not bad, "; ".join(bad[:6]) + (" ..." if len(bad) > 6 else "") if bad else "all %d knobs, 14 latches" % n,
             "the same")
-    r.check("the lanes moved them", moved >= n * .8, "%d of %d apart from where REAPER's stop left them" % (moved, n),
-            "most")
-    zero = sum(1 for fx in stopped for k, v in enumerate(stopped[fx]) if (fx, k) not in EMPTY and v < .01)
-    r.note("REAPER stopped (its CC reset on stop, a default): %d of %d knobs at 0, %d latches on"
-           % (zero, n, sum(1 for x in stopped_latches if x)))
+    r.check("the lanes moved them", moved >= n * .8, "%d of %d" % (moved, n), "most")
+    r.check("REAPER stopped, its CC reset off (CC reset overrides cc0-120=-1): the knobs stay", not kept,
+            "; ".join(kept[:4]) + (" ..." if len(kept) > 4 else "") if kept else "all %d" % n, "all stay")
+
+
+@case("daw-ccreset", "8 (for MANUAL): REAPER as it comes sends each CC its tracks used back to 0 "
+      "when it stops (\"Reset MIDI CC/Pitch on: playback stop\"), so the knobs automated go to 0; "
+      "the other cases have it off", last=True)
+def daw_ccreset(r, d):
+    d.clear()
+    d.lane(4, [(0., 0xB4, 14, 0), (.5, 0xB4, 14, 100)])  # CC 14 on 5: the filter's knob 1
+    d.tempo(120)
+    d.locate(0)
+    d.play()
+    time.sleep(1.)
+    played = r.knob("filter", 0)
+    d.stop_transport()
+    time.sleep(.3)
+    stopped = r.knob("filter", 0)
+    r.check("CC 14 on 5 from a track at 100, REAPER playing: the filter's knob 1", abs(played - knob7(100)) <= .002,
+            "%.3f" % played, "%.3f" % knob7(100))
+    r.check("REAPER stopped, its preferences as they come: back to 0", stopped <= .002, "%.3f" % stopped, "0")
 
 
 @case("daw-monitor", "8: REAPER recording what it also sends (a track monitoring FRIZZ's input "
@@ -899,19 +938,25 @@ def main():
 
         # 2. REAPER, once per audio mode
         for n, audio in enumerate(audios):
-            todo = [c for c in cases if n == 0 or c.every]
+            last = n == len(audios) - 1 and n > 0
+            todo = [c for c in cases if c.every or (c.last and last) or (n == 0 and not c.last)]
+            if n == 0 and len(audios) == 1:
+                results += [(c, "SKIP", "needs a second REAPER (--audio jack,dummy)", [], audio)
+                            for c in cases if c.last]
             if not todo:
                 continue
             if not binary():
                 results += [(c, "SKIP", "no REAPER", [], audio) for c in todo]
                 continue
             try:
-                d = Daw(audio, device, a.verbose)
+                # the last REAPER with its preferences as they come: its CC reset on
+                d = Daw(audio, device, a.verbose, settings=dict(ccresettab="") if last else None)
             except ReaperError as e:
                 print("REAPER %s: %s" % (audio, e), file=sys.stderr)
                 results += [(c, "FAIL", "REAPER %s: %s" % (audio, str(e).splitlines()[0]), [], audio) for c in todo]
                 continue
-            sessions.append("%s (%s; its script %.1f s after the start)" % (audio, d.audio_info, d.started))
+            sessions.append("%s (%s; its script %.1f s after the start%s)" % (
+                audio, d.audio_info, d.started, "" if last else "; CC reset overrides cc0-120=-1"))
             print("REAPER %s" % sessions[-1], flush=True)
             try:
                 r = midisuite.Rig(frizz_through(d), trs_fd, a, usb=d.tap, trs=trs, patience=2.)

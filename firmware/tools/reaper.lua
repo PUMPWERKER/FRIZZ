@@ -140,6 +140,7 @@ local function run(w, sent)
         for i = R.CountTracks(0) - 1, 0, -1 do R.DeleteTrack(R.GetTrack(0, i)) end
     elseif name == "trace" then
         tracing = w[3] == "on"
+
     end
     local pos = R.GetPlayState() & 1 == 1 and R.GetPlayPosition() or R.GetCursorPosition()
     log("cmd %s %s pos %.4f %.4f state %d", w[1], name, pos, beats(pos), R.GetPlayState())
@@ -181,7 +182,13 @@ local function loop()
     local sent = false
     while #pending > 0 do
         local w = pending[1]
-        local done = run(w, sent)
+        -- an error is logged and the line dropped: a script that stops would leave REAPER
+        -- showing its error, and waiting
+        local ok, done = pcall(run, w, sent)
+        if not ok then
+            log("error %s: %s", table.concat(w, " "):sub(1, 60), tostring(done))
+            done = true
+        end
         if done == nil then return end -- quit
         if not done then break end
         sent = sent or w[2] == "send"
