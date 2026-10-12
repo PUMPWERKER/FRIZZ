@@ -646,15 +646,21 @@ def play(f, path, cpu):
 
     threads = [threading.Thread(target=clock_thread, daemon=True)]
     if cpu:
-        # from here on, once FRIZZ's own window runs: right after a start it answers 0 / 0
-        # (no block yet), and the next reading would count the start into the worst (#147)
+        # from here on, once FRIZZ's start is over: right after one it answers 0 / 0 (no block
+        # yet), and its first blocks cost ~6 points more for ~0.3 s, which the worst would
+        # count (#147)
         until = time.monotonic() + 3
+        starting = False
         while load(f)[:2] == (0.0, 0.0):
-            if time.monotonic() > until:
+            starting = time.monotonic() < until
+            if not starting:
                 print("load: still 0 after 3 s (the bench, or FRIZZ starting): "
                       "the worst may count its start")
                 break
             time.sleep(0.1)
+        if starting:
+            time.sleep(0.5)
+            load(f)
         start = time.monotonic()
         threads.append(threading.Thread(target=cpu_thread, daemon=True))
     for t in threads:
