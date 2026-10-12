@@ -197,14 +197,27 @@ private:
 
     /** Where a tap that's starting over should start: its nominal start (the far end of
      *  the window going up, the near end going down) moved by up to kSearch to where its next
-     *  samples best match the other tap's, by normalised correlation. Once per window, so
-     *  out of line: inlined twice, it made Process three times the size */
+     *  samples best match the other tap's, by normalised correlation (SpliceLag). Once per
+     *  window, so out of line: inlined twice, it made Process three times the size */
     __attribute__((noinline)) float Splice(size_t c, float other, float ratio, bool up) const
     {
-        const float* const b = ring_.buf[c];
-        const size_t last = ring_.Last();
         const float nominal = (up ? window_frames_ : 0.f) + kGuard + kSearch;
+        return nominal
+               + static_cast<float>(SpliceLag(ring_.buf[c], ring_.Last(), nominal, other, ratio));
+    }
 
+public:
+    /** Splice's search in buffer b, whose last frame written is last: the lag from the
+     *  nominal start whose next samples best match those of the other tap, at delay other.
+     *  Public for the splice check, which holds it against the search as it was (#137).
+     *
+     *  It costs the peak block (two of them at stereo 0, both channels wrapping in the same
+     *  sample), so it scores kGroup lags at once: their sums are separate chains that the FPU
+     *  overlaps, each still added up point by point in the same order, so every score comes out
+     *  the same to the bit. A lag's sqrtf and division only run where it can beat the best */
+    __attribute__((noinline)) static int SpliceLag(const float* b, size_t last, float nominal,
+                                                   float other, float ratio)
+    {
         // k samples on, both taps will have moved k * ratio through the input: the other
         // tap's samples, and where a candidate at lag 0 reads, once for every lag
         float ref[kCorrPoints];
@@ -216,40 +229,83 @@ private:
             start[k] = last - static_cast<size_t>(nominal - ahead);
         }
 
-        // a lag adds to the delay, so the candidate reads lag samples further back
-        auto score = [&](int lag) {
-            float dot = 0.f, energy = 0.f;
-            for (size_t k = 0; k < kCorrPoints; k++)
-            {
-                const float x = b[(start[k] - static_cast<size_t>(lag)) & kBufMask];
-                dot += x * ref[k];
-                energy += x * x;
-            }
-            return dot / sqrtf(energy + 1e-9f);
-        };
+        // where no candidate's reads wrap the ring, they go without masks
+        bool wraps = false;
+        for (size_t k = 0; k < kCorrPoints; k++)
+            wraps |= ((start[k] - kMaxLag) & kBufMask) + (kMaxLag - kMinLag) > kBufMask;
+        return wraps ? Search<true>(b, start, ref) : Search<false>(b, start, ref);
+    }
 
-        int best = 0;
-        float best_score = -1e30f;
-        for (int lag = -kSearch; lag <= kSearch; lag += kCoarseStep)
+private:
+    static const size_t kGroup = 4; // lags scored at once
+    // the lags a search reads: a group past the last lag scores lags beyond it, unoffered
+    static const int kMinLag = -kSearch - kFineRange;
+    static const int kMaxLag = kSearch + (kGroup - 1) * kCoarseStep;
+    static_assert(kFineRange + kGroup <= (kGroup - 1) * kCoarseStep, "the fine pass reads less");
+
+    /** The best lag so far and its score, dot / sqrt(energy + 1e-9) */
+    struct Best
+    {
+        int lag = 0;
+        float score = -1e30f;
+
+        /** A lag that beats the best takes its place; ties keep the earlier one */
+        inline void Offer(int l, float dot, float energy)
         {
-            const float v = score(lag);
-            if (v > best_score)
+            const float e = energy + 1e-9f;
+            // dot / sqrtf(e) > score > 0 needs dot > 0 and dot^2 > score^2 * e: a lag clearly
+            // short of that can't win, and skips the sqrtf and the division. The margin is far
+            // above their rounding (a few parts in 2^24), so no lag that wins is skipped; a
+            // score over 1e-6 keeps the right side clear of underflow
+            if (score > 1e-6f && (dot <= 0.f || dot * dot < kSkipMargin * score * score * e))
+                return;
+            const float v = dot / sqrtf(e);
+            if (v > score)
             {
-                best_score = v;
-                best = lag;
+                score = v;
+                lag = l;
             }
         }
-        const int coarse = best;
-        for (int lag = coarse - kFineRange; lag <= coarse + kFineRange; lag++)
+    };
+    static constexpr float kSkipMargin = .9999f;
+
+    /** Every kCoarseStep-th lag, then every lag around the best, in that order */
+    template <bool kWraps>
+    static int Search(const float* b, const size_t* start, const float* ref)
+    {
+        Best best;
+        for (int lag = -kSearch; lag <= kSearch; lag += kGroup * kCoarseStep)
+            ScoreGroup<kCoarseStep, kWraps>(b, start, ref, lag, kSearch, best);
+        const int coarse = best.lag;
+        for (int lag = coarse - kFineRange; lag <= coarse + kFineRange; lag += kGroup)
+            ScoreGroup<1, kWraps>(b, start, ref, lag, coarse + kFineRange, best);
+        return best.lag;
+    }
+
+    /** Scores the kGroup lags lag, lag + kStep, ... and offers those up to last_lag to best,
+     *  in that order. A lag adds to the delay, so the candidate reads lag samples further
+     *  back; masked only where the search's reads wrap the ring */
+    template <int kStep, bool kWraps>
+    static inline __attribute__((always_inline)) void ScoreGroup(const float* b,
+                                                                const size_t* start,
+                                                                const float* ref, int lag,
+                                                                int last_lag, Best& best)
+    {
+        float dot[kGroup] = {}, energy[kGroup] = {};
+        for (size_t k = 0; k < kCorrPoints; k++)
         {
-            const float v = score(lag);
-            if (v > best_score)
+            const size_t i = (start[k] - static_cast<size_t>(lag)) & kBufMask;
+            const float r = ref[k];
+            for (size_t j = 0; j < kGroup; j++)
             {
-                best_score = v;
-                best = lag;
+                const float x = kWraps ? b[(i - j * kStep) & kBufMask] : b[i - j * kStep];
+                dot[j] += x * r;
+                energy[j] += x * x;
             }
         }
-        return nominal + static_cast<float>(best);
+        for (size_t j = 0; j < kGroup; j++)
+            if (lag + static_cast<int>(j) * kStep <= last_lag)
+                best.Offer(lag + static_cast<int>(j) * kStep, dot[j], energy[j]);
     }
 
     /** Each channel's speed: 2^(semitones/12), the right channel stereo semitones higher */

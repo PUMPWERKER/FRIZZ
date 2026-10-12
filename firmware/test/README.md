@@ -17,7 +17,7 @@ STRESS=1 ./run.sh work out.bin
 | Check | What it looks at |
 |---|---|
 | `check.sh` | the engine harness (below): every output sample and FX meter of a fixed script, two versions compared; a refactor must be `bit-identical` |
-| `pitch`, `tape`, `delay`, `crusher`, `freezer`, `comp`, `clicks`, `level`, `sleep`, `inserts`, `page2` | parts of the engine on their own: the shifter's tuning, wow and flutter and the tape stop, the delay's pitch-up and random events, the crusher's rate, bits and dive, the freezer's capture and roll, the master compressor, moves that used to click, page 2's Mix, Band and Level (`FxOutput.h`), effects that are off costing no time, the folder's bypass and level, the slicer's patterns, chance and stereo, page 2's Mix on the shifter, and each effect's own page-2 knob |
+| `pitch`, `splice`, `tape`, `delay`, `crusher`, `freezer`, `comp`, `clicks`, `level`, `sleep`, `inserts`, `page2` | parts of the engine on their own: the shifter's tuning and its splice search, wow and flutter and the tape stop, the delay's pitch-up and random events, the crusher's rate, bits and dive, the freezer's capture and roll, the master compressor, moves that used to click, page 2's Mix, Band and Level (`FxOutput.h`), effects that are off costing no time, the folder's bypass and level, the slicer's patterns, chance and stereo, page 2's Mix on the shifter, and each effect's own page-2 knob |
 | `phaser` | the phaser (`FxPhaser.h`): its six stages' notches where they belong and unity between them, dry at depth 0, feedback bounded at the top and ringing down, the stereo LFO half a cycle behind, asleep bit for bit the input, the rate knob's free half in Hz and synced half in divisions, the LFOs running at their rate and on the clock's pulses |
 | `chaos` | the chaos key (`FxChaos.h`): its dice on the grid, the pattern that repeats and the press that rolls a new one, the gates on the engine's pool of latched effects, the loop's scramble (another part of the loop, crossfaded, its position running on) |
 | `scenes`, `store` | the scene and master files and the card: formats, a card not read at boot, backups (also of a file next to a cut save's `.tmp`) |
@@ -98,6 +98,19 @@ tree) at every interval from -12 to +12 semitones, and fails if any comes out mo
 cents off or its level wobbles by more than 2 dB. The engine harness can't tell a shifter
 that's out of tune from one that isn't; this can. Takes about 12 s. (A plain two-tap shifter
 is up to 80 cents off and wobbles up to 10 dB; Kastle's single-tap one fails 48 of the 50.)
+
+## Shifter splice check
+
+```bash
+./unit.sh splice
+```
+
+Holds the shifter's splice search (`Shifter::SpliceLag`, `FxShifter.h`) against the search as
+it was before #137 made it cheaper, a copy kept in `splice.cpp`: about 60000 searches on
+noise, tones, their mixes, near-silence and clicks, at random places in the ring (a quarter
+of them with reads that wrap it, the masked path), shifting up and down as far as the swoop
+and the stereo offset go. Every search must pick the same lag. Built with `-mfma` instead, as
+the CHOMPI fuses its multiply-adds, it passes too (checked by hand, not by `all.sh`).
 
 ## Tape FX check
 
