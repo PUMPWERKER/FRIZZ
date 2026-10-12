@@ -139,6 +139,13 @@ what FRIZZ does.
   compressor work through each block of 24 samples one effect at a time instead of all of
   them sample by sample. They sound the same as before, but many effects at once leave more
   room, so crackling under a heavy combination (#21) sets in later.
+- **The pitch shifter's peaks take less of the CPU** (#137): where a tap starts over, the
+  shifter searches for the best match, which took almost a tenth of an audio block at once,
+  twice at stereo 0. That search is now cheaper and spread over two blocks, so the busiest
+  moments with the shifter on take about 4 to 12 percent less of the CPU, and crackling
+  under a heavy combination sets in later still. The shifter sounds as before: each
+  crossing of its two taps rests half a millisecond longer, and shifting up its voice comes
+  a fraction of a millisecond later (up to 2 ms at the swoop's top).
 - **The freezer, shifter and slicer fade in a morph** (#118), with their page 2 Mix, instead
   of switching on the bar line. One the new scene turns off glides to dry over the morph and
   goes off on the bar line, as the other effects do; the shifter or slicer the new scene

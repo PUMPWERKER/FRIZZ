@@ -17,7 +17,7 @@ STRESS=1 ./run.sh work out.bin
 | Check | What it looks at |
 |---|---|
 | `check.sh` | the engine harness (below): every output sample and FX meter of a fixed script, two versions compared; a refactor must be `bit-identical` |
-| `pitch`, `tape`, `delay`, `crusher`, `freezer`, `comp`, `clicks`, `level`, `sleep`, `inserts`, `page2` | parts of the engine on their own: the shifter's tuning, wow and flutter and the tape stop, the delay's pitch-up and random events, the crusher's rate, bits and dive, the freezer's capture and roll, the master compressor, moves that used to click, page 2's Mix, Band and Level (`FxOutput.h`), effects that are off costing no time, the folder's bypass and level, the slicer's patterns, chance and stereo, page 2's Mix on the shifter, and each effect's own page-2 knob |
+| `pitch`, `splice`, `tape`, `delay`, `crusher`, `freezer`, `comp`, `clicks`, `level`, `sleep`, `inserts`, `page2` | parts of the engine on their own: the shifter's tuning and its splice search, wow and flutter and the tape stop, the delay's pitch-up and random events, the crusher's rate, bits and dive, the freezer's capture and roll, the master compressor, moves that used to click, page 2's Mix, Band and Level (`FxOutput.h`), effects that are off costing no time, the folder's bypass and level, the slicer's patterns, chance and stereo, page 2's Mix on the shifter, and each effect's own page-2 knob |
 | `block` | the FX chain a block at a time (`FxChain::Process`, #136) against the same chain a sample at a time, bit for bit, output and meters: blocks of 1 to 40 samples (runs of 24 and the rest) and each block in two calls, through a script with every effect on, the resonator at its highest pitch and stereo with its tone slewing, page 2 off its defaults (the resonator's Band while its key fades out mid-block) and recalls' fast slews ending on a block's first, middle and last sample |
 | `phaser` | the phaser (`FxPhaser.h`): its six stages' notches where they belong and unity between them, dry at depth 0, feedback bounded at the top and ringing down, the stereo LFO half a cycle behind, asleep bit for bit the input, the rate knob's free half in Hz and synced half in divisions, the LFOs running at their rate and on the clock's pulses |
 | `chaos` | the chaos key (`FxChaos.h`): its dice on the grid, the pattern that repeats and the press that rolls a new one, the gates on the engine's pool of latched effects, the loop's scramble (another part of the loop, crossfaded, its position running on) |
@@ -99,6 +99,23 @@ tree) at every interval from -12 to +12 semitones, and fails if any comes out mo
 cents off or its level wobbles by more than 2 dB. The engine harness can't tell a shifter
 that's out of tune from one that isn't; this can. Takes about 12 s. (A plain two-tap shifter
 is up to 80 cents off and wobbles up to 10 dB; Kastle's single-tap one fails 48 of the 50.)
+
+## Shifter splice check
+
+```bash
+./unit.sh splice
+```
+
+Holds the shifter's splice search (`Shifter::SpliceSearch`, `FxShifter.h`) against the search
+as it was before #137 made it cheaper, a copy kept in `splice.cpp`: about 60000 searches on
+noise, tones, their mixes, near-silence and clicks, at random places in the ring (a quarter
+of them with reads that wrap it, the masked path), shifting up and down as far as the swoop
+and the stereo offset go. Every search must pick the same lag, and so must the search spread
+over two blocks as the shifter runs it, with a block of new samples written in between. Then
+the shifter itself at the ends of its shift, grain, swoop and stereo: a tap that sounds must
+never sit at the end of its delay (1 or the longest), counted from the end of the taps' first
+lives (those start from `Init`'s delays). Built with `-mfma` instead, as the CHOMPI fuses its
+multiply-adds, the searches come out the same too (checked by hand, not by `all.sh`).
 
 ## Tape FX check
 
