@@ -3,7 +3,8 @@
 // does what tools/reaper.lua does in REAPER, and sends REAPER's clock, transport and lanes as
 // REAPER does on the device. It checks the tool's logic: the three parts (on the node, through
 // "REAPER" once per audio mode, on the node again), the commands, FRIZZ's answers through
-// REAPER's input, the cases on the firmware as it is, and the summary with the jitter's table;
+// REAPER's input, the cases on the firmware as it is, REAPER synchronized to FRIZZ's clock (in a
+// REAPER of its own), and the summary with the jitter's table;
 // not REAPER, nor the firmware's timing (--quick widens the tolerances, as midisuite.cpp's).
 //
 // REAPERCHECK="ARGS" runs the tool once with those arguments and prints what it printed, e.g.
@@ -82,6 +83,13 @@ int main()
             {"PASS daw-jitter", "PASS daw-ccreset", "dummy (Stub 48000 512; its script", "REAPER dummy (Stub", "**The clock's jitter (#83)**",
              "| this computer (midiport.Clock) | 200 |", "| REAPER, jack (Stub 48000 512) | 300 |",
              "| REAPER, dummy (Stub 48000 512) | 300 |"},
+            0);
+    }});
+    // REAPER synchronized to FRIZZ's clock out, in a REAPER of its own (#150)
+    cases.push_back({"follows", [] {
+        Run("follows", true, "daw-follows",
+            {"PASS daw-follows", "REAPER jack (Stub 48000 512", "synchronized to its MIDI input: projsmptesync 5, "
+             "projsmpteinput 4223; midiouts_clock=0", "| jack, synced | PASS |", "on its beat 1"},
             0);
     }});
     // no TRS: the jitter can't be seen, a SKIP

@@ -1,6 +1,8 @@
 -- reaper.lua: tools/reaper.py's runner inside REAPER. reaper.py puts PLAN (a table: the log,
 -- the command file, the MIDI devices) in front of it as the startup script of a configuration
--- of its own. It mutes the master, checks the devices are where reaper.py expects them, then,
+-- of its own. It opens PLAN.sync if there is one (a project synchronized to its MIDI input,
+-- reaper.py's daw-follows), mutes the master, checks the devices are where reaper.py expects
+-- them, then,
 -- every time REAPER runs it (defer, ~30 times a second), carries out the lines reaper.py has
 -- added to the command file since:
 --   ID play | stop | pause            the transport, as its buttons
@@ -21,8 +23,10 @@
 -- What comes in from the device is logged as it's seen in REAPER's input history.
 --
 -- The log, a line each, the time in s since the start (time_precise): "T ready", "T dev out|in
--- INDEX NAME", "T audio MODE SRATE BSIZE", "T cmd ID NAME pos SECONDS BEATS state S", "T in
--- HEX", "T pos SECONDS BEATS state S", "T error TEXT", "T done".
+-- INDEX NAME", "T audio MODE SRATE BSIZE", "T sync SYNC INPUT clock MASK" (the project's
+-- projsmptesync and projsmpteinput, reaper.ini's midiouts_clock, as REAPER has them), "T cmd ID
+-- NAME pos SECONDS BEATS state S", "T in HEX", "T pos SECONDS BEATS state S rate RATE bpm BPM"
+-- (the play rate, the tempo at the position), "T error TEXT", "T done".
 local R = reaper
 local out = assert(io.open(PLAN.log, "w"))
 local t0 = R.time_precise()
@@ -47,6 +51,7 @@ local function hex(s)
     return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
 
+if PLAN.sync then R.Main_openProject("noprompt:" .. PLAN.sync) end
 log("ready")
 for i = 0, R.GetNumMIDIOutputs() - 1 do
     local ok, name = R.GetMIDIOutputName(i, "")
@@ -60,6 +65,11 @@ local _, mode = R.GetAudioDeviceInfo("MODE", "")
 local _, srate = R.GetAudioDeviceInfo("SRATE", "")
 local _, bsize = R.GetAudioDeviceInfo("BSIZE", "")
 log("audio %s %s %s", mode, srate, bsize)
+local function var(name)
+    local _, v = R.get_config_var_string(name)
+    return v or "?"
+end
+log("sync %s %s clock %s", var("projsmptesync"), var("projsmpteinput"), var("midiouts_clock"))
 
 local function check(kind, index, want)
     if index == nil then return true end
@@ -196,7 +206,8 @@ local function loop()
     end
     if tracing then
         local pos = R.GetPlayPosition()
-        log("pos %.4f %.4f state %d", pos, beats(pos), R.GetPlayState())
+        log("pos %.4f %.4f state %d rate %.4f bpm %.3f", pos, beats(pos), R.GetPlayState(),
+            R.Master_GetPlayRate(0), R.TimeMap_GetDividedBpmAtTime(pos))
     end
     R.defer(loop)
 end

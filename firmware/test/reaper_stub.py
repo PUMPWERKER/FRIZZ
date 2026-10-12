@@ -12,7 +12,13 @@ comes in on its MIDI device, which here is the twin's USB pseudo-terminal (the d
   - a lane's CCs at their beats while playing, and each CC a lane used back to 0 on stop
     and at a turn of the loop range (REAPER's "Reset MIDI CC/Pitch on: playback stop /
     playback loop/skip", on by default), unless reaper.ini's ccresettab has "=-1";
-  - a monitored track sends back what comes in, but the clock.
+  - a monitored track sends back what comes in, but the clock;
+  - synchronized to its input (PLAN.sync, a project with SMPTESYNC; reaper.ini's
+    midiouts_clock=0), as REAPER 7 was seen to be on the device: it sends nothing of its own,
+    waits for a Start (a clock alone doesn't start it), then plays on the ticks that come in,
+    24 a beat in its own beats whatever its tempo; Stop pauses it, Song Position puts it there,
+    Continue plays on from there. (REAPER holds still for a second first, seeking ahead, and
+    varies its speed to keep up only within about half to twice its tempo: not here.)
 It checks reaper.py's logic, not REAPER.
 """
 import os
@@ -57,6 +63,13 @@ class Stub:
         self.lanes = []  # [(beat, bytes)]
         self.monitor = False
         self.tracing = False
+        self.sync = None  # SMPTESYNC's flags and input, synchronized
+        self.ticks = 0  # synchronized: the play position in ticks, as they came in
+        self.paused = False  # synchronized: stopped by a Stop (REAPER's play state 2)
+        if plan.get("sync"):
+            with open(plan["sync"]) as f:
+                m = re.search(r"SMPTESYNC (\d+) \S+ \S+ \S+ \S+ \S+ (\d+)", f.read())
+            self.sync = (int(m.group(1)), int(m.group(2))) if m and int(m.group(1)) & 1 else None
         self.stop = False
         self.tap = midiport.Tap.__new__(midiport.Tap)
         self.tap.log, self.tap.status, self.tap.msg = [], None, []
@@ -73,14 +86,36 @@ class Stub:
             with self.lock:
                 os.write(self.fd, bytes(data))
 
+    def clock_out(self, data):
+        """REAPER's clock, Start, Stop, Song Position: none, synchronized (midiouts_clock=0)"""
+        if not self.sync:
+            self.write(data)
+
     def came(self, msg):
         self.log("in %s", msg.hex())
         if self.monitor and msg[0] < 0xF8:
             self.write(msg)
+        if self.sync:
+            if msg[0] == START:
+                self.ticks, self.playing, self.paused = 0, True, False
+            elif msg[0] == CONTINUE:
+                self.playing, self.paused = True, False
+            elif msg[0] == STOP:
+                self.playing, self.paused = False, True
+            elif msg[0] == TICK and self.playing:
+                self.ticks += 1
+            elif msg[0] == 0xF2 and len(msg) == 3:
+                self.ticks = (msg[1] | msg[2] << 7) * 6
+
+    def state(self):
+        """REAPER's play state: 1 playing, 2 paused, 0 stopped"""
+        return 1 if self.playing else 2 if self.paused else 0
 
     # ---- the transport ----
     def pos(self, now=None):
         """The play position in beats"""
+        if self.sync:
+            return self.ticks / 24.
         if not self.playing:
             return self.cursor
         now = time.perf_counter() if now is None else now
@@ -91,17 +126,17 @@ class Stub:
         return bytes([0xF2, sixteenths & 0x7F, sixteenths >> 7 & 0x7F])
 
     def play(self):
-        if self.playing:
+        if self.playing or self.sync:
             return
         self.at_beat, self.at_time = self.cursor, time.perf_counter()
         self.playing = True
-        self.write([START] if self.cursor == 0 else [CONTINUE])
+        self.clock_out([START] if self.cursor == 0 else [CONTINUE])
 
     def halt(self):
-        if not self.playing:
+        if not self.playing or self.sync:
             return
         self.playing = False
-        self.write(bytes([STOP]) + self.spp(self.cursor))
+        self.clock_out(bytes([STOP]) + self.spp(self.cursor))
         self.reset()
 
     def reset(self):
@@ -113,9 +148,9 @@ class Stub:
         self.cursor = beat
         if self.playing:
             self.at_beat, self.at_time = beat, time.perf_counter()
-            self.write(bytes([STOP]) + self.spp(beat) + bytes([CONTINUE]))
+            self.clock_out(bytes([STOP]) + self.spp(beat) + bytes([CONTINUE]))
         else:
-            self.write(self.spp(beat))
+            self.clock_out(self.spp(beat))
 
     def run_clock(self):
         """The clock and the lanes while playing, the loop range's turns"""
@@ -126,7 +161,7 @@ class Stub:
             if self.playing and last is not None:
                 wait = min(wait, max(0., ((int(last * 24) + 1) / 24. - self.pos()) * 60. / self.bpm))
             time.sleep(max(wait, .0002))
-            if not self.playing:
+            if not self.playing or self.sync:
                 last = None
                 continue
             now = time.perf_counter()
@@ -183,7 +218,7 @@ class Stub:
         elif name == "trace":
             self.tracing = w[2] == "on"
         p = self.pos()
-        self.log("cmd %s %s pos %.4f %.4f state %d", cid, name, p * 60. / self.bpm, p, 1 if self.playing else 0)
+        self.log("cmd %s %s pos %.4f %.4f state %d", cid, name, p * 60. / self.bpm, p, self.state())
         return None if name == "quit" else True
 
     def main(self):
@@ -192,6 +227,7 @@ class Stub:
             self.log("dev out 0 %s", self.plan["out_name"])
             self.log("dev in 0 %s", self.plan["out_name"])
         self.log("audio Stub 48000 512")
+        self.log("sync %s clock ", "%d %d" % self.sync if self.sync else "0 0")
         self.log("listening")
         self.clock.start()
         read_at, pending = 0, []
@@ -223,7 +259,7 @@ class Stub:
                 pending.pop(0)
             if self.tracing:
                 p = self.pos()
-                self.log("pos %.4f %.4f state %d", p * 60. / self.bpm, p, 1 if self.playing else 0)
+                self.log("pos %.4f %.4f state %d rate 1.0000 bpm %.3f", p * 60. / self.bpm, p, self.state(), self.bpm)
             time.sleep(.03)
 
 
