@@ -76,8 +76,13 @@ unit_test()
     fi
     cp "$REPO/firmware/code/src"/*.h "$dir/"
     cp "$T/host/MidiClock.h" "$dir/"
+    # a line "// unit includes: DIR ..." in NAME.cpp adds those folders, from here, first
+    local extra=() d
+    for d in $(sed -n 's|^// unit includes: *||p' "$T/$name.cpp" | head -1); do
+        extra+=(-I"$T/$d")
+    done
     log=$dir/build.log
-    if ! g++ -O2 -std=gnu++14 -funsigned-char -Wall -Wno-unused-function -Wno-unused-variable -I"$dir" \
+    if ! g++ -O2 -std=gnu++14 -funsigned-char -Wall -Wno-unused-function -Wno-unused-variable "${extra[@]}" -I"$dir" \
         -I"$T/host" $INC "$T/$name.cpp" "$BUILD/libdaisysp_host.a" -o "$dir/$name" 2> "$log"; then
         cat "$log"
         echo "$name.cpp didn't build"

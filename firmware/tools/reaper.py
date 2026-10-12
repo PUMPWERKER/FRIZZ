@@ -1002,9 +1002,7 @@ def daw_follows(r, d):
     if trs is not None:
         def transport(log):
             return [m[0] for t, m in log if t >= t0 and m[0] in (START, STOP, CONTINUE, SPP)]
-        what = "the same Start, Stop, Song Position and Continue out of TRS as over USB (#157)"
-        r.known.add(what)  # #157: PLAY's Song Position comes twice over USB
-        r.check(what, transport(trs) == transport(usb),
+        r.check("the same Start, Stop, Song Position and Continue out of TRS as over USB (#157)", transport(trs) == transport(usb),
                 "TRS %s, USB %s" % (" ".join("%02x" % b for b in transport(trs)),
                                     " ".join("%02x" % b for b in transport(usb))), "the same")
     d.trace(False)

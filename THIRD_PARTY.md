@@ -59,7 +59,7 @@ In TEMPO and WAVE:
   compilation: the firmware builds against pristine upstream, but its MIDI output timing won't
   match the released firmware. Keep the vendored file.
 
-FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with two changes:
+FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with three changes:
 - `src/usbd/usbd_desc.c` names the USB product "FrizZ".
 - `src/hid/midi_parser.cpp` follows MIDI 1.0 where WAVE's didn't:
   - A real-time byte (a clock tick, 0xF8-0xFF) inside a SysEx or another message is passed on,
@@ -67,11 +67,16 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with two changes:
   - A System Common message ends running status.
   - Its data bytes are counted by its own type, so a Song Position after a program change isn't
     read as one byte and a program change.
+- `src/hid/usb_midi.cpp` sends a Song Position over USB once: WAVE's packed it, then fell
+  through into its SysEx branch and packed it again, so hosts read it twice (#157).
 
-Its prebuilt `build/libdaisy.a` is WAVE's with only those two objects, `usbd_desc.o` and
-`midi_parser.o`, rebuilt from them. They were built with GCC 10.3 and libDaisy's own flags
-(`make build/midi_parser.o` in its folder, then `arm-none-eabi-ar r build/libdaisy.a
-build/midi_parser.o`). These reproduce WAVE's objects exactly from WAVE's source.
+Its prebuilt `build/libdaisy.a` is WAVE's with only those three objects, `usbd_desc.o`,
+`midi_parser.o` and `usb_midi.o`, rebuilt from them. They were built with GCC 10.3 and
+libDaisy's own flags (`make build/midi_parser.o` in its folder, then `arm-none-eabi-ar r
+build/libdaisy.a build/midi_parser.o`). These reproduce WAVE's objects from WAVE's source: the
+same code, only the debug information's paths differ, and FRIZZ.bin comes out byte for byte
+the same (checked for `usb_midi.o`, #157). FRIZZ's Makefile doesn't link again when only
+`libdaisy.a` changed: delete `code/src/build/FRIZZ.elf` first.
 
 The bootloader's copy, `reference/firmware/chompi-bootloader-v6.4-beta/libs/libDaisy/`, is the same adaptation plus
 the changes that bootloader needs, listed in its `LIBDAISY_PATCH.md`.
