@@ -30,6 +30,14 @@
  *  keys of the FX that don't fade (and the freezer's coming on). It ends as a morph does:
  *  Land (B), Freeze (where it is), or Freeze at A, which the UI takes back to where it was
  *  (FxControls::EndFade).
+ *
+ *  A drop (#153, SHIFT + scene key + PLAY): Drop turns it into a hard switch on the next bar
+ *  line, as a recall there would be, one more per AddBar. A glide already under way goes on
+ *  and gets to its end on that line; a held morph doesn't move. Its landing is its own (Drop's
+ *  scene, drop_to_), and every key that differs from it switches there: the ones coming on in
+ *  the line's block, so what grabs (the freezer, the slicer, the tape stop, the shifter's swoop)
+ *  starts on the line; the ones going off kDropLeadSamples before it (DropLead), so their fade
+ *  ends on it. Until the line the FX sound as they were. The crossfader can't take a drop.
  */
 #pragma once
 #include "FxChain.h"
@@ -47,6 +55,13 @@ static const uint32_t kMaxMorphBars = 8;
 // A fade-in's key comes on this long after the start, once its fade knobs have slewed
 // to their defaults: 5 of the fast slew's time constants (FxCommon.h)
 static const uint32_t kMorphWakeSamples = 1200;
+// A drop's keys going off go off this long before its line, so their fade (FxGate, the same
+// time constant) has ended there: 5 of them, -43dB
+static const float kDropLeadSamples = 1200.f;
+
+// The sends: their tails ring on after their keys go off, so a recall, morph or drop doesn't
+// change an off send's settings in the engine until its key comes on again
+static const uint16_t kFxSends = (1u << FX_DELAY) | (1u << FX_REVERB);
 
 // The FX without fade knobs that a morph fades with their page 2 Mix instead (#118): out,
 // all three; in, the shifter and slicer. The freezer comes on at the landing, as before: a
@@ -99,6 +114,7 @@ public:
         plan_ = FxMorphPlan();
         active_ = false;
         land_ = false;
+        drop_ = false;
     }
 
     /** Starts plan, landing on the next bar line, pulses_to_bar pulses away (an estimate);
@@ -127,6 +143,7 @@ public:
         manual_ = false;
         fader_ = 0.f;
         t0_ = t_ = 0.f;
+        drop_ = false;
         active_ = true;
     }
 
@@ -172,11 +189,72 @@ public:
             land_ = true;
     }
 
+    /** Makes it a drop (file comment): on the next bar line, pulses_to_bar pulses away, the FX
+     *  switch hard to `to` and the keys to `on`. ui_on: the keys as the UI had them before, which
+     *  the chain has but for the ones not switched yet. A glide under way gets to its end on
+     *  that line; a held one stays where it is. Extra bars: AddBar. False if none runs or the
+     *  crossfader has it. Call with the audio interrupt blocked */
+    FX_MORPH_ONCE bool Drop(const float to[kNumFx][kNumFxParams], uint16_t ui_on, uint16_t on,
+                            uint32_t pulses_to_bar)
+    {
+        if (!active_ || land_ || manual_)
+            return false;
+        const uint16_t now_on = static_cast<uint16_t>((ui_on & ~deferred_) | (plan_.was_on & deferred_));
+        const uint16_t switched = static_cast<uint16_t>(now_on ^ on);
+        for (size_t fx = 0; fx < kNumFx; fx++)
+        {
+            const uint16_t bit = static_cast<uint16_t>(1u << fx);
+            // off now: its parameters at once, unheard, so it comes on as the scene; a send
+            // off in both rings out as it was, as in a morph (FxControls::Morph)
+            const bool set = !(now_on & bit) && ((on & bit) || !(kFxSends & bit));
+            for (size_t p = 0; p < kNumFxParams; p++)
+            {
+                drop_to_[fx][p] = to[fx][p];
+                if (holding_ || set)
+                    plan_.how[fx][p] = MorphParam::HOLD;
+                if (set && live_[fx][p] != to[fx][p])
+                {
+                    live_[fx][p] = to[fx][p];
+                    chain_->SetParam(fx, p, to[fx][p]);
+                }
+            }
+        }
+        chain_->FastSlew();
+        plan_.deferred = deferred_ = switched;
+        plan_.was_on = now_on;
+        plan_.wake = 0;
+        pending_on_ = on;
+        // the glide from where it is to its end on the line
+        holding_ = false;
+        bars_left_ = 1;
+        t0_ = t_;
+        base_ = pos_;
+        expected_ = pos_ + static_cast<float>(pulses_to_bar);
+        drop_ = true;
+        return true;
+    }
+    inline bool Dropping() const { return active_ && drop_; }
+
+    /** While a drop waits, once per block after Process: its keys going off go off once its
+     *  line is kDropLeadSamples away or less, pulses_to_bar pulses from the last one */
+    __attribute__((noinline, optimize("Os"))) void DropLead(uint32_t pulses_to_bar,
+                                                            float pulse_samples)
+    {
+        const uint16_t off = static_cast<uint16_t>(deferred_ & ~pending_on_);
+        if (!Dropping() || land_ || bars_left_ != 1 || !off
+            || static_cast<float>(pulses_to_bar) * pulse_samples - since_pulse_ > kDropLeadSamples)
+            return;
+        deferred_ &= static_cast<uint16_t>(~off);
+        for (size_t fx = 0; fx < kNumFx; fx++)
+            if (off >> fx & 1)
+                chain_->SetOn(fx, false);
+    }
+
     /** The crossfader: the glide at t, 0 the start to 1 the target, from now on in the UI's
      *  hands, held or gliding. False if none runs. Call with the audio interrupt blocked */
     bool Fader(float t)
     {
-        if (!active_ || land_)
+        if (!active_ || land_ || drop_)
             return false;
         if (!manual_)
         {
@@ -268,13 +346,15 @@ public:
         for (size_t fx = 0; fx < kNumFx; fx++)
         {
             const uint16_t bit = static_cast<uint16_t>(1u << fx);
-            const bool on = deferred_ & bit ? pending_on_ & bit : true;
-            if (on || !(plan_.park & bit))
+            // a drop knows every key; what's off at its end keeps what it has, as parked
+            const bool on = drop_ || deferred_ & bit ? pending_on_ & bit : true;
+            if (on || !(drop_ || plan_.park & bit))
             {
+                const float* to = drop_ ? drop_to_[fx] : plan_.target[fx];
                 for (size_t p = 0; p < kNumFxParams; p++)
                 {
-                    if (plan_.target[fx][p] != live_[fx][p])
-                        chain_->SetParam(fx, p, plan_.target[fx][p]);
+                    if (to[p] != live_[fx][p])
+                        chain_->SetParam(fx, p, to[p]);
                 }
             }
             if (deferred_ & bit)
@@ -282,6 +362,7 @@ public:
         }
         deferred_ = 0;
         land_ = false;
+        drop_ = false;
         active_ = false;
     }
 
@@ -303,6 +384,7 @@ public:
         *was_on = unswitched_now & plan_.was_on;
         deferred_ = 0;
         land_ = false;
+        drop_ = false;
         active_ = false;
         return true;
     }
@@ -313,16 +395,20 @@ public:
     {
         if (!active_)
             return false;
-        plan_.target[fx][param] = val;
+        if (drop_)
+            drop_to_[fx][param] = val;
+        else
+            plan_.target[fx][param] = val;
         return active_; // landed meanwhile: then it's for the chain
     }
 
-    /** From the UI: a key while it runs. False if the morph doesn't switch this one, so it
-     *  goes to the chain */
+    /** From the UI: a key while it runs. False if the morph doesn't switch this one (yet), so
+     *  it goes to the chain */
     bool SetOn(size_t fx, bool on)
     {
         const uint16_t bit = static_cast<uint16_t>(1u << fx);
-        if (!active_ || !(plan_.deferred & bit))
+        // a drop keeps every key's, for its landing
+        if (!active_ || !(drop_ || plan_.deferred & bit))
             return false;
         // also once a fade-in has switched it, for the crossfader to take up (Fader)
         if (on)
@@ -403,6 +489,8 @@ private:
     volatile bool active_;
     volatile bool holding_ = false; // started held, not released yet
     volatile bool manual_ = false;  // on the crossfader (Fader)
+    volatile bool drop_ = false;    // a drop: lands hard on drop_to_ (Drop)
+    float drop_to_[kNumFx][kNumFxParams]; // a drop's landing, as the plan's target a morph's
     volatile float fader_ = 0.f;    // its position, 0 the start to 1 the target
     uint16_t sent_on_ = 0;          // on the crossfader: the switched keys as sent
 };

@@ -35,7 +35,9 @@
  *  Scenes: a recall sends only the parameters that change, within one audio block and at the
  *  fast slew (FxChain::FastSlew), so an FX the two scenes share runs on untouched. SHIFT +
  *  a scene key morphs to it instead (FxMorph.h), landing on a bar line; the engine times it.
- *  SHIFT + PLAY stops a morph where it is; without one, PLAY works as ever. The transport knob
+ *  SHIFT + a scene key, then PLAY drops to it hard on the bar line (#153, SceneControls::Drop),
+ *  its key blinking red on the beat until then; SHIFT + PLAY without a scene key tapped stops a
+ *  morph where it is; without one, PLAY works as ever. The transport knob
  *  turned while SHIFT still holds a morph is its crossfader (#66, SceneControls::FaderTurned):
  *  the glide in the hand, until SHIFT is let go (ReleaseMorph); the transport LEDs show it.
  *  A morph on MIDI's crossfader (CC 80) stays MIDI's: letting go of SHIFT doesn't end it.
@@ -327,6 +329,8 @@ namespace chompi
             {
                 // a release whose press the boot page had lets go of nothing
                 const bool held = Shift();
+                if (rising)
+                    scene_ctl_.ShiftDown();
                 keys_.Chompi(rising);
                 if (!rising && held)
                     ReleaseMorph();
@@ -547,6 +551,9 @@ namespace chompi
             case Event::MORPH:
                 RemoteMorph(e.arg & 7, e.arg >> 3);
                 break;
+            case Event::DROP:
+                RemoteDrop(e.arg & 7, e.arg >> 3);
+                break;
             case Event::STOP_MORPH:
                 FreezeMorph();
                 break;
@@ -741,6 +748,18 @@ namespace chompi
             const auto result = ScenePressed(slot, true, bars);
             if (result != SceneControls<PassthroughEngine>::Slot::REFUSED && !Shift())
                 ReleaseMorph();
+        }
+
+        /** A drop over MIDI (CC 83): as SHIFT + the scene key, tapped once per bar, then PLAY */
+        void RemoteDrop(size_t slot, uint8_t bars)
+        {
+            bool dropped;
+            {
+                ScopedIrqBlocker irq;
+                dropped = scene_ctl_.DropTo(slot, bars);
+            }
+            if (!dropped)
+                SceneRefusedBlink(slot);
         }
 
         // the latches and keys on go out in 14 bits (Put14), a scene's latches too
@@ -1268,6 +1287,11 @@ namespace chompi
             ScopedIrqBlocker irq;
             return scene_ctl_.FreezeMorph();
         }
+        bool DropScene()
+        {
+            ScopedIrqBlocker irq;
+            return scene_ctl_.Drop();
+        }
         /** SHIFT let go: a morph started with it glides now (FxMorph::Release), or the hand's
          *  crossfader ends where it is (SceneControls::EndFade). One on MIDI's crossfader
          *  (CC 80) stays MIDI's */
@@ -1625,7 +1649,9 @@ namespace chompi
                 }
                 else if (s == scene_ctl_.Morphing())
                 {
-                    // morphing to it: blinking on the FX clock's beats
+                    // morphing to it: blinking on the FX clock's beats; red for a drop
+                    if (scene_ctl_.Dropping())
+                        color = red;
                     const uint32_t pos = engine_->FxClockPosition();
                     level = pos % kPulsesPerBeat < kPulsesPerBeat / 2 ? 1.f : 0.f;
                 }

@@ -81,7 +81,8 @@ static const uint8_t kCompCC = 24;      // 24-31: the compressor's knobs, as cha
 static const uint8_t kFaderCC = 80;     // the crossfader: a running morph from its start to its scene
 static const uint8_t kStopMorphCC = 81; // stops a morph where it is, crossing 64 upward
 static const uint8_t kTapCC = 82;       // a tempo tap, crossing 64 upward
-static const uint8_t kSourceCC = 84;   // the input: 0-42 AUX through the FX, 43-84 AUX dry, 85-127 the mic
+static const uint8_t kDropCC = 83;      // a hard drop to the scene 0-4 on a bar line (CC 9's), as CC 3
+static const uint8_t kSourceCC = 84;    // the input: 0-42 AUX through the FX, 43-84 AUX dry, 85-127 the mic
 static const uint8_t kOutGainCC = 85, kInGainCC = 86, kMixCC = 87;
 static const uint8_t kHpCueCC = 89;     // the headphone feed as VOLUME's knob: 0 the input, 127 the master
 static const uint8_t kSpeedCC = 90;     // the loop's speed in semitones: 0 1/16x, 64 1x, 127 2x
@@ -313,6 +314,7 @@ public:
             STOP_MORPH, //
             TAP,        // at ms
             PROGRAM,    // arg: the scene 0-4
+            DROP,       // arg: as MORPH's, a drop (CC 83)
         };
         uint8_t kind, arg;
         uint16_t ms; // when it came, System::GetNow()'s lower 16 bits
@@ -652,12 +654,18 @@ private:
             focus_changed_ = true;
             return true;
         case kMorphCC:
+        case kDropCC:
+        {
             // taken as sent only once it's queued, so a dropped one acts on the next
-            if (v == morph_last_
-                || (v < kNumSlots && !Push(Event::MORPH, static_cast<uint8_t>(v | morph_bars_ << 3))))
+            uint8_t& last = cc == kMorphCC ? morph_last_ : drop_last_;
+            if (v == last
+                || (v < kNumSlots
+                    && !Push(cc == kMorphCC ? Event::MORPH : Event::DROP,
+                             static_cast<uint8_t>(v | morph_bars_ << 3))))
                 return false;
-            morph_last_ = v;
+            last = v;
             return v < kNumSlots;
+        }
         case kMorphBarsCC:
             morph_bars_ = v < 1 ? 1 : (v > kMorphBarsMax ? kMorphBarsMax : v);
             return true;
@@ -936,6 +944,7 @@ private:
     static_assert(kTapSwitch < 32, "a bit per switch");
     uint32_t known_ = 0, high_ = 0; // sent a value yet; it was 64 or more
     uint8_t morph_last_ = 0xFF;     // CC 3's last value, 0xFF for none yet
+    uint8_t drop_last_ = 0xFF;      // CC 83's
     uint8_t morph_bars_ = 1;
 
     Query query_;

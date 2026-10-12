@@ -15,12 +15,13 @@
  *  kEraseLockMs after LOOP stopped a recording, LOOP doesn't erase, so a double press or a
  *  bounce can't lose the new loop. PLAY acts on release, and only if nothing combined with it
  *  during the hold, so the PLAY + LOOP combos never also toggle play. SHIFT + LOOP is tap
- *  tempo and only that; SHIFT + PLAY stops a scene morph, or without one is PLAY. A release
+ *  tempo and only that. SHIFT + PLAY drops to the scene key tapped with SHIFT in this hold
+ *  (#153), or without one stops a scene morph, or without that is PLAY. A release
  *  whose press wasn't seen (a key held through the boot animation) does nothing.
  *
  *  Host is NormalPage on the device, a fake on the host. It needs: SceneArmed(),
  *  ConfirmScene(), ShiftPressed() (true if it queued a latch) and ShiftUsed() (FxControls'),
- *  FreezeMorph() (true if one was stopped), Tap(), Refused() (LOOP can't do it), Now() in ms,
+ *  DropScene() (true if it dropped), FreezeMorph() (true if one was stopped), Tap(), Refused() (LOOP can't do it), Now() in ms,
  *  and the looper's LooperState(), CanRecordQuantized(), StartRecording(quantized),
  *  StopRecording(), TogglePlay(), Erase(), EraseAtEnd(), CancelErase(), ErasePending().
  */
@@ -87,8 +88,9 @@ public:
         {
             Used();
             play_down_ = true;
-            // SHIFT + PLAY: stops a morph, and only that; without one, PLAY as ever
-            play_combo_ = Shift() && host_->FreezeMorph();
+            // SHIFT + PLAY: drops to the scene tapped in this hold, or stops a morph, and only
+            // that; without either, PLAY as ever
+            play_combo_ = Shift() && (host_->DropScene() || host_->FreezeMorph());
             return;
         }
         if (!play_down_)

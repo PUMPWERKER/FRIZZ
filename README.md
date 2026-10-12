@@ -11,8 +11,8 @@ box and looper for whatever you plug into its AUX input.
   hold it and press SHIFT to latch it. Knobs 1-4 shape the last effect you touched. A chaos
   key next to them drops latched effects out at random and scrambles the loop's steps.
 - **Four FX scenes on the dark keys:** save every effect's settings and latches, recall them
-  at once for a drop, morph to them on the bar line or crossfade by hand on the transport
-  knob, copy and delete them. Kept on the SD card. A fifth key clears every effect at once.
+  at once, drop to them hard on the next bar line, morph to them on the bar line or crossfade
+  by hand on the transport knob, copy and delete them. Kept on the SD card. A fifth key clears every effect at once.
 - **An input/loop mix** between the live input and the loop, plus input gain, output gain and a
   headphone feed that can carry the dry input alone, all on the VOLUME knob.
 - **A master compressor** on its own key, and a safety limiter on every output.

@@ -1,6 +1,7 @@
 /** @file SceneControls.h
  *  @brief What the play page does with the FX scene keys, without the hardware: recalling a
- *  slot or morphing to it (SHIFT, FxMorph.h), and TAPE's and TEMPO's SAVE / COPY / DELETE flow (pick the mode, the slot(s), then
+ *  slot, morphing to it (SHIFT, FxMorph.h) or dropping to it on a bar line (SHIFT, then PLAY:
+ *  Drop, #153), and TAPE's and TEMPO's SAVE / COPY / DELETE flow (pick the mode, the slot(s), then
  *  confirm). Like a mode key, a slot tapped again is deselected. NormalPage.h routes the
  *  keys here, writes the card (SceneStore.h) and draws the LEDs; test/controls.cpp runs it on
  *  the host.
@@ -115,6 +116,16 @@ public:
     Slot Press(size_t slot, bool shift)
     {
         const Slot result = SlotPressed(slot, shift);
+        // with SHIFT, a saved scene's key picks it for a drop (Drop), refused or not
+        if (shift && mode_ == SceneMode::NONE && scenes_[slot].used)
+        {
+            const int s = static_cast<int>(slot);
+            if (s != drop_)
+                drop_taps_ = 0;
+            if (drop_taps_ < kMaxMorphBars)
+                drop_taps_++;
+            drop_ = s;
+        }
         switch (result)
         {
         case Slot::RECALL:
@@ -160,12 +171,12 @@ public:
         return true;
     }
 
-    /** A fader over MIDI: a running morph, held or gliding, to t. Reaching an end decides as
+    /** A fader over MIDI: a running morph, held or gliding, to t; not a drop. Reaching an end decides as
      *  letting go there would (EndFade): the scene's at once, the start's once it has been
      *  away from it. False if no morph runs. On the device, with the audio interrupt blocked */
     bool FaderTo(float t)
     {
-        if (!fx_->Morphing())
+        if (!fx_->Morphing() || fx_->Dropping())
             return false;
         if (!fx_->Fading())
             fader_left_ = false;
@@ -194,6 +205,46 @@ public:
     inline bool Fading() const { return fx_->Fading(); }
     inline float FaderPos() const { return fx_->FaderPos(); }
     inline int FadeFrom() const { return from_; }
+
+    /** SHIFT went down: no scene picked for a drop yet */
+    inline void ShiftDown() { drop_ = kNoScene; }
+
+    /** SHIFT + PLAY (#153): a hard drop to the scene key tapped with SHIFT in this hold, on the
+     *  bar line a tap of it is, as a morph's (DropTo). False if none was tapped, or it can't. On
+     *  the device, with the audio interrupt blocked */
+    bool Drop()
+    {
+        const int slot = drop_;
+        drop_ = kNoScene;
+        return slot != kNoScene && DropTo(static_cast<size_t>(slot), drop_taps_);
+    }
+
+    /** A hard drop to a saved slot on the FX clock's bars-th bar line from now (FxControls::Drop):
+     *  a morph running to another scene goes on to the line, and the slot lands there; without
+     *  one, a morph to it first. The slot is the active scene now. False in a mode, for an empty
+     *  slot, or while the crossfader has the morph. On the device, with the audio interrupt
+     *  blocked */
+    bool DropTo(size_t slot, uint32_t bars)
+    {
+        const int s = static_cast<int>(slot);
+        if (mode_ != SceneMode::NONE || !scenes_[slot].used || fx_->Fading())
+            return false;
+        if (!fx_->Morphing())
+            Morph(slot); // held, as SHIFT + its key
+        const bool other = s != morph_;
+        if (!fx_->Drop(other ? &scenes_[slot] : nullptr))
+            return false;
+        if (other)
+        {
+            from_ = active_;
+            active_ = morph_ = s;
+        }
+        for (uint32_t bar = 1; bar < bars; bar++)
+            MorphMore();
+        return true;
+    }
+    /** A drop waits for its line */
+    inline bool Dropping() const { return fx_->Dropping(); }
 
     /** One bar line more for the running morph; false if it can't */
     inline bool MorphMore() { return fx_->MorphMore(); }
@@ -288,6 +339,8 @@ private:
     int morph_ = kNoScene; // the slot the last morph ran to
     int from_ = kNoScene;  // and the active one it started from
     bool fader_left_ = false; // a MIDI fader has been away from the start (FaderTo)
+    int drop_ = kNoScene;     // the saved scene tapped with SHIFT in this hold, for Drop
+    uint32_t drop_taps_ = 0;  // and how often in a row
 };
 
 } // namespace chompi

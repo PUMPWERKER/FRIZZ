@@ -155,6 +155,8 @@ public:
                 block_loop_pulse_[block_pulses_++] = tempo_clock_.LoopPulse();
         }
         morph_.Process(size, tempo_clock_.PulseSamples());
+        if (morph_.Dropping())
+            morph_.DropLead(tempo_clock_.PulsesToBarLine(), tempo_clock_.PulseSamples());
         // the keys, what the chaos key drops of them, and where it plays the loop
         float jump;
         if (fx_.Block(&jump))
@@ -333,6 +335,14 @@ public:
     }
     bool AddFxMorphBar() { return morph_.AddBar(tempo_clock_.PulsesPerBarLine()); }
     void LandFxMorph() { morph_.Land(); }
+    /** Makes the morph a drop (FxMorph::Drop) on the FX clock's next bar line; with the
+     *  audio interrupt blocked */
+    bool DropFxMorph(const float to[chompi::kNumFx][chompi::kNumFxParams], uint16_t ui_on,
+                     uint16_t on)
+    {
+        return morph_.Drop(to, ui_on, on, tempo_clock_.PulsesToBarLine());
+    }
+    inline bool FxDropping() const { return morph_.Dropping(); }
     /** Stops the morph where it is (FxMorph::Freeze); with the audio interrupt blocked */
     bool FreezeFxMorph(float params[chompi::kNumFx][chompi::kNumFxParams],
                        uint16_t* unswitched, uint16_t* was_on)
