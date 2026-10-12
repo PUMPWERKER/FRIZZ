@@ -1279,6 +1279,24 @@ def sysex_thru(r):
     r.check("and IDENT (0x3E)", got is not None and got[0] == chompi.OK, "answered" if got else "none", "answered")
 
 
+
+@case("sysex-cut", "8: a SysEx cut short (its sender unplugged mid-message) doesn't deafen FRIZZ: the "
+      "CCs after it are heard (#166)")
+def sysex_cut(r):
+    latched = lambda: r.get("latch")[remote.FX_NAMES.index("filter")]  # noqa: E731
+    r.send_usb(cc(5, 22, 0))
+    time.sleep(.1)
+    # three bytes: ALSA sends a SysEx's packet once it has three, and the CC after it whole
+    r.send_usb(bytes([0xF0, 0x7D, 0x43]) + cc(5, 22, 127))
+    time.sleep(.1)
+    on = latched()
+    r.send_usb(bytes([0xF0, 0x01, 0x02]) + cc(5, 22, 0))
+    time.sleep(.1)
+    off = not latched()
+    r.check("F0 7D 43, cut by CC 22 127 on channel 5: the filter latches", on, "latched" if on else "not",
+            "latched")
+    r.check("F0 01 02, cut by CC 22 0: it unlatches", off, "unlatched" if off else "still latched", "unlatched")
+
 # what stays with the user: feel, ears, eyes, real gear (#55 sections 7, 8 and Every release)
 FOR_THE_USER = [
     "Every release: real MIDI gear, a clock from your DAW or a sequencer over TRS and USB; a "

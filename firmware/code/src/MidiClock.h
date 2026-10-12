@@ -310,11 +310,13 @@ private:
 
     void HandleEvent(const MidiEvent& event, Source from, uint32_t now)
     {
-        if (event.type == SystemCommon && event.sc_type == SystemExclusive)
+        // the restart is MainLoop's (chompi_main.cpp): MidiControl doesn't get it
+        if (event.type == SystemCommon && event.sc_type == SystemExclusive
+            && event.sysex_message_len == sizeof(kRestartSysEx)
+            && memcmp(event.sysex_data, kRestartSysEx, sizeof(kRestartSysEx)) == 0)
         {
-            restart_ = restart_
-                       || (event.sysex_message_len == sizeof(kRestartSysEx)
-                           && memcmp(event.sysex_data, kRestartSysEx, sizeof(kRestartSysEx)) == 0);
+            restart_ = true;
+            return;
         }
         const uint8_t transport = TransportByte(event);
         if (transport && Counts(from) && (source_ == Source::NONE || from == source_))

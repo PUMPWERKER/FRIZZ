@@ -1403,7 +1403,11 @@ feedback](#midi-feedback) on.
   holds still about a second after Start before it runs, then plays in step.
 - Gear with MIDI thru on that sends FRIZZ's clock back into its TRS input: with the clock
   source on Auto, FRIZZ follows its own clock coming back. Set the clock source to internal
-  or USB, or switch the gear's thru off.
+  or USB, or switch the gear's thru off. With [transport following](#start-and-stop) on and a
+  loop, FRIZZ's Start comes back too: it takes the loop back to its start, which sends Start
+  again, and the loop starts over and over. The clock source on internal doesn't stop that
+  (on internal, Start and Stop count from both inputs): set it to USB, switch transport
+  following off, or the gear's thru.
 
 ### MIDI feedback
 

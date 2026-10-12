@@ -120,6 +120,8 @@ ClockState Probe();
 /** Whether the firmware's main() has entered its loop (after about 1 s): a bug report's times
  *  count from there */
 bool MainLoopRunning();
+/** MainLoop held up for ms from now, as by a slow card write: the audio callback runs on */
+void HoldMain(double ms);
 
 /** Whether the firmware has reset the chip (NVIC_SystemReset): a restart asked for over MIDI */
 bool Restarted();

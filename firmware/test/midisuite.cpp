@@ -123,7 +123,7 @@ int main()
         {"start-spp"}, {"factor"}, {"out-idle", "out-loop", "out-pass"}, {"out-factor", "out-knobs"},
         {"loop-drift"}, {"out-x2"}, {"cc-channels", "rpn"},
         {"cc-global", "cc-global-trs", "block-trs", "shifter-page", "chaos-cc"}, {"morph-back", "morph-hold"}, {"morph-sequences"},
-        {"feedback", "no-double", "sysex-thru"}, {"input-cc"}};
+        {"feedback", "no-double", "sysex-thru", "sysex-cut"}, {"input-cc"}};
     for (const auto& ids : both)
         cases.push_back({ids[0], [ids] { Run("both ways, " + ids[0], true, true, ids, "PASS", {"wiring: both ways (found)"}, 0); }});
     // wiring A, the jack's out into the interface: what needs the jack's in is a SKIP, listed
