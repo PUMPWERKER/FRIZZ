@@ -124,6 +124,29 @@ namespace chompi
     static const float dark_orange[3] = {.77f, .38f, .06f};
     static const float yellow_green[3] = {.706f, 1.f, 0.f};
 
+    // a speed, 0..1 with 1x in the middle: 0 at either end, 1 at 1x
+    inline float speed_mid(float speed) { return speed < .5f ? speed * 2.f : (1.f - speed) * 2.f; }
+
+    // red at 1x, through yellow and green to blue at either end
+    inline void speed_color(float speed, float &r, float &g, float &b)
+    {
+        const float mid = speed_mid(speed);
+        r = color_quad_xfade(med_blue[0], green[0], yellow[0], red[0], mid);
+        g = color_quad_xfade(med_blue[1], green[1], yellow[1], red[1], mid);
+        b = color_quad_xfade(med_blue[2], green[2], yellow[2], red[2], mid);
+    }
+
+    // the wheel at a speed: the LED on the side it goes, the other one fades in red over the last fifth to 1x;
+    // k dims both
+    inline void wheel_speed_leds(float speed, float k)
+    {
+        float r, g, b;
+        speed_color(speed, r, g, b);
+        SetPthLedFloat(speed > .5f ? 6 : 5, r * k, g * k, b * k);
+        const float other = std::max(0.f, speed_mid(speed) - .8f) * 5.f * k;
+        SetPthLedFloat(speed > .5f ? 5 : 6, red[0] * other, red[1] * other, red[2] * other);
+    }
+
     static const uint8_t knob_num_pages[6] = {3, 2, 2, 3, 1, 2};
 
     class NormalPage : public daisy::UiPage
@@ -338,10 +361,7 @@ namespace chompi
                     }
                     else if(page == 0) // speed
                     {
-                        float idx = enc_values[0][0] < .5f ? enc_values[0][0] * 2.f : (1.f - enc_values[0][0]) * 2.f; // 0 - 1 - 0
-                        r = color_quad_xfade(med_blue[0], green[0], yellow[0], red[0], idx);
-                        g = color_quad_xfade(med_blue[1], green[1], yellow[1], red[1], idx);
-                        b = color_quad_xfade(med_blue[2], green[2], yellow[2], red[2], idx);
+                        speed_color(enc_values[0][0], r, g, b);
                     }
                     else if(page == 1) // gain
                     {
@@ -518,46 +538,7 @@ namespace chompi
                     }
                     else if(fx_->IsLooperPlaying())
                     {
-                        float idx = value < .5f ? value * 2.f : (1.f - value) * 2.f; // 0 - 1 - 0
-                        int led_on = value > .5f ? 6 : 5;
-                        int led_off = value > .5f ? 5 : 6;
-
-                        r = color_quad_xfade(med_blue[0], green[0], yellow[0], red[0], idx);
-                        g = color_quad_xfade(med_blue[1], green[1], yellow[1], red[1], idx);
-                        b = color_quad_xfade(med_blue[2], green[2], yellow[2], red[2], idx);
-
-                        if(!switch_state)
-                        {
-                            r *= kRecDim;
-                            g *= kRecDim;
-                            b *= kRecDim;
-                        }
-
-                        SetPthLedFloat(led_on, r, g, b);
-
-                        if (idx > .8f)
-                        {
-                            float dim = (idx - .8f) * 5.f;
-
-                            r = color_xfade(0.f, red[0], dim);
-                            g = color_xfade(0.f, red[1], dim);
-                            b = color_xfade(0.f, red[2], dim);
-
-                            if(!switch_state)
-                            {
-                                r *= kRecDim;
-                                g *= kRecDim;
-                                b *= kRecDim;
-                            }
-
-                            SetPthLedFloat(led_off, r, g, b);
-                        }
-                        else
-                        {
-                            SetPthLedFloat(led_off, 0.f, 0.f, 0.f);
-                        }
-
-                        value = value * 4.f - 2.f; // -2 - 2
+                        wheel_speed_leds(value, switch_state ? 1.f : kRecDim);
                     }
                     else
                     {

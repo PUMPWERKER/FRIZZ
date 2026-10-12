@@ -134,11 +134,18 @@ namespace chompi
                 else
                     SetPthLedFloat(8, gain, gain, gain);
 
-                // the wheel shows the transport mode SHIFT + click switches to
-                const TransportMode mode = fx_->GetTransportMode();
-                const float* c = mode == TransportMode::LENGTH ? med_blue : mode == TransportMode::STEP ? purple : green;
-                SetPthLedFloat(5, c[0], c[1], c[2]);
-                SetPthLedFloat(6, c[0], c[1], c[2]);
+                // the wheel shows the transport mode SHIFT + click switches to, the pitch once it turns
+                if(wheel_turned)
+                {
+                    wheel_speed_leds(enc_values[0][4], switch_state ? 1.f : kRecDim);
+                }
+                else
+                {
+                    const TransportMode mode = fx_->GetTransportMode();
+                    const float* c = mode == TransportMode::LENGTH ? med_blue : mode == TransportMode::STEP ? purple : green;
+                    SetPthLedFloat(5, c[0], c[1], c[2]);
+                    SetPthLedFloat(6, c[0], c[1], c[2]);
+                }
             }
 
             else if (preset_mode == PresetMode::COPY_SRC
@@ -261,10 +268,7 @@ namespace chompi
                 }
                 else if(knob_page[0] == 0)
                 {
-                    float idx = enc_values[0][0] < .5f ? enc_values[0][0] * 2.f : (1.f - enc_values[0][0]) * 2.f; // 0 - 1 - 0
-                    r = color_quad_xfade(med_blue[0], green[0], yellow[0], red[0], idx);
-                    g = color_quad_xfade(med_blue[1], green[1], yellow[1], red[1], idx);
-                    b = color_quad_xfade(med_blue[2], green[2], yellow[2], red[2], idx);
+                    speed_color(enc_values[0][0], r, g, b);
                 }
                 else if(knob_page[0] == 1)
                 {
@@ -551,13 +555,7 @@ namespace chompi
                         enc_values[0][4] = fclamp(enc_values[0][4], 0.f, 1.f);
                         fx_->SetLooperPitchFree(enc_values[0][4]);
                     }
-
-                    float idx = enc_values[0][4] < .5f ? enc_values[0][4] * 2.f : (1.f - enc_values[0][4]) * 2.f; // 0 - 1 - 0
-                    r = color_quad_xfade(med_blue[0], green[0], yellow[0], red[0], idx);
-                    g = color_quad_xfade(med_blue[1], green[1], yellow[1], red[1], idx);
-                    b = color_quad_xfade(med_blue[2], green[2], yellow[2], red[2], idx);
-                    SetPthLedFloat(5, r, g, b);
-                    SetPthLedFloat(6, r, g, b);
+                    wheel_turned = true;
                 }               
                 else if(encoderID == 5)
                 {
@@ -1096,6 +1094,7 @@ namespace chompi
             }
 
             input_toggled = false;
+            wheel_turned = false;
 
             ss_bank = fx_->GetBank();
             copy_src = kSlotNone;
@@ -1167,6 +1166,7 @@ namespace chompi
         const float* key_color;
 
         bool input_toggled;
+        bool wheel_turned = false; // since SHIFT went down
 
         bool chompi_key_pressed = false;
         bool blink_state = true;
