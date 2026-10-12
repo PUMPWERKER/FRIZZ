@@ -7,8 +7,16 @@
 //    Feeds reading the furthest ahead of its Taps) with its tone slewing (Tap's lowpass);
 //  - page 2 off its defaults, the resonator's Band among them while its key fades out, so it
 //    goes idle in the middle of a block;
-//  - recalls' fast slews ending on a block's first sample, in its middle and on its last.
-// Exits 0 when everything passes. Run by unit.sh block.
+//  - recalls' fast slews ending on a block's first sample, in its middle and on its last;
+//  - page 2 leaving the chain's work (FxChain::OutRunning, #142) on a block's first sample, in
+//    its middle and on its last, each of three ways: an insert going quiet with its page 2 off
+//    its defaults, an insert's page 2 settling back to its defaults while it's on, and a send's
+//    or the resonator's Band settling back to the middle. Which page 2s are part of the work is
+//    compared too, block by block: once page 2 rests, leaving it out changes no sample.
+// Exits 0 when everything passes. Run by unit.sh block. block OUT writes the sample-per-call
+// chain's output, meters and page-2 bits to OUT, so the script can be compared bit for bit
+// with another version of FxChain.h (built against its headers): what check.sh's harness
+// doesn't turn, page 2.
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -36,7 +44,12 @@ struct Rig
 
     std::vector<float> out;    // l, r per sample
     std::vector<float> meters; // kNumFx per block
+    std::vector<uint16_t> busy; // per block, bit fx: its page 2 part of the work after it
     size_t switch_at[3] = {};  // fast slews ending on a block's first sample, middle, last
+    // page 2 leaving the work (PER_SAMPLE only): [how][where in the block], how one of
+    enum { QUIET, DEFAULTS, SEND, kHows };
+    size_t cleared[kHows][3] = {};
+    bool on[kNumFx] = {}; // the keys, as the script set them
 
     void Init()
     {
@@ -75,6 +88,16 @@ enum Split
     TWO_CALLS,  // the block in two calls
 };
 
+/** Bit fx: its page 2 part of the chain's work now */
+static uint16_t Busy(const FxChain& c)
+{
+    uint16_t bits = 0;
+    for (size_t fx = 0; fx < kNumSoundFx; fx++)
+        if (c.OutRunning(fx))
+            bits |= static_cast<uint16_t>(1u << fx);
+    return bits;
+}
+
 /** The script on rig, its blocks cut by split. The same blocks (their lengths) and the same
  *  events on every rig */
 static void Play(Rig& rig, Split split)
@@ -88,7 +111,10 @@ static void Play(Rig& rig, Split split)
 
     // every effect on, the resonator at its top, page 2 off its defaults here and there
     for (size_t fx = 0; fx < kNumSoundFx; fx++)
+    {
         c.SetOn(fx, true);
+        rig.on[fx] = true;
+    }
     c.SetParam(FX_RESONATOR, chompi::Resonator::PITCH, 1.f);
     c.SetParam(FX_RESONATOR, chompi::Resonator::STEREO, 1.f);
     c.SetParam(FX_RESONATOR, chompi::Resonator::FEEDBACK, .9f);
@@ -124,7 +150,22 @@ static void Play(Rig& rig, Split split)
         {
             // a key off and on again; the resonator's often, its Band busy as it goes idle
             const size_t fx = events.Below(3) == 0 ? FX_RESONATOR : events.Below(kNumSoundFx);
-            c.SetOn(fx, events.Below(2) == 0);
+            rig.on[fx] = events.Below(2) == 0;
+            c.SetOn(fx, rig.on[fx]);
+        }
+        if (block > 100 && events.Below(30) == 0)
+        {
+            // page 2 back to its defaults (an insert's three shared knobs, a send's Band), or
+            // off them again
+            const size_t fx = events.Below(kNumSoundFx);
+            const bool band_only = fx == FX_DELAY || fx == FX_REVERB || fx == FX_RESONATOR;
+            const bool reset = events.Below(3) != 0;
+            c.SetParam(fx, FxOutput::kBand, reset ? FxOutput::kBandDefault : events.Uniform());
+            if (!band_only)
+            {
+                c.SetParam(fx, FxOutput::kMix, reset ? FxOutput::kMixDefault : events.Uniform());
+                c.SetParam(fx, FxOutput::kLevel, reset ? FxOutput::kLevelDefault : events.Uniform());
+            }
         }
         if (block > 100 && events.Below(150) == 0)
         {
@@ -149,7 +190,23 @@ static void Play(Rig& rig, Split split)
         {
         case PER_SAMPLE:
             for (size_t k = 0; k < n; k++)
+            {
+                const uint16_t before = Busy(c);
                 c.Process(&l[k], &r[k]);
+                const uint16_t gone = before & ~Busy(c);
+                const size_t where = k == 0 ? 0 : (k == n - 1 ? 2 : 1);
+                for (size_t fx = 0; fx < kNumSoundFx; fx++)
+                    if (gone >> fx & 1)
+                    {
+                        const bool send = fx == FX_DELAY || fx == FX_REVERB || fx == FX_RESONATOR;
+                        if (send)
+                            rig.cleared[Rig::SEND][where]++;
+                        else if (!rig.on[fx])
+                            rig.cleared[Rig::QUIET][where]++;
+                        else
+                            rig.cleared[Rig::DEFAULTS][where]++;
+                    }
+            }
             break;
         case PER_BLOCK:
             c.Process(l, r, n);
@@ -169,25 +226,33 @@ static void Play(Rig& rig, Split split)
         }
         for (size_t fx = 0; fx < kNumFx; fx++)
             rig.meters.push_back(c.GetLevel(fx));
+        rig.busy.push_back(Busy(c));
         i += n;
         block++;
     }
 }
 
-/** Where a and b part: the first sample (or meter) that differs, or -1 */
-static long FirstDiff(const std::vector<float>& a, const std::vector<float>& b)
+/** Where a and b part: the first sample (or meter, or block) that differs, or -1 */
+template <class T>
+static long FirstDiff(const std::vector<T>& a, const std::vector<T>& b)
 {
     if (a.size() != b.size())
         return 0;
     for (size_t k = 0; k < a.size(); k++)
-        if (memcmp(&a[k], &b[k], sizeof(float)) != 0)
+        if (memcmp(&a[k], &b[k], sizeof(T)) != 0)
             return static_cast<long>(k);
     return -1;
 }
 
 static Rig rigs[3];
 
-int main()
+template <class T>
+static void Write(FILE* f, const std::vector<T>& v)
+{
+    fwrite(v.data(), sizeof(T), v.size(), f);
+}
+
+int main(int argc, char** argv)
 {
     Play(rigs[PER_SAMPLE], PER_SAMPLE);
     Play(rigs[PER_BLOCK], PER_BLOCK);
@@ -203,16 +268,43 @@ int main()
     Check(rms > .01f, "the script: sound comes out");
     Check(ref.switch_at[0] > 0 && ref.switch_at[1] > 0 && ref.switch_at[2] > 0,
           "the script: recalls' fast slews end on a block's first sample, in its middle and on its last");
+    static const char* const kHow[] = {"an insert going quiet", "an insert at its defaults",
+                                       "a send's or the resonator's Band in the middle"};
+    bool every = true;
+    for (size_t how = 0; how < Rig::kHows; how++)
+    {
+        printf("  page 2 leaving the work, %s: on a block's first sample %zu, middle %zu, last %zu\n",
+               kHow[how], ref.cleared[how][0], ref.cleared[how][1], ref.cleared[how][2]);
+        for (size_t where = 0; where < 3; where++)
+            every = every && ref.cleared[how][where] > 0;
+    }
+    Check(every, "the script: page 2 leaves the work each of three ways, on a block's first sample, in its middle and on its last");
+    if (argc > 1)
+    {
+        FILE* f = fopen(argv[1], "wb");
+        if (!f)
+        {
+            printf("  can't write %s\n", argv[1]);
+            return 1;
+        }
+        Write(f, ref.out);
+        Write(f, ref.meters);
+        Write(f, ref.busy);
+        fclose(f);
+    }
 
     const long out_b = FirstDiff(ref.out, rigs[PER_BLOCK].out);
     const long met_b = FirstDiff(ref.meters, rigs[PER_BLOCK].meters);
     if (out_b >= 0)
         printf("  a block per call parts at sample %ld\n", out_b / 2);
     Check(out_b < 0 && met_b < 0, "a block per call: the output and the meters bit for bit as a sample per call");
+    Check(FirstDiff(ref.busy, rigs[PER_BLOCK].busy) < 0,
+          "a block per call: page 2 part of the work after the same blocks as a sample per call");
     const long out_t = FirstDiff(ref.out, rigs[TWO_CALLS].out);
     const long met_t = FirstDiff(ref.meters, rigs[TWO_CALLS].meters);
     if (out_t >= 0)
         printf("  two calls a block part at sample %ld\n", out_t / 2);
     Check(out_t < 0 && met_t < 0, "a block in two calls: the same, bit for bit");
+    Check(FirstDiff(ref.busy, rigs[TWO_CALLS].busy) < 0, "a block in two calls: page 2 the same");
     return Finish();
 }
