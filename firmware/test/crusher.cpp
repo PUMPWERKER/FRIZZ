@@ -6,11 +6,17 @@
 //  - bits: at the top, 2 bits: a full-scale sine comes out on a handful of steps; at 0 (16
 //    bits) on as many as the reducer passes
 //  - dive: a press drops the rate 10x over 0.1 s, and it's back within 0.3 s of the press
+//  - the dive through a sleep: a tap shorter than its attack, asleep before the attack is
+//    done, and pressed again: the dive picks up where it would have been, the attack finished
+//    and decayed since, not decayed from where the attack was cut off (#167)
 #include <cmath>
 #include <cstdio>
 #include <set>
 #include "check.h"
+// the crusher's dive, to compare it
+#define private public
 #include "FxChain.h"
+#undef private
 
 using namespace chompi;
 
@@ -136,10 +142,51 @@ static void TestDive()
     Check(back < before * 1.2f, "dive: and back to the knob's 0.3 s after the press");
 }
 
+/** A tap of 10ms, asleep 80ms into the dive's 100ms attack, and pressed again after `asleep`
+ *  samples: the dive as an envelope that never slept has it */
+static void TestDiveWake(uint32_t asleep)
+{
+    static Crusher c;
+    Setup(c, .5f, 0.f);
+    PressEnvelope ref;
+    ref.Reset();
+    const float attack = 1.f / (.1f * kSr), decay = Decay60dBCoeff(.4f, kSr);
+    bool was_on = false;
+    auto step = [&](bool on) {
+        c.SetOn(on);
+        if (on && !was_on)
+            ref.Press();
+        was_on = on;
+        float l = .3f, r = .3f;
+        c.Process(&l, &r);
+        ref.Process(attack, decay);
+    };
+    for (int i = 0; i < 480; i++)
+        step(true);
+    size_t fading = 0;
+    while (!c.Idle())
+    {
+        step(false);
+        fading++;
+    }
+    for (uint32_t i = 0; i < asleep; i++)
+        step(false);
+    step(true);
+    printf("      asleep after %zu samples, %u more: the dive %.5f, never asleep %.5f\n",
+           480 + fading, asleep, c.dive_.value, ref.value);
+    char what[120];
+    snprintf(what, sizeof(what), "the dive through a sleep of %u samples, mid-attack: as if awake",
+             asleep);
+    Check(fabsf(c.dive_.value - ref.value) < 1e-3f, what);
+}
+
 int main()
 {
     TestRate();
     TestBits();
     TestDive();
+    TestDiveWake(100);
+    TestDiveWake(2400);
+    TestDiveWake(24000);
     return Finish();
 }

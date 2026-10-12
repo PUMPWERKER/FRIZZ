@@ -295,6 +295,9 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The crusher's dive after a quick tap** (#167): a tap shorter than the dive's 0.1 s fall,
+  then a pause, and the next press started the dive from too high a rate, as if the first
+  fall had been cut off where the tap ended. It now picks up where it would have got to.
 - **With the mix at the loop alone, none of the input is left** (#168): a trace of it, about
   86 dB down, stayed on the master; the headphone feed likewise settles exactly on the master
   or the input now.
