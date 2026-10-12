@@ -301,6 +301,10 @@ what FRIZZ does.
 - **The resonator's env mod after a pause** (#167): punched in again after it had gone quiet,
   with Env Mod up, it rang at the feedback the last loud passage had pushed it to for about
   0.1 s. It now starts from what it hears.
+- **No click in the echoes when the delay's damping comes on at once** (#167): a scene recall
+  or MIDI turning Damping from the centre to one side could click in the feedback, the filter
+  starting from the sound it had when it was last on. It now starts from the echoes as they
+  are.
 - **With the mix at the loop alone, none of the input is left** (#168): a trace of it, about
   86 dB down, stayed on the master; the headphone feed likewise settles exactly on the master
   or the input now.

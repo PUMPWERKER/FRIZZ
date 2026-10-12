@@ -475,18 +475,27 @@ class granularDelay {
         cur_sig_l_ = *out_l * delay_feedback_amt_;
         cur_sig_r_ = *out_r * delay_feedback_amt_;
         // FRIZZ: the damping in the feedback (FxDelay.h), a one-pole each way, darker or
-        // thinner with every repeat
+        // thinner with every repeat. Off, the lowpass follows the signal and the highpass's
+        // lows rest at 0, so turning it on by a jump starts from now, not from an old sample,
+        // a click in the feedback (#167)
         if (damp_hi_ < 1.f) {
             damp_lp_l_ += damp_hi_ * (cur_sig_l_ - damp_lp_l_);
             damp_lp_r_ += damp_hi_ * (cur_sig_r_ - damp_lp_r_);
             cur_sig_l_ = damp_lp_l_;
             cur_sig_r_ = damp_lp_r_;
         }
+        else {
+            damp_lp_l_ = cur_sig_l_;
+            damp_lp_r_ = cur_sig_r_;
+        }
         if (damp_lo_ > 0.f) {
             damp_hp_l_ += damp_lo_ * (cur_sig_l_ - damp_hp_l_);
             damp_hp_r_ += damp_lo_ * (cur_sig_r_ - damp_hp_r_);
             cur_sig_l_ -= damp_hp_l_;
             cur_sig_r_ -= damp_hp_r_;
+        }
+        else {
+            damp_hp_l_ = damp_hp_r_ = 0.f;
         }
     }
 

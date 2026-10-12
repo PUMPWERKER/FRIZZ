@@ -7,6 +7,8 @@
 //    as the knob says (half the edges at 0, a quarter at 0.25), each kind about as often; a
 //    reverse that wouldn't fit the buffer (2 bars at 50 BPM) a retrigger instead; towards 1
 //    only octave-up shimmers, panned at random to both sides
+//  - the damping turned on by a jump, after a while off: it starts from the signal as it is,
+//    not from the sample it was left on, which stepped the feedback, a click (#167)
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -140,8 +142,63 @@ static void TestEvents()
           "events: a reverse that wouldn't fit the buffer (2 bars at 50 BPM) is a retrigger");
 }
 
+/** The feedback's damping, on a while, off a while, then on by a jump, at 8 points of a
+ *  220Hz sine's cycle: what the feedback writes to the buffer steps at the jump by what the
+ *  signal moves a sample, and for the highpass by the share of it the filter takes at once
+ *  (its coefficient), never by the distance to an old sample */
+static void TestDampingJump(bool lowpass)
+{
+    static granularDelay d;
+    const float coeff = chompi::OnePoleCoeff(1000.f, 48000.f);
+    const float hi = lowpass ? coeff : 1.f, lo = lowpass ? 0.f : coeff;
+    float steady = 0.f, peak = 0.f, jump = 0.f;
+    for (int phase = 0; phase < 8; phase++)
+    {
+        d.Init(buffer, kFrames);
+        d.setFeedback(.7f);
+        d.setDivision(0); // 1/8: echoes soon
+        long n = 0;
+        float last = 0.f;
+        auto run = [&](int samples, float* max_step) {
+            for (int i = 0; i < samples; i++, n++)
+            {
+                const float x = .3f * sinf(2.f * 3.14159265f * 220.f * n / 48000.f);
+                float l = 0.f, r = 0.f;
+                const uint32_t at = static_cast<uint32_t>(n % kFrames);
+                d.write(x, x);
+                d.read(&l, &r);
+                const float fb = buffer[at * 2] - x; // what the feedback added
+                if (max_step)
+                    *max_step = std::max(*max_step, fabsf(fb - last));
+                peak = std::max(peak, fabsf(fb));
+                last = fb;
+            }
+        };
+        d.setDamping(hi, lo);
+        run(24000, nullptr);
+        d.setDamping(1.f, 0.f);
+        run(24000 + phase * 27, &steady);
+        d.setDamping(hi, lo);
+        // the write after the jump: the feedback the read before it left
+        run(2, nullptr);
+        const uint32_t at = static_cast<uint32_t>((n - 1) % kFrames);
+        const uint32_t before = static_cast<uint32_t>((n - 2) % kFrames);
+        const float x1 = .3f * sinf(2.f * 3.14159265f * 220.f * (n - 1) / 48000.f);
+        const float x0 = .3f * sinf(2.f * 3.14159265f * 220.f * (n - 2) / 48000.f);
+        jump = std::max(jump, fabsf((buffer[at * 2] - x1) - (buffer[before * 2] - x0)));
+    }
+    const float allowed = steady + lo * peak;
+    printf("      %s: the feedback's largest step off %.4f, at the jump %.4f (up to %.4f)\n",
+           lowpass ? "lowpass" : "highpass", steady, jump, allowed);
+    Check(jump <= allowed * 1.05f, lowpass
+                                       ? "delay: the damping's lowpass on by a jump, no step"
+                                       : "delay: the damping's highpass on by a jump, no step");
+}
+
 int main()
 {
+    TestDampingJump(true);
+    TestDampingJump(false);
     TestPitchUp(true);
     TestPitchUp(false);
     TestEvents();
