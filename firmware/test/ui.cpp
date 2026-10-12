@@ -6134,6 +6134,14 @@ int main()
             Check(set.size() > 2 && set[2] == 0 && after.size() > 25 && after.substr(17, 2) == midi.substr(17, 2)
                       && after[25] == midi[25],
                   "dev-set-keeps-midi: SET the LEDs, the gain, dry and live stay as MIDI set them");
+            // a SET of one of them sets it, even to the value the card has
+            Ask({0x3E, 3, 2, 0x23, 9, 0, 0});  // aux_dry 0: through the effects again
+            Ask({0x3E, 3, 3, 0x23, 10, 0, 75}); // gain_aux 75 %
+            RunMs(100);
+            const std::string own = Ask({0x20});
+            Check(own.size() > 25 && !(own[25] & 2) && own.substr(17, 2) != midi.substr(17, 2)
+                      && !(own[25] & 4),
+                  "dev-set-keeps-midi: SET aux_dry 0 and gain_aux 75 take, CC 117's live stays off");
         }});
     }
 
