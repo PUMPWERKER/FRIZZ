@@ -72,6 +72,9 @@ int main()
     cases.push_back({"automation", [] {
         Run("automation", true, "daw-automation", {"PASS daw-automation", "| `daw-automation` |", "the knobs stay: all"}, 0);
     }});
+    cases.push_back({"scenes", [] {
+        Run("scenes", true, "daw-scenes", {"PASS daw-scenes", "| `daw-scenes` |"}, 0);
+    }});
     cases.push_back({"transport", [] {
         Run("transport", true, "daw-transport", {"PASS daw-transport", "wraps)"}, 0);
     }});

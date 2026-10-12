@@ -1034,6 +1034,56 @@ def morph_hold(r):
     r.send_usb(cc(GLOBAL, 81, 0) + cc(GLOBAL, 81, 127) + cc(GLOBAL, 81, 0))  # stopped where it is
 
 
+def landed(r, seconds=10.):
+    """Waits until no morph runs, at most seconds (a bar at 50 BPM, the slowest, is 4.8 s);
+    the state then"""
+    end = time.monotonic() + seconds
+    s = r.state()
+    while s["morphing"] and time.monotonic() < end:
+        time.sleep(.1)
+        s = r.state()
+    return s
+
+
+@case("morph-sequences", "8: #175: CC 83 + CC 9 a drop; CC 3 during it stops it and morphs to its "
+      "scene instead; CC 83 during a morph a drop of its own, not the morph's landing; CC 81 stops "
+      "one where it is")
+def morph_sequences(r):
+    two_scenes(r)
+    r.send_usb(cc(GLOBAL, 9, 1) + cc(GLOBAL, 83, 127) + cc(GLOBAL, 83, 2))
+    time.sleep(.2)
+    s = r.state()
+    r.check("CC 83 2: a drop to scene 2 waits", s["morphing"] and s["scene"] == 2,
+            "scene %d%s" % (s["scene"], ", morphing" if s["morphing"] else ""), "scene 2, morphing")
+    r.send_usb(cc(GLOBAL, 3, 1))
+    time.sleep(.2)
+    s = r.state()
+    r.check("CC 3 1 during it: a morph to scene 1 instead", s["morphing"] and s["scene"] == 1,
+            "scene %d%s" % (s["scene"], ", morphing" if s["morphing"] else ""), "scene 1, morphing")
+    s, k = landed(r), r.knob("filter", 0)
+    r.check("it lands on scene 1, no drop to 2", abs(k - A) <= .01 and not s["morphing"],
+            "%.3f%s" % (k, ", morphing" if s["morphing"] else ""), "%.1f, scene 1's" % A)
+    r.send_usb(cc(GLOBAL, 3, 127) + cc(GLOBAL, 3, 2))
+    time.sleep(.2)
+    r.send_usb(cc(GLOBAL, 83, 127) + cc(GLOBAL, 83, 1))
+    time.sleep(.2)
+    s = r.state()
+    r.check("CC 83 1 during a morph to scene 2: a drop to scene 1", s["morphing"] and s["scene"] == 1,
+            "scene %d%s" % (s["scene"], ", morphing" if s["morphing"] else ""), "scene 1, morphing")
+    s, k = landed(r), r.knob("filter", 0)
+    r.check("it lands on scene 1", abs(k - A) <= .01 and not s["morphing"],
+            "%.3f%s" % (k, ", morphing" if s["morphing"] else ""), "%.1f, scene 1's" % A)
+    r.send_usb(cc(GLOBAL, 3, 127) + cc(GLOBAL, 3, 2))
+    time.sleep(.2)
+    r.send_usb(cc(GLOBAL, 81, 0) + cc(GLOBAL, 81, 127) + cc(GLOBAL, 81, 0))
+    time.sleep(.2)
+    s = r.state()
+    r.check("CC 81 up through 64: stopped where it is, scene 2 edited",
+            not s["morphing"] and s["scene"] == 2 and s["flags"] & 1,
+            "scene %d%s%s" % (s["scene"], ", morphing" if s["morphing"] else "", ", edited" if s["flags"] & 1 else ""),
+            "scene 2, edited, no morph")
+
+
 @case("rpn", "8: a DAW that sets its pitch-bend range (RPN 0, then RPN null) on FRIZZ's channels: "
       "no knob moves (#85)")
 def rpn(r):
