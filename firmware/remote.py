@@ -5,15 +5,18 @@
     ./remote.py leds                  every LED, as the twin's LED log prints them
     ./remote.py load [--every S]      the audio callback's load (max, mean), once or every S s
     ./remote.py settings              the MIDI channel, transport following, the clock source
-    ./remote.py channel N             listen on channel N (1-16), 0 for all
-    ./remote.py transport on|off      MIDI Start / Continue / Stop play and pause the loop
-    ./remote.py source auto|trs|usb|internal
+    ./remote.py channel N [--save]    listen on channel N (1-16), 0 for all
+    ./remote.py transport on|off [--save]
+                                      MIDI Start / Continue / Stop play and pause the loop
+    ./remote.py source auto|trs|usb|internal [--save]
                                       whose MIDI clock counts (the settings page's lower A#)
-    ./remote.py out off|trs|all       MIDI out: off, the jack, the jack and USB (upper C#)
+    ./remote.py out off|trs|all [--save]
+                                      MIDI out: off, the jack, the jack and USB (upper C#)
     ./remote.py switch up|down|hand   the mode switch: up (settings page), down (play page),
                                       or the real one again; until power-off
     ./remote.py scene get SLOT [FILE] a scene (1-4, 0 the blank one) as JSON
-    ./remote.py scene put SLOT FILE   one into slot 1-4, and onto the card
+    ./remote.py scene put SLOT FILE [--save]
+                                      one into slot 1-4 (and onto the card with --save)
     ./remote.py play SCRIPT [--cpu] [--fresh] [--force] [--save]
                                       a twin script (twin/README.md) on the device
 
@@ -24,7 +27,8 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
     ./remote.py ram-only              the card isn't written until FRIZZ restarts (PERSIST 0)
     ./remote.py get GROUP             an effect's knobs (by name, both pages), comp, latch,
                                       volume or settings
-    ./remote.py set GROUP INDEX VALUE one of them: a knob's 0-1, a latch's 0/1, a setting's
+    ./remote.py set GROUP INDEX VALUE [--save]
+                                      one of them: a knob's 0-1, a latch's 0/1, a setting's
                                       value as frizz_master.txt has it (INDEX a number or name)
     ./remote.py bench [--wait] [--out FILE]
                                       the bench's progress; --wait until it's done, --out
@@ -78,7 +82,16 @@ COPY / DELETE confirmed with CHOMPI once a slot is picked (scenes.txt), or a sce
 SysEx (#78). It reads where the device stands before it decides (the page, what the knobs edit,
 the scene mode); --force plays it anyway.
 
-It plays on the FRIZZ that runs, and says which slot that is (10 FRIZZ, 12 FRIZZ-TEST): by
+The setters that FRIZZ saves to the card (channel, transport, source, out, scene put, and set
+for the settings, the compressor and VOLUME's input gain) keep it out of it the same way first:
+the change stays in RAM, and on a slot other than the test slot, FRIZZ is started again from
+the card afterwards, so it saves again, the change gone (#171). --save writes it to the card;
+a FRIZZ from before PERSIST is refused without it. Before the restart, and at the end of a
+script, IDENT says whether FRIZZ still keeps the card out of it: if it restarted meanwhile,
+what came after went to the card, and the run fails, saying so.
+
+It plays on the FRIZZ that runs, and says which slot that is (10 FRIZZ, 12 FRIZZ-TEST, 13
+FRIZZ-BETA): by
 the build it runs (IDENT) and the builds flash.py sent, or, from a FRIZZ before IDENT, as the
 tools that started it noted (tools/chompi.py); --slot N plays on that one, started if it
 isn't the one running. FRIZZ is started first if the CHOMPI is elsewhere: at the launcher's
@@ -927,7 +940,7 @@ def main():
         (["--no-start"], dict(action="store_true",
                               help="don't start FRIZZ if the CHOMPI is elsewhere")),
         (["--slot"], dict(type=int, choices=chompi.FRIZZ_SLOTS,
-                          help="the FRIZZ slot to play on (10, 12), started unless it runs; "
+                          help="the FRIZZ slot to play on (10, 12, 13), started unless it runs; "
                           "default the one running")))
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("state", parents=[common])
@@ -935,20 +948,28 @@ def main():
     p = sub.add_parser("load", parents=[common])
     p.add_argument("--every", type=float)
     sub.add_parser("settings", parents=[common])
+    save = dict(action="store_true", help="write it to the card, as FRIZZ saves it: not in RAM "
+                "only (PERSIST 0)")
     p = sub.add_parser("channel", parents=[common])
     p.add_argument("channel", type=int, choices=range(17))
+    p.add_argument("--save", **save)
     p = sub.add_parser("transport", parents=[common])
     p.add_argument("on", choices=["on", "off"])
+    p.add_argument("--save", **save)
     p = sub.add_parser("source", parents=[common])
     p.add_argument("source", choices=SOURCES)
+    p.add_argument("--save", **save)
     p = sub.add_parser("out", parents=[common])
     p.add_argument("ports", choices=OUTS)
+    p.add_argument("--save", **save)
     p = sub.add_parser("switch", parents=[common])
     p.add_argument("pos", choices=["up", "down", "hand"])
     p = sub.add_parser("scene", parents=[common])
     p.add_argument("action", choices=["get", "put"])
-    p.add_argument("slot", type=int, choices=range(5))
+    # not "slot": that is --slot, the FRIZZ slot (#171)
+    p.add_argument("scene_slot", metavar="SLOT", type=int, choices=range(5))
     p.add_argument("file", nargs="?")
+    p.add_argument("--save", **save)
     p = sub.add_parser("play", parents=[common])
     p.add_argument("script")
     p.add_argument("--cpu", action="store_true")
@@ -969,6 +990,7 @@ def main():
     p.add_argument("group")
     p.add_argument("index")
     p.add_argument("value")
+    p.add_argument("--save", **save)
     p = sub.add_parser("bench", parents=[common])
     p.add_argument("--wait", action="store_true", help="until it's done")
     p.add_argument("--out", help="write its cpu.txt there, once it's done")
@@ -990,6 +1012,14 @@ def main():
 
 
 def run(a):
+    try:
+        command(a)
+    finally:
+        if getattr(a, "kept", False):
+            after_setter(a.frizz, a)
+
+
+def command(a):
     if a.cmd in ("bench", "ident") and not a.device and not a.slot:
         # whatever runs, the bench too, which answers as FRIZZ does
         a.device = chompi.wait_for("frizz", 30)
@@ -1003,6 +1033,9 @@ def run(a):
     if a.found:
         a.device = chompi.to_frizz(a.slot, again=fresh)
     f = Frizz(a.device)
+    # a setter FRIZZ saves: kept in RAM, FRIZZ started again however it ends (run)
+    a.kept = writes_card(a) and keep_in_ram(f, a)
+    a.frizz = f
     if a.cmd == "state":
         show_state(f)
     elif a.cmd == "leds":
@@ -1034,7 +1067,7 @@ def run(a):
     elif a.cmd == "switch":
         f.send(SWITCH, [{"hand": 0, "down": 1, "up": 2}[a.pos]])
     elif a.cmd == "scene" and a.action == "get":
-        text = json.dumps(scene_get(f, a.slot), indent=1)
+        text = json.dumps(scene_get(f, a.scene_slot), indent=1)
         if a.file:
             with open(a.file, "w") as out:
                 out.write(text + "\n")
@@ -1044,7 +1077,7 @@ def run(a):
         if not a.file:
             sys.exit("scene put SLOT FILE")
         with open(a.file) as src:
-            scene_put(f, a.slot, json.load(src))
+            scene_put(f, a.scene_slot, json.load(src))
     elif a.cmd == "ident":
         show_ident(f)
     elif a.cmd == "ram-only":
@@ -1086,22 +1119,79 @@ def run(a):
                 sys.exit("line %d: %s. FRIZZ would save it to /FRIZZ/%s, on the card the FRIZZ on "
                          "key 10 shares, %s (#58, #78): not played. --force plays it anyway"
                          % (line_no, what, name, bak))
+        lost = None
         try:
             failed = play(f, a.script, a.cpu)
         except KeyboardInterrupt:
             failed = "interrupted: the keys let go, the mode switch back with the hand"
         finally:
             if ram:
+                lost = in_ram(f)
                 restore(f, a)
+        if lost:
+            sys.exit("%s: what the script changed after that may be on the card" % lost)
         if failed and not isinstance(failed, str) and a.found and not fresh:
             print("expect led judged after what played since FRIZZ started: --fresh plays the "
                   "script from power-on (#123)", file=sys.stderr)
         sys.exit(failed if isinstance(failed, str) else 1 if failed else 0)
 
 
-def restore(f, a):
-    """After a script played RAM only: FRIZZ on a slot other than the test slot is started
-    again, from the card, so it saves again"""
+# the commands FRIZZ saves to the card (MasterChanged, kCmdScenePut), kept in RAM unless --save
+CARD_SETTERS = ("channel", "transport", "source", "out")
+
+
+def writes_card(a):
+    """Whether the command changes what FRIZZ saves to the card: a setting, a scene put, the
+    compressor's knobs, VOLUME's input gain (#171)"""
+    if a.cmd == "scene":
+        return a.action == "put"
+    if a.cmd == "set":
+        return a.group in ("settings", "comp") or a.group == "volume" and a.index in ("in", "1")
+    return a.cmd in CARD_SETTERS
+
+
+def keep_in_ram(f, a):
+    """Before a setter that FRIZZ would save: PERSIST 0, so the card stays as it was; False
+    with --save. Exits for a FRIZZ that can't"""
+    if a.save:
+        if in_ram(f) is None:
+            print("FRIZZ keeps the card out of it already (PERSIST 0): --save writes nothing "
+                  "until it restarts (./flash.py --run N)", file=sys.stderr)
+        return False
+    if not f.ram_only():
+        sys.exit("a FRIZZ from before PERSIST: this would go to the card, not sent; --save "
+                 "sends it anyway")
+    print("the card isn't written until FRIZZ restarts (PERSIST 0): kept in RAM; --save writes "
+          "it to the card", file=sys.stderr)
+    return True
+
+
+def in_ram(f):
+    """None while FRIZZ still keeps the card out of it (PERSIST 0), by IDENT; else why not: it
+    restarted, which ends PERSIST 0, and writes the card again (#171)"""
+    got = f.dev(chompi.IDENT)
+    if not got or got[0] != chompi.OK or len(got[1]) < 26:
+        return "no answer to IDENT: whether FRIZZ still keeps the card out of it, unknown"
+    info = chompi.parse_ident(got[1])
+    if info["ram_only"]:
+        return None
+    return ("FRIZZ restarted (up %.1f s, reset: %s): it writes the card again"
+            % (info["uptime"], chompi.reset_cause(info["reset"])))
+
+
+def after_setter(f, a):
+    """After a setter kept in RAM, however it ended (a value refused too): whether FRIZZ still
+    kept the card out of it, and FRIZZ started again from the card (restore)"""
+    a.kept = False
+    lost = in_ram(f)
+    restore(f, a, setter=True)
+    if lost:
+        sys.exit("%s: what was set may be on the card" % lost)
+
+
+def restore(f, a, setter=False):
+    """After a script played RAM only, or a setter: FRIZZ on a slot other than the test slot is
+    started again, from the card, so it saves again (a setter's change gone)"""
     slot = chompi.frizz_slot
     if slot == chompi.TEST_SLOT:
         return
@@ -1110,7 +1200,8 @@ def restore(f, a):
               % ("" if slot is None else " on slot %d" % slot), file=sys.stderr)
         return
     os.close(f.link.fd)
-    print("starting slot %d again, from the card, so it saves again" % slot, file=sys.stderr)
+    print("starting slot %d again, from the card, so it saves again%s" % (
+        slot, ": what was set is gone (--save keeps it)" if setter else ""), file=sys.stderr)
     chompi.start(slot)
 
 

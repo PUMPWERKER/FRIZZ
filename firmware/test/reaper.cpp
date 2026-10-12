@@ -92,6 +92,22 @@ int main()
              "projsmpteinput 4223; midiouts_clock=0", "| jack, synced | PASS |", "on its beat 1"},
             0);
     }});
+    // stopped from outside (SIGTERM) while REAPER runs a case: not taken for the case's FAIL,
+    // REAPER closed, things put back, exit 143 (#171)
+    cases.push_back({"sigterm", [] {
+        trs_in = false;
+        trs_out = true;
+        std::string out;
+        const auto card = CardFiles();
+        const int rc = Tool("reaper.py", "--quick -v --cases daw-tempo,daw-transport", out, 170,
+                            {{"FRIZZ_REAPER", firmware_dir + "/test/reaper_stub.py"}}, "-- daw-tempo", SIGTERM);
+        Check(rc == 143 && Has(out, "stopped (signal 15)") && !Has(out, "FAIL daw-tempo") && !Has(out, "-- daw-transport")
+                  && !Has(out, "putting things back:") && !Has(out, "not put back") && Has(out, "### REAPER"),
+              "sigterm: SIGTERM in a case stops the run, things put back, exit 143");
+        Check(CardFiles() == card, "sigterm: the card as it was (PERSIST 0)");
+        if (rc != 143)
+            printf("exit %d\n%s\n", rc, out.c_str());
+    }});
     // no TRS: the jitter can't be seen, a SKIP
     cases.push_back({"no-trs", [] {
         Run("no TRS", false, "daw-jitter", {"SKIP daw-jitter", "needs the CHOMPI's TRS out"}, 0);

@@ -186,7 +186,7 @@ slower.
 
 **For the CPU, not for room: ITCM** (an experiment, #51, off by default). ITCM (64 KB) is the
 core's fastest code memory, with no cache to miss. With
-`make ITCM=1` the per-sample functions
+`make ITCM=1` (built apart in `build-itcm/`, `build-bench-itcm/` with `BENCH=1`) the per-sample functions
 (`FxChain::Process` and `Run`, the effects that aren't inlined into them, `PassthroughEngine::Process`,
 the looper, the delay's read, the reverb, `AudioCallback`) are marked `FRIZZ_HOT` and run
 from ITCM: `.itcmram` loads from `SRAM_EXEC` (`chompi_sram.lds`) and `main()` copies it

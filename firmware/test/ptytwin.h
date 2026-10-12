@@ -124,9 +124,10 @@ void Pump(long ms)
 
 /** tools/TOOL ARGS (--device and --trs given) against the twin, at the wall clock's pace until
  *  it's done (limit s at most), with env's NAME=VALUE pairs set: its exit code; out gets what
- *  it printed */
+ *  it printed. stop_signal (SIGINT, SIGTERM) goes to it once it has printed stop_at */
 int Tool(const std::string& tool, const std::string& args, std::string& out, int limit,
-         const std::vector<std::pair<std::string, std::string>>& env = {})
+         const std::vector<std::pair<std::string, std::string>>& env = {}, const std::string& stop_at = "",
+         int stop_signal = 0)
 {
     if (!usb.Open() || !trs.Open())
     {
@@ -150,6 +151,7 @@ int Tool(const std::string& tool, const std::string& args, std::string& out, int
         close(pipe_fd[0]);
         setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
         setenv("FRIZZ_CHOMPI_HELD", "1", 1); // the twin, not the CHOMPI: no lock (tools/chompi.py)
+        signal(SIGINT, SIG_DFL); // a shell's background job (all.sh) ignores it, Python then too
         for (const auto& e : env)
             setenv(e.first.c_str(), e.second.c_str(), 1);
         execl("/bin/sh", "sh", "-c", cmd.c_str(), static_cast<char*>(nullptr));
@@ -173,6 +175,11 @@ int Tool(const std::string& tool, const std::string& args, std::string& out, int
             out.append(buf, n);
         if (waitpid(pid, &status, WNOHANG) == pid)
             break;
+        if (stop_signal && out.find(stop_at) != std::string::npos)
+        {
+            kill(pid, stop_signal);
+            stop_signal = 0;
+        }
         const auto wall = std::chrono::steady_clock::now() - start;
         if (wall > std::chrono::seconds(limit))
         {
