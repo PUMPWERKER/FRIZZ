@@ -212,6 +212,19 @@ public:
     inline uint16_t Dropped() const { return static_cast<uint16_t>(dropped_); }
     /** Its grid in clock pulses, for the scramble's steps */
     inline uint32_t ChaosGridPulses() const { return chaos_.GridPulses(); }
+    /** RESEED's (MidiControl.h's namespace dev): the random numbers of chaos, the slicer and
+     *  the delay, in that order, each from its power-on seed xor seed, so 0 is power-on's */
+    static const size_t kRandoms = 3;
+    inline Rng& Random(size_t i)
+    {
+        return i == 0 ? chaos_.Random() : i == 1 ? slicer_.Random() : delay_.Random();
+    }
+    void Reseed(uint32_t seed)
+    {
+        static const uint32_t kSeeds[kRandoms] = {Chaos::kSeed, Slicer::kSeed, granularDelay::kSeed};
+        for (size_t i = 0; i < kRandoms; i++)
+            Random(i).Seed(seed ^ kSeeds[i]);
+    }
 
     /** n samples through the chain, in place. Effect by effect, each over a run of up to
      *  kFxMaxBlock samples before the next (Run), so its code stays in the I-cache for the run:

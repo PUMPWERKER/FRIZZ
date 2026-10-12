@@ -223,13 +223,22 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
         event_log.Jack(input_jack.plugged);
     }
 
+    // the developers' test signal and peak meters (MidiControl.h's dev::Audio), off unless
+    // asked for over USB: then this flag, read once
+    const bool dev_audio = midi_control.audio.on;
+    if(dev_audio)
+        in = midi_control.audio.In(in, size);
 #if FRIZZ_BENCH
     engine.Process(bench.Input(in, size), out, size);
-    midi_out.Process(size, engine, midi_control.GetMidiOut());
-    bench.BlockEnd(engine);
 #else
     engine.Process(in, out, size);
+#endif
+    if(dev_audio)
+        midi_control.audio.Out(out, size);
     midi_out.Process(size, engine, midi_control.GetMidiOut());
+#if FRIZZ_BENCH
+    bench.BlockEnd(engine);
+#else
     midi_control.BlockTime(System::GetTick() - start_tick);
 #endif
 }

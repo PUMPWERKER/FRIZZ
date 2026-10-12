@@ -294,6 +294,15 @@ static std::string Ask(const std::vector<int>& query)
     return out.substr(at + 5, end - at - 5);
 }
 
+/** groups 7-bit groups of a kCmdDev answer from at, the highest first */
+static uint64_t DevNum(const std::string& d, size_t at, size_t groups)
+{
+    uint64_t v = 0;
+    for (size_t i = 0; i < groups && at + i < d.size(); i++)
+        v = v << 7 | static_cast<uint8_t>(d[at + i]);
+    return v;
+}
+
 /** The CCs that went out of the jack since last asked, real-time bytes left out */
 static std::vector<std::array<int, 3>> TrsCcs()
 {
@@ -3251,7 +3260,7 @@ int main()
                   && settings[19] == 0 && settings[20] == 1 && settings[21] == 0 && settings[22] == 0,
               "midi dev: GET the settings: the clock factor x2, the LEDs at 100 %, channel 16, the effect channels over the jack, no feedback");
         Check(Ask({0x3E, 3, 15, 0x23, 9, 0, 1})[2] == 1 && Ask({0x3E, 2, 16, 0x30})[2] == 1
-                  && Ask({0x3E, 9, 17})[2] == 1,
+                  && Ask({0x3E, 0x30, 17})[2] == 1,
               "midi dev: no such setting, group or sub-command: refused, answered");
         RunMs(2500);
         Check(Card("/FRIZZ/frizz_master.txt").find("clock_factor 200\n") != std::string::npos,
@@ -3288,6 +3297,189 @@ int main()
         Check(TakeUsbOut().empty(), "midi dev: none over the jack");
         Usb({0xF0, 0x7D, 0x43, 0x48, 0x60, 1, 2, 0xF7}); // an echo of 0x20's answer
         Check(Ask({0x20}).size() > 12, "midi dev: an answer echoed back doesn't take the query's slot");
+    }});
+
+    // the developers' probes (kCmdDev, #105): PROBE, LEVELS, SIGNAL, RESEED, BATTERY. Read
+    // only, but SIGNAL; nothing of theirs runs in the audio callback until asked
+    cases.push_back({"midi-dev-probe", [] {
+        RunMs(kReadyMs);
+        // PROBE 1, the looper: a second recorded by LOOP, playing
+        const std::string empty = Ask({0x3E, 5, 1, 1});
+        Tap("KEY_28");
+        RunMs(1000);
+        Tap("KEY_28");
+        RunMs(200);
+        const std::string loop = Ask({0x3E, 5, 2, 1});
+        Check(empty.size() == 24 && empty[2] == 0 && empty[3] == 0 && DevNum(empty, 5, 4) == 0,
+              "midi dev: PROBE 1, the looper empty");
+        if (loop.size() == 24)
+        {
+            const uint64_t length = DevNum(loop, 5, 4), pos = DevNum(loop, 9, 4);
+            Check(loop[3] == 2 && length > 47000 && length < 51000 && pos > 0 && pos < length
+                      && loop[16] == 64 && DevNum(loop, 17, 2) == 3000 && DevNum(loop, 19, 2) == 3000,
+                  "midi dev: PROBE 1, the loop playing, its length a second, where it is, at 1x");
+        }
+        else
+            Check(false, "midi dev: PROBE 1 answers 21 bytes");
+        // PROBE 0, the clock: none, then 120 BPM into the jack; the effects follow the loop
+        const std::string none = Ask({0x3E, 5, 3, 0});
+        Check(none.size() == 32 && none[2] == 0 && none[3] == 0 && none[4] == 0 && none[5] == 1
+                  && !(none[6] & 1) && (none[6] & 2) && DevNum(none, 21, 3) > 0,
+              "midi dev: PROBE 0, no clock (source auto, none locked, x1), the loop's tempo");
+        clock_bpm = 120.f;
+        clock_next = NowMs();
+        RunMs(3000);
+        const std::string clock = Ask({0x3E, 5, 4, 0});
+        if (clock.size() == 32)
+        {
+            const double bpm = DevNum(clock, 7, 3) / 100., sent = DevNum(clock, 10, 3) / 100.,
+                         fx = DevNum(clock, 21, 3) / 100.;
+            Check(clock[4] == 1 && (clock[6] & 1) && fabs(bpm - 120.) < .5 && fabs(sent - 120.) < .5
+                      && fabs(fx - DevNum(none, 21, 3) / 100.) < .01 && DevNum(clock, 13, 5) > 100
+                      && DevNum(clock, 18, 3) >= 1,
+                  "midi dev: PROBE 0, the jack's clock locked at 120 and counted, the effects on the loop's");
+        }
+        else
+            Check(false, "midi dev: PROBE 0 answers 29 bytes");
+        Check(Ask({0x3E, 5, 5, 2})[2] == 1, "midi dev: PROBE 2 refused");
+    }});
+
+    cases.push_back({"midi-dev-levels", [] {
+        RunMs(kReadyMs);
+        // the meters start with the first ask, which says so; the next has the peaks since:
+        // AUX's sine at .3 in, the outputs
+        const std::string first = Ask({0x3E, 6, 1, 1});
+        RunMs(200);
+        const std::string next = Ask({0x3E, 6, 2, 1});
+        Check(first.size() == 22 && first[2] == 0 && first[3] == 1 && DevNum(first, 10, 2) == 0
+                  && next.size() == 22 && next[3] == 0,
+              "midi dev: LEVELS 1, the peak meters started by the first ask, which says so");
+        if (next.size() == 22)
+        {
+            const double in_l = DevNum(next, 10, 2) / 8192., in_r = DevNum(next, 12, 2) / 8192.;
+            Check(fabs(in_l - .3) < .01 && fabs(in_r - .3) < .01 && DevNum(next, 8, 2) == 0
+                      && DevNum(next, 18, 2) > 300 && DevNum(next, 14, 2) > 300 && DevNum(next, 4, 2) > 0,
+                  "midi dev: LEVELS 1, AUX's peaks .3, the mic's none, the outputs' and the VU meter");
+        }
+        sine = false;
+        RunMs(200);
+        Ask({0x3E, 6, 3, 1});
+        RunMs(200);
+        const std::string quiet = Ask({0x3E, 6, 4, 1});
+        Check(quiet.size() == 22 && DevNum(quiet, 10, 2) == 0 && DevNum(quiet, 12, 2) == 0,
+              "midi dev: LEVELS 1, the peaks since the last ask: the input silent");
+        // LEVELS 0, the effects' meters: the filter held, the reverb off
+        sine = true;
+        Press("KEY_5", true);
+        RunMs(300);
+        const std::string fx = Ask({0x3E, 6, 5, 0});
+        Press("KEY_5", false);
+        Check(fx.size() == 31 && DevNum(fx, 3 + 2 * 4, 2) > 100 && DevNum(fx, 3 + 2 * 11, 2) == 0,
+              "midi dev: LEVELS 0, the effects' meters: the filter's lit, the reverb's not");
+        Check(Ask({0x3E, 6, 6, 2})[2] == 1, "midi dev: LEVELS 2 refused");
+    }});
+
+    cases.push_back({"midi-dev-signal", [] {
+        sine = false; // nothing into AUX
+        RunMs(kReadyMs);
+        const float before = RunMs(300);
+        // a sine at 1000 Hz, half scale, in the input's place
+        const std::string on = Ask({0x3E, 7, 1, 1, 1000 >> 7, 1000 & 0x7F, 0x40, 0});
+        const float sig = RunMs(300);
+        Ask({0x3E, 6, 2, 1});
+        RunMs(100);
+        const std::string peaks = Ask({0x3E, 6, 3, 1});
+        Check(before < 1e-4f && on == std::string("\x07\x01\x00\x01", 4) && sig > .05f,
+              "midi dev: SIGNAL a sine where the input was silent");
+        Check(peaks.size() == 22 && fabs(DevNum(peaks, 10, 2) / 8192. - .5) < .01
+                  && fabs(DevNum(peaks, 8, 2) / 8192. - .5) < .01,
+              "midi dev: SIGNAL at half scale, in AUX's and the mic's place, as LEVELS shows");
+        // a saw and noise sound too; the mic, AUX unplugged, takes it as well
+        Ask({0x3E, 7, 4, 2, 0, 110, 0x40, 0});
+        const float saw = RunMs(300);
+        Ask({0x3E, 7, 5, 3, 0, 1, 0x40, 0});
+        const float noise = RunMs(300);
+        SetJack(false);
+        RunMs(500);
+        const float mic = RunMs(300);
+        SetJack(true);
+        RunMs(500);
+        Check(saw > .05f && noise > .05f && mic > .01f, "midi dev: SIGNAL's saw and noise, into the mic too");
+        // off: the input again (silent)
+        const std::string off = Ask({0x3E, 7, 6, 0});
+        RunMs(500);
+        Check(off == std::string("\x07\x06\x00\x00", 4) && RunMs(300) < 1e-4f,
+              "midi dev: SIGNAL 0, the input again");
+        Check(Ask({0x3E, 7, 7, 4, 0, 1, 0, 1})[2] == 1 && Ask({0x3E, 7, 8, 1, 0, 0, 0, 1})[2] == 1
+                  && Ask({0x3E, 7, 9, 1})[2] == 1,
+              "midi dev: SIGNAL refuses no such wave, 0 Hz, or no frequency");
+    }});
+
+    cases.push_back({"midi-dev-reseed", [] {
+        RunMs(kReadyMs);
+        // xorshift32 (FxCommon.h's Rng): the draws from start to state, -1 if not within 1M
+        const auto draws = [](uint32_t start, uint32_t state) {
+            uint32_t x = start ? start : 1;
+            for (int n = 0; n < 1000000; n++)
+            {
+                if (x == state)
+                    return n;
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+            }
+            return -1;
+        };
+        const uint32_t kSeeds[3] = {0x6A09E667u, 0x2545F491u, 0x6C8E9CF5u}; // chaos, slicer, delay
+        // the chaos key latched: it draws every step, 17 at least
+        Ask({0x3E, 3, 1, 0x21, 13, 0, 1});
+        const std::string read = Ask({0x3E, 8, 2});
+        Check(read.size() == 23 && read[2] == 0 && DevNum(read, 3, 5) == 0
+                  && draws(kSeeds[1], static_cast<uint32_t>(DevNum(read, 13, 5))) >= 0
+                  && draws(kSeeds[2], static_cast<uint32_t>(DevNum(read, 18, 5))) >= 0,
+              "midi dev: RESEED without a seed reads: 0 since power-on, the states on its sequences");
+        int n[2] = {-1, -1};
+        for (int run = 0; run < 2; run++)
+        {
+            const std::string set = Ask({0x3E, 8, 3 + run, 0, 0, 0, 12345 >> 7, 12345 & 0x7F});
+            const uint32_t seed = static_cast<uint32_t>(DevNum(set, 3, 5));
+            const bool fresh = set.size() == 23 && seed == 12345
+                               && draws(seed ^ kSeeds[0], static_cast<uint32_t>(DevNum(set, 8, 5))) < 40;
+            RunMs(2000);
+            const std::string later = Ask({0x3E, 8, 5 + run});
+            n[run] = fresh ? draws(seed ^ kSeeds[0], static_cast<uint32_t>(DevNum(later, 8, 5))) : -1;
+        }
+        Check(n[0] > 100 && n[1] > 100 && abs(n[0] - n[1]) <= 40,
+              "midi dev: RESEED 12345 twice: chaos draws on from it each time, as many in as long");
+        if (n[0] <= 100 || n[1] <= 100)
+            printf("      draws %d, %d\n", n[0], n[1]);
+        const std::string zero = Ask({0x3E, 8, 7, 0, 0, 0, 0, 0});
+        Check(zero.size() == 23 && draws(kSeeds[2], static_cast<uint32_t>(DevNum(zero, 18, 5))) == 0
+                  && draws(kSeeds[0], static_cast<uint32_t>(DevNum(zero, 8, 5))) < 40,
+              "midi dev: RESEED 0, as at power-on");
+        Check(Ask({0x3E, 8, 8, 1, 2})[2] == 1, "midi dev: RESEED with a short seed refused");
+    }});
+
+    cases.push_back({"midi-dev-battery", [] {
+        // on the battery at 3.8 V: HIGH once the level check has read it (a second on)
+        SetBattery(3.8f, false);
+        RunMs(kReadyMs + 1500);
+        const std::string high = Ask({0x3E, 9, 1});
+        Check(high.size() == 27 && high[2] == 0 && high[3] == 1 && high[4] == 1 && high[6] == 0
+                  && DevNum(high, 7, 2) == 0 && DevNum(high, 9, 2) == 0,
+              "midi dev: BATTERY on the battery, above 3V3: HIGH, no cable, not low");
+        // the cable in: FULL at once, VIN_GD in its raw status
+        SetBattery(3.8f, true);
+        RunMs(500);
+        const std::string usb = Ask({0x3E, 9, 2});
+        Check(usb.size() == 27 && usb[3] == 0 && DevNum(usb, 7, 2) == 0xFF && DevNum(usb, 17, 2) == 0x40,
+              "midi dev: BATTERY on the cable: FULL, VIN_GD debounced and raw");
+        // pulled at 3.1 V: MEDIUM once read again, a second on
+        SetBattery(3.1f, false);
+        RunMs(2000);
+        const std::string medium = Ask({0x3E, 9, 3});
+        Check(medium.size() == 27 && medium[3] == 2 && DevNum(medium, 7, 2) == 0,
+              "midi dev: BATTERY pulled at 3.1 V: MEDIUM");
     }});
 
     // scenes over SysEx and program changes, morphs over CC

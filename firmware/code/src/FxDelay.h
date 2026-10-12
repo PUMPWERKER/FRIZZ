@@ -28,6 +28,8 @@ public:
         DAMPING,
         DUCKING = 7,
     };
+    /** Its random events', for RESEED (MidiControl.h's namespace dev) */
+    inline Rng& Random() { return delay_.Random(); }
 
     static const size_t kNumDivisions = kNumDelayDivs;
 

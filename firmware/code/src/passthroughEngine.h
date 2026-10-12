@@ -297,6 +297,9 @@ public:
     inline float FxBpm() const { return tempo_clock_.GetFxBpm(); }
     /** 0..1, for the FX key LEDs: an insert's output, a send's return */
     inline float GetFxLevel(size_t fx) { return fx_.GetLevel(fx); }
+    /** RESEED's (FxChain::Reseed), from MainLoop with the audio interrupt blocked */
+    inline void Reseed(uint32_t seed) { fx_.Reseed(seed); }
+    inline uint32_t RandomState(size_t i) { return fx_.Random(i).state; }
     /** Off and costing no more than off (FxChain::Resting): for the CPU bench */
     inline bool FxResting(size_t fx) const { return fx_.Resting(fx); }
 
