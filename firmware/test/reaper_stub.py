@@ -121,7 +121,11 @@ class Stub:
         """The clock and the lanes while playing, the loop range's turns"""
         last = None
         while not self.stop:
-            time.sleep(.0005)
+            # until the next tick is due (2 ms at most: a command may have moved it)
+            wait = .002
+            if self.playing and last is not None:
+                wait = min(wait, max(0., ((int(last * 24) + 1) / 24. - self.pos()) * 60. / self.bpm))
+            time.sleep(max(wait, .0002))
             if not self.playing:
                 last = None
                 continue

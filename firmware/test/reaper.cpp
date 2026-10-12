@@ -88,7 +88,8 @@ int main()
     cases.push_back({"no-trs", [] {
         Run("no TRS", false, "daw-jitter", {"SKIP daw-jitter", "needs the CHOMPI's TRS out"}, 0);
     }});
-    setenv("CASE_JOBS", "8", 0);
+    // the processes mostly wait on the wall clock: all at once
+    setenv("CASE_JOBS", "6", 0);
     RunAllCases();
     return Finish();
 }

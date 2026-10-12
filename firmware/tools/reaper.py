@@ -501,6 +501,16 @@ def changes(vals):
     return sum(1 for a, b in zip(vals, vals[1:]) if a != b)
 
 
+def held(what, ok, got, want, r):
+    """A tempo holding still: checked on the device; --quick (the host check) only notes it, as
+    the stand-in's clock jitters under all.sh's load enough to flip it (#83), as midisuite.py's
+    host check leaves fast-usb out"""
+    if r.args.quick:
+        r.note("%s: %s (want %s; not judged with --quick)" % (what, got, want))
+    else:
+        r.tcheck(what, ok, got, want)
+
+
 def sleep_until(t):
     time.sleep(max(0., t - time.perf_counter()))
 
@@ -520,8 +530,7 @@ def daw_tempo(r, d):
         r.tcheck("REAPER at %d BPM: FRIZZ's tempo" % bpm, took is not None, got, "%d +-1 within 6 s" % bpm)
         time.sleep(1. if r.args.quick else 3.)
         vals = poll_tempo(r, 2. if r.args.quick else 4.)
-        r.tcheck("then holds", max(vals) - min(vals) <= .5 * r.loose, "%.1f..%.1f" % (min(vals), max(vals)),
-                 "one whole BPM")
+        held("then holds", max(vals) - min(vals) <= .5, "%.1f..%.1f" % (min(vals), max(vals)), "one whole BPM", r)
         t1 = time.perf_counter()
         d.stop_transport()
         time.sleep(.4)
@@ -609,6 +618,11 @@ def daw_transport(r, d):
     d.stop_transport()
 
 
+# the channels whose lanes latch their effect too: a few, as every effect at once is the
+# heaviest load there is (on the CHOMPI and the twin); midisuite.py's cc-channels latches each
+LATCHED = (1, 7, 14)
+
+
 def automation_value(ch, k):
     """A value of its own for channel ch's CC 14 + k, away from 0, 64 and 127"""
     return 8 + (ch * 7 + k * 13) % 110
@@ -631,7 +645,7 @@ def daw_automation(r, d):
         for k in range(8):
             v = automation_value(ch, k)
             events += [(0., status(ch), 14 + k, 0), (.5, status(ch), 14 + k, v // 2), (1., status(ch), 14 + k, v)]
-        if ch < 15:
+        if ch in LATCHED:
             events.append((1.25, status(ch), 22, 127))
         d.lane(4, events)
     d.tempo(120)
@@ -661,10 +675,11 @@ def daw_automation(r, d):
                 bad.append("ch %d CC %d: %.3f, sent: %.3f" % (ch, 14 + k, played[fx][k], direct[fx][k]))
             if abs(stopped[fx][k] - played[fx][k]) > .002:
                 kept.append("ch %d CC %d: %.3f -> %.3f" % (ch, 14 + k, played[fx][k], stopped[fx][k]))
-        if ch < 15 and not latches[remote.FX_NAMES.index(fx)]:
-            bad.append("ch %d: not latched" % ch)
-    r.check("15 tracks playing: each knob where its lane's last CC, sent straight, puts it; CC 22 latched",
-            not bad, "; ".join(bad[:6]) + (" ..." if len(bad) > 6 else "") if bad else "all %d knobs, 14 latches" % n,
+        if ch < 15 and (ch in LATCHED) != bool(latches[remote.FX_NAMES.index(fx)]):
+            bad.append("ch %d: %slatched" % (ch, "not " if ch in LATCHED else ""))
+    r.check("15 tracks playing: each knob where its lane's last CC, sent straight, puts it; CC 22 latched "
+            "on channels %s" % ", ".join(map(str, LATCHED)),
+            not bad, "; ".join(bad[:6]) + (" ..." if len(bad) > 6 else "") if bad else "all %d knobs, %d latches" % (n, len(LATCHED)),
             "the same")
     r.check("the lanes moved them", moved >= n * .8, "%d of %d" % (moved, n), "most")
     r.check("REAPER stopped, its CC reset off (CC reset overrides cc0-120=-1): the knobs stay", not kept,
@@ -745,6 +760,9 @@ def measure_clock(r, start, stop, bpm, label):
     stop()
     row = jitter_row(midisuite.ticks_after(r.trs.log, t1, t2)) if r.trs else None
     r.jitter.append((label, bpm, row, min(vals), max(vals), changes(vals), len(vals)))
+    r.check("%s at %d BPM: its ticks passed on out of TRS, measured" % (label, bpm),
+            row is not None and row[0] >= bpm * .4 * r.args.seconds * .9,
+            "%d ticks" % row[0] if row else "none", "%d" % (bpm * .4 * r.args.seconds))
     r.note("%s, %d BPM: %s; tempo %.1f..%.1f, %d changes in %d readings" % (
         label, bpm, "%d ticks, from their line: mean %.3f, 99 %% %.3f, max %.3f ms" % row if row else "no ticks",
         min(vals), max(vals), changes(vals), len(vals)))
@@ -763,8 +781,8 @@ def daw_jitter(r, d):
         vals = measure_clock(r, start, d.stop_transport, bpm, "REAPER, %s (%s)" % (d.audio, d.audio_info))
         what = "REAPER (%s) at %d BPM: FRIZZ's tempo over %g s" % (d.audio, bpm, r.args.seconds)
         r.known.add(what)  # #83: it flips under a jittery USB clock at 200-300 BPM
-        r.tcheck(what, max(vals) - min(vals) <= .5 * r.loose,
-                 "%.1f..%.1f, %d changes" % (min(vals), max(vals), changes(vals)), "one whole BPM (#83)")
+        held(what, max(vals) - min(vals) <= .5, "%.1f..%.1f, %d changes" % (min(vals), max(vals), changes(vals)),
+             "one whole BPM (#83)", r)
 
 
 def reference(r):
@@ -821,7 +839,7 @@ def run_case(r, d, c, snap):
             print("   (putting things back: %s)" % e, file=sys.stderr)
     if status is None:
         failed = {what for ok, what, *_ in r.checks if not ok}
-        status = "PASS" if r.checks and not failed else "KNOWN" if failed <= r.known else "FAIL"
+        status = "FAIL" if not r.checks else "PASS" if not failed else "KNOWN" if failed <= r.known else "FAIL"
         detail = "" if r.checks else "nothing checked"
     return status, detail
 
