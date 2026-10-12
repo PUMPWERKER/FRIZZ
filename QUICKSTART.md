@@ -54,8 +54,9 @@ back down to play. The settings page also sets the MIDI channel, the LEDs' brigh
 3. Press **LOOP** again. The loop plays back immediately, and the mix jumps to only the loop, so you
    hear only the loop. Turn SHIFT + VOLUME back towards green to play along with it.
 4. **PLAY** pauses and resumes it, when you let go of it.
-5. Turn the big **transport knob** to change speed in semitones, from 2× down to 1/16×. Hold
-   SHIFT while turning to jump in fifths and octaves, and on past 1/16× into reverse. While paused, turning the knob scrubs. Press the knob to get back to normal speed.
+5. Turn the big **transport knob** to change speed in semitones, from 2× down to 1/16×, on
+   through a standstill and into reverse, up to −2×. Hold SHIFT while turning to jump in
+   fifths and octaves. While paused, turning the knob scrubs. Press the knob to get back to normal speed.
 6. Press **LOOP** to erase the loop. The mix jumps back to the input. To erase at the end of
    the loop instead, hold PLAY and press LOOP.
 
@@ -149,10 +150,14 @@ every effect off and resets the knobs, and can't be saved over. The other four a
   the first key to turn every effect off.
 - **Morph:** hold CHOMPI and press a scene key, then let go of CHOMPI: the effects glide there
   and land at the end of the bar. Before you let go, tap the key again for one bar more per
-  tap; the glide starts when you let go. Hold CHOMPI and press PLAY to stop it where it is.
-- **Drop:** hold CHOMPI, press a scene key, then PLAY: the scene lands hard on the next bar
-  line (its key blinks red until then). After a morph to one scene, CHOMPI + another scene key
-  + PLAY rides the build-up to the line and drops there.
+  tap; the bars count from when you let go. With CHOMPI still held, you can instead:
+  - **press** the transport knob: a **drop**, the scene lands hard on the bar line (its key
+    blinks red until then);
+  - **turn** it: the **crossfader**, the morph in your hand;
+  - press a **second scene key**: a **build-up**, the morph to the first scene, and the second
+    dropping hard at its end.
+- **Stop or change it:** hold CHOMPI again and press the blinking key to stop it where it is,
+  or another scene key to start a new one from there.
 - **Copy and delete:** the same steps with the upper G# (blue) and A# (red). Tap the
   function's key again to back out.
 

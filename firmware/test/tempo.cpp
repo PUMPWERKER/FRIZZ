@@ -468,7 +468,8 @@ static FxMorphPlan Plan(MorphParam how, float from, float to)
     return plan;
 }
 
-/** A drop (#153, FxMorph::Drop): hard on the bar line, what goes off faded out by then */
+/** A drop (#175, FxMorph::Drop): a held morph made one lands hard on the bar line its
+ *  release counts to, what goes off faded out by then; a build-up glides there first */
 static void TestDrop()
 {
     MidiClock midi;
@@ -478,9 +479,11 @@ static void TestDrop()
     FxMorphT<FakeChain> morph;
     morph.Init(&chain);
     const uint16_t filter = 1u << FX_FILTER, delay = 1u << FX_DELAY, reverb = 1u << FX_REVERB;
+    auto release = [&] { morph.Release(clock.PulsesToBarLine(), clock.PulsesPerBarLine()); };
 
-    // held (SHIFT + scene key), then PLAY a quarter into the bar: the filter on in both, the
-    // delay going off (its level fading out, in a morph), the reverb coming on (fading in)
+    // held (SHIFT + scene key), then the transport pressed: the filter on in both, the delay
+    // going off (its level fading out, in a morph), the reverb coming on (fading in). Held on
+    // over a bar line, SHIFT let go a quarter into the next bar
     while (clock.Position() != 0)
         DropBlock(clock, morph);
     FxMorphPlan plan = Plan(MorphParam::HOLD, .5f, .5f);
@@ -505,14 +508,18 @@ static void TestDrop()
     morph.SetOn(FX_REVERB, true);
     for (int i = 0; i < 1000; i++)
         DropBlock(clock, morph);
-    Check(!morph.Dropping()
-              && morph.Drop(plan.target, filter | reverb, filter | reverb, clock.PulsesToBarLine()),
+    Check(!morph.Dropping() && morph.Drop(plan.target, filter | reverb, filter | reverb, false),
           "drop: a held morph becomes one");
-    Check(morph.Dropping() && !morph.Holding() && chain.params[FX_REVERB][FxOutput::kLevel] == .9f && !chain.on[FX_REVERB],
-          "drop: what comes on gets its parameters at once, its key not yet");
+    Check(morph.Dropping() && morph.Holding() && chain.params[FX_REVERB][FxOutput::kLevel] == .9f && !chain.on[FX_REVERB],
+          "drop: still held; what comes on gets its parameters at once, its key not yet");
     Check(!morph.Fader(.5f), "drop: the crossfader can't take it");
-    int blocks = 1000, delay_off = 0, reverb_on = 0, landed = 0;
-    bool still = true;
+    Check(!morph.Drop(plan.target, 0, 0, true), "drop: once only");
+    for (int i = 0; i < 4000; i++)
+        DropBlock(clock, morph);
+    bool still = morph.Active() && chain.on[FX_DELAY] && !chain.on[FX_REVERB] && chain.params[FX_FILTER][0] == 0.f;
+    Check(still, "drop: held over a bar line, nothing lands, nothing switches early");
+    release();
+    int blocks = 0, delay_off = 0, reverb_on = 0, landed = 0;
     while (morph.Active())
     {
         const bool line = DropBlock(clock, morph);
@@ -526,53 +533,81 @@ static void TestDrop()
         if (morph.Active())
             still = still && chain.params[FX_FILTER][0] == 0.f && chain.params[FX_DELAY][FxOutput::kLevel] == .8f;
     }
-    printf("      drop: landed in block %d, the delay off in %d, the reverb on in %d\n", landed,
-           delay_off, reverb_on);
-    Check(landed > 3990 && landed <= 4001 && !morph.Active(), "drop: lands on the bar line, in its block");
+    printf("      drop: landed in block %d after the release, the delay off in %d, the reverb on in %d\n",
+           landed, delay_off, reverb_on);
+    Check(landed > 2990 && landed <= 3001 && !morph.Active(),
+          "drop: lands on the bar line after the release, in its block");
     Check(still, "drop: nothing glides before it");
     Check(reverb_on == landed && chain.params[FX_FILTER][0] == .8f,
           "drop: in the line's block, the filter on the scene's and the reverb's key on");
     Check(landed - delay_off >= 49 && landed - delay_off <= 51 && chain.params[FX_DELAY][FxOutput::kLevel] == .8f,
           "drop: the delay's key off 25ms before the line, so its fade ends there; its level kept");
 
-    // a glide under way (a morph to another scene), then PLAY: it gets to its end on the next
-    // line, a quarter of a bar later than it would, and the drop's scene lands there
+    // not on a morph that glides already
     while (clock.Position() != 0)
         DropBlock(clock, morph);
+    morph.Start(Plan(MorphParam::GLIDE, 0.f, 1.f), clock.PulsesToBarLine());
+    FxMorphPlan scene = Plan(MorphParam::HOLD, .2f, .2f);
+    Check(!morph.Drop(scene.target, filter, filter, false), "drop: not on a gliding morph");
+    morph.Land();
+
+    // a build-up (SHIFT + A twice, then B): the glide to A over the two bars from the
+    // release (a quarter into a bar: 1.75 bars, 7000 blocks), A's fade-in (the reverb) coming
+    // on with it, and B (the filter at .2, the reverb off) dropping on the second line
     chain = FakeChain();
     chain.on[FX_FILTER] = true;
-    morph.Start(Plan(MorphParam::GLIDE, 0.f, 1.f), clock.PulsesToBarLine());
-    Check(morph.AddBar(clock.PulsesPerBarLine()), "drop on a glide: a morph over two bars");
-    for (int i = 0; i < 2000; i++)
+    plan = Plan(MorphParam::GLIDE, 0.f, 1.f);
+    plan.deferred = plan.wake = reverb;
+    plan.was_on = filter;
+    plan.how[FX_REVERB][0] = MorphParam::HOLD;
+    morph.Start(plan, clock.PulsesToBarLine(), true);
+    morph.SetOn(FX_REVERB, true);
+    Check(morph.AddBar(clock.PulsesPerBarLine()), "build-up: a morph over two bars");
+    Check(morph.Drop(scene.target, filter | reverb, filter, true) && morph.Holding(),
+          "build-up: B makes it a drop, still held");
+    for (int i = 0; i < 1000; i++)
         DropBlock(clock, morph);
-    const float at = chain.params[FX_FILTER][0];
-    FxMorphPlan scene = Plan(MorphParam::HOLD, .2f, .2f);
-    Check(morph.Drop(scene.target, filter, filter, clock.PulsesToBarLine()), "drop on a glide: taken");
-    blocks = 2000;
-    float half = 0.f, last = 0.f;
+    Check(chain.params[FX_FILTER][0] == 0.f && !chain.on[FX_REVERB], "build-up: held, nothing moves");
+    release();
+    blocks = 0;
     landed = 0;
+    reverb_on = delay_off = 0;
+    float half = 0.f, last = 0.f, reverb_half = 0.f;
     while (morph.Active())
     {
         landed += DropBlock(clock, morph);
         blocks++;
-        if (blocks == 3000)
+        if (!reverb_on && chain.on[FX_REVERB])
+            reverb_on = blocks;
+        if (reverb_on && !delay_off && !chain.on[FX_REVERB])
+            delay_off = blocks; // the reverb off again
+        if (blocks == 3500)
+        {
             half = chain.params[FX_FILTER][0];
+            reverb_half = chain.params[FX_REVERB][FxOutput::kLevel];
+        }
         if (morph.Active())
             last = chain.params[FX_FILTER][0];
     }
-    printf("      glide %.3f at PLAY, %.3f halfway to the line, %.3f before it\n", at, half, last);
-    Check(fabsf(at - .25f) < .01f && fabsf(half - (at + 1.f) / 2.f) < .01f && last > .99f,
-          "drop on a glide: it goes on, to its end on the line");
-    Check(landed == 1 && blocks > 3990 && blocks <= 4001 && chain.params[FX_FILTER][0] == .2f,
-          "drop on a glide: the next line, not the morph's second, and the drop's scene there");
+    printf("      build-up: the glide %.3f halfway, %.3f before the line; the reverb on in block %d "
+           "(level %.3f halfway), off in %d; landed in %d\n",
+           half, last, reverb_on, reverb_half, delay_off, blocks);
+    Check(fabsf(half - .5f) < .01f && last > .99f, "build-up: the glide to A, to its end on the line");
+    Check(reverb_on == 1 && fabsf(reverb_half - .5f) < .01f,
+          "build-up: A's fade-in comes on as the glide starts (held past its wait) and fades in");
+    Check(landed == 2 && blocks > 6990 && blocks <= 7001 && chain.params[FX_FILTER][0] == .2f,
+          "build-up: B on the second line from the release");
+    Check(blocks - delay_off >= 49 && blocks - delay_off <= 51,
+          "build-up: what B has off goes off 25ms before the line");
 
-    // a tap after PLAY: a bar later; a knob turned meanwhile moves where it lands
+    // a tap after the press: a bar later; a knob turned meanwhile moves where it lands
     while (clock.Position() != 0)
         DropBlock(clock, morph);
     morph.Start(Plan(MorphParam::GLIDE, 0.f, 1.f), clock.PulsesToBarLine(), true);
-    morph.Drop(scene.target, filter, filter, clock.PulsesToBarLine());
+    morph.Drop(scene.target, filter, filter, false);
     Check(morph.AddBar(clock.PulsesPerBarLine()), "drop: a tap adds a bar");
     Check(morph.SetParam(FX_FILTER, 0, .6f), "drop: a knob turned meanwhile goes to it");
+    release();
     landed = 0;
     blocks = 0;
     while (morph.Active())
@@ -583,13 +618,13 @@ static void TestDrop()
     Check(landed == 2 && blocks > 7990 && blocks <= 8001 && chain.params[FX_FILTER][0] == .6f,
           "drop: two lines later, where the knob put it");
 
-    // stopped (SHIFT + PLAY again): where it is, the keys not switched as they were
+    // stopped (SHIFT + its blinking key): where it is, the keys not switched as they were
     chain = FakeChain();
     chain.on[FX_DELAY] = true;
     plan = Plan(MorphParam::HOLD, .5f, .5f);
     plan.deferred = plan.was_on = delay;
     morph.Start(plan, clock.PulsesToBarLine(), true);
-    morph.Drop(scene.target, 0, 0, clock.PulsesToBarLine());
+    morph.Drop(scene.target, 0, 0, false);
     float live[kNumFx][kNumFxParams];
     uint16_t unswitched = 0, was_on = 0;
     Check(morph.Freeze(live, &unswitched, &was_on) && !morph.Active() && unswitched == delay

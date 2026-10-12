@@ -18,7 +18,7 @@
  *  SetFxParam(fx, param, val), SetCompParam(param, val), FastFxSlew() and the morph's
  *  StartFxMorph(plan), AddFxMorphBar(), LandFxMorph(), FreezeFxMorph(params, unswitched,
  *  was_on), FxMorphing(), the crossfader's FxMorphHeld() and FadeFxMorph(t), a drop's
- *  DropFxMorph(to, ui_on, on) and FxDropping(), and
+ *  DropFxMorph(to, ui_on, on, glide) and FxDropping(), and
  *  SetFxPool(pool) for the chaos key (Pool).
  */
 #pragma once
@@ -520,14 +520,15 @@ public:
         return true;
     }
 
-    /** Makes the morph, held or gliding, a drop (#153, FxMorph::Drop): hard to scene on the FX
-     *  clock's next bar line, or without one to where the morph goes, edits and all. The
-     *  controls show it at once, as in a morph; what's off at the line keeps what the engine
-     *  has until its key next comes on (stale_). False if no morph runs or the crossfader has
-     *  it. On the device, call it with the audio interrupt blocked */
-    FX_SCENE_ONCE bool Drop(const FxScene* scene)
+    /** Makes the held morph a drop (#175, FxMorph::Drop): hard to scene on its landing, the
+     *  bar line SHIFT's release counts to, or without one to where the morph goes, edits and
+     *  all; glide: a build-up, the morph glides on to the line first. The controls show it at
+     *  once, as in a morph; what's off at the line keeps what the engine has until its key
+     *  next comes on (stale_). False if no morph is held or the crossfader has it. On the
+     *  device, call it with the audio interrupt blocked */
+    FX_SCENE_ONCE bool Drop(const FxScene* scene, bool glide)
     {
-        if (!engine_->FxMorphing() || Fading())
+        if (!engine_->FxMorphHeld() || Fading())
             return false;
         uint16_t ui_on = 0, on = 0;
         for (size_t fx = 0; fx < kNumFx; fx++)
@@ -547,7 +548,7 @@ public:
         }
         for (size_t fx = 0; fx < kNumFx; fx++)
             on |= IsOn(fx) ? Bit(fx) : 0;
-        if (!engine_->DropFxMorph(params_, ui_on, on))
+        if (!engine_->DropFxMorph(params_, ui_on, on, glide))
             return false;
         stale_ = static_cast<uint16_t>(~on & ((1u << kNumFx) - 1));
         for (size_t fx = 0; fx < kNumFx; fx++)

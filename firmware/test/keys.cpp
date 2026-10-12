@@ -9,12 +9,11 @@ using namespace chompi;
 struct FakeHost
 {
     bool armed = false;
-    bool morphing = false;
     bool fx_held = false; // an FX key held, so SHIFT going down queues a latch
     bool can_quantize = true;
     Looper::State state = Looper::State::EMPTY;
     uint32_t now = 0;
-    int confirms = 0, shift_presses = 0, shift_uses = 0, freezes = 0, taps = 0, refusals = 0;
+    int confirms = 0, shift_presses = 0, shift_uses = 0, taps = 0, refusals = 0;
     int toggles = 0, records = 0, quantized = 0, stops = 0;
     int erases = 0, erases_at_end = 0, cancels = 0;
     bool erase_pending = false;
@@ -31,24 +30,6 @@ struct FakeHost
         return fx_held;
     }
     void ShiftUsed() { shift_uses++; }
-    bool drop = false; // a scene key tapped in this SHIFT hold: PLAY drops to it
-    int drops = 0;
-    bool DropScene()
-    {
-        if (!drop)
-            return false;
-        drop = false;
-        drops++;
-        return true;
-    }
-    bool FreezeMorph()
-    {
-        if (!morphing)
-            return false;
-        morphing = false;
-        freezes++;
-        return true;
-    }
     void Tap() { taps++; }
     void Refused() { refusals++; }
     uint32_t Now() const { return now; }
@@ -245,27 +226,16 @@ static void TestShiftCombos()
     k.Play(false);
     Check(h.taps == 2 && h.toggles == 0, "PLAY held + SHIFT + LOOP: no toggle on PLAY's release");
 
-    // SHIFT + PLAY: stops a morph; without one, play / pause
-    h.morphing = true;
+    // SHIFT + PLAY: play / pause, the scene gestures left it (#175); still a SHIFT combo
     k.Play(true);
     k.Play(false);
-    Check(h.freezes == 1 && h.toggles == 0, "SHIFT + PLAY in a morph: stopped, no toggle");
+    Check(h.toggles == 1, "SHIFT + PLAY: play / pause");
     k.Play(true);
     k.Play(false);
-    Check(h.freezes == 1 && h.toggles == 1, "SHIFT + PLAY without one: play / pause");
-
-    // #153: a scene key tapped in this SHIFT hold makes PLAY a drop, rather than a stop, and
-    // PLAY's release doesn't toggle
-    h.morphing = h.drop = true;
-    k.Play(true);
-    k.Play(false);
-    Check(h.drops == 1 && h.freezes == 1 && h.morphing && h.toggles == 1,
-          "SHIFT + scene key + PLAY: a drop, not a stop, no toggle");
-    k.Play(true);
-    k.Play(false);
-    Check(h.drops == 1 && h.freezes == 2 && h.toggles == 1,
-          "SHIFT + PLAY again: no scene tapped since, it stops the drop");
+    Check(h.toggles == 2, "SHIFT + PLAY again: play / pause again");
+    h.armed = true;
     k.Chompi(false);
+    Check(h.confirms == 0, "SHIFT + PLAY: a combo, CHOMPI's release doesn't confirm");
 }
 
 int main()

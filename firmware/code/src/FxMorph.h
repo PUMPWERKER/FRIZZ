@@ -31,13 +31,15 @@
  *  Land (B), Freeze (where it is), or Freeze at A, which the UI takes back to where it was
  *  (FxControls::EndFade).
  *
- *  A drop (#153, SHIFT + scene key + PLAY): Drop turns it into a hard switch on the next bar
- *  line, as a recall there would be, one more per AddBar. A glide already under way goes on
- *  and gets to its end on that line; a held morph doesn't move. Its landing is its own (Drop's
- *  scene, drop_to_), and every key that differs from it switches there: the ones coming on in
- *  the line's block, so what grabs (the freezer, the slicer, the tape stop, the shifter's swoop)
- *  starts on the line; the ones going off kDropLeadSamples before it (DropLead), so their fade
- *  ends on it. Until the line the FX sound as they were. The crossfader can't take a drop.
+ *  A drop (#175, SHIFT + scene key, then the transport pressed): Drop turns a held morph into
+ *  a hard switch on its landing, the bar line the release counts to, as a recall there would
+ *  be. Until the line the FX sound as they were; or, for a build-up (SHIFT + A, then B), the
+ *  glide to the plan's target (A) runs as a morph's, its fade-ins coming on, and the drop's
+ *  landing replaces its own. That landing is Drop's scene (drop_to_), and every key that
+ *  differs from it switches there: the ones coming on in the line's block, so what grabs (the
+ *  freezer, the slicer, the tape stop, the shifter's swoop) starts on the line; the ones going
+ *  off kDropLeadSamples before it (DropLead), so their fade ends on it. The crossfader can't
+ *  take a drop.
  */
 #pragma once
 #include "FxChain.h"
@@ -193,28 +195,32 @@ public:
             land_ = true;
     }
 
-    /** Makes it a drop (file comment): on the next bar line, pulses_to_bar pulses away, the FX
-     *  switch hard to `to` and the keys to `on`. ui_on: the keys as the UI had them before, which
-     *  the chain has but for the ones not switched yet. A glide under way gets to its end on
-     *  that line; a held one stays where it is. Extra bars: AddBar. False if none runs or the
-     *  crossfader has it. Call with the audio interrupt blocked */
+    /** Makes the held morph a drop (file comment): at its landing, the bar line Release
+     *  counts to, the FX switch hard to `to` and the keys to `on`. ui_on: the keys as the UI had
+     *  them before, which the chain has but for the ones not switched yet. glide: a build-up,
+     *  the glide to the plan's target goes on to the line, its fade-ins coming on; else nothing
+     *  moves until the line. Extra bars: AddBar. False if none is held, or it's a drop already.
+     *  Call with the audio interrupt blocked */
     FX_MORPH_ONCE bool Drop(const float to[kNumFx][kNumFxParams], uint16_t ui_on, uint16_t on,
-                            uint32_t pulses_to_bar)
+                            bool glide)
     {
-        if (!active_ || land_ || manual_)
+        if (!active_ || !holding_ || land_ || manual_ || drop_)
             return false;
         const uint16_t now_on = static_cast<uint16_t>((ui_on & ~deferred_) | (plan_.was_on & deferred_));
-        const uint16_t switched = static_cast<uint16_t>(now_on ^ on);
+        // a build-up's fade-ins still come on with its glide (Process), and the drop switches
+        // them at the line as the rest
+        const uint16_t wake = glide ? plan_.wake : 0;
         for (size_t fx = 0; fx < kNumFx; fx++)
         {
             const uint16_t bit = static_cast<uint16_t>(1u << fx);
-            // off now: its parameters at once, unheard, so it comes on as the scene; a send
-            // off in both rings out as it was, as in a morph (FxControls::Morph)
-            const bool set = !(now_on & bit) && ((on & bit) || !(kFxSends & bit));
+            // off now, and not coming on with the glide: its parameters at once, unheard, so it
+            // comes on as the scene; a send off in both rings out as it was, as in a morph
+            // (FxControls::Morph)
+            const bool set = !(now_on & bit) && !(wake & bit) && ((on & bit) || !(kFxSends & bit));
             for (size_t p = 0; p < kNumFxParams; p++)
             {
                 drop_to_[fx][p] = to[fx][p];
-                if (holding_ || set)
+                if (!glide || set)
                     plan_.how[fx][p] = MorphParam::HOLD;
                 if (set && live_[fx][p] != to[fx][p])
                 {
@@ -224,16 +230,10 @@ public:
             }
         }
         chain_->FastSlew();
-        plan_.deferred = deferred_ = switched;
+        plan_.deferred = deferred_ = static_cast<uint16_t>((now_on ^ on) | wake);
         plan_.was_on = now_on;
-        plan_.wake = 0;
+        plan_.wake = wake;
         pending_on_ = on;
-        // the glide from where it is to its end on the line
-        holding_ = false;
-        bars_left_ = 1;
-        t0_ = t_;
-        base_ = pos_;
-        expected_ = pos_ + static_cast<float>(pulses_to_bar);
         drop_ = true;
         return true;
     }
@@ -245,7 +245,7 @@ public:
                                                             float pulse_samples)
     {
         const uint16_t off = static_cast<uint16_t>(deferred_ & ~pending_on_);
-        if (!Dropping() || land_ || bars_left_ != 1 || !off
+        if (!Dropping() || holding_ || land_ || bars_left_ != 1 || !off
             || static_cast<float>(pulses_to_bar) * pulse_samples - since_pulse_ > kDropLeadSamples)
             return;
         deferred_ &= static_cast<uint16_t>(~off);
@@ -300,10 +300,7 @@ public:
             {
                 const uint16_t bit = static_cast<uint16_t>(1u << fx);
                 if (deferred_ & plan_.wake & bit)
-                {
-                    deferred_ &= static_cast<uint16_t>(~bit);
-                    chain_->SetOn(fx, pending_on_ & bit);
-                }
+                    Wake(fx, bit);
             }
         }
 
@@ -370,10 +367,10 @@ public:
         active_ = false;
     }
 
-    /** Stops it where it is (SHIFT + PLAY): the parameters stay where the glide got to, the
-     *  keys not yet switched stay as they were. Fills params with where that is, unswitched
-     *  with those keys, and was_on with which of them are on. False if it doesn't run. Call
-     *  with the audio interrupt blocked */
+    /** Stops it where it is (SHIFT + its blinking key, CC 81): the parameters stay where the
+     *  glide got to, the keys not yet switched stay as they were. Fills params with where that
+     *  is, unswitched with those keys, and was_on with which of them are on. False if it
+     *  doesn't run. Call with the audio interrupt blocked */
     FX_MORPH_ONCE bool Freeze(float params[kNumFx][kNumFxParams], uint16_t* unswitched,
                               uint16_t* was_on)
     {
@@ -425,6 +422,23 @@ public:
     inline bool Active() const { return active_; }
 
 private:
+    /** A fade-in's key comes on, its glide under way. In a build-up it's on now whatever the
+     *  drop makes it, which switches it at the line if that's off */
+    __attribute__((noinline, optimize("Os"))) void Wake(size_t fx, uint16_t bit)
+    {
+        if (!drop_)
+        {
+            deferred_ &= static_cast<uint16_t>(~bit);
+            chain_->SetOn(fx, pending_on_ & bit);
+            return;
+        }
+        plan_.wake &= static_cast<uint16_t>(~bit);
+        plan_.was_on |= bit;
+        if (pending_on_ & bit)
+            deferred_ &= static_cast<uint16_t>(~bit);
+        chain_->SetOn(fx, true);
+    }
+
     /** Where a gliding parameter glides to: a fade-out to neutral, the rest to the target */
     inline float End(size_t fx, size_t p, MorphParam how) const
     {

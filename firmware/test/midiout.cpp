@@ -252,6 +252,40 @@ int main()
         }
     }});
 
+    // #174: a standstill is a pause to the gear behind: Stop going into it, the clock running
+    // on at 50 BPM; turned out of it, Song Position, then Continue on that 16th
+    cases.push_back({"standstill", [] {
+        RunMs(kReadyMs);
+        SetOut(1);
+        RecordLoop(2000);
+        RunMs(1000);
+        TakeSent();
+        Turn(5, -98); // 1/16x, then a standstill
+        RunMs(4000);
+        Sent s = TakeSent();
+        Check(Count(s.trs, 0xFC) == 1 && Count(s.trs, 0xFB) == 0, "standstill: Stop goes out, once");
+        RunMs(3000);
+        s = TakeSent();
+        double mean, worst;
+        Gaps(s.trs, mean, worst);
+        Report("standstill: a tick every %.2f ms (50 BPM: %.2f)", mean, 60000. / (50. * 24.));
+        Check(fabs(mean - 60000. / (50. * 24.)) < .2 && Count(s.trs, 0xFC) == 0,
+              "standstill: the clock runs on at 50 BPM, nothing else");
+        Tap("ENC_5_SW"); // 1x
+        RunMs(1500);
+        s = TakeSent();
+        size_t spp = 0, cont = 0;
+        while (spp < s.trs.size() && s.trs[spp].byte != 0xF2)
+            spp++;
+        while (cont < s.trs.size() && s.trs[cont].byte != 0xFB)
+            cont++;
+        Check(spp + 2 < s.trs.size() && cont + 1 < s.trs.size() && spp < cont && Count(s.trs, 0xFB) == 1,
+              "standstill: turned out of it, Song Position, then Continue");
+        if (cont + 1 < s.trs.size())
+            Check(s.trs[cont + 1].byte == 0xF8 && s.trs[cont + 1].ms - s.trs[cont].ms < .5,
+                  "standstill: Continue goes with a tick");
+    }});
+
     // a DAW's Start, followed (#97 D4): the loop recorded to its clock goes back to its start,
     // and so does the gear behind: Start goes out with that tick, the clock steady through it
     cases.push_back({"follow-start", [] {
