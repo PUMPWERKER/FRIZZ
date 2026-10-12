@@ -374,6 +374,10 @@ what FRIZZ does.
   speed. It now jumps back to the live sound in a short crossfade and plays on slowed.
 - **A MIDI clock that sends its ticks two at a time** (some DAWs over USB) no longer locks
   FRIZZ to half its tempo when it starts while FRIZZ is already running (#92).
+- **A scene file from a newer FRIZZ** (or one whose layout line was edited into something
+  that isn't a number) is no longer read as if it were this version's, with knobs in the
+  wrong places, and then overwritten by the next save (#168). It's kept: the next save
+  moves it to `frizz_scenes.bak`, as for any scene file FRIZZ can't read.
 
 ## v0.11 (2026-10-10)
 

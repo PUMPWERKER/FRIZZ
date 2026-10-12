@@ -331,6 +331,22 @@ int main()
     Check(!ParseScenes("", defaults, bad), "rejects an empty file");
     Check(!ParseScenes("FRIZZ scenes 10\nscene 1\n", defaults, bad) && !bad[0].used,
           "rejects another version whose header starts the same");
+    // a layout from a newer FRIZZ, or not a number: unreadable (to the .bak at the next
+    // save), not read as an older one and overwritten (#168)
+    {
+        char newer[64];
+        snprintf(newer, sizeof(newer), "FRIZZ scenes 1\nscene 1\nlayout %ld\nscene 2\n",
+                 scenefile::kLayoutNow + 1);
+        Check(!ParseScenes(newer, defaults, bad) && !bad[0].used && !bad[1].used,
+              "rejects a layout newer than this FRIZZ's, every scene unused");
+        Check(!ParseScenes("FRIZZ scenes 1\nlayout x\nscene 1\n", defaults, bad) && !bad[0].used
+                  && !ParseScenes("FRIZZ scenes 1\nlayout 4x\nscene 1\n", defaults, bad)
+                  && !ParseScenes("FRIZZ scenes 1\nlayout\nscene 1\n", defaults, bad),
+              "rejects a layout that isn't a number");
+        char now[64];
+        snprintf(now, sizeof(now), "FRIZZ scenes 1\nlayout %ld\nscene 1\n", scenefile::kLayoutNow);
+        Check(ParseScenes(now, defaults, bad) && bad[0].used, "reads its own layout");
+    }
     Check(ParseScenes("FRIZZ scenes 1\r\nscene 1\r\n", defaults, bad) && bad[0].used,
           "reads a file saved with Windows line ends");
 

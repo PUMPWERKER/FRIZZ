@@ -235,7 +235,7 @@ static_assert(LongestFile() <= kSceneFileMax, "kSceneFileMax holds the longest s
 
 /** Reads the file's text into scenes, all of them: a scene the text lacks is unused, an
  *  effect it lacks gets defaults. Returns false, with every scene unused, if it isn't a
- *  scene file */
+ *  scene file, or its layout is newer than kLayoutNow or not a number */
 inline __attribute__((noinline, optimize("Os"))) bool ParseScenes(const char* text,
                         const float (*defaults)[kNumFxParams],
                         FxScene* scenes)
@@ -261,8 +261,17 @@ inline __attribute__((noinline, optimize("Os"))) bool ParseScenes(const char* te
 
         if (Is(word, len, kLayout))
         {
+            // a layout from a newer FRIZZ, or not a number, can't be read: read as an older
+            // one, the next save would overwrite it with knobs in the wrong places (#168)
             const char* num = Word(p, len);
-            layout = num ? strtol(num, nullptr, 10) : 1;
+            char* end = nullptr;
+            layout = num ? strtol(num, &end, 10) : 0;
+            if (!num || end != num + len || layout > kLayoutNow)
+            {
+                for (size_t s = 0; s < kNumScenes; s++)
+                    scenes[s].used = false;
+                return false;
+            }
             continue;
         }
 
