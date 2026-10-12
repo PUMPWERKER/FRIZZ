@@ -157,7 +157,7 @@ class FileCopier
                 char kit[32];
                 Engine::GetFileNameForSlot(req.dest, req.dest_bank, req.dest_mode, kit);
                 Engine::KitName(kit);
-                chompi::kit_loader.Remove(kit);
+                chompi::slot_loader.Remove(kit);
             }
 
             char fname[32];
@@ -179,6 +179,7 @@ class FileCopier
                 Engine::GetFileNameForSlot(req.dest, req.dest_bank, req.dest_mode, target_);
                 if(!Create(*mem_.dst, target_, h + size_))
                     return Abort();
+                chompi::slot_loader.Forget(target_);
                 Header(mem_.out, size_);
                 carry_ = h;
             }
@@ -200,7 +201,7 @@ class FileCopier
             Engine::GetFileNameForSlot(req.dest, req.dest_bank, req.dest_mode, target_);
             f_unlink(target_);
             Engine::KitName(target_);
-            chompi::kit_loader.Remove(target_);
+            chompi::slot_loader.Remove(target_);
             fx_->SetFileExists(req.dest - 1, req.dest_bank, req.dest_mode, true);
             chompi::kit_slots[req.dest_bank] |= 1 << req.dest;
 
@@ -304,7 +305,10 @@ class FileCopier
                         {
                             int16_t *samples = reinterpret_cast<int16_t *>(data_);
                             if(is_chompi_ram == CopyRequest::RamDir::TO)
+                            {
+                                chompi::slot_loader.Reserve(chompi_ram.GetWriteHead() + n_ / 2);
                                 chompi_ram.BlockWrite(samples, n_ / 2);
+                            }
                             else if(!looper_staged || looper_ram.IsLoading()) // not after a reset
                                 looper_ram.BlockWrite(samples, n_ / 2, !looper_staged);
                             done_ += n_;

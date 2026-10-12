@@ -52,20 +52,20 @@ namespace daisy
 
         void SetVelocity(float vel) { velocity = vel * 0.00787401f; }
 
-        // RAM playback: the recorded sample, or an .aif at its own sample rate
-        void SetRamSource(RamBufferMemory* buff, bool aiff)
+        // RAM playback: the recorded sample, or the loaded slot at its own sample rate
+        void SetRamSource(RamBufferMemory* buff, bool loaded)
         {
             if(ram_buff.Memory() != buff)
                 ram_buff.Bind(buff);
-            aiff_ = aiff;
+            loaded_ = loaded;
         }
 
         void SetAutoLoop (bool loop) { auto_loop = loop; }
         void ToggleAutoLoop () { auto_loop = !auto_loop; }
         bool GetAutoLoop() { return auto_loop; }
         bool Loops() const { return auto_loop && !IsKit(); } // a kit slice plays once
-        bool IsAiff() const { return aiff_; }
-        bool IsKit() const { return aiff_ && chompi::slot_aiff.kit; }
+        bool IsLoaded() const { return loaded_; }
+        bool IsKit() const { return loaded_ && chompi::slot_info.kit; }
 
         void SetSustainActive(bool sus) { sustain = sus; }
         bool GetSustainActive() { return sustain; }
@@ -429,7 +429,7 @@ namespace daisy
             else
             {
                 /** handle with varispeed (positive only) */
-                float inc = varispeed_factor * global_pitch * (aiff_ ? chompi::slot_aiff.rate / sr_ : 1.f);
+                float inc = varispeed_factor * global_pitch * (loaded_ ? chompi::slot_info.rate / sr_ : 1.f);
 
                 rpos_frac_ += inc;
                 if (rpos_frac_ >= 1.f)
@@ -917,7 +917,7 @@ namespace daisy
         size_t open_requests_;
         size_t last_read_size_;
 
-        bool aiff_ = false;
+        bool loaded_ = false;
 
         /** Varispeed handling */
         float varispeed_factor, varispeed_target;

@@ -277,21 +277,21 @@ namespace chompi
                 }
 
                 const bool kit_leds = fx_->AiffSelected() && (switch_state || fx_->GetInputSource() != InputSource::MIC)
-                                      && (fx_->KitSelected() || kit_loader.Busy() || kit_loader.Failed());
+                                      && (fx_->KitSelected() || slot_loader.Busy() || slot_loader.Failed());
                 if (fx_->IsKeyPlaying(i))
                     SetSmtLedFloat(led_map[i], 1.f, 1.f, 1.f);
                 else if(kit_leds) // loading blinks, red is a file it can't play, the slices light, the one to edit brighter
                 {
                     const int slice = KeySlice(i);
-                    if(kit_loader.Busy() && (System::GetNow() / 150) % 2)
+                    if(slot_loader.Busy() && (System::GetNow() / 150) % 2)
                         SetSmtLedFloat(led_map[i], color[0] * .25f, color[1] * .25f, color[2] * .25f);
-                    else if(kit_loader.Busy())
+                    else if(slot_loader.Busy())
                         SetSmtLed(led_map[i], 0, 0, 0);
-                    else if(kit_loader.Failed())
+                    else if(slot_loader.Failed())
                         SetSmtLedFloat(led_map[i], red[0] * .25f, red[1] * .25f, red[2] * .25f);
-                    else if(slice == kit_loader.LastSlice())
+                    else if(slice == slot_loader.LastSlice())
                         SetSmtLedFloat(led_map[i], color[0] * .7f, color[1] * .7f, color[2] * .7f);
-                    else if(kit_loader.HasSlice(slice))
+                    else if(slot_loader.HasSlice(slice))
                         SetSmtLedFloat(led_map[i], color[0] * .25f, color[1] * .25f, color[2] * .25f);
                     else
                         SetSmtLed(led_map[i], 0, 0, 0);

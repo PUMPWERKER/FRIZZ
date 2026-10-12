@@ -17,7 +17,7 @@
 #include "limiter.h"
 #include "InterpolatedDelayLine.h"
 #include "Clock.h"
-#include "KitLoader.h"
+#include "SlotLoader.h"
 #include "Arp.h"
 #include "ArpKnob.h"
 #include <algorithm>
@@ -643,6 +643,9 @@ namespace daisy
                 }
             }
 
+            if(record)
+                chompi::slot_loader.Reserve(chompi_writer.GetWriteHead());
+
             if(record && chompi_writer.WriteFullLength())
                 StopRecording();
 
@@ -787,10 +790,10 @@ namespace daisy
         void StartPlayback(float transpose_nn, int key, float vel) __attribute__((optimize("Os")))
         {
             // a kit plays a slice per key, from the lowest key up
-            if(AiffSelected() && !chompi::kit_loader.Frames()) // still loading
+            if(AiffSelected() && !chompi::slot_loader.Frames()) // still loading
                 return;
             const bool kit = KitSelected();
-            const int slice = kit ? chompi::kit_loader.Slice(int(transpose_nn) + 12) : -1;
+            const int slice = kit ? chompi::slot_loader.Slice(int(transpose_nn) + 12) : -1;
             if(kit && slice < 0)
                 return;
 
@@ -901,13 +904,17 @@ namespace daisy
 
             if(kit)
             {
-                const float frames = chompi::kit_loader.Frames();
+                const float frames = chompi::slot_loader.Frames();
                 chompi_voice[free_idx].SetVarispeed(1.f);
-                chompi_voice[free_idx].SetStartPointForce(chompi::slot_aiff.start[slice] / frames);
-                chompi_voice[free_idx].SetEndPointForce(std::min(float(chompi::slot_aiff.end[slice]), frames) / frames);
+                chompi_voice[free_idx].SetStartPointForce(chompi::slot_info.start[slice] / frames);
+                chompi_voice[free_idx].SetEndPointForce(std::min(float(chompi::slot_info.end[slice]), frames) / frames);
             }
             else if(voice_mode == VoiceMode::JAMMI)
+            {
                 chompi_voice[free_idx].SetVarispeed(MidiNoteToPlaybackRatio(transpose_nn));
+                if(SlotLoaded() != chompi_voice[free_idx].IsLoaded()) // a .wav loaded or dropped since the voice was set up
+                    SetVoiceSource(free_idx, false);
+            }
             else if(voice_mode == VoiceMode::CUBBI)
                 chompi_voice[free_idx].SetVarispeed(1.f);
 
@@ -1682,10 +1689,8 @@ namespace daisy
 
             GetFileNameForSlot(target, b, m, fname);
             if(kit) // no .wav there, its .aif and sidecar instead
-            {
                 KitName(fname);
-                chompi::kit_loader.Forget(fname);
-            }
+            chompi::slot_loader.Forget(fname);
 
             FileRequest req(FileRequest::Type::UNLINK, nullptr, fname, 0, nullptr, this);
             file_manager.request_fifo.PushBack(req);
@@ -1769,15 +1774,15 @@ namespace daisy
         {
             if(!KitSelected())
                 return false;
-            chompi::kit_loader.Edit(end, turns * int(chompi::slot_aiff.rate * .002f), System::GetNow());
+            chompi::slot_loader.Edit(end, turns * int(chompi::slot_info.rate * .002f), System::GetNow());
             return true;
         }
 
         bool ArpAllowed() { return voice_mode == VoiceMode::JAMMI && !KitSelected(); }
 
         // the JAMMI slot plays an .aif
-        bool AiffSelected() { return voice_mode == VoiceMode::JAMMI && chompi_voice[0].IsAiff(); }
-        bool KitSelected() { return voice_mode == VoiceMode::JAMMI && chompi_voice[0].IsKit(); }
+        bool AiffSelected() { return voice_mode == VoiceMode::JAMMI && aiff_slot_; }
+        bool KitSelected() { return AiffSelected() && chompi::slot_info.kit; }
 
         // a JAMMI slot that plays an OP-1 .aif
         static bool IsKitSlot(size_t slot, size_t bank, VoiceMode mode)
@@ -1834,16 +1839,16 @@ namespace daisy
 
             char name_buffer[32];
             GetFileNameForSlot(idx, bank[int(voice_mode)], voice_mode, name_buffer);
-            const bool kit = IsKitSlot(idx, bank[int(voice_mode)], voice_mode); // played from RAM
+            const bool kit = IsKitSlot(idx, bank[int(voice_mode)], voice_mode); // an .aif, only from RAM
+            aiff_slot_ = kit;
             if(kit)
-            {
                 KitName(name_buffer);
-                chompi::kit_loader.Request(name_buffer);
-            }
+            if(voice_mode == VoiceMode::JAMMI && idx != 15) // a .wav streams until it is in RAM
+                chompi::slot_loader.Request(name_buffer);
 
             for(size_t i = 0; i < kMaxPoly; i++)
             {
-                if(chompi_voice[i].IsKit() || chompi_voice[i].IsAiff() != kit) // no key up would end it
+                if(chompi_voice[i].IsLoaded() || kit) // slot_buff gets the new slot, no key up ends a kit slice
                     chompi_voice[i].StopPlaying();
                 if(idx != 15 && !kit)
                 {
@@ -1852,9 +1857,22 @@ namespace daisy
 
                 chompi_voice[i].SetSlot(idx); 
                 chompi_voice[i].SetCubbiMode(voice_mode == VoiceMode::CUBBI);
-                chompi_voice[i].SetRamSource(kit ? &chompi::kit_buff : chompi_writer.Memory(), kit);
-                chompi_voice[i].SetUsingRam(idx == 15 || kit, click);
+                SetVoiceSource(i, click);
             }
+        }
+
+        // the JAMMI slot plays from slot_buff: an .aif always, a .wav once it is loaded
+        bool SlotLoaded()
+        {
+            return voice_mode == VoiceMode::JAMMI && voice_slot_ != 15 && (aiff_slot_ || chompi::slot_loader.Loaded());
+        }
+
+        // from RAM: the loaded slot or the recording (slot 15); else from the card. Not inlined, it saves code room.
+        void SetVoiceSource(size_t i, bool click) __attribute__((noinline))
+        {
+            const bool loaded = SlotLoaded();
+            chompi_voice[i].SetRamSource(loaded ? &chompi::slot_buff : chompi_writer.Memory(), loaded);
+            chompi_voice[i].SetUsingRam(loaded || voice_slot_ == 15, click);
         }
 
         inline VoiceMode GetVoiceMode () { return voice_mode; }
@@ -1951,6 +1969,7 @@ namespace daisy
 
         bool file_exists[2][5][15]; // mode, bank, slot
         size_t voice_slot_;
+        bool aiff_slot_ = false; // the voices were set up for an .aif, a copy may change kit_slots meanwhile
         size_t cubbi_slot_;
 
         // in jammi mode, which bank is currently active?

@@ -114,7 +114,8 @@ namespace daisy
                 *r = buff->mem[read_head + 1];
                 read_head = new_read_head;
             }
-            else if(rev && read_head >= buff->start + 2)
+            // the memory may have been emptied or replaced by a shorter one
+            else if(rev && read_head >= buff->start + 2 && read_head <= End())
             {
                 *l = buff->mem[read_head - 2];
                 *r = buff->mem[read_head - 1];

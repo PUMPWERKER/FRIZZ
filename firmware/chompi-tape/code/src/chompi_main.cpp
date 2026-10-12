@@ -30,15 +30,14 @@ Clock DSY_DTCMRAM_BSS chompi::beat_clock;
 LoopSync DSY_DTCMRAM_BSS daisy::loop_sync;
 Arp DSY_DTCMRAM_BSS chompi::arp;
 ArpKnob DSY_DTCMRAM_BSS chompi::arp_knob;
-AiffInfo DSY_DTCMRAM_BSS chompi::slot_aiff;
+AiffInfo DSY_DTCMRAM_BSS chompi::slot_info;
 uint16_t DSY_DTCMRAM_BSS chompi::kit_slots[5];
-RamBufferMemory DSY_DTCMRAM_BSS chompi::kit_buff;
-KitLoader DSY_DTCMRAM_BSS chompi::kit_loader;
-int16_t DSY_SDRAM_BSS kit_mem[kKitMaxFrames * 2];
+RamBufferMemory DSY_DTCMRAM_BSS chompi::slot_buff;
+SlotLoader DSY_DTCMRAM_BSS chompi::slot_loader;
 SdDma DSY_DTCMRAM_BSS chompi::sd_dma;
 SampleFifo __attribute__((section(".d2_bss"))) daisy::voice_fifos[kMaxPoly]; // D2 is clocked before the constructors run
-SdFile DSY_SDRAM_BSS kit_file, copy_files[2]; // the SD DMA can't reach DTCM
-uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) kit_bounce[kKitBounce];
+SdFile DSY_SDRAM_BSS slot_file, copy_files[2]; // the SD DMA can't reach DTCM
+uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) slot_bounce[kSlotBounce];
 uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) copy_in[SdDma::kBuffer];
 uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) copy_out[SdDma::kBuffer];
 chompi::InterpolatedDelayLine::AudioSample DSY_SDRAM_BSS del_mem[kMaxDelayTime];
@@ -199,10 +198,11 @@ void SDCallback(void* data)
     {
         pret = now;
         ui.WritePresets();
-        kit_loader.Save(now);
+        slot_loader.Save(now);
     }
 
-    kit_loader.Step(); // last, it may start a transfer
+    if(engine.GetFileManager()->request_fifo.IsEmpty()) // the voices' reads go first
+        slot_loader.Step(); // last, it may start a transfer
 }
 
 uint32_t uit, now, pre_startt;
@@ -359,12 +359,11 @@ int main(void)
     loop_sync.Init();
     arp.Init();
     arp_knob.Init();
-    slot_aiff = AiffInfo();
+    slot_info = AiffInfo();
     std::fill(kit_slots, kit_slots + 5, 0);
-    kit_buff = RamBufferMemory();
-    kit_buff.Init(kit_mem);
+    slot_buff = RamBufferMemory();
     sd_dma.Init();
-    kit_loader.Init(&kit_file, kit_bounce);
+    slot_loader.Init(&slot_file, slot_bounce, chompi_mem, kMaxRamBuffSize, &chompi_buff);
     hw.Init();
     // System::Delay(100);
 

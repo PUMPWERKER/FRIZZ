@@ -6,16 +6,16 @@
 #include <algorithm>
 #include "fatfs.h"
 #include "SdDma.h"
+#include "Wav.h"
 #include "RamBuffer.h"
 #include "AiffKit.h"
 
 namespace chompi
 {
-    static constexpr size_t kKitMaxFrames = 12 * 48000; // the OP-1 limit is 12 s
-    static constexpr size_t kKitBounce    = SdDma::kBuffer;
+    static constexpr size_t kSlotBounce = SdDma::kBuffer;
     static constexpr uint32_t kKitSaveDelay = 1000;     // ms after the last edit
 
-    extern daisy::RamBufferMemory kit_buff; // the loaded kit, stereo, played from RAM
+    extern daisy::RamBufferMemory slot_buff; // the loaded slot, stereo, played from RAM
 
     // The same name with another extension: a kit's .json sidecar holds its slice edits, the .aif stays untouched
     inline void KitFileName(char *name, const char *from, const char *ext)
@@ -26,14 +26,21 @@ namespace chompi
         strcpy(name + (n < 4 ? n : n - 4), ext);
     }
 
-    // Loads a JAMMI slot's OP-1 kit into kit_buff by DMA, a chunk per transfer, and keeps its slice edits
-    // in the sidecar. Everything here runs on the SD timer, except Request, Edit and Forget.
+    // Loads the JAMMI slot into slot_buff by DMA, a chunk per transfer: an OP-1 kit or other .aif, or a .wav that fits
+    // (else it streams), and keeps a kit's slice edits in the sidecar. Everything here runs on the SD timer, except
+    // Request, Loaded, Edit, Forget and Reserve.
     // The SD DMA can't reach DTCM and wants aligned addresses, so reads go through a bounce buffer in SDRAM.
-    class KitLoader
+    // slot_buff is the top of the recording's memory; the recording growing near it drops it.
+    class SlotLoader
     {
       public:
-        void Init(SdFile *file, uint8_t *bounce)
+        void Init(SdFile *file, uint8_t *bounce, int16_t *pool, size_t pool_size, const daisy::RamBufferMemory *recording)
         {
+            pool_ = pool;
+            pool_size_ = pool_size;
+            recording_ = recording;
+            evict_ = false;
+            slot_buff.mem = pool + pool_size;
             file_ = file;
             fil_ = &file->fil;
             bounce_ = bounce;
@@ -43,7 +50,7 @@ namespace chompi
             last_slice_ = -1;
         }
 
-        // from the UI: load the slot's kit unless it is there already
+        // from the UI: load the slot unless it is there already
         void Request(const char *name)
         {
             pending_ = false;
@@ -53,14 +60,29 @@ namespace chompi
             pending_ = true;
         }
 
-        uint32_t Frames() const { return kit_buff.length / 2; }
+        uint32_t Frames() const { return slot_buff.length / 2; }
+        // the requested slot is in RAM
+        bool Loaded() const
+        {
+            return !pending_ && !loading_ && !evict_ && slot_buff.length && name_[0] && !strcmp(want_, name_);
+        }
+
+        // the recording writes up to end (samples): the cache goes when it gets near
+        void Reserve(size_t end)
+        {
+            if(end + kKeepFree >= CacheLow())
+            {
+                evict_ = true;
+                slot_buff.length = 0;
+            }
+        }
         bool Busy() const { return pending_ || loading_; }
         bool Failed() const { return failed_; } // the file isn't one this can play
 
         bool HasSlice(int slice) const
         {
-            return kit_buff.length && slice >= 0 && slice < int(kKitSlices)
-                   && slot_aiff.end[slice] > slot_aiff.start[slice] && slot_aiff.start[slice] < Frames();
+            return slot_buff.length && slice >= 0 && slice < int(kKitSlices)
+                   && slot_info.end[slice] > slot_info.start[slice] && slot_info.start[slice] < Frames();
         }
         int LastSlice() const { return last_slice_; }
 
@@ -77,16 +99,16 @@ namespace chompi
         void Edit(bool end, int frames, uint32_t now)
         {
             const int slice = last_slice_;
-            if(slice < 0 || !kit_buff.length)
+            if(slice < 0 || !slot_buff.length)
                 return;
-            const int32_t min_len = int32_t(slot_aiff.rate * .005f); // 5 ms
-            int32_t s = slot_aiff.start[slice], e = slot_aiff.end[slice];
+            const int32_t min_len = int32_t(slot_info.rate * .005f); // 5 ms
+            int32_t s = slot_info.start[slice], e = slot_info.end[slice];
             if(end)
                 e = std::max(s + min_len, std::min(e + frames, int32_t(Frames())));
             else
                 s = std::max(int32_t(0), std::min(s + frames, e - min_len));
-            slot_aiff.start[slice] = s;
-            slot_aiff.end[slice] = e;
+            slot_info.start[slice] = s;
+            slot_info.end[slice] = e;
             dirty_ = true;
             edit_time_ = now;
         }
@@ -114,6 +136,12 @@ namespace chompi
         // SD timer
         void Step()
         {
+            if(evict_)
+            {
+                Drop();
+                name_[0] = '\0';
+                evict_ = false;
+            }
             if(pending_)
                 Open();
             if(loading_)
@@ -128,6 +156,13 @@ namespace chompi
         }
 
       private:
+        static constexpr size_t kKeepFree = 48000 * 2; // samples between the recording and the cache
+
+        size_t CacheLow() const
+        {
+            return (loading_ || slot_buff.length) && !evict_ ? size_t(slot_buff.mem - pool_) : pool_size_;
+        }
+
         void Write()
         {
             dirty_ = false;
@@ -135,10 +170,10 @@ namespace chompi
             char *json = reinterpret_cast<char *>(bounce_);
             int n = sprintf(json, "{\"size\":%lu,\"start\":[", (unsigned long)size_);
             for(size_t i = 0; i < kKitSlices; i++)
-                n += sprintf(json + n, i ? ",%lu" : "%lu", (unsigned long)slot_aiff.start[i]);
+                n += sprintf(json + n, i ? ",%lu" : "%lu", (unsigned long)slot_info.start[i]);
             n += sprintf(json + n, "],\"end\":[");
             for(size_t i = 0; i < kKitSlices; i++)
-                n += sprintf(json + n, i ? ",%lu" : "%lu", (unsigned long)slot_aiff.end[i]);
+                n += sprintf(json + n, i ? ",%lu" : "%lu", (unsigned long)slot_info.end[i]);
             n += sprintf(json + n, "]}");
 
             char tmp[32];
@@ -160,7 +195,7 @@ namespace chompi
         {
             UINT br = 0;
             const uint32_t pad = pos & 3;
-            if(n + pad > kKitBounce || f_lseek(fil_, pos) != FR_OK || f_read(fil_, bounce_ + pad, n, &br) != FR_OK
+            if(n + pad > kSlotBounce || f_lseek(fil_, pos) != FR_OK || f_read(fil_, bounce_ + pad, n, &br) != FR_OK
                || br != n)
                 return false;
             memcpy(dst, bounce_ + pad, n);
@@ -172,11 +207,7 @@ namespace chompi
             pending_ = false;
             if(name_[0] && !strcmp(want_, name_)) // loaded or loading
                 return;
-            file_->Close();
-            loading_ = reading_ = false;
-            if(dirty_) // the edits of the kit before
-                Write();
-            kit_buff.length = 0; // silent until loaded
+            Drop();
             last_slice_ = -1;
             failed_ = false;
             strcpy(name_, want_);
@@ -187,15 +218,29 @@ namespace chompi
                 return;
             }
 
-            // the JSON scratch is the kit memory, the audio comes after the parse
             size_ = file_->Size();
-            auto read = [this](uint32_t pos, void *dst, uint32_t n) { return Read(pos, dst, n); };
-            if(!ParseAiff(read, size_, slot_aiff, reinterpret_cast<char *>(kit_buff.mem), kKitBounce - 4))
+            if(!IsAiffName(name_)) // a .wav is 48 kHz stereo on the card, one that doesn't fit streams
             {
-                Fail();
-                return;
+                if(!Wav())
+                {
+                    file_->Close();
+                    name_[0] = '\0';
+                    return;
+                }
             }
-            frames_ = slot_aiff.frames < kKitMaxFrames ? slot_aiff.frames : kKitMaxFrames;
+            else // the JSON scratch is the top of the pool, the audio comes after the parse
+            {
+                auto read = [this](uint32_t pos, void *dst, uint32_t n) { return Read(pos, dst, n); };
+                char *scratch = reinterpret_cast<char *>(pool_ + pool_size_) - kSlotBounce;
+                if(Room() * 4 < kSlotBounce || !ParseAiff(read, size_, slot_info, scratch, kSlotBounce))
+                {
+                    Fail();
+                    return;
+                }
+            }
+            frames_ = std::min<uint32_t>(slot_info.frames, Room());
+            slot_buff.mem = pool_ + pool_size_ - frames_ * 2;
+            __DMB(); // before loading_ makes CacheLow use it
             done_ = 0;
             loading_ = true;
         }
@@ -203,7 +248,7 @@ namespace chompi
         // a chunk per transfer, converted to stereo when it is in
         void Load()
         {
-            const AiffInfo &a = slot_aiff;
+            const AiffInfo &a = slot_info;
             const uint32_t frame = a.channels * 2;
             if(reading_)
             {
@@ -214,7 +259,7 @@ namespace chompi
                     return;
                 }
                 const uint8_t *src = bounce_ + skip_;
-                int16_t *dst = kit_buff.mem + done_ * 2;
+                int16_t *dst = slot_buff.mem + done_ * 2;
                 for(uint32_t i = 0; i < chunk_; i++)
                 {
                     const uint8_t *l = src + i * frame, *r = l + frame - 2;
@@ -222,13 +267,16 @@ namespace chompi
                     dst[2 * i + 1] = a.little_endian ? r[0] | r[1] << 8 : r[0] << 8 | r[1];
                 }
                 done_ += chunk_;
+                if(evict_) // dropped meanwhile, Step cleans up
+                    return;
                 if(done_ >= frames_)
                 {
                     file_->Close();
                     loading_ = false;
-                    ReadSidecar();
+                    if(IsAiffName(name_))
+                        ReadSidecar();
                     __DMB(); // the voices must not see the length before the audio
-                    kit_buff.length = frames_ * 2;
+                    slot_buff.length = frames_ * 2;
                     return;
                 }
             }
@@ -259,13 +307,13 @@ namespace chompi
             const uint32_t n = f_size(fil_);
             char *json = reinterpret_cast<char *>(bounce_);
             UINT br = 0;
-            const bool ok = n < kKitBounce && f_read(fil_, json, n, &br) == FR_OK && br == n;
+            const bool ok = n < kSlotBounce && f_read(fil_, json, n, &br) == FR_OK && br == n;
             f_close(fil_);
             int32_t size;
             if(!ok || JSON_Validate(json, n) != JSONSuccess || !aiff::Number(json, n, "size", 4, size)
                || uint32_t(size) != size_)
                 return;
-            AiffInfo edits = slot_aiff;
+            AiffInfo edits = slot_info;
             for(uint32_t i = 0; i < kKitSlices; i++)
             {
                 int32_t s, e;
@@ -274,7 +322,41 @@ namespace chompi
                 edits.start[i] = s;
                 edits.end[i] = e;
             }
-            slot_aiff = edits;
+            slot_info = edits;
+        }
+
+        // the data chunk of a .wav that fits
+        bool Wav()
+        {
+            uint8_t head[256];
+            const uint32_t n = std::min<uint32_t>(size_, sizeof(head));
+            uint32_t at, bytes;
+            if(!Read(0, head, n) || !WavData(head, n, size_, at, bytes))
+                return false;
+            slot_info = AiffInfo();
+            slot_info.data_offset = at;
+            slot_info.frames = bytes / 4;
+            slot_info.channels = 2;
+            slot_info.little_endian = true;
+            slot_info.rate = 48000.f;
+            return slot_info.frames && slot_info.frames <= Room();
+        }
+
+        // frames that fit above the recording
+        uint32_t Room() const
+        {
+            const size_t used = recording_->length + kKeepFree;
+            return used < pool_size_ ? (pool_size_ - used) / 2 : 0;
+        }
+
+        // stops a load and saves the kit's edits, silent until the next load
+        void Drop()
+        {
+            file_->Close();
+            loading_ = reading_ = false;
+            if(dirty_)
+                Write();
+            slot_buff.length = 0;
         }
 
         void Fail()
@@ -285,6 +367,10 @@ namespace chompi
             failed_ = true;
         }
 
+        int16_t *pool_;
+        size_t pool_size_;
+        const daisy::RamBufferMemory *recording_;
+        volatile bool evict_;
         SdFile *file_;
         FIL *fil_; // the same file's FIL, for the small reads and the sidecar
         uint8_t *bounce_;
@@ -296,7 +382,7 @@ namespace chompi
         uint32_t frames_, done_, size_, edit_time_, chunk_, skip_;
     };
 
-    extern KitLoader kit_loader;
+    extern SlotLoader slot_loader;
 }
 
 #pragma GCC pop_options
