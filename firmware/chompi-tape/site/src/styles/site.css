@@ -46,7 +46,7 @@ h1 span:nth-child(7) { color: var(--purple) }
 .block.features { grid-template-columns: minmax(0, 1fr); gap: 14px }
 h2 { font: 700 28px/1.1 var(--body); letter-spacing: -.01em; margin: 0 }
 .block p { margin: 0 0 10px; max-width: 62ch }
-.overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 48px }
+.overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(180px, calc((100% - 96px) / 3)), 1fr)); gap: 8px 48px }
 .overview h3 { margin: 0 0 6px; font-size: 19px }
 .overview ul { margin: 0; padding-left: 18px }
 .overview li { margin-bottom: 4px }
@@ -56,8 +56,11 @@ code { font: .85em var(--mono); background: var(--surface); border-radius: 3px; 
 
 .usage { padding-top: 32px; border-top: 1px solid var(--rule); margin-inline: calc(50% - 50vw); padding-inline: 24px }
 .feats { columns: 2 440px; column-gap: 56px }
-.feats.masonry { columns: auto; display: flex; gap: 56px; align-items: flex-start }
-.feats.masonry > .col { flex: 1 1 0; min-width: 0 }
+.feats.masonry { columns: auto; gap: 56px }
+.masonry { display: flex; align-items: flex-start }
+.masonry > .col { flex: 1 1 0; min-width: 0 }
+.overview.masonry { gap: 48px }
+.overview .col { display: flex; flex-direction: column; gap: 16px }
 .feat { break-inside: avoid; margin-bottom: 48px; padding-top: 14px; border-top: 3px solid var(--c) }
 h3 { font: 700 22px/1.15 var(--body); letter-spacing: -.01em; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; text-wrap: balance }
 .combo svg { height: 28px; width: auto; max-width: 100%; display: block }

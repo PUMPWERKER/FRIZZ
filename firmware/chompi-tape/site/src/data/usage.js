@@ -83,6 +83,14 @@ export const usage = [
   },
 ];
 
+// the sections, as in the overview
+const card = Object.fromEntries(usage.map((c) => [c.id, c]));
+export const groups = [
+  ['Looper', ['transport', 'length', 'step', 'undo', 'bake', 'copy', 'tempo']],
+  ['Sampling', ['threshold', 'mono']],
+  ['Drum kits', ['kits']],
+].map(([title, ids]) => ({ title, cards: ids.map((id) => card[id]) }));
+
 // the arpeggiator, a section of its own
 export const arp = [
   {

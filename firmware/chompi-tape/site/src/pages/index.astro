@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import Panel from '../components/Panel.astro';
 import UsageCard from '../components/UsageCard.astro';
 import Diagram from '../components/Diagram.astro';
-import { usage, arp } from '../data/usage.js';
+import { groups, arp } from '../data/usage.js';
 import { LED } from '../lib/drawing.js';
 import '../styles/site.css';
 
@@ -86,11 +86,14 @@ const kb = fs.existsSync(`public/${file}`) ? Math.round(fs.statSync(`public/${fi
       </div>
     </section>
 
-    <section class="usage" aria-label="Usage">
-      <div class="feats">
-        {usage.map((card) => <UsageCard {...card} />)}
-      </div>
-    </section>
+    {groups.map(({ title, cards }) => (
+      <section class="usage" aria-labelledby={`${title}-head`}>
+        <h2 id={`${title}-head`}>{title}</h2>
+        <div class="feats">
+          {cards.map((card) => <UsageCard {...card} />)}
+        </div>
+      </section>
+    ))}
 
     <section class="usage" aria-labelledby="arp-head">
       <h2 id="arp-head">Arpeggiator</h2>
