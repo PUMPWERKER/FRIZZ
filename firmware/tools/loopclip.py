@@ -67,7 +67,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", choices=["aux", "signal"], default="aux")
     ap.add_argument("--levels", default="-24,-12,-9,-7,-6,-5,-4,-3,-2,-1,0")
-    ap.add_argument("--slot", type=int)
+    ap.add_argument("--slot", type=int, choices=chompi.FRIZZ_SLOTS,
+                    help="the FRIZZ slot (10, 12, 13), started unless it runs; default the one running")
     ap.add_argument("--settle", type=float, default=10., help="seconds to wait first")
     ap.add_argument("--out", help="keep the recordings: NAME-<dB>-live.f32 / -loop.f32")
     a = ap.parse_args()

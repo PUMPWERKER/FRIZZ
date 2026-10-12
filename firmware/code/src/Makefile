@@ -12,9 +12,14 @@ C_DEFS = -DFRIZZ_BENCH=1 -DFRIZZ_BENCH_SOURCE='"$(BENCH_SOURCE)"'
 override BUILD_DIR = build-bench$(if $(filter 1,$(ITCM)),-itcm)
 endif
 
-# make ITCM=1: the per-sample code runs from ITCM (FrizzHot.h), an experiment (#51)
+# make ITCM=1: the per-sample code runs from ITCM (FrizzHot.h), an experiment (#51), built
+# apart in build-itcm/ (build-bench-itcm/ with BENCH=1): make doesn't rebuild an object for
+# other C_DEFS, so in build/ a stale one of either kind would pass as fresh (#171)
 ifeq ($(ITCM),1)
 C_DEFS += -DFRIZZ_ITCM=1
+ifneq ($(BENCH),1)
+override BUILD_DIR = build-itcm
+endif
 endif
 
 OPT=-O3

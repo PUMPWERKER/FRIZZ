@@ -41,7 +41,10 @@ the way, is killed and said so, never tried again.
 
 Each case names the #55 item it covers, and is PASS, FAIL or SKIP (no REAPER, or a wiring it
 can't show), as midisuite.py's; the summary in Markdown at the end (--out writes it to FILE
-too), with the jitter's table. FRIZZ_REAPER runs another REAPER (the host check's stand-in,
+too), with the jitter's table. As midisuite.py's, the run stops where FRIZZ no longer keeps the
+card out of it (it restarted), and exits 130, 143 or 129 after Ctrl-C, SIGTERM or SIGHUP,
+things put back and REAPER closed first; 1 for a FAIL. --quick (the host check) shortens the
+waits and skips what it wouldn't judge. FRIZZ_REAPER runs another REAPER (the host check's stand-in,
 test/reaper_stub.py). The cases:
 """
 import argparse
@@ -1003,6 +1006,8 @@ def daw_follows(r, d):
     # its project at 60, and only noted at 120
     project = 120.
     for value, bpm, judged in ((200, 120., True), (50, 120., False), (50, 60., True)):
+        if r.args.quick and not judged:
+            continue  # noted only, on the device
         if bpm != project:
             d.tempo(bpm)
             project = bpm
@@ -1011,7 +1016,7 @@ def daw_follows(r, d):
         time.sleep(SETTLE)
         want = tempo * value / 100.
         a = time.perf_counter()
-        time.sleep(4.)
+        time.sleep(2. if r.args.quick else 4.)
         got = followed(d, a, time.perf_counter())
         sent = [m.hex() for t, m in usb if t >= tf and m[0] in (START, STOP, CONTINUE, SPP)]
         what = "clock factor %s, REAPER's project at %d (%.1fx)" % (
@@ -1122,6 +1127,8 @@ def run_case(r, d, c, snap):
     print("-- %s: %s" % (c.id, c.item), flush=True)
     status, detail = None, ""
     r.started = time.monotonic()
+    if midisuite.card_lost(r):
+        return "FAIL", "not run: %s" % r.lost
     try:
         reset(r, d, snap)
         c.run(r, d)
@@ -1137,9 +1144,12 @@ def run_case(r, d, c, snap):
             traceback.print_exc()
     finally:
         try:
-            reset(r, d, snap)
+            if not midisuite.card_lost(r):
+                reset(r, d, snap)
         except (Exception, SystemExit) as e:
             print("   (putting things back: %s)" % e, file=sys.stderr)
+    if r.lost:
+        return "FAIL", "stopped: %s" % r.lost
     if status is None:
         failed = {what for ok, what, *_ in r.checks if not ok}
         status = "FAIL" if not r.checks else "PASS" if not failed else "KNOWN" if failed <= r.known else "FAIL"
@@ -1199,7 +1209,7 @@ def main():
                     help="the FRIZZ slot (12 by default), started unless it runs")
     ap.add_argument("--device", help="FRIZZ's raw MIDI node (the twin's for the host check)")
     ap.add_argument("--trs", help="the raw MIDI node on the TRS jack (FRIZZ_TRS_MIDI; found by name)")
-    ap.add_argument("--wiring", choices=["auto", "out", "in", "both", "none"], default="auto")
+    ap.add_argument("--wiring", choices=["auto"] + list(midisuite.WIRINGS), default="auto")
     ap.add_argument("--audio", default="jack,dummy", help="REAPER's audio, each in turn (jack,dummy)")
     ap.add_argument("--cases", help="only these, by id, comma separated")
     ap.add_argument("--seconds", type=float, help="the jitter's measurement per tempo (30 s; --quick 4)")
@@ -1208,28 +1218,21 @@ def main():
     ap.add_argument("--list", action="store_true", help="the cases, and leave")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
-    for sig in (signal.SIGTERM, signal.SIGHUP):
-        # stopped from outside: put things back and close REAPER as at the end
-        signal.signal(sig, lambda n, _: sys.exit(128 + n))
     a.long = False
     a.seconds = a.seconds or (4. if a.quick else 30.)
     audios = a.audio.split(",")
     if not audios or any(m not in AUDIO_MODES for m in audios):
         sys.exit("--audio: jack, dummy, or both")
     if a.list:
-        for c in CASES:
-            print("%-15s %-7s %s" % (c.id, "/".join(c.needs) or "usb", c.item))
+        midisuite.list_cases(CASES)
         return
     if a.what == "devices":
         devices(audios)
         return
-    cases = CASES
-    if a.cases:
-        wanted = a.cases.split(",")
-        unknown = [w for w in wanted if w not in {c.id for c in CASES}]
-        if unknown:
-            sys.exit("no case %s (--list)" % ", ".join(unknown))
-        cases = [c for c in CASES if c.id in wanted]
+    cases = midisuite.chosen(CASES, a)
+    # stopped from outside: put things back and close REAPER as at the end (midisuite.Stopped:
+    # not taken for a case's FAIL)
+    midisuite.stop_on_signals()
 
     device = a.device or chompi.to_frizz(a.slot)
     trs_node = a.trs or (None if a.wiring == "none" else midiport.trs_midi())
@@ -1241,19 +1244,12 @@ def main():
     f = remote.Frizz(device)
     r = midisuite.Rig(f, trs_fd, a, trs=trs)
     r.jitter = []
-    if not f.ram_only():
-        sys.exit("FRIZZ can't keep the card out of it (PERSIST 0): a build from before it; not run")
-    print("the card isn't written until FRIZZ restarts (PERSIST 0): everything stays in RAM", flush=True)
-    got = f.dev(chompi.IDENT)
-    info = chompi.parse_ident(got[1]) if got and got[0] == chompi.OK else None
-    ident = "build %08x" % info["crc"] if info else "?"
-    if info and info["uptime"] < midisuite.READY:
-        time.sleep(midisuite.READY - info["uptime"])
+    ident = midisuite.keep_card(f)
     snap = midisuite.Snapshot(r)
+    stopped, restored, lost = None, False, None
     try:
         midisuite.reset(r, snap, False)
-        r.wiring = midisuite.detect_wiring(r) if a.wiring == "auto" else \
-            {"out": {"out"}, "in": {"in"}, "both": {"in", "out"}, "none": set()}[a.wiring]
+        r.wiring = midisuite.detect_wiring(r) if a.wiring == "auto" else midisuite.WIRINGS[a.wiring]
         wiring = r.wiring
         print("wiring: %s%s" % (midisuite.wiring_text(wiring), " (found)" if a.wiring == "auto" else ""), flush=True)
         if binary() and "out" in wiring and any(c.id == "daw-jitter" for c in cases):
@@ -1279,7 +1275,7 @@ def main():
         plan.append((audios[0], False, True, [c for c in cases if c.synced]))
         for audio, last, sync, todo in plan:
             label = audio + (", synced" if sync else "")
-            if not todo:
+            if not todo or lost:
                 continue
             if not binary():
                 results += [(c, "SKIP", "no REAPER", [], label) for c in todo]
@@ -1305,19 +1301,22 @@ def main():
                     report(c, status, detail, r)
                     for note in r.notes:
                         print("       " + note, flush=True)
+                    if r.lost:
+                        lost = r.lost
+                        print("stopped: %s" % lost, file=sys.stderr)
+                        break
                 jitter += r.jitter
             finally:
                 d.close()
-    except KeyboardInterrupt:
-        print("interrupted", file=sys.stderr)
+    except KeyboardInterrupt as e:
+        stopped = getattr(e, "signum", signal.SIGINT)
+        print("interrupted" if stopped == signal.SIGINT else "stopped (signal %d)" % stopped,
+              file=sys.stderr)
     finally:
-        # 3. on the node again
+        # 3. on the node again, unless FRIZZ no longer keeps the card out of it
         r = midisuite.Rig(remote.Frizz(device), trs_fd, a, trs=trs)
-        try:
-            midisuite.reset(r, snap, True)
-            snap.restore_settings(r)
-        except (Exception, SystemExit) as e:
-            print("putting things back: %s" % e, file=sys.stderr)
+        r.lost = lost
+        restored = midisuite.put_back(r, snap)
         r.usb.close()
         if trs:
             trs.close()
@@ -1328,7 +1327,7 @@ def main():
         os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
         with open(a.out, "w") as out:
             out.write(text)
-    sys.exit(1 if any(s == "FAIL" for _, s, *_ in results) else 0)
+    sys.exit(midisuite.exit_code(any(s == "FAIL" for _, s, *_ in results) or not restored, stopped))
 
 
 __doc__ += "".join("    %-15s %s\n" % (c.id, c.item) for c in CASES)

@@ -8,7 +8,8 @@ It is in one of four states, as the computer sees it:
     storage    the USB storage firmware: the card is a drive labelled CHOMPI-SD
     other      a CHOMPI MIDI device that is neither (an older FRIZZ, TAPE, ...)
 
-and None for nothing on USB. Every way between them goes through the launcher: FRIZZ restarts
+and None for nothing on USB. FRIZZ's keys: 10 the latest release, 13 the latest beta (the
+user's both), 12 a branch's build under test, 11 the bench, 15 the USB storage firmware. Every way between them goes through the launcher: FRIZZ restarts
 into it on its SysEx F0 7D 43 48 10 F7 (MidiClock.h), the storage firmware on an eject, and
 the launcher starts a slot on its RUN (05). Launchers and storage firmwares from before those
 two need a hand instead, and this says which.
@@ -21,7 +22,7 @@ started by hand; to_frizz() goes by that: the FRIZZ running if no slot is asked 
 one asked for, started unless it's the one running; the bench is never taken for FRIZZ.
 
 A FRIZZ from before IDENT (or a build the tools didn't send) can't say, and answers as FRIZZ on
-10, FRIZZ-TEST on 12 and the bench (FRIZZ-bench.bin, 11, whose load reads 0) all do. For those
+10, FRIZZ-BETA on 13, FRIZZ-TEST on 12 and the bench (FRIZZ-bench.bin, 11, whose load reads 0) all do. For those
 the tools note the slot they last started (RUNNING: run(), flash.py) and go by that note
 instead. A slot started by hand isn't noted: `hold` without a command (playing by hand)
 forgets the note.
@@ -42,7 +43,7 @@ A tool that started a FRIZZ slot (or the bench, where it waits for it) and finds
 it again, twice at most, and then asks for the power switch. For one found running so:
 
     tools/chompi.py fix-name [SLOT]      starts the slot noted as running (or SLOT) again:
-                                         10, 11 or 12, only started, nothing written
+                                         10, 11, 12 or 13, only started, nothing written
 
 Linux only: ALSA's raw MIDI and udisks, Python 3 without packages.
 """
@@ -59,11 +60,15 @@ import zlib
 
 import midi_send
 
-FRIZZ_SLOT = int(os.environ.get("FRIZZ_SLOT", 10))
+FRIZZ_SLOT = int(os.environ.get("FRIZZ_SLOT", 10))  # the latest release, the user's
 BENCH_SLOT = int(os.environ.get("BENCH_SLOT", 11))
 TEST_SLOT = int(os.environ.get("TEST_SLOT", 12))  # a branch's build, tested by a session
+BETA_SLOT = int(os.environ.get("BETA_SLOT", 13))  # the latest beta, the user's too
 STORAGE_SLOT = int(os.environ.get("STORAGE_SLOT", 15))
-FRIZZ_SLOTS = (FRIZZ_SLOT, TEST_SLOT)  # the slots with a FRIZZ that answers its SysEx
+FRIZZ_SLOTS = (FRIZZ_SLOT, TEST_SLOT, BETA_SLOT)  # the slots with a FRIZZ that answers its SysEx
+# the user's: flash.py sends there only when it's named (--slot), and only a release's or a
+# beta's build, from its v* tag (flash.py's tagged())
+USER_SLOTS = (FRIZZ_SLOT, BETA_SLOT)
 STORAGE_LABEL = "CHOMPI-SD"
 
 RESTART = midi_send.HEADER + bytes([0x10, 0xF7])  # FRIZZ's (MidiClock.h)
@@ -522,7 +527,7 @@ def send_run(node, slot):
 
 
 NAME_TRIES = 2  # restarts for USB names that came garbled
-RENAME_SLOTS = (FRIZZ_SLOT, BENCH_SLOT, TEST_SLOT)
+RENAME_SLOTS = (FRIZZ_SLOT, BENCH_SLOT, TEST_SLOT, BETA_SLOT)
 
 
 def renamed(slot, node, timeout=120, device=None):
@@ -546,13 +551,13 @@ def renamed(slot, node, timeout=120, device=None):
 
 def fix_name(slot=None, timeout=120):
     """Starts SLOT again (default: the one noted as running), for USB names that came
-    garbled; FRIZZ's on key 10 is only started, never written"""
+    garbled; FRIZZ's on keys 10 and 13 is only started, never written"""
     last, _, what = last_started()
     if slot is None and last is None:
         sys.exit("no slot is noted as running (one started by hand isn't): fix-name SLOT")
     slot = last if slot is None else slot
     if slot not in RENAME_SLOTS:
-        sys.exit("slot %d isn't FRIZZ's, FRIZZ-TEST's or the bench's (%s)"
+        sys.exit("slot %d isn't FRIZZ's, FRIZZ-BETA's, FRIZZ-TEST's or the bench's (%s)"
                  % (slot, ", ".join(str(s) for s in RENAME_SLOTS)))
     say("starting slot %d again%s" % (slot, " (%s)" % what if slot == last else ""))
     node = run(slot, "frizz", timeout)
