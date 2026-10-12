@@ -59,6 +59,7 @@ public:
         window_frames_ = kWindowFrames;
         for (size_t c = 0; c < 2; c++)
             waiting_[c] = held_[c] = 0;
+        still_[0] = still_[1] = true;
         gate_.Init();
         env_.Reset();
         env_attack_inc_ = 1.f / (.1f * sample_rate);
@@ -88,6 +89,7 @@ public:
                     FinishSplice(c);
             SnapParams();
             ring_.WriteFrame(SoftClip(*l), SoftClip(*r));
+            still_[0] = still_[1] = true;
             return;
         }
         const float dry = dry_.Process();
@@ -112,6 +114,8 @@ public:
             UpdateRatios(swooping_ ? semitones_ + dir * swoop * kSwoopSemitones
                                    : static_cast<float>(semitones_));
         }
+        if (__builtin_expect((still_[0] && ratio_[0] != 1.f) || (still_[1] && ratio_[1] != 1.f), 0))
+            Move();
 
         float* const io[2] = {l, r};
         for (size_t c = 0; c < 2; c++)
@@ -220,6 +224,42 @@ private:
     static constexpr float kDelayPast = kGuard + 2.f * kSearch + kFineRange + 2.f + kHoldsPast;
     static_assert(kMaxWindowFrames + kDelayPast < kBufSize, "the longest grain fits the buffer");
     static constexpr float kSwoopSemitones = 24.f; // how far the swoop pushes at the top
+
+    /** A channel's taps stand still while the shifter is off and while the channel runs at
+     *  its own speed (ratio 1); they move again with the speed they move at now. Where a tap
+     *  would then run into the end of its delay before its life is over, they were left for
+     *  the other direction (by Init, which places them for going down, or by the shift turned
+     *  the other way meanwhile, #140), so the taps start afresh: tap 1 halfway through its
+     *  life, carrying the sound, tap 0 silent at the start of its own, spliced to match it as
+     *  at any crossing. Otherwise they go on from where they were */
+    __attribute__((noinline)) void Move()
+    {
+        for (size_t c = 0; c < 2; c++)
+        {
+            const float ratio = ratio_[c];
+            if (!still_[c] || ratio == 1.f)
+                continue;
+            still_[c] = false;
+            const bool up = ratio > 1.f;
+            float* const d = delay_[c];
+            const float w = window_[c];
+            // what's left of each tap's life, in delay (tap 0's ends at w 1, tap 1's at .5),
+            // and its waits for a splice
+            const float left[2] = {(1.f - w) * window_frames_,
+                                   (w < .5f ? .5f - w : 1.5f - w) * window_frames_};
+            const float holds = 2.f * kSpliceHold * fabsf(1.f - ratio);
+            const float max_delay = window_frames_ + kDelayPast;
+            bool runs_out = false;
+            for (size_t t = 0; t < 2; t++)
+                runs_out |= up ? d[t] - left[t] - holds < 1.f : d[t] + left[t] + holds > max_delay;
+            if (!runs_out)
+                continue;
+            window_[c] = 0.f;
+            d[1] = (up ? window_frames_ + holds : 0.f) + kGuard + kSearch
+                   + (up ? -.5f : .5f) * window_frames_;
+            StartSplice(c, 0, ratio, up);
+        }
+    }
 
     /** Where tap t, falling silent, starts over: its nominal start (the far end of the
      *  window going up, the near end going down) moved by up to kSearch to where its next
@@ -413,6 +453,8 @@ private:
     {
         ratio_[0] = powf(2.f, semitones / 12.f);
         ratio_[1] = powf(2.f, (semitones + stereo_semitones_) / 12.f);
+        for (size_t c = 0; c < 2; c++)
+            still_[c] |= ratio_[c] == 1.f;
     }
 
     StereoRing<kBufSize> ring_;
@@ -421,6 +463,7 @@ private:
     SpliceSearch search_[2];
     float nominal_[2], other_at_[2];
     uint8_t waiting_[2], held_[2];
+    bool still_[2]; // a channel's taps stood still (off, or at ratio 1) since they last moved
     float window_[2];   // through the taps' lives, 0..1; tap 0 starts over at 0, tap 1 at .5
     float delay_[2][2]; // per channel, per tap, frames behind the last write
     float ratio_[2] = {1.f, 1.f};

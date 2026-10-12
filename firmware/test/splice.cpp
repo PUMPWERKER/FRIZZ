@@ -4,9 +4,9 @@
 // wrapping it), shifting up and down as far as the swoop and the stereo offset take it, both
 // must pick the same lag for every one of kTrials searches; and so must the search spread
 // over two blocks as the shifter runs it, with a block written to the ring in between.
-// Then the shifter itself, at the ends of its shift, grain, swoop and stereo: while a tap
-// waits for its splice, the other carries the sound alone, and mustn't run into the end of
-// its delay (#137). Built and run by unit.sh splice.
+// Then the shifter itself, at the ends of its shift, grain, swoop and stereo, from power-on,
+// after the shift was turned while it was off, and turned from the centre while it plays: no
+// sounding tap may run into the end of its delay (#137, #140). Built and run by unit.sh splice.
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -155,38 +155,29 @@ int main()
     Check(split_differ == 0, what);
 
     // the shifter at its ends: shift, grain, swoop (fired by the key) and stereo; a 220Hz saw
-    // for 4s. A tap that sounds (weight over 1%) and sits at the end of its delay (1 or the
-    // longest) has run into it. Counted from the end of the taps' first lives, which start
-    // from Init's delays, not from a splice (going up, the first one can run into delay 1,
-    // before #137 too)
+    // for 4s from power-on. A tap that sounds (weight over 1%) and sits at the end of its
+    // delay (1 or the longest) has run into it: never, not even in the taps' first lives,
+    // which start from Init's delays (going up, the first one ran into delay 1 before #140)
     struct Setting
     {
         const char* name;
         float shift, grain, swoop, stereo;
-        int from;
     } settings[] = {
-        {"+12, grain 10ms", 1.f, 0.f, 0.f, 0.f, 4800},
-        {"-12, grain 10ms", 0.f, 0.f, 0.f, 0.f, 4800},
-        {"+12, grain 50ms", 1.f, 1.f, 0.f, 0.f, 48000},
-        {"-12, grain 50ms", 0.f, 1.f, 0.f, 0.f, 48000},
-        {"+7, grain 30ms", .5f + 7.f / 24, .5f, 0.f, 0.f, 48000},
-        {"+12, 10ms, swoop, stereo", 1.f, 0.f, 1.f, 1.f, 4800},
-        {"+12, 10ms, swoop", 1.f, 0.f, 1.f, 0.f, 4800},
-        {"-12, 10ms, swoop, stereo", 0.f, 0.f, 1.f, 1.f, 4800},
-        {"+12, 50ms, swoop, stereo", 1.f, 1.f, 1.f, 1.f, 48000},
+        {"+12, grain 10ms", 1.f, 0.f, 0.f, 0.f},
+        {"-12, grain 10ms", 0.f, 0.f, 0.f, 0.f},
+        {"+12, grain 50ms", 1.f, 1.f, 0.f, 0.f},
+        {"-12, grain 50ms", 0.f, 1.f, 0.f, 0.f},
+        {"+7, grain 30ms", .5f + 7.f / 24, .5f, 0.f, 0.f},
+        {"+12, 10ms, swoop, stereo", 1.f, 0.f, 1.f, 1.f},
+        {"+12, 10ms, swoop", 1.f, 0.f, 1.f, 0.f},
+        {"-12, 10ms, swoop, stereo", 0.f, 0.f, 1.f, 1.f},
+        {"+12, 50ms, swoop, stereo", 1.f, 1.f, 1.f, 1.f},
     };
     static chompi::Shifter shifter;
-    for (const Setting& set : settings)
-    {
-        shifter.Init(48000.f);
-        shifter.SetParam(chompi::Shifter::SHIFT, set.shift);
-        shifter.SetParam(chompi::Shifter::GRAIN, set.grain);
-        shifter.SetParam(chompi::Shifter::SWOOP, set.swoop);
-        shifter.SetParam(chompi::Shifter::STEREO, set.stereo);
-        shifter.SetOn(true);
-        int waits = 0, waiting_stuck = 0, stuck = 0;
-        double ph = 0;
-        for (int i = 0; i < 48000 * 4; i++)
+    double ph = 0;
+    int waits = 0, waiting_stuck = 0, stuck = 0;
+    auto play = [&](int samples) {
+        for (int i = 0; i < samples; i++)
         {
             ph += 220.0 / 48000.0;
             float v = 0;
@@ -203,18 +194,98 @@ int main()
                 for (size_t t = 0; t < 2; t++)
                 {
                     const float d = shifter.delay_[c][t];
-                    const bool at_end =
-                        i >= set.from && weight[t] > .01f && (d <= 1.f || d >= max_delay);
+                    const bool at_end = !shifter.still_[c] && weight[t] > .01f
+                                        && (d <= 1.f || d >= max_delay);
                     stuck += at_end;
                     waiting_stuck += at_end && shifter.waiting_[c];
                 }
             }
         }
+    };
+    for (const Setting& set : settings)
+    {
+        shifter.Init(48000.f);
+        shifter.SetParam(chompi::Shifter::SHIFT, set.shift);
+        shifter.SetParam(chompi::Shifter::GRAIN, set.grain);
+        shifter.SetParam(chompi::Shifter::SWOOP, set.swoop);
+        shifter.SetParam(chompi::Shifter::STEREO, set.stereo);
+        shifter.SetOn(true);
+        waits = waiting_stuck = stuck = 0;
+        play(48000 * 4);
         char line[160];
         snprintf(line, sizeof(line),
                  "%s: %d waits, a sounding tap at the end of its delay %d samples, %d of them "
                  "while the other waits",
                  set.name, waits, stuck, waiting_stuck);
+        Check(waits > 0 && stuck == 0, line);
+    }
+
+    // punched in, out, the shift turned while it's off, and in again: where the taps were left
+    // for the other direction, they start afresh on waking; otherwise they go on where they
+    // were (#140)
+    struct Turn
+    {
+        const char* name;
+        float from, to;
+        bool afresh;
+    } turns[] = {
+        {"-12, off, +12", 0.f, 1.f, true},
+        {"+12, off, -12", 1.f, 0.f, true},
+        {"+12, off, +7", 1.f, .5f + 7.f / 24, false},
+        {"-12, off, -12", 0.f, 0.f, false},
+    };
+    for (const Turn& turn : turns)
+    {
+        shifter.Init(48000.f);
+        shifter.SetParam(chompi::Shifter::SHIFT, turn.from);
+        shifter.SetOn(true);
+        play(48000);
+        shifter.SetOn(false);
+        play(24000);
+        const bool asleep = shifter.still_[0] && shifter.still_[1];
+        float before[2][2], window[2];
+        for (size_t c = 0; c < 2; c++)
+        {
+            window[c] = shifter.window_[c];
+            for (size_t t = 0; t < 2; t++)
+                before[c][t] = shifter.delay_[c][t];
+        }
+        shifter.SetParam(chompi::Shifter::SHIFT, turn.to);
+        shifter.SetOn(true);
+        waits = waiting_stuck = stuck = 0;
+        play(1);
+        // going on: each delay moved by 1 - ratio, the window by a sample's worth
+        bool went_on = true;
+        for (size_t c = 0; c < 2; c++)
+        {
+            went_on &= shifter.window_[c] > window[c];
+            for (size_t t = 0; t < 2; t++)
+                went_on &= fabsf(shifter.delay_[c][t]
+                                 - (before[c][t] + 1.f - shifter.ratio_[c])) < 1e-3f;
+        }
+        play(48000 * 2);
+        char line[160];
+        snprintf(line, sizeof(line),
+                 "%s: the taps %s, a sounding tap at the end of its delay %d samples",
+                 turn.name, went_on ? "go on" : "start afresh", stuck);
+        Check(asleep && went_on == !turn.afresh && stuck == 0, line);
+    }
+    // punched in at the centre (its own speed: the taps stand still), then turned while it
+    // plays: up and down, as a player turns knob 1 (#140)
+    for (float to : {1.f, 0.f, .5f + 7.f / 24})
+    {
+        shifter.Init(48000.f);
+        shifter.SetParam(chompi::Shifter::SHIFT, .5f);
+        shifter.SetOn(true);
+        play(24000);
+        shifter.SetParam(chompi::Shifter::SHIFT, to);
+        waits = waiting_stuck = stuck = 0;
+        play(48000 * 2);
+        char line[160];
+        snprintf(line, sizeof(line),
+                 "at the centre, then %+d while it plays: a sounding tap at the end of its delay "
+                 "%d samples",
+                 static_cast<int>(lroundf(to * 24.f)) - 12, stuck);
         Check(waits > 0 && stuck == 0, line);
     }
     return Finish();
