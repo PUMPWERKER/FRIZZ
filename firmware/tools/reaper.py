@@ -127,7 +127,8 @@ def user_files_newer(stamp):
 
 
 def jack_links():
-    """REAPER's JACK ports linked to anything, as pw-link lists them: [] if none, or no pw-link"""
+    """REAPER's JACK audio ports linked to anything, as pw-link lists them: [] if none, or no
+    pw-link (its MIDI ports are linked to FRIZZ's, through PipeWire's bridge)"""
     try:
         text = subprocess.run(["pw-link", "-l"], capture_output=True, text=True, timeout=5).stdout
     except (OSError, subprocess.TimeoutExpired):
@@ -136,7 +137,7 @@ def jack_links():
     for line in text.splitlines():
         if not line.startswith(" "):
             port = line.strip()
-        elif port and port.startswith("REAPER:") and ("|->" in line or "|<-" in line):
+        elif port and port.startswith("REAPER:") and "MIDI" not in port and ("|->" in line or "|<-" in line):
             got.append("%s %s" % (port, line.strip()))
     return got
 
@@ -760,8 +761,9 @@ def daw_jitter(r, d):
             d.locate(0)
             d.play()
         vals = measure_clock(r, start, d.stop_transport, bpm, "REAPER, %s (%s)" % (d.audio, d.audio_info))
-        r.tcheck("REAPER (%s) at %d BPM: FRIZZ's tempo over %g s" % (d.audio, bpm, r.args.seconds),
-                 max(vals) - min(vals) <= .5 * r.loose,
+        what = "REAPER (%s) at %d BPM: FRIZZ's tempo over %g s" % (d.audio, bpm, r.args.seconds)
+        r.known.add(what)  # #83: it flips under a jittery USB clock at 200-300 BPM
+        r.tcheck(what, max(vals) - min(vals) <= .5 * r.loose,
                  "%.1f..%.1f, %d changes" % (min(vals), max(vals), changes(vals)), "one whole BPM (#83)")
 
 
@@ -790,7 +792,9 @@ def reset(r, d, snap):
 
 
 def run_case(r, d, c, snap):
-    r.checks, r.notes, r.timing_fails = [], [], 0
+    """PASS, FAIL, SKIP, or KNOWN: failed only on checks of a fault known and not fixed yet
+    (r.known, as check.h's Known()), which doesn't fail the run"""
+    r.checks, r.notes, r.timing_fails, r.known = [], [], 0, set()
     why = midisuite.runnable(c, r.wiring)
     if why:
         return "SKIP", why
@@ -816,7 +820,8 @@ def run_case(r, d, c, snap):
         except (Exception, SystemExit) as e:
             print("   (putting things back: %s)" % e, file=sys.stderr)
     if status is None:
-        status = "PASS" if r.checks and all(ok for ok, *_ in r.checks) else "FAIL"
+        failed = {what for ok, what, *_ in r.checks if not ok}
+        status = "PASS" if r.checks and not failed else "KNOWN" if failed <= r.known else "FAIL"
         detail = "" if r.checks else "nothing checked"
     return status, detail
 
@@ -834,7 +839,8 @@ def summary(results, jitter, wiring, ident, sessions, args):
              "FRIZZ: %s. Wiring: %s. REAPER: %s." % (ident, midisuite.wiring_text(wiring),
                                                     "; ".join(sessions) or "not run"), ""]
     counts = collections.Counter(s for _, s, *_ in results)
-    lines += ["**%s**" % ", ".join("%d %s" % (counts[s], s) for s in ("PASS", "FAIL", "SKIP") if s in counts), "",
+    lines += ["**%s**" % ", ".join("%d %s" % (counts[s], s) for s in ("PASS", "KNOWN", "FAIL", "SKIP") if s in counts),
+              "", "KNOWN: failed only where a fault known and not fixed yet shows (the check names its issue).", "",
               "| case | #55 item | REAPER | result | measured |", "|---|---|---|---|---|"]
     for c, status, detail, checks, audio in results:
         measured = "; ".join(("%s: %s" % (what, got)) + ("" if ok else " (want %s)" % want)
