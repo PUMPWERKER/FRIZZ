@@ -110,11 +110,12 @@ int main()
         if (old_lag != new_lag && differ++ < 10)
             printf("differs: kind %d last %zu ratio %g nominal %g other %g: %d, was %d\n", kind,
                    last, ratio, nominal, other, new_lag, old_lag);
-        // whether a candidate's reads wrap the ring (SpliceLag's masked path): lags -365 to
-        // +378 from where the 16th point reads at lag 0, and the 1st
+        // whether a candidate's reads wrap the ring (the search's masked path): its lags from
+        // where the 16th point reads at lag 0, and the 1st
         const size_t near = last - static_cast<size_t>(nominal - 120.f * ratio);
         const size_t far = last - static_cast<size_t>(nominal);
-        wrapped += ((far - 378) & kBufMask) > ((near + 365) & kBufMask);
+        using S = chompi::Shifter::SpliceSearch;
+        wrapped += ((far - S::kMaxLag) & kBufMask) > ((near - S::kMinLag) & kBufMask);
     }
     printf("%d searches, %d with reads that wrap the ring\n", searched, wrapped);
     Check(searched > kTrials * 9 / 10, "most of the configurations are searched");
