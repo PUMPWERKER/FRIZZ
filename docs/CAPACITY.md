@@ -1,15 +1,15 @@
 # Capacity: what's free on the CHOMPI, and how to make room
 
-What a new feature can still use, measured on 2026-10-11 after the FX layer's cleanup (#89)
-and the play page's logic built for size (step 3 below, `FRIZZ.bin` md5 `1bee03da`). `make` prints the memory table after every
+What a new feature can still use, measured on 2026-10-12 with the FX chain a block at a time
+(#136, `FRIZZ.bin` md5 `17974b57`; the history below). `make` prints the memory table after every
 build; the numbers below come from it and from `build/FRIZZ.map`.
 
 ## Memory
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 217,980 B (78 %) | **~59 KB** | all the code, and the initial values of `.data` |
-| `SRAM` (AXI SRAM) | 240 KB | 228,032 B (93 %) | ~17 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 232,792 B (84 %) | **~45 KB** | all the code, and the initial values of `.data` |
+| `SRAM` (AXI SRAM) | 240 KB | 224,896 B (92 %) | ~20 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 65,584 B | ~62 KB, shared with the stack | the reverb (64 KB); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 23,808 B | ~8 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
@@ -18,8 +18,8 @@ build; the numbers below come from it and from `build/FRIZZ.map`.
 | `SDRAM` | 64 MB | 43.9 MB | **~23 MB** | the loop (31.7 MB), the tape stop (4.2 MB), the delay (3.8 MB), the event log (2.1 MB), the freezer (1.9 MB), the reverb's pre-delay (0.1 MB); measured on `FRIZZ.bin` md5 `1eb11808` |
 
 **The bench build hits the walls first.** `FRIZZ-bench.bin` carries the bench as well: its
-code is at 235,004 B (84 %, ~42 KB free) and its data at 240,068 B (98 %, **~5.5 KB free**).
-So a feature of more than ~40 KB of code, or ~5 KB of data in internal RAM, needs room made
+code is at 250,156 B (90 %, ~28 KB free) and its data at 233,060 B (95 %, **~12 KB free**).
+So a feature of more than ~28 KB of code, or ~12 KB of data in internal RAM, needs room made
 first (below), or the bench build stops linking before `FRIZZ.bin` does. Data grows into
 SDRAM or DTCM where it can; for internal RAM, step 4 below frees 64 KB.
 
@@ -58,6 +58,15 @@ bench build at 237,556 B (~41 KB) and 232,476 B (**~13 KB free**), from 219,444 
 and 235,708 / 232,348 on `main` (493c13c). The bench's `cpu.txt` window moved from a static
 into the bench, for BENCH to read; no new buffer.
 
+The FX chain and the master compressor a block at a time (#136, 2026-10-12) took 1.2 KB of
+code and 96 B of data (the resonator's lowpass per sample of a block, for its Taps):
+`FRIZZ.bin` at 232,792 B of code (~45 KB free) and 224,896 B of data (~20 KB free), the
+bench build at 250,156 B (~28 KB) and 233,060 B (**~12 KB free**), from 231,616 / 224,800
+and 248,732 / 232,964 on `main` (50754d9). By function: `FxChain::Run` 12.7 KB against
+`FxChain::Process`'s 12.5 KB, `PassthroughEngine::Process` +0.3 KB, and the freezer's and
+the tape stop's loops (`FxChain::Insert`, out of line as their `Process` was) +0.7 KB. No
+per-sample path is kept beside the block one (the prototype in #21 kept both, +5.7…7.8 KB).
+
 The split moved by 40 KB (step 1 below) after the FX knobs' page 2 (#35) had left ~21 KB of
 code, ~3.4 KB in the bench build. The scene work (`Recall`, `Morph`, the scene file) is
 compiled `-Os` and out of line (`FX_SCENE_ONCE`), as the event log's and MIDI's are.
@@ -82,8 +91,8 @@ Where the code goes (`.text` + `.rodata` by object, from the map):
 | FatFs (`ff.o`, `ccsbcs.o`, `diskio.o`) | 14,700 |
 | newlib-nano, libm, libgcc | 11,400 |
 
-The biggest single functions are `PassthroughEngine::Process` (11.2 KB) and
-`FxChain::Process` (10.6 KB, everything inlined into them), then `Shifter::Process`,
+The biggest single functions are `FxChain::Run` (12.7 KB, the chain over a block, #136) and
+`PassthroughEngine::Process` (10.9 KB, everything inlined into them; 2026-10-12), then `Shifter::Process`,
 `Looper::Process` and `FxChain::Init` (5.5 KB each). `NormalPage::OnButton` was 7.9 KB at
 `-O3`, 1.1 KB at `-Os`.
 
@@ -150,7 +159,11 @@ into their callers), and running code from QSPI flash (slow, and it's the bootlo
 
 **The CPU and the code's size.** The per-sample code is far bigger than the 16 KB I-cache,
 so the callback is bound by it: every byte on that path costs, even code that is only
-skipped. Page 2's wrapper cost ~6 points of "everything" at its defaults until the chain
+skipped. The FX chain and the compressor therefore run a block at a time (#136): each
+effect's loop over the block's 24 samples before the next effect's, so its code is fetched
+once a block rather than once a sample (`FxChain::Process`). That took the bench's
+`everything` from 92.0 / 105.9 % (mean / max) to 73.1 / 83.2 and idle from 40.3 to 33.2, and
+`fader.txt`'s worst block from 100 to 84 % (#136, measured against `main` in one hold). Page 2's wrapper cost ~6 points of "everything" at its defaults until the chain
 skipped it with a bitmask and moved the busy case out of line (`FxChain::Insert`,
 `__attribute__((cold))`). Rare paths belong out of line; but a small change also shifts the
 layout, by ±2.5 points either way, so measure each one. The play page's `-Os` (#86) is such a
@@ -162,7 +175,7 @@ slower.
 **For the CPU, not for room: ITCM** (an experiment, #51, off by default). ITCM (64 KB) is the
 core's fastest code memory, with no cache to miss. With
 `make ITCM=1` the per-sample functions
-(`FxChain::Process`, the effects that aren't inlined into it, `PassthroughEngine::Process`,
+(`FxChain::Process` and `Run`, the effects that aren't inlined into them, `PassthroughEngine::Process`,
 the looper, the delay's read, the reverb, `AudioCallback`) are marked `FRIZZ_HOT` and run
 from ITCM: `.itcmram` loads from `SRAM_EXEC` (`chompi_sram.lds`) and `main()` copies it
 (`CopyItcm`) before anything else. It saves no code room: the image still carries it. Calls

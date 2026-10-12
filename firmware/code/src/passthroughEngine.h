@@ -145,9 +145,9 @@ public:
             Scramble(jump);
         BENCH_MARK(TEMPO);
 
+        float sigl[size], sigr[size];
         for (size_t i = 0; i < size; i++)
         {
-            fonepole(mgain_, mgain_target_, .001f);
             // equal-power crossfade so the middle of the knob doesn't dip in level; the
             // cosf and sinf only while the knob slews, the mix usually sits still
             if (mix_ != mix_target_)
@@ -160,21 +160,28 @@ public:
             }
             const float dry_amt = dry_amt_;
             const float wet_amt = wet_amt_;
-            float sigl = dryl[i] * dry_amt + wetl[i] * wet_amt;
-            float sigr = dryr[i] * dry_amt + wetr[i] * wet_amt;
+            sigl[i] = dryl[i] * dry_amt + wetl[i] * wet_amt;
+            sigr[i] = dryr[i] * dry_amt + wetr[i] * wet_amt;
+        }
+        BENCH_MARK(OUTPUT);
 
-            // punch-in FX, on the mix so they work on the input, the loop or both, and
-            // before the output gain so they don't change with the VOLUME knob
-            BENCH_MARK(OUTPUT);
-            fx_.Process(&sigl, &sigr); // marks each effect itself
-            comp_.Process(&sigl, &sigr);
-            BENCH_MARK(COMP);
+        // punch-in FX, on the mix so they work on the input, the loop or both, and before the
+        // output gain so they don't change with the VOLUME knob. The FX and the compressor a
+        // block at a time, each effect's code in the I-cache for the whole block (#136)
+        fx_.Process(sigl, sigr, size); // marks each effect itself
+        comp_.Process(sigl, sigr, size);
+        BENCH_MARK(COMP);
+
+        for (size_t i = 0; i < size; i++)
+        {
+            fonepole(mgain_, mgain_target_, .001f);
+            const float sl = sigl[i], sr = sigr[i];
 
             // headphone and master gain
-            const float hpl = sigl * kHpGain * mgain_;
-            const float hpr = sigr * kHpGain * mgain_;
-            out[2][i] = sigl * kLineOutGain * mgain_;
-            out[3][i] = sigr * kLineOutGain * mgain_;
+            const float hpl = sl * kHpGain * mgain_;
+            const float hpr = sr * kHpGain * mgain_;
+            out[2][i] = sl * kLineOutGain * mgain_;
+            out[3][i] = sr * kLineOutGain * mgain_;
 
             // the VU meter shows the master's signal (at the headphones' level, before the
             // limiter), whatever the headphones carry

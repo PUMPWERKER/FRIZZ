@@ -159,6 +159,18 @@ public:
         *r += (*r * gain - *r) * mix;
     }
 
+    /** n stereo samples, in place: the compressor's code in the I-cache for all of them (#136) */
+    void Process(float* l, float* r, size_t n)
+    {
+        for (size_t i = 0; i < n; i++)
+        {
+            float sl = l[i], sr = r[i];
+            Process(&sl, &sr);
+            l[i] = sl;
+            r[i] = sr;
+        }
+    }
+
     /** The gain reduction now, in dB (<= 0), for the key's LED */
     inline float GetReduction() const { return reduction_; }
 
