@@ -9,6 +9,15 @@ what FRIZZ does.
 
 ### Added
 
+- **A hard drop to a scene on the next bar line** (#153), after the Neuzeit Instruments
+  Drop's drop mode: hold SHIFT, tap a scene key, press PLAY. The scene lands all at once on the
+  downbeat, as a recall would there: what it turns on starts on the line (the freezer grabs,
+  the slicer attacks, the tape stops), what it turns off has faded out by then. More taps of the
+  scene key, before or after PLAY, put it a bar later. During a morph to one scene, SHIFT +
+  another scene key + PLAY lets the morph glide on to the line and drops to the other scene
+  there: build up, then drop. Its key blinks red on the beat while it waits; PLAY doesn't play
+  or pause. Over MIDI, CC 83 drops to scene 0-4 (CC 9 sets the bars). See MANUAL.md,
+  "Dropping to a scene".
 - **The built-in microphone as an input** (#113), as on TAPE and TEMPO: with no cable in AUX,
   FRIZZ hears CHOMPI's mic, and records it into the looper like AUX. Plugging a cable into AUX
   switches to AUX, pulling it out back to the mic; at power-on the jack decides. On the

@@ -150,6 +150,7 @@ hue, and nothing lit at 100 % goes dark. Full is as bright as FRIZZ has always b
 | Erase waiting for the end | LOOP / PLAY | LOOP erases now; PLAY takes the erase back, the loop plays on |
 | Any | SHIFT + LOOP | Tap tempo (see [Tempo](#tempo)); never records, stops or erases |
 | Any, while a scene morphs | SHIFT + PLAY | Stops the morph where it is (see [Morphing to a scene](#morphing-to-a-scene)); doesn't play or pause |
+| Any | SHIFT + scene key, then PLAY | A [drop](#dropping-to-a-scene) to the scene on the next bar line; doesn't play or pause |
 
 - **Quantized:** recording starts on the press, which counts as bar 1 (4/4). Ending it records
   to the end of the bar in progress, so the loop is always a whole number of bars. It closes
@@ -858,6 +859,7 @@ save again.
 | SHIFT + the same scene key again, while it morphs | One bar longer, up to 8 (past that, the key blinks red) |
 | SHIFT + PLAY, while it morphs | Stop the morph where it is |
 | SHIFT + scene key, then turn the transport knob (SHIFT still held) | **Crossfade** to the scene by hand (see below) |
+| SHIFT + scene key, then PLAY (SHIFT still held) | **Drop** to the scene hard on the next bar line (see below) |
 
 A recall is meant for performing, a build-up on one scene and the drop on the next:
 
@@ -972,12 +974,45 @@ While it morphs:
   that's done. A select (SHIFT, then the key) decides nothing.
 - A plain scene key ends the morph and recalls that scene at once (the morph's own key
   jumps straight to the end).
-- SHIFT + another scene key, or an empty one, blinks red and changes nothing.
+- SHIFT + another scene key, or an empty one, blinks red and changes nothing, unless PLAY
+  follows in the same SHIFT hold: then it's a [drop](#dropping-to-a-scene) to that scene.
 - **SHIFT + PLAY stops it where it is:** every knob stays at the value the glide got to, and
   an effect still waiting to switch stays as it was, so one fading out stays on, unless you
   pressed its key meanwhile: then it's as you left it. The scene
   key pulses as edited, since the sound is now between two scenes: save it to keep it.
-  Without a morph, SHIFT + PLAY plays and pauses like PLAY.
+  Without a morph, SHIFT + PLAY plays and pauses like PLAY. With a scene key tapped in the
+  same SHIFT hold, SHIFT + PLAY is a drop instead (below).
+
+### Dropping to a scene
+
+A morph builds up; a drop switches hard, on the downbeat, after the "drop mode" of the
+Neuzeit Instruments Drop. Hold SHIFT, tap a scene key, and press PLAY before you let go of
+SHIFT: the scene lands on the next bar line all at once, as a recall would, but in time.
+Tap the scene key more than once before PLAY and it lands a bar later per extra tap, as for a
+morph (up to 8); SHIFT + the same key again after PLAY adds a bar too. The bar lines are the
+morph's: the loop's bars and its end, or those of MIDI clock or the tapped tempo.
+
+Unlike a morph, the bar lines count from PLAY, not from letting go of SHIFT, so you can hold
+SHIFT as long as you like and still land on the line that comes next.
+
+- **Build-up, then drop:** while a morph glides to one scene, SHIFT + another scene key
+  blinks red as ever, and PLAY then makes it a drop: the morph goes on gliding and gets to its
+  end on the next bar line, where the other scene lands hard. Use it to ride a build-up
+  right to the downbeat.
+- **On the line:** an effect the scene turns on starts on the line, as after a recall: the
+  freezer grabs, the slicer attacks, the tape stops, the shifter swoops. An effect it turns
+  off has faded out by the line (it goes off 25 ms before), so nothing of it spills past the
+  downbeat. Until then, everything sounds as it was.
+- **While it waits,** its scene key blinks red on the beat, and the knobs and keys already
+  show the scene, as in a morph. Turning a knob changes where it lands.
+- **A plain scene key** meanwhile recalls that scene at once and takes the drop back.
+  SHIFT + PLAY (without a scene key tapped in that SHIFT hold) stops it where it is, as it
+  stops a morph.
+- **PLAY doesn't play or pause** the loop in the gesture, as in PLAY + LOOP.
+- An empty slot tapped doesn't count; once the transport knob has the morph as the
+  [crossfader](#crossfading-by-hand), PLAY stops it instead of dropping, and the crossfader
+  can't take a drop.
+- Over MIDI, CC 83 drops to a scene (see [Controllers](#controllers)).
 
 ### Crossfading by hand
 
@@ -1124,10 +1159,11 @@ or C2 in Ableton Live): the white keys from 48 up, the dark keys on the sharps. 
 | 89 | Headphone feed, as VOLUME's page 3: 127 the master out, 0 the input (AUX or the mic) on its own |
 | 90 | The loop's speed in semitones, set outright: 64 as recorded (1×), 0 the slowest (1/16×), 127 double. Only with a loop; forward or in reverse as it runs |
 | 3 | Morph to scene 0-4 (0 the blank one), as SHIFT + its key, landing on the bar line. It acts as the value changes: to morph to the same scene again, send another value first (127, no scene) |
-| 9 | How many bars a morph over CC 3 takes, 1-8 (1 at first) |
+| 9 | How many bars a morph over CC 3, or a drop over CC 83, takes, 1-8 (1 at first) |
 | 80 | The [crossfader](#crossfading-by-hand): takes a running morph (CC 3's, or one you hold) to where it says, 0 the scene it started from, 127 the scene it goes to. Reaching 127 lands it; reaching 0 after being away from it goes back to where it started; in between it waits |
 | 81 | Stops a morph where it is, as the value crosses 64 upward |
 | 82 | A [tempo tap](#tempo), as the value crosses 64 upward: a button sending 127 and 0 |
+| 83 | [Drop](#dropping-to-a-scene) to scene 0-4 (0 the blank one) hard on the next bar line, or CC 9's, as SHIFT + its key and PLAY. Like CC 3, it acts as the value changes: to drop to the same scene again, send another value first (127, no scene). A morph running to another scene goes on to the line |
 | 102-115 | The latch of white key 1-14 (102 the freezer … 108 the phaser … 114 the reverb, 115 the chaos key), as CC 22 |
 | 120, 123 | All Sound Off, All Notes Off: let go of every key MIDI holds |
 
@@ -1136,7 +1172,7 @@ or C2 in Ableton Live): the white keys from 48 up, the dark keys on the sharps. 
   once. The knobs stay on the effect you picked (except with CC 23). 64 is a knob's centre
   exactly (the filter's flat cutoff, a delay's random off), 127 its top. Stepped parameters
   take the nearest step.
-- **Switches act as they change** (latches, CC 3, 81, 82): an automation lane that sends the
+- **Switches act as they change** (latches, CC 3, 81, 82, 83): an automation lane that sends the
   same value again does nothing, so a latch you switched by hand stays as you left it until the
   lane crosses 64 again. Use 0 and 127.
 - **Automation isn't saved:** nothing that comes in by CC goes to the card. After a restart the

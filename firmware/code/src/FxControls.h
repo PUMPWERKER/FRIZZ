@@ -17,7 +17,8 @@
  *  Engine is PassthroughEngine on the device, a fake on the host. It needs SetFxOn(fx, on),
  *  SetFxParam(fx, param, val), SetCompParam(param, val), FastFxSlew() and the morph's
  *  StartFxMorph(plan), AddFxMorphBar(), LandFxMorph(), FreezeFxMorph(params, unswitched,
- *  was_on), FxMorphing(), the crossfader's FxMorphHeld() and FadeFxMorph(t), and
+ *  was_on), FxMorphing(), the crossfader's FxMorphHeld() and FadeFxMorph(t), a drop's
+ *  DropFxMorph(to, ui_on, on) and FxDropping(), and
  *  SetFxPool(pool) for the chaos key (Pool).
  */
 #pragma once
@@ -41,9 +42,6 @@ namespace chompi
 // Knobs: 1% per detent; a stepped parameter moves one step per kFxDetentsPerStep detents
 static const float kFxParamStep = .01f;
 static const float kFxDetentsPerStep = 3.f;
-// The sends: their tails ring on after their keys go off, so a recall or morph doesn't change
-// an off send's settings in the engine until its key comes on again
-static const uint16_t kFxSends = (1u << FX_DELAY) | (1u << FX_REVERB);
 // Selected() while the knobs edit the master compressor
 static const size_t kCompSelected = kNumFx;
 
@@ -521,6 +519,43 @@ public:
         edited_ = true;
         return true;
     }
+
+    /** Makes the morph, held or gliding, a drop (#153, FxMorph::Drop): hard to scene on the FX
+     *  clock's next bar line, or without one to where the morph goes, edits and all. The
+     *  controls show it at once, as in a morph; what's off at the line keeps what the engine
+     *  has until its key next comes on (stale_). False if no morph runs or the crossfader has
+     *  it. On the device, call it with the audio interrupt blocked */
+    FX_SCENE_ONCE bool Drop(const FxScene* scene)
+    {
+        if (!engine_->FxMorphing() || Fading())
+            return false;
+        uint16_t ui_on = 0, on = 0;
+        for (size_t fx = 0; fx < kNumFx; fx++)
+            ui_on |= IsOn(fx) ? Bit(fx) : 0;
+        if (scene)
+        {
+            SceneDecides();
+            for (size_t fx = 0; fx < kNumFx; fx++)
+            {
+                latched_[fx] = (scene->latched >> fx) & 1;
+                for (size_t p = 0; p < kNumFxParams; p++)
+                    params_[fx][p] = scene->params[fx][p];
+            }
+            morph_touched_ = 0;
+            ClearChunks();
+            edited_ = false;
+        }
+        for (size_t fx = 0; fx < kNumFx; fx++)
+            on |= IsOn(fx) ? Bit(fx) : 0;
+        if (!engine_->DropFxMorph(params_, ui_on, on))
+            return false;
+        stale_ = static_cast<uint16_t>(~on & ((1u << kNumFx) - 1));
+        for (size_t fx = 0; fx < kNumFx; fx++)
+            engine_->SetFxOn(fx, IsOn(fx));
+        engine_->SetFxPool(Pool());
+        return true;
+    }
+    inline bool Dropping() const { return engine_->FxDropping(); }
 
     /** The crossfader (#66): the morph at t, 0 where it started to 1 the scene, in the
      *  hand from now on (FxMorph::Fader). False if none runs. On the device, call it with the

@@ -31,6 +31,16 @@ struct FakeHost
         return fx_held;
     }
     void ShiftUsed() { shift_uses++; }
+    bool drop = false; // a scene key tapped in this SHIFT hold: PLAY drops to it
+    int drops = 0;
+    bool DropScene()
+    {
+        if (!drop)
+            return false;
+        drop = false;
+        drops++;
+        return true;
+    }
     bool FreezeMorph()
     {
         if (!morphing)
@@ -243,6 +253,18 @@ static void TestShiftCombos()
     k.Play(true);
     k.Play(false);
     Check(h.freezes == 1 && h.toggles == 1, "SHIFT + PLAY without one: play / pause");
+
+    // #153: a scene key tapped in this SHIFT hold makes PLAY a drop, rather than a stop, and
+    // PLAY's release doesn't toggle
+    h.morphing = h.drop = true;
+    k.Play(true);
+    k.Play(false);
+    Check(h.drops == 1 && h.freezes == 1 && h.morphing && h.toggles == 1,
+          "SHIFT + scene key + PLAY: a drop, not a stop, no toggle");
+    k.Play(true);
+    k.Play(false);
+    Check(h.drops == 1 && h.freezes == 2 && h.toggles == 1,
+          "SHIFT + PLAY again: no scene tapped since, it stops the drop");
     k.Chompi(false);
 }
 

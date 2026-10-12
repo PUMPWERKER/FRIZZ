@@ -291,8 +291,10 @@ engine that records what it's sent: holding and latching in either order, fine, 
 coarse knob turns, SHIFT + press, the knobs' page 2 (a plain press, back to page 1 on another
 effect or the compressor, page 2 in scenes and morphs), and the scene save / copy / delete / recall flow, including
 that a recall sends only what changes, and what a scene morph does with each effect, its
-taps and stopping it; and the compressor's key and knobs, which a recall leaves alone. `unit.sh keys` runs the CHOMPI, PLAY and LOOP keys (`PlayKeys.h`) against a
-fake host: the confirm tap, SHIFT combos, the looper's combos and the erase hold, and that a
+taps and stopping it, and a drop (#153: SHIFT + scene key, then PLAY; on a morph to another
+scene; its taps; not to an empty slot nor once the crossfader has the morph); and the compressor's key and knobs, which a recall leaves alone. `unit.sh keys` runs the CHOMPI, PLAY and LOOP keys (`PlayKeys.h`) against a
+fake host: the confirm tap, SHIFT combos (SHIFT + PLAY a drop after a scene key, else a
+morph's stop), the looper's combos and the erase hold, and that a
 release without its press does nothing. `unit.sh looper` runs `Looper.h` without MIDI clock: a free
 recording plays back frame for frame at its length, play / pause, erase, the speed ladder, and
 the refused quantized record. `unit.sh tempo` checks the FX's tempo: tap tempo (`TapTempo.h`), how
@@ -306,7 +308,9 @@ ticks): a bar from jittered USB-like ticks within 12 samples of its length, the 
 clock that slows after the press, and an end already passed when refitted closing at once,
 within the post-roll; then the bar lines (free, on 2-, 4- and 6-beat loops, in
 reverse) and a scene morph (`FxMorph.h`) on them: landing on the bar line, one per tap, the
-glide, held while SHIFT is down however long, fades in and out, stopping it halfway; and the
+glide, held while SHIFT is down however long, fades in and out, stopping it halfway, and a drop
+(#153): hard in the bar line's block, its keys going off 25 ms before it, a glide under way
+brought to its end there; and the
 delay (`granularDelay.h`): reverse events only where they fit, and a tempo jump crossfading
 to the new delay time while a 1 BPM step slides, and on a loop whose tempo isn't whole, a 1/4
 exactly the loop's beat. These run the classes on their own; `unit.sh ui` below runs them
