@@ -1326,7 +1326,8 @@ the beat on the settings page's G#:
 - A pause sends **Stop**. PLAY sends **Song Position** (where the loop goes on, to the 16th)
   and then **Continue** on that 16th, so the gear goes on where the loop does. Gear that
   ignores Song Position goes on where it stopped, which is the same place, unless the loop
-  moved while paused.
+  moved while paused. A [standstill](#looper) of the transport knob is a pause to the gear
+  too: Stop going into it, Song Position and Continue when you turn out of it.
 - A loop taken back to its start by a DAW's Start (with [transport
   following](#start-and-stop) on) sends **Start** with that tick, so the gear starts over with it.
 - Without a loop, Start, Continue and Stop that come in from the clock's input are passed on.

@@ -178,7 +178,8 @@ what FRIZZ does.
   way back. SHIFT + turn (the ladder) is unchanged, and from a standstill goes to 1/16× the
   way you turn. At a standstill the effects' beat runs on as while paused, at 50 BPM, so a
   scene morph still lands on its bar line; turned out of it, the beat snaps back onto the
-  loop. Both transport LEDs are red there. A control change the user let in before 1.0 as an
+  loop. Both transport LEDs are red there. MIDI out treats it as a pause: Stop going in, Song
+  Position and Continue coming out. A control change the user let in before 1.0 as an
   exception to the feature freeze. See MANUAL.md, "Looper".
 - **The scene keys moved two dark keys to the right** (#67): the blank scene is now on F# of
   the lower octave, scenes 1-4 on the lower G# and A# and the upper C# and D#. The lower C#
