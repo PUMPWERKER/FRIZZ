@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 #include <vector>
 #include "check.h"
 #include "Looper.h"
@@ -184,8 +185,34 @@ static void TestSemitones()
     Block();
     Semi(-1, 48);
     Check(At(1.f / 16.f), "semitone: 48 down: 1/16x");
-    Semi(-1, 3);
-    Check(At(1.f / 16.f), "semitone: past 1/16x: stays there, forward");
+    // on through the hold zone (#174): 2 steps standing, then reverse from 1/16x to 2x
+    Semi(-1);
+    Check(looper.GetSpeed() == 0.f && looper.Standing() && looper.GetSemitones() == -48,
+          "semitone: past 1/16x: a standstill, CC 90 still at 1/16x");
+    Semi(-1);
+    Check(looper.GetSpeed() == 0.f && looper.Standing(), "semitone: a step on, still standing");
+    Semi(-1);
+    Check(At(-1.f / 16.f) && !looper.Standing(), "semitone: a third: reverse at 1/16x");
+    Semi(-1, 70);
+    Check(At(-2.f), "semitone: on to 2x reverse, no further");
+    Semi(1, 60);
+    Check(At(-1.f / 16.f), "semitone: right from 2x reverse: slower, to 1/16x");
+    Semi(1);
+    Check(looper.GetSpeed() == 0.f && looper.Standing(), "semitone: right past 1/16x reverse: standing");
+    Semi(-1);
+    Check(At(-1.f / 16.f), "semitone: back left out of the zone: 1/16x reverse again");
+    Semi(1, 3);
+    Check(At(1.f / 16.f) && looper.GetSemitones() == -48, "semitone: right through the zone: 1/16x forward");
+    Semi(-1, 2);
+    Step(1);
+    Check(At(1.f / 16.f), "ladder: from a standstill right: 1/16x forward");
+    Semi(-1, 2);
+    Step(-1);
+    Check(At(-1.f / 16.f), "ladder: from a standstill left: 1/16x reverse");
+    Semi(1, 2);
+    looper.SetSemitones(-40);
+    Block();
+    Check(At(-Semis(-40)) && !looper.Standing(), "CC 90 at a standstill: those semitones, the way it last ran");
 
     // the ladder from between two rungs: the nearest rung in the turn's direction
     looper.ResetSpeed();
@@ -207,9 +234,12 @@ static void TestSemitones()
     Step(-1);
     Check(At(-1.f / 16.f), "ladder: then reverse at the same speed");
 
-    // in reverse, semitones turn as the ladder does: right slower, left faster, no flip
+    // in reverse, semitones turn as the ladder does: right slower, left faster; right past
+    // 1/16x the hold zone (#174)
     Semi(1);
-    Check(At(-1.f / 16.f), "semitone, reverse: right at 1/16x: stays there, reverse");
+    Check(looper.Standing(), "semitone, reverse: right at 1/16x: the hold zone");
+    Semi(-1);
+    Check(At(-1.f / 16.f), "semitone, reverse: and left again: 1/16x reverse");
     Semi(-1);
     Check(At(-Semis(-47)), "semitone, reverse: left: faster");
     Step(-1);
@@ -400,6 +430,107 @@ static void Session(std::vector<float>& out)
 
 /** The loop's memory isn't cleared at boot (chompi_main.cpp's SDRAM_NOINIT): whatever it
  *  holds, the looper sounds the same, as it reads only what it recorded */
+/** One block through the looper, all of its left output */
+static void BlockOut(float* out_l)
+{
+    float in_l[kBlock], in_r[kBlock], out_r[kBlock];
+    for (size_t i = 0; i < kBlock; i++)
+    {
+        in_l[i] = Input(frame + i);
+        in_r[i] = -in_l[i];
+    }
+    frame += kBlock;
+    looper.Process(in_l, in_r, out_l, out_r, kBlock);
+}
+
+/** #168: the play fade gets back to 1 exactly after a pause, so the loop plays as recorded,
+ *  sample for sample, as it does before any pause; it used to stall at ~0.999985 */
+static void TestFadeSettles()
+{
+    looper.Init(mem, &midi_clock);
+    Record(1000); // 24000 frames, the first pass starting on a block
+    std::vector<float> first(24000);
+    for (size_t b = 0; b < 1000; b++)
+    {
+        const long at = Frame();
+        float out[kBlock];
+        BlockOut(out);
+        for (size_t i = 0; i < kBlock; i++)
+            first[(at + static_cast<long>(i)) % 24000] = out[i];
+    }
+    looper.TogglePlay();
+    Blocks(200);
+    looper.TogglePlay();
+    Blocks(2000);
+    bool exact = true;
+    for (size_t b = 0; b < 1000; b++)
+    {
+        const long at = Frame();
+        float out[kBlock];
+        BlockOut(out);
+        for (size_t i = 0; i < kBlock; i++)
+            exact &= out[i] == first[(at + static_cast<long>(i)) % 24000];
+    }
+    Check(exact, "after a pause: plays as before it, sample for sample (#168)");
+}
+
+/** #174: into the hold zone the speed glides to 0 exactly, and the level with it; there the
+ *  loop is silent; out of it the level comes back with the speed. No click either way */
+static void TestStandstill()
+{
+    looper.Init(mem, &midi_clock);
+    Record(1000);
+    Semi(-1, 48);
+    Blocks(6000);
+    Check(At(1.f / 16.f) && looper.GetActualSpeed() == looper.GetSpeed(), "standstill: at 1/16x first");
+    // the loop's left is a ramp up, which the read head climbs, ever so slowly
+    float out[kBlock], last = 0.f, step = 0.f;
+    BlockOut(out);
+    last = out[kBlock - 1];
+    const float before = fabsf(last);
+    Semi(-1);
+    // the level against the speed while it glides: about the speed's share of 1/16x
+    float level_at_half = -1.f;
+    bool silent = false;
+    for (size_t b = 0; b < 8000; b++)
+    {
+        BlockOut(out);
+        for (size_t i = 0; i < kBlock; i++)
+        {
+            step = std::max(step, fabsf(out[i] - last));
+            last = out[i];
+        }
+        if (level_at_half < 0.f && looper.GetActualSpeed() < 1.f / 32.f)
+            level_at_half = fabsf(out[kBlock - 1]);
+        silent = out[kBlock - 1] == 0.f && out[0] == 0.f;
+    }
+    printf("      standstill: %.4f before, %.4f at half the speed, largest step %.5f\n", before,
+           level_at_half, step);
+    Check(looper.GetActualSpeed() == 0.f && looper.Standing(), "standstill: glided to 0x exactly");
+    Check(silent, "standstill: the loop silent, no DC from the stopped read head");
+    Check(level_at_half > before * .4f && level_at_half < before * .6f,
+          "standstill: the level follows the speed down, half at half of 1/16x");
+    Check(step < .01f, "standstill: into it without a click");
+    Semi(-1, 2);
+    step = 0.f;
+    bool back = false;
+    for (size_t b = 0; b < 8000; b++)
+    {
+        BlockOut(out);
+        for (size_t i = 0; i < kBlock; i++)
+        {
+            // the first 0.75 s, the speed up to 98%: later the read head reaches the ramp's
+            // own jump
+            if (b < 1500)
+                step = std::max(step, fabsf(out[i] - last));
+            last = out[i];
+        }
+        back |= out[kBlock - 1] != 0.f;
+    }
+    Check(At(-1.f / 16.f) && looper.GetActualSpeed() == looper.GetSpeed() && back && step < .01f,
+          "standstill: out of it, reverse at 1/16x, heard again, no click");
+}
+
 static void TestUnclearedMemory()
 {
     std::vector<float> zeroed, garbage;
@@ -483,6 +614,8 @@ int main()
     TestSemitones();
     TestEraseAtEnd();
     TestGlideArrives();
+    TestFadeSettles();
+    TestStandstill();
     TestUnclearedMemory();
     TestSoftLimit();
     return Finish();

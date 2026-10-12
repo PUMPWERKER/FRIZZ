@@ -194,6 +194,11 @@ hue, and nothing lit at 100 % goes dark. Full is as bright as FRIZZ has always b
   the loop's own end, so it needs no clock. For half a second after LOOP stopped a recording,
   LOOP doesn't erase, so a double press can't lose the new loop.
 - **Length:** up to 2:45. The loop lives in RAM and is gone at power-off. There's no overdub.
+- **Standstill** (the transport knob between 1/16× and −1/16×): the tape glides to a stop
+  and the loop fades out with it, a tape stop rather than a click, and stays silent while it
+  stands. The effects' beat runs on by itself as while paused (see [Tempo](#tempo)), at the
+  slowest speed's tempo, 50 BPM, so a scene morph still lands on its bar line. Turned on, the
+  loop fades back in with the speed, and the beat snaps back onto it.
 - **Level:** the loop doesn't clip. Live, a hot input is float until the safety limiter;
   the loop is stored at 16 bits, so what goes into it is held just under full scale by a
   limiter of its own, which takes a peak at once and lets go over about 150 ms. Below that it
@@ -204,8 +209,8 @@ Transport knob (the big purple one), once a loop exists:
 
 | Control | Function |
 |---|---|
-| Turn while playing | Speed in semitones, from 2× down to 1/16× (2 detents per semitone); stops at both ends |
-| SHIFT + turn while playing | Speed in 5ths and octaves (4 detents per step): from between two of them, to the next one in the turn's direction. Past 1/16× it flips into reverse and climbs back up to −2×: the only way into reverse |
+| Turn while playing | Speed in semitones (2 detents per semitone), as TAPE's knob runs: from 2× down to 1/16×, then a **standstill** for about 4 detents (the tape glides to a stop, 0×), then reverse from −1/16× up to −2×; the same way back. Stops at 2× and −2× |
+| SHIFT + turn while playing | Speed in 5ths and octaves (4 detents per step): from between two of them, to the next one in the turn's direction. Past 1/16× it flips into reverse at the same speed and climbs back up to −2×; from a standstill, 1/16× the way you turn |
 | Turn while paused | Scrub |
 | SHIFT + turn while paused | Nothing (while you hold a scene morph, the [crossfader](#crossfading-by-hand)) |
 | Press | Back to 1× forward |
@@ -219,8 +224,8 @@ Besides the effects' own colours, red lit or blinking slowly means something els
 compressor's key while the safety limiter works, the input gain near 100% (VOLUME's page
 2), on the settings page the clock factor on double, and VOLUME in the low-battery countdown.
 While a loop plays, PLAY and LOOP crossfade in white to show the position (dimmed when
-paused). The transport LEDs show speed and direction while it plays, the scrub speed in white
-while it's paused, and nothing without a loop.
+paused). The transport LEDs show speed and direction while it plays (both red at a
+standstill), the scrub speed in white while it's paused, and nothing without a loop.
 
 From v0.12 PLAY also shows the beat the effects follow (see [Tempo](#tempo)), as the settings
 page's G# does:
@@ -243,7 +248,8 @@ The effects that follow a tempo (the delay, the filter LFO, the freezer, the sli
    so the slicer chops on the loop's beat from the first pass and the delay's echoes land on
    it. The effects follow the transport knob: at half speed the tempo halves and in reverse
    the beats run backwards. While the loop is paused, the beat runs on by itself at the
-   loop's tempo, so the effects keep working on the input; scrubbing doesn't move it. When
+   loop's tempo, so the effects keep working on the input; scrubbing doesn't move it. At a
+   [standstill](#looper) it does the same, at the slowest speed's tempo (50 BPM). When
    the loop resumes, the beat snaps back onto it at the next 1/48 of a bar: a filter LFO
    or slicer can jump there. Once a loop exists, MIDI clock
    no longer matters: a tempo change in your DAW moves neither the loop nor the effects.

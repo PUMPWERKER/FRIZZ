@@ -161,6 +161,14 @@ what FRIZZ does.
 
 ### Changed
 
+- **The transport knob turns on through a standstill into reverse** (#174), as TAPE's does:
+  below 1/16× a hold zone of about 4 detents, where the tape glides to a stop (0×) and the
+  loop fades out with it; turned on, it plays in reverse from −1/16× up to −2×, and the same
+  way back. SHIFT + turn (the ladder) is unchanged, and from a standstill goes to 1/16× the
+  way you turn. At a standstill the effects' beat runs on as while paused, at 50 BPM, so a
+  scene morph still lands on its bar line; turned out of it, the beat snaps back onto the
+  loop. Both transport LEDs are red there. A control change the user let in before 1.0 as an
+  exception to the feature freeze. See MANUAL.md, "Looper".
 - **The scene keys moved two dark keys to the right** (#67): the blank scene is now on F# of
   the lower octave, scenes 1-4 on the lower G# and A# and the upper C# and D#. The lower C#
   and D# do nothing on the play page for now; they're kept free for pages to come. Your

@@ -51,8 +51,9 @@ upper octave (a dark key, dimly white) so it lights fully: mono. Flip back down 
 3. Press **LOOP** again. The loop plays back immediately, and the mix jumps to only the loop, so you
    hear only the loop. Turn SHIFT + VOLUME back towards green to play along with it.
 4. **PLAY** pauses and resumes it, when you let go of it.
-5. Turn the big **transport knob** to change speed in semitones, from 2× down to 1/16×. Hold
-   SHIFT while turning to jump in fifths and octaves, and on past 1/16× into reverse. While paused, turning the knob scrubs. Press the knob to get back to normal speed.
+5. Turn the big **transport knob** to change speed in semitones, from 2× down to 1/16×, on
+   through a standstill and into reverse, up to −2×. Hold SHIFT while turning to jump in
+   fifths and octaves. While paused, turning the knob scrubs. Press the knob to get back to normal speed.
 6. Press **LOOP** to erase the loop. The mix jumps back to the input. To erase at the end of
    the loop instead, hold PLAY and press LOOP.
 

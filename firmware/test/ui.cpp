@@ -2296,8 +2296,9 @@ int main()
         Check(*std::min_element(rev.begin(), rev.end()) > 0, "transport-leds: nor at full speed in reverse");
     }});
 
-    // the transport while a loop plays: semitones, 2 detents each, stopping at 2x and 1/16x;
-    // SHIFT + turn the ladder of roots and fifths, 4 detents a step, the only way to reverse
+    // the transport while a loop plays: semitones, 2 detents each, stopping at 2x either way and
+    // running on from 1/16x through a standstill into reverse (#174); SHIFT + turn the ladder of
+    // roots and fifths, 4 detents a step, which flips at 1/16x
     cases.push_back({"transport-semitones", [] {
         RunMs(kReadyMs);
         Tap("KEY_28");
@@ -2329,9 +2330,21 @@ int main()
         Check(near(speed(), 0), "transport-semitones: detents don't carry over from SHIFT to the semitones");
         Turn(5, 100);
         Check(near(speed(), 12), "transport-semitones: all the way right: 2x");
-        Turn(5, -200);
-        const float slowest = speed();
-        Check(near(slowest, -48), "transport-semitones: all the way left: 1/16x, still forward");
+        Tap("ENC_5_SW"); // 1x, and no half step left over from the 1 detent above
+        Turn(5, -300); // 48 semitones, the standstill's 2 steps and 1 more, 60 again: 222
+        RunMs(3000); // the detents take their time, the glide after them
+        Check(speed() < 0.f && near(-Probe().loop_speed, 12),
+              "transport-semitones: all the way left: on through a standstill to 2x reverse (#174)");
+        Turn(5, 120);
+        RunMs(3000);
+        Check(Probe().loop_speed == -1.f / 16.f, "transport-semitones: 120 detents back: 1/16x reverse");
+        Turn(5, 2);
+        RunMs(1000); // the glide onto 0x exactly: ~1.8 s
+        Check(speed() == 0.f, "transport-semitones: 2 more right: a standstill");
+        Turn(5, 2);
+        Check(speed() == 0.f, "transport-semitones: 4: still standing");
+        Turn(5, 2);
+        Check(near(speed(), -48), "transport-semitones: 6: 1/16x forward");
         shift_turn(-4);
         Check(speed() < 0.f && near(-Probe().loop_speed, -48), "transport-semitones: SHIFT + left from there: reverse");
         shift_turn(4);
@@ -2347,6 +2360,69 @@ int main()
         Check(near(speed(), -48), "transport-semitones: CC 90 at 0: 1/16x");
         Trs({kCC, 90, 64});
         Check(near(speed(), 0), "transport-semitones: CC 90 at 64: 1x");
+    }});
+
+    // #174: the standstill between 1/16x and 1/16x reverse. The loop glides to 0x and fades
+    // with it, silent there, both transport LEDs red; the FX clock runs on by itself as in a
+    // pause, at the slowest speed's tempo (50 BPM), so a morph lands meanwhile; turned on, the
+    // loop plays in reverse, heard again, and the clock follows it
+    cases.push_back({"transport-standstill", [] {
+        RunMs(kReadyMs);
+        auto state = [] { return Ask({0x20}); };
+        Latch("KEY_5"); // the filter, for a scene to morph to
+        Save(1);
+        Tap(kSceneKeys[0]);
+        RunMs(300);
+        Tap("KEY_28");
+        RunMs(2000);
+        Tap("KEY_28");
+        RunMs(300);
+        sine = false; // the loop alone
+        RunMs(500);
+        const float loud = RunMs(500);
+        Turn(5, -96); // 48 semitones: 1/16x
+        RunMs(3000);
+        Check(fabsf(Probe().loop_speed - 1.f / 16.f) < 1e-4f && RunMs(300) > 0.f,
+              "transport-standstill: 1/16x, still heard");
+        max_step = 0.f;
+        Turn(5, -2);
+        RunMs(200);
+        const float gliding = RunMs(100);
+        RunMs(3000);
+        const float step = max_step;
+        const float still = RunMs(500);
+        printf("      loop %.4f, gliding %.4f, standing %.6f, largest step %.4f\n", loud, gliding, still, step);
+        Check(Probe().loop_speed == 0.f && still == 0.f, "transport-standstill: 2 detents more: 0x, silent");
+        Check(gliding > 0.f && step < .02f, "transport-standstill: faded with the glide, no click");
+        const Rgb rev = PthLedFull(kTransportRevLed), fwd = PthLedFull(kTransportFwdLed);
+        Check(rev.r > 200 && rev.g < 40 && fwd.r > 200 && fwd.g < 40, "transport-standstill: both transport LEDs red");
+        Check(Probe().tempo == 50, "transport-standstill: the FX at the slowest speed's tempo, 50 BPM");
+        const uint32_t pos = Probe().position;
+        RunMs(1000);
+        Check(Probe().position != pos, "transport-standstill: the FX clock runs on by itself");
+        // a morph to scene 1, started just after a bar line: the next one 4.8 s later at 50 BPM
+        for (int b = 0; b < 20000 && Probe().position % 48 != 1; b++)
+            RunBlocks(1);
+        Press("KEY_26", true);
+        RunMs(60);
+        Tap(kSceneKeys[1]);
+        RunMs(60);
+        Press("KEY_26", false);
+        RunMs(3500);
+        const bool morphing = state().size() > 6 && (state()[6] & 2);
+        RunMs(1500);
+        Check(morphing && !(state()[6] & 2) && state()[5] == 2 && Probe().loop_speed == 0.f,
+              "transport-standstill: a morph meanwhile lands on the clock's bar line, the loop still standing");
+        Turn(5, -4);
+        RunMs(3000);
+        Check(fabsf(Probe().loop_speed + 1.f / 16.f) < 1e-4f && RunMs(500) > 0.f,
+              "transport-standstill: 4 detents on: 1/16x reverse, heard again");
+        const float at = Probe().loop_pos;
+        RunMs(2000);
+        Check(Probe().loop_pos < at || Probe().loop_pos > at + .5f, "transport-standstill: the loop runs backwards");
+        Tap("ENC_5_SW");
+        RunMs(2000);
+        Check(Probe().loop_speed == 1.f && Probe().tempo != 50, "transport-standstill: press: 1x, the loop's tempo again");
     }});
 
     cases.push_back({"flanger-click", [] {

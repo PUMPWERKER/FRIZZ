@@ -23,6 +23,11 @@
  *  sample and read with 4-point Hermite interpolation. Speed moves in semitones (StepSemitone)
  *  or along TAPE's ladder of 5ths and octaves (StepSpeed), glides to each new step like TAPE's
  *  default tape slew, and runs in reverse when negative. While paused, the transport knob scrubs instead (Scrub).
+ *  The semitones run through into reverse (#174): below 1/16x a hold zone of kStillSteps
+ *  steps, where the tape glides to a standstill (0x) and stands (Standing), then reverse from
+ *  1/16x. Below 1/16x the loop's level follows its speed, so the glide into the standstill and
+ *  out of it sounds as a tape stop and a stopped read head gives no DC; the engine's clock
+ *  takes the standstill as a pause (TempoClock.h).
  *
  *  The soft limit (#152): the loop is int16, so what's written is held under kLoopCeiling by a
  *  peak limiter, stereo-linked, rather than clipped at full scale: it takes a peak at once,
@@ -66,6 +71,9 @@ static const float kLoopRelease = 1.f - 1.f / 7200.f; // a frame's, ~150 ms
 static const int kSpeedMaxSemis = 12;
 static const int kSpeedMinSemis = -48;
 static const float kSpeedSlewCoeff = .0001f; // TAPE's tape-slew glide, ~0.2s
+// The hold zone between 1/16x and -1/16x (#174): semitone steps at a standstill, 2 detents
+// each, so about 4 detents of the transport knob
+static const int kStillSteps = 2;
 
 // Scrubbing while paused, as TAPE: the turns counted over each 1/8s set the scrub speed
 static const size_t kScrubPeriod = 6000;
@@ -115,7 +123,8 @@ public:
      *  Taken up at the next audio block, like the commands */
     void StepSpeed(int dir) { speed_steps_.fetch_add(dir > 0 ? 1 : (dir < 0 ? -1 : 0)); }
 
-    /** One semitone, turning as StepSpeed; stops at 2x and 1/16x, never flips */
+    /** One semitone, turning as StepSpeed; stops at 2x, and runs on from 1/16x through the
+     *  hold zone (Standing) into the other direction at 1/16x */
     void StepSemitone(int dir) { semi_steps_.fetch_add(dir > 0 ? 1 : (dir < 0 ? -1 : 0)); }
 
     /** Back to 1x forward, at the next audio block; steps posted before it are dropped */
@@ -201,8 +210,11 @@ public:
     /** Current scrub speed while paused, 0 when not scrubbing (for the LEDs) */
     inline float GetScrub() const { return scrub_; }
 
-    /** The speed's semitones, -48 to 12, either way it runs (MIDI feedback's CC 90) */
-    inline int GetSemitones() const { return semis_; }
+    /** The speed's semitones, -48 to 12, either way it runs (MIDI feedback's CC 90); at a
+     *  standstill -48 */
+    inline int GetSemitones() const { return Standing() ? kSpeedMinSemis : semis_; }
+    /** In the hold zone between 1/16x and -1/16x: gliding to a standstill, or standing */
+    inline bool Standing() const { return semis_ < kSpeedMinSemis; }
 
     /** Current speed target: negative is reverse, 1 is the recorded speed */
     inline float GetSpeed() const { return speed_target_; }
@@ -277,9 +289,10 @@ public:
                     // the glide stalls a hair short of its target, where a step rounds to
                     // nothing (~0.06% of it): from there it's at the step's speed exactly,
                     // or the loop would drift against the clock it was recorded to
+                    // and to a standstill, in denormals (#174): onto 0 within a hair
                     const float was = speed_;
                     daisysp::fonepole(speed_, speed_target_, kSpeedSlewCoeff);
-                    if (speed_ == was)
+                    if (speed_ == was || (speed_target_ == 0.f && fabsf(speed_) < 1e-5f))
                         speed_ = speed_target_;
                 }
                 if (scrub_ != scrub_target_)
@@ -297,10 +310,12 @@ public:
                     const float fade_target = audible ? 1.f : 0.f;
                     if (fade_ != fade_target)
                     {
-                        // onto its target within a hair, as the mix's (MixStep): on its own
-                        // it stalls short of 1, or in denormals towards 0 (#168)
+                        // onto its target (#168): on its own it stalls ~3e-5 short of 1,
+                        // where a step rounds to nothing (as the speed's glide), or runs into
+                        // denormals towards 0, which a hair's snap ends
+                        const float was = fade_;
                         daisysp::fonepole(fade_, fade_target, kPlayFadeCoeff);
-                        if (fabsf(fade_ - fade_target) < 1e-5f)
+                        if (fade_ == was || fabsf(fade_ - fade_target) < 1e-5f)
                             fade_ = fade_target;
                     }
 
@@ -311,12 +326,15 @@ public:
 
                     if (fade_ > .0001f)
                     {
+                        float gain = fade_;
+                        if (__builtin_expect(quiet_, 0))
+                            gain *= StillGain();
                         if (__builtin_expect((offset_ | jump_left_) != 0, 0))
                             ReadScrambled(&out_l[i], &out_r[i]);
                         else
                             ReadInterpolated(play_pos_, &out_l[i], &out_r[i]);
-                        out_l[i] *= fade_;
-                        out_r[i] *= fade_;
+                        out_l[i] *= gain;
+                        out_r[i] *= gain;
                         // an erase waiting for the loop point starts its fade there
                         if (Advance(playing || fading_out_ ? speed_ : scrub_) && playing
                             && erase_at_end_)
@@ -356,6 +374,13 @@ private:
     /** One step of the ladder, see StepSpeed */
     void ApplyStep(int dir)
     {
+        // out of the standstill: 1/16x the way it turns, right forward
+        if (Standing())
+        {
+            reverse_ = dir < 0;
+            SetSemis(kSpeedMinSemis);
+            return;
+        }
         // turning right means faster when forward, slower when in reverse
         const int way = ((dir > 0) != reverse_) ? 1 : -1;
         int semis = semis_ + way;
@@ -372,18 +397,45 @@ private:
         SetSemis(semis);
     }
 
-    /** One semitone, see StepSemitone */
+    /** One semitone, see StepSemitone: below 1/16x the hold zone, past it the other way */
     void ApplySemitone(int dir)
     {
         const int semis = semis_ + (((dir > 0) != reverse_) ? 1 : -1);
-        if (semis <= kSpeedMaxSemis && semis >= kSpeedMinSemis)
+        if (semis > kSpeedMaxSemis)
+            return;
+        if (semis < kSpeedMinSemis - kStillSteps)
+        {
+            reverse_ = !reverse_; // through the standstill
+            SetSemis(kSpeedMinSemis);
+        }
+        else
             SetSemis(semis);
     }
 
+    /** semis below kSpeedMinSemis: the hold zone, standing */
     void SetSemis(int semis)
     {
         semis_ = semis;
+        if (semis < kSpeedMinSemis)
+        {
+            speed_target_ = 0.f;
+            quiet_ = true;
+            return;
+        }
         speed_target_ = (reverse_ ? -1.f : 1.f) * powf(2.f, semis_ / 12.f);
+    }
+
+    /** Around the standstill (quiet_): the loop's level follows its speed below 1/16x, until
+     *  it's back up to that out of the hold zone */
+    inline float StillGain()
+    {
+        const float gain = fabsf(speed_) * 16.f;
+        if (!Standing() && (gain >= 1.f || speed_ == speed_target_))
+        {
+            quiet_ = false;
+            return 1.f;
+        }
+        return gain < 1.f ? gain : 1.f;
     }
 
     /** Back to 1x forward */
@@ -741,6 +793,7 @@ private:
         speed_reset_.store(false);
         cue_ = false;
         speed_ = 1.f;
+        quiet_ = false;
         scrub_ = scrub_target_ = 0.f;
         scrub_turns_.store(0);
         scrub_count_ = 0;
@@ -926,6 +979,7 @@ private:
     bool reverse_ = false;
     volatile float speed_target_ = 1.f;
     float speed_ = 1.f;
+    bool quiet_ = false; // around a standstill: the level follows the speed (StillGain)
 
     // the scramble: heard offset_ frames on, crossfading from from_offset_ for jump_left_ more
     size_t offset_ = 0, from_offset_ = 0;

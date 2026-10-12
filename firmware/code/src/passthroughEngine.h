@@ -141,7 +141,7 @@ public:
             tempo_clock_.Tap(tap);
         const uint32_t pulses = tempo_clock_.Process(
             size, looper.GetPosition(), looper.GetActualSpeed(),
-            looper.GetState() == chompi::Looper::State::PAUSED);
+            looper.GetState() == chompi::Looper::State::PAUSED || looper.Standing());
         fx_.SetTempo(tempo_clock_.GetFxBpm(), tempo_clock_.PulseSamples());
         // where the loop was before this block's pulses, for MIDI out's next 16th (MidiOut.h)
         next_16th_ = tempo_clock_.HasLoop() ? tempo_clock_.NextLoopPulseOn(chompi::kPulsesPer16th) : 0;
