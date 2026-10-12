@@ -181,6 +181,15 @@ void CheckSDCardMounted()
     }
 }
 
+// libDaisy's SD interrupt, wrapped by the linker (Makefile): a transfer of the SD DMA that ends runs the SD timer at once
+extern "C" void __real_HAL_SD_IRQHandler(SD_HandleTypeDef *hsd);
+extern "C" void __wrap_HAL_SD_IRQHandler(SD_HandleTypeDef *hsd)
+{
+    __real_HAL_SD_IRQHandler(hsd);
+    if(sd_dma.Active() && hsd->State == HAL_SD_STATE_READY)
+        TIM4->EGR = TIM_EGR_UG;
+}
+
 void SDCallback(void* data)
 {
     if(sd_dma.Busy()) // a transfer owns the card

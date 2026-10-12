@@ -110,6 +110,9 @@ namespace chompi
             return Start(file, offset, const_cast<void *>(buf), bytes, true);
         }
 
+        // a transfer started and not yet seen to end by Busy
+        bool Active() const { return file_; }
+
         // advances the transfer; false once it is done or failed
         bool Busy()
         {
