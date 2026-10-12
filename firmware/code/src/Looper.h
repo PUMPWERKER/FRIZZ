@@ -296,7 +296,13 @@ public:
                     const bool audible = !erasing_ && (playing || scrub_ != 0.f);
                     const float fade_target = audible ? 1.f : 0.f;
                     if (fade_ != fade_target)
+                    {
+                        // onto its target within a hair, as the mix's (MixStep): on its own
+                        // it stalls short of 1, or in denormals towards 0 (#168)
                         daisysp::fonepole(fade_, fade_target, kPlayFadeCoeff);
+                        if (fabsf(fade_ - fade_target) < 1e-5f)
+                            fade_ = fade_target;
+                    }
 
                     // the fade-out after a pause or erase keeps moving at play speed, so it
                     // doesn't freeze on one sample (a DC thump)
