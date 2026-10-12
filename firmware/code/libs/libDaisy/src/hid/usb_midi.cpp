@@ -213,7 +213,7 @@ void MidiUsbTransport::Impl::MidiToUsbSingle(uint8_t* buffer, size_t size)
 
             tx_ptr_ += 4;
         }
-        if(0xF1 == buffer[0] || 0xF3 == buffer[0])
+        else if(0xF1 == buffer[0] || 0xF3 == buffer[0])
         // two byte messages
         {
             if(size != 2)
