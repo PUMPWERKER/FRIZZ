@@ -454,9 +454,32 @@ remote.play(Stub(True), "wait.txt", True)
 )";
     rc = Python(kLoad, out);
     Check(rc == 0 && Has(out, "readings unanswered, their time not in the worst") && Has(out, "asked True")
-              && Has(out, "0 throughout: the bench"),
+              && Has(out, "0 throughout: the bench") && Has(out, "load: still 0 after 3 s"),
           "remote: play --cpu counts the load's unanswered asks and samples on; a load of 0 is the bench's");
     if (rc != 0)
+        printf("%s\n", out.c_str());
+
+    // play --cpu right after a start: FRIZZ answers 0 / 0 until its first block, then two
+    // readings over its start (90 / 48.1, 49.3 / 49.1), then the scenario's (60 / 43.5); the
+    // start isn't the worst (#147)
+    const char* const kStarting = R"(
+import remote
+class Starting(remote.Frizz):
+    def __init__(self):
+        self.held, self.n = set(), 0
+    def send(self, cmd, payload=b""):
+        pass
+    def raw(self, data):
+        pass
+    def ask(self, cmd, payload=b"", required=True):
+        self.n += 1
+        return ([0, 0, 0, 0], [0, 0, 0, 0], [7, 4, 3, 97], [3, 109, 3, 107], [4, 88, 3, 51])[min(self.n, 5) - 1]
+remote.play(Starting(), "wait.txt", True)
+)";
+    rc = Python(kStarting, out);
+    Check(rc == 0 && Has(out, "load: worst max 60.0%, worst mean 43.5% of the block\n") && !Has(out, "still 0"),
+          "remote: play --cpu right after a start opens its window once the start is over, not in the worst");
+    if (rc != 0 || !Has(out, "worst mean 43.5%"))
         printf("%s\n", out.c_str());
     unlink((tmp_dir + "/wait.txt").c_str());
 
