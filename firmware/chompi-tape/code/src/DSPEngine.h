@@ -724,9 +724,6 @@ namespace daisy
             char name_buffer[32];
             strcpy(name_buffer, "temp_rec.wav");
 
-            // char name_buffer_dbl[32];
-            // strcpy(name_buffer_dbl, "temp_rec_double.wav");
-
             /** For now we only need to record to the first-voices file..
              *  since all voices will be using the same file for playback
              */
@@ -857,7 +854,6 @@ namespace daisy
             if(voice_mode == VoiceMode::CUBBI)
             {
                 char name_buffer[32];
-                char name_buffer_dbl[32];
                 size_t slot = KeyToSlot(key);
                 if(slot == kSlotNone)
                     return;
@@ -874,8 +870,7 @@ namespace daisy
                     ))
                 {
                     GetFileNameForSlot(slot, bank[int(voice_mode)], voice_mode, name_buffer);
-                    GetFileNameForSlot(slot, bank[int(voice_mode)], voice_mode, name_buffer_dbl, true);
-                    chompi_voice[free_idx].OpenFile(name_buffer, name_buffer_dbl, true); 
+                    chompi_voice[free_idx].OpenFile(name_buffer, true); 
                     chompi_voice[free_idx].SetSlot(slot); 
                     chompi_voice[free_idx].SetUsingRam(false, true); 
                 }
@@ -1643,7 +1638,7 @@ namespace daisy
          *  name must be a buffer of at least 16 bytes to fit the name:
          *  - "chompi_xy.wav" where xy is a letter-number combo indicating bank/slot
          */
-        static void GetFileNameForSlot(int slot, int b, VoiceMode m, char *name, bool dbl = false)
+        static void GetFileNameForSlot(int slot, int b, VoiceMode m, char *name)
         {
             char bankchar;
             switch(b)
@@ -1671,20 +1666,14 @@ namespace daisy
             else if(m == VoiceMode::CUBBI)
                 strcpy(mode, "cubbi");
 
-            char dbl_suffix[10];
-            if(dbl)
-                strcpy(dbl_suffix, "_double");
-            else
-                dbl_suffix[0] = '\0';
-
             if (name)
             {
-                sprintf(name, "%s_%c%1d%s.wav", mode, bankchar, slot, dbl_suffix);
+                sprintf(name, "%s_%c%1d.wav", mode, bankchar, slot);
             }
         }
 
         char fname[32];
-        char fname_double[32];
+        char fname_json[32];
         uint8_t erasing = 0;
         void EraseStart(uint8_t target, int b, VoiceMode m)
         {
@@ -1692,20 +1681,22 @@ namespace daisy
             SetFileExists(target - 1, b, m, false);
 
             GetFileNameForSlot(target, b, m, fname);
-            GetFileNameForSlot(target, b, m, fname_double, true);
             if(kit) // no .wav there, its .aif and sidecar instead
             {
                 KitName(fname);
-                chompi::KitFileName(fname_double, fname, ".json");
                 chompi::kit_loader.Forget(fname);
             }
 
             FileRequest req(FileRequest::Type::UNLINK, nullptr, fname, 0, nullptr, this);
             file_manager.request_fifo.PushBack(req);
 
-            FileRequest double_req(FileRequest::Type::UNLINK, nullptr, fname_double, 0, nullptr, this);
-            file_manager.request_fifo.PushBack(double_req);
-            erasing += 2;
+            if(kit)
+            {
+                chompi::KitFileName(fname_json, fname, ".json");
+                FileRequest json_req(FileRequest::Type::UNLINK, nullptr, fname_json, 0, nullptr, this);
+                file_manager.request_fifo.PushBack(json_req);
+            }
+            erasing += kit ? 2 : 1;
         }
 
         inline void EraseFinished()
@@ -1837,16 +1828,13 @@ namespace daisy
                 chompi::kit_loader.Request(name_buffer);
             }
 
-            char name_buffer_dbl[32];
-            GetFileNameForSlot(idx, bank[int(voice_mode)], voice_mode, name_buffer_dbl, true);
-
             for(size_t i = 0; i < kMaxPoly; i++)
             {
                 if(chompi_voice[i].IsKit() || chompi_voice[i].IsAiff() != kit) // no key up would end it
                     chompi_voice[i].StopPlaying();
                 if(idx != 15 && !kit)
                 {
-                    chompi_voice[i].OpenFile(name_buffer, name_buffer_dbl, true);
+                    chompi_voice[i].OpenFile(name_buffer, true);
                 }
 
                 chompi_voice[i].SetSlot(idx); 

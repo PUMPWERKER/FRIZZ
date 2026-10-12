@@ -53,8 +53,7 @@ bin/                      bootloader binary and install script
 
 The card holds the firmware binary, the sample banks, and two JSON files: `options.json`
 (global settings) and `presets.json` (per-slot knob positions). Samples are named
-`<instrument>_<bank><slot>.wav` — 48 kHz, 16-bit stereo — with a matching `_double` variant
-used for high-pitched playback.
+`<instrument>_<bank><slot>.wav` — 48 kHz, 16-bit stereo.
 
 ## Support Guidelines
 

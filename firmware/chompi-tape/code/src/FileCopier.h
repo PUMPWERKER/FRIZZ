@@ -123,26 +123,6 @@ class FileCopier
                 }
 
                 copyread += read_num;
-
-                // double speed write
-                if(is_chompi_ram != CopyRequest::RamDir::TO && is_looper_ram != CopyRequest::RamDir::TO && !kit_phase_)
-                {
-                    size_t write = 0;
-                    size_t read = 0;
-                    while(read < read_num)
-                    {
-                        buff[write] = buff[read];
-                        buff[write + 1] = buff[read + 1];
-                        buff[write + 2] = buff[read + 2];
-                        buff[write + 3] = buff[read + 3];
-
-                        write += 4;
-                        read += 8;
-                    }
-
-                    f_write(&fptr_write_double, buff, read_num / 2, nullptr);
-                    f_sync(&fptr_write_double);
-                }
             }
 
             else
@@ -157,17 +137,10 @@ class FileCopier
         inline bool IsLooperStaged() { return looper_staged; }
         inline bool LooperWasPlaying() { return looper_was_playing; }
 
-        bool FileExists(size_t idx, VoiceMode mode, size_t bank, bool dbl = false)
-        {
-            char fname[32];
-            Engine::GetFileNameForSlot(idx + 1, bank, mode, fname, dbl);
-            return f_stat(fname, nullptr) == FR_OK;
-        }
-
         bool NeedsOverwrite(size_t idx, VoiceMode mode, size_t bank)
         {
             char fname[32];
-            Engine::GetFileNameForSlot(idx + 1, bank, mode, fname, false);
+            Engine::GetFileNameForSlot(idx + 1, bank, mode, fname);
 
             // no file, no overwrite
             if(f_stat(fname, nullptr) != FR_OK)
@@ -184,26 +157,7 @@ class FileCopier
             }
 
             CloseFile(&fptr_read);
-
-            // missing 2x file?
-            Engine::GetFileNameForSlot(idx + 1, bank, mode, fname, true);
-            if(f_stat(fname, nullptr) != FR_OK)
-                return true;
-
-            f_open(&fptr_read, fname, (FA_OPEN_ALWAYS | FA_WRITE | FA_READ));
-
-            // 2x file large header || has footer?
-            uint32_t dbl_size = 0;
-            if(JumpToData(fname, &dbl_size))
-            {
-                CloseFile(&fptr_read);
-                return true;
-            }
-
-            CloseFile(&fptr_read);
-
-            // wrong 2x size
-            return ((size - sizeof(WAV_FormatTypeDef)) / 2) != (dbl_size - sizeof(WAV_FormatTypeDef));
+            return false;
         }
 
         struct CopyRequest {
@@ -259,7 +213,7 @@ class FileCopier
 
     private:
         // A kit copies as files, the .aif and then its sidecar, and only to another JAMMI slot on the card.
-        // Both go through the normal loop as raw copies: no WAV header, no double.
+        // Both go through the normal loop as raw copies: no WAV header.
         bool CopyKitStart() __attribute__((optimize("Os")))
         {
             if(req.dest_mode != VoiceMode::JAMMI || req.dest < 1 || req.dest > 14)
@@ -279,9 +233,6 @@ class FileCopier
 
             Engine::GetFileNameForSlot(req.dest, req.dest_bank, req.dest_mode, to);
             f_unlink(to);
-            Engine::GetFileNameForSlot(req.dest, req.dest_bank, req.dest_mode, to, true);
-            f_unlink(to);
-            Engine::GetFileNameForSlot(req.dest, req.dest_bank, req.dest_mode, to);
             Engine::KitName(to);
             chompi::kit_loader.Remove(to);
             fx_->SetFileExists(req.dest - 1, req.dest_bank, req.dest_mode, true);
@@ -349,7 +300,7 @@ class FileCopier
                 // close then open read FIL
                 CloseFile(&fptr_read);
 
-                Engine::GetFileNameForSlot(src, src_bank, src_mode, fname, false);
+                Engine::GetFileNameForSlot(src, src_bank, src_mode, fname);
                 f_open(&fptr_read, fname, (FA_OPEN_ALWAYS | FA_WRITE | FA_READ));
 
                 // jump read FIL past the header, set size variables
@@ -370,18 +321,13 @@ class FileCopier
 
             if(is_chompi_ram != CopyRequest::RamDir::TO && is_looper_ram != CopyRequest::RamDir::TO)
             {
-                // close then open write FILs
+                // close then open the write FIL
                 CloseFile(&fptr_write);
-                CloseFile(&fptr_write_double);
 
 
-                Engine::GetFileNameForSlot(dest, dest_bank, dest_mode, fname, false);
+                Engine::GetFileNameForSlot(dest, dest_bank, dest_mode, fname);
                 f_open(&fptr_write, fname, (FA_OPEN_ALWAYS | FA_WRITE | FA_READ));
                 WriteHeader(&fptr_write);
-
-                Engine::GetFileNameForSlot(dest, dest_bank, dest_mode, fname, true);
-                f_open(&fptr_write_double, fname, (FA_OPEN_ALWAYS | FA_WRITE | FA_READ));
-                WriteHeader(&fptr_write_double);
             }
 
             copying_ = true;
@@ -445,13 +391,8 @@ class FileCopier
             else if(is_chompi_ram != CopyRequest::RamDir::TO && is_looper_ram != CopyRequest::RamDir::TO)
             {
                 f_truncate(&fptr_write);
-                f_truncate(&fptr_write_double);
-
                 WriteHeader(&fptr_write);
-                WriteHeader(&fptr_write_double);
-
                 CloseFile(&fptr_write);
-                CloseFile(&fptr_write_double);
             }
 
             if(is_chompi_ram != CopyRequest::RamDir::FROM && is_looper_ram != CopyRequest::RamDir::FROM)
@@ -468,7 +409,6 @@ class FileCopier
 
             fptr_read.obj.objsize = 0;
             fptr_write.obj.objsize = 0;
-            fptr_write_double.obj.objsize = 0;
 
             copying_ = false;
 
@@ -548,7 +488,6 @@ class FileCopier
 
         FIL fptr_read;
         FIL fptr_write;
-        FIL fptr_write_double;
         bool copying_;
         // loading next to the playing loop, which keeps playing until the loop point
         bool looper_staged = false;
