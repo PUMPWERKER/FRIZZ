@@ -1,16 +1,17 @@
-# AUX dry (#152): CC 84 sends AUX past the effects and the compressor; a loop recorded from it,
-# six inserts latched over the loop and the mix in the middle, so the device plays dry beside
-# the loop through the effects; then the mic (never on the master) and AUX through the effects
+# AUX dry (#152, #177): CC 116 sends AUX past the effects and the compressor; a loop recorded
+# from it, six inserts latched over the loop and the mix in the middle, so the device plays dry
+# beside the loop through the effects; then the mic (not live unless asked for) and AUX through
+# the effects again
 input sine 220 0.3
 at 6000
 # the global channel 16, whatever the device's card says (in RAM while remote.py plays)
 usb F0 7D 43 48 13 00 10 F7
-# CC 84 at 64: AUX dry, the settings page's upper A# white
-midi BF 54 40
+# CC 116 at 127: AUX dry, the settings page's upper G# white
+midi BF 74 7F
 wait 300
 toggle 1
 wait 300
-expect led smt 9 fcfcfc
+expect led smt 8 fcfcfc
 toggle 0
 wait 300
 tap KEY_28
@@ -22,20 +23,28 @@ wait 1000
 midi BF 57 40
 midi BF 67 7F BF 68 7F BF 69 7F BF 6A 7F BF 6B 7F BF 6D 7F
 wait 5000
-# CC 84 at 127: the mic, magenta
+# CC 84 at 127: the mic, the upper F# magenta, its own G# dark (not live)
 midi BF 54 7F
 wait 2000
 toggle 1
 wait 300
-expect led smt 9 fc00fc
+expect led smt 7 fc00fc
+expect led smt 8 000000
 toggle 0
 wait 300
-# CC 84 at 0: AUX through the effects, green
+# CC 84 at 0: AUX again, dry as it was; CC 116 at 0: through the effects, G# green
 midi BF 54 00
+wait 300
+toggle 1
+wait 300
+expect led smt 7 00fc00
+expect led smt 8 fcfcfc
+toggle 0
+midi BF 74 00
 wait 2000
 toggle 1
 wait 300
-expect led smt 9 00fc00
+expect led smt 8 00fc00
 toggle 0
 wait 300
 midi BF 67 00 BF 68 00 BF 69 00 BF 6A 00 BF 6B 00 BF 6D 00

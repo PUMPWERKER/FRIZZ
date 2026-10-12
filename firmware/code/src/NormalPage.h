@@ -320,7 +320,7 @@ namespace chompi
                 settings_.Held(key, rising, now);
                 if (key == static_cast<int>(Hardware::SwId::ENC_6_SW))
                     SettingsVolumePressed(rising, now);
-                else if (rising && settings_.Key(key))
+                else if (rising && settings_.Key(key, Shift(), now))
                     MasterChanged(now);
                 return true;
             }
@@ -465,6 +465,12 @@ namespace chompi
         {
             if (encoderID == kTransportEncoder)
                 TransportTurned(turns);
+            else if (encoderID < kNumFxKnobs && show_settings_)
+            {
+                // knob 1 the LEDs' brightness there (SettingsPage.h, #176)
+                if (encoderID == 0 && settings_.KnobTurned(turns, Shift()))
+                    MasterChanged(System::GetNow());
+            }
             else if (encoderID < kNumFxKnobs)
             {
                 if (fx_.KnobUsed(encoderID))
@@ -565,7 +571,23 @@ namespace chompi
             case Event::PROGRAM:
                 ScenePressed(e.arg, false);
                 break;
+            case Event::INPUT:
+                RemoteInput(e.arg & 3, e.arg & 4);
+                break;
             }
+        }
+
+        /** CC 84 the source (on: the mic), 116 its effects (on: dry), 117 it live (#177): as
+         *  the settings page's F#, G# and A#, but the card doesn't get them (#97) */
+        MIDI_CONTROL_ONCE void RemoteInput(uint8_t which, bool on)
+        {
+            if (which == 0)
+                settings_.SetSource(on);
+            else if (which == 1)
+                settings_.SetDry(on);
+            else
+                settings_.SetLive(on);
+            Heard(which == 0 ? feedback::kSource : which == 1 ? feedback::kDry : feedback::kLive);
         }
 
         /** A controller's value (midimap::Value): a knob, the compressor's too, which the card
@@ -584,14 +606,7 @@ namespace chompi
                     fx_.SetComp(param, value, false);
                 HeardKey(id / kKeyParams, param);
             }
-            else if (id == kSource)
-            {
-                // CC 84: 0-42 AUX through the effects, 43-84 AUX dry, 85-127 the mic; as A#
-                // on the settings page, but the card doesn't get it (#97)
-                using Input = PassthroughEngine::Input;
-                settings_.SetInput(raw < 43 ? Input::AUX_FX : raw < 85 ? Input::AUX_DRY : Input::MIC);
-                Heard(feedback::kSource);
-            }
+
             else if (id <= kHpCue)
             {
                 if (id == kOutGain)
@@ -665,7 +680,13 @@ namespace chompi
                 v = KnobTo7(scene_ctl_.FaderPos());
                 return hand_fader_;
             case kSource:
-                v = kSourceTo7[static_cast<uint8_t>(engine_->GetInput())];
+                v = engine_->MicInput() ? 127 : 0;
+                return true;
+            case kDry:
+                v = engine_->Dry(engine_->MicInput()) ? 127 : 0;
+                return true;
+            case kLive:
+                v = engine_->Live(engine_->MicInput()) ? 127 : 0;
                 return true;
             }
             return false;
@@ -807,7 +828,10 @@ namespace chompi
                 // the mode switch: 1 if it stands up, plus SysEx's setting (kCmdSwitch) x2
                 d[n++] = static_cast<uint8_t>((hw_->GetToggleState() ? 0 : 1) | midi_->Switch() << 1);
                 d[n++] = static_cast<uint8_t>(fx_.Page()); // the FX knobs' page, 0 or 1
-                d[n++] = static_cast<uint8_t>(engine_->GetInput()); // AUX, AUX dry, the mic
+                // the input (#177): the mic 1 (else AUX), its effects dry 2, it live 4
+                d[n++] = static_cast<uint8_t>((engine_->MicInput() ? 1 : 0)
+                                              | (engine_->Dry(engine_->MicInput()) ? 2 : 0)
+                                              | (engine_->Live(engine_->MicInput()) ? 4 : 0));
                 break;
             }
             case kCmdParams:
@@ -2088,8 +2112,6 @@ namespace chompi
         uint32_t gain_turned_ = 0;  // the input gain last set
         float in_meter_ = 0.f;      // the input's meter, full scale 1
         uint32_t in_red_at_ = 0;    // the input last reached the loop's ceiling
-        // CC 84's value for each input, PassthroughEngine::Input's order (MidiControl.h)
-        static constexpr uint8_t kSourceTo7[3] = {0, 64, 127};
         bool hand_fader_ = false;   // the transport knob has had the crossfader since SHIFT
                                     // went down (TransportTurned)
         LedSignal page_flash_;      // a page picked: its number in blinks
@@ -2097,7 +2119,6 @@ namespace chompi
         size_t knob_flash_page_ = 0; // the page knob_page_flash_ blinks for
     };
 
-    constexpr uint8_t NormalPage::kSourceTo7[];
 
 } // namespace chompi
 

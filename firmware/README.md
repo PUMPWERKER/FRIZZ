@@ -235,8 +235,8 @@ longer than a block, which crackle), `settings`, `channel N`, `transport on|off`
 `battery` (below), and `play SCRIPT [--cpu] [--fresh]`, which plays a twin
 script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over SysEx at the
 script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs, at the
-brightness the card's `led_brightness` sets (100, 75 or 50 %: the one level that fits every
-line, said when it isn't 100 %).
+brightness the card's `led_brightness` sets (25-100 % by 5: the levels that fit every line,
+said when it isn't 100 %).
 With `--cpu` it reports the worst load FRIZZ.bin itself had, measured in the audio callback as
 the bench does, and how many blocks took longer than a block, so a scenario can be tried for
 crackles on the build that plays, not the bench's (it says how many readings went unanswered,
@@ -614,9 +614,9 @@ MidiControl.h          MIDI control: notes as keys, CCs, program changes, FRIZZ'
 MidiOut.h              MIDI out: the clock and the loop's Start, Stop, Continue, Song Position,
                        out of the jack and over USB, if the settings page asks
 NormalPage.h           the play page: routes the controls (VOLUME, PLAY/LOOP, transport, FX and scene keys) and draws the LEDs
-SettingsPage.h         the settings page (the mode switch up): MIDI channel and transport, mono,
-                       the clock factor, the LED brightness, the input (AUX or the mic), the
-                       battery on VOLUME
+SettingsPage.h         the settings page (the mode switch up): MIDI channel and transport, the
+                       clock factor, the LED brightness (knob 1), the input (its source, effects
+                       and live, each source's own; mono), the battery on VOLUME
 LedSignal.h            the play page's short LED signals: 3 red or white blinks, a flash
 ui.h                   page plumbing: events, page switching
 EventLog.h             the bug report: every key, knob and MIDI event since power-on, written as

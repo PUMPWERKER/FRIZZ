@@ -1,5 +1,5 @@
 # the settings page (mode switch up): an FX held through the flip, channel, mono, clock
-# factor and source, brightness, the battery on VOLUME; then back down to play
+# factor and source, brightness (knob 1), the battery on VOLUME; then back down to play
 input sine 220 0.3
 at 6000
 down KEY_5
@@ -22,10 +22,14 @@ tap KEY_18
 wait 300
 # transport following on
 expect led smt 2 00fc00
+down KEY_26
+wait 100
 tap KEY_23
 wait 300
-# mono
+# mono (SHIFT + the upper F#): white while SHIFT is held
 expect led smt 7 fcfcfc
+up KEY_26
+wait 300
 tap KEY_19
 wait 300
 # the clock factor doubled: red, but pulsing on the beat, whose phase on the device is
@@ -48,10 +52,10 @@ tap KEY_20
 wait 300
 # and Auto again
 expect led smt 4 fcfcfc
-tap KEY_24
+# knob 1 (SW4) five detents down: the LEDs at 75 %, its own LED white, dimmed with them
+turn 4 -5
 wait 300
-# the LEDs at 75 %
-expect led smt 8 6c08bc
+expect led pth 1 bbbbbb
 tap KEY_10 1500
 wait 1000
 toggle 0

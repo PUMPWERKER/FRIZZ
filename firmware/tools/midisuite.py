@@ -69,9 +69,9 @@ WHITE_FX = [None, "freezer", "shifter", "folder", "crusher", "filter", "flanger"
 # the knobs an effect has nothing on (MANUAL.md "Page 2"): (effect, knob 0-7), dark, doing nothing
 EMPTY = {("flanger", 4), ("resonator", 4), ("comp", 5)} | {("chaos", i) for i in range(4, 8)}
 # the settings each case starts from: the global channel 16, the effect channels over TRS on,
-# nothing else
+# AUX live through the effects and the mic through them, not live (#177), nothing else
 BASELINE = dict(midi_channel=16, midi_transport=0, clock_factor=100, clock_source=0, midi_out=0,
-                midi_block_trs=1, midi_feedback=0)
+                midi_block_trs=1, midi_feedback=0, aux_dry=0, aux_live=1, mic_dry=0, mic_live=0)
 SOURCES = dict(auto=0, trs=1, usb=2, internal=3)
 OUTS = dict(off=0, trs=1, all=2)
 
@@ -1137,6 +1137,68 @@ def feedback(r):
     r.f.key("KEY_5", True)
     time.sleep(.05)
     r.f.key("KEY_5", False)  # the latch cleared
+
+
+def input_bits(r):
+    """STATE's input byte (#177): the mic 1 (else AUX), its effects dry 2, it live 4"""
+    return r.f.state()[25]
+
+
+@case("input-cc", "8: CC 84 picks the input's source, CC 116 its effects, CC 117 it live, in the "
+      "order they came, each source its own; feedback sends them, not what came; CC 88 and 91, "
+      "as a keyboard sends them at power-on, do nothing (#177)")
+def input_cc(r):
+    r.setting(midi_out=OUTS["all"], midi_feedback=1)
+    log = r.usb.log
+    r.send_usb(cc(GLOBAL, 84, 0))  # AUX: the cable is in on the device
+    time.sleep(.2)
+    start = input_bits(r)
+    groups = remote.FX_NAMES + ["comp", "volume"]
+    before = {g: r.get(g) for g in groups}
+    for ch in (1, GLOBAL):
+        r.send_usb(cc(ch, 88, 0) + cc(ch, 91, 40) + cc(ch, 91, 0))
+        if r.trs_fd is not None and "in" in r.wiring:
+            r.send_trs(cc(ch, 88, 0) + cc(ch, 91, 40))
+    time.sleep(.3)
+    changed = ["%s %d" % (g, i) for g in groups for i, (a, b) in enumerate(zip(before[g], r.get(g))) if a != b]
+    r.check("CC 88 and 91 on channels 1 and 16: nothing changes", not changed and input_bits(r) == start,
+            ", ".join(changed) or "input %d" % input_bits(r), "nothing, input %d" % start)
+    # AUX dry, then off; CC 116 and 84 in one packet: 116 is AUX's, before the switch
+    t0 = time.perf_counter()
+    r.send_usb(cc(GLOBAL, 116, 127))
+    time.sleep(.2)
+    aux_dry = input_bits(r)
+    r.send_usb(cc(GLOBAL, 117, 0))
+    time.sleep(.2)
+    aux_off = input_bits(r)
+    r.send_usb(cc(GLOBAL, 116, 0) + cc(GLOBAL, 84, 127))
+    time.sleep(.2)
+    mic = input_bits(r)
+    r.send_usb(cc(GLOBAL, 84, 0))
+    time.sleep(.2)
+    aux = input_bits(r)
+    r.check("CC 116 at 127: AUX dry", aux_dry == 2 | (start & 4), aux_dry, 2 | (start & 4))
+    r.check("CC 117 at 0: AUX not live", aux_off == 2, aux_off, 2)
+    r.check("CC 116 at 0, then CC 84 at 127 in one packet: the 116 AUX's, the mic its own", mic & 1 and aux == 0,
+            "the mic %d, AUX then %d" % (mic, aux), "the mic odd, AUX 0")
+    time.sleep(.3)
+    back = {(m[1], m[2]) for t, m in log if t >= t0 and len(m) == 3 and m[0] == 0xBF and m[1] in (84, 116, 117)}
+    sent_back = sorted(k for k in back if k[0] == 84)
+    r.check("what came isn't sent back: no CC 84", not sent_back, sent_back or "none", "none")
+    # the hand: the settings page's G# and A# go out as CC 116 and 117
+    t1 = time.perf_counter()
+    r.f.send(remote.SWITCH, [2])
+    time.sleep(.3)
+    r.tap("KEY_25")  # AUX live again
+    time.sleep(.2)
+    r.tap("KEY_24")  # dry
+    time.sleep(.3)
+    r.f.send(remote.SWITCH, [0])
+    time.sleep(.3)
+    out = {(m[1], m[2]) for t, m in log if t >= t1 and len(m) == 3 and m[0] == 0xBF}
+    r.check("the settings page's A# and G#: CC 117 at 127 and CC 116 at 127 out", (117, 127) in out and (116, 127) in out,
+            sorted(k for k in out if k[0] in (84, 116, 117)) or "none", "(116, 127), (117, 127)")
+    r.check("... and AUX live and dry", input_bits(r) == 6, input_bits(r), 6)
 
 
 @case("no-double", "8: a DAW recording what it also sends (track monitoring on): automation that "
