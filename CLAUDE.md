@@ -142,6 +142,12 @@ working on a branch:
 
 ### Releases and the release test
 
+**Feature freeze for 1.0** (decided 2026-10-12): until `v1.0.0` is tagged, `main` takes fixes,
+refactors (bit-identical) and documentation only. A feature branch may be built and tested,
+but merges after the tag, for 1.1. With 1.0 the controls, the MIDI map and the scene files
+stay as they are: a feature goes into 1.x, a fix into 1.0.x, and only a break of the controls
+would be 2.0.
+
 The open **release-test issue** (label `release test`, one at a time, titled for the next
 version) collects every merged PR's *For the release test* items, under the PR's number, plus
 the standing ones (a bench run on the candidate, a session of playing). When the user wants
@@ -154,12 +160,12 @@ through with why, and the issue is closed with it; the next one opens.
 A build handed out for testing goes on GitHub as a **pre-release**, never as Latest:
 
 - Each release candidate (or other test round the user asks for) gets a numbered one,
-  `v<next>-beta.N` (next: `v0.12-beta.3`), tagged on the pushed commit, with that commit's
+  `v<next>-beta.N` (next: `v1.0.0-beta.2`), tagged on the pushed commit, with that commit's
   build attached: `make` in a clean worktree at the tag (`git worktree add ../FrizZ-<tag>
   <tag>`, GCC 10.3), and its `firmware/code/src/build/FRIZZ.bin` uploaded under that name. The
   notes name its md5 and are taken from `CHANGELOG.md`'s Unreleased section, plus a link to
   the release-test issue (or the PR). The number never moves, so feedback can name the build.
-- The pre-release **`beta`** always carries the newest numbered one (now v0.12-beta.2), and
+- The pre-release **`beta`** always carries the newest numbered one (now v1.0.0-beta.1), and
   moves only with a new one, at a fixed link
   (`https://github.com/ZUHcYa/FrizZ/releases/download/beta/FRIZZ.bin`): `git tag -f beta
   <commit> && git push -f origin beta`, `gh release upload beta <the numbered one's FRIZZ.bin>
