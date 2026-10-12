@@ -122,13 +122,16 @@ class Skip(Exception):
 # ======== the rig: FRIZZ, its two ports, what comes back ========
 
 class Rig:
-    def __init__(self, f, trs_fd, args):
+    def __init__(self, f, trs_fd, args, usb=None, trs=None, patience=1.):
+        """usb, trs: taps already reading (reaper.py's: FRIZZ's USB through REAPER, the jack's
+        kept over several rigs), else each on its node; patience: the answers' timeouts times
+        this"""
         self.f, self.args = f, args
-        self.usb = midiport.Tap(f.link.fd)
+        self.usb = usb or midiport.Tap(f.link.fd)
         # --quick: the host check's twin, which can fall behind the wall clock under load
-        f.link = midiport.TapLink(self.usb, 4. if args.quick else 1.)
+        f.link = midiport.TapLink(self.usb, (4. if args.quick else 1.) * patience)
         self.trs_fd = trs_fd
-        self.trs = midiport.Tap(trs_fd) if trs_fd is not None else None
+        self.trs = trs or (midiport.Tap(trs_fd) if trs_fd is not None else None)
         self.trs_lock = threading.Lock()
         self.clocks = []
         self.wiring = set()
