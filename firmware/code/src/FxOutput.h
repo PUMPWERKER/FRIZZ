@@ -238,7 +238,8 @@ private:
      *  Level fades in and out with the key (fade) as the effect does */
     FRIZZ_HOT inline void Join(float* l, float* r, float fade)
     {
-        // the fade only nears 1 (fonepole): its last 1e-4 (-80dB) taken as 1, so Level 0 mutes
+        // the key's fade lands on 1 (kFxGateFull), where Level 0 mutes; from 1e-4 (-80dB) short
+        // of it taken as 1 already
         if (fade > 1.f - 1e-4f)
             fade = 1.f;
         const float gain = 1.f + fade * (level_.value - 1.f);

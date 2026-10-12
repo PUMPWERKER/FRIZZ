@@ -6,8 +6,8 @@
  *     (ClockPulse) and 8th-note edges (setClockEdge), from TempoClock.h via FxDelay.h.
  *     TEMPO's edges came from its arpeggiator step instead.
  *   - TEMPO's bipolar main knob (division by distance from centre, random side / shimmer side,
- *     on/off dead zone) is split into setDivision and setRandom; the delay is always on and
- *     wet_amt_ stays at 1, so the return level is applied outside and doesn't shorten tails.
+ *     on/off dead zone) is split into setDivision and setRandom; the delay is always on, and
+ *     its return level is applied outside (FxDelay.h), so it doesn't shorten tails.
  *   - no buffer mute option and no getColors (the LEDs are drawn in NormalPage).
  *   - no freeze (TEMPO's buffer lock), so no frozen buffer.
  *   - a jump in tempo crossfades to the new delay time instead of sliding to it.

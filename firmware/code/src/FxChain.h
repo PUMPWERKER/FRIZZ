@@ -13,7 +13,7 @@
  *  the repeats. The folder comes before the crusher, so it folds the clean signal and the
  *  crusher grinds the folds. The filter sweeps the dirt, and the flanger and the phaser (#68),
  *  the two modulations side by side, the harmonics it made; both are in the resonator's loop,
- *  so its ringing is swept on every trip. The slicer is the last insert before the tape, the
+ *  as everything from the shifter on is, so its ringing is swept on every trip. The slicer is the last insert before the tape, the
  *  final gate: it chops everything including the resonator's ringing, and what comes after it
  *  gets the chopped sound. Wow & flutter and the tape stop come after it, so they bend
  *  everything before them; the sends after them, so a tape stop leaves the echoes and the
@@ -26,8 +26,9 @@
  *     to the signal, so tails ring out after the key is released. Page 2's Band filters what
  *     goes in; the rest of their page 2 is their own.
  *   - loop (resonator): a comb feedback loop from after the phaser back to after the
- *     freezer, so the filter, flanger and phaser are in the loop and the slicer outside it. Page 2's Band filters
- *     what goes into the loop, its Level is the return's (FxResonator.h).
+ *     freezer, so the shifter, folder, crusher, filter, flanger and phaser are in the loop and
+ *     the slicer outside it. Page 2's Band filters what goes into the loop, its Level is the
+ *     return's (FxResonator.h).
  *
  *  And the chaos key (FxChaos.h), last of the FxIds, its key the 14th, after the sends: no sound and no place in the chain, it gates the others. The keys reach the
  *  effects a block after they're set, together with what chaos drops (Block), so a key set
