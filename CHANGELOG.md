@@ -245,6 +245,12 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The pitch shifter's first moment no longer slips through unshifted** (#140): the first
+  punch-in after power-on with the shift up, or a punch-in after the shift was turned from
+  down to up (or up to down) while the shifter was off, could play a split second of the
+  unshifted sound, or a stuck one, under the shifted voice. The shifter now starts its two
+  voices afresh in those cases; otherwise it carries on as before.
+
 - **The low-battery countdown shows VOLUME red** (#43): in the 15 s before the CHOMPI
   switches itself off on an empty battery, VOLUME's LED flashes red while the others flash
   yellow, so the battery's red (MANUAL.md, Settings page) is seen exactly when it matters.
