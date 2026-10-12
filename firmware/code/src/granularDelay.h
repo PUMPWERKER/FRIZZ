@@ -13,6 +13,9 @@
  *   - a jump in tempo crossfades to the new delay time instead of sliding to it.
  *   - the tempo is a float (TEMPO's was whole BPM in microseconds per beat), so on a loop
  *     whose tempo isn't whole the echoes don't drift off its beats.
+ *   - the stereo offset (20ms left, 10ms right) is on the output only: TEMPO fed it back, so
+ *     every repeat came that much later, the 5th echo at 1/4 and 120 BPM 100ms off the beat
+ *     on the left (#167). Now each echo is the offset late and no more.
  */
 #pragma once
 #include "FrizzHot.h"
@@ -32,12 +35,15 @@ constexpr float delayStereoOffsetLeft = 960.f;
 constexpr float delayStereoOffsetRight = 480.f;
 
 namespace chompi {
-    inline void getSample(float *buffer, float read_head, float *out_l, float *out_r, size_t buffer_size) {
-        float right_read_head = read_head - delayStereoOffsetRight;
+    /** The frame at read_head, each channel offset_l and offset_r (whole samples) further
+     *  back, added to out_l and out_r */
+    inline void getSample(float *buffer, float read_head, float offset_l, float offset_r,
+                          float *out_l, float *out_r, size_t buffer_size) {
+        float right_read_head = read_head - offset_r;
         if (right_read_head < 0.f) {
             right_read_head += static_cast<float>(buffer_size);
         }
-        float left_read_head = read_head - delayStereoOffsetLeft;
+        float left_read_head = read_head - offset_l;
         if (left_read_head < 0.f) {
             left_read_head += static_cast<float>(buffer_size);
         }
@@ -182,7 +188,9 @@ class delayVoice {
         return true;
     }
 
-    void Read(float *out_l, float *out_r) {
+    /** Adds the voice to the output (out, with the stereo offset) and to what's fed back (fb,
+     *  without it) */
+    void Read(float *out_l, float *out_r, float *fb_l, float *fb_r) {
 
         if (!active_) {
             return;
@@ -255,9 +263,15 @@ class delayVoice {
             }
         }
 
-        chompi::getSample(buffer_, read_head_, &sig_l, &sig_r, buffer_size_);
-        *out_l += sig_l * crossfade_env * div_env * panL;
-        *out_r += sig_r * crossfade_env * div_env * panR;
+        const float gain = crossfade_env * div_env;
+        chompi::getSample(buffer_, read_head_, delayStereoOffsetLeft, delayStereoOffsetRight,
+                          &sig_l, &sig_r, buffer_size_);
+        *out_l += sig_l * gain * panL;
+        *out_r += sig_r * gain * panR;
+        sig_l = sig_r = 0.f;
+        chompi::getSample(buffer_, read_head_, 0.f, 0.f, &sig_l, &sig_r, buffer_size_);
+        *fb_l += sig_l * gain * panL;
+        *fb_r += sig_r * gain * panR;
 
         if (div_crossfade_) {
 
@@ -290,11 +304,17 @@ class delayVoice {
                 div_read_head_ -= static_cast<float>(buffer_size_);
             }
 
+            const float c_gain = crossfade_env * (1.f - div_env);
             float c_sig_l = 0.f;
             float c_sig_r = 0.f;
-            chompi::getSample(buffer_, div_read_head_, &c_sig_l, &c_sig_r, buffer_size_);
-            *out_l += c_sig_l * crossfade_env * (1.f - div_env) * panL;
-            *out_r += c_sig_r * crossfade_env * (1.f - div_env) * panR;
+            chompi::getSample(buffer_, div_read_head_, delayStereoOffsetLeft,
+                              delayStereoOffsetRight, &c_sig_l, &c_sig_r, buffer_size_);
+            *out_l += c_sig_l * c_gain * panL;
+            *out_r += c_sig_r * c_gain * panR;
+            c_sig_l = c_sig_r = 0.f;
+            chompi::getSample(buffer_, div_read_head_, 0.f, 0.f, &c_sig_l, &c_sig_r, buffer_size_);
+            *fb_l += c_sig_l * c_gain * panL;
+            *fb_r += c_sig_r * c_gain * panR;
         }
     }
 
@@ -468,12 +488,14 @@ class granularDelay {
             myVoices[nextIdx].startFadeOut();
         }
 
+        // FRIZZ: the stereo offset on the output only, the feedback without it (#167)
+        float fb_l = 0.f, fb_r = 0.f;
         for (size_t i = 0; i < 2; ++i) {
-            myVoices[i].Read(out_l, out_r);
+            myVoices[i].Read(out_l, out_r, &fb_l, &fb_r);
         }
 
-        cur_sig_l_ = *out_l * delay_feedback_amt_;
-        cur_sig_r_ = *out_r * delay_feedback_amt_;
+        cur_sig_l_ = fb_l * delay_feedback_amt_;
+        cur_sig_r_ = fb_r * delay_feedback_amt_;
         // FRIZZ: the damping in the feedback (FxDelay.h), a one-pole each way, darker or
         // thinner with every repeat. Off, the lowpass follows the signal and the highpass's
         // lows rest at 0, so turning it on by a jump starts from now, not from an old sample,

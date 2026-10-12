@@ -174,6 +174,11 @@ what FRIZZ does.
 
 ### Changed
 
+- **The delay's echoes stay on the beat** (#167): its stereo spread (the left echoes 20 ms
+  late, the right 10 ms, from TEMPO) went round the feedback too, so every repeat came that
+  much later than the one before: at 1/4 and 120 BPM the 5th left echo was 100 ms off the beat.
+  Now every echo is just the spread late, and the repeats stay on the beats as MANUAL.md
+  always said. The delay sounds tighter, its long tails no longer smear.
 - **The scene keys moved two dark keys to the right** (#67): the blank scene is now on F# of
   the lower octave, scenes 1-4 on the lower G# and A# and the upper C# and D#. The lower C#
   and D# do nothing on the play page for now; they're kept free for pages to come. Your

@@ -7,6 +7,8 @@
 //    as the knob says (half the edges at 0, a quarter at 0.25), each kind about as often; a
 //    reverse that wouldn't fit the buffer (2 bars at 50 BPM) a retrigger instead; towards 1
 //    only octave-up shimmers, panned at random to both sides
+//  - the echoes stay on the beat: the stereo offset (20ms left, 10ms right) is on the output
+//    only, each echo that much late and no more; fed back, every repeat came later (#167)
 //  - the damping turned on by a jump, after a while off: it starts from the signal as it is,
 //    not from the sample it was left on, which stepped the feedback, a click (#167)
 #include <algorithm>
@@ -142,6 +144,48 @@ static void TestEvents()
           "events: a reverse that wouldn't fit the buffer (2 bars at 50 BPM) is a retrigger");
 }
 
+/** An impulse, and where its echoes come: at 1/4 and 120 BPM a beat (24000 samples) apart on
+ *  both sides, the left 960 samples late, the right 480 */
+static void TestEchoesOnBeat()
+{
+    static granularDelay d;
+    d.Init(buffer, kFrames);
+    d.setFeedback(.8f);
+    const int kEchoes = 6;
+    int at[2][kEchoes];
+    for (int c = 0; c < 2; c++)
+        for (int k = 0; k < kEchoes; k++)
+            at[c][k] = -1;
+    float peak[2][kEchoes] = {};
+    for (int i = 0; i < 24000 * kEchoes + 12000; i++)
+    {
+        float out[2] = {0.f, 0.f};
+        const float in = i == 0 ? 1.f : 0.f;
+        d.write(in, in);
+        d.read(&out[0], &out[1]);
+        // each echo's peak, in the beat it comes in (the offset is far below half a beat)
+        const int k = (i - 12000) / 24000;
+        if (i < 12000 || k >= kEchoes)
+            continue;
+        for (int c = 0; c < 2; c++)
+            if (fabsf(out[c]) > peak[c][k])
+            {
+                peak[c][k] = fabsf(out[c]);
+                at[c][k] = i;
+            }
+    }
+    bool on_beat = true;
+    for (int k = 0; k < kEchoes; k++)
+    {
+        printf("      echo %d: left at %d, right at %d\n", k + 1, at[0][k], at[1][k]);
+        const int beat = at[1][0] - 480 + k * (at[1][1] - at[1][0]);
+        on_beat &= at[0][k] == beat + 960 && at[1][k] == beat + 480;
+    }
+    const int period = at[1][1] - at[1][0];
+    Check(abs(period - 24000) <= 1 && on_beat,
+          "delay: the echoes a beat apart on both sides, the stereo offset on the output only");
+}
+
 /** The feedback's damping, on a while, off a while, then on by a jump, at 8 points of a
  *  220Hz sine's cycle: what the feedback writes to the buffer steps at the jump by what the
  *  signal moves a sample, and for the highpass by the share of it the filter takes at once
@@ -197,6 +241,7 @@ static void TestDampingJump(bool lowpass)
 
 int main()
 {
+    TestEchoesOnBeat();
     TestDampingJump(true);
     TestDampingJump(false);
     TestPitchUp(true);
