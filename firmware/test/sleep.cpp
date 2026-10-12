@@ -165,7 +165,7 @@ static void TestDelay()
     delay.SetTempo(120.f);
     delay.SetParam(DelaySend::DIVISION, .25f);
     delay.SetParam(DelaySend::FEEDBACK, .3f);
-    delay.SetParam(DelaySend::LEVEL, 1.f);
+    delay.SetParam(DelaySend::LEVEL, FxOutput::kLevelDefault);
     delay.SetOn(true);
     long n = 0;
     for (; n < 4800; n++)
@@ -217,7 +217,7 @@ static void TestReverb()
     static ReverbSend reverb;
     reverb.Init(kSr, &engine);
     reverb.SetParam(ReverbSend::DECAY, .5f);
-    reverb.SetParam(ReverbSend::LEVEL, 1.f);
+    reverb.SetParam(ReverbSend::LEVEL, FxOutput::kLevelDefault);
     reverb.SetOn(true);
     long n = 0;
     for (; n < 4800; n++)

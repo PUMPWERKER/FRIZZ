@@ -384,17 +384,19 @@ looking it up:
 | 1 | The main control: length, pitch, drive, rate, cutoff, pattern, wow, stop time, division, decay | — |
 | 2 | Feedback (the filter's resonance) | its second main control: shape, bits, decay, flutter, spin-up time, diffusion |
 | 3 | Tone or colour: tone, roll, swoop, amount, LFO depth, chance, curve, random | — |
-| 4 | A setting of the effect's own, the one you play: gate, grain, symmetry, XOR, LFO division, polarity, centre, env mod, shuffle, age; level on the delay and reverb | the tape stop's depth |
+| 4 | A setting of the effect's own, the one you play: gate, grain, symmetry, XOR, LFO division, polarity, centre, env mod, shuffle, age; ducking on the delay and reverb | the tape stop's depth |
 
 The chaos key makes no sound, so its knobs are its own: 1 the FX chance, 2 the scramble
 chance, 3 the grid, 4 random to pattern.
 
-Every effect starts silent or nearly so: the knob that brings it in (shifter shift, folder
+Every insert starts silent or nearly so: the knob that brings it in (shifter shift, folder
 drive, crusher rate and bits, filter cutoff, flanger amount, resonator feedback, wow and
-flutter, phaser depth, delay and reverb level) starts at off, the others at a setting that sounds good, so
-one turn brings the effect in. Three can't be silent: the freezer starts at 1 bar, so a
-shorter press only hears the live signal; the slicer at every step on with the longest
-decay, a slight pump; and the tape stop stops on every press, over 1/2 bar.
+flutter, phaser depth) starts at off, the others at a setting that sounds good, so one turn
+brings the effect in. Three can't be silent: the freezer starts at 1 bar, so a shorter press
+only hears the live signal; the slicer at every step on with the longest decay, a slight
+pump; and the tape stop stops on every press, over 1/2 bar. The delay and reverb are heard
+from the first press: their key is what sends sound into them, and their level (page 2's
+knob 4) starts at 0 dB, as every effect's.
 SHIFT + press on a knob takes it back there.
 
 Each effect has its own section below, with its knobs on both pages and its details:
@@ -422,26 +424,29 @@ Page 2 is laid out the same on every effect that has one, so your hand learns it
 | 1 | **Mix:** the dry sound against the effect's, for parallel distortion, a harmony under the shifter, a half-frozen loop. On the delay and reverb: **Freeze** | fully the effect; freeze off |
 | 2 | **Stereo:** how far the right channel parts from the left, each effect its own way (in its section). The tape stop, delay and reverb, which have no stereo, have a setting of their own there: darken, damping, pre-delay | off |
 | 3 | **Band:** which part of the sound the effect works on. In the middle, all of it. Turned left, only the lows, below a split that falls from 20 kHz to 40 Hz; turned right, only the highs, above one that rises from 20 Hz to 8 kHz. The rest passes dry, so a folder can grind the highs and leave the bass clean. On the delay and reverb it filters what goes in: right a low cut, left a high cut | the middle, all of it |
-| 4 | **Level:** the effect's output, not the dry sound Mix blends in: off at the bottom, then -36 dB to +12 dB. Its LED is a meter of the effect's output (below). On the delay and reverb (whose level is page 1's knob 4): **Ducking** | 0 dB, at 3/4; ducking off |
+| 4 | **Level:** the effect's output, not the dry sound Mix blends in: off at the bottom, then -36 dB to +12 dB. Its LED is a meter of the effect's output (below). On the delay and reverb, the level of what comes back: the echoes, the room | 0 dB, at 3/4 |
 
 **Knob 4's LED on page 2 is a VU meter** of what the effect puts out, in the colours of
 VOLUME's meter: from dim through green and yellow to pink at full scale (-30 dBFS up), and as
 bright as Level turns it, the way VOLUME's LED is as bright as VOLUME. So page 2 shows itself
 whenever the effect sounds, and you see what Level does. It's measured after Level and Mix,
 so at less than full Mix it shows some of the dry sound too. An effect that's off shows only
-the dim floor. On the delay and reverb, where knob 4 is Ducking, it shows their return
-(the echoes, the room, their tails too) at full brightness. The compressor's page 2 shows its
+the dim floor. On the delay and reverb it shows their return (the echoes, the room, their
+tails too, after the key is let go). The compressor's page 2 shows its
 Makeup's value, as before: its key already shows how hard it works.
 
 - **Nothing evens out levels by itself.** An effect that adds level, like the folder driven
   or the crusher's XOR on a quiet sound, comes out louder, and Level is how you set it.
   Level and Mix fade in and out with the key, as the effect does; with the key off, the
   sound passes untouched whatever page 2 says. The tape stop keeps them on while it spins up
-  after you let go.
+  after you let go. The delay's and reverb's key fades what goes into them instead, and their
+  Level stays, so their tails ring out at it.
 - **At the defaults** an effect sounds exactly as without page 2.
 - **Scenes from before** load with page 2 on its defaults (the shifter's mix kept from a
   test build that had it), and with every value where its knob went: stereo to page 2's
-  knob 2, the effect's own setting to page 1's knob 4.
+  knob 2, the effect's own setting to page 1's knob 4, the delay's and reverb's level to page
+  2's knob 4 at the same loudness in dB (one below -36 dB off) and their ducking to page 1's
+  knob 4.
 
 SHIFT + turn moves one point of a fixed grid per detent, always to the next point in the
 direction you turn, so a value set finely snaps onto the grid with the first coarse move:
@@ -764,7 +769,7 @@ The 12th white key: TEMPO's tempo-synced delay, a send.
 | 1 | Division: 1/8, 1/4T, 1/4, 1/2T, 1/4., 1/2, 1/2., 1 bar, 2 bars (default 1/4) | Freeze: the input shut and the echoes held as they are, by degrees; no random events while frozen (default off) |
 | 2 | Feedback (default 40%) | Damping: in the middle none; right, every repeat darker (a high cut); left, every repeat thinner (a low cut) |
 | 3 | Random: left of centre retrigger / reverse / pitch events, right octave-up shimmer with random pan, centre off (default off) | Band: what goes in, right a low cut, left a high cut |
-| 4 | Level (default 0) | Ducking: the echoes duck under what you play, back up when it stops (default off) |
+| 4 | Ducking: the echoes duck under what you play, back up when it stops (default off) | Level: the echoes' level, off at the bottom, then -36 dB to +12 dB (default 0 dB, at 3/4) |
 
 - **Tempo:** the [tempo](#tempo): with a loop, its exact tempo, so the echoes stay on its
   beats; otherwise rounded to whole BPM. Limited to 50-300 BPM so 2 bars fit the 10 s buffer.
@@ -787,7 +792,7 @@ The 13th white key: TEMPO's and WAVE's reverb, a send.
 | 1 | Decay (default 60%) | Freeze: the input shut and the room held (default off) |
 | 2 | Diffusion (default 60%) | Pre-delay: up to 250 ms before the room starts (default none) |
 | 3 | Tone, dark to open (default 60%) | Band: what goes in, right a low cut, left a high cut |
-| 4 | Level (default 0) | Ducking: the room ducks under what you play (default off) |
+| 4 | Ducking: the room ducks under what you play (default off) | Level: the room's level, off at the bottom, then -36 dB to +12 dB (default 0 dB, at 3/4) |
 
 - It gets the inserts' output and the delay's echoes, so the echoes are reverberated while
   both are on.
@@ -1191,7 +1196,7 @@ save, copy and delete 66, 68 and 70. Below them:
 | CC | Function |
 |---|---|
 | 14, 15, 16, 17 | Page 1's knobs 1-4, set outright |
-| 18, 19, 20, 21 | [Page 2](#page-2)'s knobs 1-4 (mix, band, level, its own), set outright |
+| 18, 19, 20, 21 | [Page 2](#page-2)'s knobs 1-4 (mix, stereo or its own, band, level), set outright |
 | 22 | Latch: 64 and above on, below off, acting as the value crosses 64. The compressor (channel 15) has none |
 
 **On the global channel:**

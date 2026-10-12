@@ -487,19 +487,19 @@ static void TestDrop()
     plan.how[FX_FILTER][0] = MorphParam::GLIDE;
     plan.start[FX_FILTER][0] = 0.f;
     plan.target[FX_FILTER][0] = .8f;
-    plan.how[FX_DELAY][3] = MorphParam::FADE_OUT;
-    plan.start[FX_DELAY][3] = .8f;
-    plan.target[FX_DELAY][3] = .3f;
-    plan.how[FX_REVERB][3] = MorphParam::GLIDE;
-    plan.start[FX_REVERB][3] = 0.f;
-    plan.target[FX_REVERB][3] = .9f;
+    plan.how[FX_DELAY][FxOutput::kLevel] = MorphParam::FADE_OUT;
+    plan.start[FX_DELAY][FxOutput::kLevel] = .8f;
+    plan.target[FX_DELAY][FxOutput::kLevel] = .3f;
+    plan.how[FX_REVERB][FxOutput::kLevel] = MorphParam::GLIDE;
+    plan.start[FX_REVERB][FxOutput::kLevel] = 0.f;
+    plan.target[FX_REVERB][FxOutput::kLevel] = .9f;
     plan.deferred = delay | reverb;
     plan.wake = reverb;
     plan.was_on = filter | delay;
     plan.park = delay;
     chain = FakeChain();
     chain.on[FX_FILTER] = chain.on[FX_DELAY] = true;
-    chain.params[FX_DELAY][3] = .8f;
+    chain.params[FX_DELAY][FxOutput::kLevel] = .8f;
     morph.Start(plan, clock.PulsesToBarLine(), true);
     morph.SetOn(FX_DELAY, false);
     morph.SetOn(FX_REVERB, true);
@@ -508,7 +508,7 @@ static void TestDrop()
     Check(!morph.Dropping()
               && morph.Drop(plan.target, filter | reverb, filter | reverb, clock.PulsesToBarLine()),
           "drop: a held morph becomes one");
-    Check(morph.Dropping() && !morph.Holding() && chain.params[FX_REVERB][3] == .9f && !chain.on[FX_REVERB],
+    Check(morph.Dropping() && !morph.Holding() && chain.params[FX_REVERB][FxOutput::kLevel] == .9f && !chain.on[FX_REVERB],
           "drop: what comes on gets its parameters at once, its key not yet");
     Check(!morph.Fader(.5f), "drop: the crossfader can't take it");
     int blocks = 1000, delay_off = 0, reverb_on = 0, landed = 0;
@@ -524,7 +524,7 @@ static void TestDrop()
         if (line)
             landed = blocks;
         if (morph.Active())
-            still = still && chain.params[FX_FILTER][0] == 0.f && chain.params[FX_DELAY][3] == .8f;
+            still = still && chain.params[FX_FILTER][0] == 0.f && chain.params[FX_DELAY][FxOutput::kLevel] == .8f;
     }
     printf("      drop: landed in block %d, the delay off in %d, the reverb on in %d\n", landed,
            delay_off, reverb_on);
@@ -532,7 +532,7 @@ static void TestDrop()
     Check(still, "drop: nothing glides before it");
     Check(reverb_on == landed && chain.params[FX_FILTER][0] == .8f,
           "drop: in the line's block, the filter on the scene's and the reverb's key on");
-    Check(landed - delay_off >= 49 && landed - delay_off <= 51 && chain.params[FX_DELAY][3] == .8f,
+    Check(landed - delay_off >= 49 && landed - delay_off <= 51 && chain.params[FX_DELAY][FxOutput::kLevel] == .8f,
           "drop: the delay's key off 25ms before the line, so its fade ends there; its level kept");
 
     // a glide under way (a morph to another scene), then PLAY: it gets to its end on the next
@@ -713,12 +713,12 @@ static void TestMorph()
     // fade out: the amount glides to its default, the key stays on until the landing;
     // fade in: the key comes on once the amount is down
     plan = Plan(MorphParam::HOLD, .7f, .7f);
-    plan.how[FX_DELAY][3] = MorphParam::FADE_OUT;
-    plan.start[FX_DELAY][3] = .8f;
-    plan.target[FX_DELAY][3] = .3f;
-    plan.how[FX_REVERB][3] = MorphParam::GLIDE;
-    plan.start[FX_REVERB][3] = 0.f;
-    plan.target[FX_REVERB][3] = .9f;
+    plan.how[FX_DELAY][FxOutput::kLevel] = MorphParam::FADE_OUT;
+    plan.start[FX_DELAY][FxOutput::kLevel] = .8f;
+    plan.target[FX_DELAY][FxOutput::kLevel] = .3f;
+    plan.how[FX_REVERB][FxOutput::kLevel] = MorphParam::GLIDE;
+    plan.start[FX_REVERB][FxOutput::kLevel] = 0.f;
+    plan.target[FX_REVERB][FxOutput::kLevel] = .9f;
     plan.deferred = (1u << FX_DELAY) | (1u << FX_REVERB);
     plan.wake = 1u << FX_REVERB;
     chain.on[FX_DELAY] = true;
@@ -736,13 +736,13 @@ static void TestMorph()
     while (morph.Active())
     {
         still_on = still_on && chain.on[FX_DELAY];
-        delay_level = chain.params[FX_DELAY][3];
+        delay_level = chain.params[FX_DELAY][FxOutput::kLevel];
         MorphBlock(clock, morph);
     }
     Check(still_on && delay_level < .01f, "fades: the fade-out's key on, its level down to 0");
-    Check(!chain.on[FX_DELAY] && chain.params[FX_DELAY][3] == .3f,
+    Check(!chain.on[FX_DELAY] && chain.params[FX_DELAY][FxOutput::kLevel] == .3f,
           "fades: at the landing, the key off and the level the scene's");
-    Check(chain.params[FX_REVERB][3] == .9f, "fades: the fade-in's level the scene's");
+    Check(chain.params[FX_REVERB][FxOutput::kLevel] == .9f, "fades: the fade-in's level the scene's");
 
     // parked: a fade-out that ends off stays faded out, its key off, the rest untouched
     plan.park = 1u << FX_DELAY;
@@ -757,7 +757,7 @@ static void TestMorph()
     morph.SetOn(FX_DELAY, false);
     while (morph.Active())
         MorphBlock(clock, morph);
-    Check(!chain.on[FX_DELAY] && chain.params[FX_DELAY][3] < .01f && chain.params[FX_DELAY][0] == .2f,
+    Check(!chain.on[FX_DELAY] && chain.params[FX_DELAY][FxOutput::kLevel] < .01f && chain.params[FX_DELAY][0] == .2f,
           "parked: off, faded out, the rest as it was: the tail rings out");
 
     // a knob turned meanwhile moves the destination
@@ -847,13 +847,13 @@ static void TestFader()
     plan.target[FX_FILTER][0] = .8f;
     plan.start[FX_FILTER][5] = .2f;
     plan.target[FX_FILTER][5] = .6f;
-    plan.how[FX_DELAY][3] = MorphParam::FADE_OUT;
-    plan.start[FX_DELAY][3] = .6f;
+    plan.how[FX_DELAY][FxOutput::kLevel] = MorphParam::FADE_OUT;
+    plan.start[FX_DELAY][FxOutput::kLevel] = .6f;
     plan.start[FX_DELAY][0] = .25f;
     plan.target[FX_DELAY][0] = .5f;
-    plan.how[FX_REVERB][3] = MorphParam::GLIDE;
-    plan.start[FX_REVERB][3] = 0.f;
-    plan.target[FX_REVERB][3] = .5f;
+    plan.how[FX_REVERB][FxOutput::kLevel] = MorphParam::GLIDE;
+    plan.start[FX_REVERB][FxOutput::kLevel] = 0.f;
+    plan.target[FX_REVERB][FxOutput::kLevel] = .5f;
     const uint16_t freezer = 1u << FX_FREEZER, delay = 1u << FX_DELAY, reverb = 1u << FX_REVERB;
     plan.deferred = freezer | delay | reverb;
     plan.was_on = freezer | delay;
@@ -873,8 +873,8 @@ static void TestFader()
 
     Check(morph.Fader(.25f) && morph.Manual() && !morph.Holding(), "fader: it takes the held morph");
     MorphBlock(clock, morph);
-    Check(Near(chain.params[FX_FILTER][0], .35f) && Near(chain.params[FX_REVERB][3], .125f)
-              && Near(chain.params[FX_DELAY][3], .45f),
+    Check(Near(chain.params[FX_FILTER][0], .35f) && Near(chain.params[FX_REVERB][FxOutput::kLevel], .125f)
+              && Near(chain.params[FX_DELAY][FxOutput::kLevel], .45f),
           "fader: a quarter of the way, a quarter of each glide and fade");
     Check(chain.on[FX_REVERB] && chain.on[FX_DELAY] && chain.on[FX_FREEZER]
               && chain.params[FX_FILTER][5] == 0.f,
@@ -894,7 +894,7 @@ static void TestFader()
           "fader: at the start, the fade-in off again");
     morph.Fader(1.f);
     MorphBlock(clock, morph);
-    Check(!chain.on[FX_DELAY] && chain.on[FX_REVERB] && chain.params[FX_DELAY][3] == 0.f,
+    Check(!chain.on[FX_DELAY] && chain.on[FX_REVERB] && chain.params[FX_DELAY][FxOutput::kLevel] == 0.f,
           "fader: at the end, the fade-out off");
     bool lines = false;
     for (int b = 0; b < 12000; b++)

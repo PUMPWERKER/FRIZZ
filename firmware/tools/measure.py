@@ -13,8 +13,9 @@
         clock's bars and its drift in ms a minute
     ./measure.py fx KEY [--cc CC=VALUE ...] [--seconds 30] [--material FILE] --out NAME
         an effect latched (KEY: its key, KEY_1 .. KEY_13), CCs on its own MIDI channel (its
-        key's number, MANUAL.md "MIDI": 14-17 page 1's knobs, 18-21 page 2's; the sends' level
-        starts at 0: --cc 17=100), material into AUX, the line out recorded to NAME.f32
+        key's number, MANUAL.md "MIDI": 14-17 page 1's knobs, 18-21 page 2's; 21 is Level, the
+        sends' too since #172, at 0dB at first), material into AUX, the line out recorded to
+        NAME.f32
     ./measure.py compare A.f32 B.f32
         two recordings' levels and octave bands, B against A, in dB
     ./measure.py material [--music FILE ...] --out FILE.wav
@@ -369,7 +370,7 @@ def main():
     p = sub.add_parser("fx", parents=[on_frizz])
     p.add_argument("key", choices=["KEY_%d" % i for i in range(1, 14)])
     p.add_argument("--cc", action="append", metavar="CC=VALUE",
-                   help="a CC on the effect's own channel, e.g. 17=100 a send's level")
+                   help="a CC on the effect's own channel, e.g. 21=80 its Level")
     p.add_argument("--seconds", type=float, default=30.)
     p.add_argument("--material", help="a WAV into AUX (measure.py material); generated if not given")
     p.add_argument("--out", required=True)

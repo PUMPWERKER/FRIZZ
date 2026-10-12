@@ -409,7 +409,7 @@ private:
         for (size_t fx = 0; fx < kNumFx; fx++)
         {
             for (size_t p = 0; p < kNumFxKnobs; p++) // page 1's
-                engine.SetFxParam(fx, Before117(fx, p), .5f);
+                SetBefore(engine, fx, p, .5f);
             // page 2: its defaults, or for PAGE2 off them: an insert's half mix, its own knob
             // at .3, the band on the highs above ~1kHz and the level 6dB down; a send's
             // damping or pre-delay, band and half ducking, its freeze off
@@ -417,9 +417,9 @@ private:
             static const float kInsert2[] = {.5f, .3f, .75f, .625f};
             static const float kSend2[] = {0.f, .7f, .75f, .5f};
             for (size_t p = kNumFxKnobs; p < kNumFxParams; p++)
-                engine.SetFxParam(fx, Before117(fx, p),
-                                  seg.flags & PAGE2 ? (send ? kSend2 : kInsert2)[p - kNumFxKnobs]
-                                                    : kFxParams[fx].defaults[Before117(fx, p)]);
+                SetBefore(engine, fx, p,
+                          seg.flags & PAGE2 ? (send ? kSend2 : kInsert2)[p - kNumFxKnobs]
+                                            : kFxParams[fx].defaults[Before117(fx, p)]);
         }
         if (seg.flags & STRESS)
         {
@@ -433,7 +433,7 @@ private:
             engine.SetFxParam(FX_SHIFTER, 1, 1.f);
             engine.SetFxParam(FX_DELAY, 1, 1.f);
             engine.SetFxParam(FX_REVERB, 0, 1.f);
-            engine.SetFxParam(FX_REVERB, 3, 1.f);
+            SetBefore(engine, FX_REVERB, 3, 1.f); // its level, at 0dB
         }
         if (seg.flags & SCENE4)
             engine.SetFxParam(FX_SHIFTER, 0, .5f + 7.f / 24.f);
@@ -460,18 +460,27 @@ private:
         do
             fx = static_cast<size_t>(Random() * kNumFx) % kNumFx;
         while (!(on & (1u << fx)));
-        engine.SetFxParam(fx, Before117(fx, static_cast<size_t>(Random() * kNumFxKnobs) % kNumFxKnobs),
-                          Random());
+        SetBefore(engine, fx, static_cast<size_t>(Random() * kNumFxKnobs) % kNumFxKnobs, Random());
     }
 
     /** The parameter knob p was before #117 swapped stereo (now page 2's knob 2) and the
-     *  effect's own (now page 1's knob 4): the segments keep turning the same ones, so their
-     *  load compares with the builds before */
+     *  effect's own (now page 1's knob 4), and #172 the sends' level (now page 2's knob 4) and
+     *  ducking (now page 1's): the segments keep turning the same ones, so their load
+     *  compares with the builds before */
     static size_t Before117(size_t fx, size_t p)
     {
+        if (fx == FX_DELAY || fx == FX_REVERB)
+            return p == kFxOwnKnob ? FxOutput::kLevel : p == FxOutput::kLevel ? kFxOwnKnob : p;
         if (!HasStereo(fx))
             return p;
         return p == kFxOwnKnob ? kFxStereoParam : p == kFxStereoParam ? kFxOwnKnob : p;
+    }
+    /** Knob p as it was then (Before117) to val: a send's level the gain it was before #172 */
+    static void SetBefore(PassthroughEngine& engine, size_t fx, size_t p, float val)
+    {
+        const size_t param = Before117(fx, p);
+        const bool level = (fx == FX_DELAY || fx == FX_REVERB) && param == FxOutput::kLevel;
+        engine.SetFxParam(fx, param, level ? LevelKnob(val) : val);
     }
 
     inline float Random()

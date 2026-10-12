@@ -20,7 +20,11 @@
  *  had only the shifter's Mix, which it keeps, and the rest of its page 2 values (zeros for
  *  knobs nothing used) load as defaults. "layout 3" adds page 2's own knobs and moves three
  *  of page 1's knob 4 there (UpgradeTo3). "layout 4" swaps stereo, page 1's knob 4 until then,
- *  with the effect's own on page 2's knob 2 (#117, SwapStereo). Millionths because a coarse
+ *  with the effect's own on page 2's knob 2 (#117, SwapStereo). "layout 5" swaps the sends'
+ *  level, page 1's knob 4 until then and a gain from 0 to 1, with their ducking on page 2's
+ *  knob 4, where the level is on the inserts' dB scale (#172, SendsTo5); the freezer's roll
+ *  became a divider by hand there (#173), its five steps on the knob where the automatic
+ *  roll's five were, so a scene's roll keeps its step. Millionths because a coarse
  *  grid's points must come back on the grid: the resonator's pitch grid is .0157 apart and
  *  counts a value within 1.6e-4 as on a point.
  */
@@ -59,8 +63,9 @@ static const char kHeader[] = "FRIZZ scenes 1";
 static const char kLayout[] = "layout";
 // 2: page 2's shared knobs; 3: page 2's own knobs, and stereo on page 1's knob 4 of the
 // folder, crusher and filter, whose old knob 4 moved to page 2's knob 2; 4: stereo on page
-// 2's knob 2, the effect's own on page 1's knob 4 (#117)
-static const long kLayoutNow = 4;
+// 2's knob 2, the effect's own on page 1's knob 4 (#117); 5: the sends' level on page 2's knob
+// 4 in dB, their ducking on page 1's knob 4 (#172), the freezer's roll by hand (#173)
+static const long kLayoutNow = 5;
 static const float kScale = 1000000.f;
 
 /** Appends s to buf at pos, keeping room for the terminator */
@@ -184,6 +189,27 @@ inline void SwapStereo(size_t fx, float* v)
     v[kFxStereoParam] = own;
 }
 
+/** The sends' level and ducking swapped, the level from a gain 0..1 to the Level knob in dB
+ *  (LevelKnob, a gain under -36dB mute): a line from before layout 5 to the knobs now (#172) */
+inline void SendsTo5(size_t fx, float* v)
+{
+    if (fx != FX_DELAY && fx != FX_REVERB)
+        return;
+    const float gain = v[kFxOwnKnob];
+    v[kFxOwnKnob] = v[FxOutput::kLevel];
+    v[FxOutput::kLevel] = LevelKnob(gain);
+}
+/** And back: the knobs now as they were before layout 5, for the defaults the upgrades above
+ *  work with and a line read in its layout. 0dB, the default, comes back exactly */
+inline void SendsFrom5(size_t fx, float* v)
+{
+    if (fx != FX_DELAY && fx != FX_REVERB)
+        return;
+    const float knob = v[FxOutput::kLevel];
+    v[FxOutput::kLevel] = v[kFxOwnKnob];
+    v[kFxOwnKnob] = FxOutput::LevelGain(knob);
+}
+
 // once at boot, or on a save: small rather than fast, as the code space is tight
 
 /** The used scenes as the file's text, into buf (terminated). Returns its length, or 0 if it
@@ -301,8 +327,11 @@ inline __attribute__((noinline, optimize("Os"))) bool ParseScenes(const char* te
             if (latch && *latch == '1')
                 scene->latched |= static_cast<uint16_t>(1u << fx);
             float* const v = scene->params[fx];
-            // a line from before layout 4 is read in its layout, what it lacks on the defaults
-            // in their places then, and swapped after the upgrades before, which work in it too
+            // a line from before layout 5 or 4 is read in its layout, what it lacks on the
+            // defaults in their places then, and moved on after the upgrades before, which
+            // work in it too
+            if (layout < 5)
+                SendsFrom5(fx, v);
             if (layout < 4)
                 SwapStereo(fx, v);
             ReadValues(p, v, kNumFxParams);
@@ -310,6 +339,7 @@ inline __attribute__((noinline, optimize("Os"))) bool ParseScenes(const char* te
             {
                 float old[kNumFxParams];
                 memcpy(old, defaults[fx], sizeof(old));
+                SendsFrom5(fx, old);
                 SwapStereo(fx, old);
                 // before the shared knobs, page 2 was the shifter's Mix alone
                 if (layout < 2)
@@ -320,6 +350,8 @@ inline __attribute__((noinline, optimize("Os"))) bool ParseScenes(const char* te
                     UpgradeTo3(fx, v, old);
                 SwapStereo(fx, v);
             }
+            if (layout < 5)
+                SendsTo5(fx, v);
             break;
         }
     }
