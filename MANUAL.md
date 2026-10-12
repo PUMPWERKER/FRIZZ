@@ -477,7 +477,7 @@ The 1st white key: Kastle 2 FX Wizard's freezer, as a beat repeat.
 |---|---|---|
 | 1 | Length: 1/16, 1/8T, 1/8, 1/4T, 1/4, 1/2T, 1/2, 1 bar (default 1 bar) | Mix |
 | 2 | Feedback: the input overdubbed into the repeats (default 0, pure repeat) | Stereo: the left loop up to 45 ms longer (default off) |
-| 3 | Roll: the loop halves as it repeats, down to 1/64 bar: off, slow, … fast, one step per 3 detents (default off) | Band |
+| 3 | Roll: the length divided, off, 1/2, 1/4, 1/8, 1/16, no shorter than 1/64 bar; one step per 3 detents (default off) | Band |
 | 4 | Gate: how much of each repeat you hear, all of it down to its first eighth, a stutter (default all) | Level |
 
 - **Capture:** pressing the key waits for the next 16th, then records. The first pass is the
@@ -488,12 +488,16 @@ The 1st white key: Kastle 2 FX Wizard's freezer, as a beat repeat.
   the length is reached.
 - **Feedback:** at 0 the loop repeats unchanged. Turning up mixes the input into it (up to
   30% at 75%, 80% at the top, where the loop also fades by 10% per pass).
-- **Roll:** a beat repeat's build-up, which Kastle doesn't have. The four steps after off
-  halve the loop after 8, 4, 2 or 1 repeats at the starting length, and every stage after
-  that lasts as long as the first: at 1/8 and the slowest step, a bar of 1/8s, a bar of
-  1/16s, a bar of 1/32s, then 1/64s until release. Each halving repeats the start of the
-  capture, following on from the last repeat through the seam crossfade. Turning it off
-  goes back to the full length.
+- **Roll:** a beat repeat's build-up, played by hand, which Kastle doesn't have. Each step
+  right halves the repeat: 1/2, 1/4, 1/8 and 1/16 of the length knob 1 sets, never shorter
+  than 1/64 bar (a triplet's stops a halving before). A step takes at the start of the next
+  repeat, so the repeats stay on the grid, and each repeats the start of the capture,
+  following on from the last repeat through the seam crossfade. Turned back to off, the next
+  repeat is the whole length again, in one move. Where the knob is is the roll: nothing
+  counts along behind it, and a capture with the roll still on 1/4 repeats a quarter of the
+  length from the start. Set the length to 1/4, press the key, then turn the roll right a
+  step at a time (1/8, 1/16, 1/32, 1/64) as the build-up; let go of the key, or turn the roll
+  back to off.
 - **Gate** silences the rest of each repeat, faded in and out over 2 ms: turned up, the
   repeats turn into a stutter.
 - Lengths follow the delay's tempo. The loop seam has a 5 ms crossfade (shorter on loops

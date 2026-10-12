@@ -4155,6 +4155,127 @@ int main()
         Check(Max(quieter) < Max(echoes) / 2, "fx-vu: the delay's Level turned down, it dims as an insert's");
     }});
 
+    // the freezer's roll (#173): a divider of the length by hand, off, 1/2, 1/4, 1/8, 1/16; a
+    // step takes at the next repeat's start, on the capture's 16th grid; off is the whole
+    // length again; the knob is the state, so the next capture starts on it
+    cases.push_back({"freezer-roll", [] {
+        RunMs(kReadyMs);
+        freq = 233.f; // no whole number of its cycles in the lengths below
+        static uint32_t seed = 7;
+        static std::vector<float> e;      // the master out's RMS, block by block
+        static std::vector<uint32_t> pos; // and the FX clock's pulse then
+        static std::vector<double> ms;    // and the twin's time
+        e.clear();
+        pos.clear();
+        ms.clear();
+        // the input's level random block by block, so the repeats' envelope shows their length
+        auto run = [](size_t blocks) {
+            for (size_t b = 0; b < blocks; b++)
+            {
+                seed = seed * 1664525u + 1013904223u;
+                amp = .05f + .25f * static_cast<float>(seed >> 8) / 16777216.f;
+                ms.push_back(BlockMs());
+                e.push_back(RunBlocks(1));
+                pos.push_back(Probe().position);
+            }
+        };
+        // the shortest of 1/32 to 1/4 bar (125 to 1000 blocks at 120 BPM) the last `over`
+        // blocks repeat in
+        auto period = [](size_t over) {
+            for (size_t p : {125u, 250u, 500u, 1000u})
+            {
+                float worst = 0.f;
+                for (size_t t = e.size() - over; t < e.size(); t++)
+                    worst = std::max(worst, fabsf(e[t] - e[t - p]));
+                if (worst < 1e-5f)
+                    return static_cast<int>(p);
+            }
+            return -1;
+        };
+        auto roll = [] {
+            const std::string p = Ask({0x21, 0});
+            return p.size() == 17 ? KnobOf(p[5], p[6]) : -1.f;
+        };
+        // turned at block `at` from repeats of `from` blocks to `to`: where the new length took.
+        // Both start the same, from the capture's start: the first block that parts from the
+        // old repeats, less the shorter length
+        auto took = [](size_t at, size_t from, size_t to) {
+            for (size_t t = at; t < e.size(); t++)
+                if (fabsf(e[t] - e[t - from]) > 1e-5f)
+                    return static_cast<long>(t - std::min(from, to));
+            return -1L;
+        };
+        auto on_16th = [](long b) {
+            for (long t = b - 2; t <= b + 2; t++)
+                if (t > 0 && static_cast<size_t>(t) < pos.size() && pos[t] != pos[t - 1]
+                    && pos[t] % 3 == 0)
+                    return true;
+            return false;
+        };
+        printf("      the FX's tempo: %.1f BPM\n", Probe().fx_bpm);
+        run(100);
+        Latch("KEY_1");
+        Turn(kKnob1Encoder, -9); // the length from 1 bar to 1/4
+        run(600);
+        run(3000);
+        Check(period(2000) == 1000, "freezer-roll: off, it repeats the length (1/4 bar)");
+        struct Step
+        {
+            int detents;
+            float knob;
+            int len;
+            const char* what;
+        };
+        const Step steps[] = {{3, .25f, 500, "1/2"}, {3, .5f, 250, "1/4"}, {3, .75f, 125, "1/8"}};
+        int was = 1000;
+        long last = -1; // where the last step took
+        for (const Step& st : steps)
+        {
+            const size_t at = e.size();
+            Turn(2, st.detents);
+            run(3000);
+            const long b = took(at, static_cast<size_t>(was), static_cast<size_t>(st.len));
+            const int len = period(1500);
+            // Ask runs the twin on, unrecorded: a stretch recorded after it before the next turn
+            const float knob = roll();
+            printf("      roll %s: knob %.3f, repeats of %d blocks, from block %ld (turned at %zu, pulse %u)\n",
+                   st.what, knob, len, b, at, b >= 0 ? pos[b] : 0u);
+            Check(fabsf(knob - st.knob) < .01f && len == st.len,
+                  (std::string("freezer-roll: a step right, ") + st.what + " of the length").c_str());
+            Check(b >= static_cast<long>(at) && on_16th(b),
+                  (std::string("freezer-roll: ") + st.what + " takes at a repeat's start, on the 16th grid").c_str());
+            run(1200);
+            was = st.len;
+            last = b;
+        }
+        Turn(2, -9); // back to off in one move
+        const size_t at = e.size();
+        run(4000);
+        const long b = took(at, 125, 1000);
+        const int len = period(2000);
+        // the 1/8 repeats are 1/32 notes, 62.5 ms: off takes at one of their starts
+        const double since = b >= 0 && last >= 0 ? ms[b] - ms[last] : -1.;
+        const double off_grid = fabs(since - 62.5 * floor(since / 62.5 + .5));
+        printf("      roll off: repeats of %d blocks, from block %ld (turned at %zu), %.1f ms after 1/8 took\n",
+               len, b, at, since);
+        Check(roll() == 0.f && len == 1000 && b >= static_cast<long>(at) && off_grid <= 1.,
+              "freezer-roll: back to off, the whole length again, from a 1/8 repeat's start");
+
+        // the knob is the state: still on 1/4, the next capture repeats a quarter from the start
+        Turn(2, 6);
+        run(200);
+        Tap("KEY_1"); // unlatched
+        run(1000);
+        Latch("KEY_1");
+        run(2500);
+        const int next = period(1500);
+        printf("      the next capture, the roll on %.2f: repeats of %d blocks\n", roll(), next);
+        Check(fabsf(roll() - .5f) < .01f && next == 250,
+              "freezer-roll: still on 1/4 at the next capture, it repeats 1/4 of the length");
+        freq = 220.f;
+        amp = .3f;
+    }});
+
     // the sends (#172): heard at once at their defaults, as every effect is: their Level on
     // page 2's knob 4 at 0dB, on the inserts' scale; their Ducking on page 1's knob 4. The MIDI
     // map follows: CC 21 on their channel is Level, CC 17 Ducking

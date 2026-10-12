@@ -15,19 +15,18 @@ namespace chompi
 
 // Freezer lengths, a bar divided by, short to long: 1/16, 1/8T, 1/8, 1/4T, 1/4, 1/2T, 1/2, 1 bar
 static const uint8_t kFreezerBarDivisions[] = {16, 12, 8, 6, 4, 3, 2, 1};
-// Roll stages, off then long to short: each halving of the loop comes after this many repeats
-// at the starting length, so every stage of the roll lasts as long as the first
-static const uint8_t kFreezerRollStages[] = {0, 8, 4, 2, 1};
 
 /** Kastle's freezer as a beat repeat. Pressing the key arms it; on the next 16th it
  *  starts recording, passing the live signal through for one loop length, then loops what
  *  it recorded until the key is released. It keeps recording past the loop for as long as
- *  the buffer lasts, so the length can be turned up while it repeats. The roll halves the
- *  loop as it repeats, down to 1/64 bar, a beat repeat's build-up; it isn't Kastle's.
+ *  the buffer lasts, so the length can be turned up while it repeats. The roll divides the
+ *  length by hand, a beat repeat's build-up played on the knob (#173); it isn't Kastle's.
  *  Pressed again while a release still fades the loop out, the loop plays on until the 16th
  *  that starts the new capture, and hands over to it in a short crossfade instead of
  *  dropping to the live signal at once.
- *  Params: 0 length (kNumLengths steps), 1 feedback, 2 roll (kNumRolls steps), 3 gate:
+ *  Params: 0 length (kNumLengths steps), 1 feedback, 2 roll (kNumRolls steps: off, then 1/2,
+ *  1/4, 1/8 and 1/16 of the length, down to 1/64 bar; a step takes at the next repeat's
+ *  start, or from the start of a capture, so the repeats stay on the grid), 3 gate:
  *  how much of each repeat is heard, all of it (0) down to its first eighth, a stutter (the
  *  rest silent, faded in and out over 2ms); page 2: 5 stereo.
  *  The freezer's buffers are separate (SDRAM, chompi_main.cpp), kFreezerFrames per channel. */
@@ -44,7 +43,7 @@ public:
     };
 
     static const size_t kNumLengths = sizeof(kFreezerBarDivisions);
-    static const size_t kNumRolls = sizeof(kFreezerRollStages);
+    static const size_t kNumRolls = 5; // off, then the length halved 1 to 4 times
 
     FX_ONCE void Init(float sample_rate, float* buf_l, float* buf_r, size_t frames)
     {
@@ -122,6 +121,10 @@ public:
             buf_[0][written_] = *l;
             buf_[1][written_] = *r;
             written_++;
+            // the end of the first pass, where the first repeat starts, takes a roll turned
+            // meanwhile (as the right loop's seams do, Repeat)
+            if (written_ == len_[1] + 1)
+                Rolled();
         }
 
         for (size_t c = 0; c < 2; c++)
@@ -194,10 +197,8 @@ public:
             gate_frac_ = 1.f - .875f * val;
             break;
         case ROLL:
-            roll_stage_ = kFreezerRollStages[StepIndex(val, kNumRolls)];
-            // turned off: back to the full length, and a roll turned on again starts over
-            if (roll_stage_ == 0)
-                roll_reset_ = true;
+            // the knob is the state: the audio callback takes it at the next repeat
+            roll_ = StepIndex(val, kNumRolls);
             break;
         default:
             break;
@@ -214,7 +215,7 @@ private:
         RUNNING,
     };
 
-    static const size_t kRollShortest = 64; // the roll stops halving at 1/64 bar
+    static const size_t kRollShortest = 64; // the roll halves no shorter than 1/64 bar
     static const size_t kMaxStereoFrames = 2180; // 45ms
     static const size_t kXfadeFrames = 240;      // 5ms, like the looper's
     static constexpr float kGateRampFrames = 96.f; // 2ms
@@ -225,11 +226,6 @@ private:
         if (!params_changed_)
             return;
         params_changed_ = false;
-        if (roll_reset_)
-        {
-            roll_reset_ = false;
-            repeats_ = halvings_ = 0;
-        }
         UpdateLengths();
     }
 
@@ -245,8 +241,8 @@ private:
             // the seam: where the loop just ended, which the crossfade below follows on
             seam_[c] = pos_[c];
             pos_[c] = 0;
-            // the right loop has no stereo offset, so it counts the repeats for the roll
-            if (c == 1 && Repeated())
+            // the right loop has no stereo offset, so its seams take the roll
+            if (c == 1 && Rolled())
                 len = len_[c] < written_ ? len_[c] : written_;
         }
         const size_t pos = pos_[c];
@@ -309,23 +305,18 @@ private:
         written_ = 0;
         pos_[0] = pos_[1] = 0;
         seam_[0] = seam_[1] = 0;
-        repeats_ = 0;
-        halvings_ = 0;
+        // a capture starts on the roll's step at once: still on 1/4, it repeats a quarter
+        halvings_ = roll_;
         UpdateLengths();
     }
 
-    /** At the end of each repeat: moves the roll on. Returns whether the loop got shorter */
-    bool Repeated()
+    /** At the start of a repeat: the roll's step, if it was turned. Returns whether the loop
+     *  length changed */
+    bool Rolled()
     {
-        if (roll_stage_ == 0)
+        if (halvings_ == roll_)
             return false;
-        // each stage lasts roll_stage_ repeats at the starting length
-        if (++repeats_ < (static_cast<size_t>(roll_stage_) << halvings_))
-            return false;
-        repeats_ = 0;
-        if ((base_len_ >> (halvings_ + 1)) < bar_ / kRollShortest)
-            return false;
-        halvings_++;
+        halvings_ = roll_;
         UpdateLengths();
         return true;
     }
@@ -333,8 +324,13 @@ private:
     void UpdateLengths()
     {
         bar_ = static_cast<size_t>(240.f * sample_rate_ / tempo_);
-        base_len_ = bar_ / kFreezerBarDivisions[length_idx_];
-        const size_t len = base_len_ >> halvings_;
+        const size_t division = kFreezerBarDivisions[length_idx_];
+        base_len_ = bar_ / division;
+        // halved no shorter than 1/64 bar: a triplet's 1/12 at most to 1/48
+        size_t halvings = halvings_;
+        while (halvings && (division << halvings) > kRollShortest)
+            halvings--;
+        const size_t len = base_len_ >> halvings;
 
         const size_t max = frames_ - 1;
         len_[0] = len + stereo_ < max ? len + stereo_ : max;
@@ -359,13 +355,11 @@ private:
     size_t len_[2];   // target loop length, per channel
     size_t bar_ = 0;      // a bar at the tempo, in frames
     size_t base_len_ = 0; // the length knob's loop length, before the roll
-    size_t repeats_ = 0;  // repeats in the roll's current stage
-    size_t halvings_ = 0; // how often the roll has halved the loop
+    size_t halvings_ = 0; // the roll's step the loop plays at (Rolled)
+    size_t roll_ = 0;     // the roll knob's step, 0 off: the length halved that often
     size_t length_idx_ = 0;
     size_t stereo_ = 0;
-    uint8_t roll_stage_ = 0;
     volatile bool params_changed_ = false; // set by SetParam, for ApplyParams
-    volatile bool roll_reset_ = false;     // the roll was turned off
     float fb_in_ = 0.f, fb_keep_ = 1.f;
     float gate_frac_ = 1.f; // the gate: the share of each repeat heard
 };

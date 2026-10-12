@@ -115,7 +115,7 @@ Things to try first:
 
 - **Freezer (1st key)** on a beat: hold SHIFT, tap the key, and keep holding SHIFT while you
   turn knob 1 down five clicks to 1/8 (without SHIFT, a step takes three clicks). It grabs that much from the moment you press and repeats it while you hold the
-  key. Turn knob 3 for a roll that speeds up.
+  key. Turn knob 3 right a click or three at a time for a roll: each step halves the repeat.
 - **Shifter (2nd key):** hold SHIFT, tap the key, and with SHIFT still held turn knob 1 up two
   clicks for a fifth, then hold the key to hear it.
 - **Resonator (8th key)** with the crusher or the shifter latched: the ringing goes through them on

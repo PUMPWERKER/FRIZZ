@@ -286,6 +286,12 @@ what FRIZZ does.
   loudness in dB (below -36 dB off), their ducking to page 1. **Over MIDI**, the CCs follow
   the knobs: on the delay's and reverb's channels (12 and 13) the level is now **CC 21**, as on
   every effect, and CC 17 is ducking; automation written for CC 17 turns ducking now.
+- **The freezer's roll is played by hand** (#173): knob 3 divides the length, off, 1/2, 1/4,
+  1/8 and 1/16 of it (no shorter than 1/64 bar), each step taking at the start of the next
+  repeat so the repeats stay on the grid. It no longer halves the loop by itself after a
+  number of repeats: the knob is the roll, and back to off is the whole length again in one
+  move. A capture with the roll still on, say, 1/4 repeats a quarter of the length from the
+  start. Saved scenes keep the roll's step on the knob.
 
 ### Fixed
 
