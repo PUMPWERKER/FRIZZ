@@ -51,6 +51,7 @@
 #include "EventLog.h"
 #include "MidiClock.h"
 #include "MidiFeedback.h"
+#include "PanelKeys.h"
 
 // once each and not in a hurry: FRIZZ's code space is tight (SRAM_EXEC), as EventLog's
 #define MIDI_CONTROL_ONCE __attribute__((noinline, optimize("Os")))
@@ -805,14 +806,10 @@ private:
     {
         using namespace midimap;
         using S = Hardware::SwId;
-        // a keyboard's octave: which of the white keys or the dark keys each semitone is
+        // a keyboard's octave: which of the white keys or the dark keys (PanelKeys.h) each
+        // semitone is
         static const int8_t kWhite[12] = {0, -1, 1, -1, 2, 3, -1, 4, -1, 5, -1, 6};
         static const int8_t kDark[12] = {-1, 0, -1, 1, -1, -1, 2, -1, 3, -1, 4, -1};
-        static const S kWhiteKeys[15] = {S::KEY_1,  S::KEY_2,  S::KEY_3,  S::KEY_4,  S::KEY_5,
-                                         S::KEY_6,  S::KEY_7,  S::KEY_8,  S::KEY_9,  S::KEY_10,
-                                         S::KEY_11, S::KEY_12, S::KEY_13, S::KEY_14, S::KEY_15};
-        static const S kDarkKeys[10] = {S::KEY_16, S::KEY_17, S::KEY_18, S::KEY_19, S::KEY_20,
-                                        S::KEY_21, S::KEY_22, S::KEY_23, S::KEY_24, S::KEY_25};
         static const int kKnobKeys[kNumKnobs] = {
             static_cast<int>(S::ENC_4_SW), static_cast<int>(S::ENC_1_SW),
             static_cast<int>(S::ENC_2_SW), static_cast<int>(S::ENC_3_SW), ENC_5_SW,

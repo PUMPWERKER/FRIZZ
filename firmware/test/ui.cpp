@@ -5124,6 +5124,13 @@ int main()
         Press("KEY_26", false);
         RunMs(100);
         Check(fabsf(state(17) - .55f) < .01f && mix_now() == 0.f, "settings-volume: SHIFT + turn does nothing there");
+        Press("KEY_26", true); // SHIFT + press: the bug report's hold, let go before it
+        RunMs(100);
+        Tap("ENC_6_SW");
+        RunMs(100);
+        Press("KEY_26", false);
+        RunMs(1500);
+        Check(page() == 1 && mix_now() == 0.f, "settings-volume: SHIFT + press turns no page there");
         Tap("ENC_6_SW");
         RunMs(1500);
         Check(page() == 0, "settings-volume: a press again: page 1");

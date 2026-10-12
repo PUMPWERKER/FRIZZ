@@ -5,6 +5,7 @@
 #include "FxCommon.h"
 #include "FxFilter.h"
 #include "FxFlanger.h"
+#include "FxTempoLfo.h"
 #include "TempoClock.h"
 
 namespace chompi
@@ -56,10 +57,8 @@ public:
     {
         sample_rate_ = sample_rate;
         gate_.Init();
-        pulse_inc_ = 120.f * kPulsesPerBeat / (60.f * sample_rate); // 120 BPM until told
-        lfo_pulses_ = 0;
-        lfo_frac_ = 0.f;
-        lfo_reverse_ = false;
+        lfo_.Init(sample_rate);
+        lfo_.SetReverse(false);
         free_phase_ = 0.f;
         since_ = 0;
         asleep_ = true;
@@ -72,14 +71,12 @@ public:
 
     /** The tempo clock, as the filter's (FxFilter.h): the pulses' spacing in samples once a
      *  block, then each pulse in the block with the clock's position */
-    void SetPulseSamples(float samples) { pulse_inc_ = samples > 0.f ? 1.f / samples : 0.f; }
+    void SetPulseSamples(float samples) { lfo_.SetPulseSamples(samples); }
     void ClockPulse(uint32_t pos, bool reverse = false)
     {
-        lfo_pulses_ = pos;
-        lfo_reverse_ = reverse;
         // on the pulse, less the samples counted since the LFOs last moved: they went by
         // before it, and the next Retune adds them
-        lfo_frac_ = (reverse ? 1.f : -1.f) * static_cast<float>(since_) * pulse_inc_;
+        lfo_.Pulse(pos, reverse, (reverse ? 1.f : -1.f) * static_cast<float>(since_) * lfo_.PulseInc());
     }
 
     void Process(float* l, float* r)
@@ -185,12 +182,7 @@ private:
 
         float phase;
         if (synced_)
-        {
-            float pos = static_cast<float>(lfo_pulses_ % div_pulses_) + lfo_frac_;
-            if (pos < 0.f)
-                pos += static_cast<float>(div_pulses_);
-            phase = pos / static_cast<float>(div_pulses_);
-        }
+            phase = lfo_.Cycle(div_pulses_);
         else
             phase = free_phase_;
         for (size_t c = 0; c < 2; c++)
@@ -198,7 +190,7 @@ private:
             // triangle: the centre on the beat, up to the top a quarter cycle later
             float p = phase + .25f - (c ? lag_ : 0.f);
             p -= floorf(p);
-            const float tri = 1.f - 4.f * fabsf(p - .5f);
+            const float tri = LfoTriangle(p);
             const float target = Coeff(BreakHz(centre, depth, tri), sample_rate_);
             if (snap)
             {
@@ -210,15 +202,14 @@ private:
         }
     }
 
-    /** Both LFOs on by n samples, the synced one towards the next pulse but never past it,
-     *  so a late MIDI clock tick doesn't make it jump back (FxFilter.h) */
+    /** Both LFOs on by n samples, the synced one towards the next pulse but never past it
+     *  (FxTempoLfo.h) */
     void Advance(uint32_t n)
     {
         const float f = static_cast<float>(n);
         free_phase_ += f * free_inc_;
         free_phase_ -= floorf(free_phase_);
-        lfo_frac_ += (lfo_reverse_ ? -f : f) * pulse_inc_;
-        lfo_frac_ = fclamp(lfo_frac_, -.999f, .999f);
+        lfo_.Advance(n);
     }
 
     /** Coming on from asleep: from silence, the knobs where they went meanwhile */
@@ -256,10 +247,7 @@ private:
     uint32_t div_pulses_ = 48;  // synced: pulses per LFO cycle
     float free_inc_ = 0.f;      // free: the LFO's advance a sample, in cycles
     float free_phase_;
-    float pulse_inc_;           // the clock's advance a sample, in pulses
-    uint32_t lfo_pulses_;       // the clock's position
-    float lfo_frac_;            // progress towards the next pulse, negative in reverse
-    bool lfo_reverse_;
+    TempoLfo lfo_;              // synced: the tempo clock
     uint32_t since_;            // samples since the LFOs last moved
     bool asleep_;
 };

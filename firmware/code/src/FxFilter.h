@@ -4,6 +4,7 @@
 #pragma once
 #include "FxCommon.h"
 #include "DJFilter.h"
+#include "FxTempoLfo.h"
 #include "TempoClock.h"
 
 namespace chompi
@@ -39,9 +40,7 @@ public:
         filter_.Init(sample_rate);
         filter_.SetSlew(1.f); // the cutoff is slewed here, so the LFO isn't smoothed away
         gate_.Init();
-        pulse_inc_ = 120.f * kPulsesPerBeat / (60.f * sample_rate); // 120 BPM until told
-        lfo_pulses_ = 0;
-        lfo_frac_ = 0.f;
+        lfo_.Init(sample_rate);
         lfo_div_pulses_ = 48;
 
         for (size_t i = 0; i < kNumFxParams; i++)
@@ -49,18 +48,11 @@ public:
         SnapParams();
     }
 
-    /** Once per block: the time between two clock pulses in samples (TempoClock::
-     *  PulseSamples), plus one call per clock pulse in this block, with the clock's position
-     *  (TempoClock::Pulse). The pulses' real rate, not the FX's tempo, which stops at 50 BPM:
-     *  on a slowed loop the LFO would otherwise run ahead and wait at every pulse */
-    void SetPulseSamples(float samples) { pulse_inc_ = samples > 0.f ? 1.f / samples : 0.f; }
-    /** reverse: the position counts down, so the LFO eases down towards the pulse before */
-    void ClockPulse(uint32_t pos, bool reverse = false)
-    {
-        lfo_pulses_ = pos;
-        lfo_frac_ = 0.f;
-        lfo_reverse_ = reverse;
-    }
+    /** The tempo clock (FxTempoLfo.h): the pulses' spacing in samples once a block, then
+     *  each pulse in the block with the clock's position. reverse: the position counts down,
+     *  so the LFO eases down towards the pulse before */
+    void SetPulseSamples(float samples) { lfo_.SetPulseSamples(samples); }
+    void ClockPulse(uint32_t pos, bool reverse = false) { lfo_.Pulse(pos, reverse, 0.f); }
 
     void Process(float* l, float* r)
     {
@@ -71,15 +63,7 @@ public:
         if (res_.Settle())
             filter_.SetRes(res_.value);
 
-        // move smoothly between pulses at the tempo, but wait at the next pulse rather than
-        // run past it, so a late MIDI clock tick doesn't make the phase jump back. In
-        // reverse, the next pulse is the one below
-        const float inc = pulse_inc_;
-        lfo_frac_ += lfo_reverse_ ? -inc : inc;
-        if (lfo_frac_ > .999f)
-            lfo_frac_ = .999f;
-        else if (lfo_frac_ < -.999f)
-            lfo_frac_ = -.999f;
+        lfo_.Step();
 
         // off and faded out: what's heard is the input, but the filter runs on, so a
         // punch-in finds it where it would be; only its cutoff, LFO and all, is worked out
@@ -120,16 +104,13 @@ public:
     /** The cutoff with the LFO on it, 0..1, the LFO lag cycles behind */
     inline float Control(float cutoff, float depth, float lag = 0.f) const
     {
-        float pos = static_cast<float>(lfo_pulses_ % lfo_div_pulses_) + lfo_frac_;
-        if (pos < 0.f)
-            pos += static_cast<float>(lfo_div_pulses_);
-        float phase = pos / static_cast<float>(lfo_div_pulses_) + .25f - lag;
+        float phase = lfo_.Cycle(lfo_div_pulses_) + .25f - lag;
         if (phase >= 1.f)
             phase -= 1.f;
         else if (phase < 0.f)
             phase += 1.f;
         // triangle: 0 on the beat, up to +1 (towards highpass) a quarter cycle later
-        const float tri = 1.f - 4.f * fabsf(phase - .5f);
+        const float tri = LfoTriangle(phase);
 
         // full depth sweeps +/-.5, the whole knob range from the centre
         return fclamp(cutoff + depth * .5f * tri, 0.f, 1.f);
@@ -174,10 +155,7 @@ private:
     Smoothed cutoff_;
     Smoothed depth_;
     Smoothed res_;
-    float pulse_inc_; // the LFO's advance a sample, in pulses
-    uint32_t lfo_pulses_;     // the clock's position
-    float lfo_frac_;          // progress towards the next pulse, negative in reverse
-    bool lfo_reverse_ = false;
+    TempoLfo lfo_;
     static const uint32_t kSleepRetune = 8;
     uint32_t sleep_samples_ = 0; // asleep: samples since the cutoff was last worked out
     uint32_t lfo_div_pulses_; // pulses per LFO cycle
