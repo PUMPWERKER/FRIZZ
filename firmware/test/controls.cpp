@@ -415,8 +415,8 @@ static void TestPages()
     fx.KeyPressed(FX_DELAY, true, true);
     fx.KnobPressed(0, false);
     Check(fx.Page() == 1 && fx.KnobUsed(0) && fx.KnobUsed(1) && fx.KnobUsed(2) && fx.KnobUsed(3)
-              && fx.Knob(0) == 0.f && fx.Knob(1) == .5f && fx.Knob(3) == 0.f,
-          "pages: a send's page 2: freeze (off), its own, Band, ducking (off)");
+              && fx.Knob(0) == 0.f && fx.Knob(1) == .5f && fx.Knob(3) == kP2Level,
+          "pages: a send's page 2: freeze (off), its own, Band, Level (0dB, #172)");
     fx.KeyPressed(FX_SHIFTER, true, false);
     fx.KnobPressed(0, false);
     fx.KnobPressed(0, false);
@@ -670,11 +670,11 @@ static void TestMorph()
     }
     store[1].latched |= (1u << FX_DELAY) | (1u << FX_FREEZER);
     store[1].params[FX_FILTER][0] = .2f;
-    store[1].params[FX_DELAY][3] = .6f;
+    store[1].params[FX_DELAY][7] = .6f;
     store[2].latched |= (1u << FX_REVERB) | (1u << FX_SLICER);
     store[2].params[FX_FILTER][0] = .8f;
     store[2].params[FX_FILTER][3] = 0.f;  // stepped: the LFO division
-    store[2].params[FX_REVERB][3] = .5f;
+    store[2].params[FX_REVERB][7] = .5f;
     store[2].params[FX_REVERB][0] = .9f;  // decay, not an amount knob
     store[2].params[FX_FLANGER][0] = .3f; // off in both
     store[2].latched |= 1u << FX_FOLDER;  // on, its tone closed: everything fades
@@ -702,10 +702,10 @@ static void TestMorph()
           "on in both: a continuous knob glides from where it is");
     Check(plan.how[FX_FILTER][3] == MorphParam::HOLD && plan.target[FX_FILTER][3] == 0.f,
           "on in both: a stepped one switches at the landing");
-    Check(plan.how[FX_DELAY][3] == MorphParam::FADE_OUT && plan.how[FX_DELAY][0] == MorphParam::HOLD
+    Check(plan.how[FX_DELAY][7] == MorphParam::FADE_OUT && plan.how[FX_DELAY][0] == MorphParam::HOLD
               && (plan.deferred >> FX_DELAY & 1) && !(plan.wake >> FX_DELAY & 1),
           "turned off: its level fades out, the key goes off at the landing");
-    Check(plan.how[FX_REVERB][3] == MorphParam::GLIDE && plan.start[FX_REVERB][3] == 0.f
+    Check(plan.how[FX_REVERB][7] == MorphParam::GLIDE && plan.start[FX_REVERB][7] == 0.f
               && plan.how[FX_REVERB][0] == MorphParam::HOLD && plan.start[FX_REVERB][0] == .9f
               && (plan.deferred >> FX_REVERB & 1) && (plan.wake >> FX_REVERB & 1),
           "turned on: its level fades in from silent, the rest jumps now");
@@ -746,7 +746,7 @@ static void TestMorph()
     // SHIFT + PLAY: stopped where it is, which is neither scene
     Check(sc.FreezeMorph() && !e.morphing && sc.Morphing() == kNoScene, "stopped: it ends");
     Check(sc.Active() == 2 && sc.Edited(), "stopped: its scene active, edited");
-    Check(fx.Param(FX_FILTER, 0) == .2f && fx.Param(FX_REVERB, 3) == 0.f,
+    Check(fx.Param(FX_FILTER, 0) == .2f && fx.Param(FX_REVERB, 7) == 0.f,
           "stopped: the knobs show where it got to");
     Check(fx.IsLatched(FX_DELAY) && e.on[FX_DELAY] && !fx.IsLatched(FX_REVERB) && !e.on[FX_REVERB]
               && fx.IsLatched(FX_FILTER),
@@ -877,18 +877,18 @@ static void TestTails()
     // scene 2: the delay latched at level .6, division and feedback turned
     store[1] = store[kBlankSlot];
     store[1].latched = 1u << FX_DELAY;
-    store[1].params[FX_DELAY][3] = .6f;
+    store[1].params[FX_DELAY][7] = .6f;
     store[1].params[FX_DELAY][1] = .8f;
     sc.Recall(1);
-    Check(e.on[FX_DELAY] && e.params[FX_DELAY][3] == .6f, "tails: the delay on at .6");
+    Check(e.on[FX_DELAY] && e.params[FX_DELAY][7] == .6f, "tails: the delay on at .6");
 
     // the blank scene turns it off: its echoes ring out as they were
     sc.Recall(kBlankSlot);
-    Check(!e.on[FX_DELAY] && e.params[FX_DELAY][3] == .6f && e.params[FX_DELAY][1] == .8f,
+    Check(!e.on[FX_DELAY] && e.params[FX_DELAY][7] == .6f && e.params[FX_DELAY][1] == .8f,
           "recall: a send it turns off rings out, its settings untouched");
-    Check(fx.Param(FX_DELAY, 3) == 0.f && !sc.Edited(), "recall: the knobs show the scene");
+    Check(fx.Param(FX_DELAY, 7) == kP2Level && !sc.Edited(), "recall: the knobs show the scene");
     fx.KeyPressed(FX_DELAY, true, false);
-    Check(e.on[FX_DELAY] && e.params[FX_DELAY][3] == 0.f && e.params[FX_DELAY][1] == .4f,
+    Check(e.on[FX_DELAY] && e.params[FX_DELAY][7] == kP2Level && e.params[FX_DELAY][1] == .4f,
           "recall: its key on again, it takes the scene's settings");
     fx.KeyPressed(FX_DELAY, false, false);
 
@@ -904,22 +904,22 @@ static void TestTails()
 
     // a morph between two scenes without the delay leaves its tail alone
     store[2] = store[kBlankSlot];
-    store[2].params[FX_DELAY][3] = .3f;
+    store[2].params[FX_DELAY][7] = .3f;
     sc.Recall(1);
     sc.Recall(kBlankSlot);
     sc.Morph(2);
-    Check(e.plan.how[FX_DELAY][3] == MorphParam::HOLD && e.params[FX_DELAY][3] == .6f,
+    Check(e.plan.how[FX_DELAY][7] == MorphParam::HOLD && e.params[FX_DELAY][7] == .6f,
           "morph: a send off in both rings out untouched");
     sc.Recall(kBlankSlot);
 
     // a morph that turns an effect off parks it faded out
     sc.Recall(1);
     sc.Morph(kBlankSlot);
-    Check(e.plan.park == (1u << FX_DELAY) && e.plan.how[FX_DELAY][3] == MorphParam::FADE_OUT,
+    Check(e.plan.park == (1u << FX_DELAY) && e.plan.how[FX_DELAY][7] == MorphParam::FADE_OUT,
           "morph: the one it turns off is parked at the landing");
     e.LandFxMorph();
     fx.KeyPressed(FX_DELAY, true, false);
-    Check(e.params[FX_DELAY][3] == 0.f && e.params[FX_DELAY][1] == .4f,
+    Check(e.params[FX_DELAY][7] == kP2Level && e.params[FX_DELAY][1] == .4f,
           "morph: parked, then its key on: the scene's settings first");
     fx.KeyPressed(FX_DELAY, false, false);
 
@@ -960,10 +960,10 @@ static void TestFader()
     store[1] = store[2] = store[kBlankSlot];
     store[1].latched = store[2].latched = 1u << FX_FILTER;
     store[1].params[FX_FILTER][0] = .2f;
-    store[1].params[FX_REVERB][3] = .3f;
+    store[1].params[FX_REVERB][7] = .3f;
     store[2].params[FX_FILTER][0] = .8f;
     store[2].latched |= 1u << FX_REVERB;
-    store[2].params[FX_REVERB][3] = .5f;
+    store[2].params[FX_REVERB][7] = .5f;
 
     Check(!sc.FaderTurned(3.f) && !sc.FaderTo(.5f) && !sc.EndFade(),
           "fader: nothing without a morph");
@@ -984,7 +984,7 @@ static void TestFader()
     Check(sc.EndFade() && !e.morphing && !sc.Fading() && sc.Active() == 1 && sc.Edited(),
           "fader: let go at the start, the morph ends and scene 1 is back, edited as it was");
     Check(Near(fx.Param(FX_FILTER, 0), .3f) && fx.IsLatched(FX_FILTER)
-              && !fx.IsLatched(FX_REVERB) && !e.on[FX_REVERB] && fx.Param(FX_REVERB, 3) == .3f,
+              && !fx.IsLatched(FX_REVERB) && !e.on[FX_REVERB] && fx.Param(FX_REVERB, 7) == .3f,
           "fader: ... its knobs and latches too, the reverb off at its level");
     Check(!sc.EndFade(), "fader: and only once");
 

@@ -197,10 +197,12 @@ int main()
     Check(ParseScenes(hand, defaults, h), "reads a hand-written file");
     Check(!h[0].used && !h[1].used && !h[2].used && h[3].used, "only scene 4 is used");
     Check(h[3].latched == (1u << FX_REVERB), "reverb latched, the unknown effect and scene 9 skipped");
-    Check(fabsf(h[3].params[FX_REVERB][3] - .4f) < 1e-6f, "reverb level read");
+    Check(fabsf(h[3].params[FX_REVERB][7] - LevelKnob(.4f)) < 1e-6f,
+          "reverb level read, onto page 2's knob 4 in dB (layout 5)");
     Check(h[3].params[FX_REVERB][4] == defaults[FX_REVERB][4]
-              && h[3].params[FX_REVERB][7] == defaults[FX_REVERB][7],
-          "a line of four, as v0.11 wrote them: page 2 on its defaults");
+              && h[3].params[FX_REVERB][3] == defaults[FX_REVERB][3],
+          "a line of four, as v0.11 wrote them: page 2 on its defaults, the ducking now on "
+          "page 1's knob 4 too");
 
     // a file from #35, before page 2's shared knobs (no layout line): its page 2 was the
     // shifter's mix alone, kept; the zeros it wrote for the rest load as defaults, or every
@@ -302,8 +304,10 @@ int main()
                   && m[0].params[FX_SHIFTER][3] == .1f && m[0].params[FX_SHIFTER][4] == 1.f,
               "layout 3: stereo to page 2's knob 2, the effect's own to page 1's knob 4");
         Check(m[0].params[FX_TAPESTOP][3] == .9f && m[0].params[FX_TAPESTOP][5] == .2f
-                  && m[0].params[FX_DELAY][3] == .3f && m[0].params[FX_DELAY][5] == .5f,
-              "layout 3: the tape stop and the delay keep their knobs");
+                  && m[0].params[FX_DELAY][7] == LevelKnob(.3f) && m[0].params[FX_DELAY][3] == 0.f
+                  && m[0].params[FX_DELAY][5] == .5f,
+              "layout 3: the tape stop and the delay keep their knobs (the delay's level and "
+              "ducking swapped by layout 5)");
         Check(m[1].params[FX_PHASER][5] == .3f
                   && m[1].params[FX_PHASER][3] == defaults[FX_PHASER][3]
                   && m[1].params[FX_PHASER][7] == defaults[FX_PHASER][7],
@@ -324,6 +328,48 @@ int main()
               "v0.11: stereo to page 2's knob 2, the filter's LFO division stays on knob 4");
     }
 
+    // layout 5 (#172, #173): the sends' level, a gain on page 1's knob 4 until then, on
+    // page 2's knob 4 in dB (mute, then -36dB to +12dB, 0dB at 3/4), their ducking on page 1's
+    // knob 4; a gain under -36dB mutes. The freezer's roll keeps its step: five both times
+    {
+        const char* v4 = "FRIZZ scenes 1\nlayout 4\nscene 1\n"
+                         "delay 1 250000 400000 500000 500000 0 500000 500000 300000\n"
+                         "reverb 1 600000 600000 600000 1000000 0 200000 500000 0\n"
+                         "freezer 1 1000000 0 750000 0 1000000 0 500000 750000\n"
+                         "scene 2\n"
+                         "delay 0 250000 400000 500000 10000\n"
+                         "reverb 0 600000 600000 600000 0\n";
+        FxScene m[kNumScenes];
+        Check(ParseScenes(v4, defaults, m), "layout 4: read");
+        const float half = m[0].params[FX_DELAY][7];
+        printf("      a delay's level of .5 from layout 4: Level %.5f, %.2f dB\n", half,
+               20.f * log10f(FxOutput::LevelGain(half)));
+        Check(fabsf(FxOutput::LevelGain(half) - .5f) < 1e-5f && m[0].params[FX_DELAY][3] == .3f
+                  && m[0].params[FX_DELAY][5] == .5f,
+              "layout 4: the delay's level .5 on page 2's knob 4 at -6dB, its ducking .3 on "
+              "page 1's knob 4");
+        Check(m[0].params[FX_REVERB][7] == kP2Level && m[0].params[FX_REVERB][3] == 0.f
+                  && fabsf(m[0].params[FX_REVERB][5] - .2f) < 1e-6f,
+              "layout 4: the reverb's level 1 to 0dB exactly, its ducking off");
+        Check(m[1].params[FX_DELAY][7] == 0.f && m[1].params[FX_REVERB][7] == 0.f
+                  && m[1].params[FX_DELAY][3] == defaults[FX_DELAY][3],
+              "layout 4: a level under -36dB and a level of 0 mute; page 2 left out on its "
+              "defaults");
+        Check(m[0].params[FX_FREEZER][2] == .75f
+                  && StepIndex(m[0].params[FX_FREEZER][2], Freezer::kNumRolls) == 3,
+              "layout 4: the freezer's roll keeps its knob, its 4th step (1/8 of the length)");
+        Check(m[0].params[FX_SHIFTER][7] == defaults[FX_SHIFTER][7]
+                  && m[0].params[FX_DELAY][0] == .25f,
+              "layout 4: the rest as it was");
+        // and the defaults survive the way back and forth for a line that lacks them
+        float d[kNumFxParams];
+        memcpy(d, kFxParams[FX_REVERB].defaults, sizeof(d));
+        SendsFrom5(FX_REVERB, d);
+        SendsTo5(FX_REVERB, d);
+        Check(memcmp(d, kFxParams[FX_REVERB].defaults, sizeof(d)) == 0,
+              "layout 5's upgrade: the defaults back exactly from their place before");
+    }
+
     // 4. not a scene file, and an empty one
     FxScene bad[kNumScenes];
     bad[1].used = true;
@@ -331,6 +377,22 @@ int main()
     Check(!ParseScenes("", defaults, bad), "rejects an empty file");
     Check(!ParseScenes("FRIZZ scenes 10\nscene 1\n", defaults, bad) && !bad[0].used,
           "rejects another version whose header starts the same");
+    // a layout from a newer FRIZZ, or not a number: unreadable (to the .bak at the next
+    // save), not read as an older one and overwritten (#168)
+    {
+        char newer[64];
+        snprintf(newer, sizeof(newer), "FRIZZ scenes 1\nscene 1\nlayout %ld\nscene 2\n",
+                 scenefile::kLayoutNow + 1);
+        Check(!ParseScenes(newer, defaults, bad) && !bad[0].used && !bad[1].used,
+              "rejects a layout newer than this FRIZZ's, every scene unused");
+        Check(!ParseScenes("FRIZZ scenes 1\nlayout x\nscene 1\n", defaults, bad) && !bad[0].used
+                  && !ParseScenes("FRIZZ scenes 1\nlayout 4x\nscene 1\n", defaults, bad)
+                  && !ParseScenes("FRIZZ scenes 1\nlayout\nscene 1\n", defaults, bad),
+              "rejects a layout that isn't a number");
+        char now[64];
+        snprintf(now, sizeof(now), "FRIZZ scenes 1\nlayout %ld\nscene 1\n", scenefile::kLayoutNow);
+        Check(ParseScenes(now, defaults, bad) && bad[0].used, "reads its own layout");
+    }
     Check(ParseScenes("FRIZZ scenes 1\r\nscene 1\r\n", defaults, bad) && bad[0].used,
           "reads a file saved with Windows line ends");
 

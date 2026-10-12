@@ -146,6 +146,18 @@ static void TestUnreadable()
               && card.files[kScenesBak] == "FRIZZ scenes 2\nsomething else\n",
           "... and the next save keeps that .bak");
 
+    // a newer FRIZZ's layout (#168): not read as this one's, and kept as .bak, not
+    // overwritten
+    NewCard(true);
+    card.dirs["/FRIZZ"] = true;
+    const std::string newer = "FRIZZ scenes 1\nlayout 99\nscene 2\nfreezer 1 0 0 0 0\n";
+    card.files[kScenes] = newer;
+    store.Init(&fs, "");
+    Check(!store.scenes[2].used, "a newer layout: not read");
+    SaveInRam(store, 1, .5f);
+    Check(Saves(store) && card.files[kScenesBak] == newer && UsedIn(card.files[kScenes]) == 0x1,
+          "... and kept as .bak on the first save");
+
     // a valid file padded past what the buffer holds would be read cut short
     NewCard(true);
     card.dirs["/FRIZZ"] = true;

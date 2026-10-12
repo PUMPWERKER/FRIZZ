@@ -3,6 +3,7 @@
  */
 #pragma once
 #include "FxCommon.h"
+#include "FxOutput.h"
 #include "reverb.h"
 
 namespace chompi
@@ -14,10 +15,11 @@ static const size_t kPreDelayFrames = 16384;
 __attribute__((weak)) float reverb_pre_delay_mem[2][kPreDelayFrames] DSY_SDRAM_BSS;
 
 /** TEMPO's reverb (reverb.h, the Rings/Clouds Griesinger topology) as a send.
- *  Params: 0 decay, 1 diffusion, 2 tone (damping), 3 level; page 2: 4 freeze (Rings' freeze,
- *  by degrees: the input shut, the decay and the tone up to 1, so the room holds), 5
- *  pre-delay (0 to 250ms before the room, the SP-404MK2's PRE DELAY), 7 ducking (the room
- *  ducks under what goes in). Page 2's 6, Band, filters what goes in (FxChain.h). The
+ *  Params: 0 decay, 1 diffusion, 2 tone (damping), 3 ducking (the room ducks under what goes
+ *  in); page 2: 4 freeze (Rings' freeze, by degrees: the input shut, the decay and the tone
+ *  up to 1, so the room holds), 5 pre-delay (0 to 250ms before the room, the SP-404MK2's PRE
+ *  DELAY), 7 level, its return's, on the inserts' Level scale (FxOutput::LevelGain), on page
+ *  2's knob 4 as theirs (#172). Page 2's 6, Band, filters what goes in (FxChain.h). The
  *  pre-delay's buffer is in SDRAM (reverb_pre_delay_mem). */
 class ReverbSend : public FxBase
 {
@@ -27,10 +29,10 @@ public:
         DECAY,
         DIFFUSION,
         TONE,
-        LEVEL,
+        DUCKING,
         FREEZE,
         PRE_DELAY,
-        DUCKING = 7,
+        LEVEL = FxOutput::kLevel,
     };
 
     /** The reverb's 64KB buffer lives in DTCMRAM, so it's a separate static (chompi_main.cpp) */
@@ -70,9 +72,12 @@ public:
         float wl = in_l * in_gain;
         float wr = in_r * in_gain;
         // the pre-delay, only while it's up: writing SDRAM every sample would push the rest
-        // out of the cache. What it hasn't written since it came up reads as silence
-        const float pre = pre_.Process();
-        if (pre > 0.f || pre_.target > 0.f)
+        // out of the cache. What it hasn't written since it came up reads as silence. It
+        // settles, so turned back to 0 it switches off: the slew alone would stall just above
+        // it, a denormal, for good (#167)
+        pre_.Settle();
+        const float pre = pre_.value;
+        if (PreDelaying())
         {
             float* const pl = reverb_pre_delay_mem[0];
             float* const pr = reverb_pre_delay_mem[1];
@@ -103,6 +108,8 @@ public:
 
     /** Off and its tail rung out: nothing to add, and its meter isn't needed */
     inline bool Sleeping() const { return tail_.quiet >= kSleepSamples; }
+    /** The pre-delay up, or still on its way down: its buffer written and read */
+    inline bool PreDelaying() const { return pre_.value > 0.f || pre_.target > 0.f; }
 
     void SetParam(size_t param, float val) override
     {
@@ -120,7 +127,7 @@ public:
             diffusion_.target = .3f + val * .45f;
             break;
         case LEVEL:
-            level_.target = val;
+            level_.target = FxOutput::LevelGain(val);
             break;
         case FREEZE:
             freeze_.target = val;
