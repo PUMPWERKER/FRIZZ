@@ -21,7 +21,10 @@ namespace chompi
  *  then every offset around the best, comparing 16 samples spread over 128). Without that, the two
  *  taps cross in an arbitrary phase relation, which pulls the pitch off by up to most of a
  *  semitone and makes the level wobble. (Kastle's shifter has one tap that fades out and in
- *  at every wrap, which is what made it buzz.)
+ *  at every wrap, which is what made it buzz.) The search is the shifter's costliest moment,
+ *  so it's spread over two audio blocks (#137): it starts when a tap falls silent, which
+ *  then stays silent at the crossing for a block, the other alone, and the rest of the
+ *  search places it as far on as the other tap has moved since.
  *
  *  Swoop is Kastle's trigger envelope (0.1s up, 1s down), fired by the key press, pushing
  *  the shift up to 2 octaves further in its direction and back. Feedback recirculates the
@@ -54,6 +57,8 @@ public:
             delay_[c][1] = kGuard + static_cast<float>(kSearch) + .5f * kWindowFrames;
         }
         window_frames_ = kWindowFrames;
+        for (size_t c = 0; c < 2; c++)
+            waiting_[c] = held_[c] = 0;
         gate_.Init();
         env_.Reset();
         env_attack_inc_ = 1.f / (.1f * sample_rate);
@@ -78,6 +83,9 @@ public:
         // knobs where they're going
         if (gate_.Asleep())
         {
+            for (size_t c = 0; c < 2; c++)
+                if (waiting_[c])
+                    FinishSplice(c);
             SnapParams();
             ring_.WriteFrame(SoftClip(*l), SoftClip(*r));
             return;
@@ -118,14 +126,27 @@ public:
             d[0] = fclamp(d[0] + 1.f - ratio, 1.f, max_delay);
             d[1] = fclamp(d[1] + 1.f - ratio, 1.f, max_delay);
             const float prev = window_[c];
-            float w = prev + fabsf(1.f - ratio) / window_frames_;
-            if (w >= 1.f)
+            float w = prev;
+            if (waiting_[c])
             {
-                w -= 1.f;
-                d[0] = Splice(c, d[1], ratio, up); // tap 0 is silent here
+                // a tap waits, silent, for the rest of its search, a block after its start
+                if (++held_[c] >= kSpliceHold)
+                    FinishSplice(c);
             }
-            else if (prev < .5f && w >= .5f)
-                d[1] = Splice(c, d[0], ratio, up); // tap 1 is silent here
+            else
+            {
+                w = prev + fabsf(1.f - ratio) / window_frames_;
+                if (w >= 1.f)
+                {
+                    w = 0.f; // tap 0 is silent here
+                    StartSplice(c, 0, ratio, up);
+                }
+                else if (prev < .5f && w >= .5f)
+                {
+                    w = .5f; // tap 1 is silent here
+                    StartSplice(c, 1, ratio, up);
+                }
+            }
             window_[c] = w;
 
             // triangles: tap 0 peaks mid-window and is silent at the wrap, tap 1 the reverse
@@ -190,20 +211,44 @@ private:
     // candidates read up to 120 samples on, times the speed, which is below 1 going down
     static constexpr float kGuard = 130.f;
     static constexpr float kMaxWindowFrames = kWindowFrames * 5.f / 3.f; // grain at the top
+    static const uint8_t kSpliceHold = 24; // samples a tap waits for its splice: a block
+    // a tap lives through two waits for a splice, at its start and halfway, moving on by
+    // 1 - ratio a sample through them: going up, it starts that much further back
+    static constexpr float kMaxRatio = 8.5f; // 37 semitones: shift, swoop and stereo at the top
+    static constexpr float kHoldsPast = 2.f * kSpliceHold * (kMaxRatio - 1.f);
     // a tap's longest delay is the grain's window plus this; the buffer holds the longest
-    static constexpr float kDelayPast = kGuard + 2.f * kSearch + kFineRange + 2.f;
+    static constexpr float kDelayPast = kGuard + 2.f * kSearch + kFineRange + 2.f + kHoldsPast;
     static_assert(kMaxWindowFrames + kDelayPast < kBufSize, "the longest grain fits the buffer");
     static constexpr float kSwoopSemitones = 24.f; // how far the swoop pushes at the top
 
-    /** Where a tap that's starting over should start: its nominal start (the far end of
-     *  the window going up, the near end going down) moved by up to kSearch to where its next
-     *  samples best match the other tap's, by normalised correlation (SpliceSearch). Once per
-     *  window, so out of line: inlined twice, it made Process three times the size */
-    __attribute__((noinline)) float Splice(size_t c, float other, float ratio, bool up) const
+    /** Where tap t, falling silent, starts over: its nominal start (the far end of the
+     *  window going up, the near end going down) moved by up to kSearch to where its next
+     *  samples best match the other tap's, by normalised correlation (SpliceSearch). The
+     *  first kFirstGroups of the search's groups now, the rest in FinishSplice. Once per
+     *  window, so out of line: inlined twice, the search made Process three times the size */
+    __attribute__((noinline)) void StartSplice(size_t c, int t, float ratio, bool up)
     {
-        const float nominal = (up ? window_frames_ : 0.f) + kGuard + kSearch;
-        return nominal
-               + static_cast<float>(SpliceLag(ring_.buf[c], ring_.Last(), nominal, other, ratio));
+        const float other = delay_[c][1 - t];
+        nominal_[c] = (up ? window_frames_ + 2.f * kSpliceHold * (ratio - 1.f) : 0.f) + kGuard
+                      + kSearch;
+        search_[c].Begin(ring_.buf[c], ring_.Last(), nominal_[c], other, ratio);
+        search_[c].Run(kFirstGroups);
+        other_at_[c] = other;
+        waiting_[c] = static_cast<uint8_t>(1 + t);
+        held_[c] = 0;
+    }
+
+    /** The rest of channel c's search, and the waiting tap starts where it found, as far on
+     *  as the other tap has moved since: the two in the relation it chose. The search's reads
+     *  are all behind where the write head was when it began, so the block written since
+     *  changes none of them: it finds what it would have found all at once */
+    __attribute__((noinline)) void FinishSplice(size_t c)
+    {
+        const int t = waiting_[c] - 1;
+        float* const d = delay_[c];
+        search_[c].Run(SpliceSearch::kGroups);
+        d[t] = nominal_[c] + static_cast<float>(search_[c].best.lag) + (d[1 - t] - other_at_[c]);
+        waiting_[c] = 0;
     }
 
 public:
@@ -361,6 +406,8 @@ public:
     }
 
 private:
+    // the search's groups at its start, the rest a block later: about half its time each
+    static const int kFirstGroups = SpliceSearch::kGroups / 2;
     /** Each channel's speed: 2^(semitones/12), the right channel stereo semitones higher */
     void UpdateRatios(float semitones)
     {
@@ -369,6 +416,11 @@ private:
     }
 
     StereoRing<kBufSize> ring_;
+    // per channel: the splice search under way, its nominal start, the other tap's delay
+    // when it began, the tap waiting for it (1 + tap, 0 none) and how long it has waited
+    SpliceSearch search_[2];
+    float nominal_[2], other_at_[2];
+    uint8_t waiting_[2], held_[2];
     float window_[2];   // through the taps' lives, 0..1; tap 0 starts over at 0, tap 1 at .5
     float delay_[2][2]; // per channel, per tap, frames behind the last write
     float ratio_[2] = {1.f, 1.f};

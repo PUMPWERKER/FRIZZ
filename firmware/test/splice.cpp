@@ -1,12 +1,19 @@
-// Shifter splice check: the splice search (Shifter::SpliceLag, FxShifter.h) against the search
-// as it was before #137 made it cheaper, kept here as it was: on noise, tones, their mixes and
-// near-silence, at every position in the ring (so with and without the reads wrapping it),
-// shifting up and down as far as the swoop and the stereo offset take it, both must pick the
-// same lag for every one of kTrials searches. Built and run by unit.sh splice.
+// Shifter splice check: the splice search (Shifter::SpliceSearch, FxShifter.h) against the
+// search as it was before #137 made it cheaper, kept here as it was: on noise, tones, their
+// mixes and near-silence, at every position in the ring (so with and without the reads
+// wrapping it), shifting up and down as far as the swoop and the stereo offset take it, both
+// must pick the same lag for every one of kTrials searches; and so must the search spread
+// over two blocks as the shifter runs it, with a block written to the ring in between.
+// Then the shifter itself, at the ends of its shift, grain, swoop and stereo: while a tap
+// waits for its splice, the other carries the sound alone, and mustn't run into the end of
+// its delay (#137). Built and run by unit.sh splice.
 #include <cmath>
 #include <cstdio>
 #include <random>
+// the shifter's taps and windows, to watch them
+#define private public
 #include "FxShifter.h"
+#undef private
 #include "check.h"
 
 static const size_t kBufSize = 4096;
@@ -66,7 +73,7 @@ int main()
 {
     std::mt19937 rng(137);
     std::uniform_real_distribution<float> uni(0.f, 1.f);
-    int searched = 0, differ = 0, wrapped = 0;
+    int searched = 0, differ = 0, split_differ = 0, split_searched = 0, wrapped = 0;
     for (int t = 0; t < kTrials; t++)
     {
         // the ring's contents: 0 noise, 1 a tone, 2 two tones and noise, 3 near-silence,
@@ -110,6 +117,23 @@ int main()
         if (old_lag != new_lag && differ++ < 10)
             printf("differs: kind %d last %zu ratio %g nominal %g other %g: %d, was %d\n", kind,
                    last, ratio, nominal, other, new_lag, old_lag);
+
+        // as the shifter runs it: half its groups, a block written after last, the rest;
+        // where every read is behind the write head (going up at the swoop's top with the
+        // shortest grain the nearest candidates read ahead of it, stale samples a ring ago,
+        // before #137 too, and the block written between is among them)
+        if (nominal - 120.f * ratio + chompi::Shifter::SpliceSearch::kMinLag < 0.f)
+            continue;
+        split_searched++;
+        chompi::Shifter::SpliceSearch split;
+        split.Begin(buf, last, nominal, other, ratio);
+        split.Run(chompi::Shifter::kFirstGroups);
+        for (size_t i = 1; i <= 24; i++)
+            buf[(last + i) & kBufMask] = 2.f * uni(rng) - 1.f;
+        split.Run(chompi::Shifter::SpliceSearch::kGroups);
+        if (split.best.lag != old_lag && split_differ++ < 10)
+            printf("split differs: kind %d last %zu ratio %g: %d, was %d\n", kind, last, ratio,
+                   split.best.lag, old_lag);
         // whether a candidate's reads wrap the ring (the search's masked path): its lags from
         // where the 16th point reads at lag 0, and the 1st
         const size_t near = last - static_cast<size_t>(nominal - 120.f * ratio);
@@ -125,5 +149,73 @@ int main()
     snprintf(what, sizeof(what), "the same lag as before #137 in every search (%d differ)",
              differ);
     Check(differ == 0, what);
+    snprintf(what, sizeof(what),
+             "the same over two blocks, a block written between (%d of %d differ)",
+             split_differ, split_searched);
+    Check(split_differ == 0, what);
+
+    // the shifter at its ends: shift, grain, swoop (fired by the key) and stereo; a 220Hz saw
+    // for 4s. A tap that sounds (weight over 1%) and sits at the end of its delay (1 or the
+    // longest) has run into it. Counted from the end of the taps' first lives, which start
+    // from Init's delays, not from a splice (going up, the first one can run into delay 1,
+    // before #137 too)
+    struct Setting
+    {
+        const char* name;
+        float shift, grain, swoop, stereo;
+        int from;
+    } settings[] = {
+        {"+12, grain 10ms", 1.f, 0.f, 0.f, 0.f, 4800},
+        {"-12, grain 10ms", 0.f, 0.f, 0.f, 0.f, 4800},
+        {"+12, grain 50ms", 1.f, 1.f, 0.f, 0.f, 48000},
+        {"-12, grain 50ms", 0.f, 1.f, 0.f, 0.f, 48000},
+        {"+7, grain 30ms", .5f + 7.f / 24, .5f, 0.f, 0.f, 48000},
+        {"+12, 10ms, swoop, stereo", 1.f, 0.f, 1.f, 1.f, 4800},
+        {"+12, 10ms, swoop", 1.f, 0.f, 1.f, 0.f, 4800},
+        {"-12, 10ms, swoop, stereo", 0.f, 0.f, 1.f, 1.f, 4800},
+        {"+12, 50ms, swoop, stereo", 1.f, 1.f, 1.f, 1.f, 48000},
+    };
+    static chompi::Shifter shifter;
+    for (const Setting& set : settings)
+    {
+        shifter.Init(48000.f);
+        shifter.SetParam(chompi::Shifter::SHIFT, set.shift);
+        shifter.SetParam(chompi::Shifter::GRAIN, set.grain);
+        shifter.SetParam(chompi::Shifter::SWOOP, set.swoop);
+        shifter.SetParam(chompi::Shifter::STEREO, set.stereo);
+        shifter.SetOn(true);
+        int waits = 0, waiting_stuck = 0, stuck = 0;
+        double ph = 0;
+        for (int i = 0; i < 48000 * 4; i++)
+        {
+            ph += 220.0 / 48000.0;
+            float v = 0;
+            for (int h = 1; h <= 8; h++)
+                v += sinf(2 * M_PI * ph * h) / h;
+            float l = v * .3f, r = l;
+            shifter.Process(&l, &r);
+            for (size_t c = 0; c < 2; c++)
+            {
+                const float max_delay = shifter.window_frames_ + chompi::Shifter::kDelayPast;
+                const float w = shifter.window_[c];
+                const float weight[2] = {1.f - fabsf(2.f * w - 1.f), fabsf(2.f * w - 1.f)};
+                waits += shifter.held_[c] == 1;
+                for (size_t t = 0; t < 2; t++)
+                {
+                    const float d = shifter.delay_[c][t];
+                    const bool at_end =
+                        i >= set.from && weight[t] > .01f && (d <= 1.f || d >= max_delay);
+                    stuck += at_end;
+                    waiting_stuck += at_end && shifter.waiting_[c];
+                }
+            }
+        }
+        char line[160];
+        snprintf(line, sizeof(line),
+                 "%s: %d waits, a sounding tap at the end of its delay %d samples, %d of them "
+                 "while the other waits",
+                 set.name, waits, stuck, waiting_stuck);
+        Check(waits > 0 && stuck == 0, line);
+    }
     return Finish();
 }

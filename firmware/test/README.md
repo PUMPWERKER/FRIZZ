@@ -105,12 +105,16 @@ is up to 80 cents off and wobbles up to 10 dB; Kastle's single-tap one fails 48 
 ./unit.sh splice
 ```
 
-Holds the shifter's splice search (`Shifter::SpliceLag`, `FxShifter.h`) against the search as
-it was before #137 made it cheaper, a copy kept in `splice.cpp`: about 60000 searches on
+Holds the shifter's splice search (`Shifter::SpliceSearch`, `FxShifter.h`) against the search
+as it was before #137 made it cheaper, a copy kept in `splice.cpp`: about 60000 searches on
 noise, tones, their mixes, near-silence and clicks, at random places in the ring (a quarter
 of them with reads that wrap it, the masked path), shifting up and down as far as the swoop
-and the stereo offset go. Every search must pick the same lag. Built with `-mfma` instead, as
-the CHOMPI fuses its multiply-adds, it passes too (checked by hand, not by `all.sh`).
+and the stereo offset go. Every search must pick the same lag, and so must the search spread
+over two blocks as the shifter runs it, with a block of new samples written in between. Then
+the shifter itself at the ends of its shift, grain, swoop and stereo: a tap that sounds must
+never sit at the end of its delay (1 or the longest), counted from the end of the taps' first
+lives (those start from `Init`'s delays). Built with `-mfma` instead, as the CHOMPI fuses its
+multiply-adds, the searches come out the same too (checked by hand, not by `all.sh`).
 
 ## Tape FX check
 
