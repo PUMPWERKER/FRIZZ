@@ -5,7 +5,10 @@
 #include <cmath>
 #include <cstdio>
 #include "check.h"
+// the resonator's follower, to see where it wakes
+#define private public
 #include "FxChain.h"
+#undef private
 
 using namespace chompi;
 
@@ -151,6 +154,38 @@ static void TestResonator()
     bool rings = false;
     Run(24000, nullptr, &rings);
     Check(rings && !reso.Idle(), "resonator: on again, it rings");
+}
+
+/** The resonator with env mod up, loud, then off and asleep: punched in again on a quiet
+ *  input, its follower starts from silence, not from the loud level it had, which pushed the
+ *  feedback up for ~100ms (#167) */
+static void TestResonatorEnv()
+{
+    static chompi::Resonator reso;
+    reso.Init(kSr);
+    reso.SetParam(chompi::Resonator::FEEDBACK, .3f);
+    reso.SetParam(chompi::Resonator::ENV_MOD, 1.f);
+    reso.SetOn(true);
+    long n = 0;
+    const auto Run = [&](long samples, float gain) {
+        for (long end = n + samples; n < end; n++)
+        {
+            float l = 3.f * gain * Sine(n), r = l;
+            reso.Feed(&l, &r);
+            reso.Tap(l, r);
+        }
+    };
+    Run(24000, 1.f);
+    const float loud = reso.env_;
+    reso.SetOn(false);
+    Run(48000, 1.f);
+    const bool asleep = reso.Idle();
+    reso.SetOn(true);
+    Run(1, .01f);
+    printf("      resonator's env mod: %.3f loud, %.5f on waking on a quiet input\n", loud,
+           reso.env_);
+    Check(asleep && loud > .5f && reso.env_ < .01f,
+          "resonator: punched in after a sleep, its env mod starts from silence");
 }
 
 /** A Smoothed lands on its target exactly, so what waits on it (Settle, the flanger's
@@ -305,6 +340,7 @@ int main()
     TestSkip();
     TestTapeStop();
     TestResonator();
+    TestResonatorEnv();
     TestSmoothed();
     TestDelay();
     TestReverb();
