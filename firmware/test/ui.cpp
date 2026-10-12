@@ -6020,6 +6020,131 @@ int main()
         }});
     }
 
+    // ===== #169: the pre-1.0 audit's UI faults =====
+    {
+        // a hand's tap tempo by when the keys went down, not when MainLoop (every 2 ms, or
+        // later behind a card write) got to them: taps 210 and 211 ms apart, 421 ms over two
+        // intervals, 285.04 BPM; MainLoop's 2 ms grid sees 420 or 422, 286 or 284 BPM
+        cases.push_back({"tap-at-key", [] {
+            RunMs(kReadyMs);
+            Press("KEY_26", true);
+            RunMs(100);
+            Tap("KEY_28");
+            RunMs(210 - 60);
+            Tap("KEY_28");
+            RunMs(211 - 60);
+            Tap("KEY_28");
+            RunMs(100);
+            Press("KEY_26", false);
+            RunMs(300);
+            printf("      tapped: %d BPM\n", Probe().tempo);
+            Check(Probe().tempo == 285, "tap-at-key: 3 taps 421 ms over, 285 BPM");
+        }});
+
+        // the safety limiter at work while the settings page is up shows on the compressor's
+        // key once it's back only if it still works: the page takes what it saw meanwhile
+        cases.push_back({"limiter-led-settings", [] {
+            amp = 1.f;
+            RunMs(kReadyMs);
+            Turn(kVolumeEncoder, 100); // VOLUME up: the line outs into the limiter
+            RunMs(600);
+            Check(SmtLedFull(kCompKeyLed).r > 200, "limiter-led-settings: limiting: the key red");
+            SetToggle(true);
+            RunMs(500);
+            amp = 0.f; // quiet now, while the settings page is up
+            RunMs(1500);
+            SetToggle(false);
+            RunMs(200);
+            const Rgb back = SmtLedFull(kCompKeyLed);
+            printf("      back on the play page: %02x%02x%02x\n", back.r, back.g, back.b);
+            Check(back.r == back.g && back.g == back.b, "limiter-led-settings: back, the key white, no old red");
+            Turn(kVolumeEncoder, -100);
+            amp = .3f;
+        }});
+
+        // an empty scene sent over SysEx into the active slot (the dev path, midisuite's
+        // restore): no scene is active then, as after DELETE, not an empty slot lit as one
+        cases.push_back({"scene-put-empty", [] {
+            RunMs(kReadyMs);
+            Latch("KEY_5");
+            Save(1);
+            RunMs(1000);
+            std::string st = Ask({0x20});
+            Check(st.size() > 6 && st[5] == 2, "scene-put-empty: scene 1 saved, active");
+            bool taken = true;
+            for (int part = 0; part < 8; part++)
+            {
+                std::vector<int> put = {0x31, 1, part};
+                put.resize(put.size() + 32, 0);
+                const std::string r = Ask(put);
+                taken &= r.size() > 2 && r[2] == 0;
+            }
+            const std::string r = Ask({0x31, 1, 8, 0, 0, 0}); // used 0
+            taken &= r.size() > 2 && r[2] == 0;
+            RunMs(1000);
+            st = Ask({0x20});
+            Check(taken && st.size() > 6 && st[5] == 0 && !(st[6] & 1),
+                  "scene-put-empty: put empty into it over SysEx, no scene active");
+        }});
+
+        // after a save that failed, the next one mounts the card again, which makes a file
+        // open on it invalid: not while a bug report is being written, whose file that is.
+        // The master settings' save comes due while the report writes, on a slow card
+        cases.push_back({"remount-bug-report", [] {
+            RunMs(kReadyMs);
+            SetCardSpace(0); // the scene save fails
+            Latch("KEY_5");
+            Save(1);
+            RunMs(1000);
+            SetCardSpace(SIZE_MAX);
+            SetCardWriteMs(100);
+            SetToggle(true);
+            RunMs(300);
+            Press("KEY_26", true);
+            RunMs(100);
+            Press("ENC_6_SW", true); // held 2 s: the report, written over some 100 ms writes
+            RunMs(100);
+            const std::string master = Card("/FRIZZ/frizz_master.txt");
+            Ask({0x3E, 3, 1, 0x22, 1, 0x30, 0}); // AUX's input gain: the master settings saved 2 s on
+            RunMs(2280);
+            Press("ENC_6_SW", false);
+            Press("KEY_26", false);
+            RunMs(3000);
+            const std::string bug = Card("/FRIZZ/bug-1.txt");
+            Check(bug.find("# written here") != std::string::npos && CardOpenFiles() == 0,
+                  "remount-bug-report: the report written whole, and closed");
+            const std::string now = Card("/FRIZZ/frizz_master.txt");
+            Check(now != master && now.find("compressor2") != std::string::npos,
+                  "remount-bug-report: the master settings written after it");
+        }});
+
+        // the developers' SET of a setting leaves what MIDI set without the card: CC 86's
+        // input gain, CC 116's effects and CC 117's live (#97, #177)
+        cases.push_back({"dev-set-keeps-midi", [] {
+            RunMs(kReadyMs);
+            Trs({kCC, 86, 100, kCC, 116, 127, kCC, 117, 0}); // AUX: its gain, dry, not live
+            RunMs(100);
+            const std::string midi = Ask({0x20});
+            Check(midi.size() > 25 && (midi[25] & 6) == 2, "dev-set-keeps-midi: CC 116 dry, CC 117 not live");
+            const std::string set = Ask({0x3E, 3, 1, 0x23, 6, 0, 50}); // the LEDs at 50 %
+            RunMs(100);
+            const std::string after = Ask({0x20});
+            printf("      in gain %02x%02x -> %02x%02x, input %d -> %d\n", midi[17], midi[18],
+                   after[17], after[18], midi[25], after[25]);
+            Check(set.size() > 2 && set[2] == 0 && after.size() > 25 && after.substr(17, 2) == midi.substr(17, 2)
+                      && after[25] == midi[25],
+                  "dev-set-keeps-midi: SET the LEDs, the gain, dry and live stay as MIDI set them");
+            // a SET of one of them sets it, even to the value the card has
+            Ask({0x3E, 3, 2, 0x23, 9, 0, 0});  // aux_dry 0: through the effects again
+            Ask({0x3E, 3, 3, 0x23, 10, 0, 75}); // gain_aux 75 %
+            RunMs(100);
+            const std::string own = Ask({0x20});
+            Check(own.size() > 25 && !(own[25] & 2) && own.substr(17, 2) != midi.substr(17, 2)
+                      && !(own[25] & 4),
+                  "dev-set-keeps-midi: SET aux_dry 0 and gain_aux 75 take, CC 117's live stays off");
+        }});
+    }
+
     // every scenario of ../twin/scenarios played from power-on, its expect lines holding
     static std::vector<std::string> scenarios;
     {

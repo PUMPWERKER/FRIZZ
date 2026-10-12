@@ -58,7 +58,7 @@ static void SaveInRam(SceneStore& store, size_t slot, float value)
 static bool Saves(SceneStore& store)
 {
     store.RequestSave();
-    store.Process();
+    store.Process(false);
     return store.GetSaveState() == SceneStore::SaveState::OK;
 }
 
@@ -187,7 +187,7 @@ static void TestNotRead()
     card.files[kMaster] = master;
     Check(!Saves(store), "not read at boot: a save fails while the card answers too");
     store.RequestMasterSave();
-    store.Process();
+    store.Process(false);
     Check(store.TakeMasterFailed(), "not read at boot: so does a master save");
     Check(card.files[kScenes] == scenes && card.files[kMaster] == master && card.files.size() == 2,
           "... and the card is untouched");
@@ -307,13 +307,13 @@ static void TestMasterUnreadable()
     Check(card.files[kMaster] == garbled, "... and the card untouched at boot");
     store.master.mono = true;
     store.RequestMasterSave();
-    store.Process();
+    store.Process(false);
     Check(!store.TakeMasterFailed() && card.files[kMasterBak] == garbled
               && card.files[kMaster].find("\nmono 1\n") != std::string::npos,
           "master unreadable: the next save keeps it as frizz_master.bak and writes the new one");
     card.files[kMasterBak] = "older";
     store.RequestMasterSave();
-    store.Process();
+    store.Process(false);
     Check(card.files[kMasterBak] == "older", "... once: the save after that leaves the .bak alone");
 }
 

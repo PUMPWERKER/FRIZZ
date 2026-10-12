@@ -335,8 +335,22 @@ public:
         MasterSettings master;
         Store(master);
         *Field(master, kLines[line]) = static_cast<uint8_t>(kLines[line].kind == Line::SWITCH ? v != 0 : v);
+        // what MIDI set without the card (CC 86, 116, 117) stays unless this sets it
+        const float gain[2] = {gain_[0], gain_[1]};
+        const bool dry[2] = {engine_->Dry(false), engine_->Dry(true)};
+        const bool live[2] = {engine_->Live(false), engine_->Live(true)};
         // a setter leaves a setting that stays as it is (the clock keeps its state)
         Init(engine_, midi_, hw_, master);
+        const size_t set = kLines[line].offset;
+        for (bool mic : {false, true})
+        {
+            if (set != (mic ? offsetof(MasterSettings, gain_mic) : offsetof(MasterSettings, gain_aux)))
+                SetGain(mic, gain[mic]);
+            if (set != (mic ? offsetof(MasterSettings, mic_dry) : offsetof(MasterSettings, aux_dry)))
+                engine_->SetDry(mic, dry[mic]);
+            if (set != (mic ? offsetof(MasterSettings, mic_live) : offsetof(MasterSettings, aux_live)))
+                engine_->SetLive(mic, live[mic]);
+        }
         midi_->SetChannel(master.midi_channel);
         midi_->SetTransport(master.midi_transport);
         return true;

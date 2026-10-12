@@ -271,6 +271,8 @@ namespace chompi
                 // SHIFT + VOLUME held there: a bug report, its blink over the transport LEDs
                 if (settings_.BugReportHeld(now))
                     log_->RequestWrite();
+                // the limiting it sees meanwhile is old once the play page shows the key again
+                engine_->TakeLimiterGain();
                 settings_.Draw(now, Shift());
                 // VOLUME's page for a while after it was touched, over the battery
                 const bool volume = now - vol_touched_ < kSettingsVolumeMs;
@@ -343,7 +345,7 @@ namespace chompi
                 keys_.Play(rising);
                 return true;
             case static_cast<uint16_t>(Hardware::SwId::KEY_28):
-                keys_.Loop(rising);
+                keys_.Loop(rising, edge_ms_[1][static_cast<int>(Hardware::SwId::KEY_28)]);
                 return true;
             default:
                 break;
@@ -425,7 +427,6 @@ namespace chompi
                 }
                 else if (LoopExists())
                 {
-                    keys_.Used();
                     engine_->looper.ResetSpeed();
                     speed_chunk_ = 0.f;
                 }
@@ -1277,8 +1278,11 @@ namespace chompi
                 put_scene_.latched = static_cast<uint16_t>((v[1] << 7) | v[2]);
                 scenes_->scenes[q.a] = put_scene_;
                 put_slot_ = kNoScene;
-                // the sound stays, so it no longer matches the active scene (as COPY onto it)
-                if (q.a == scene_ctl_.Active())
+                // the sound stays, so it no longer matches the active scene (as COPY onto it);
+                // an empty one is no scene to be active (as DELETE)
+                if (!put_scene_.used)
+                    scene_ctl_.Emptied(q.a);
+                else if (q.a == scene_ctl_.Active())
                     fx_.MarkEdited();
                 FlashWhenSaved(q.a);
                 return true;
@@ -1335,7 +1339,6 @@ namespace chompi
             hand_fader_ = false;
         }
         inline void Refused() { loop_refused_.Start(System::GetNow()); }
-        inline uint32_t Now() const { return System::GetNow(); }
         inline Looper::State LooperState() const { return engine_->looper.GetState(); }
         inline bool CanRecordQuantized() { return engine_->looper.CanRecordQuantized(); }
         inline void StartRecording(bool quantized) { engine_->looper.StartRecording(quantized); }
