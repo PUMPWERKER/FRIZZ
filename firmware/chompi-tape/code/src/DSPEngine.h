@@ -1718,8 +1718,22 @@ namespace daisy
                 chompi_voice[i].SetCopyOccurred();
         }
 
-        void UpdateFileExists()
+        // one pass over the card's folder: which slots have a sample or a kit
+        void UpdateFileExists() __attribute__((optimize("Os")))
         {
+            bool wav[2][5][14] = {}, aif[5][14] = {};
+            DIR dir;
+            FILINFO info;
+            if(f_opendir(&dir, "") == FR_OK)
+            {
+                size_t m, b, s;
+                bool kit;
+                while(f_readdir(&dir, &info) == FR_OK && info.fname[0])
+                    if(SlotOfFile(info.fname, m, b, s, kit))
+                        (kit ? aif[b][s] : wav[m][b][s]) = true;
+                f_closedir(&dir);
+            }
+
             for(size_t m = 0; m < 2; m++)
             {
                 for(size_t b = 0; b < 5; b++)
@@ -1732,7 +1746,7 @@ namespace daisy
                         }
                         else
                         {
-                            UpdateFileExists(s, b, VoiceMode(m));
+                            SetSlotFiles(s, b, VoiceMode(m), wav[m][b][s], aif[b][s]);
                         }
                     }
                 }
@@ -1760,6 +1774,32 @@ namespace daisy
                 file_exists[int(mode)][bank][slot] = true;
                 chompi::kit_slots[bank] |= 1 << (slot + 1);
             }
+        }
+
+        // the slot a file is for, by the names GetFileNameForSlot and KitName give, ignoring case
+        static bool SlotOfFile(const char *name, size_t &m, size_t &b, size_t &s, bool &aif)
+        {
+            char slot_name[32];
+            for(m = 0; m < 2; m++)
+                for(b = 0; b < 5; b++)
+                {
+                    GetFileNameForSlot(1, b, VoiceMode(m), slot_name);
+                    const size_t prefix = strlen(slot_name) - strlen("1.wav");
+                    if(strncasecmp(name, slot_name, prefix))
+                        continue;
+                    const int slot = atoi(name + prefix);
+                    if(slot < 1 || slot > 14)
+                        return false;
+                    s = slot - 1;
+                    GetFileNameForSlot(slot, b, VoiceMode(m), slot_name);
+                    aif = false;
+                    if(!strcasecmp(name, slot_name))
+                        return true;
+                    KitName(slot_name);
+                    aif = true;
+                    return m == size_t(VoiceMode::JAMMI) && !strcasecmp(name, slot_name);
+                }
+            return false;
         }
 
         inline void SetFileExists(size_t slot, size_t bank, VoiceMode mode, bool exists)
@@ -1795,6 +1835,7 @@ namespace daisy
         { 
             return file_exists[int(voice_mode)][GetBank()] [slot];
         }
+        bool GetFileExists(size_t slot, size_t bank, VoiceMode mode) const { return file_exists[int(mode)][bank][slot]; }
 
         inline size_t GetVoiceSlot()
         { 

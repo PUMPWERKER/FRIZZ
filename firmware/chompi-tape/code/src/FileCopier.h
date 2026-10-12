@@ -69,12 +69,14 @@ class FileCopier
         inline bool IsLooperStaged() { return looper_staged; }
         inline bool LooperWasPlaying() { return looper_was_playing; }
 
-        // an odd header or a footer: rewritten at boot
+        // an odd header or a footer: rewritten at boot, after Engine::UpdateFileExists
         bool NeedsOverwrite(size_t idx, VoiceMode mode, size_t bank)
         {
+            if(!fx_->GetFileExists(idx, bank, mode) || Engine::IsKitSlot(idx + 1, bank, mode))
+                return false;
             char fname[32];
             Engine::GetFileNameForSlot(idx + 1, bank, mode, fname);
-            return f_stat(fname, nullptr) == FR_OK && !Plain(fname);
+            return !Plain(fname);
         }
 
         struct CopyRequest {

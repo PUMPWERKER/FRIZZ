@@ -250,10 +250,7 @@ void MainLoop(void* data)
                     mode++;
 
                     if(mode >= 2)
-                    {
-                        engine.UpdateFileExists();
                         booting = false;
-                    }
                 }
             }
         }
@@ -461,6 +458,7 @@ int main(void)
     copier.Init(hw.seed.AudioSampleRate(), &engine, &chompi_buff, &loop_buff,
                 {&copy_files[0], &copy_files[1], copy_in, copy_out});
     engine.FillDefaultSample(hw.seed.AudioSampleRate());
+    engine.UpdateFileExists();
 
     while (1)
     {
