@@ -1273,8 +1273,10 @@ own, and then follows (#103).
 For developers, one more command over USB, `0x3E` (`firmware/README.md`, *The developers'
 SysEx*), lets the tools tell which build runs (`remote.py ident`), read and set any effect or
 compressor knob, VOLUME's levels and every setting of the settings page by number rather than
-by CC (`remote.py get` / `set`), follow the CPU bench and fetch its results, and keep a test
-from writing the card until FRIZZ restarts (`remote.py ram-only`; `play` does this first).
+by CC (`remote.py get` / `set`), follow the CPU bench and fetch its results, keep a test
+from writing the card until FRIZZ restarts (`remote.py ram-only`; `play` does this first), read
+the clock, the looper, the levels and the battery, play a test signal in place of the input
+until FRIZZ restarts, and start the random numbers from a seed.
 
 ## Bug reports
 

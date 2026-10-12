@@ -476,7 +476,7 @@ def probe(f):
         g(d[4:7]) / 100, g(d[7:10]) / 100, g(d[10:15]), g(d[15:18])))
     print("effects    %.2f BPM (%d), %s; pulse %d%s%s" % (
         g(d[18:21]) / 100, g(d[21:23]),
-        "the loop's" if flags & 2 else "tapped or the clock's" if flags & 4 else "the default",
+        "the loop's" if flags & 2 else "set by a clock or taps" if flags & 4 else "the default",
         g(d[23:26]), ", of %d round the loop" % g(d[26:29]) if flags & 2 else "",
         ", backwards" if flags & 8 else ""))
     d = dev_data(f, chompi.PROBE, [1], "PROBE")
@@ -553,8 +553,8 @@ def battery(f):
     bounce = [g(d[4 + 2 * i:6 + 2 * i]) for i in range(4)]
     raw = [g(d[12 + 2 * i:14 + 2 * i]) for i in range(6)]
     print("battery    %s%s" % (BATTERY[d[0]] if d[0] < len(BATTERY) else d[0],
-                               "" if d[0] == d[1] else "; %s off the cable" % BATTERY[d[1]].split(" ")[0]))
-    print("charger    cable %s, legacy cable %s, input current limited %s, below the threshold %s "
+                               "" if d[0] == d[1] else "; the level check last read %s" % BATTERY[d[1]].split(" ")[0]))
+    print("charger    cable %s, below the threshold %s, legacy cable %s, input current limited %s "
           "(the last 8 reads, the newest last)" % tuple("{:08b}".format(b) for b in bounce))
     print("           the level check %s%s" % (
         "resting" if d[2] == 0 else "reading at 3.3 V (step %d)" % d[2],
