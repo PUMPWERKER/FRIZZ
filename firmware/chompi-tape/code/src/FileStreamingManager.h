@@ -4,27 +4,17 @@
 
 namespace daisy
 {
-    class FileSampleReader; // forward declare gets around circular import
     class Engine; // forward declare gets around circular import
     // class VUTarget;
     // struct KeyRequest;
-
-    static constexpr size_t kMaxFileStreamingSamps = 16384; // a voice's read buffer, 170 ms at 1x
-    using SampleFifo = FIFO<int16_t, kMaxFileStreamingSamps>;
 
     /** @brief structure containing info necessary for deferred fileIO operations */
     struct FileRequest
     {
         enum class Type
         {
-            OPEN,
             OPEN_NEW, // CREATE_ALWAYS
             OPEN_NEW_TWO, // OPEN_ALWAYS
-            SEEK,
-            READ,
-            REV_READ,
-            WRITE,
-            CLOSE,
             HEADER,
             UNLINK,
             TRUNCATE,
@@ -35,7 +25,6 @@ namespace daisy
         FIL *fil_;
         const char *fname_;
         size_t size_in_bytes_;
-        SampleFifo *fifo_;
         void *id_;
 
         /** constructor for full request data */
@@ -43,13 +32,11 @@ namespace daisy
                     FIL *fileptr,
                     const char *filename,
                     size_t bytes,
-                    SampleFifo *fifo,
                     void *id)
             : type_(type),
               fil_(fileptr),
               fname_(filename),
               size_in_bytes_(bytes),
-              fifo_(fifo),
               id_(id)
         {
         }
@@ -60,7 +47,6 @@ namespace daisy
               fil_(nullptr),
               fname_(nullptr),
               size_in_bytes_(0),
-              fifo_(nullptr),
               id_(nullptr)
         {
         }
@@ -73,11 +59,8 @@ namespace daisy
         {
             OK,
             EMPTY,
-            READ_SUCCESS,
-            WRITE_SUCCESS,
             ERR_READ,
             ERR_WRITE,
-            ERR_SEEK,
             ERR_UNKNOWN
         };
 
@@ -104,50 +87,6 @@ namespace daisy
             /** Also calcs SubChunk2Size */
             // file_header.FileSize = CalcFileSize(); // do this on write complete
         }
-
-        /** Get the number of requests in the FIFO for a given ID */
-        size_t GetNumReqs(void* id)
-        {
-            size_t ret = 0;
-            
-            for(size_t i = 0; i < request_fifo.GetNumElements(); i++)
-            {
-                if(request_fifo[i].id_ == id)
-                    ret++;
-            }
-
-            return ret;
-        }
-
-        /** Get the number of requests in the FIFO for a given ID and Type */
-        size_t GetNumReqs(void* id, FileRequest::Type type)
-        {
-            size_t ret = 0;
-            
-            for(size_t i = 0; i < request_fifo.GetNumElements(); i++)
-            {
-                if(request_fifo[i].id_ == id && request_fifo[i].type_ == type)
-                    ret++;
-            }
-
-            return ret;
-        }
-
-        /** TODO: as a request is cleared, its corresponding Decrement function should be called */
-        void ClearRequests(void* id)
-        {
-            for(int i = request_fifo.GetNumElements() - 1; i >= 0; i--)
-            {
-                if(request_fifo[i].id_ == id)
-                    request_fifo.Remove(i);
-            }
-        }
-
-
-        /** I don't see an easy way of sequential access directly from the fifo pointer
-         *  So the copy-to/from-the-workspace is a disappointing extra step.
-         */
-        uint8_t workspace_buffer[kMaxFileStreamingSamps * sizeof(int16_t)];
 
         Status ProcessRequests();
 

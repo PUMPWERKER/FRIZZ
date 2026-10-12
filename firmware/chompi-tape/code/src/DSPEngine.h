@@ -4,7 +4,8 @@
 #pragma once
 #include "daisy.h"
 #include "FileStreamingManager.h"
-#include "SampleReader.h"
+#include "Voice.h"
+#include "Streamer.h"
 #include "LooperEngine.h"
 #include "daisysp.h"
 #include "DJFilter.h"
@@ -39,7 +40,7 @@ static constexpr size_t kMaxPoly = 7;
 
 namespace daisy
 {
-    extern SampleFifo voice_fifos[kMaxPoly];
+    extern chompi::Stream voice_streams[kMaxPoly];
 
     enum class VUTarget
     {
@@ -232,7 +233,7 @@ namespace daisy
             /* voices */
             for (size_t i = 0; i < kMaxPoly; i++)
             {
-                chompi_voice[i].Init(file_manager, samplerate, chompi_buff, &voice_fifos[i]);
+                chompi_voice[i].Init(&voice_streams[i], samplerate, chompi_buff);
             }
             chompi_writer.Init(chompi_buff);
             record = false;
@@ -500,25 +501,14 @@ namespace daisy
                 record = false;
 
             for (size_t voice = 0; voice < kMaxPoly; voice++)
-                // cache the first block of samples as needed
-                chompi_voice[voice].CacheSamples();
+                chompi_voice[voice].Prepare();
 
 
             /** voice read*/
             for (size_t voice = 0; voice < kMaxPoly; voice++)
             {
-                if (chompi_voice[voice].IsPlaying() || chompi_voice[voice].deferred_trig)
-                {
-                    for (size_t i = 0; i < size; i++)
-                    {
-                        float aol = 0.f;
-                        float aor = 0.f;
-
-                        chompi_voice[voice].PopStereoSamps(&aol, &aor);
-                        out[0][i] += aol;
-                        out[1][i] += aor;
-                    }
-                }
+                if (chompi_voice[voice].Active())
+                    chompi_voice[voice].Render(out[0], out[1], size);
             }
 
             for(size_t i = 0; i < size; i++)
@@ -1732,14 +1722,15 @@ namespace daisy
             if(kit) // no .wav there, its .aif and sidecar instead
                 KitName(fname);
             chompi::slot_loader.Forget(fname);
+            chompi::streamer.Forget();
 
-            FileRequest req(FileRequest::Type::UNLINK, nullptr, fname, 0, nullptr, this);
+            FileRequest req(FileRequest::Type::UNLINK, nullptr, fname, 0, this);
             file_manager.request_fifo.PushBack(req);
 
             if(kit)
             {
                 chompi::KitFileName(fname_json, fname, ".json");
-                FileRequest json_req(FileRequest::Type::UNLINK, nullptr, fname_json, 0, nullptr, this);
+                FileRequest json_req(FileRequest::Type::UNLINK, nullptr, fname_json, 0, this);
                 file_manager.request_fifo.PushBack(json_req);
             }
             erasing += kit ? 2 : 1;
@@ -1755,6 +1746,7 @@ namespace daisy
 
         inline void SetAllCopyOccurred()
         {
+            chompi::streamer.Forget();
             for(size_t i = 0; i < kMaxPoly; i++)
                 chompi_voice[i].SetCopyOccurred();
         }
@@ -2031,7 +2023,7 @@ namespace daisy
 
         /** Sampling Bits */
         daisy::FileStreamingManager file_manager;
-        daisy::FileSampleReader chompi_voice[kMaxPoly];
+        chompi::Voice chompi_voice[kMaxPoly];
         RamBuffer chompi_writer;
 
         chompi::Limiter lim_hp_l_;

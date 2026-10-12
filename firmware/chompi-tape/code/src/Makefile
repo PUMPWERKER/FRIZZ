@@ -18,7 +18,8 @@ C_INCLUDES +=  -I../libs/coreJSON/source/include
 CPP_SOURCES = chompi_main.cpp \
 	encoder.cpp \
 	FileStreamingManager.cpp \
-	Streamer.cpp
+	Streamer.cpp \
+	Voice.cpp
 
 USE_FATFS = 1
 

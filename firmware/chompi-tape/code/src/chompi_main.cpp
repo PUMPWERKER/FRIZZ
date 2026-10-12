@@ -6,6 +6,7 @@
 #include "diskio.h"
 #include "DSPEngine.h"
 #include "FileCopier.h"
+#include "Streamer.h"
 #include "RamBuffer.h"
 #include "InterpolatedDelayLine.h"
 #include "OptionsManager.h"
@@ -35,9 +36,15 @@ uint16_t DSY_DTCMRAM_BSS chompi::kit_slots[5];
 RamBufferMemory DSY_DTCMRAM_BSS chompi::slot_buff;
 SlotLoader DSY_DTCMRAM_BSS chompi::slot_loader;
 SdDma DSY_DTCMRAM_BSS chompi::sd_dma;
-SampleFifo __attribute__((section(".d2_bss"))) daisy::voice_fifos[kMaxPoly]; // D2 is clocked before the constructors run
+Streamer DSY_DTCMRAM_BSS chompi::streamer;
+Stream DSY_DTCMRAM_BSS daisy::voice_streams[kMaxPoly];
 SdFile DSY_SDRAM_BSS slot_file, copy_files[2]; // the SD DMA can't reach DTCM
 uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) slot_bounce[kSlotBounce];
+SdFile DSY_SDRAM_BSS stream_files[kMaxPoly];
+uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) stream_head[512];
+static constexpr int kStreamBlocks = 16; // 1 MB
+uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) stream_cache[kStreamBlocks * Streamer::kBlockBytes];
+int16_t DSY_SDRAM_BSS stream_rings[kMaxPoly * 2 * Ring::kFrames * 2];
 uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) copy_in[SdDma::kBuffer];
 uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) copy_out[SdDma::kBuffer];
 chompi::InterpolatedDelayLine::AudioSample DSY_SDRAM_BSS del_mem[kMaxDelayTime];
@@ -203,7 +210,9 @@ void SDCallback(void* data)
         slot_loader.Save(now);
     }
 
-    if(engine.GetFileManager()->request_fifo.IsEmpty()) // the voices' reads go first
+    if(streamer.Step()) // the voices first
+        return;
+    if(engine.GetFileManager()->request_fifo.IsEmpty())
         slot_loader.Step(); // last, it may start a transfer
 }
 
@@ -363,6 +372,7 @@ int main(void)
     slot_buff = RamBufferMemory();
     sd_dma.Init();
     slot_loader.Init(&slot_file, slot_bounce, chompi_mem, kMaxRamBuffSize, &chompi_buff);
+    streamer.Init(voice_streams, kMaxPoly, stream_files, stream_head, stream_rings, stream_cache, kStreamBlocks);
     hw.Init();
     // System::Delay(100);
 
