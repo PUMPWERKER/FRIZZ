@@ -17,7 +17,9 @@
  *  With a loop, the transport is the loop's, and nothing that comes in is passed on:
  *  - a new loop starting to play sends Start with its first tick, unless the gear already
  *    plays from a Start passed on: the ticks then just carry on (a quantized loop starts on
- *    the clock's bar line, and a Start would throw longer patterns back to their bar 1);
+ *    the clock's bar line, and a Start would throw longer patterns back to their bar 1). That
+ *    goes by port: the jack's gear gets the loop's Start if the one passed on went only over
+ *    USB (it came in on the jack), and USB's likewise;
  *  - a pause sends Stop; playing on sends Song Position at the next 16th right away, then
  *    Continue with that 16th's tick, so gear that ignores Song Position resumes in step too;
  *    a standstill (the transport knob's hold zone, Looper::Standing) does the same;
@@ -34,7 +36,9 @@
  *  (MidiClock::TrsPut): a ring of them, drained as the UART takes them, two at once, then one
  *  every 0.32 ms. USB's are sent by MainLoop (FlushUsb), between the answers to queries,
  *  which keeps them out of a SysEx; while MainLoop writes the card (a scene saved), they wait,
- *  so USB's ticks can bunch up then.
+ *  so USB's ticks can bunch up then. Ticks leave room in a ring for the transport
+ *  (kTransportRoom): held up long enough to fill it, USB drops ticks, not a Stop, a Song
+ *  Position and Continue or a Start.
  */
 #pragma once
 #include "MidiClock.h"
@@ -59,6 +63,7 @@ public:
     void Process(size_t size, PassthroughEngine& engine, MidiOutPorts ports)
     {
         ports_ = ports;
+        playing_ &= Ports(MidiClock::Source::NONE); // a port left out: its gear unknown
         const TempoClock& tempo = engine.Tempo();
         const bool loop = tempo.HasLoop();
         // a standstill (the transport's hold zone, #174) is a pause to the gear behind too
@@ -75,14 +80,13 @@ public:
 
             // the loop's transport
             if (loop && !was_loop_)
-                start_ = !paused && !(was_passing_ && playing_);
+                start_ = paused ? 0 : was_passing_ ? kAllPorts & ~playing_ : kAllPorts;
             else if (loop && engine.looper.Rewinds() != rewinds_)
-                start_ = true; // back to its start by MIDI's Start (Looper::Follow)
+                start_ = kAllPorts; // back to its start by MIDI's Start (Looper::Follow)
             else if (loop && paused && !was_paused_)
             {
-                Send(kStop, back);
-                playing_ = false;
-                start_ = false;
+                Transport(kStop, Ports(back));
+                start_ = 0;
                 continue_at_ = kNone;
             }
             else if (loop && !paused && was_paused_)
@@ -95,13 +99,10 @@ public:
             }
             if (!loop)
             {
-                start_ = false;
+                start_ = 0;
                 continue_at_ = kNone;
                 if (in)
-                {
-                    Send(in, in_from);
-                    playing_ = in != kStop;
-                }
+                    Transport(in, Ports(in_from));
             }
 
             // the ticks: a halfway one due first, then this block's
@@ -130,14 +131,12 @@ public:
                 const uint32_t at = engine.BlockLoopPulse(0);
                 if (start_)
                 {
-                    Send(kStart, back);
-                    playing_ = true;
-                    start_ = false;
+                    Transport(kStart, start_ & Ports(back));
+                    start_ = 0;
                 }
                 else if (continue_at_ != kNone && at % kPulsesPer16th == 0)
                 {
-                    Send(kContinue, back);
-                    playing_ = true;
+                    Transport(kContinue, Ports(back));
                     continue_at_ = kNone;
                 }
                 // a tick within half a tick of the last one sent is that one, re-aligned: the
@@ -150,9 +149,9 @@ public:
         }
         else
         {
-            playing_ = false;
+            playing_ = 0;
             half_due_ = false;
-            start_ = false;
+            start_ = 0;
             continue_at_ = kNone;
             trs_.Clear();
             feedback_->Clear();
@@ -184,7 +183,7 @@ public:
     {
         uint8_t msg[3];
         size_t n;
-        while ((n = usb_.PeekMessage(msg)) > 0)
+        while ((n = PeekMessage(usb_, msg)) > 0)
         {
             const uint32_t now = System::GetNow();
             if (!clock_->UsbHost())
@@ -216,52 +215,65 @@ private:
     bool usb_waiting_ = false;        // USB didn't take the next message
     uint32_t usb_waiting_since_ = 0;
     static const uint32_t kMaxBunch = 4; // ticks passed on in one block, at most
+    static const uint8_t kTrs = 1, kUsb = 2, kAllPorts = kTrs | kUsb; // ports, as a mask
+    /** Bytes a ring keeps for the transport, which ticks don't take: Stop, Song Position and
+     *  Continue, Stop, Start (#166) */
+    static const size_t kTransportRoom = 8;
 
-    /** A byte ring, filled by the audio callback; read by it (the jack's) or by MainLoop
-     *  (USB's), which only sees whole messages: the callback adds one before it returns */
-    class Ring
+    /** The clock's bytes for a port, filled by the audio callback; read by it (the jack's)
+     *  or by MainLoop (USB's), which only sees whole messages */
+    typedef ByteRing<32> Ring;
+
+    /** ring's next message, left in: its length (a Song Position's 3, else 1), 0 for none */
+    static size_t PeekMessage(const Ring& ring, uint8_t* msg)
     {
-    public:
-        void Push(const uint8_t* msg, size_t n)
-        {
-            uint32_t head = head_;
-            if (kSize - (head - tail_) < n)
-                return; // full: the UART or MainLoop is stuck, and old ticks are no use
-            for (size_t i = 0; i < n; i++)
-                buf_[head++ % kSize] = msg[i];
-            head_ = head;
-        }
-        inline bool Empty() const { return head_ == tail_; }
-        inline uint8_t Front() const { return buf_[tail_ % kSize]; }
-        inline void Pop() { tail_ = tail_ + 1; }
-        inline void Clear() { tail_ = head_; }
-        /** The next message, left in: its length (a Song Position's 3, else 1), 0 for none */
-        size_t PeekMessage(uint8_t* msg) const
-        {
-            if (Empty())
-                return 0;
-            const size_t n = Front() == 0xF2 ? 3 : 1;
-            for (size_t i = 0; i < n; i++)
-                msg[i] = buf_[(tail_ + i) % kSize];
-            return n;
-        }
-        inline void Drop(size_t n) { tail_ = tail_ + n; }
-
-    private:
-        static const uint32_t kSize = 32;
-        uint8_t buf_[kSize];
-        volatile uint32_t head_ = 0, tail_ = 0;
-    };
-
-    /** A message to every port the setting has but not_to */
-    void Send(const uint8_t* msg, size_t n, MidiClock::Source not_to)
-    {
-        if (not_to != MidiClock::Source::TRS)
-            trs_.Push(msg, n);
-        if (ports_ == MidiOutPorts::TRS_USB && not_to != MidiClock::Source::USB)
-            usb_.Push(msg, n);
+        if (ring.Empty())
+            return 0;
+        const size_t n = ring.Front() == 0xF2 ? 3 : 1;
+        for (size_t i = 0; i < n; i++)
+            msg[i] = ring.At(i);
+        return n;
     }
-    inline void Send(uint8_t status, MidiClock::Source not_to) { Send(&status, 1, not_to); }
+
+    /** The ports the setting has but not_to */
+    uint8_t Ports(MidiClock::Source not_to) const
+    {
+        return (not_to != MidiClock::Source::TRS ? kTrs : 0)
+               | (ports_ == MidiOutPorts::TRS_USB && not_to != MidiClock::Source::USB ? kUsb : 0);
+    }
+
+    /** A message to ports: the ones it went to. A tick leaves kTransportRoom in a ring. Not
+     *  inlined: Process sends from many places */
+    __attribute__((noinline)) uint8_t Send(const uint8_t* msg, size_t n, uint8_t ports)
+    {
+        uint8_t sent = 0;
+        if ((ports & kTrs) && Push(trs_, msg, n))
+            sent |= kTrs;
+        if ((ports & kUsb) && Push(usb_, msg, n))
+            sent |= kUsb;
+        return sent;
+    }
+    inline uint8_t Send(const uint8_t* msg, size_t n, MidiClock::Source not_to)
+    {
+        return Send(msg, n, Ports(not_to));
+    }
+    inline uint8_t Send(uint8_t status, MidiClock::Source not_to) { return Send(&status, 1, not_to); }
+    static bool Push(Ring& ring, const uint8_t* msg, size_t n)
+    {
+        if (msg[0] == kTick && ring.Room() < n + kTransportRoom)
+            return false; // full but for the transport's room: the UART or MainLoop is stuck
+        return ring.Push(msg, n);
+    }
+
+    /** Start, Continue or Stop to ports: the gear plays there, or not, where it went */
+    void Transport(uint8_t status, uint8_t ports)
+    {
+        const uint8_t sent = Send(&status, 1, ports);
+        if (status == kStop)
+            playing_ &= ~sent;
+        else
+            playing_ |= sent;
+    }
 
     /** A tick now, unless one went out less than min_gap samples ago, and another one
      *  half_after samples on if that's not 0 */
@@ -315,8 +327,8 @@ private:
     uint32_t now_ = 0;        // samples, from the first block
     uint32_t last_ticks_ = 0; // MidiClock's count at the last block
     bool was_loop_ = false, was_paused_ = false, was_passing_ = false;
-    bool playing_ = false;    // the gear plays: a Start or Continue went out, no Stop since
-    bool start_ = false;      // a new loop's Start waits for its first pulse
+    uint8_t playing_ = 0;     // the ports whose gear plays: a Start or Continue went there, no Stop since
+    uint8_t start_ = 0;       // the ports a new loop's Start waits for its first pulse for
     uint32_t continue_at_ = kNone; // the loop pulse the Continue waits for
     bool half_due_ = false;   // a halfway tick waits for half_at_
     uint32_t half_at_ = 0;

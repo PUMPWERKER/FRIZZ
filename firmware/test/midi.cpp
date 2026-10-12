@@ -160,6 +160,23 @@ int main()
         Check(Restarted(), "restart: FRIZZ's restart SysEx with a clock tick inside it still restarts (#18)");
     }});
 
+    // a SysEx cut short (its sender unplugged mid-message) ends at the next status byte, which
+    // starts a message of its own: the notes and CCs after it are heard, as is a SysEx (#166)
+    cases.push_back({"sysex-cut", [] {
+        RunMs(kReadyMs);
+        Trs({0xF0, 0x7D, 0x43, 0x9F, 47, 100, 0x8F, 47, 0}); // then LOOP tapped
+        RunMs(100);
+        const int loop = Probe().loop_state;
+        Usb({0xF0, 0x7E, 0x00, kCC, 116, 127}); // then AUX dry, over USB
+        RunMs(50);
+        Usb({0xF0, 0x01, 0x02}); // then STATE asked
+        const std::string st = Ask({0x20});
+        const int input = st.size() > 25 ? st[25] : -1;
+        Report("sysex-cut: the looper's state %d, the input %d", loop, input);
+        Check(loop == 1, "sysex-cut: a note after a cut SysEx is heard: LOOP records");
+        Check(input == 6, "sysex-cut: a CC after one over USB is heard, and a SysEx after one answered");
+    }});
+
     // Start, Stop, Continue and Song Position are ignored (LOOPER.md 1.4): they don't reset or
     // stop the count, nor the tempo
     cases.push_back({"transport", [] {
@@ -420,6 +437,30 @@ int main()
         const std::string line = at == std::string::npos ? "" : log.substr(at, log.find('\n', at) - at);
         Report("sysex-log: \"%s\"", line.c_str());
         Check(line == "midi F0 7D 43 48 14 00 00 F7", "sysex-log: the switch's SysEx logged with its one byte, the rest 0");
+    }});
+
+    // CC 3 or 83 past the scenes takes nothing, but lets the same scene come again: a bug
+    // report keeps it, so its replay morphs again as FRIZZ did (#166)
+    cases.push_back({"rearm-log", [] {
+        RunMs(kReadyMs);
+        Usb({kCC, 3, 2, kCC, 3, 127, kCC, 83, 1, kCC, 83, 100});
+        RunMs(100);
+        SetToggle(true); // the bug report: SHIFT + VOLUME held 2 s on the settings page
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(2500);
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(300);
+        SetToggle(false);
+        RunMs(1000);
+        const std::string log = CardFiles()["/FRIZZ/bug-1.txt"];
+        auto has = [&](const char* line) { return log.find(line) != std::string::npos; };
+        Report("rearm-log: CC 3 127 %s, CC 83 100 %s", has("usb BF 03 7F") ? "logged" : "not", has("usb BF 53 64") ? "logged" : "not");
+        Check(has("usb BF 03 02") && has("usb BF 03 7F"), "rearm-log: CC 3's re-arm (127) in the bug report");
+        Check(has("usb BF 53 01") && has("usb BF 53 64"), "rearm-log: CC 83's re-arm (100) too");
     }});
 
     // a host that sends its ticks two at a time (in one USB packet), started once FRIZZ is up:

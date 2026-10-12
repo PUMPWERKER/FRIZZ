@@ -21,7 +21,9 @@ bool MidiParser::Parse(uint8_t byte, MidiEvent* event_out)
     // reset parser when status byte is received
     bool did_parse = false;
 
-    if((byte & kStatusByteMask) && pstate_ != ParserSysEx)
+    // also inside a SysEx: one but its F7 ends it, cut short (its sender unplugged), and
+    // starts a message of its own; the SysEx is dropped (FRIZZ, #166)
+    if((byte & kStatusByteMask) && (pstate_ != ParserSysEx || byte != 0xf7))
     {
         pstate_ = ParserEmpty;
     }
