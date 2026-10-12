@@ -4394,7 +4394,9 @@ int main()
     // map follows: CC 21 on their channel is Level, CC 17 Ducking
     cases.push_back({"send-level", [] {
         RunMs(kReadyMs);
-        // what a send returns after a 300 ms burst of the sine: its echoes or its room alone
+        // what a send returns after a 300 ms burst of the sine: its echoes or its room alone.
+        // Silent after it, so the next burst comes out of silence too: a sine held between
+        // them would add its own echoes, in phase on the beat (#167), and measure louder
         auto tail = [] {
             amp = .3f;
             RunMs(300);
@@ -4402,7 +4404,6 @@ int main()
             RunMs(100);
             const float t = RunMs(600);
             RunMs(5000); // rung out
-            amp = .3f;
             return t;
         };
         auto param = [](int fx, int i) {
