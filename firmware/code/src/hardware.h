@@ -9,8 +9,6 @@
 
 #define ENC_5_SW 4 // this one weird switch isn't on the SR
 
-#define NO_BATT false
-
 using namespace daisy;
 
 namespace chompi
@@ -253,10 +251,6 @@ uint8_t DMA_BUFFER_MEM_SECTION mp_dma_buff[6];
          *  battery from running on too low battery. */
         void LowBatteryLockoutCheck()
         {
-            #if NO_BATT
-                return;
-            #endif 
-
             // not during the level check, whose threshold is raised to 3V3 (BMCMediumBattCheck)
             if(batt_check_state == 0)
                 MpReadAll();
@@ -324,10 +318,6 @@ uint8_t DMA_BUFFER_MEM_SECTION mp_dma_buff[6];
 
         void MpWrite(uint8_t reg, uint8_t data)
         {
-            #if NO_BATT
-                return;
-            #endif
-
             uint16_t address = 0x3F;
 
             uint8_t tx_buff[] = {reg, data};
@@ -336,10 +326,6 @@ uint8_t DMA_BUFFER_MEM_SECTION mp_dma_buff[6];
 
         void MpReadAll()
         {
-            #if NO_BATT
-                return;
-            #endif 
-
             uint16_t address = 0x3F;
 
             uint8_t tx_buff[] = {0x11};

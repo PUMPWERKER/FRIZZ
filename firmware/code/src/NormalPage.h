@@ -427,7 +427,6 @@ namespace chompi
                 }
                 else if (LoopExists())
                 {
-                    keys_.Used();
                     engine_->looper.ResetSpeed();
                     speed_chunk_ = 0.f;
                 }
