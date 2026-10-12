@@ -277,7 +277,9 @@ what FRIZZ does.
   input's full scale (measured: 1 kHz at full scale, the loop 26 % distortion, live under 1 %). Now
   a limiter holds what the looper records just under full scale instead; below that the loop
   is what came in, as before. Both inputs, AUX and the mic.
-
+- **MIDI out over USB sent the Song Position twice** (#157): after a pause, PLAY sent it two
+  times over USB (once out of TRS, as it should), so a DAW following FRIZZ got it twice. Now
+  once.
 - **The pitch shifter's first moment no longer slips through unshifted** (#140): turning
   the shift up out of the centre the first time after power-on (or punching the shifter in
   with the shift already up), or turning it the other way than it last went while it was

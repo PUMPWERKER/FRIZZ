@@ -1306,6 +1306,11 @@ feedback](#midi-feedback) on.
 - Over USB, the clock goes out between FRIZZ's other work: it's less steady than the TRS
   output's (by up to a millisecond or so), and while FRIZZ writes the card (a scene saved)
   its ticks wait and come out in a bunch. For tight timing, use TRS.
+- A DAW that follows FRIZZ's clock (synced to an external MIDI clock): set its project tempo
+  roughly to the loop's. REAPER, for one, keeps its own tempo and follows a clock smoothly
+  only within about half to twice it (measured); further off, it plays in jumps. So the
+  [clock factor](#clock-factor) at x2 or x1/2 may need the DAW's tempo moved along. It also
+  holds still about a second after Start before it runs, then plays in step.
 - Gear with MIDI thru on that sends FRIZZ's clock back into its TRS input: with the clock
   source on Auto, FRIZZ follows its own clock coming back. Set the clock source to internal
   or USB, or switch the gear's thru off.
