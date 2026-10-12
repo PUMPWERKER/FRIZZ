@@ -1295,6 +1295,7 @@ def main():
     print()
     print(text)
     if a.out:
+        os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
         with open(a.out, "w") as out:
             out.write(text)
     sys.exit(1 if any(s == "FAIL" for _, s, *_ in results) else 0)
