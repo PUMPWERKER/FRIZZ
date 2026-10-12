@@ -50,13 +50,13 @@ static float last_out[2] = {0.f, 0.f}, max_step = 0.f; // the master out's large
 static float hp_rms = 0.f; // the headphones' (left) RMS over the last RunMs
 static float mic_amp = 0.f, mic_freq = 1000.f, mic_phase = 0.f; // a sine into the mic
 
-/** Runs ms with a sine (or silence) into AUX, and one into the mic while mic_amp > 0; the
- *  master out's RMS over the time */
-static float RunMs(uint32_t ms)
+/** Runs blocks (half a ms each) with a sine (or silence) into AUX, and one into the mic
+ *  while mic_amp > 0; the master out's RMS over the time. RunMs: as many ms */
+static float RunBlocks(uint32_t blocks)
 {
     float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
     double sum = 0., hp_sum = 0.;
-    for (uint32_t b = 0; b < ms * 2; b++)
+    for (uint32_t b = 0; b < blocks; b++)
     {
         while (clock_bpm > 0.f && clock_next <= NowMs())
         {
@@ -90,9 +90,10 @@ static float RunMs(uint32_t ms)
             }
         }
     }
-    hp_rms = ms ? sqrtf(hp_sum / (ms * 2 * kBlockSize)) : 0.f;
-    return ms ? sqrtf(sum / (ms * 2 * kBlockSize)) : 0.f;
+    hp_rms = blocks ? sqrtf(hp_sum / (blocks * kBlockSize)) : 0.f;
+    return blocks ? sqrtf(sum / (blocks * kBlockSize)) : 0.f;
 }
+static float RunMs(uint32_t ms) { return RunBlocks(ms * 2); }
 #include "twintest.h" // after RunMs, which its Tap runs
 
 /** The largest step between two samples of the master out over ms */
@@ -4628,6 +4629,338 @@ int main()
             const std::vector<float> out = morph4("KEY_16");
             Check(between(out, 0.f, frozen) >= 3 && out.back() < frozen * .05f,
                   "morph-mix-freezer: turned off, its repeats fade with its Mix over the morph");
+        }});
+    }
+
+    // ===== #153: a hard drop to a scene on the next bar line: SHIFT + scene key + PLAY =====
+    {
+        // scene 1 (KEY_17): the filter on and closed, much quieter than dry; then the blank
+        // scene (KEY_16), dry. A 2 kHz sine, a period a block, so a block's level is steady
+        static auto filter_scene = [] {
+            freq = 2000.f;
+            Latch("KEY_5");
+            Turn(kKnob1Encoder, -60);
+            RunMs(300);
+            Save(1);
+            Tap("KEY_16");
+            RunMs(500);
+        };
+        // to the block after the FX clock's next bar line (its position a multiple of 48)
+        static auto past_line = [] {
+            uint32_t pos = Probe().position;
+            for (int b = 0; b < 40000; b++)
+            {
+                RunBlocks(1);
+                const uint32_t now = Probe().position;
+                if (now != pos && now % 48 == 0)
+                    return;
+                pos = now;
+            }
+        };
+        // the gesture, all let go: SHIFT, the scene key taps times, PLAY. The level's largest
+        // change meanwhile, relative to where it was
+        static auto drop = [](const char* key, int taps) {
+            const float level = RunBlocks(1);
+            float moved = 0.f;
+            auto run = [&](uint32_t ms) { moved = std::max(moved, fabsf(RunMs(ms) - level) / level); };
+            Press("KEY_26", true);
+            run(60);
+            for (int t = 0; t < taps; t++)
+            {
+                Press(key, true);
+                run(60);
+                Press(key, false);
+                run(40);
+            }
+            Press("KEY_27", true);
+            run(60);
+            Press("KEY_27", false);
+            run(40);
+            Press("KEY_26", false);
+            run(100);
+            return moved;
+        };
+        // block by block, up to ms: the blocks in which the FX clock crossed a bar line, and the
+        // first whose level is off `level` by more than 3 %
+        struct Watched
+        {
+            std::vector<int> lines;
+            int changed = -1;
+            float loop_pos = -1.f; // where a loop played at the first line
+        };
+        static auto watch = [](float level, uint32_t ms) {
+            Watched w;
+            uint32_t pos = Probe().position;
+            for (int b = 0; b < static_cast<int>(ms * 2); b++)
+            {
+                const float rms = RunBlocks(1);
+                const uint32_t now = Probe().position;
+                if (now != pos && now % 48 == 0)
+                {
+                    if (w.lines.empty())
+                        w.loop_pos = Probe().loop_pos;
+                    w.lines.push_back(b);
+                }
+                pos = now;
+                if (w.changed < 0 && fabsf(rms - level) > .03f * level)
+                    w.changed = b;
+            }
+            return w;
+        };
+        static auto lines = [](const Watched& w) {
+            printf("      bar lines in blocks");
+            for (int l : w.lines)
+                printf(" %d", l);
+            printf(", the sound changed in %d\n", w.changed);
+        };
+        auto state = [] { return Ask({0x20}); };
+
+        // free at 120 BPM: the key blinks red on the beat, the scene lands in the line's block
+        cases.push_back({"scene-drop", [state] {
+            RunMs(kReadyMs);
+            filter_scene();
+            const float dry = RunBlocks(1);
+            past_line();
+            const float moved = drop("KEY_17", 1);
+            printf("      the level moved %.4f during the gesture\n", moved);
+            Check(moved < .03f, "scene-drop: the gesture itself changes nothing in the sound");
+            const std::vector<int> beat = Watch(false, kSlot1Led, 1000);
+            const std::vector<int> runs = Runs(beat, 128);
+            bool on_beat = runs.size() >= 2;
+            for (int r : runs)
+                on_beat &= r >= 230 && r <= 270;
+            Rgb lit = {};
+            for (int t = 0; t < 300 && Max(lit) < 200; t++)
+            {
+                RunMs(1);
+                lit = SmtLedFull(kSlot1Led);
+            }
+            printf("      drop blinks:");
+            for (int r : runs)
+                printf(" %d", r);
+            printf(" ms, lit %s\n", Hex(lit).c_str());
+            Check(on_beat && lit.r > 200 && lit.g == 0 && lit.b == 0,
+                  "scene-drop: while it waits, its key blinks red on the beat");
+            Check(state().size() > 6 && (state()[6] & 2) && state()[5] == 2,
+                  "scene-drop: waiting, its scene the active one");
+            const Watched w = watch(dry, 2000);
+            lines(w);
+            Check(w.lines.size() == 1 && w.changed == w.lines[0],
+                  "scene-drop: nothing before the bar line, the scene in its block");
+            RunMs(300);
+            Check(RunMs(300) < dry * .5f && !(state()[6] & 2) && state()[5] == 2,
+                  "scene-drop: landed on scene 1, the filter closed");
+        }});
+
+        // the same on a MIDI clock (100 BPM) and on a tapped tempo (90 BPM)
+        static auto on_line = [](const char* name) {
+            const float dry = RunBlocks(1);
+            past_line();
+            const float moved = drop("KEY_17", 1);
+            const Watched w = watch(dry, 3000);
+            lines(w);
+            Check(moved < .03f && w.lines.size() >= 1 && w.changed == w.lines[0],
+                  (std::string(name) + ": nothing at PLAY, the scene in the next bar line's block").c_str());
+        };
+        cases.push_back({"scene-drop-clock", [] {
+            clock_bpm = 100.f;
+            RunMs(kReadyMs);
+            filter_scene();
+            RunMs(1000);
+            Check(Probe().tempo == 100, "scene-drop-clock: following the clock at 100 BPM");
+            on_line("scene-drop-clock");
+        }});
+        cases.push_back({"scene-drop-tap", [] {
+            RunMs(kReadyMs);
+            filter_scene();
+            Press("KEY_26", true);
+            for (int i = 0; i < 5; i++)
+            {
+                Tap("KEY_28");
+                RunMs(607);
+            }
+            Press("KEY_26", false);
+            RunMs(300);
+            Check(Probe().tempo == 90, "scene-drop-tap: tapped to 90 BPM");
+            on_line("scene-drop-tap");
+        }});
+
+        // with a loop: on its end, when that's the next line; PLAY's release doesn't pause it
+        cases.push_back({"scene-drop-loop", [] {
+            RunMs(kReadyMs);
+            filter_scene();
+            Tap("KEY_28");
+            RunMs(1440); // 1.5 s, the tap's 60 ms in
+            Tap("KEY_28");
+            RunMs(500);
+            sine = false; // the loop alone: the same sine
+            RunMs(500);
+            Check(Probe().loop_state == 2, "scene-drop-loop: a loop playing");
+            // into its last bar line before the end: the end is the next one
+            const float len = Probe().loop_length;
+            for (int b = 0; b < 20000 && Probe().loop_pos * len < len - .55f * kSampleRate; b++)
+                RunBlocks(1);
+            const float dry = RunBlocks(1);
+            drop("KEY_17", 1);
+            const Watched w = watch(dry, 1000);
+            lines(w);
+            printf("      loop %.3f s, at %.4f of it on the line\n", len / kSampleRate, w.loop_pos);
+            Check(w.lines.size() >= 1 && w.changed == w.lines[0] && w.loop_pos < .01f,
+                  "scene-drop-loop: the scene on the loop's end, in its block");
+            Check(Probe().loop_state == 2, "scene-drop-loop: PLAY's release didn't pause it");
+        }});
+
+        // three taps: the third bar line; a tap after PLAY one more; a plain key takes it back
+        cases.push_back({"scene-drop-bars", [state] {
+            RunMs(kReadyMs);
+            filter_scene();
+            const float dry = RunBlocks(1);
+            past_line();
+            drop("KEY_17", 3);
+            Watched w = watch(dry, 6500);
+            lines(w);
+            Check(w.lines.size() >= 3 && w.changed == w.lines[2], "scene-drop-bars: three taps, the third bar line");
+            Tap("KEY_16");
+            RunMs(500);
+            past_line();
+            drop("KEY_17", 1);
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap("KEY_17");
+            Press("KEY_26", false);
+            w = watch(dry, 4500);
+            lines(w);
+            Check(w.lines.size() >= 2 && w.changed == w.lines[1],
+                  "scene-drop-bars: SHIFT + its key after PLAY, a bar later");
+            Tap("KEY_16");
+            RunMs(500);
+            past_line();
+            drop("KEY_17", 1);
+            RunMs(500);
+            Tap("KEY_16");
+            RunMs(100);
+            w = watch(dry, 2500);
+            Check(w.changed < 0 && !(state()[6] & 2) && state()[5] == 1,
+                  "scene-drop-bars: a plain scene key meanwhile recalls at once, no drop after");
+        }});
+
+        // what goes off ends on the line: from scene 1 to the blank scene, the filter's fade
+        // out over before the line, not after it
+        cases.push_back({"scene-drop-off", [] {
+            RunMs(kReadyMs);
+            filter_scene();
+            const float dry = RunBlocks(1);
+            Tap("KEY_17");
+            RunMs(500);
+            const float closed = RunBlocks(1);
+            past_line();
+            drop("KEY_16", 1);
+            // to the line, keeping the last 40 blocks' levels
+            std::vector<float> level;
+            uint32_t pos = Probe().position;
+            for (int b = 0; b < 5000; b++)
+            {
+                level.push_back(RunBlocks(1));
+                const uint32_t now = Probe().position;
+                if (now != pos && now % 48 == 0)
+                    break;
+                pos = now;
+            }
+            const size_t n = level.size();
+            printf("      dry %.4f, closed %.4f; 60 blocks before the line %.4f, 20 %.4f, at it %.4f\n",
+                   dry, closed, level[n - 61], level[n - 21], level[n - 1]);
+            Check(n > 100 && level[n - 61] <= closed + dry * .05f && level[n - 21] > dry * .9f
+                      && fabsf(level[n - 1] - dry) < .03f * dry,
+                  "scene-drop-off: the filter quiet 30 ms before the line, gone by it");
+        }});
+
+        // build-up, then drop: a morph to scene 1 gliding, SHIFT + the blank scene refused (red,
+        // as ever), then PLAY: the morph goes on to the line, the blank scene lands there.
+        // SHIFT + PLAY without a scene key in the hold stops a morph, as ever
+        cases.push_back({"scene-drop-morph", [state] {
+            RunMs(kReadyMs);
+            filter_scene();
+            const float dry = RunBlocks(1);
+            past_line();
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap("KEY_17");
+            RunMs(40);
+            Press("KEY_26", false);
+            RunMs(500);
+            Press("KEY_26", true);
+            RunMs(60);
+            const int red = RedBlinks("KEY_16", kSlot1Led - 1);
+            Check(red == 3 && (state()[6] & 2) && state()[5] == 2,
+                  "scene-drop-morph: SHIFT + another scene key during a morph: red, it morphs on");
+            const float at_play = RunBlocks(1);
+            Press("KEY_27", true);
+            RunMs(60);
+            Press("KEY_27", false);
+            Press("KEY_26", false);
+            RunMs(20);
+            Check(state()[5] == 1 && (state()[6] & 2), "scene-drop-morph: then PLAY, a drop to it");
+            std::vector<float> level;
+            uint32_t pos = Probe().position;
+            for (int b = 0; b < 5000; b++)
+            {
+                level.push_back(RunBlocks(1));
+                const uint32_t now = Probe().position;
+                if (now != pos && now % 48 == 0)
+                    break;
+                pos = now;
+            }
+            const size_t n = level.size();
+            printf("      dry %.4f, at PLAY %.4f, 100 blocks before the line %.4f, at it %.4f\n", dry,
+                   at_play, level[n - 101], level[n - 1]);
+            Check(level[n - 101] < at_play * .9f, "scene-drop-morph: the morph glides on after PLAY");
+            Check(fabsf(level[n - 1] - dry) < .03f * dry && n > 200,
+                  "scene-drop-morph: the blank scene on the line, dry");
+            RunMs(300);
+            Check(!(state()[6] & 2) && state()[5] == 1, "scene-drop-morph: landed on the blank scene");
+
+            // SHIFT + scene 1 in one hold, let go; SHIFT + PLAY in another: stopped where it is
+            past_line();
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap("KEY_17");
+            Press("KEY_26", false);
+            RunMs(1000);
+            Press("KEY_26", true);
+            RunMs(60);
+            Press("KEY_27", true);
+            RunMs(60);
+            Press("KEY_27", false);
+            Press("KEY_26", false);
+            RunMs(100);
+            const float stopped = RunMs(300);
+            RunMs(2500);
+            Check(!(state()[6] & 2) && fabsf(RunMs(300) - stopped) < .05f * stopped,
+                  "scene-drop-morph: SHIFT + PLAY without a scene key: the morph stopped where it was");
+        }});
+
+        // CC 83 (channel 16): a drop to the scene given, on the next bar line, CC 9's later
+        cases.push_back({"midi-drop", [state] {
+            RunMs(kReadyMs);
+            filter_scene();
+            const float dry = RunBlocks(1);
+            past_line();
+            Trs({0xBF, 83, 1});
+            RunMs(100);
+            Check(state()[5] == 2 && (state()[6] & 2), "midi-drop: CC 83 = 1, a drop to scene 1");
+            Watched w = watch(dry, 2500);
+            lines(w);
+            Check(w.lines.size() >= 1 && w.changed == w.lines[0], "midi-drop: on the next bar line");
+            Trs({0xBF, 83, 0});
+            RunMs(100);
+            w = watch(RunBlocks(1), 2500);
+            Check(w.changed >= 0 && fabsf(RunBlocks(1) - dry) < .03f * dry,
+                  "midi-drop: CC 83 = 0, back to the blank scene");
+            past_line();
+            Trs({0xBF, 9, 2, 0xBF, 83, 1});
+            w = watch(dry, 4500);
+            lines(w);
+            Check(w.lines.size() >= 2 && w.changed == w.lines[1], "midi-drop: with CC 9 = 2, the second bar line");
         }});
     }
 

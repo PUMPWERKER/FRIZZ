@@ -40,6 +40,7 @@ struct FakeEngine
     {
         plan = p;
         morphing = true;
+        dropping = false;
         held = true;
         bars = 1;
     }
@@ -67,8 +68,28 @@ struct FakeEngine
         if (morphing)
             landings++;
         morphing = false;
+        dropping = false;
     }
     bool FxMorphing() const { return morphing; }
+    // a drop: where it lands, the keys before and at the line
+    bool dropping = false;
+    float drop_to[kNumFx][kNumFxParams] = {};
+    uint16_t drop_ui_on = 0, drop_on = 0;
+    bool DropFxMorph(const float to[kNumFx][kNumFxParams], uint16_t ui_on, uint16_t o)
+    {
+        if (!morphing)
+            return false;
+        for (size_t f = 0; f < kNumFx; f++)
+            for (size_t p = 0; p < kNumFxParams; p++)
+                drop_to[f][p] = to[f][p];
+        drop_ui_on = ui_on;
+        drop_on = o;
+        held = false;
+        bars = 1;
+        dropping = true;
+        return true;
+    }
+    bool FxDropping() const { return morphing && dropping; }
     // a freeze reports the plan's start values, as if it hadn't moved yet
     bool FreezeFxMorph(float live[kNumFx][kNumFxParams], uint16_t* unswitched, uint16_t* was_on)
     {
@@ -80,6 +101,7 @@ struct FakeEngine
         *unswitched = plan.deferred;
         *was_on = plan.deferred & plan.was_on;
         morphing = false;
+        dropping = false;
         return true;
     }
 };
@@ -754,6 +776,95 @@ static void TestMorph()
           "fading: Mix's neutral is dry; the shifter fades in with it, the freezer not");
 }
 
+/** A drop (#153): SHIFT + a scene key, then PLAY (SceneControls::Drop) */
+static void TestDrop()
+{
+    FakeEngine e;
+    Fx fx;
+    Fresh(e, fx);
+    FxScene store[kNumSlots] = {};
+    Scenes sc;
+    sc.Init(store, &fx);
+    const uint16_t filter = 1u << FX_FILTER, delay = 1u << FX_DELAY, reverb = 1u << FX_REVERB;
+    // scene 1: filter and delay on; scene 2: filter and reverb
+    for (size_t s = 1; s <= 2; s++)
+        store[s] = store[kBlankSlot];
+    store[1].latched = filter | delay;
+    store[1].params[FX_FILTER][0] = .2f;
+    store[2].latched = filter | reverb;
+    store[2].params[FX_FILTER][0] = .8f;
+
+    // SHIFT + scene 2, then PLAY: the held morph becomes a drop to it
+    sc.Recall(1);
+    sc.ShiftDown();
+    Check(sc.Press(2, true) == Scenes::Slot::MORPH && e.morphing && e.held && !sc.Dropping(),
+          "drop: SHIFT + scene key, a held morph first");
+    Check(sc.Drop() && e.dropping && !e.held && sc.Dropping() && sc.Morphing() == 2 && sc.Active() == 2,
+          "drop: then PLAY, a drop to it");
+    Check(e.drop_to[FX_FILTER][0] == .8f && e.drop_on == (filter | reverb)
+              && e.drop_ui_on == (filter | reverb) && e.bars == 1,
+          "drop: to where the morph goes, on the next bar line");
+    Check(!sc.Drop(), "drop: PLAY again in the same hold, no scene key since: none");
+
+    // three taps, then PLAY: the third bar line; a new hold forgets them
+    sc.Recall(1);
+    sc.ShiftDown();
+    for (int tap = 0; tap < 3; tap++)
+        sc.Press(2, true);
+    Check(sc.Drop() && e.dropping && e.bars == 3, "drop: three taps, then PLAY, on the third bar line");
+    Check(sc.Press(2, true) == Scenes::Slot::MORPH_MORE && e.bars == 4,
+          "drop: a tap after PLAY, a bar later");
+    sc.ShiftDown();
+    Check(!sc.Drop(), "drop: a new SHIFT hold, no scene picked");
+
+    // a morph to scene 1 gliding; SHIFT + scene 2 is refused, as ever; PLAY then drops to it
+    sc.Recall(2);
+    sc.ShiftDown();
+    sc.Press(1, true);
+    e.held = false; // SHIFT let go: it glides
+    const int landings = e.landings;
+    sc.ShiftDown();
+    Check(sc.Press(2, true) == Scenes::Slot::REFUSED && e.morphing && !e.dropping && sc.Morphing() == 1,
+          "drop on a morph: SHIFT + another scene, refused, the morph runs on");
+    Check(sc.Drop() && e.dropping && sc.Morphing() == 2 && sc.Active() == 2,
+          "drop on a morph: then PLAY, a drop to the other scene");
+    Check(fx.Param(FX_FILTER, 0) == .8f && fx.IsLatched(FX_REVERB) && !fx.IsLatched(FX_DELAY) && !sc.Edited(),
+          "drop on a morph: the controls show it at once");
+    Check(e.drop_ui_on == (filter | delay) && e.drop_on == (filter | reverb)
+              && e.drop_to[FX_FILTER][0] == .8f && e.landings == landings,
+          "drop on a morph: the morph not landed, the drop's keys and parameters to the engine");
+
+    // a plain scene key meanwhile: recalled at once, the drop taken back
+    Check(sc.Press(1, false) == Scenes::Slot::RECALL && !e.morphing && !sc.Dropping() && sc.Active() == 1
+              && fx.IsLatched(FX_DELAY),
+          "drop: a plain scene key meanwhile recalls at once");
+
+    // an empty slot doesn't count; the crossfader's morph isn't dropped
+    sc.ShiftDown();
+    sc.Press(2, true);
+    sc.Press(3, true);
+    Check(sc.Drop() && e.dropping, "drop: an empty slot tapped after it changes nothing");
+    sc.Press(1, false);
+    sc.ShiftDown();
+    sc.Press(3, true);
+    Check(!sc.Drop(), "drop: only an empty slot tapped, none (PLAY stops a morph, as ever)");
+    sc.ShiftDown();
+    sc.Press(2, true);
+    Check(sc.FaderTurned(3.f) && !sc.Drop() && !e.dropping && sc.Fading(),
+          "drop: not once the crossfader has the morph");
+    sc.EndFade();
+    sc.Press(1, false);
+
+    // MIDI (CC 83, DropTo): without a morph, one to it first; over CC 9's bars
+    Check(sc.DropTo(2, 2) && e.dropping && e.bars == 2 && sc.Active() == 2 && sc.Morphing() == 2,
+          "drop over MIDI: without a morph, on the second bar line");
+    Check(!sc.FaderTo(.5f), "drop over MIDI: CC 80 can't take it");
+    sc.ModePressed(SceneMode::SAVE);
+    Check(!sc.DropTo(1, 1), "drop over MIDI: not in a scene mode");
+    sc.ModePressed(SceneMode::SAVE);
+    Check(!sc.DropTo(3, 1), "drop over MIDI: not to an empty slot");
+}
+
 static void TestTails()
 {
     FakeEngine e;
@@ -1041,6 +1152,7 @@ int main()
     TestComp();
     TestScenes();
     TestMorph();
+    TestDrop();
     TestTails();
     TestFader();
     TestPool();

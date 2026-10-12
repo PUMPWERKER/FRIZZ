@@ -1,0 +1,59 @@
+# A drop (#153): SHIFT + a scene key, then PLAY, lands the scene hard on the next bar line.
+# The filter latched and closed and the crusher latched, by hand; then a drop to the blank
+# scene (the first dark key, on every card): its key blinks red on the beat until the line,
+# where everything goes off. Then a loop of 3 beats, the crusher latched again, and a drop to
+# the blank scene on the loop's end (a loop shorter than a bar: its end is every line), PLAY
+# not pausing it. The keys show the scene at once, as in a morph. Nothing is saved. (turn: 4
+# is knob 1)
+input sine 220 0.3
+at 6000
+down KEY_5
+wait 80
+tap KEY_26
+up KEY_5
+wait 200
+turn 4 -40
+wait 500
+down KEY_4
+wait 80
+tap KEY_26
+up KEY_4
+wait 500
+# the blank scene's key dim (the lit FX keys follow their meters: not expected)
+expect led smt 0 242424
+# SHIFT, the blank scene's key, PLAY, all let go, early in a bar (the free tempo's lines
+# fall at about 7.67 s and 9.67 s): nothing changes until the line
+at 7800
+down KEY_26
+wait 60
+tap KEY_16
+wait 40
+tap KEY_27
+wait 40
+up KEY_26
+wait 2500
+# landed: the blank scene active, the filter and crusher off
+expect led smt 0 fcfcfc
+expect led smt 20 240c14
+expect led smt 21 241408
+# a loop of 1.5 s
+tap KEY_28
+wait 1440
+tap KEY_28
+wait 500
+down KEY_4
+wait 80
+tap KEY_26
+up KEY_4
+wait 500
+down KEY_26
+wait 60
+tap KEY_16
+wait 40
+tap KEY_27
+wait 40
+up KEY_26
+wait 2000
+# landed on the loop's end
+expect led smt 0 fcfcfc
+expect led smt 21 241408

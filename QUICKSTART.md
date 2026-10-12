@@ -142,6 +142,9 @@ over. The other four are yours.
 - **Morph:** hold CHOMPI and press a scene key, then let go of CHOMPI: the effects glide there
   and land at the end of the bar. Before you let go, tap the key again for one bar more per
   tap; the glide starts when you let go. Hold CHOMPI and press PLAY to stop it where it is.
+- **Drop:** hold CHOMPI, press a scene key, then PLAY: the scene lands hard on the next bar
+  line (its key blinks red until then). After a morph to one scene, CHOMPI + another scene key
+  + PLAY rides the build-up to the line and drops there.
 - **Copy and delete:** the same steps with the green and amber dark keys. Tap the
   function's key again to back out.
 
