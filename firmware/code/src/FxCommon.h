@@ -79,10 +79,14 @@ struct Smoothed
     /** Once per sample, at a slew of its own; at the target there's nothing to do */
     float Process(float coeff)
     {
-        if (value != target)
-            value = Glide(value, target, coeff);
+        if (__builtin_expect(value != target, 0))
+            Slew(coeff);
         return value;
     }
+    /** A step of the slew, out of line: it runs only while a knob moves, and inlined into
+     *  every Smoothed it grew the effects past where GCC inlines them into the chain, so even
+     *  asleep they cost a call a sample (the bench's idle +0.8 points, #167) */
+    __attribute__((noinline)) void Slew(float coeff) { value = Glide(value, target, coeff); }
     /** For a value that's costly to apply: true if it moved this sample, so it needs
      *  applying */
     bool Settle(float coeff = FxSlew::coeff)
