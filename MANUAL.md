@@ -1260,6 +1260,10 @@ uses it from a Linux computer: `state`, `leds`, `load`, `settings`, `channel 16`
 my.json`, and `play SCRIPT --cpu`, which plays a scenario of the virtual CHOMPI on the device
 and reports the worst load and how many audio blocks ran late (crackles).
 
+The `7D` in that header is MIDI's ID for projects without a manufacturer ID of their own, and
+the multi-firmware launcher uses the same header. FRIZZ keeps it until the launcher moves to an ID of its
+own, and then follows (#103).
+
 For developers, one more command over USB, `0x3E` (`firmware/README.md`, *The developers'
 SysEx*), lets the tools tell which build runs (`remote.py ident`), read and set any effect or
 compressor knob, VOLUME's levels and every setting of the settings page by number rather than
