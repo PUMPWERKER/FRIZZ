@@ -240,9 +240,10 @@ private:
      *  its own speed (ratio 1); they move again with the speed they move at now. Where a tap
      *  would then run into the end of its delay before its life is over, they were left for
      *  the other direction (by Init, which places them for going down, or by the shift turned
-     *  the other way meanwhile, #140), so the taps start afresh: tap 1 halfway through its
-     *  life, carrying the sound, tap 0 silent at the start of its own, spliced to match it as
-     *  at any crossing. Otherwise they go on from where they were */
+     *  the other way meanwhile, #140), or, going up, a tap is beyond a grain turned shorter
+     *  meanwhile (#167), so the taps start afresh: tap 1 halfway through its life, carrying
+     *  the sound, tap 0 silent at the start of its own, spliced to match it as at any
+     *  crossing. Otherwise they go on from where they were */
     __attribute__((noinline)) void Move()
     {
         for (size_t c = 0; c < 2; c++)
@@ -262,7 +263,8 @@ private:
             const float max_delay = window + kDelayPast;
             bool runs_out = false;
             for (size_t t = 0; t < 2; t++)
-                runs_out |= up ? d[t] - left[t] - holds < 1.f : d[t] + left[t] + holds > max_delay;
+                runs_out |= up ? d[t] - left[t] - holds < 1.f || d[t] > max_delay
+                               : d[t] + left[t] + holds > max_delay;
             if (!runs_out)
                 continue;
             window_[c] = 0.f;

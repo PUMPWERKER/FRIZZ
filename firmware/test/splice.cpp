@@ -5,8 +5,8 @@
 // must pick the same lag for every one of kTrials searches; and so must the search spread
 // over two blocks as the shifter runs it, with a block written to the ring in between.
 // Then the shifter itself, at the ends of its shift, grain, swoop and stereo, from power-on,
-// after the shift was turned while it was off, turned from the centre while it plays, and the
-// grain turned at once while it plays: no sounding tap may run into the end of its delay
+// after the shift or the grain was turned while it was off, turned from the centre while it
+// plays, and the grain turned at once while it plays: no sounding tap may run into the end of its delay
 // (#137, #140, #167). Built and run by unit.sh splice.
 #include <cmath>
 #include <cstdio>
@@ -240,6 +240,39 @@ int main()
         {"+12, off, +7", 1.f, .5f + 7.f / 24, false},
         {"-12, off, -12", 0.f, 0.f, false},
     };
+    // and the grain turned while it's off (#167): a long grain's taps, a short one on waking
+    struct GrainTurn
+    {
+        const char* name;
+        float shift, from, to;
+    } grain_turns[] = {
+        {"+12 grain 50ms, off, 10ms", 1.f, 1.f, 0.f},
+        {"-12 grain 50ms, off, 10ms", 0.f, 1.f, 0.f},
+        {"+12 grain 10ms, off, 50ms", 1.f, 0.f, 1.f},
+        {"-12 grain 10ms, off, 50ms", 0.f, 0.f, 1.f},
+    };
+    for (const GrainTurn& g : grain_turns)
+        for (int at : {0, 211, 777})
+        {
+            shifter.Init(48000.f);
+            shifter.SetParam(chompi::Shifter::SHIFT, g.shift);
+            shifter.SetParam(chompi::Shifter::GRAIN, g.from);
+            shifter.SetOn(true);
+            play(48000 + at);
+            shifter.SetOn(false);
+            play(24000);
+            shifter.SetParam(chompi::Shifter::GRAIN, g.to);
+            play(100);
+            shifter.SetOn(true);
+            waits = waiting_stuck = stuck = 0;
+            play(48000);
+            if (at != 0 && stuck == 0)
+                continue;
+            char line[160];
+            snprintf(line, sizeof(line), "%s, %d samples later: a sounding tap at the end of its "
+                     "delay %d samples", g.name, at, stuck);
+            Check(stuck == 0, line);
+        }
     for (const Turn& turn : turns)
     {
         shifter.Init(48000.f);
