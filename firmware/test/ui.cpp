@@ -3431,10 +3431,11 @@ int main()
             return -1;
         };
         const uint32_t kSeeds[3] = {0x6A09E667u, 0x2545F491u, 0x6C8E9CF5u}; // chaos, slicer, delay
+        // and wow & flutter's, an LCG from 1 (FxWarble.h): its state right after a RESEED
         // the chaos key latched: it draws every step, 17 at least
         Ask({0x3E, 3, 1, 0x21, 13, 0, 1});
         const std::string read = Ask({0x3E, 8, 2});
-        Check(read.size() == 23 && read[2] == 0 && DevNum(read, 3, 5) == 0
+        Check(read.size() == 28 && read[2] == 0 && DevNum(read, 3, 5) == 0
                   && draws(kSeeds[1], static_cast<uint32_t>(DevNum(read, 13, 5))) >= 0
                   && draws(kSeeds[2], static_cast<uint32_t>(DevNum(read, 18, 5))) >= 0,
               "midi dev: RESEED without a seed reads: 0 since power-on, the states on its sequences");
@@ -3443,8 +3444,9 @@ int main()
         {
             const std::string set = Ask({0x3E, 8, 3 + run, 0, 0, 0, 12345 >> 7, 12345 & 0x7F});
             const uint32_t seed = static_cast<uint32_t>(DevNum(set, 3, 5));
-            const bool fresh = set.size() == 23 && seed == 12345
-                               && draws(seed ^ kSeeds[0], static_cast<uint32_t>(DevNum(set, 8, 5))) < 40;
+            const bool fresh = set.size() == 28 && seed == 12345
+                               && draws(seed ^ kSeeds[0], static_cast<uint32_t>(DevNum(set, 8, 5))) < 40
+                               && DevNum(set, 23, 5) == (12345 ^ 1);
             RunMs(2000);
             const std::string later = Ask({0x3E, 8, 5 + run});
             n[run] = fresh ? draws(seed ^ kSeeds[0], static_cast<uint32_t>(DevNum(later, 8, 5))) : -1;
@@ -3454,9 +3456,9 @@ int main()
         if (n[0] <= 100 || n[1] <= 100)
             printf("      draws %d, %d\n", n[0], n[1]);
         const std::string zero = Ask({0x3E, 8, 7, 0, 0, 0, 0, 0});
-        Check(zero.size() == 23 && draws(kSeeds[2], static_cast<uint32_t>(DevNum(zero, 18, 5))) == 0
-                  && draws(kSeeds[0], static_cast<uint32_t>(DevNum(zero, 8, 5))) < 40,
-              "midi dev: RESEED 0, as at power-on");
+        Check(zero.size() == 28 && draws(kSeeds[2], static_cast<uint32_t>(DevNum(zero, 18, 5))) == 0
+                  && draws(kSeeds[0], static_cast<uint32_t>(DevNum(zero, 8, 5))) < 40 && DevNum(zero, 23, 5) == 1,
+              "midi dev: RESEED 0, as at power-on, wow & flutter's too");
         Check(Ask({0x3E, 8, 8, 1, 2})[2] == 1, "midi dev: RESEED with a short seed refused");
     }});
 

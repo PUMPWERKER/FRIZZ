@@ -275,7 +275,7 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | `06` LEVELS | `00` | the effects' meters, as their keys show them, 0-16383 each, by FxId |
 | | `01` | flags (1: the peak meters just started), the VU meter (2), the compressor's reduction (2, dB x 100), the peaks since the last ask (2 each, 8192 full scale, up to twice it): the input as the engine takes it (mic, AUX L, R), the headphones L, R, the line outs L, R |
 | `07` SIGNAL | WAVE FREQ(2) LEVEL(2) | WAVE. 1 sine, 2 saw, 3 noise at FREQ Hz (1-16383) and LEVEL (16383 full scale) in place of the mic and AUX, from where the engine takes them; `00` alone the input again |
-| `08` RESEED | SEED(5) or — | the seed, then the states (5 each) of chaos's, the slicer's and the delay's random numbers, each from its power-on seed xor SEED: 0 is power-on's. Without SEED it only reads |
+| `08` RESEED | SEED(5) or — | the seed, then the states (5 each) of chaos's, the slicer's, the delay's and wow & flutter's random numbers, each from its power-on seed xor SEED: 0 is power-on's. Without SEED it only reads |
 | `09` BATTERY | — | the level (0 full, on the cable; 1 above 3.3 V; 2 3-3.3 V; 3 below 3 V), the level the check last read, the check's step (0 resting, 1-2 reading at 3.3 V), 1 if the last read failed, the last 8 reads (2 each, the newest lowest) of the cable (VIN_GD), the battery below the threshold, a legacy cable and the input current limited, then the MP2722's status registers 0x11-0x16 (2 each) |
 
 The groups of GET and SET: `00`-`1F` an effect's knobs by its FxId (`FxParams.h`: 0-3 page 1,
@@ -292,7 +292,9 @@ known as above or below 3 V and 3.3 V). SIGNAL and the peak meters live in RAM u
 restarts and cost the audio callback one branch until asked; the first LEVELS starts the
 meters, so `remote.py levels` asks, waits 0.25 s and asks again. RESEED's states let a tool
 count how many numbers each has drawn since the seed (`remote.py reseed`): two runs from the
-same seed draw the same numbers. Neither is in the event log.
+same seed draw the same numbers. The reverb's modulation (DaisySP's ReverbSc, vendored) has
+random numbers of its own, which RESEED leaves running on from power-on. Neither is in the
+event log.
 
 **From the card:** copy `build/FRIZZ.bin` to the SD card and power on, as described in
 [`INSTALL.md`](../INSTALL.md). FRIZZ is a `BOOT_SRAM` app: CHOMPI's bootloader copies it from

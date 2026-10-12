@@ -212,18 +212,21 @@ public:
     inline uint16_t Dropped() const { return static_cast<uint16_t>(dropped_); }
     /** Its grid in clock pulses, for the scramble's steps */
     inline uint32_t ChaosGridPulses() const { return chaos_.GridPulses(); }
-    /** RESEED's (MidiControl.h's namespace dev): the random numbers of chaos, the slicer and
-     *  the delay, in that order, each from its power-on seed xor seed, so 0 is power-on's */
-    static const size_t kRandoms = 3;
-    inline Rng& Random(size_t i)
-    {
-        return i == 0 ? chaos_.Random() : i == 1 ? slicer_.Random() : delay_.Random();
-    }
+    /** RESEED's (MidiControl.h's namespace dev): the random numbers of chaos, the slicer, the
+     *  delay and wow & flutter, in that order, each from its power-on seed xor seed, so 0 is
+     *  power-on's. The reverb's modulation (DaisySP's) has its own, never reseeded */
+    static const size_t kRandoms = 4;
     void Reseed(uint32_t seed)
     {
-        static const uint32_t kSeeds[kRandoms] = {Chaos::kSeed, Slicer::kSeed, granularDelay::kSeed};
-        for (size_t i = 0; i < kRandoms; i++)
-            Random(i).Seed(seed ^ kSeeds[i]);
+        chaos_.Random().Seed(seed ^ Chaos::kSeed);
+        slicer_.Random().Seed(seed ^ Slicer::kSeed);
+        delay_.Random().Seed(seed ^ granularDelay::kSeed);
+        warble_.Reseed(seed);
+    }
+    uint32_t RandomState(size_t i)
+    {
+        return i == 0 ? chaos_.Random().state : i == 1 ? slicer_.Random().state
+                                              : i == 2 ? delay_.Random().state : warble_.RandomState();
     }
 
     /** n samples through the chain, in place. Effect by effect, each over a run of up to

@@ -40,12 +40,17 @@ public:
         STEREO = 5,
     };
 
+    static const uint32_t kSeed = 1; // its random numbers' at power-on
+    /** For RESEED (MidiControl.h's namespace dev): from kSeed xor seed */
+    inline void Reseed(uint32_t seed) { rand_ = (seed ^ kSeed) & 0x7fffffffu; }
+    inline uint32_t RandomState() const { return rand_; }
+
     FX_ONCE void Init(float sample_rate)
     {
         sample_rate_ = sample_rate;
         ring_.Clear();
         gate_.Init();
-        rand_ = 1;
+        rand_ = kSeed;
         for (size_t c = 0; c < 2; c++)
         {
             // halfway along TAPE's range, still

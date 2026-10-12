@@ -149,7 +149,8 @@ enum Sub : uint8_t
                  //    the compressor's reduction, the peaks since the last ask (Audio)
     SIGNAL = 7,  // WAVE FREQ(2) LEVEL(2): Audio's test signal in place of the input, 0 off
     RESEED = 8,  // [SEED(5)]: the effects' random numbers from SEED (0 as at power-on) ->
-                 //    the seed, then chaos's, the slicer's and the delay's states (5 each)
+                 //    the seed, then chaos's, the slicer's, the delay's and wow & flutter's
+                 //    states (5 each)
     BATTERY = 9, // -> the level, the charger's debounced bits, the last read, its raw status
 };
 enum Status : uint8_t

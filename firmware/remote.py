@@ -36,8 +36,8 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
                                       a test signal in the input's place (LEVEL 0-1 of full
                                       scale), in RAM until FRIZZ restarts; off the input again
     ./remote.py reseed [SEED]         the effects' random numbers (chaos, the slicer, the
-                                      delay) from SEED (0 as at power-on); without, how many
-                                      each has drawn since the last
+                                      delay, wow & flutter) from SEED (0 as at power-on);
+                                      without, how many each has drawn since the last
     ./remote.py battery               the battery's level and the charger's status, as FRIZZ
                                       last read them
 
@@ -449,8 +449,9 @@ FACTORS = ["x1/2", "x1", "x2"]
 WAVES = ["off", "sine", "saw", "noise"]  # dev::Audio::Wave
 # LEVELS 1's peaks (dev::Audio), full scale 8192
 PEAKS = ["mic", "AUX L", "AUX R", "headphones L", "headphones R", "line L", "line R"]
-# RESEED's random numbers and their power-on seeds (FxChaos.h, FxSlicer.h, granularDelay.h)
-RANDOMS = [("chaos", 0x6A09E667), ("slicer", 0x2545F491), ("delay", 0x6C8E9CF5)]
+# RESEED's random numbers and their power-on seeds (FxChaos.h, FxSlicer.h, granularDelay.h:
+# xorshift32; FxWarble.h: an LCG)
+RANDOMS = [("chaos", 0x6A09E667), ("slicer", 0x2545F491), ("delay", 0x6C8E9CF5), ("warble", 1)]
 BATTERY = ["full (on the cable)", "high (above 3.3 V)", "medium (3-3.3 V)", "low (below 3 V)"]
 MAX_DRAWS = 1 << 20
 
@@ -521,15 +522,19 @@ def signal(f, wave, hz, level):
     dev_data(f, chompi.SIGNAL, [w, hz >> 7 & 0x7F, hz & 0x7F, v >> 7 & 0x7F, v & 0x7F], "SIGNAL")
 
 
-def draws(start, state):
-    """xorshift32's steps (FxCommon.h's Rng) from start to state, None beyond MAX_DRAWS"""
-    x = start or 1
+def draws(start, state, lcg=False):
+    """The steps from start to state, None beyond MAX_DRAWS: of xorshift32 (FxCommon.h's Rng),
+    or wow & flutter's LCG (FxWarble.h)"""
+    x = start & 0x7FFFFFFF if lcg else start or 1
     for n in range(MAX_DRAWS):
         if x == state:
             return n
-        x ^= x << 13 & 0xFFFFFFFF
-        x ^= x >> 17
-        x ^= x << 5 & 0xFFFFFFFF
+        if lcg:
+            x = (1103515245 * x + 12345) & 0x7FFFFFFF
+        else:
+            x ^= x << 13 & 0xFFFFFFFF
+            x ^= x >> 17
+            x ^= x << 5 & 0xFFFFFFFF
     return None
 
 
@@ -541,7 +546,7 @@ def reseed(f, seed):
     counts = {}
     for i, (name, own) in enumerate(RANDOMS):
         state = chompi.get7(d[5 + 5 * i:10 + 5 * i])
-        n = counts[name] = draws(seed ^ own, state)
+        n = counts[name] = draws(seed ^ own, state, name == "warble")
         print("%-10s %08x, %s since" % (name, state,
                                         "%d draws" % n if n is not None else "over %d draws" % MAX_DRAWS))
     return counts

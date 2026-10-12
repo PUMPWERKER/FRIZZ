@@ -665,7 +665,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc != 0 && Has(out, "1-16383 Hz"), "remote: signal wants a frequency");
     rc = Remote({"reseed", "12345"}, out);
     Check(rc == 0 && Has(out, "seed       12345\nchaos      ") && Has(out, "slicer     ")
-              && Has(out, "delay      ") && Has(out, ", 0 draws since"),
+              && Has(out, "delay      ") && Has(out, "warble     00003038, 0 draws since"),
           "remote: reseed sets the random numbers from a seed and counts their draws since");
     rc = Remote({"battery"}, out);
     Check(rc == 0 && Has(out, "battery    high (above 3.3 V)") && Has(out, "cable 00000000")
