@@ -161,6 +161,15 @@ what FRIZZ does.
 
 ### Changed
 
+- **The scene keys moved two dark keys to the right** (#67): the blank scene is now on F# of
+  the lower octave, scenes 1-4 on the lower G# and A# and the upper C# and D#. The lower C#
+  and D# do nothing on the play page for now; they're kept free for pages to come. Your
+  scenes stay as they were: the same slots on the card, the same program changes (0-4) and
+  CCs. **Save, copy and delete are reordered and recoloured:** the upper F# saves (green), G#
+  copies (blue), A# deletes (red), where A# saved (blue), G# copied (green) and F# deleted
+  (amber), as on TAPE and TEMPO. Notes follow the keys: a controller or DAW mapped to the
+  scene keys' notes now finds them on 54 (the blank scene), 56, 58, 61 and 63, save on 66 and
+  delete on 70 (copy stays on 68). See MANUAL.md, "FX scenes".
 - **Heavy effect combinations take less of the CPU** (#136): the effects and the master
   compressor work through each block of 24 samples one effect at a time instead of all of
   them sample by sample. They sound the same as before, but many effects at once leave more

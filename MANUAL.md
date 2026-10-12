@@ -14,8 +14,8 @@ The stereo AUX input, or the built-in microphone while no cable is in AUX (see
 through a volume stage taken from TAPE's Volume Engine, with a looper on the wet side of a
 dry/wet mix. The looper can record free-length loops or loops quantized to whole bars of an
 incoming MIDI clock. The white keys punch in effects on the mixed signal, and four dark keys
-save and recall their settings as scenes, next to one that clears them. A master compressor,
-set from the last white key, sits after the effects.
+in the middle save and recall their settings as scenes, next to one that clears them. A master
+compressor, set from the last white key, sits after the effects.
 
 ## VOLUME knob
 
@@ -877,14 +877,17 @@ Mix, Sidechain and Makeup sit on the knobs an effect has its Mix, Band and Level
 
 ## FX scenes
 
-A scene holds every effect's four knob values and whether it's latched. The five dark keys of
-the lower octave (C#, D#, F#, G#, A#) are scene keys:
+A scene holds every effect's four knob values and whether it's latched. Five dark keys in the
+middle are scene keys: F#, G# and A# of the lower octave, C# and D# of the upper one.
 
-- **The first (C#) is the blank scene:** every effect off and every knob on its default. It's
-  always there, a one-press way back to no effects. You can't save over it or delete it,
-  but you can copy it into a slot to start a scene from scratch.
-- **The other four (D#, F#, G#, A#) hold your scenes.** They're saved to the SD card and
-  come back at power-on. (Before the blank scene, the scenes sat one key further left.)
+- **The first (lower F#) is the blank scene:** every effect off and every knob on its
+  default. It's always there, a one-press way back to no effects. You can't save over it or
+  delete it, but you can copy it into a slot to start a scene from scratch.
+- **The other four (lower G#, lower A#, upper C#, upper D#) hold your scenes 1-4.** They're
+  saved to the SD card and come back at power-on. (Earlier versions had the scene keys two
+  dark keys further left, from the lower C#; the slots on the card are the same.)
+
+The lower octave's C# and D# do nothing on the play page; they're kept free for pages to come.
 
 A saved scene stays as you saved it: changes you make after recalling one are only kept if you
 save again.
@@ -918,14 +921,15 @@ A recall is meant for performing, a build-up on one scene and the drop on the ne
 - The input/loop mix, the volumes, the master compressor and the looper aren't part of a
   scene. The compressor keeps its settings on the card on its own.
 
-Save, copy and delete work like TAPE's and TEMPO's preset keys, on the last three dark keys,
-no SHIFT needed:
+Save, copy and delete are on the last three dark keys, no SHIFT needed. They work like TAPE's
+and TEMPO's preset keys, but in the opposite order and their own colours: save first, delete
+on the outside, in red as a warning.
 
 | Key | Colour | Function |
 |---|---|---|
-| Last dark key (A# of the upper octave) | blue | **Save** the current effect settings into a slot |
-| 2nd-to-last dark key (upper G#) | green | **Copy** one slot into another, without changing the sound |
-| 3rd-to-last dark key (upper F#) | amber | **Delete** a slot |
+| F# of the upper octave | green | **Save** the current effect settings into a slot |
+| Upper G# | blue | **Copy** one slot into another, without changing the sound |
+| Upper A# (the last dark key) | red | **Delete** a slot |
 
 1. **Tap the function's key.** It lights up fully; the scene keys now select slots instead of
    recalling them. The effects and knobs keep working.
@@ -945,7 +949,9 @@ no SHIFT needed:
 function key switches to that function.
 
 All three speak the same colours: the function's colour shows what will happen, white that
-it's done, red that it was refused (a dark slot tapped) or not stored. The slot flashes red
+it's done, red that it was refused (a dark slot tapped) or not stored. In delete, whose own
+colour is red, a refusal is told apart by its rhythm: 3 quick blinks, where the picked slot
+and the CHOMPI key blink steadily. The slot flashes red
 instead of white when there's no SD card, or the card couldn't be written: the change works
 until power-off but isn't stored. The next save, copy or delete tries the card again, also
 one you've put in since.
@@ -1160,7 +1166,9 @@ they still count, and the global channel works over both.
 
 A note holds the key it lands on while it's on, as your finger would: an FX key punches its
 effect in, a scene key recalls, and so on. The 25 keys are a keyboard from **note 48** (C3,
-or C2 in Ableton Live): the white keys from 48 up, the dark keys on the sharps. Below them:
+or C2 in Ableton Live): the white keys from 48 up, the dark keys on the sharps, so the
+[scene keys](#fx-scenes) are notes 54 (the blank scene), 56, 58, 61 and 63 (scenes 1-4), and
+save, copy and delete 66, 68 and 70. Below them:
 
 | Note | Key |
 |---|---|

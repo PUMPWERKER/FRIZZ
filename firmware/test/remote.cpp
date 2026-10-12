@@ -851,7 +851,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc = Remote({"play", script, "--save"}, out);
     Check(rc != 0 && Has(out, "line 5: turn 1 with the compressor selected"),
           "remote: a knob turned once CC 23 put the compressor in focus is refused (#78)");
-    Write(script, "booted\ntap KEY_25\nwait 100\ntap KEY_17\nwait 100\ntap KEY_26\nwait 500\n");
+    Write(script, "booted\ntap KEY_23\nwait 100\ntap KEY_19\nwait 100\ntap KEY_26\nwait 500\n");
     rc = Remote({"play", script, "--save"}, out);
     const std::string refused_save = out;
     Remote({"state"}, out);
@@ -867,7 +867,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     const std::string scenes_file = CardFiles()["/FRIZZ/frizz_scenes.txt"];
     Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_23\nwait 100\ntoggle 0\nwait 100\n"
                   "midi F0 7D 43 48 13 00 05 F7\ntap KEY_15\nwait 100\nturn 4 10\nwait 100\n"
-                  "tap KEY_25\nwait 100\ntap KEY_18\nwait 100\ntap KEY_26\nwait 2500\n");
+                  "tap KEY_23\nwait 100\ntap KEY_20\nwait 100\ntap KEY_26\nwait 2500\n");
     rc = Remote({"play", script}, out);
     const std::string in_ram = out;
     Remote({"settings"}, out);

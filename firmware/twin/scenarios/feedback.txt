@@ -20,5 +20,5 @@ wait 500
 expect led smt 20 fcc0d8
 turn 6 -5
 wait 500
-tap KEY_16
+tap KEY_18
 wait 1000

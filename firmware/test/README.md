@@ -421,7 +421,9 @@ and the master again with the cue down.
 The battery: VOLUME's LED on the settings page white on the cable, green once it's pulled, yellow
 below 3.3 V at the next 30 s read, white again with the cable (known: red never shows below 3 V,
 as the yellow countdown comes first, #43), and the charger plugged in during the countdown
-stopping it. The scene keys: a saved slot dim, the active one bright, pulsing from a fifth up
+stopping it. The scene keys where #67 put them (the lower F# to the upper D#; SAVE, COPY,
+DELETE green, blue, red on the upper F#, G#, A#; the lower C# and D# dark and doing nothing,
+no SHIFT combo either; note 56 scene 1): a saved slot dim, the active one bright, pulsing from a fifth up
 to full once a second once edited; a morph's key blinking on the beat, SHIFT + another scene key
 during it and a 9th bar each blinking red 3 times. The compressor's key without a card: 3 red
 blinks for the failed save and for each of its 3 retries, 2 s apart. And the controllers the

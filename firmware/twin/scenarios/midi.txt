@@ -31,7 +31,7 @@ wait 500
 midi CF 00
 wait 1500
 # program change 0: the blank scene, its key bright
-expect led smt 0 fcfcfc
+expect led smt 2 fcfcfc
 # notes 45-47: LOOP records, LOOP again plays
 midi 9F 2F 64
 wait 60

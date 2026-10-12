@@ -143,22 +143,23 @@ namespace chompi
     static const uint32_t kMasterSaveDelayMs = 2000;
     static const uint32_t kMasterSaveTries = 3; // a failed write is tried again, this often
 
-    // FX scenes: the slots on KEY_16-20, the lower octave's dark keys, the blank one first;
-    // SAVE / COPY / DELETE on TAPE's preset keys in TEMPO's colours. One language for all
-    // three: the mode's colour shows what will happen (the slots it can act on, the pick, the
-    // CHOMPI key that confirms), white that it's done, red that it was refused or isn't on
-    // the card. So no mode is red: DELETE is amber
+    // FX scenes (#67): the slots on KEY_18-22, the lower F#, G#, A# and the upper C#, D#, the
+    // blank one first; SAVE / COPY / DELETE on the upper F#, G#, A#, save first, delete on the
+    // outside in red (TAPE's and TEMPO's preset keys go the other way). The lower C# and D# are
+    // free on this page. One language for all three: the mode's colour shows what will happen
+    // (the slots it can act on, the pick, the CHOMPI key that confirms), white that it's done,
+    // red that it was refused or isn't on the card
     struct SceneKey
     {
         Hardware::SwId key;
         uint8_t led;
     };
     static const SceneKey kSceneKeys[kNumSlots] = {
-        {Hardware::SwId::KEY_16, 0},
-        {Hardware::SwId::KEY_17, 1},
         {Hardware::SwId::KEY_18, 2},
         {Hardware::SwId::KEY_19, 3},
         {Hardware::SwId::KEY_20, 4},
+        {Hardware::SwId::KEY_21, 5},
+        {Hardware::SwId::KEY_22, 6},
     };
     struct SceneModeKey
     {
@@ -168,9 +169,9 @@ namespace chompi
         const float* color;
     };
     static const SceneModeKey kSceneModeKeys[] = {
-        {SceneMode::SAVE, Hardware::SwId::KEY_25, 9, blue},
-        {SceneMode::COPY, Hardware::SwId::KEY_24, 8, green},
-        {SceneMode::DELETE, Hardware::SwId::KEY_23, 7, amber}, // red means refused
+        {SceneMode::SAVE, Hardware::SwId::KEY_23, 7, green},
+        {SceneMode::COPY, Hardware::SwId::KEY_24, 8, blue},
+        {SceneMode::DELETE, Hardware::SwId::KEY_25, 9, red},
     };
     static const uint32_t kScenePulseMs = 1000;     // the active scene, edited
 
