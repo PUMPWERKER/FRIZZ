@@ -138,7 +138,8 @@ what FRIZZ does.
 - **Heavy effect combinations take less of the CPU** (#136): the effects and the master
   compressor work through each block of 24 samples one effect at a time instead of all of
   them sample by sample. They sound the same as before, but many effects at once leave more
-  room, so crackling under a heavy combination (#21) sets in later.
+  room, so crackling under a heavy combination (#21) sets in later. Page 2 off its defaults
+  (Mix, Band, Level) on many effects at once costs less too (#142).
 - **The pitch shifter's peaks take less of the CPU** (#137): where a tap starts over, the
   shifter searches for the best match, which took almost a tenth of an audio block at once,
   twice at stereo 0. That search is now cheaper and spread over two blocks, so the busiest

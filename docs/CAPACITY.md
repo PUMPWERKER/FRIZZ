@@ -1,15 +1,15 @@
 # Capacity: what's free on the CHOMPI, and how to make room
 
-What a new feature can still use, measured on 2026-10-12 with the FX chain a block at a time
-(#136, `FRIZZ.bin` md5 `17974b57`; the history below). `make` prints the memory table after every
+What a new feature can still use, measured on 2026-10-12 with page 2's busy case inline in
+the chain's loops (#142, `FRIZZ.bin` md5 `44e9d1db`; the history below). `make` prints the memory table after every
 build; the numbers below come from it and from `build/FRIZZ.map`.
 
 ## Memory
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 232,792 B (84 %) | **~45 KB** | all the code, and the initial values of `.data` |
-| `SRAM` (AXI SRAM) | 240 KB | 224,896 B (92 %) | ~20 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 238,768 B (86 %) | **~39 KB** | all the code, and the initial values of `.data` |
+| `SRAM` (AXI SRAM) | 240 KB | 225,376 B (92 %) | ~20 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 65,584 B | ~62 KB, shared with the stack | the reverb (64 KB); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 23,808 B | ~8 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
@@ -18,8 +18,8 @@ build; the numbers below come from it and from `build/FRIZZ.map`.
 | `SDRAM` | 64 MB | 43.9 MB | **~23 MB** | the loop (31.7 MB), the tape stop (4.2 MB), the delay (3.8 MB), the event log (2.1 MB), the freezer (1.9 MB), the reverb's pre-delay (0.1 MB); measured on `FRIZZ.bin` md5 `1eb11808` |
 
 **The bench build hits the walls first.** `FRIZZ-bench.bin` carries the bench as well: its
-code is at 250,156 B (90 %, ~28 KB free) and its data at 233,060 B (95 %, **~12 KB free**).
-So a feature of more than ~28 KB of code, or ~12 KB of data in internal RAM, needs room made
+code is at 255,636 B (92 %, ~22 KB free) and its data at 233,540 B (95 %, **~12 KB free**).
+So a feature of more than ~22 KB of code, or ~12 KB of data in internal RAM, needs room made
 first (below), or the bench build stops linking before `FRIZZ.bin` does. Data grows into
 SDRAM or DTCM where it can; for internal RAM, step 4 below frees 64 KB.
 
@@ -67,6 +67,15 @@ and 248,732 / 232,964 on `main` (50754d9). By function: `FxChain::Run` 12.7 KB a
 the tape stop's loops (`FxChain::Insert`, out of line as their `Process` was) +0.7 KB. No
 per-sample path is kept beside the block one (the prototype in #21 kept both, +5.7…7.8 KB).
 
+Page 2's busy case inline in the chain's loops (#142, 2026-10-12) took 4.0 KB of code
+(3.6 KB in the bench build), no data: `FRIZZ.bin` at 238,768 B (~39 KB free), the bench build
+at 255,636 B (~22 KB), from 234,768 and 252,020 on `main` (0459aa4). By function:
+`FxChain::Run` +1.2 KB, the freezer's and the tape stop's `Insert` +0.6 and +0.7 KB, the
+crusher's `Insert` out of line now (1.9 KB, where its `Process` was in `Run`), `FxOutput::Begin`
+and `Join` out of line (0.3 KB, shared), against the cold `OutBegin`, `OutEnd` and `OutBand`
+gone (-0.7 KB). Begin and Join inlined as well took 1.8 KB more and measured the same, within
+the layout's noise.
+
 The split moved by 40 KB (step 1 below) after the FX knobs' page 2 (#35) had left ~21 KB of
 code, ~3.4 KB in the bench build. The scene work (`Recall`, `Morph`, the scene file) is
 compiled `-Os` and out of line (`FX_SCENE_ONCE`), as the event log's and MIDI's are.
@@ -91,7 +100,7 @@ Where the code goes (`.text` + `.rodata` by object, from the map):
 | FatFs (`ff.o`, `ccsbcs.o`, `diskio.o`) | 14,700 |
 | newlib-nano, libm, libgcc | 11,400 |
 
-The biggest single functions are `FxChain::Run` (12.7 KB, the chain over a block, #136) and
+The biggest single functions are `FxChain::Run` (14.0 KB, the chain over a block, #136, #142) and
 `PassthroughEngine::Process` (10.9 KB, everything inlined into them; 2026-10-12), then `Shifter::Process`,
 `Looper::Process` and `FxChain::Init` (5.5 KB each). `NormalPage::OnButton` was 7.9 KB at
 `-O3`, 1.1 KB at `-Os`.
@@ -164,8 +173,11 @@ effect's loop over the block's 24 samples before the next effect's, so its code 
 once a block rather than once a sample (`FxChain::Process`). That took the bench's
 `everything` from 92.0 / 105.9 % (mean / max) to 73.1 / 83.2 and idle from 40.3 to 33.2, and
 `fader.txt`'s worst block from 100 to 84 % (#136, measured against `main` in one hold). Page 2's wrapper cost ~6 points of "everything" at its defaults until the chain
-skipped it with a bitmask and moved the busy case out of line (`FxChain::Insert`,
-`__attribute__((cold))`). Rare paths belong out of line; but a small change also shifts the
+skipped it with a bitmask and moved the busy case out of line (`__attribute__((cold))`); with
+the chain a block at a time, the bitmask is read once per run and the busy case is inline at
+the end of the run's loop (`FxChain::Insert`, #142), which took `loop+everything+page2` from
+103.4 / 127.3 to 95.4 / 118.6 % and left the segments at the defaults as they were or a
+little lower (-0.1 to -0.9, against `main` in one hold). Rare paths belong out of line; but a small change also shifts the
 layout, by ±2.5 points either way, so measure each one. The play page's `-Os` (#86) is such a
 case: none of its code runs in the callback, yet before #89 the engine it moved by 15 KB ran
 1-2.8 points slower in the lighter bench segments (the same source without the pragma: as
