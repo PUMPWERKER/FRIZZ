@@ -135,6 +135,10 @@ what FRIZZ does.
 
 ### Changed
 
+- **Heavy effect combinations take less of the CPU** (#136): the effects and the master
+  compressor work through each block of 24 samples one effect at a time instead of all of
+  them sample by sample. They sound exactly as before, but many effects at once leave more
+  room, so crackling under a heavy combination (#21) sets in later.
 - **The freezer, shifter and slicer fade in a morph** (#118), with their page 2 Mix, instead
   of switching on the bar line. One the new scene turns off glides to dry over the morph and
   goes off on the bar line, as the other effects do; the shifter or slicer the new scene
