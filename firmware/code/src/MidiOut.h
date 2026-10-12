@@ -181,7 +181,7 @@ public:
     {
         uint8_t msg[3];
         size_t n;
-        while ((n = usb_.PeekMessage(msg)) > 0)
+        while ((n = PeekMessage(usb_, msg)) > 0)
         {
             const uint32_t now = System::GetNow();
             if (!clock_->UsbHost())
@@ -214,41 +214,20 @@ private:
     uint32_t usb_waiting_since_ = 0;
     static const uint32_t kMaxBunch = 4; // ticks passed on in one block, at most
 
-    /** A byte ring, filled by the audio callback; read by it (the jack's) or by MainLoop
-     *  (USB's), which only sees whole messages: the callback adds one before it returns */
-    class Ring
-    {
-    public:
-        void Push(const uint8_t* msg, size_t n)
-        {
-            uint32_t head = head_;
-            if (kSize - (head - tail_) < n)
-                return; // full: the UART or MainLoop is stuck, and old ticks are no use
-            for (size_t i = 0; i < n; i++)
-                buf_[head++ % kSize] = msg[i];
-            head_ = head;
-        }
-        inline bool Empty() const { return head_ == tail_; }
-        inline uint8_t Front() const { return buf_[tail_ % kSize]; }
-        inline void Pop() { tail_ = tail_ + 1; }
-        inline void Clear() { tail_ = head_; }
-        /** The next message, left in: its length (a Song Position's 3, else 1), 0 for none */
-        size_t PeekMessage(uint8_t* msg) const
-        {
-            if (Empty())
-                return 0;
-            const size_t n = Front() == 0xF2 ? 3 : 1;
-            for (size_t i = 0; i < n; i++)
-                msg[i] = buf_[(tail_ + i) % kSize];
-            return n;
-        }
-        inline void Drop(size_t n) { tail_ = tail_ + n; }
+    /** The clock's bytes for a port, filled by the audio callback; read by it (the jack's)
+     *  or by MainLoop (USB's), which only sees whole messages */
+    typedef ByteRing<32> Ring;
 
-    private:
-        static const uint32_t kSize = 32;
-        uint8_t buf_[kSize];
-        volatile uint32_t head_ = 0, tail_ = 0;
-    };
+    /** ring's next message, left in: its length (a Song Position's 3, else 1), 0 for none */
+    static size_t PeekMessage(const Ring& ring, uint8_t* msg)
+    {
+        if (ring.Empty())
+            return 0;
+        const size_t n = ring.Front() == 0xF2 ? 3 : 1;
+        for (size_t i = 0; i < n; i++)
+            msg[i] = ring.At(i);
+        return n;
+    }
 
     /** A message to every port the setting has but not_to */
     void Send(const uint8_t* msg, size_t n, MidiClock::Source not_to)

@@ -23,8 +23,11 @@
 namespace chompi
 {
 
-/** The jack's feedback bytes: MainLoop pushes whole messages, the audio callback sends them */
-class FeedbackRing
+/** A byte ring between the audio callback and MainLoop, one side writing, the other reading:
+ *  whole messages go in at once, so the reader never sees half of one. MIDI out's
+ *  (MidiOut.h) and the jack's feedback bytes */
+template <uint32_t kSize>
+class ByteRing
 {
 public:
     /** All of n bytes, or none: false if they don't fit */
@@ -41,14 +44,20 @@ public:
     inline size_t Room() const { return kSize - (head_ - tail_); }
     inline bool Empty() const { return head_ == tail_; }
     inline uint8_t Front() const { return buf_[tail_ % kSize]; }
+    /** The byte i after the front */
+    inline uint8_t At(size_t i) const { return buf_[(tail_ + i) % kSize]; }
     inline void Pop() { tail_ = tail_ + 1; }
+    inline void Drop(size_t n) { tail_ = tail_ + n; }
     inline void Clear() { tail_ = head_; }
 
 private:
-    static const uint32_t kSize = 96; // 32 CCs, 48 ms of the jack at a byte a block
     uint8_t buf_[kSize];
     volatile uint32_t head_ = 0, tail_ = 0;
 };
+
+/** The jack's feedback bytes: MainLoop pushes whole messages, the audio callback sends them.
+ *  96: 32 CCs, 48 ms of the jack at a byte a block */
+typedef ByteRing<96> FeedbackRing;
 
 namespace feedback
 {
@@ -76,6 +85,20 @@ enum Item : uint8_t
     kNumItems,
 };
 static const uint8_t kNone = 0xFF; // in the table: not sent yet
+
+/** kFocus .. kLive's CCs, in their order */
+static constexpr uint8_t kGlobalCc[] = {23, 85, 86, 87, 89, 90, 80, 84, 116, 117};
+static_assert(sizeof(kGlobalCc) == kNumItems - kFocus, "a CC per global item");
+
+/** An item's CC number. MidiControl.h checks them against its map (midimap) */
+constexpr uint8_t Cc(uint8_t item)
+{
+    return item < kGlobalLatches ? static_cast<uint8_t>(14 + item % kKeySlots)
+         : item < kFocusItems    ? static_cast<uint8_t>(102 + item - kGlobalLatches)
+         : item < kCompItems     ? static_cast<uint8_t>(14 + item - kFocusItems)
+         : item < kFocus         ? static_cast<uint8_t>(24 + item - kCompItems)
+                                 : kGlobalCc[item - kFocus];
+}
 
 /** A 0-1 knob as 7 bits, the inverse of MidiToKnob (MidiControl.h): .5 is 64, 1 is 127 */
 inline uint8_t KnobTo7(float k)
@@ -156,22 +179,6 @@ public:
     static const size_t kPerPass = 16; // 48 bytes: one USB transfer
 
 private:
-    /** An item's CC number */
-    static uint8_t Cc(uint8_t item)
-    {
-        using namespace feedback;
-        static const uint8_t kGlobal[] = {23, 85, 86, 87, 89, 90, 80, 84, 116, 117}; // kFocus .. kLive
-        if (item < kGlobalLatches)
-            return static_cast<uint8_t>(14 + item % kKeySlots);
-        if (item < kFocusItems)
-            return static_cast<uint8_t>(102 + item - kGlobalLatches);
-        if (item < kCompItems)
-            return static_cast<uint8_t>(14 + item - kFocusItems);
-        if (item < kFocus)
-            return static_cast<uint8_t>(24 + item - kCompItems);
-        return kGlobal[item - kFocus];
-    }
-
     uint8_t shadow_[feedback::kNumItems];
     uint8_t cursor_ = feedback::kNumItems; // the sweep's next item; kNumItems between sweeps
     uint32_t swept_at_ = 0;
