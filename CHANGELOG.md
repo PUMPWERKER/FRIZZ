@@ -9,15 +9,14 @@ what FRIZZ does.
 
 ### Added
 
-- **A hard drop to a scene on the next bar line** (#153), after the Neuzeit Instruments
-  Drop's drop mode: hold SHIFT, tap a scene key, press PLAY. The scene lands all at once on the
-  downbeat, as a recall would there: what it turns on starts on the line (the freezer grabs,
-  the slicer attacks, the tape stops), what it turns off has faded out by then. More taps of the
-  scene key, before or after PLAY, put it a bar later. During a morph to one scene, SHIFT +
-  another scene key + PLAY lets the morph glide on to the line and drops to the other scene
-  there: build up, then drop. Its key blinks red on the beat while it waits; PLAY doesn't play
-  or pause. Over MIDI, CC 83 drops to scene 0-4 (CC 9 sets the bars). See MANUAL.md,
-  "Dropping to a scene".
+- **A hard drop to a scene on a bar line** (#153, #175), after the Neuzeit Instruments
+  Drop's drop mode: hold SHIFT, tap a scene key, press the transport knob, let go. The scene
+  lands all at once on the downbeat, as a recall would there: what it turns on starts on the
+  line (the freezer grabs, the slicer attacks, the tape stops), what it turns off has faded out
+  by then. More taps of the scene key put it a bar later. SHIFT + scene key A, then scene key
+  B: a build-up, the morph to A, and B dropping on the line where it ends. Its key blinks red
+  on the beat while it waits. Over MIDI, CC 83 drops to scene 0-4 (CC 9 sets the bars). See
+  MANUAL.md, "Timed scene changes".
 - **The built-in microphone as an input** (#113), as on TAPE and TEMPO: with no cable in AUX,
   FRIZZ hears CHOMPI's mic, and records it into the looper like AUX. Plugging a cable into AUX
   switches to AUX, pulling it out back to the mic; at power-on the jack decides. The mic is
@@ -161,6 +160,18 @@ what FRIZZ does.
 
 ### Changed
 
+- **The scene gestures are one gesture** (#175), changed since v1.0.0-beta.1: SHIFT + a scene
+  key, tapped once per bar, then with SHIFT still held: nothing (let go) is a morph, a **press
+  of the transport knob** a drop, a turn the crossfader, a second scene key a build-up + drop.
+  The bars count from letting go of SHIFT, for a drop too (in beta.1 from PLAY). Whatever
+  comes first holds for the SHIFT hold; the crossfader takes over only after 2 detents one way,
+  150 ms without a press. One sequence at a time: SHIFT + a blinking scene key in a later hold
+  stops it where it is (it was SHIFT + PLAY), SHIFT + another scene key stops it and starts a
+  new one from there (it was refused), and a later hold no longer adds bars. **PLAY is out of
+  the scene gestures:** SHIFT + PLAY plays and pauses. MIDI follows: CC 3 or CC 83 during a
+  sequence stops it and starts the new one (CC 83 no longer joins a CC 3 morph as its drop),
+  CC 81 stops it. A control change the user let in before 1.0 as an exception to the feature
+  freeze. See MANUAL.md, "Timed scene changes".
 - **The transport knob turns on through a standstill into reverse** (#174), as TAPE's does:
   below 1/16× a hold zone of about 4 detents, where the tape glides to a stop (0×) and the
   loop fades out with it; turned on, it plays in reverse from −1/16× up to −2×, and the same

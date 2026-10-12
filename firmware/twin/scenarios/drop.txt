@@ -1,9 +1,10 @@
-# A drop (#153): SHIFT + a scene key, then PLAY, lands the scene hard on the next bar line.
+# A drop (#153, #175): SHIFT + a scene key, then the transport pressed, lands the scene hard on
+# the bar line after SHIFT is let go.
 # The filter latched and closed and the crusher latched, by hand; then a drop to the blank
 # scene (the first dark key, on every card): its key blinks red on the beat until the line,
 # where everything goes off. Then a loop of 3 beats, the crusher latched again, and a drop to
-# the blank scene on the loop's end (a loop shorter than a bar: its end is every line), PLAY
-# not pausing it. The keys show the scene at once, as in a morph. Nothing is saved. (turn: 4
+# the blank scene on the loop's end (a loop shorter than a bar: its end is every line), the
+# press not touching the loop. The keys show the scene at once, as in a morph. Nothing is saved. (turn: 4
 # is knob 1)
 input sine 220 0.3
 at 6000
@@ -21,14 +22,14 @@ up KEY_4
 wait 500
 # the blank scene's key dim (the lit FX keys follow their meters: not expected)
 expect led smt 2 242424
-# SHIFT, the blank scene's key, PLAY, all let go, early in a bar (the free tempo's lines
+# SHIFT, the blank scene's key, the transport, all let go, early in a bar (the free tempo's lines
 # fall at about 7.67 s and 9.67 s): nothing changes until the line
 at 7800
 down KEY_26
 wait 60
 tap KEY_18
 wait 40
-tap KEY_27
+tap ENC_5_SW
 wait 40
 up KEY_26
 wait 2500
@@ -50,7 +51,7 @@ down KEY_26
 wait 60
 tap KEY_18
 wait 40
-tap KEY_27
+tap ENC_5_SW
 wait 40
 up KEY_26
 wait 2000

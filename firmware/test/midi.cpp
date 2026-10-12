@@ -393,5 +393,76 @@ int main()
         Check(all, "pairs-late: a clock in pairs started after power-on is followed at its tempo (#92)");
     }});
 
+    // the scene CCs (#175): CC 3 + CC 9 a morph, CC 83 + CC 9 a drop on the CC 9-th bar line
+    // from the CC, CC 81 stops one where it is, and CC 3 or CC 83 during one stops it and
+    // starts the new one (CC 83 no longer joins a morph as its drop, nor is CC 3 refused)
+    cases.push_back({"scene-ccs", [] {
+        RunMs(kReadyMs);
+        auto press = [](const char* key) {
+            Press(key, true);
+            RunMs(60);
+            Press(key, false);
+            RunMs(300);
+        };
+        Trs({kCC, 106, 127}); // the filter latched
+        RunMs(100);
+        press("KEY_23"); // SAVE, slot 1 (the lower G#), CHOMPI
+        press("KEY_19");
+        press("KEY_26");
+        Trs({0xCF, 0}); // the blank scene
+        RunMs(300);
+        auto st = [] { return Ask({0x20}); };
+        auto morphing = [&] { return st().size() > 6 && (st()[6] & 2); };
+        const unsigned filter = 1u << 4;
+        auto latched = [&] {
+            const std::string s = st();
+            return s.size() > 9 ? (static_cast<uint8_t>(s[8]) << 7 | static_cast<uint8_t>(s[9])) : ~0u;
+        };
+        Check(st().size() > 5 && st()[5] == 1 && !(latched() & filter), "scene-ccs: the blank scene, the filter off");
+
+        // CC 9 = 2, CC 83 = 1: a drop to slot 1 on the second bar line from the CC
+        Trs({kCC, 9, 2, kCC, 83, 1});
+        RunMs(20);
+        uint32_t pos = Probe().position, lines = 0;
+        bool waiting = true;
+        for (int i = 0; i < 400 && waiting; i++)
+        {
+            waiting = morphing();
+            const uint32_t now = Probe().position;
+            lines += now % 48 < pos % 48;
+            pos = now;
+        }
+        Report("scene-ccs: CC 83 landed after %u bar lines", lines);
+        Check(!waiting && lines == 2 && st()[5] == 2 && (latched() & filter),
+              "scene-ccs: CC 83 with CC 9 = 2 drops on the second bar line from the CC");
+
+        // CC 3 during a drop: the drop stopped, a morph to the new scene, which lands
+        Trs({kCC, 9, 1, kCC, 83, 0});
+        RunMs(300);
+        Check(morphing() && st()[5] == 1, "scene-ccs: CC 83 = 0, a drop to the blank scene waiting");
+        Trs({kCC, 3, 1});
+        RunMs(5000);
+        Check(!morphing() && st()[5] == 2 && (latched() & filter),
+              "scene-ccs: CC 3 during it: no drop, a morph to slot 1 instead, landed there");
+
+        // CC 83 during a morph: stopped where it is, and a drop of its own
+        Trs({kCC, 3, 0});
+        RunMs(300);
+        Trs({kCC, 83, 1});
+        RunMs(5000);
+        Check(!morphing() && st()[5] == 2 && (latched() & filter),
+              "scene-ccs: CC 83 during a morph: a drop to its scene, not the morph's landing");
+
+        // CC 81: stopped where it is, edited
+        Trs({kCC, 3, 127, kCC, 3, 0, kCC, 81, 0}); // CC 3 acts as its value changes
+        RunMs(300);
+        Trs({kCC, 81, 127});
+        RunMs(300);
+        const std::string at = st();
+        RunMs(3000);
+        Check(at.size() > 6 && !(at[6] & 2) && (at[6] & 1) && at[5] == 1 && !morphing(),
+              "scene-ccs: CC 81 stops it where it is, its scene edited");
+    }});
+
     return RunCases();
 }

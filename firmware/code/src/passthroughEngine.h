@@ -330,12 +330,12 @@ public:
     }
     bool AddFxMorphBar() { return morph_.AddBar(tempo_clock_.PulsesPerBarLine()); }
     void LandFxMorph() { morph_.Land(); }
-    /** Makes the morph a drop (FxMorph::Drop) on the FX clock's next bar line; with the
-     *  audio interrupt blocked */
+    /** Makes the held morph a drop on its landing, gliding there first for a build-up
+     *  (FxMorph::Drop); with the audio interrupt blocked */
     bool DropFxMorph(const float to[chompi::kNumFx][chompi::kNumFxParams], uint16_t ui_on,
-                     uint16_t on)
+                     uint16_t on, bool glide)
     {
-        return morph_.Drop(to, ui_on, on, tempo_clock_.PulsesToBarLine());
+        return morph_.Drop(to, ui_on, on, glide);
     }
     inline bool FxDropping() const { return morph_.Dropping(); }
     /** Stops the morph where it is (FxMorph::Freeze); with the audio interrupt blocked */

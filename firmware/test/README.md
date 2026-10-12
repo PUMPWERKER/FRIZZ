@@ -292,13 +292,16 @@ engine that records what it's sent: holding and latching in either order, fine, 
 coarse knob turns, SHIFT + press, the knobs' page 2 (a plain press, back to page 1 on another
 effect or the compressor, page 2 in scenes and morphs), and the scene save / copy / delete / recall flow, including
 that a recall sends only what changes, and what a scene morph does with each effect, its
-taps and stopping it, and a drop (#153: SHIFT + scene key, then PLAY; on a morph to another
-scene; its taps; not to an empty slot nor once the crossfader has the morph); and the compressor's key and knobs, which a recall leaves alone. `unit.sh keys` runs the CHOMPI, PLAY and LOOP keys (`PlayKeys.h`) against a
-fake host: the confirm tap, SHIFT combos (SHIFT + PLAY a drop after a scene key, else a
-morph's stop), the looper's combos and the erase hold, and that a
+taps and stopping it, and a SHIFT hold's gestures (#175: let go a morph, the transport pressed
+a drop, turned the crossfader after its 2 detents and 150 ms, a second scene key a build-up;
+whatever comes first holds; in a later hold a blinking key stops it, another starts a new one
+from there; MIDI's CC 3 and CC 83 alike); and the compressor's key and knobs, which a recall leaves alone. `unit.sh keys` runs the CHOMPI, PLAY and LOOP keys (`PlayKeys.h`) against a
+fake host: the confirm tap, SHIFT combos (SHIFT + PLAY is PLAY, #175), the looper's combos and the erase hold, and that a
 release without its press does nothing. `unit.sh looper` runs `Looper.h` without MIDI clock: a free
-recording plays back frame for frame at its length, play / pause, erase, the speed ladder, and
-the refused quantized record. `unit.sh tempo` checks the FX's tempo: tap tempo (`TapTempo.h`), how
+recording plays back frame for frame at its length, play / pause, erase, the speed ladder, the
+semitones running on through a standstill into reverse (#174: the speed onto 0x exactly, the
+level with it, no click), the play fade back on 1 exactly after a pause (#168), and the refused
+quantized record. `unit.sh tempo` checks the FX's tempo: tap tempo (`TapTempo.h`), how
 a loop's beats are fitted or guessed, the tempo clock locked to a loop (`TempoClock.h`: beat 1
 on the loop's start, counting down in reverse, standing still when paused, the tempo times the
 speed, a tap refitting the beats, the loop overriding MIDI clock), the clock factor on each
