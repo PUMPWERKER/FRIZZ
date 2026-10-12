@@ -36,6 +36,7 @@
 #include "BenchProfile.h"
 #include "passthroughEngine.h"
 #include "MidiControl.h"
+#include "PanelKeys.h"
 #include "SceneStore.h"
 #include "temp_led_stuff.h"
 
@@ -306,7 +307,7 @@ public:
                 Grade(max_[s], r, g, b);
             else if (s == segment_ && !settling_)
                 r = g = b = (now / 150) % 2 ? .6f : 0.f;
-            SetSmtLedFloat(kKeyLeds[s], r, g, b);
+            SetSmtLedFloat(SegmentLed(s), r, g, b);
         }
         float worst = 0.f;
         for (size_t s = 0; s < kNumSegments; s++)
@@ -361,11 +362,12 @@ private:
     static const Segment kSegments[kNumSegments];
 
     static const size_t kMaxBlock = 48;
-    static const int kNumKeyLeds = 25;
-    // the keys' LEDs: the white keys left to right (FxSlots.h's key_led), then the dark keys
-    static constexpr uint8_t kKeyLeds[kNumKeyLeds] = {24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14,
-                                                       13, 12, 11, 10, 0,  1,  2,  3,  4,  5,
-                                                       6,  7,  8,  9};
+    static const size_t kNumKeyLeds = kNumWhiteKeys + kNumDarkKeys;
+    /** Segment s's key LED: the white keys left to right, then the dark keys (PanelKeys.h) */
+    static uint8_t SegmentLed(size_t s)
+    {
+        return KeyLedOf(s < kNumWhiteKeys ? kWhiteKeys[s] : kDarkKeys[s - kNumWhiteKeys]);
+    }
     static constexpr float kAmber = .8f, kRed = .95f;
 
     static void Grade(float load, float& r, float& g, float& b)
@@ -784,6 +786,5 @@ const Bench::Segment Bench::kSegments[Bench::kNumSegments] = {
     // defaults, page 2's cost, as the chaos segment did after it (114 % for a block)
     {"loop+everything+page2", Bench::kEverything, Bench::LOOP | Bench::COMP | Bench::PAGE2},
 };
-constexpr uint8_t Bench::kKeyLeds[];
 
 } // namespace chompi
