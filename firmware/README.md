@@ -377,6 +377,47 @@ tools/midisuite.py --cases out-loop,start-spp -v    # a few, every check as it's
 - `test/midisuite.cpp` runs it on the twin, wired every way, and `MIDISUITE="--cases ID -v"
   test/unit.sh midisuite` plays it there once, to work on a case without the CHOMPI.
 
+### REAPER: a real DAW against FRIZZ
+
+`tools/reaper.py` (#114, step 2) plays the DAW items with REAPER 7 itself
+(`~/Apps/REAPER/reaper`, or `FRIZZ_REAPER`): its MIDI clock at 120, 200 and 300 BPM, its
+Start / Stop / Continue / Song Position on play, stop, locating and a loop range's turns,
+automation lanes on the effect channels, a track monitoring FRIZZ's input, and its clock's
+jitter against a clock from this computer (#83). Wiring A (the CHOMPI's TRS out into the
+interface's MIDI in) shows what FRIZZ passes on; without it the jitter is a SKIP.
+
+```bash
+cd firmware && tools/chompi.py hold sh -c '
+  ./flash.py --test --no-build &&
+  { tools/reaper.py --out card/reaper.md; echo "reaper: $?"; }
+  ./flash.py --run 10'
+tools/reaper.py --list                          # the cases
+tools/reaper.py --cases daw-transport -v        # one, with REAPER's log
+tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouched
+```
+
+- **One REAPER per audio mode** (`--audio jack,dummy`): the first runs every case, the last
+  the jitter again and `daw-ccreset` with REAPER's preferences as they come. About 6 minutes;
+  `--seconds` sets the jitter's window (30 s).
+- **REAPER has FRIZZ's USB node to itself** while it runs, so remote.py and flash.py can't
+  reach FRIZZ meanwhile. The tool sends FRIZZ's SysEx through REAPER instead (a command file
+  `tools/reaper.lua` reads ~30 times a second) and takes the answers from REAPER's MIDI input,
+  so midisuite.py's `Rig` works on it, a query taking ~70 ms. Before and after, the tool is on
+  the node itself: RAM only (PERSIST 0), the wiring, the jitter's reference, everything put
+  back.
+- **The user's REAPER stays untouched:** a configuration of its own in a temporary directory
+  (the license copied in), deleted after; a file in `~/.config/REAPER` or `~/Apps/REAPER`
+  newer than the start fails the run. Its window shows for a moment, and an evaluation copy
+  its notice. Nothing reaches Line 1/2: a silent project, the master muted, its JACK ports
+  linked to nothing (`jack_options=2`; a link fails the run). A REAPER that runs no script
+  within 20 s, or doesn't quit when asked, has a dialog in the way: killed, and said so.
+- **JACK** (through pipewire-jack, the default) takes FRIZZ's MIDI as PipeWire's bridge ports
+  (`Midi-Bridge:FrizZ: MIDI 1`), as a desktop REAPER here does; **dummy** uses ALSA's raw node
+  (`hw:FrizZ`). Its CC reset on stop and at a loop's turn is off (`ccresettab=cc0-120=-1`)
+  but in the last REAPER.
+- `test/reaper.cpp` runs it on the twin with `test/reaper_stub.py` in REAPER's place, and
+  `REAPERCHECK="--cases ID -v" test/unit.sh reaper` plays it there once.
+
 ## Measure the CPU load
 
 The audio callback has 0.5 ms per block, and neither the host checks nor the virtual CHOMPI

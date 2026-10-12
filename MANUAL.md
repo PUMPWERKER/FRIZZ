@@ -1061,6 +1061,12 @@ From v0.12 FRIZZ listens on 16 channels, with two kinds of map:
   11 tape stop, 12 delay, 13 reverb, 14 chaos key, 15 master compressor. Each has the same
   CCs, so in a DAW one MIDI track per effect has the same automation lanes everywhere.
 
+**Knobs back to 0 when the DAW stops:** REAPER 7 as it comes sends every CC its tracks played
+back to 0 when you stop, so the knobs you automated jump to 0. To keep them where the
+automation left them, untick *Reset MIDI CC/Pitch on: playback stop* (and *playback
+loop/skip*, which does the same at a loop's turn) in REAPER's Preferences, Playback, or enter
+`cc0-120=-1` under *CC reset overrides* there. Other DAWs may do something similar.
+
 On the global channel, its own map wins: set it to 5, and channel 5 is the global channel,
 with the filter reached through the focus (CC 23 and CC 14-22) and its latch (CC 106). Set to
 every channel (0), only the global map counts, on all of them, and the effect channels are off.

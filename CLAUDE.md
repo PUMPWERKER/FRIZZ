@@ -217,6 +217,12 @@ on the CHOMPI*); while it is switched off, they can't.
 `firmware/tools/measure.py` measures timing and sound there (a MIDI clock in pairs, a loop's
 drift against a TRS clock, an effect's A/B between builds): `firmware/README.md`, *Measure
 timing and sound on the device*.
+`firmware/tools/midisuite.py` (this computer as an idealised DAW) and `firmware/tools/reaper.py`
+(REAPER 7 itself, on a configuration of its own, never the user's) play the release test's
+MIDI and DAW items there, under the lock like the other tools: `tools/reaper.py --out
+card/reaper.md` between `./flash.py --test --no-build &&` and `./flash.py --run 10`. While
+REAPER runs it has FRIZZ's USB node to itself (the tool talks to FRIZZ through REAPER), so
+nothing else reaches FRIZZ then; `firmware/README.md`, *REAPER: a real DAW against FRIZZ*.
 
 ## Toolchain: GCC 10.3, and the pin matters
 
@@ -237,7 +243,7 @@ checks need only `g++` and `python3`; the browser twin needs Emscripten in `~/op
 `firmware/test/all.sh` runs everything, side by side (about 30 s): `check.sh` (the engine against HEAD;
 a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
 `pitch`, `tape`, `block`, `crusher`, `freezer`, `scenes`, `store`, `clicks`, `delay`, `controls`, `keys`, `looper`, `tempo`,
-`comp`, `level`, `sleep`, `inserts`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `splice`. A new check is just a new
+`comp`, `level`, `sleep`, `inserts`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `splice`. A new check is just a new
 `NAME.cpp`; [`firmware/test/README.md`](firmware/test/README.md) says what each covers.
 `check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail.
 
