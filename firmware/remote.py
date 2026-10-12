@@ -141,8 +141,8 @@ SCENES = "frizz_scenes.txt", "whose .bak keeps only the one before"
 # effects', the scene slots and SAVE / COPY / DELETE (MODES' order)
 COMP_KEY = "KEY_15"
 FX_KEYS = {"KEY_%d" % k for k in range(1, 15)}
-SLOT_KEYS = {"KEY_%d" % k for k in range(16, 21)}
-MODE_KEYS = {"KEY_25": 1, "KEY_24": 2, "KEY_23": 3}
+SLOT_KEYS = {"KEY_%d" % k for k in range(18, 23)}
+MODE_KEYS = {"KEY_23": 1, "KEY_24": 2, "KEY_25": 3}
 VOLUME_KNOB, VOLUME_KEY, SHIFT_KEY = 6, "ENC_6_SW", "KEY_26"
 INPUT_GAIN_PAGE = 1  # VOLUME's page 2 (PAGES), the input gain, saved (#152)
 # MidiControl.h's midimap: the morph to a scene, the focus (15 the compressor), the notes

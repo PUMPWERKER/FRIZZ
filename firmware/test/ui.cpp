@@ -29,7 +29,7 @@ static const int kBeatPulseMax = 70; // PLAY's beat with no loop: .25 white (Nor
 static const int kFilterKeyLed = 20, kShifterKeyLed = 23, kFlangerKeyLed = 19;
 static const int kVolumeEncoder = 6, kKnob1Encoder = 4; // SW6, SW4
 static const int kTransportRevLed = 5, kTransportFwdLed = 6, kVolumeLed = 9;
-static const int kSlot1Led = 1, kCompKeyLed = 10, kTapeStopKeyLed = 14;
+static const int kSlot1Led = 3, kCompKeyLed = 10, kTapeStopKeyLed = 14;
 // the settings page's (SettingsPage.h): white keys 1, 3, 11, 14, 15 (channels; the 15th is 15
 // and 16), the lower octave's D#, F#, G#, A#, the upper octave's C#, F# and G#
 static const int kChannel1Led = 24, kChannel3Led = 22, kChannel11Led = 14, kChannel14Led = 11,
@@ -37,7 +37,11 @@ static const int kChannel1Led = 24, kChannel3Led = 22, kChannel11Led = 14, kChan
                  kSourceKeyLed = 4, kMidiOutKeyLed = 5, kMonoKeyLed = 7, kBrightnessKeyLed = 8;
 static const int kNumFxProbe = 15; // kCmdParams' effects and the compressor
 static const int kFeedbackKeyLed = 6; // the settings page's upper D#: MIDI feedback
-static const int kSaveKeyLed = 9; // KEY_25, the play page's SAVE
+static const int kSaveKeyLed = 7; // KEY_23, the play page's SAVE
+// the play page's scene keys (#67): the lower F#, G#, A#, the upper C#, D#, the blank scene
+// first; SAVE, COPY, DELETE on the upper F#, G#, A#. The lower C# and D# are free
+static const char* const kSceneKeys[5] = {"KEY_18", "KEY_19", "KEY_20", "KEY_21", "KEY_22"};
+static const char *const kSaveKey = "KEY_23", *const kCopyKey = "KEY_24", *const kDeleteKey = "KEY_25";
 static const int kChompiKeyLed = 0; // PanelLeds.h
 
 static bool sine = true;
@@ -243,9 +247,9 @@ static unsigned LatchedFx(const std::string& st)
 /** SAVE, a slot (1-4), CHOMPI to confirm */
 static void Save(int slot)
 {
-    Tap("KEY_25");
+    Tap(kSaveKey);
     RunMs(100);
-    Tap(("KEY_" + std::to_string(16 + slot)).c_str());
+    Tap(kSceneKeys[slot]);
     RunMs(300);
     Tap("KEY_26");
     RunMs(300);
@@ -546,9 +550,9 @@ int main()
         // the compressor's key, then SHIFT in the window, with a save waiting for CHOMPI: SHIFT +
         // its key, so CHOMPI let go doesn't confirm
         const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
-        Tap("KEY_25");
+        Tap(kSaveKey);
         RunMs(100);
-        Tap("KEY_17");
+        Tap(kSceneKeys[1]);
         RunMs(300);
         Keys({"+KEY_15", "3", "+KEY_26", "100", "-KEY_15", "100", "-KEY_26", "500"});
         Check(Card("/FRIZZ/frizz_scenes.txt") == scenes,
@@ -755,10 +759,10 @@ int main()
         const std::string state = Ask({0x20});
         Check(page() == 1 && state.size() > 6 && !(state[6] & 1),
               "fx-page2: turning the page leaves the scene unedited");
-        Tap("KEY_16"); // the blank scene
+        Tap(kSceneKeys[0]); // the blank scene
         RunMs(300);
         Check(mix() == 1.f, "fx-page2: the blank scene puts the mix back on its default");
-        Tap("KEY_17");
+        Tap(kSceneKeys[1]);
         RunMs(300);
         Check(fabsf(mix() - .5f) < 1e-3f, "fx-page2: recalling the scene brings it back");
         Check(page() == 1, "fx-page2: a recall keeps the page");
@@ -782,7 +786,7 @@ int main()
         CardFiles()["/FRIZZ/frizz_scenes.txt"]
             = "FRIZZ scenes 1\nscene 1\nshifter 1 791667 0 0 0\nfilter 0 300000 500000 0 666700\n";
         RunMs(kReadyMs);
-        Tap("KEY_17"); // scene 1
+        Tap(kSceneKeys[1]); // scene 1
         RunMs(300);
         const std::string p = Ask({0x21, 1});
         Check(p.size() == 17 && fabsf(KnobOf(p[1], p[2]) - .791667f) < 1e-3f
@@ -1062,12 +1066,101 @@ int main()
         printf("      edited: %d to %d\n", lo, hi);
         Check(lo > 40 && lo < 65 && hi > 245 && a_second_on < lo + 5,
               "scene-leds: edited, it pulses from a fifth up to full and back once a second");
-        Tap("KEY_17");
+        Tap(kSceneKeys[1]);
         RunMs(300);
         const std::vector<int> recalled = Watch(false, kSlot1Led, 1000);
         Check(*std::min_element(recalled.begin(), recalled.end()) > 240
                   && Max(SmtLedFull(kSlot1Led + 1)) < 60,
               "scene-leds: a recall makes its key the bright one, steady, and the other dim");
+    }});
+
+    // the scene keys two dark keys to the right (#67): the blank scene on the lower F#, scenes
+    // 1-4 to the upper D#; SAVE green, COPY blue, DELETE red on the upper F#, G#, A#; the lower
+    // C# and D# free on the play page, dark, doing nothing
+    cases.push_back({"scene-keys", [] {
+        RunMs(kReadyMs);
+        const Rgb dim_white{36, 36, 36};
+        Check(Same(SmtLedFull(kSlot1Led - 1), dim_white) && Max(SmtLedFull(kSlot1Led)) == 0
+                  && Max(SmtLedFull(kSlot1Led + 3)) == 0 && Max(SmtLedFull(0)) == 0
+                  && Max(SmtLedFull(1)) == 0,
+              "scene-keys: the blank scene dim on the lower F#, the empty slots dark, the lower C# and D# dark");
+        Check(Same(SmtLedFull(kSaveKeyLed), Rgb{0, 36, 0}) && Same(SmtLedFull(kSaveKeyLed + 1), Rgb{0, 0, 36})
+                  && Same(SmtLedFull(kSaveKeyLed + 2), Rgb{36, 0, 0}),
+              "scene-keys: SAVE, COPY and DELETE dim green, blue and red on the upper F#, G#, A#");
+        struct ModeKey
+        {
+            const char* key;
+            int led, mode;
+            Rgb lit;
+        };
+        bool modes = true;
+        for (const ModeKey& m : {ModeKey{kSaveKey, kSaveKeyLed, 1, {0, 252, 0}},
+                                 ModeKey{kCopyKey, kSaveKeyLed + 1, 2, {0, 0, 252}},
+                                 ModeKey{kDeleteKey, kSaveKeyLed + 2, 3, {252, 0, 0}}})
+        {
+            Tap(m.key);
+            RunMs(100);
+            const std::string in = Ask({0x20});
+            modes &= in.size() > 7 && in[7] == m.mode && Same(SmtLedFull(m.led), m.lit);
+            Tap(m.key);
+            RunMs(100);
+            const std::string out = Ask({0x20});
+            modes &= out.size() > 7 && out[7] == 0;
+        }
+        Check(modes, "scene-keys: each one, tapped, is its mode, its key fully lit; again, the mode ends");
+        Latch("KEY_5");
+        Save(1);
+        RunMs(1000);
+        Latch("KEY_2");
+        Save(4);
+        RunMs(1000);
+        Check(Max(SmtLedFull(kSlot1Led + 3)) > 240 && Max(SmtLedFull(kSlot1Led)) > 20
+                  && Max(SmtLedFull(kSlot1Led)) < 60,
+              "scene-keys: scene 4 saved on the upper D#, bright; scene 1 on the lower G#, dim");
+        Tap(kSceneKeys[0]);
+        RunMs(300);
+        const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
+        Tap("KEY_16");
+        Tap("KEY_17");
+        RunMs(300);
+        const std::string after = Ask({0x20});
+        Check(after.size() > 7 && after[5] == 1 && after[7] == 0 && Max(SmtLedFull(0)) == 0
+                  && Max(SmtLedFull(1)) == 0,
+              "scene-keys: the lower C# and D# recall nothing, pick no mode and stay dark");
+        Tap(kSaveKey);
+        RunMs(100);
+        Tap("KEY_16");
+        RunMs(300);
+        Tap("KEY_26");
+        RunMs(1000);
+        Check(Card("/FRIZZ/frizz_scenes.txt") == scenes && Max(SmtLedFull(0)) == 0,
+              "scene-keys: in SAVE they pick no slot: CHOMPI saves nothing");
+        // a slot picked, CHOMPI held and one of them tapped: a key without a function is no
+        // SHIFT combo (NormalPage::OnButton), so CHOMPI let go confirms, as the upper C# and D#
+        // did before
+        Tap(kSceneKeys[2]);
+        RunMs(300);
+        Keys({"+KEY_26", "100", "+KEY_16", "60", "-KEY_16", "100", "-KEY_26", "1000"});
+        const std::string combo = Ask({0x20});
+        Check(Card("/FRIZZ/frizz_scenes.txt") != scenes && combo.size() > 7 && combo[7] == 0,
+              "scene-keys: SAVE, a slot picked, CHOMPI + the lower C#: no combo, CHOMPI confirms");
+        // the settings page lights them (every channel, the block over the jack): back on the
+        // play page they're dark again
+        SetToggle(true);
+        RunMs(300);
+        const bool lit_up = Max(SmtLedFull(1)) > 0;
+        SetToggle(false);
+        RunMs(300);
+        Check(lit_up && Max(SmtLedFull(0)) == 0 && Max(SmtLedFull(1)) == 0,
+              "scene-keys: lit on the settings page, the lower C# and D# go dark on the play page");
+        // MIDI's notes follow the keys: 56, the lower G#, is scene 1
+        Trs({kNoteOn, 56, 100});
+        RunMs(60);
+        Trs({kNoteOff, 56, 0});
+        RunMs(300);
+        const std::string by_note = Ask({0x20});
+        Check(by_note.size() > 5 && by_note[5] == 2 && Max(SmtLedFull(kSlot1Led)) > 240,
+              "scene-keys: note 56, the lower G#, recalls scene 1");
     }});
 
     // a morph: its key blinks on the beat; SHIFT + another scene key, or a 9th bar, blinks red
@@ -1079,11 +1172,11 @@ int main()
         Latch("KEY_2");
         Save(2);
         RunMs(1000);
-        Tap("KEY_17");
+        Tap(kSceneKeys[1]);
         RunMs(500);
         Press("KEY_26", true); // SHIFT held: the morph waits for it
         RunMs(80);
-        Tap("KEY_18");
+        Tap(kSceneKeys[2]);
         RunMs(100);
         const std::vector<int> beat = Watch(false, kSlot1Led + 1, 2000);
         const std::vector<int> runs = Runs(beat, 128);
@@ -1096,13 +1189,13 @@ int main()
         printf(" ms\n");
         Check(on_beat, "scene-morph: the key it morphs to blinks on the beat, 250 ms at 120 BPM");
         // another scene key: refused, 3 red blinks on it
-        Check(RedBlinks("KEY_17", kSlot1Led) == 3 && Ask({0x20}).size() > 6 && (Ask({0x20})[6] & 2),
+        Check(RedBlinks(kSceneKeys[1], kSlot1Led) == 3 && Ask({0x20}).size() > 6 && (Ask({0x20})[6] & 2),
               "scene-morph: SHIFT + another scene key during it blinks that key red 3 times, and it morphs on");
         // the same key again adds bars, 8 in all; a 9th is refused
         int refused = 0;
         for (int bar = 2; bar <= 8; bar++)
-            refused += RedBlinks("KEY_18", kSlot1Led + 1);
-        Check(refused == 0 && RedBlinks("KEY_18", kSlot1Led + 1) == 3,
+            refused += RedBlinks(kSceneKeys[2], kSlot1Led + 1);
+        Check(refused == 0 && RedBlinks(kSceneKeys[2], kSlot1Led + 1) == 3,
               "scene-morph: the same key adds bars up to 8 in all; a 9th blinks it red 3 times");
         Press("KEY_26", false);
         RunMs(20000);
@@ -1241,7 +1334,7 @@ int main()
 
         Press("KEY_26", true);
         RunMs(80);
-        Tap("KEY_16"); // to the blank scene, held
+        Tap(kSceneKeys[0]); // to the blank scene, held
         RunMs(100);
         Turn(5, 12); // halfway
         RunMs(400);
@@ -1282,11 +1375,11 @@ int main()
               "scene-fader: let go halfway, it stays there, the blank scene active and edited");
 
         // let go at the end: landed on the blank scene; at the start: scene 1 as it was
-        Tap("KEY_17");
+        Tap(kSceneKeys[1]);
         RunMs(500);
         Press("KEY_26", true);
         RunMs(80);
-        Tap("KEY_16");
+        Tap(kSceneKeys[0]);
         RunMs(100);
         Turn(5, 30);
         RunMs(300);
@@ -1295,11 +1388,11 @@ int main()
         st = state();
         Check(st.size() > 9 && !(st[6] & 3) && st[5] == 1 && st[9] == 0 && RunMs(300) > dry * .85f,
               "scene-fader: let go at the end, it lands on the blank scene, nothing latched");
-        Tap("KEY_17");
+        Tap(kSceneKeys[1]);
         RunMs(500);
         Press("KEY_26", true);
         RunMs(80);
-        Tap("KEY_16");
+        Tap(kSceneKeys[0]);
         RunMs(100);
         Turn(5, 6);
         RunMs(300);
@@ -1397,7 +1490,7 @@ int main()
         RunMs(300);
         Check(landed(), "midi-fader-tap: and CC 80 at 127 then lands it");
 
-        Tap("KEY_17"); // scene 1 again
+        Tap(kSceneKeys[1]); // scene 1 again
         RunMs(300);
         Trs({kCC, 3, 127, kCC, 3, 0}); // 127 is no scene, so 0 is a change again
         RunMs(20);
@@ -1412,7 +1505,7 @@ int main()
         Check(landed(), "midi-fader-tap: and CC 80 at 127 lands it");
 
         // CC 3 to the scene it runs to: no bar more while the fader has it, nothing else
-        Tap("KEY_17");
+        Tap(kSceneKeys[1]);
         RunMs(300);
         Trs({kCC, 3, 127, kCC, 3, 0}); // 127 is no scene, so 0 is a change again
         RunMs(20);
@@ -1476,7 +1569,7 @@ int main()
         while (NowMs() < wrap - 300)
             RunMs(1);
         // a refused scene key (an empty slot), 300 ms before
-        const int blinks = RedBlinks("KEY_19", kSlot1Led + 2); // to 400 ms past the wrap
+        const int blinks = RedBlinks(kSceneKeys[3], kSlot1Led + 2); // to 400 ms past the wrap
         Check(blinks == 3, "clock-wrap: a scene key refused 300 ms before it blinks red 3 times across it");
         RunMs(300);
         const std::vector<int> slot = Watch(false, kSlot1Led + 2, 3000);
@@ -1499,9 +1592,9 @@ int main()
         RunMs(1000);
         Check(SavedLatch(Card("/FRIZZ/frizz_scenes.txt"), 1, "filter") == 1,
               "clock-wrap: a scene saved after it is on the card");
-        Tap("KEY_25");
+        Tap(kSaveKey);
         RunMs(100);
-        Tap("KEY_18");
+        Tap(kSceneKeys[2]);
         const std::vector<int> pending = Runs(Watch(true, 0, 1200), 128);
         bool steady = pending.size() >= 3;
         for (int r : pending)
@@ -1513,9 +1606,9 @@ int main()
 
     cases.push_back({"save-latch", [] {
         RunMs(kReadyMs);
-        Tap("KEY_25"); // SAVE, slot 1 picked: CHOMPI would confirm
+        Tap(kSaveKey); // SAVE, slot 1 picked: CHOMPI would confirm
         RunMs(100);
-        Tap("KEY_17");
+        Tap(kSceneKeys[1]);
         RunMs(300);
         const int off = Max(SmtLedFull(kFilterKeyLed));
         Press("KEY_5", true);
@@ -1638,9 +1731,9 @@ int main()
     cases.push_back({"settings-save", [] {
         RunMs(kReadyMs);
         Latch("KEY_5");
-        Tap("KEY_25"); // SAVE, slot 1 picked
+        Tap(kSaveKey); // SAVE, slot 1 picked
         RunMs(100);
-        Tap("KEY_17");
+        Tap(kSceneKeys[1]);
         RunMs(300);
         SetToggle(true);
         RunMs(300);
@@ -2277,7 +2370,7 @@ int main()
             {
                 Turn(1, 50);
                 RunMs(drift);
-                Tap("KEY_17");
+                Tap(kSceneKeys[1]);
                 RunMs(600);
             }
         }
@@ -2330,9 +2423,9 @@ int main()
         SetCardPresent(false);
         RunMs(kReadyMs);
         Latch("KEY_5");
-        Tap("KEY_25");
+        Tap(kSaveKey);
         RunMs(100);
-        Tap("KEY_17");
+        Tap(kSceneKeys[1]);
         RunMs(300);
         Tap("KEY_26");
         int red = 0;
@@ -2475,7 +2568,7 @@ int main()
         run(500);
         Turn(5, 6);              // the transport: speed
         run(500);
-        Tap("KEY_18");           // the card's scene in slot 2
+        Tap(kSceneKeys[2]);           // the card's scene in slot 2
         run(400);
         Save(3);                 // a change to the card after power-on
         run(300);
@@ -2974,7 +3067,7 @@ int main()
         Save(1);
         RunMs(500);
         TrsCcs();
-        Tap("KEY_16"); // the blank scene: the filter off, its cutoff back
+        Tap(kSceneKeys[0]); // the blank scene: the filter off, its cutoff back
         RunMs(500);
         std::map<int, int> count;
         bool latch_off = false;
@@ -2990,7 +3083,7 @@ int main()
         // a morph to scene 1: nothing of the filter's while it glides, where it lands after
         Press("KEY_26", true);
         RunMs(60);
-        Tap("KEY_17");
+        Tap(kSceneKeys[1]);
         Press("KEY_26", false);
         RunMs(800);
         int gliding = 0;
@@ -4190,12 +4283,12 @@ int main()
         RunMs(100);
         Check(white_led(SmtLedFull(kInputKeyLed)) && is_aux("plugged again"),
               "mic-key: plugged in again: AUX, dry as chosen last");
-        // on the play page the key is SAVE again, not the input
+        // on the play page the key is DELETE again, not the input
         SetToggle(false);
         RunMs(300);
-        Tap("KEY_25");
+        Tap(kDeleteKey);
         RunMs(100);
-        Tap("KEY_25");
+        Tap(kDeleteKey);
         RunMs(300);
         SetToggle(true);
         RunMs(300);
@@ -4794,14 +4887,14 @@ int main()
 
         cases.push_back({"morph-mix-slicer", [] {
             slicer_scene();
-            const std::vector<float> out = morph4("KEY_16"); // to the blank scene
+            const std::vector<float> out = morph4(kSceneKeys[0]); // to the blank scene
             Check(between(out, sliced, dry) >= 3 && out.back() > dry * .9f,
                   "morph-mix-slicer: turned off, its Mix glides to dry over the morph, then it's off");
             bool rising = true;
             for (size_t i = 1; i < out.size(); i++)
                 rising &= out[i] > out[i - 1] - .02f * dry;
             Check(rising, "morph-mix-slicer: steadily");
-            const std::vector<float> in = morph4("KEY_17"); // back to scene 1
+            const std::vector<float> in = morph4(kSceneKeys[1]); // back to scene 1
             Check(between(in, sliced, dry) >= 3 && in.back() < sliced * 1.3f,
                   "morph-mix-slicer: turned on, it comes on at dry and its Mix glides to the scene's");
             const std::string st = Ask({0x20});
@@ -4813,7 +4906,7 @@ int main()
             slicer_scene();
             Press("KEY_26", true);
             RunMs(80);
-            Tap("KEY_16"); // to the blank scene, held
+            Tap(kSceneKeys[0]); // to the blank scene, held
             RunMs(100);
             Turn(5, 6); // a quarter
             RunMs(500);
@@ -4838,7 +4931,7 @@ int main()
             Check(RunMs(1000) > dry * .9f && st.size() > 9 && !(st[6] & 2) && LatchedFx(st) == 0,
                   "morph-mix-fader: all the way, dry; let go, it lands on the blank scene");
             // the slicer parked at Mix 0: a recall of scene 1 brings it back at its Mix
-            Tap("KEY_17");
+            Tap(kSceneKeys[1]);
             RunMs(500);
             const float back = RunMs(1000);
             printf("      scene 1 recalled: %.3f\n", back);
@@ -4858,10 +4951,10 @@ int main()
             RunMs(1000);
             const float steady = std::max(dry_step, shifted_step);
             max_step = 0.f;
-            morph4("KEY_16");
+            morph4(kSceneKeys[0]);
             const float out = max_step;
             max_step = 0.f;
-            morph4("KEY_17");
+            morph4(kSceneKeys[1]);
             const float in = max_step;
             printf("      largest step: steady %.4f (dry %.4f), fading out %.4f, in %.4f\n", steady,
                    dry_step, out, in);
@@ -4886,7 +4979,7 @@ int main()
             const float frozen = RunMs(1000);
             printf("      dry %.3f, frozen %.3f\n", dry, frozen);
             Check(frozen > dry * .5f, "morph-mix-freezer: the input silent, the freezer repeats the sine");
-            const std::vector<float> out = morph4("KEY_16");
+            const std::vector<float> out = morph4(kSceneKeys[0]);
             Check(between(out, 0.f, frozen) >= 3 && out.back() < frozen * .05f,
                   "morph-mix-freezer: turned off, its repeats fade with its Mix over the morph");
         }});
@@ -4894,15 +4987,15 @@ int main()
 
     // ===== #153: a hard drop to a scene on the next bar line: SHIFT + scene key + PLAY =====
     {
-        // scene 1 (KEY_17): the filter on and closed, much quieter than dry; then the blank
-        // scene (KEY_16), dry. A 2 kHz sine, a period a block, so a block's level is steady
+        // scene 1 (kSceneKeys[1]): the filter on and closed, much quieter than dry; then the blank
+        // scene (kSceneKeys[0]), dry. A 2 kHz sine, a period a block, so a block's level is steady
         static auto filter_scene = [] {
             freq = 2000.f;
             Latch("KEY_5");
             Turn(kKnob1Encoder, -60);
             RunMs(300);
             Save(1);
-            Tap("KEY_16");
+            Tap(kSceneKeys[0]);
             RunMs(500);
         };
         // to the block after the FX clock's next bar line (its position a multiple of 48)
@@ -4981,7 +5074,7 @@ int main()
             filter_scene();
             const float dry = RunBlocks(1);
             past_line();
-            const float moved = drop("KEY_17", 1);
+            const float moved = drop(kSceneKeys[1], 1);
             printf("      the level moved %.4f during the gesture\n", moved);
             Check(moved < .03f, "scene-drop: the gesture itself changes nothing in the sound");
             const std::vector<int> beat = Watch(false, kSlot1Led, 1000);
@@ -5016,7 +5109,7 @@ int main()
         static auto on_line = [](const char* name) {
             const float dry = RunBlocks(1);
             past_line();
-            const float moved = drop("KEY_17", 1);
+            const float moved = drop(kSceneKeys[1], 1);
             const Watched w = watch(dry, 3000);
             lines(w);
             Check(moved < .03f && w.lines.size() >= 1 && w.changed == w.lines[0],
@@ -5061,7 +5154,7 @@ int main()
             for (int b = 0; b < 20000 && Probe().loop_pos * len < len - .55f * kSampleRate; b++)
                 RunBlocks(1);
             const float dry = RunBlocks(1);
-            drop("KEY_17", 1);
+            drop(kSceneKeys[1], 1);
             const Watched w = watch(dry, 1000);
             lines(w);
             printf("      loop %.3f s, at %.4f of it on the line\n", len / kSampleRate, w.loop_pos);
@@ -5076,28 +5169,28 @@ int main()
             filter_scene();
             const float dry = RunBlocks(1);
             past_line();
-            drop("KEY_17", 3);
+            drop(kSceneKeys[1], 3);
             Watched w = watch(dry, 6500);
             lines(w);
             Check(w.lines.size() >= 3 && w.changed == w.lines[2], "scene-drop-bars: three taps, the third bar line");
-            Tap("KEY_16");
+            Tap(kSceneKeys[0]);
             RunMs(500);
             past_line();
-            drop("KEY_17", 1);
+            drop(kSceneKeys[1], 1);
             Press("KEY_26", true);
             RunMs(60);
-            Tap("KEY_17");
+            Tap(kSceneKeys[1]);
             Press("KEY_26", false);
             w = watch(dry, 4500);
             lines(w);
             Check(w.lines.size() >= 2 && w.changed == w.lines[1],
                   "scene-drop-bars: SHIFT + its key after PLAY, a bar later");
-            Tap("KEY_16");
+            Tap(kSceneKeys[0]);
             RunMs(500);
             past_line();
-            drop("KEY_17", 1);
+            drop(kSceneKeys[1], 1);
             RunMs(500);
-            Tap("KEY_16");
+            Tap(kSceneKeys[0]);
             RunMs(100);
             w = watch(dry, 2500);
             Check(w.changed < 0 && !(state()[6] & 2) && state()[5] == 1,
@@ -5110,11 +5203,11 @@ int main()
             RunMs(kReadyMs);
             filter_scene();
             const float dry = RunBlocks(1);
-            Tap("KEY_17");
+            Tap(kSceneKeys[1]);
             RunMs(500);
             const float closed = RunBlocks(1);
             past_line();
-            drop("KEY_16", 1);
+            drop(kSceneKeys[0], 1);
             // to the line, keeping the last 40 blocks' levels
             std::vector<float> level;
             uint32_t pos = Probe().position;
@@ -5144,13 +5237,13 @@ int main()
             past_line();
             Press("KEY_26", true);
             RunMs(60);
-            Tap("KEY_17");
+            Tap(kSceneKeys[1]);
             RunMs(40);
             Press("KEY_26", false);
             RunMs(500);
             Press("KEY_26", true);
             RunMs(60);
-            const int red = RedBlinks("KEY_16", kSlot1Led - 1);
+            const int red = RedBlinks(kSceneKeys[0], kSlot1Led - 1);
             Check(red == 3 && (state()[6] & 2) && state()[5] == 2,
                   "scene-drop-morph: SHIFT + another scene key during a morph: red, it morphs on");
             const float at_play = RunBlocks(1);
@@ -5183,7 +5276,7 @@ int main()
             past_line();
             Press("KEY_26", true);
             RunMs(60);
-            Tap("KEY_17");
+            Tap(kSceneKeys[1]);
             Press("KEY_26", false);
             RunMs(1000);
             Press("KEY_26", true);

@@ -20,20 +20,20 @@ tap KEY_26
 up KEY_4
 wait 500
 # the blank scene's key dim (the lit FX keys follow their meters: not expected)
-expect led smt 0 242424
+expect led smt 2 242424
 # SHIFT, the blank scene's key, PLAY, all let go, early in a bar (the free tempo's lines
 # fall at about 7.67 s and 9.67 s): nothing changes until the line
 at 7800
 down KEY_26
 wait 60
-tap KEY_16
+tap KEY_18
 wait 40
 tap KEY_27
 wait 40
 up KEY_26
 wait 2500
 # landed: the blank scene active, the filter and crusher off
-expect led smt 0 fcfcfc
+expect led smt 2 fcfcfc
 expect led smt 20 240c14
 expect led smt 21 241408
 # a loop of 1.5 s
@@ -48,12 +48,12 @@ up KEY_4
 wait 500
 down KEY_26
 wait 60
-tap KEY_16
+tap KEY_18
 wait 40
 tap KEY_27
 wait 40
 up KEY_26
 wait 2000
 # landed on the loop's end
-expect led smt 0 fcfcfc
+expect led smt 2 fcfcfc
 expect led smt 21 241408

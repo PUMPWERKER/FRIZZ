@@ -10,7 +10,7 @@ box and looper for whatever you plug into its AUX input.
   DJ filter, flanger, phaser, resonator, slicer, wow & flutter, tape stop, tempo-synced delay and reverb. Hold a key to play an effect,
   hold it and press SHIFT to latch it. Knobs 1-4 shape the last effect you touched. A chaos
   key next to them drops latched effects out at random and scrambles the loop's steps.
-- **Four FX scenes on the dark keys:** save every effect's settings and latches, recall them
+- **Four FX scenes on the dark keys in the middle:** save every effect's settings and latches, recall them
   at once, drop to them hard on the next bar line, morph to them on the bar line or crossfade
   by hand on the transport knob, copy and delete them. Kept on the SD card. A fifth key clears every effect at once.
 - **An input/loop mix** between the live input and the loop, plus input gain, output gain and a

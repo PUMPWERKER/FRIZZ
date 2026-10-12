@@ -136,11 +136,11 @@ See [Tempo](MANUAL.md#tempo).
 
 ## 4. Save scenes
 
-The dark keys of the lower octave hold scenes: every effect's settings and latches. The first
-one is the blank scene: it turns every effect off and resets the knobs, and can't be saved
-over. The other four are yours.
+Five dark keys in the middle hold scenes: every effect's settings and latches. They start at
+F# of the lower octave and end at D# of the upper one. The first is the blank scene: it turns
+every effect off and resets the knobs, and can't be saved over. The other four are yours.
 
-- **Save:** tap the last dark key (blue), tap a scene key, tap CHOMPI to confirm.
+- **Save:** tap the upper F# (green), tap a scene key, tap CHOMPI to confirm.
 - **Recall:** press a scene key. Try a build-up on one scene and the drop on the next, then
   the first key to turn every effect off.
 - **Morph:** hold CHOMPI and press a scene key, then let go of CHOMPI: the effects glide there
@@ -149,7 +149,7 @@ over. The other four are yours.
 - **Drop:** hold CHOMPI, press a scene key, then PLAY: the scene lands hard on the next bar
   line (its key blinks red until then). After a morph to one scene, CHOMPI + another scene key
   + PLAY rides the build-up to the line and drops there.
-- **Copy and delete:** the same steps with the green and amber dark keys. Tap the
+- **Copy and delete:** the same steps with the upper G# (blue) and A# (red). Tap the
   function's key again to back out.
 
 While you save, copy or delete, the scene keys you can tap light in the function's colour,

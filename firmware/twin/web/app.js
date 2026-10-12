@@ -9,7 +9,7 @@ const $ = (id) => document.getElementById(id);
 // what each control is, for the labels (MANUAL.md)
 const WHITE = ['Freezer', 'Shifter', 'Folder', 'Crusher', 'Filter', 'Flanger', 'Resonator', 'Slicer',
   'Wow', 'Tape stop', '', 'Delay', 'Reverb', '', 'Comp'];
-const DARK = ['Scene', 'Scene 1', 'Scene 2', 'Scene 3', 'Scene 4', '', '', 'Delete', 'Copy', 'Save'];
+const DARK = ['', '', 'Scene', 'Scene 1', 'Scene 2', 'Scene 3', 'Scene 4', 'Save', 'Copy', 'Delete'];
 const TOP = { KEY26: 'SHIFT', KEY27: 'PLAY', KEY28: 'LOOP' };
 const KNOBS = { SW4: 'knob 1', SW1: 'knob 2', SW2: 'knob 3', SW3: 'knob 4', SW5: 'transport', SW6: 'VOLUME' };
 // keyboard: white keys 1-10 Q..P, 11-15 A..G; dark keys 1..0; SHIFT, PLAY, LOOP
