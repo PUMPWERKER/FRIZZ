@@ -596,7 +596,7 @@ namespace chompi
                 if (id == kOutGain)
                     SetOutGain(value);
                 else if (id == kInGain)
-                    SetInGain(value);
+                    SetInGain(value, false); // not for the card (#97)
                 else if (id == kMix)
                     SetMix(value);
                 else
@@ -1438,11 +1438,11 @@ namespace chompi
             out_gain_ = fclamp(gain, 0.f, 1.f);
             engine_->SetMainGain(out_gain_);
         }
-        /** The input gain of the source heard (SettingsPage::SetInGain); its colour on VOLUME's
-         *  LED for kGainShownMs, instead of the meter */
-        void SetInGain(float gain)
+        /** The input gain of the source heard (SettingsPage::SetInGain), kept for the card unless
+         *  MIDI's (keep false); its colour on VOLUME's LED for kGainShownMs, instead of the meter */
+        void SetInGain(float gain, bool keep = true)
         {
-            settings_.SetInGain(gain);
+            settings_.SetInGain(gain, keep);
             gain_turned_ = System::GetNow();
         }
 

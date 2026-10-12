@@ -4348,7 +4348,7 @@ int main()
 
     // ---- the routing (#152): AUX dry past the effects and the compressor, CC 84, the mix's
     // automatism, VOLUME on the settings page, the input's meter ----
-    static const int kSourceCC = 84;
+    static const int kSourceCC = 84, kInGainCC = 86;
     static auto mix_now = [] {
         const std::string st = Ask({0x20});
         return st.size() > 14 ? KnobOf(st[13], st[14]) : -1.f;
@@ -4399,9 +4399,18 @@ int main()
         Check(muted < 1e-4f, "aux-dry: VOLUME turns it down");
         Check(loop_only < 1e-4f && half > dry * .6f && half < dry * .8f,
               "aux-dry: the mix's input share scales it, equal-power");
-        // CC 84 isn't kept on the card (#97)
+        // CC 84 and 86 aren't kept on the card (#97), also when the hand saves something else
+        Usb({kCC, kInGainCC, 32});
         RunMs(3000);
         Check(Card("/FRIZZ/frizz_master.txt") == card, "aux-dry: CC 84 leaves the card as it was");
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23"); // mono, by hand: the settings go to the card
+        RunMs(3000);
+        const std::string saved = Card("/FRIZZ/frizz_master.txt");
+        Check(saved.find("\nmono 1\n") != std::string::npos && saved.find("\naux_dry 0\n") != std::string::npos
+                  && saved.find("\ngain_aux 75\n") != std::string::npos,
+              "aux-dry: a setting saved by hand after them: AUX's variant and gain as the hand left them");
     }});
 
     // the mix's automatism, the same with AUX dry: a recording's close goes to the loop alone,

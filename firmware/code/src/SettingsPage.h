@@ -93,8 +93,11 @@ public:
         quarters_ = master.led_brightness / 25;
         SetLedQuarters(quarters_);
         engine_->SetAuxDry(master.aux_dry);
+        saved_dry_ = master.aux_dry;
         SetGain(false, master.gain_aux / 100.f);
         SetGain(true, master.gain_mic / 100.f);
+        saved_gain_[0] = gain_[0];
+        saved_gain_[1] = gain_[1];
     }
 
     /** A key going down on the page. True if it changed a setting, which then goes to the card */
@@ -105,8 +108,10 @@ public:
             // AUX through the effects, AUX dry, the mic, ...: AUX's variant goes to the card
             using Input = PassthroughEngine::Input;
             const Input in = engine_->GetInput();
-            if (!SetInput(in == Input::AUX_FX ? Input::AUX_DRY : in == Input::AUX_DRY ? Input::MIC : Input::AUX_FX))
+            SetInput(in == Input::AUX_FX ? Input::AUX_DRY : in == Input::AUX_DRY ? Input::MIC : Input::AUX_FX);
+            if (engine_->AuxDry() == saved_dry_)
                 return false;
+            saved_dry_ = engine_->AuxDry();
         }
         else if (!Apply(key))
             return false;
@@ -212,7 +217,8 @@ public:
         return true;
     }
 
-    /** The input (CC 84 too, which the card doesn't get): true if AUX's variant changed */
+    /** The input, AUX's variant in RAM: true if it changed. The key keeps it for the card;
+     *  CC 84 doesn't (#97) */
     bool SetInput(PassthroughEngine::Input in)
     {
         using Input = PassthroughEngine::Input;
@@ -223,9 +229,16 @@ public:
         return true;
     }
 
-    /** The input gain of the source heard now, 0..1, and setting it: VOLUME's page 2 */
+    /** The input gain of the source heard now, 0..1, and setting it: VOLUME's page 2, which
+     *  keeps it for the card; CC 86 doesn't (keep false, #97) */
     inline float InGain() const { return gain_[engine_->MicInput()]; }
-    inline void SetInGain(float gain) { SetGain(engine_->MicInput(), gain); }
+    inline void SetInGain(float gain, bool keep)
+    {
+        const bool mic = engine_->MicInput();
+        SetGain(mic, gain);
+        if (keep)
+            saved_gain_[mic] = gain_[mic];
+    }
 
     /** SHIFT (the CHOMPI key) held on this page */
     inline bool ShiftHeld() const { return held_ & kShiftHeld; }
@@ -272,9 +285,9 @@ public:
         master.midi_block_trs = midi_->BlockTrs();
         master.midi_feedback = midi_->Feedback();
         master.led_brightness = quarters_ * 25;
-        master.aux_dry = engine_->AuxDry();
-        master.gain_aux = static_cast<uint8_t>(gain_[0] * 100.f + .5f);
-        master.gain_mic = static_cast<uint8_t>(gain_[1] * 100.f + .5f);
+        master.aux_dry = saved_dry_;
+        master.gain_aux = static_cast<uint8_t>(saved_gain_[0] * 100.f + .5f);
+        master.gain_mic = static_cast<uint8_t>(saved_gain_[1] * 100.f + .5f);
     }
 
     /** Every LED; the panel's were cleared. shift: SHIFT held from the play page */
@@ -391,6 +404,9 @@ private:
     ClockFactor factor_ = ClockFactor::ONE;
     uint8_t quarters_ = 4;
     float gain_[2] = {.75f, .75f}; // the input gain, AUX's and the mic's
+    // what the card gets of AUX's variant and the gains: the hand's and SysEx's, not MIDI's CCs
+    bool saved_dry_ = false;
+    float saved_gain_[2] = {.75f, .75f};
     uint8_t held_ = 0;          // SHIFT and VOLUME's press down on the page, by Held's bits
     uint32_t held_since_ = 0;   // since when both are
     bool reported_ = false;     // this hold has asked for its bug report
