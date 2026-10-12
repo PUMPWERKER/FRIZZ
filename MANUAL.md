@@ -158,6 +158,11 @@ hue, and nothing lit at 100 % goes dark. Full is as bright as FRIZZ has always b
   the loop's own end, so it needs no clock. For half a second after LOOP stopped a recording,
   LOOP doesn't erase, so a double press can't lose the new loop.
 - **Length:** up to 2:45. The loop lives in RAM and is gone at power-off. There's no overdub.
+- **Level:** the loop doesn't clip. Live, a hot input is float until the safety limiter;
+  the loop is stored at 16 bits, so what goes into it is held just under full scale by a
+  limiter of its own, which takes a peak at once and lets go over about 150 ms. Below that it
+  records exactly what came in. A source loud enough to reach it records a little quieter
+  than it sounds live (from about 7 dB below the input's full scale at input gain 75%).
 
 Transport knob (the big purple one), once a loop exists:
 

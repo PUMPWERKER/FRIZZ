@@ -24,6 +24,13 @@
  *  or along TAPE's ladder of 5ths and octaves (StepSpeed), glides to each new step like TAPE's
  *  default tape slew, and runs in reverse when negative. While paused, the transport knob scrubs instead (Scrub).
  *
+ *  The soft limit (#152): the loop is int16, so what's written is held under kLoopCeiling by a
+ *  peak limiter, stereo-linked, rather than clipped at full scale: it takes a peak at once,
+ *  holds kLoopHoldFrames (a period of 47 Hz, so it doesn't ripple on a steady tone) and lets go
+ *  over some 150 ms. Below the ceiling it isn't there, sample for sample; a recording starts it
+ *  afresh. Live the input is float up to the safety limiter, so without it a hot input sounded
+ *  clean live and clipped in the loop (tools/loopclip.py).
+ *
  *  Scramble (the chaos key, FxChaos.h): the loop is heard from a number of frames on from the
  *  read head, which itself runs on as ever, so the loop's position, the FX clock and its end
  *  don't move. A new offset crossfades from the old over kXfadeFrames.
@@ -47,6 +54,11 @@ static const size_t kLoopMaxFrames = kLoopMemSize / 2; // stereo frames
 
 static const size_t kXfadeFrames = 240; // 5ms loop-point crossfade at 48kHz
 static const float kPlayFadeCoeff = .002f; // ~10ms fade on play / pause / erase
+
+// The soft limit: what's written stays under this, full scale 1 (see the file comment)
+static const float kLoopCeiling = .95f;
+static const uint32_t kLoopHoldFrames = 1024;
+static const float kLoopRelease = 1.f - 1.f / 7200.f; // a frame's, ~150 ms
 
 // Speed ladder, in semitones: octaves (12k) and fifths above them (12k + 7), as TAPE.
 // Top is 2x (+12), bottom is 1/16x (-48); a ladder step below the bottom flips direction, a
@@ -413,6 +425,8 @@ private:
             quantized_ = quantized;
             closing_ = false;
             write_pos_ = 0;
+            rec_peak_ = 0.f;
+            rec_hold_ = 0;
             target_length_ = 0;
             target_bars_ = 0;
             start_ticks_ = midi_clock_->GetTicks();
@@ -831,6 +845,23 @@ private:
 
     inline void Write(size_t frame, float l, float r)
     {
+        // the soft limit: a peak at once, held, then let go; a gain only above the ceiling
+        const float peak = fmaxf(fabsf(l), fabsf(r));
+        if (peak >= rec_peak_)
+        {
+            rec_peak_ = peak;
+            rec_hold_ = kLoopHoldFrames;
+        }
+        else if (rec_hold_)
+            rec_hold_--;
+        else
+            rec_peak_ *= kLoopRelease;
+        if (__builtin_expect(rec_peak_ > kLoopCeiling, 0))
+        {
+            const float g = kLoopCeiling / rec_peak_;
+            l *= g;
+            r *= g;
+        }
         mem_[frame * 2] = static_cast<int16_t>(f2s16(l));
         mem_[frame * 2 + 1] = static_cast<int16_t>(f2s16(r));
     }
@@ -872,6 +903,8 @@ private:
     size_t play_pos_;      // playback position, whole frames
     float play_frac_;      // playback position, fraction of a frame
     size_t postroll_;      // frames of post-roll written so far
+    float rec_peak_ = 0.f; // the soft limit's peak, held for rec_hold_ more frames (Write)
+    uint32_t rec_hold_ = 0;
     size_t target_length_; // quantized: where the recording will close, 0 if not yet known
     uint32_t target_bars_; // quantized: the bars it will hold
     uint32_t beats_;       // a quantized loop's beats, once closed; 0 if not known

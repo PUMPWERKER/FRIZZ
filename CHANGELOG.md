@@ -246,6 +246,12 @@ what FRIZZ does.
 
 ### Fixed
 
+- **A hot input no longer distorts in the loop** (#152). Live it sounded clean, but the loop is
+  stored at 16 bits and clipped hard: at the default input gain from about 7 dB below the
+  input's full scale (measured: 1 kHz at full scale, the loop 26 % distortion, live under 1 %). Now
+  a limiter holds what the looper records just under full scale instead; below that the loop
+  is what came in, as before. Both inputs, AUX and the mic.
+
 - **The pitch shifter's first moment no longer slips through unshifted** (#140): turning
   the shift up out of the centre the first time after power-on (or punching the shifter in
   with the shift already up), or turning it the other way than it last went while it was
