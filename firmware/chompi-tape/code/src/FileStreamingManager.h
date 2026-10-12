@@ -9,8 +9,7 @@ namespace daisy
     // class VUTarget;
     // struct KeyRequest;
 
-    //static constexpr size_t kMaxFileStreamingSamps = 32768;
-    static constexpr size_t kMaxFileStreamingSamps = 8192;
+    static constexpr size_t kMaxFileStreamingSamps = 16384; // a voice's read buffer, 170 ms at 1x
     using SampleFifo = FIFO<int16_t, kMaxFileStreamingSamps>;
 
     /** @brief structure containing info necessary for deferred fileIO operations */

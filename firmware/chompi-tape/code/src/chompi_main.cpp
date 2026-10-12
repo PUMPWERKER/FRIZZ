@@ -36,6 +36,7 @@ RamBufferMemory DSY_DTCMRAM_BSS chompi::kit_buff;
 KitLoader DSY_DTCMRAM_BSS chompi::kit_loader;
 int16_t DSY_SDRAM_BSS kit_mem[kKitMaxFrames * 2];
 FIL DSY_SDRAM_BSS kit_fil; // the SD DMA can't reach DTCM
+SampleFifo __attribute__((section(".d2_bss"))) daisy::voice_fifos[kMaxPoly]; // D2 is clocked before the constructors run
 uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) kit_bounce[kKitBounce];
 chompi::InterpolatedDelayLine::AudioSample DSY_SDRAM_BSS del_mem[kMaxDelayTime];
 

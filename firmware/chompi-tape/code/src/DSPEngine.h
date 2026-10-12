@@ -38,6 +38,8 @@ static constexpr size_t kMaxPoly = 7;
 
 namespace daisy
 {
+    extern SampleFifo voice_fifos[kMaxPoly];
+
     enum class VUTarget
     {
         VU_INPUT = 0,
@@ -229,7 +231,7 @@ namespace daisy
             /* voices */
             for (size_t i = 0; i < kMaxPoly; i++)
             {
-                chompi_voice[i].Init(file_manager, samplerate, chompi_buff);
+                chompi_voice[i].Init(file_manager, samplerate, chompi_buff, &voice_fifos[i]);
             }
             chompi_writer.Init(chompi_buff);
             record = false;

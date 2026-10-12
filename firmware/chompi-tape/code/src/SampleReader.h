@@ -11,7 +11,7 @@ namespace daisy
 {
 
     static const uint16_t kMaxClickSamps = 300; // 6ish ms
-    static const uint16_t kMinLoopLen = kMaxFileStreamingSamps / 2;
+    static const uint16_t kMinLoopLen = kMaxFileStreamingSamps / 4;
 
     /** @brief Sampler that uses a file on external media to store the data
      *  This uses a .wav file as the source to be able to be saved/edited
@@ -33,8 +33,9 @@ namespace daisy
     class FileSampleReader
     {
     public:
-        void Init(FileStreamingManager &manager, float sr, RamBufferMemory* buff)
+        void Init(FileStreamingManager &manager, float sr, RamBufferMemory* buff, SampleFifo* fifo)
         {
+            read_samps = fifo;
             manager_ = &manager;
             read_requests_ = 0;
             sr_ = sr;
@@ -75,7 +76,7 @@ namespace daisy
             if(using_ram)
             {
                 is_buffered = false;
-                read_samps.Clear();
+                read_samps->Clear();
             }
 
             using_ram_target = use;
@@ -129,7 +130,7 @@ namespace daisy
 
             // we're smashing the start point into the play head region, which can cause clicks
             if(reverse_ && !using_ram &&
-                f_tell(&fptr_read) - read_samps.GetNumElements() * 2 
+                f_tell(&fptr_read) - read_samps->GetNumElements() * 2 
                     < new_start_point + kMaxFileStreamingSamps * 2)
             {
                 // do nothing
@@ -375,7 +376,7 @@ namespace daisy
                     click_dec = .002f;
                     click_clear = 0;
                     is_buffered = false;
-                    read_samps.Clear();
+                    read_samps->Clear();
                 }
             }
             else
@@ -438,7 +439,7 @@ namespace daisy
             if(pan_r_ < .01f && pan_r_target_ < .01f)
                 pan_r_ = 0.f;
 
-            if (((read_samps.GetNumElements() < 16 && !using_ram) 
+            if (((read_samps->GetNumElements() < 16 && !using_ram) 
                 || env_sig < .001f)
                 && !deferred_trig
             )
@@ -496,7 +497,7 @@ namespace daisy
                                     JumpToStart();
                                 }
 
-                                read_samps.PopFrontMany(click_clear);
+                                read_samps->PopFrontMany(click_clear);
                                 varispeed_counter = 0;
                                 varispeed_factor = varispeed_target;
 
@@ -553,8 +554,8 @@ namespace daisy
                         }
                         else
                         {
-                            read_left_b_ = read_samps.PopFront();
-                            read_right_b_ = read_samps.PopFront();
+                            read_left_b_ = read_samps->PopFront();
+                            read_right_b_ = read_samps->PopFront();
                         }
                         double_speed_ctr = double_speed_ctr == 0 ? 0 : double_speed_ctr - 1;
                     }
@@ -593,7 +594,7 @@ namespace daisy
                 loop_env_dec = -2.f / kMaxClickSamps;
             }
             /** if read_samps is < 1/4 full, generate read request */
-            else if (read_samps.GetNumElements() < kMaxFileStreamingSamps / 4
+            else if (read_samps->GetNumElements() < kMaxFileStreamingSamps / 4
                         && read_requests_ == 0 
                         && seek_requests_ == 0
                         && open_requests_ == 0
@@ -601,7 +602,7 @@ namespace daisy
                         &&!using_ram)
             {
                 // how many samples is the FIFO short by?
-                uint32_t block_missing = (kMaxFileStreamingSamps - read_samps.GetNumElements()) * sizeof(int16_t);
+                uint32_t block_missing = (kMaxFileStreamingSamps - read_samps->GetNumElements()) * sizeof(int16_t);
 
                 bool jump = false;
                 if (reverse_)
@@ -670,14 +671,14 @@ namespace daisy
                                     &fptr_read,
                                     nullptr,
                                     block_missing,
-                                    &read_samps,
+                                    read_samps,
                                     this);
                 manager_->request_fifo.PushBack(new_req);
                 read_requests_++;
 
                 if(jump)
                 {
-                    if(read_samps.IsEmpty())
+                    if(read_samps->IsEmpty())
                     {
                         loop_env_dec = -.0042f; // ~ 5ms
                         loop_env = 0.f;
@@ -685,7 +686,7 @@ namespace daisy
                     else
                     {
                         const size_t max_samps = 480; // ~10ms stereo samples
-                        size_t total = read_samps.GetNumElements() / 2 + block_missing / 4;
+                        size_t total = read_samps->GetNumElements() / 2 + block_missing / 4;
                         loop_env_delay = total > max_samps ? total - max_samps : 0;
                         total = total > max_samps ? max_samps : total;
                         loop_env_dec = -1.f / float(total);
@@ -717,14 +718,14 @@ namespace daisy
                     ret = ram_buff.GetReadHead() <= GetStartPoint();
                 else
                     ret = f_tell(&fptr_read) <= (GetStartPoint() + 2 * kMaxFileStreamingSamps + 4) 
-                        && read_samps.GetNumElements() < 16;
+                        && read_samps->GetNumElements() < 16;
             }
             else
             {
                 if(using_ram)
                     ret = ram_buff.GetReadHead() >= GetEndPoint();
                 else
-                    ret = f_tell(&fptr_read) >= (GetEndPoint() - 4) && read_samps.GetNumElements() < 16;
+                    ret = f_tell(&fptr_read) >= (GetEndPoint() - 4) && read_samps->GetNumElements() < 16;
             }
     
             return ret;
@@ -769,8 +770,8 @@ namespace daisy
                                 if(!reverse_)
                                 {
                                     // drop last sample
-                                    read_samps.Remove(read_samps.GetNumElements() - 1);
-                                    read_samps.Remove(read_samps.GetNumElements() - 1);
+                                    read_samps->Remove(read_samps->GetNumElements() - 1);
+                                    read_samps->Remove(read_samps->GetNumElements() - 1);
                                 }
                             }
                             else
@@ -797,7 +798,7 @@ namespace daisy
                 if(click_clear > 0)
                     double_speed_ctr = click_clear < kMaxClickSamps ? click_clear / 2 : kMaxClickSamps / 2;
                 else
-                    double_speed_ctr = read_samps.GetNumElements() / 2 + 1;
+                    double_speed_ctr = read_samps->GetNumElements() / 2 + 1;
 
                 if(reverse_ && to_double && 
                     f_size(&fptr_read) - sizeof(WAV_FormatTypeDef) % 8 != 0) // not on 2x grid
@@ -842,7 +843,7 @@ namespace daisy
             else
             {
                 varispeed_target = speed;
-                varispeed_counter = read_samps.GetNumElements() / 2;
+                varispeed_counter = read_samps->GetNumElements() / 2;
             }
 
             note_changed = true;
@@ -865,9 +866,9 @@ namespace daisy
                 is_buffered = false;
 
                 reverse_ = rev;
-                if(!read_samps.IsEmpty() && IsPlaying())
+                if(!read_samps->IsEmpty() && IsPlaying())
                 {
-                    rev_env_dec = -2.f / read_samps.GetNumElements();
+                    rev_env_dec = -2.f / read_samps->GetNumElements();
                     // rev_env = 1.f;
                 }
             }
@@ -909,14 +910,14 @@ namespace daisy
                 click_dec = -2.f / kMaxClickSamps;
                 click_clear = kMaxClickSamps;                
             }
-            else if(!read_samps.IsEmpty())
+            else if(!read_samps->IsEmpty())
             {
                 click_dec = -2.f / kMaxClickSamps;
-                click_clear = read_samps.GetNumElements();
+                click_clear = read_samps->GetNumElements();
 
                 if(click_clear < kMaxClickSamps)
                 {
-                    click_dec = -2.f / read_samps.GetNumElements(); // calculate a short env
+                    click_dec = -2.f / read_samps->GetNumElements(); // calculate a short env
                 }
             }
         }
@@ -953,7 +954,7 @@ namespace daisy
                 if(!is_buffered)
                 {
                     deferred_jump = true;
-                    read_samps.Clear();
+                    read_samps->Clear();
                 }
                 // if we buffered the first block, don't jump to start!
 
@@ -995,13 +996,14 @@ namespace daisy
                 && f_size(&fptr_read) != 0 && !using_ram_target && now - last_cache > 2000)
             {
                 last_cache = now;
-                read_samps.Clear();
+                read_samps->Clear();
 
                 // TODO: this can get bad if we have the wrong double/not double file loaded
+                const uint32_t span = std::min<uint32_t>(kMaxFileStreamingSamps * 2, GetEndPoint() - GetStartPoint());
                 FileRequest::Type type;
                 if(reverse_)
                 {
-                    JumpTo(GetEndPoint() - kMaxFileStreamingSamps * 2);
+                    JumpTo(GetEndPoint() - span);
                     type = FileRequest::Type::REV_READ;
                 }
                 else
@@ -1010,12 +1012,12 @@ namespace daisy
                     type = FileRequest::Type::READ;
                 }
 
-                last_read_size_ = kMaxFileStreamingSamps * 2;
+                last_read_size_ = span;
                 FileRequest new_req(type,
                                     &fptr_read,
                                     nullptr,
-                                    kMaxFileStreamingSamps * 2,
-                                    &read_samps,
+                                    span,
+                                    read_samps,
                                     this);
                 manager_->request_fifo.PushBack(new_req);
                 read_requests_++;
@@ -1031,7 +1033,7 @@ namespace daisy
         inline size_t GetSize() { return ram_buff.GetSize(); }
 
         FileStreamingManager *manager_;
-        FIFO<int16_t, kMaxFileStreamingSamps> read_samps;
+        SampleFifo* read_samps;
 
         FIL fptr_read;
         char fname_rx[32];
