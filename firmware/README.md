@@ -265,7 +265,7 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | SUB | Asks | Answers |
 |---|---|---|
 | `00` IDENT | — | version (1), kind (0 FRIZZ, 1 the bench), the image's CRC-32 (5 groups) and length (3) as the bootloader loaded it (`zlib.crc32` of the `.bin`; 0 on the twin), uptime ms (5), MainLoop's passes (5), `RCC_RSR` at boot (5, as the bootloader left it, not cleared), flags (1: RAM only) |
-| `01` PERSIST | `00` | flags. From now until a restart nothing is written to the card: a scene saved, copied or deleted, the master settings, as if written (the page shows them saved). One way: a restart (`flash.py --run N`) writes again, reading the card as it was. Bug reports (`bug-N.txt`) are still written: a new file each, never one key 10 reads |
+| `01` PERSIST | `00` | flags. From now until a restart nothing is written to the card: a scene saved, copied or deleted, the master settings, as if written (the page shows them saved). One way: a restart (`flash.py --run N`) writes again, reading the card as it was. Nor a bug report (`bug-N.txt`): SHIFT + VOLUME's hold then counts as failed (#171) |
 | `02` GET | GROUP | GROUP, COUNT, then COUNT values in 14 bits |
 | `03` SET | GROUP INDEX VALUE(2) | GROUP INDEX; applied in MainLoop through the setters the knobs and keys use, and saved as theirs are (unless RAM only) |
 | `04` BENCH | `00` | the bench's state: running, settling, the segment, how many, written, stored, `cpu.txt`'s length (3) |
