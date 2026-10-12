@@ -29,6 +29,17 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
     ./remote.py bench [--wait] [--out FILE]
                                       the bench's progress; --wait until it's done, --out
                                       writes its cpu.txt, as it went to the card, to FILE
+    ./remote.py probe                 the clock as FRIZZ counts it, the effects' tempo, the looper
+    ./remote.py levels                the effects' meters, the VU meter, the compressor's
+                                      reduction, the inputs' and outputs' peaks over 0.25 s
+    ./remote.py signal sine|saw|noise HZ LEVEL | off
+                                      a test signal in the input's place (LEVEL 0-1 of full
+                                      scale), in RAM until FRIZZ restarts; off the input again
+    ./remote.py reseed [SEED]         the effects' random numbers (chaos, the slicer, the
+                                      delay, wow & flutter) from SEED (0 as at power-on);
+                                      without, how many each has drawn since the last
+    ./remote.py battery               the battery's level and the charger's status, as FRIZZ
+                                      last read them
 
 `play` presses the keys and turns the knobs of a script over FRIZZ's SysEx, at the script's
 times, sends its `midi` and `clock` to the device, and checks its `expect led` lines against the
@@ -78,6 +89,7 @@ Linux only (ALSA's raw MIDI), Python 3 without packages, like flash.py.
 """
 import argparse
 import json
+import math
 import os
 import sys
 import threading
@@ -430,6 +442,129 @@ def bench(f, wait, out):
         with open(out, "w") as dst:
             dst.write(bench_text(f, st["length"]))
         print("written to", out)
+
+
+LOCKED = ["none", "trs", "usb"]  # MidiClock::Source, the clock counted
+FACTORS = ["x1/2", "x1", "x2"]
+WAVES = ["off", "sine", "saw", "noise"]  # dev::Audio::Wave
+# LEVELS 1's peaks (dev::Audio), full scale 8192
+PEAKS = ["mic", "AUX L", "AUX R", "headphones L", "headphones R", "line L", "line R"]
+# RESEED's random numbers and their power-on seeds (FxChaos.h, FxSlicer.h, granularDelay.h:
+# xorshift32; FxWarble.h: an LCG)
+RANDOMS = [("chaos", 0x6A09E667), ("slicer", 0x2545F491), ("delay", 0x6C8E9CF5), ("warble", 1)]
+BATTERY = ["full (on the cable)", "high (above 3.3 V)", "medium (3-3.3 V)", "low (below 3 V)"]
+MAX_DRAWS = 1 << 20
+
+
+def dev_data(f, sub, args, what):
+    """kCmdDev's answer data, or exits"""
+    got = f.dev(sub, args)
+    if not got:
+        sys.exit("no answer to %s: a FRIZZ from before it" % what)
+    if got[0] != chompi.OK:
+        sys.exit("%s: %s" % (what, chompi.DEV_STATUS.get(got[0], got[0])))
+    return got[1]
+
+
+def probe(f):
+    g = chompi.get7
+    d = dev_data(f, chompi.PROBE, [0], "PROBE")
+    flags = d[3]
+    print("clock      source %s, counting %s, factor %s%s" % (
+        SOURCES[d[0]], LOCKED[d[1]] if flags & 1 else "none", FACTORS[d[2]],
+        ", transport followed" if flags & 16 else ""))
+    print("MIDI       %.2f BPM (%.2f as sent), %d ticks, locked %d times" % (
+        g(d[4:7]) / 100, g(d[7:10]) / 100, g(d[10:15]), g(d[15:18])))
+    print("effects    %.2f BPM (%d), %s; pulse %d%s%s" % (
+        g(d[18:21]) / 100, g(d[21:23]),
+        "the loop's" if flags & 2 else "set by a clock or taps" if flags & 4 else "the default",
+        g(d[23:26]), ", of %d round the loop" % g(d[26:29]) if flags & 2 else "",
+        ", backwards" if flags & 8 else ""))
+    d = dev_data(f, chompi.PROBE, [1], "PROBE")
+    length = g(d[2:6])
+    print("looper     %s%s%s%s%s" % (
+        LOOPER[d[0]] if d[0] < len(LOOPER) else d[0],
+        ", closing" if d[1] & 1 else "", ", erase waiting" if d[1] & 2 else "",
+        ", erasing" if d[1] & 4 else "", ", can record quantized" if d[1] & 8 else ""))
+    print("loop       %d frames (%.3f s), at %d, %d beats, %+d semitones, speed %+.3f (now %+.3f), "
+          "rewound %d times" % (length, length / 48000, g(d[6:10]), g(d[10:13]), d[13] - 64,
+                                g(d[14:16]) / 1000 - 2, g(d[16:18]) / 1000 - 2, g(d[18:21])))
+
+
+def dbfs(v):
+    return "%6.1f dBFS" % (20 * math.log10(v)) if v > 0 else "    silent"
+
+
+LEVELS_S = .25  # the peaks levels prints are over the last
+
+
+def levels(f):
+    g = chompi.get7
+    dev_data(f, chompi.LEVELS, [1], "LEVELS")  # the peaks from now on (and the meters started)
+    time.sleep(LEVELS_S)
+    d = dev_data(f, chompi.LEVELS, [1], "LEVELS")
+    fx = dev_data(f, chompi.LEVELS, [0], "LEVELS")
+    print("effects    %s" % "  ".join("%s %.2f" % (n, g(fx[2 * i:2 * i + 2]) / 16383)
+                                      for i, n in enumerate(FX_NAMES)))
+    print("VU meter   %.3f; the compressor reducing %.2f dB" % (g(d[1:3]) / 16383, g(d[3:5]) / 100))
+    print("peaks over %.2f s:" % LEVELS_S)
+    for i, n in enumerate(PEAKS):
+        v = g(d[5 + 2 * i:7 + 2 * i]) / 8192
+        print("  %-13s %.4f %s" % (n, v, dbfs(v)))
+
+
+def signal(f, wave, hz, level):
+    w = WAVES.index(wave)
+    v = max(0, min(16383, int(level * 16383 + .5))) if w else 0
+    hz = int(hz) if w else 0
+    if w and not 1 <= hz <= 16383:
+        sys.exit("signal: 1-16383 Hz")
+    dev_data(f, chompi.SIGNAL, [w, hz >> 7 & 0x7F, hz & 0x7F, v >> 7 & 0x7F, v & 0x7F], "SIGNAL")
+
+
+def draws(start, state, lcg=False):
+    """The steps from start to state, None beyond MAX_DRAWS: of xorshift32 (FxCommon.h's Rng),
+    or wow & flutter's LCG (FxWarble.h)"""
+    x = start & 0x7FFFFFFF if lcg else start or 1
+    for n in range(MAX_DRAWS):
+        if x == state:
+            return n
+        if lcg:
+            x = (1103515245 * x + 12345) & 0x7FFFFFFF
+        else:
+            x ^= x << 13 & 0xFFFFFFFF
+            x ^= x >> 17
+            x ^= x << 5 & 0xFFFFFFFF
+    return None
+
+
+def reseed(f, seed):
+    args = [] if seed is None else [seed >> (7 * g) & 0x7F for g in range(4, -1, -1)]
+    d = dev_data(f, chompi.RESEED, args, "RESEED")
+    seed = chompi.get7(d[0:5])
+    print("seed       %d" % seed)
+    counts = {}
+    for i, (name, own) in enumerate(RANDOMS):
+        state = chompi.get7(d[5 + 5 * i:10 + 5 * i])
+        n = counts[name] = draws(seed ^ own, state, name == "warble")
+        print("%-10s %08x, %s since" % (name, state,
+                                        "%d draws" % n if n is not None else "over %d draws" % MAX_DRAWS))
+    return counts
+
+
+def battery(f):
+    d = dev_data(f, chompi.BATTERY, [], "BATTERY")
+    g = chompi.get7
+    bounce = [g(d[4 + 2 * i:6 + 2 * i]) for i in range(4)]
+    raw = [g(d[12 + 2 * i:14 + 2 * i]) for i in range(6)]
+    print("battery    %s%s" % (BATTERY[d[0]] if d[0] < len(BATTERY) else d[0],
+                               "" if d[0] == d[1] else "; the level check last read %s" % BATTERY[d[1]].split(" ")[0]))
+    print("charger    cable %s, below the threshold %s, legacy cable %s, input current limited %s "
+          "(the last 8 reads, the newest last)" % tuple("{:08b}".format(b) for b in bounce))
+    print("           the level check %s%s" % (
+        "resting" if d[2] == 0 else "reading at 3.3 V (step %d)" % d[2],
+        "; the last read failed" if d[3] else ""))
+    print("MP2722     status 0x11-0x16: %s" % " ".join("%02x" % b for b in raw))
 
 
 def scene_get(f, slot):
@@ -807,6 +942,15 @@ def main():
     p = sub.add_parser("bench", parents=[common])
     p.add_argument("--wait", action="store_true", help="until it's done")
     p.add_argument("--out", help="write its cpu.txt there, once it's done")
+    sub.add_parser("probe", parents=[common])
+    sub.add_parser("levels", parents=[common])
+    p = sub.add_parser("signal", parents=[common])
+    p.add_argument("wave", choices=WAVES)
+    p.add_argument("hz", type=float, nargs="?", default=0)
+    p.add_argument("level", type=float, nargs="?", default=.5, help="0-1 of full scale")
+    p = sub.add_parser("reseed", parents=[common])
+    p.add_argument("seed", type=int, nargs="?")
+    sub.add_parser("battery", parents=[common])
     a = ap.parse_args()
 
     try:
@@ -883,6 +1027,18 @@ def run(a):
         dev_set(f, a.group, a.index, a.value)
     elif a.cmd == "bench":
         bench(f, a.wait, a.out)
+    elif a.cmd == "probe":
+        probe(f)
+    elif a.cmd == "levels":
+        levels(f)
+    elif a.cmd == "signal":
+        signal(f, a.wave, a.hz, a.level)
+    elif a.cmd == "reseed":
+        if a.seed is not None and not 0 <= a.seed < 1 << 32:
+            sys.exit("reseed: a seed of 32 bits")
+        reseed(f, a.seed)
+    elif a.cmd == "battery":
+        battery(f)
     elif a.cmd == "play":
         ram = None if a.save else f.ram_only()
         if ram:

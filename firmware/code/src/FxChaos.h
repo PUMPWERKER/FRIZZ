@@ -39,11 +39,14 @@ public:
     static const size_t kMaxSteps = kPulsesPerBar / kPulsesPer16th;
     // FX chance at the top: each pooled effect sits out half the steps
     static constexpr float kMaxDrop = .5f;
+    static const uint32_t kSeed = 0x6A09E667u; // its random numbers' at power-on
+    /** For RESEED (MidiControl.h's namespace dev) */
+    inline Rng& Random() { return rng_; }
 
     FX_ONCE void Init()
     {
         gate_.Init();
-        rng_.Seed(0x6A09E667u);
+        rng_.Seed(kSeed);
         fx_chance_ = scramble_ = repeat_ = 0.f;
         grid_ = 1;
         rolled_ = 0;

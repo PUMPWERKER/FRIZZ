@@ -830,7 +830,7 @@ namespace chompi
         }
 
         /** v in `groups` 7-bit groups, the highest first; saturated at the most they hold */
-        static size_t Put7s(uint8_t* d, size_t n, uint32_t v, size_t groups)
+        MIDI_CONTROL_ONCE static size_t Put7s(uint8_t* d, size_t n, uint32_t v, size_t groups)
         {
             const uint32_t top = groups >= 5 ? 0xFFFFFFFFu : (1u << (7 * groups)) - 1;
             v = v > top ? top : v;
@@ -908,6 +908,54 @@ namespace chompi
                     n += static_cast<size_t>(got);
                 break;
             }
+            case PROBE:
+                if (group == 0)
+                    n = DevClock(d, n);
+                else if (group == 1)
+                    n = DevLooper(d, n);
+                else
+                    status = BAD;
+                break;
+            case LEVELS:
+                if (group <= 1)
+                    n = DevLevels(group, d, n);
+                else
+                    status = BAD;
+                break;
+            case SIGNAL:
+                if (!DevSignal(q))
+                    status = BAD;
+                d[n++] = midi_->audio.wave;
+                break;
+            case RESEED:
+                if (q.len >= 5)
+                {
+                    info.seed = static_cast<uint32_t>(q.arg[0]) << 28 | q.arg[1] << 21 | q.arg[2] << 14
+                                | q.arg[3] << 7 | q.arg[4];
+                    ScopedIrqBlocker irq;
+                    engine_->Reseed(info.seed);
+                }
+                else if (q.len)
+                    status = BAD;
+                n = Put7s(d, n, info.seed, 5);
+                for (size_t i = 0; i < FxChain::kRandoms; i++)
+                    n = Put7s(d, n, engine_->RandomState(i), 5);
+                break;
+            case BATTERY:
+            {
+                // as the last reads left it: asking reads nothing from the charger
+                const uint8_t bounces[] = {hw_->vin_gd_bounce, hw_->batt_low_bounce,
+                                           hw_->legacy_cable_bounce, hw_->iindpm_stat_bounce};
+                d[n++] = static_cast<uint8_t>(hw_->GetBatteryLevel());
+                d[n++] = static_cast<uint8_t>(hw_->batt_level);
+                d[n++] = hw_->batt_check_state;
+                d[n++] = hw_->read_error ? 1 : 0;
+                for (uint8_t b : bounces)
+                    n = Put7s(d, n, b, 2);
+                for (size_t i = 0; i < 6; i++)
+                    n = Put7s(d, n, hw_->mp_buff_[i], 2);
+                break;
+            }
             default:
                 status = BAD;
             }
@@ -915,6 +963,103 @@ namespace chompi
             d[1] = q.seq;
             d[2] = status;
             midi_->Reply(kCmdDev, d, n);
+        }
+
+        /** v * by in 7-bit groups, 0 below 0 */
+        static size_t PutScaled(uint8_t* d, size_t n, float v, float by, size_t groups)
+        {
+            return Put7s(d, n, v > 0.f ? static_cast<uint32_t>(v * by + .5f) : 0u, groups);
+        }
+
+        /** PROBE 0: the clock, as MidiClock counts it, and the tempo the effects follow */
+        MIDI_CONTROL_ONCE size_t DevClock(uint8_t* d, size_t n)
+        {
+            const MidiClock& clock = midi_->Clock();
+            const TempoClock& tempo = engine_->Tempo();
+            d[n++] = static_cast<uint8_t>(clock.GetSource());
+            d[n++] = static_cast<uint8_t>(clock.Locked());
+            d[n++] = static_cast<uint8_t>(clock.Factor());
+            d[n++] = static_cast<uint8_t>((clock.HasClock() ? 1 : 0) | (tempo.HasLoop() ? 2 : 0)
+                                          | (tempo.TempoSet() ? 4 : 0) | (tempo.Reverse() ? 8 : 0)
+                                          | (midi_->Transport() ? 16 : 0));
+            n = PutScaled(d, n, clock.GetBpm(), 100.f, 3);
+            n = PutScaled(d, n, clock.SenderBpm(), 100.f, 3);
+            n = Put7s(d, n, clock.GetTicks(), 5);
+            n = Put7s(d, n, clock.GetLocks(), 3);
+            n = PutScaled(d, n, tempo.GetFxBpm(), 100.f, 3);
+            n = Put7s(d, n, static_cast<uint32_t>(tempo.GetTempo()), 2);
+            n = Put7s(d, n, tempo.Position(), 3);
+            return Put7s(d, n, tempo.LoopPulses(), 3);
+        }
+
+        /** PROBE 1: the looper */
+        MIDI_CONTROL_ONCE size_t DevLooper(uint8_t* d, size_t n)
+        {
+            const Looper& looper = engine_->looper;
+            const size_t length = looper.GetLength();
+            d[n++] = static_cast<uint8_t>(looper.GetState());
+            d[n++] = static_cast<uint8_t>((looper.IsClosing() ? 1 : 0) | (looper.IsErasePending() ? 2 : 0)
+                                          | (looper.IsErasing() ? 4 : 0)
+                                          | (looper.CanRecordQuantized() ? 8 : 0));
+            n = Put7s(d, n, length, 4);
+            n = PutScaled(d, n, looper.GetPosition(), static_cast<float>(length), 4);
+            n = Put7s(d, n, looper.GetBeats(), 3);
+            d[n++] = static_cast<uint8_t>(looper.GetSemitones() + 64);
+            n = PutScaled(d, n, looper.GetSpeed() + 2.f, 1000.f, 2);
+            n = PutScaled(d, n, looper.GetActualSpeed() + 2.f, 1000.f, 2);
+            return Put7s(d, n, looper.Rewinds(), 3);
+        }
+
+        /** LEVELS: part 0 the effects' meters; part 1 the VU meter, the compressor's reduction
+         *  and the peaks since the last ask, the meters started by the first */
+        MIDI_CONTROL_ONCE size_t DevLevels(uint8_t part, uint8_t* d, size_t n)
+        {
+            using namespace dev;
+            if (part == 0)
+            {
+                for (size_t fx = 0; fx < kNumFx; fx++)
+                    n = PutScaled(d, n, engine_->GetFxLevel(fx), 16383.f, 2);
+                return n;
+            }
+            Audio& audio = midi_->audio;
+            float peak[Audio::kPeaks];
+            {
+                ScopedIrqBlocker irq;
+                memcpy(peak, audio.peak, sizeof(peak));
+                memset(audio.peak, 0, sizeof(audio.peak));
+            }
+            d[n++] = audio.metering ? 0 : kArmed;
+            audio.metering = true;
+            audio.on = true;
+            n = PutScaled(d, n, engine_->GetVUSample(), 16383.f, 2);
+            n = PutScaled(d, n, -engine_->GetCompReduction(), 100.f, 2);
+            for (float p : peak)
+                n = PutScaled(d, n, p, 8192.f, 2); // full scale 8192, up to twice it
+            return n;
+        }
+
+        /** SIGNAL WAVE FREQ(2) LEVEL(2): the test signal, or (0) the input again */
+        MIDI_CONTROL_ONCE bool DevSignal(const MidiControl::DevQuery& q)
+        {
+            using namespace dev;
+            Audio& audio = midi_->audio;
+            const uint8_t wave = q.len ? q.arg[0] : Audio::kNumWaves;
+            const uint16_t freq = q.len >= 5 ? static_cast<uint16_t>(q.arg[1] << 7 | q.arg[2]) : 0;
+            if (wave == Audio::OFF)
+            {
+                audio.wave = Audio::OFF;
+                audio.on = audio.metering;
+                return true;
+            }
+            if (wave >= Audio::kNumWaves || !freq)
+                return false;
+            ScopedIrqBlocker irq;
+            audio.inc = freq / 48000.f;
+            audio.level = (q.arg[3] << 7 | q.arg[4]) / 16383.f;
+            audio.phase = 0.f;
+            audio.wave = wave;
+            audio.on = true;
+            return true;
         }
 
         /** A GET group's values, 14 bits each: how many, 0 for no such group */

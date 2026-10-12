@@ -330,6 +330,9 @@ class granularDelay {
     ~granularDelay() {};
 
     using delayEvent = delayVoice::delayEvent;
+    static const uint32_t kSeed = 0x6C8E9CF5u; // its random events' at power-on
+    /** For RESEED (MidiControl.h's namespace dev) */
+    inline chompi::Rng& Random() { return rng_; }
 
     void Init(float *buff, size_t delaySize) {
         buffer_ = buff;
@@ -350,7 +353,7 @@ class granularDelay {
         clock_edge_ = false;
         events_ = false;
         since_edge_ = 0;
-        rng_.Seed(0x6C8E9CF5u);
+        rng_.Seed(kSeed);
         event_type_[0] = event_type_[1] = delayVoice::NONE;
         curIdx = 0;
         nextIdx = 1;

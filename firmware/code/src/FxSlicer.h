@@ -47,6 +47,9 @@ public:
     };
 
     static const size_t kNumPatterns = sizeof(kSlicerPatterns);
+    static const uint32_t kSeed = 0x2545F491u; // its random numbers' at power-on
+    /** For RESEED (MidiControl.h's namespace dev) */
+    inline Rng& Random() { return rng_; }
 
     FX_ONCE void Init(float sample_rate)
     {
@@ -57,7 +60,7 @@ public:
         env_[1].Reset();
         step_ = false;
         skipped_ = 0;
-        rng_.Seed(0x2545F491u);
+        rng_.Seed(kSeed);
 
         for (size_t i = 0; i < kNumFxParams; i++)
             SetParam(i, 0.f);

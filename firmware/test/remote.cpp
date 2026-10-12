@@ -642,6 +642,38 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     if (rc != 0)
         printf("%s\n", out.c_str());
 
+    // the developers' probes (#105): the clock and the looper, a test signal the levels show,
+    // the random numbers reseeded, the battery
+    rc = Remote({"probe"}, out);
+    Check(rc == 0 && Has(out, ", counting none, factor x1")
+              && Has(out, "MIDI       0.00 BPM") && Has(out, "looper     empty")
+              && Has(out, "loop       0 frames"),
+          "remote: probe says the clock and the looper");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
+    rc = Remote({"signal", "sine", "1000", "0.5"}, out);
+    rc |= Remote({"levels"}, out);
+    Check(rc == 0 && Has(out, "AUX L         0.500") && Has(out, "-6.0 dBFS") && Has(out, "mic           0.500")
+              && !Has(out, "line L        0.0000") && Has(out, "effects    freezer 0.00"),
+          "remote: signal plays a sine at half scale where the input was, levels shows it at -6 dBFS");
+    if (rc != 0 || !Has(out, "-6.0 dBFS"))
+        printf("%s\n", out.c_str());
+    rc = Remote({"signal", "off"}, out);
+    rc |= Remote({"levels"}, out);
+    Check(rc == 0 && Has(out, "AUX L         0.0000     silent"), "remote: signal off, the input again");
+    rc = Remote({"signal", "sine", "0"}, out);
+    Check(rc != 0 && Has(out, "1-16383 Hz"), "remote: signal wants a frequency");
+    rc = Remote({"reseed", "12345"}, out);
+    Check(rc == 0 && Has(out, "seed       12345\nchaos      ") && Has(out, "slicer     ")
+              && Has(out, "delay      ") && Has(out, "warble     00003038, 0 draws since"),
+          "remote: reseed sets the random numbers from a seed and counts their draws since");
+    rc = Remote({"battery"}, out);
+    Check(rc == 0 && Has(out, "battery    high (above 3.3 V)") && Has(out, "cable 00000000")
+              && Has(out, "MP2722     status 0x11-0x16: "),
+          "remote: battery says the level and the charger's status, as last read");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
+
     // a script played on the device: the filter's key held, its LED expected as the twin
     // shows it held and let go, with the load
     const std::string off = Hex(SmtLedFull(kFilterKeyLed));

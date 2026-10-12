@@ -144,6 +144,14 @@ enum Sub : uint8_t
     SET = 3,     // GROUP INDEX VALUE(2): as the knob or setting would; -> GROUP INDEX
     BENCH = 4,   // 0 -> its state (Bench::Report); 1 OFFSET(3) -> up to kBenchChunk bytes
                  //    of cpu.txt from there. FRIZZ-bench.bin only
+    PROBE = 5,   // 0 -> the clock and the FX's tempo; 1 -> the looper (firmware/README.md)
+    LEVELS = 6,  // 0 -> the effects' meters (14 bits each); 1 -> flags (kArmed), the VU meter,
+                 //    the compressor's reduction, the peaks since the last ask (Audio)
+    SIGNAL = 7,  // WAVE FREQ(2) LEVEL(2): Audio's test signal in place of the input, 0 off
+    RESEED = 8,  // [SEED(5)]: the effects' random numbers from SEED (0 as at power-on) ->
+                 //    the seed, then chaos's, the slicer's, the delay's and wow & flutter's
+                 //    states (5 each)
+    BATTERY = 9, // -> the level, the charger's debounced bits, the last read, its raw status
 };
 enum Status : uint8_t
 {
@@ -161,6 +169,83 @@ static const uint8_t kGroupSettings = 0x23; // the card's settings, as masterfil
                                             // them, their values as the file has them
 static const uint8_t kRamOnly = 1;          // IDENT's flags: PERSIST 0 is on
 static const size_t kBenchChunk = 32;
+static const uint8_t kArmed = 1;            // LEVELS 1's flags: the peak meters just started
+
+/** SIGNAL's test signal in place of the input, and LEVELS' peak meters: off at power-on, in
+ *  RAM only, until a restart. The audio callback reads `on` once a block, and off it costs
+ *  that; In and Out are out of line, so the callback's own code stays as it was */
+struct Audio
+{
+    enum Wave : uint8_t
+    {
+        OFF,
+        SINE,
+        SAW,
+        NOISE,
+        kNumWaves,
+    };
+    static const size_t kMaxBlock = 48;
+    // the peaks: the input as the engine takes it (mic, AUX L, R), the outputs (headphones
+    // L, R, line L, R), full scale 1
+    static const size_t kPeaks = 7;
+    volatile bool on = false; // the signal or the meters
+    volatile bool metering = false;
+    volatile uint8_t wave = OFF;
+    float inc = 0.f, level = 0.f; // a sample's step of the phase, the amplitude
+    float phase = 0.f;
+    uint32_t noise = 0x9E3779B9u;
+    float peak[kPeaks] = {};
+    float buf[kMaxBlock];
+    const float* in[4];
+
+    /** The input the engine takes: the signal in the mic's and AUX's place, or src */
+    __attribute__((noinline, optimize("Os"))) const float* const* In(const float* const* src, size_t size)
+    {
+        if (wave != OFF && size <= kMaxBlock)
+        {
+            for (size_t i = 0; i < size; i++)
+            {
+                float v;
+                if (wave == SINE)
+                    v = sinf(6.2831853f * phase);
+                else if (wave == SAW)
+                    v = 2.f * phase - 1.f;
+                else
+                {
+                    noise ^= noise << 13;
+                    noise ^= noise >> 17;
+                    noise ^= noise << 5;
+                    v = static_cast<float>(noise >> 8) * (2.f / 16777216.f) - 1.f;
+                }
+                buf[i] = v * level;
+                phase += inc;
+                if (phase >= 1.f)
+                    phase -= 1.f;
+            }
+            in[0] = in[2] = in[3] = buf;
+            in[1] = src[1];
+            src = in;
+        }
+        if (metering)
+            for (size_t c = 0; c < 3; c++)
+                Peak(c, src[c ? c + 1 : 0], size);
+        return src;
+    }
+    /** The outputs' peaks */
+    __attribute__((noinline, optimize("Os"))) void Out(const float* const* out, size_t size)
+    {
+        if (metering)
+            for (size_t c = 0; c < 4; c++)
+                Peak(3 + c, out[c], size);
+    }
+    void Peak(size_t at, const float* x, size_t size)
+    {
+        float p = peak[at];
+        for (size_t i = 0; i < size; i++)
+            p = fmaxf(p, fabsf(x[i]));
+        peak[at] = p;
+    }
+};
 
 /** What chompi_main.cpp knows for IDENT and BENCH */
 struct Info
@@ -172,6 +257,7 @@ struct Info
     bool crc_done = false;
     volatile uint32_t passes = 0;     // MainLoop's
     uint32_t reset_cause = 0;         // RCC_RSR at boot
+    uint32_t seed = 0;                // RESEED's last
     // the bench's answer to BENCH (Bench::Report) into d: its length, or -1 for NOT_YET
     int (*bench)(uint8_t part, uint32_t offset, uint8_t* d) = nullptr;
 };
@@ -429,6 +515,10 @@ public:
 
     /** What IDENT and BENCH answer from, chompi_main.cpp's */
     dev::Info dev;
+    /** SIGNAL's and LEVELS' place in the audio callback */
+    dev::Audio audio;
+    /** The clock, for PROBE */
+    inline const MidiClock& Clock() const { return *clock_; }
     /** MIDI feedback's bytes for the jack: the play page's, sent by MidiOut */
     FeedbackRing feedback_trs;
 

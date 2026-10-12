@@ -218,8 +218,9 @@ minutes). Mounting needs udisks, as any desktop has.
 (`code/src/MidiControl.h`): `state`, `leds`, `load [--every S]` (with the blocks that took
 longer than a block, which crackle), `settings`, `channel N`, `transport on|off`,
 `source auto|trs|usb|internal`, `out off|trs|all`, `scene get|put SLOT FILE`, the developers'
-`ident`, `ram-only`, `get GROUP`, `set GROUP INDEX VALUE` and `bench [--wait] [--out FILE]`
-(below), and `play SCRIPT [--cpu] [--fresh]`, which plays a twin
+`ident`, `ram-only`, `get GROUP`, `set GROUP INDEX VALUE`, `bench [--wait] [--out FILE]`,
+`probe`, `levels`, `signal sine|saw|noise HZ LEVEL` / `signal off`, `reseed [SEED]` and
+`battery` (below), and `play SCRIPT [--cpu] [--fresh]`, which plays a twin
 script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over SysEx at the
 script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs, at the
 brightness the card's `led_brightness` sets (100, 75 or 50 %: the one level that fits every
@@ -269,6 +270,13 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | `03` SET | GROUP INDEX VALUE(2) | GROUP INDEX; applied in MainLoop through the setters the knobs and keys use, and saved as theirs are (unless RAM only) |
 | `04` BENCH | `00` | the bench's state: running, settling, the segment, how many, written, stored, `cpu.txt`'s length (3) |
 | | `01` OFFSET(3) | up to 32 bytes of `cpu.txt` from OFFSET, as it went to the card (status 3 while it runs); FRIZZ.bin answers status 2 |
+| `05` PROBE | `00` | the clock: the source set (0 Auto, 1 TRS, 2 USB, 3 internal), the one counted (0 none, 1 TRS, 2 USB), the factor (0 x1/2, 1 x1, 2 x2), flags (1 a clock counted, 2 a loop sets the effects' tempo, 4 a tempo set, by a clock, a loop or taps, 8 the pulses running backwards, 16 transport followed), its tempo by the factor and as sent (3 each, BPM x 100), the ticks counted (5), how often it locked (3), the effects' tempo (3, x 100) and whole (2), the FX clock's pulse (3) and a loop's pulses (3) |
+| | `01` | the looper: its state (0 empty, 1 recording, 2 playing, 3 paused), flags (1 closing, 2 erase waiting, 4 erasing, 8 can record quantized), length and position in frames (4 each), beats (3), semitones + 64, speed and the speed now (2 each, x 1000 + 2000), rewinds by Start (3) |
+| `06` LEVELS | `00` | the effects' meters, as their keys show them, 0-16383 each, by FxId |
+| | `01` | flags (1: the peak meters just started), the VU meter (2), the compressor's reduction (2, dB x 100), the peaks since the last ask (2 each, 8192 full scale, up to twice it): the input as the engine takes it (mic, AUX L, R), the headphones L, R, the line outs L, R |
+| `07` SIGNAL | WAVE FREQ(2) LEVEL(2) | WAVE. 1 sine, 2 saw, 3 noise at FREQ Hz (1-16383) and LEVEL (16383 full scale) in place of the mic and AUX, from where the engine takes them; `00` alone the input again |
+| `08` RESEED | SEED(5) or — | the seed, then the states (5 each) of chaos's, the slicer's, the delay's and wow & flutter's random numbers, each from its power-on seed xor SEED: 0 is power-on's. Without SEED it only reads |
+| `09` BATTERY | — | the level (0 full, on the cable; 1 above 3.3 V; 2 3-3.3 V; 3 below 3 V), the level the check last read, the check's step (0 resting, 1-2 reading at 3.3 V), 1 if the last read failed, the last 8 reads (2 each, the newest lowest) of the cable (VIN_GD), the battery below the threshold, a legacy cable and the input current limited, then the MP2722's status registers 0x11-0x16 (2 each) |
 
 The groups of GET and SET: `00`-`1F` an effect's knobs by its FxId (`FxParams.h`: 0-3 page 1,
 4-7 page 2), `20` the compressor's, `21` the latches (index by FxId, 0 or 1), `22` VOLUME's
@@ -277,6 +285,16 @@ The groups of GET and SET: `00`-`1F` an effect's knobs by its FxId (`FxParams.h`
 factor, clock source, MIDI out, LED brightness), their values as `frizz_master.txt` has them.
 The groups don't follow the MIDI map (CCs), so a tool keeps working when it changes. SETs
 aren't in the event log: a bug report taken after them won't replay them.
+
+PROBE to BATTERY are for tests without hands or an audio interface. All but SIGNAL and RESEED
+only read: BATTERY answers what the last reads left (the charger isn't asked, its voltage only
+known as above or below 3 V and 3.3 V). SIGNAL and the peak meters live in RAM until FRIZZ
+restarts and cost the audio callback one branch until asked; the first LEVELS starts the
+meters, so `remote.py levels` asks, waits 0.25 s and asks again. RESEED's states let a tool
+count how many numbers each has drawn since the seed (`remote.py reseed`): two runs from the
+same seed draw the same numbers. The reverb's modulation (DaisySP's ReverbSc, vendored) has
+random numbers of its own, which RESEED leaves running on from power-on. Neither is in the
+event log.
 
 **From the card:** copy `build/FRIZZ.bin` to the SD card and power on, as described in
 [`INSTALL.md`](../INSTALL.md). FRIZZ is a `BOOT_SRAM` app: CHOMPI's bootloader copies it from
