@@ -421,6 +421,9 @@ namespace daisy
         inline bool GetRecordArm() { return record_arm; }
         inline bool GetIsEmpty() { return !record && first_record; }
         
+        // the playhead in quarters from the loop start, for a loop with a tempo; the tell counts L and R
+        float GetQuarters() { return looper.GetReadTell() * .5f / loop_sync.quarter; }
+
         float GetPosition() { 
             float tell = static_cast<float>(looper.GetReadTell());
             float size = static_cast<float>(looper.GetReadSize());

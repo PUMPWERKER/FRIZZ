@@ -41,6 +41,8 @@ uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) slot_bounce[kSlotBounce];
 uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) copy_in[SdDma::kBuffer];
 uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) copy_out[SdDma::kBuffer];
 chompi::InterpolatedDelayLine::AudioSample DSY_SDRAM_BSS del_mem[kMaxDelayTime];
+Grains DSY_DTCMRAM_BSS chompi::grains;
+Grains::Frame DSY_SDRAM_BSS grain_mem[Grains::kFrames];
 
 // the heap ends at _eheap: the default _sbrk runs past the end of RAM
 extern "C" uint8_t _sheap[], _eheap[];
@@ -411,6 +413,7 @@ int main(void)
 
     loop_buff.Init(&loop_mem[0], &loop_undo);
     chompi_buff.Init(&chompi_mem[0]);
+    grains.Init(grain_mem);
     engine.Init(hw.seed.AudioSampleRate(), &reverb, &del_mem[0], 
                 &loop_buff, &chompi_buff, 
                 options.record_latch, options.tape_slew_on,

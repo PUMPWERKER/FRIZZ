@@ -20,6 +20,7 @@
 #include "SlotLoader.h"
 #include "Arp.h"
 #include "ArpKnob.h"
+#include "Grains.h"
 #include <algorithm>
 
 using namespace daisy;
@@ -361,6 +362,9 @@ namespace daisy
                 outl[i] = outl[i] * dry_mix + delsig_l * wet_mix;
                 outr[i] = outr[i] * dry_mix + delsig_r * wet_mix;
             }
+
+            // grains, after the delay so its repeats break up too
+            chompi::grains.Process(outl, outr, size);
 
             // reverb, in its own block to optimize SDRAM access
             for(size_t i = 0; i < size; i++)
@@ -1305,6 +1309,16 @@ namespace daisy
         inline float GetFinalComp() { return final_lim_target_; }
 
         inline void SetReverb(float val) { dly_amt_target_ = reverb_amt_target_ = 1.3f * logf(val + 1.f); }
+        // both 0..1, the grains fade the reverb down fast, to a subtle tail by 60%; returns the faded reverb,
+        // the delay feedback follows it
+        float SetReverbGrains(float rev, float grains)
+        {
+            chompi::grains.SetAmount(grains);
+            const float x = fclamp(grains / .6f, 0.f, 1.f);
+            rev *= 1.f - .7f * x * (2.f - x);
+            SetReverb(rev);
+            return rev;
+        }
         float ArpQuarter()
         {
             const float q = DelayQuarter();
@@ -1315,11 +1329,13 @@ namespace daisy
         {
             int stop, key;
             float nn, vel;
-            // a recording ended: the arp's latch ends with it
+            // a recording ended: the arp's latch ends, and with the FX into the loop the freeze
             const bool first = looper.IsFirstRecording(), dub = looper.IsRecording();
             const bool ended = (was_first_ && !first) || (was_dub_ && !dub);
             was_first_ = first;
             was_dub_ = dub;
+            if(ended && fx_pre_loop)
+                chompi::grains.Thaw();
             chompi::arp.Step(size, ArpAllowed(), ArpQuarter(), ended, stop, key, nn, vel);
             if(stop >= 0)
                 StopPlayback(stop);
@@ -1344,6 +1360,20 @@ namespace daisy
             return chompi::beat_clock.Quarter(q) ? q : 0.f;
         }
 
+        // the playhead on the grid DelayQuarter's tempo comes from, in quarters, -1 without one
+        float GridQuarters()
+        {
+            if(!looper.IsFirstRecording() && loop_sync.quarter > 0.f)
+                return looper.IsPlaying() ? looper.GetQuarters() : -1.f;
+            uint32_t beat;
+            float phase;
+            bool midi;
+            // a loop without a tempo: only MIDI clock is a grid
+            if(!chompi::beat_clock.Get(beat, phase, nullptr, &midi) || (!looper.IsFirstRecording() && !midi))
+                return -1.f;
+            return (beat + phase) * chompi::beat_clock.QuartersPerBeat();
+        }
+
         static constexpr int kDelayNotes = 6;
         static float DelayNoteQuarters(int note)
         {
@@ -1355,8 +1385,12 @@ namespace daisy
         static float DelayKnob(float time) { return cbrtf(std::max(0.f, time - 450.f) / (.99f * kMaxDelayTime)); }
         float DelayKnob() const { return DelayKnob(dly_time_target_); }
         static float MaxDelay() { return KnobDelay(1.f); }
-        // the knob sets the reverb too
-        void SetKnobReverb(float knob) { reverb_time_target_ = fclamp(knob, .05f, .97f); }
+        // the knob sets the reverb and the grains too
+        void SetKnobReverb(float knob)
+        {
+            reverb_time_target_ = fclamp(knob, .05f, .97f);
+            chompi::grains.SetSize(knob);
+        }
         // 1% slack, so 1/2 at 60 BPM fits
         static int TopNote(float q)
         {
@@ -1405,6 +1439,7 @@ namespace daisy
             chompi::Clock &c = chompi::beat_clock;
             float &smooth = c.DelayQuarter();
             const float q = DelayQuarter();
+            chompi::grains.SetGrid(0.f, 0.f, -1.f);
             if(q <= 0.f)
             {
                 smooth = 0.f;
@@ -1432,6 +1467,7 @@ namespace daisy
                 c.SetDelayNote(note);
             dly_time_target_ = std::min(DelayNoteQuarters(note) * smooth, MaxDelay());
             SetKnobReverb(DelayKnob());
+            chompi::grains.SetGrid(DelayNoteQuarters(note), smooth, GridQuarters());
         }
 
         inline void SetDelayFeedback(float val) { dly_feedback_target_ = val * .9f; }
@@ -1596,6 +1632,7 @@ namespace daisy
             reverb_amt_ = reverb_amt_target_;
             reverb_time_ = reverb_time_target_;
             warble_.SnapMix();
+            chompi::grains.Snap();
         }
         inline bool IsLooperFirstRecording() { return looper.IsFirstRecording(); };
         inline bool IsLooperRecordArmed() { return looper.GetRecordArm(); };

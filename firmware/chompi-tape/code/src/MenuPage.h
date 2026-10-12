@@ -1064,8 +1064,9 @@ namespace chompi
             enc_values[1][3] = enc_defaults[1][3];
             enc_values[2][3] = enc_defaults[2][3];
 
-            fx_->SetReverb(enc_values[0][3]);
+            fx_->SetReverbGrains(enc_values[0][3], 0.f);
             fx_->SetDelayFeedback(enc_values[0][3]);
+            grains.Thaw();
             fx_->SetSaturate(enc_values[1][3]);
             fx_->SetFilter(enc_values[2][3]);
 

@@ -104,6 +104,7 @@ namespace chompi
     // .00787 ~= what midi was. 1 / 127
     static const float kEncoderFineStep = .003f;
     static const float kEncoderCoarseStep = .01f;
+    static const float kMagicTop = 2.f; // past 1 the magic knob goes into grains
     static const float kRecDim = .7f;
 
     uint8_t led_pth_cache[kNumPthLeds][3]; /**< RGB data */
@@ -147,6 +148,7 @@ namespace chompi
             quantized_pitch_ = !ps_quant;
             split_delay_ = split_delay;
             transport_hold.Init();
+            magic_hold.Init();
 
             for (int knob = 0; knob < 6; knob++)
             {
@@ -231,6 +233,8 @@ namespace chompi
 
             if(knob_page[0] == 2)
                 arp_knob.Update(now);
+            if(knob_page[3] == 0 && magic_hold.Held(now)) // the reverb page, where it shows
+                grains.ToggleFreeze();
 
             if(transport_hold.Held(now))
             {
@@ -411,27 +415,39 @@ namespace chompi
                 {
                     if (page == 0) // reverb / delay
                     {   
+                        // past 1: grains, the LED from blue to magenta
+                        const float cloud = std::max(0.f, (value - 1.f) / (kMagicTop - 1.f));
+                        const float rev = std::min(value, 1.f);
                         if (split_delay_) {
                             if (value < .5) {
-                                fx_->SetReverb(0.f);
+                                fx_->SetReverbGrains(0.f, 0.f);
                                 fx_->SetDelayFeedback((.5f - value) * 2.f);
                             }
                             else {
-                                fx_->SetReverb((value - .5f) * 2.f);
+                                fx_->SetReverbGrains(std::min((value - .5f) * 2.f, 1.f), cloud);
                                 fx_->SetDelayFeedback(0.f);
                             }
 
-                            r = color_triple_xfade(green[0], (green[0] + blue[0]) * .5f, blue[0], value);
-                            g = color_triple_xfade(green[1], (green[1] + blue[1]) * .5f, blue[1], value);
-                            b = color_triple_xfade(green[2], (green[2] + blue[2]) * .5f, blue[2], value);
+                            r = color_triple_xfade(green[0], (green[0] + blue[0]) * .5f, blue[0], rev);
+                            g = color_triple_xfade(green[1], (green[1] + blue[1]) * .5f, blue[1], rev);
+                            b = color_triple_xfade(green[2], (green[2] + blue[2]) * .5f, blue[2], rev);
                         }
                         else {
-                            fx_->SetReverb(value);
-                            fx_->SetDelayFeedback(value);
+                            fx_->SetDelayFeedback(fx_->SetReverbGrains(rev, cloud));
 
-                            r = color_triple_xfade(teal[0], med_blue[0], blue[0], value);
-                            g = color_triple_xfade(teal[1], med_blue[1], blue[1], value);
-                            b = color_triple_xfade(teal[2], med_blue[2], blue[2], value);
+                            r = color_triple_xfade(teal[0], med_blue[0], blue[0], rev);
+                            g = color_triple_xfade(teal[1], med_blue[1], blue[1], rev);
+                            b = color_triple_xfade(teal[2], med_blue[2], blue[2], rev);
+                        }
+                        if (cloud > 0.f) {
+                            r = color_xfade(blue[0], magenta[0], cloud);
+                            g = color_xfade(blue[1], magenta[1], cloud);
+                            b = color_xfade(blue[2], magenta[2], cloud);
+                        }
+                        if (grains.Frozen() && (now / 400) % 2) { // blinks while frozen
+                            r *= .3f;
+                            g *= .3f;
+                            b *= .3f;
                         }
                     }
                     else if (page == 1) // lofi
@@ -790,10 +806,16 @@ namespace chompi
                     knob_page[0] = (knob_page[0] + 1) % (fx_->ArpAllowed() ? knob_num_pages[0] : 2);
                 break;
 
+            case static_cast<uint16_t>(Hardware::SwId::ENC_3_SW): // hold: freeze the grains
+                if(rising)
+                    magic_hold.Press(System::GetNow());
+                else if(magic_hold.Release())
+                    knob_page[3] = (knob_page[3] + 1) % knob_num_pages[3];
+                break;
+
             // encoder clicks, toggle pages
             case static_cast<uint16_t>(Hardware::SwId::ENC_1_SW): // fall through
             case static_cast<uint16_t>(Hardware::SwId::ENC_2_SW): // fall through
-            case static_cast<uint16_t>(Hardware::SwId::ENC_3_SW): // fall through
             {
                 if(!rising)
                 {
@@ -1079,6 +1101,9 @@ namespace chompi
 
             uint8_t page = knob_page[encoderID];
             float old_val = enc_values[page][encoderID];
+            const float top = encoderID == 3 && page == 0 ? kMagicTop : 1.f;
+            if(encoderID == 3) // turned while pressed: no click, no freeze
+                magic_hold.Cancel();
 
             // no CC: enc_values[2][0] is the threshold
             if(encoderID == 0 && page == 2)
@@ -1098,7 +1123,7 @@ namespace chompi
             // overrode this to mean increment vs force knob position (used for CCs)
             if(stepsPerRevolution > 0)
             {
-                enc_values[page][encoderID] = turns / 127.f;
+                enc_values[page][encoderID] = turns * top / 127.f;
             }
             else{
                 float inc = turns * kEncoderCoarseStep;
@@ -1121,7 +1146,7 @@ namespace chompi
             }
 
             // clip
-            enc_values[page][encoderID] = fclamp(enc_values[page][encoderID], 0.f, 1.f);
+            enc_values[page][encoderID] = fclamp(enc_values[page][encoderID], 0.f, top);
 
             if (encoderID == 0 && page == 0)
             {
@@ -1175,7 +1200,7 @@ namespace chompi
             }
 
             if (stepsPerRevolution == 0) {
-                hw_->SendCC(midi_channel, cc_map[page][encoderID], enc_values[page][encoderID] * 127);
+                hw_->SendCC(midi_channel, cc_map[page][encoderID], enc_values[page][encoderID] / top * 127);
             }
 
 
@@ -1242,6 +1267,7 @@ namespace chompi
         void OnFocusLost() override
         {
             transport_hold.Lost();
+            magic_hold.Lost();
             arp_knob.Lost();
         }
 
@@ -1263,7 +1289,7 @@ namespace chompi
         bool switch_state = false;
         bool chompi_key_pressed = false;
         int8_t transport_turns = 0;
-        Hold transport_hold;
+        Hold transport_hold, magic_hold;
         uint32_t transport_flash = 0;
         uint8_t* knob_page;
         bool quantized_pitch_;
