@@ -247,23 +247,39 @@ public:
 
     /** One insert over n samples, with its page 2's Mix, Band and Level (out_[fx]) while
      *  they're Busy, and its meter. The effect's own Process in one place, so it's inlined
-     *  once */
+     *  once. Whether page 2 is busy is read once for the run, and its work is inline here,
+     *  around the effect, sample for sample as before: the busy case at the end, so a chain
+     *  at its defaults runs through as little code as without page 2, and with it busy the
+     *  run's code stays in the I-cache, as the effect's does: the audio callback is bound by
+     *  the I-cache (#51, #142) */
     template <class Fx>
     inline void Insert(size_t fx, Fx& effect, float* l, float* r, size_t n)
     {
+        FxOutput& out = out_[fx];
+        bool busy = OutBusy(fx); // nothing in the audio callback sets it during a run
         for (size_t i = 0; i < n; i++)
         {
             float sl = l[i], sr = r[i];
-            // the busy case out of line and at the end, so a chain at its defaults runs
-            // through as little code as without page 2: the audio callback is bound by the
-            // I-cache (#51)
-            const bool busy = __builtin_expect((OutBusy() & (1u << fx)) != 0, 0);
+            const bool wrap = __builtin_expect(busy, 0);
             bool split = false;
-            if (busy)
-                split = OutBegin(fx, effect.Quiet(), &sl, &sr);
+            if (wrap)
+            {
+                const bool idle = effect.Quiet();
+                split = out.Begin(idle, &sl, &sr);
+                // off and faded out with its knobs at rest: nothing to do until its key comes
+                // on again, which sets it busy again (KeyOn)
+                if (idle && !out.Moving())
+                {
+                    ClearOutBusy(fx);
+                    busy = false;
+                }
+            }
             effect.Process(&sl, &sr);
-            if (busy)
-                OutEnd(fx, split, effect.Fade(), &sl, &sr);
+            if (wrap && !out.End(split, &sl, &sr, effect.Fade()))
+            {
+                ClearOutBusy(fx);
+                busy = false;
+            }
             if (!effect.Idle())
                 Meter(fx, sl + sr);
             l[i] = sl;
@@ -271,33 +287,18 @@ public:
         }
         BENCH_MARK_FX(fx);
     }
-    __attribute__((noinline, cold)) bool OutBegin(size_t fx, bool idle, float* l, float* r)
-    {
-        const bool split = out_[fx].Begin(idle, l, r);
-        // off and faded out with its knobs at rest: nothing to do until its key comes on
-        // again, which sets it busy again (KeyOn)
-        if (idle && !out_[fx].Moving())
-            ClearOutBusy(fx);
-        return split;
-    }
-    __attribute__((noinline, cold)) void OutEnd(size_t fx, bool split, float fade, float* l,
-                                                float* r)
-    {
-        if (!out_[fx].End(split, l, r, fade))
-            ClearOutBusy(fx);
-    }
 
-    /** What goes into a send or the resonator's loop, through its page 2's Band while that's
-     *  Banding and the effect is on (idle: its Idle()) */
-    inline void SendBand(size_t fx, bool idle, float* l, float* r)
+    /** What goes into a send or the resonator's loop, a sample of it, through its page 2's
+     *  Band while that's Banding and the effect is on (idle: its Idle()). busy: whether it's
+     *  Banding, read once for the run (OutBusy(fx)), as Insert's; the Band inline, as
+     *  Insert's page 2 */
+    inline void SendBand(size_t fx, bool& busy, bool idle, float* l, float* r)
     {
-        if (__builtin_expect(!idle && (OutBusy() & (1u << fx)), 0))
-            OutBand(fx, l, r);
-    }
-    __attribute__((noinline, cold)) void OutBand(size_t fx, float* l, float* r)
-    {
-        if (!out_[fx].Band(l, r))
+        if (__builtin_expect(busy && !idle, 0) && !out_[fx].Band(l, r))
+        {
             ClearOutBusy(fx);
+            busy = false;
+        }
     }
 
     /** From the UI or the morph: the key reaches the effect at the next Block */
@@ -335,7 +336,7 @@ public:
         fast_slew_left_ = kFxRecallSlewSamples;
     }
     /** Whether fx's page 2 is part of the chain's work now (out_busy_), for the tests */
-    inline bool OutRunning(size_t fx) const { return OutBusy() >> fx & 1; }
+    inline bool OutRunning(size_t fx) const { return OutBusy(fx); }
     /** 0..1, for the key LEDs */
     inline float GetLevel(size_t fx) { return meter_[fx].GetLastSamp(); }
 
@@ -376,10 +377,11 @@ private:
         Insert(FX_FILTER, filter_, l, r, n);
         Insert(FX_FLANGER, flanger_, l, r, n);
         Insert(FX_PHASER, phaser_, l, r, n);
+        bool res_band = OutBusy(FX_RESONATOR);
         for (size_t i = 0; i < n; i++)
         {
             float tl = l[i], tr = r[i];
-            SendBand(FX_RESONATOR, res_idle >> i & 1, &tl, &tr);
+            SendBand(FX_RESONATOR, res_band, res_idle >> i & 1, &tl, &tr);
             resonator_.Tap(tl, tr, i);
         }
         BENCH_MARK_FX(FX_RESONATOR);
@@ -390,11 +392,12 @@ private:
         // sends: the delay from the inserts' output, the reverb from that plus the delay's
         // return, so the echoes are reverberated. Both returns are added on top.
         float delayl[kFxMaxBlock], delayr[kFxMaxBlock];
+        bool delay_band = OutBusy(FX_DELAY);
         for (size_t i = 0; i < n; i++)
         {
             const float sendl = l[i], sendr = r[i];
-            float inl = sendl, inr = sendr;
-            SendBand(FX_DELAY, delay_.Idle(), &inl, &inr); // what goes in is faded with the key
+            float inl = sendl, inr = sendr; // what goes in is faded with the key
+            SendBand(FX_DELAY, delay_band, delay_.Idle(), &inl, &inr);
             float outl = sendl, outr = sendr; // the return's added to it
             delay_.Process(inl, inr, &outl, &outr);
             delayl[i] = outl;
@@ -403,10 +406,11 @@ private:
                 Meter(FX_DELAY, outl - sendl + outr - sendr);
         }
         BENCH_MARK_FX(FX_DELAY);
+        bool reverb_band = OutBusy(FX_REVERB);
         for (size_t i = 0; i < n; i++)
         {
             float inl = delayl[i], inr = delayr[i];
-            SendBand(FX_REVERB, reverb_.Idle(), &inl, &inr);
+            SendBand(FX_REVERB, reverb_band, reverb_.Idle(), &inl, &inr);
             float outl = delayl[i], outr = delayr[i];
             reverb_.Process(inl, inr, &outl, &outr);
             l[i] = outl;
@@ -420,6 +424,7 @@ private:
 
     inline void Meter(size_t fx, float sum) { meter_[fx].Process(sum * kFxMeterScale); }
     inline uint16_t OutBusy() const { return out_busy_.load(std::memory_order_relaxed); }
+    inline bool OutBusy(size_t fx) const { return OutBusy() >> fx & 1; }
     inline void ClearOutBusy(size_t fx)
     {
         out_busy_.fetch_and(static_cast<uint16_t>(~(1u << fx)), std::memory_order_relaxed);
@@ -429,7 +434,7 @@ private:
      *  effect has it. From quiet, its meter and its Band start afresh (a send's isn't run while it's
      *  idle, so it kept what it held when the key went off: a decaying offset that the delay
      *  repeated); and its page 2 runs again if it's off its defaults (an insert that's off
-     *  leaves it out, OutBegin) */
+     *  leaves it out, Insert) */
     inline void KeyOn(size_t fx)
     {
         if (fx >= kNumSoundFx)

@@ -38,7 +38,8 @@ LEDs the device shows, dimmed as the card's led_brightness (the settings page) h
 ends. What only the twin has (the card, the input, the mic, AUX's jack, the battery, power-on)
 is skipped, and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
 and prints the worst, the way to try a scenario for crackles on FRIZZ.bin itself rather than on
-the bench's build. A bug report (/FRIZZ/bug-N.txt) plays too, from where the device is.
+the bench's build; right after a start it waits (3 s at most) until FRIZZ counts its load, so the
+start isn't in the worst. A bug report (/FRIZZ/bug-N.txt) plays too, from where the device is.
 
 A script plays on FRIZZ as it stands, with what the scripts before it left in RAM since it
 started (the effect selected, its knobs, the page, the loop): a twin script starts from
@@ -645,7 +646,22 @@ def play(f, path, cpu):
 
     threads = [threading.Thread(target=clock_thread, daemon=True)]
     if cpu:
-        load(f)  # from here on
+        # from here on, once FRIZZ's start is over: right after one it answers 0 / 0 (no block
+        # yet), and its first blocks cost ~6 points more for ~0.3 s, which the worst would
+        # count (#147)
+        until = time.monotonic() + 3
+        starting = False
+        while load(f)[:2] == (0.0, 0.0):
+            starting = time.monotonic() < until
+            if not starting:
+                print("load: still 0 after 3 s (the bench, or FRIZZ starting): "
+                      "the worst may count its start")
+                break
+            time.sleep(0.1)
+        if starting:
+            time.sleep(0.5)
+            load(f)
+        start = time.monotonic()
         threads.append(threading.Thread(target=cpu_thread, daemon=True))
     for t in threads:
         t.start()
