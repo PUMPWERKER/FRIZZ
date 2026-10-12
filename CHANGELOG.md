@@ -299,6 +299,12 @@ what FRIZZ does.
   unplugged mid-message) swallowed every note, CC, program change and Song Position after it
   until the next SysEx ended, so a note held then hung. Now the next message ends it, as MIDI
   has it; the clock was never affected.
+- **MIDI out: a new loop's Start reaches every port whose gear didn't get one** (#166): with
+  a Start coming in on the TRS jack and passed on only over USB, a loop recorded then sent the
+  jack's gear no Start, as if it already played. Now FRIZZ keeps track port by port.
+- **MIDI out over USB keeps the transport while FRIZZ writes the card** (#166): a scene saved
+  while the loop paused or played on could hold USB up long enough that its Stop, or its Song
+  Position and Continue, were dropped with the ticks. Now ticks are dropped first.
 - **With the mix at the loop alone, none of the input is left** (#168): a trace of it, about
   86 dB down, stayed on the master; the headphone feed likewise settles exactly on the master
   or the input now.
