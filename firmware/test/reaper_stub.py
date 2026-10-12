@@ -16,7 +16,7 @@ comes in on its MIDI device, which here is the twin's USB pseudo-terminal (the d
   - synchronized to its input (PLAN.sync, a project with SMPTESYNC; reaper.ini's
     midiouts_clock=0), as REAPER 7 was seen to be on the device: it sends nothing of its own,
     waits for a Start (a clock alone doesn't start it), then plays on the ticks that come in,
-    24 a beat in its own beats whatever its tempo; Stop stops it, Song Position puts it there,
+    24 a beat in its own beats whatever its tempo; Stop pauses it, Song Position puts it there,
     Continue plays on from there. (REAPER holds still for a second first, seeking ahead, and
     varies its speed to keep up only within about half to twice its tempo: not here.)
 It checks reaper.py's logic, not REAPER.
@@ -65,6 +65,7 @@ class Stub:
         self.tracing = False
         self.sync = None  # SMPTESYNC's flags and input, synchronized
         self.ticks = 0  # synchronized: the play position in ticks, as they came in
+        self.paused = False  # synchronized: stopped by a Stop (REAPER's play state 2)
         if plan.get("sync"):
             with open(plan["sync"]) as f:
                 m = re.search(r"SMPTESYNC (\d+) \S+ \S+ \S+ \S+ \S+ (\d+)", f.read())
@@ -96,15 +97,19 @@ class Stub:
             self.write(msg)
         if self.sync:
             if msg[0] == START:
-                self.ticks, self.playing = 0, True
+                self.ticks, self.playing, self.paused = 0, True, False
             elif msg[0] == CONTINUE:
-                self.playing = True
+                self.playing, self.paused = True, False
             elif msg[0] == STOP:
-                self.playing = False
+                self.playing, self.paused = False, True
             elif msg[0] == TICK and self.playing:
                 self.ticks += 1
             elif msg[0] == 0xF2 and len(msg) == 3:
                 self.ticks = (msg[1] | msg[2] << 7) * 6
+
+    def state(self):
+        """REAPER's play state: 1 playing, 2 paused, 0 stopped"""
+        return 1 if self.playing else 2 if self.paused else 0
 
     # ---- the transport ----
     def pos(self, now=None):
@@ -213,7 +218,7 @@ class Stub:
         elif name == "trace":
             self.tracing = w[2] == "on"
         p = self.pos()
-        self.log("cmd %s %s pos %.4f %.4f state %d", cid, name, p * 60. / self.bpm, p, 1 if self.playing else 0)
+        self.log("cmd %s %s pos %.4f %.4f state %d", cid, name, p * 60. / self.bpm, p, self.state())
         return None if name == "quit" else True
 
     def main(self):
@@ -254,8 +259,7 @@ class Stub:
                 pending.pop(0)
             if self.tracing:
                 p = self.pos()
-                self.log("pos %.4f %.4f state %d rate 1.0000 bpm %.3f", p * 60. / self.bpm, p,
-                         1 if self.playing else 0, self.bpm)
+                self.log("pos %.4f %.4f state %d rate 1.0000 bpm %.3f", p * 60. / self.bpm, p, self.state(), self.bpm)
             time.sleep(.03)
 
 

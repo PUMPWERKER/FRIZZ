@@ -416,7 +416,8 @@ tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouc
 ```
 
 - **One REAPER per audio mode** (`--audio jack,dummy`): the first runs every case, the last
-  the jitter again and `daw-ccreset` with REAPER's preferences as they come. About 6 minutes;
+  the jitter again and `daw-ccreset` with REAPER's preferences as they come, then the synced
+  one below. About 7 minutes;
   `--seconds` sets the jitter's window (30 s).
 - **REAPER has FRIZZ's USB node to itself** while it runs, so remote.py and flash.py can't
   reach FRIZZ meanwhile. The tool sends FRIZZ's SysEx through REAPER instead (a command file
@@ -442,11 +443,12 @@ tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouc
   `reaper.lua` opens first and reads back (`projsmptesync` 5: on, and start playing on a valid
   clock; `projsmpteinput` 4223: MIDI clock and Song Position from all inputs). FRIZZ at 100
   tapped, a free loop of 4 beats, MIDI out on TRS and USB: REAPER starts with the loop's
-  Start on its beat 1, its beats in step with the loop's, stops on a pause and goes on at
-  PLAY's Song Position, and follows the clock factor. REAPER keeps its own tempo (120) and
+  Start on its beat 1, its beats in step with the loop's, pauses on a pause (play state 2)
+  and goes on at PLAY's Song Position, and follows the clock factor. REAPER keeps its own tempo (120) and
   play rate (1.0) and varies its speed to keep its beats on the clock's, holding still about
-  a second first (it seeks 1 s ahead), and only within about half to twice its tempo: beyond
-  (x1/2 against its 120, 3.3x) it goes in jumps, so x1/2 is judged with its project at 60.
+  a second first (it seeks 1 s ahead), and only within about half to twice its tempo (seen
+  smooth at 0.8x and 1.6x): x1/2 against its 120 (0.4x) goes in jumps, as did x2 against a
+  project at 60 (3.3x, a try by hand), so x1/2 is judged with its project at 60.
 - `test/reaper.cpp` runs it on the twin with `test/reaper_stub.py` in REAPER's place, and
   `REAPERCHECK="--cases ID -v" test/unit.sh reaper` plays it there once.
 

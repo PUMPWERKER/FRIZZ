@@ -848,6 +848,8 @@ def moves_from(d, t0, timeout=4.):
 
 
 def stopped_from(d, t0, timeout=4.):
+    """When REAPER's trace first shows it not playing (stopped, or paused: synced, a Stop
+    pauses it) from t0 on; None"""
     end = time.perf_counter() + timeout
     while time.perf_counter() < end:
         got = next((now for now, _, _, state, _, _ in d.traced(t0) if not state & 1), None)
@@ -864,7 +866,7 @@ SETTLE = 2.  # s from REAPER playing to judging it: it holds still a second firs
 @case("daw-follows", "7: MIDI out on TRS and USB into a DAW synced to external clock: the DAW "
       "follows the loop (#73): REAPER synced to FRIZZ's clock and Song Position (its own clock "
       "out off) starts with the loop on its beat 1, plays at its tempo and in step with it, "
-      "stops on pause, goes on where PLAY's Song Position says, follows the clock factor",
+      "pauses with FRIZZ, goes on where PLAY's Song Position says, follows the clock factor",
       synced=True)
 def daw_follows(r, d):
     r.setting(clock_source=SOURCES["internal"], midi_out=OUTS["all"], clock_factor=100)
@@ -940,9 +942,9 @@ def daw_follows(r, d):
     r.tap(PLAY)
     t_stop, _ = first_after(usb, STOP, tp, 1.)
     halted = stopped_from(d, t_stop or tp)
-    r.check("PLAY: FRIZZ paused, Stop; REAPER stops", t_stop is not None and halted is not None,
+    r.check("PLAY: FRIZZ paused, Stop; REAPER pauses", t_stop is not None and halted is not None,
             "Stop %s, REAPER %s" % ("sent" if t_stop else "none",
-                                    "stopped %.0f ms after" % ((halted - (t_stop or tp)) * 1000) if halted else "plays on"),
+                                    "paused %.0f ms after" % ((halted - (t_stop or tp)) * 1000) if halted else "plays on"),
             "both")
     time.sleep(.8)
     tr = time.perf_counter()
@@ -995,7 +997,7 @@ def daw_follows(r, d):
     r.tap(PLAY)
     t_stop, _ = first_after(usb, STOP, tp, 1.)
     halted = stopped_from(d, t_stop or tp)
-    r.check("paused again: REAPER stops", halted is not None,
+    r.check("paused again: REAPER pauses", halted is not None,
             "%.0f ms after the Stop" % ((halted - (t_stop or tp)) * 1000) if halted else "plays on", "it stops")
     if trs is not None:
         def transport(log):
