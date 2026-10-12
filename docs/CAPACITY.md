@@ -161,8 +161,9 @@ into their callers), and running code from QSPI flash (slow, and it's the bootlo
 so the callback is bound by it: every byte on that path costs, even code that is only
 skipped. The FX chain and the compressor therefore run a block at a time (#136): each
 effect's loop over the block's 24 samples before the next effect's, so its code is fetched
-once a block rather than once a sample (`FxChain::Process`). That took the heavy bench
-segments down by about 15 points (#21's research). Page 2's wrapper cost ~6 points of "everything" at its defaults until the chain
+once a block rather than once a sample (`FxChain::Process`). That took the bench's
+`everything` from 92.0 / 105.9 % (mean / max) to 73.1 / 83.2 and idle from 40.3 to 33.2, and
+`fader.txt`'s worst block from 100 to 84 % (#136, measured against `main` in one hold). Page 2's wrapper cost ~6 points of "everything" at its defaults until the chain
 skipped it with a bitmask and moved the busy case out of line (`FxChain::Insert`,
 `__attribute__((cold))`). Rare paths belong out of line; but a small change also shifts the
 layout, by ±2.5 points either way, so measure each one. The play page's `-Os` (#86) is such a
