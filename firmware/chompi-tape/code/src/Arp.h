@@ -23,7 +23,7 @@ namespace chompi
             pattern_ = 0;
             octaves_ = 1;
             latch_ = latched_ = clear_ = false;
-            first_ = recording_ = grid_ = false;
+            grid_ = false;
             count_ = drops_ = 0;
             playing_ = -1;
             start_ = false;
@@ -91,12 +91,11 @@ namespace chompi
 
         int Drop() { return drops_ ? drop_[--drops_] : -1; }
 
-        // quarter: tempo without a grid; first, recording: looper state
-        void Step(size_t size, bool allowed, float quarter, bool first, bool recording, int &stop, int &key, float &nn,
-                  float &vel)
+        // quarter: tempo without a grid; ended: the looper's first recording or an overdub just ended
+        void Step(size_t size, bool allowed, float quarter, bool ended, int &stop, int &key, float &nn, float &vel)
         {
             stop = key = -1;
-            Housekeeping(allowed, first, recording);
+            Housekeeping(allowed, ended);
             if(!On() || !count_)
             {
                 stop = playing_;
@@ -146,12 +145,10 @@ namespace chompi
             bool down;
         };
 
-        void Housekeeping(bool allowed, bool first, bool recording)
+        void Housekeeping(bool allowed, bool ended)
         {
-            if((first_ && !first) || (recording_ && !recording))
+            if(ended)
                 latch_ = false;
-            first_ = first;
-            recording_ = recording;
             if(latch_ != latched_)
             {
                 latched_ = latch_;
@@ -316,7 +313,7 @@ namespace chompi
         Key keys_[kMaxKeys];
         int8_t drop_[kMaxKeys];
         int8_t count_, drops_, playing_;
-        bool latched_, start_, first_, recording_;
+        bool latched_, start_;
 
         int8_t seen_note_;
         bool grid_;

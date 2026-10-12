@@ -236,6 +236,7 @@ namespace daisy
             chompi_writer.Init(chompi_buff);
             record = false;
             record_latch = latch;
+            was_first_ = was_dub_ = false;
 
             SetVoiceMode(VoiceMode::JAMMI);
             SetBank(0);
@@ -1314,8 +1315,12 @@ namespace daisy
         {
             int stop, key;
             float nn, vel;
-            chompi::arp.Step(size, ArpAllowed(), ArpQuarter(), looper.IsFirstRecording(),
-                             looper.IsRecording(), stop, key, nn, vel);
+            // a recording ended: the arp's latch ends with it
+            const bool first = looper.IsFirstRecording(), dub = looper.IsRecording();
+            const bool ended = (was_first_ && !first) || (was_dub_ && !dub);
+            was_first_ = first;
+            was_dub_ = dub;
+            chompi::arp.Step(size, ArpAllowed(), ArpQuarter(), ended, stop, key, nn, vel);
             if(stop >= 0)
                 StopPlayback(stop);
             for(int k; (k = chompi::arp.Drop()) >= 0;)
@@ -2001,6 +2006,7 @@ namespace daisy
 
 
         bool record, record_latch;
+        bool was_first_, was_dub_; // looper state in the last block
         bool input_monitor;
         uint8_t rec_wraps_ = 0;
         float rec_wait_ = 0.f; // threshold, 0 once recording
