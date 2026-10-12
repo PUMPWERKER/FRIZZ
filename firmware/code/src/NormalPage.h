@@ -377,21 +377,13 @@ namespace chompi
                 if (rising)
                 {
                     keys_.Used();
-                    vol_down_ = true;
-                    vol_shift_ = Shift();
-                    if (vol_shift_)
+                    const bool shift = Shift();
+                    VolumePressed(true, shift);
+                    if (shift)
                         SetMix(LoopExists() ? 1.f : 0.f);
                 }
-                else
-                {
-                    // a release whose press the boot page had picks no page
-                    if (vol_down_ && !vol_shift_)
-                    {
-                        page_ = (page_ + 1) % kNumPages;
-                        page_flash_.Start(System::GetNow(), (page_ + 1) * 2 * kSignalBlinkMs);
-                    }
-                    vol_down_ = false;
-                }
+                else if (VolumePressed(false))
+                    ShowVolumePage((page_ + 1) % kNumPages, System::GetNow());
                 return true;
             }
             if (!rising)
@@ -1196,10 +1188,7 @@ namespace chompi
                 if (index == 0)
                     SetOutGain(value);
                 else if (index == 1)
-                {
-                    SetInGain(value); // as VOLUME's page 2: to the card
-                    MasterChanged(System::GetNow());
-                }
+                    TurnInGain(value, System::GetNow()); // as VOLUME's page 2: to the card
                 else if (index == 2)
                     SetMix(value);
                 else
@@ -1426,21 +1415,46 @@ namespace chompi
             }
         }
 
+        /** VOLUME turned on the play page: its page's, SHIFT + turn the mix */
         void VolumeTurned(float detents)
+        {
+            if (Shift())
+                SetMix(mix_ + detents * kMixStep);
+            else
+                VolumeTurnedOn(detents, page_, System::GetNow());
+        }
+        /** VOLUME turned on a page, the play page's or the settings page's */
+        void VolumeTurnedOn(float detents, uint8_t page, uint32_t now)
         {
             const float inc = detents * kVolumeStep;
 
-            if (Shift())
-                SetMix(mix_ + detents * kMixStep);
-            else if (page_ == kOutGainPage)
+            if (page == kOutGainPage)
                 SetOutGain(out_gain_ + inc);
-            else if (page_ == kInGainPage)
-            {
-                SetInGain(settings_.InGain() + inc);
-                MasterChanged(System::GetNow());
-            }
+            else if (page == kInGainPage)
+                TurnInGain(settings_.InGain() + inc, now);
             else
                 SetHpCue(hp_cue_ - detents * kHpCueStep); // left towards the dry input
+        }
+        /** VOLUME's press going down (shift: as SHIFT + press) or up. True on the release
+         *  that picks the next page: not after SHIFT + press, nor after a press the boot page
+         *  had */
+        bool VolumePressed(bool down, bool shift = false)
+        {
+            if (down)
+            {
+                vol_down_ = true;
+                vol_shift_ = shift;
+                return false;
+            }
+            const bool next = vol_down_ && !vol_shift_;
+            vol_down_ = false;
+            return next;
+        }
+        /** VOLUME on page: its number blinks */
+        void ShowVolumePage(uint8_t page, uint32_t now)
+        {
+            page_ = page;
+            page_flash_.Start(now, (page_ + 1) * 2 * kSignalBlinkMs);
         }
 
         /** A tempo tap: with a loop, it refits the loop's beats; without one, it sets the
@@ -1479,6 +1493,12 @@ namespace chompi
             settings_.SetInGain(gain, keep);
             gain_turned_ = System::GetNow();
         }
+        /** The input gain by hand or SysEx: for the card, written as the settings are */
+        void TurnInGain(float gain, uint32_t now)
+        {
+            SetInGain(gain);
+            MasterChanged(now);
+        }
 
         /** VOLUME's page on the settings page: 1 or 2, page 3 shown as 1 there */
         inline uint8_t SettingsVolumePage() const
@@ -1490,33 +1510,16 @@ namespace chompi
         void SettingsVolumeTurned(int16_t detents)
         {
             vol_touched_ = System::GetNow();
-            if (Shift() || settings_.ShiftHeld())
-                return;
-            if (SettingsVolumePage() == kInGainPage)
-            {
-                SetInGain(settings_.InGain() + detents * kVolumeStep);
-                MasterChanged(vol_touched_);
-            }
-            else
-                SetOutGain(out_gain_ + detents * kVolumeStep);
+            if (!Shift() && !settings_.ShiftHeld())
+                VolumeTurnedOn(detents, SettingsVolumePage(), vol_touched_);
         }
         /** VOLUME pressed on the settings page: on its release, page 1 or 2, unless it was SHIFT
          *  + press (the bug report's hold, SettingsPage::Held) */
         void SettingsVolumePressed(bool down, uint32_t now)
         {
             vol_touched_ = now;
-            if (down)
-            {
-                vol_down_ = true;
-                vol_shift_ = Shift() || settings_.ShiftHeld();
-                return;
-            }
-            if (vol_down_ && !vol_shift_)
-            {
-                page_ = SettingsVolumePage() == kInGainPage ? kOutGainPage : kInGainPage;
-                page_flash_.Start(now, (page_ + 1) * 2 * kSignalBlinkMs);
-            }
-            vol_down_ = false;
+            if (VolumePressed(down, down && (Shift() || settings_.ShiftHeld())))
+                ShowVolumePage(SettingsVolumePage() == kInGainPage ? kOutGainPage : kInGainPage, now);
         }
 
         /** The input's meter while page 2 shows it: the engine's peaks, falling back slowly */
