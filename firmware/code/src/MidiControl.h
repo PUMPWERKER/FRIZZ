@@ -687,8 +687,9 @@ private:
                     && !Push(cc == kMorphCC ? Event::MORPH : Event::DROP,
                              static_cast<uint8_t>(v | morph_bars_ << 3))))
                 return false;
+            // one past the scenes re-arms: logged too, so a replay morphs again as here (#166)
             last = v;
-            return v < kNumSlots;
+            return true;
         }
         case kMorphBarsCC:
             morph_bars_ = v < 1 ? 1 : (v > kMorphBarsMax ? kMorphBarsMax : v);

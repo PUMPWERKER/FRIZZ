@@ -958,6 +958,7 @@ namespace chompi
                 d[n++] = group;
                 const size_t count_at = n++;
                 uint16_t values[16];
+                static_assert(kNumFxParams <= 16 && kNumFx <= 16 && sizeof(masterfile::kLines) / sizeof(masterfile::kLines[0]) <= 16, "DevValues' groups fit");
                 const size_t count = DevValues(group, values);
                 status = count ? OK : BAD;
                 for (size_t i = 0; i < count; i++)

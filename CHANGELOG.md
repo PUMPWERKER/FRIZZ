@@ -336,6 +336,8 @@ what FRIZZ does.
 - **MIDI out: a new loop's Start reaches every port whose gear didn't get one** (#166): with
   a Start coming in on the TRS jack and passed on only over USB, a loop recorded then sent the
   jack's gear no Start, as if it already played. Now FRIZZ keeps track port by port.
+- **A bug report keeps CC 3 and CC 83 past the scenes** (#166): sent between two morphs to the
+  same scene, it lets the second go, but the report left it out, so its replay didn't morph.
 - **MIDI out over USB keeps the transport while FRIZZ writes the card** (#166): a scene saved
   while the loop paused or played on could hold USB up long enough that its Stop, or its Song
   Position and Continue, were dropped with the ticks. Now ticks are dropped first.

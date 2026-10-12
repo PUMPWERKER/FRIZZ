@@ -439,6 +439,30 @@ int main()
         Check(line == "midi F0 7D 43 48 14 00 00 F7", "sysex-log: the switch's SysEx logged with its one byte, the rest 0");
     }});
 
+    // CC 3 or 83 past the scenes takes nothing, but lets the same scene come again: a bug
+    // report keeps it, so its replay morphs again as FRIZZ did (#166)
+    cases.push_back({"rearm-log", [] {
+        RunMs(kReadyMs);
+        Usb({kCC, 3, 2, kCC, 3, 127, kCC, 83, 1, kCC, 83, 100});
+        RunMs(100);
+        SetToggle(true); // the bug report: SHIFT + VOLUME held 2 s on the settings page
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(2500);
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(300);
+        SetToggle(false);
+        RunMs(1000);
+        const std::string log = CardFiles()["/FRIZZ/bug-1.txt"];
+        auto has = [&](const char* line) { return log.find(line) != std::string::npos; };
+        Report("rearm-log: CC 3 127 %s, CC 83 100 %s", has("usb BF 03 7F") ? "logged" : "not", has("usb BF 53 64") ? "logged" : "not");
+        Check(has("usb BF 03 02") && has("usb BF 03 7F"), "rearm-log: CC 3's re-arm (127) in the bug report");
+        Check(has("usb BF 53 01") && has("usb BF 53 64"), "rearm-log: CC 83's re-arm (100) too");
+    }});
+
     // a host that sends its ticks two at a time (in one USB packet), started once FRIZZ is up:
     // whichever tick of a pair it locks on, it follows the clock's tempo, not half of it (#92)
     cases.push_back({"pairs-late", [] {
