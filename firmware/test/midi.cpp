@@ -2,7 +2,7 @@
 // virtual CHOMPI: clock ticks among other messages and inside them, the messages it ignores,
 // rubbish, and the two inputs, the jack and USB: which one locks, and when the other takes
 // over; and what MidiControl.h makes of what comes: (N)RPN turning no knob, a key tapped within
-// a block, a Song Position after a program change, FRIZZ's SysEx in a bug report. Each case on a fresh device. Run by unit.sh midi.
+// a block, a Song Position after a program change, the input's CCs (#177), FRIZZ's SysEx in a bug report. Each case on a fresh device. Run by unit.sh midi.
 #include "timing.h"
 #include "twin.h"
 
