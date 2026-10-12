@@ -292,6 +292,20 @@ what FRIZZ does.
   "Bug reports".
 - **FRIZZ starts up a quarter of a second faster:** it no longer clears the loop's 32 MB of
   memory at power-on, which a loop never plays before it has recorded it.
+- **The delay's and reverb's Level is on page 2's knob 4, as every effect's** (#172), on the
+  same scale: off at the bottom, then -36 dB to +12 dB, and 0 dB at first, so the delay and
+  reverb are heard from the first press of their key. Ducking moves to page 1's knob 4, where
+  the level was. Knob 4's LED on page 2 still shows their return, now as bright as Level
+  turns it. Saved scenes come back sounding as saved: their level moves to page 2 at the same
+  loudness in dB (below -36 dB off), their ducking to page 1. **Over MIDI**, the CCs follow
+  the knobs: on the delay's and reverb's channels (12 and 13) the level is now **CC 21**, as on
+  every effect, and CC 17 is ducking; automation written for CC 17 turns ducking now.
+- **The freezer's roll is played by hand** (#173): knob 3 divides the length, off, 1/2, 1/4,
+  1/8 and 1/16 of it (no shorter than 1/64 bar), each step taking at the start of the next
+  repeat so the repeats stay on the grid. It no longer halves the loop by itself after a
+  number of repeats: the knob is the roll, and back to off is the whole length again in one
+  move. A capture with the roll still on, say, 1/4 repeats a quarter of the length from the
+  start. Saved scenes keep the roll's step on the knob.
 
 ### Fixed
 
@@ -404,6 +418,10 @@ what FRIZZ does.
   speed. It now jumps back to the live sound in a short crossfade and plays on slowed.
 - **A MIDI clock that sends its ticks two at a time** (some DAWs over USB) no longer locks
   FRIZZ to half its tempo when it starts while FRIZZ is already running (#92).
+- **A scene file from a newer FRIZZ** (or one whose layout line was edited into something
+  that isn't a number) is no longer read as if it were this version's, with knobs in the
+  wrong places, and then overwritten by the next save (#168). It's kept: the next save
+  moves it to `frizz_scenes.bak`, as for any scene file FRIZZ can't read.
 
 ## v0.11 (2026-10-10)
 

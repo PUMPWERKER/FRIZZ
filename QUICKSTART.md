@@ -85,7 +85,7 @@ effects you've latched out at random and scrambles the loop's steps (see
 - **Knobs 1-4:** shape the effect whose key you pressed or picked last. Their LEDs show the
   settings; a dark knob does nothing for that effect. The knobs follow one pattern: 1 is the
   main control, 2 the feedback, 3 the tone or colour, 4 a setting of the effect's own, or a
-  send's level (where an effect has no such setting, it puts another one there).
+  send's ducking (where an effect has no such setting, it puts another one there).
 - **SHIFT + turn a knob:** jump in big steps: notes, octaves or musical intervals where the
   setting has them, 10% otherwise.
 - **SHIFT + press a knob:** reset that setting.
@@ -99,9 +99,10 @@ effects you've latched out at random and scrambles the loop's steps (see
   with knob 4.
 
 Every effect starts silent or nearly so: one knob brings it in. That's knob 1 on most, knob 2
-(feedback) on the resonator, knob 3 (amount, depth) on the flanger and the phaser and knob 4
-(level) on the delay and reverb. The freezer, slicer and tape stop work from the first press: the freezer repeats
-a whole bar, the slicer pumps gently and the tape stop stops.
+(feedback) on the resonator and knob 3 (amount, depth) on the flanger and the phaser. The
+freezer, slicer, tape stop, delay and reverb work from the first press: the freezer repeats a
+whole bar, the slicer pumps gently, the tape stop stops, and the delay and reverb throw
+echoes and a room (their level is page 2's knob 4, as every effect's).
 
 **Master compressor:** press the last white key, and knobs 1-4 set the compressor on the
 master out: threshold (off at first), ratio, attack and release; press a knob for its mix,
@@ -117,7 +118,7 @@ Things to try first:
 
 - **Freezer (1st key)** on a beat: hold SHIFT, tap the key, and keep holding SHIFT while you
   turn knob 1 down five clicks to 1/8 (without SHIFT, a step takes three clicks). It grabs that much from the moment you press and repeats it while you hold the
-  key. Turn knob 3 for a roll that speeds up.
+  key. Turn knob 3 right a click or three at a time for a roll: each step halves the repeat.
 - **Shifter (2nd key):** hold SHIFT, tap the key, and with SHIFT still held turn knob 1 up two
   clicks for a fifth, then hold the key to hear it.
 - **Resonator (8th key)** with the crusher or the shifter latched: the ringing goes through them on
@@ -126,8 +127,8 @@ Things to try first:
   its resonance. Turn knob 1 right past the centre (its LED turns green) and the sweep locks
   to the tempo, 1/16 first, slower as you go on. With the resonator latched too, the sweep
   moves through its ringing.
-- **Delay + reverb (the 12th and 13th keys):** turn up their knob 4, then tap them to throw echoes and
-  tails onto single notes.
+- **Delay + reverb (the 12th and 13th keys):** tap them to throw echoes and tails onto single
+  notes.
 - **Tape stop (11th key)** with the delay or reverb latched: hold it on a beat and the music
   winds down over half a bar while the tails ring on. Let go and it spins back up.
 

@@ -1,0 +1,63 @@
+# The delay and the reverb (#172) on a sine: each latched at its defaults, heard at once; page
+# 2's knob 4, its Level, down and back up to 0dB; page 1's knob 4, its Ducking, up; the
+# reverb's pre-delay up and back to 0, where it switches off (#167); then off, the tails ringing
+# out. Over MIDI, CC 21 on the delay's channel (12) sets its Level, CC 17 its Ducking. Nothing
+# is saved. (turn: 4 is knob 1, 1-3 knobs 2-4)
+input sine 220 0.3
+at 6000
+# the delay latched at its defaults
+down KEY_12
+wait 80
+tap KEY_26
+up KEY_12
+wait 1500
+# page 2: Level down 12dB and back
+tap ENC_4_SW
+wait 300
+turn 3 -25
+wait 1000
+turn 3 25
+wait 1000
+# page 1: Ducking up and back off
+tap ENC_4_SW
+wait 300
+turn 3 50
+wait 1500
+turn 3 -50
+wait 500
+# over MIDI: Level and Ducking on its channel
+midi BB 15 40
+midi BB 11 60
+wait 1000
+midi BB 15 60
+midi BB 11 00
+wait 500
+# page 1: random at its centre, white; Ducking at 0, the delay's first colour
+expect led pth 3 fdfdfd
+expect led pth 4 00fd00
+# the reverb latched at its defaults, the delay into it
+down KEY_13
+wait 80
+tap KEY_26
+up KEY_13
+wait 1500
+# page 2: pre-delay up to 250ms, Level down and back; the pre-delay back to 0
+tap ENC_4_SW
+wait 300
+turn 1 100
+wait 1500
+turn 3 -25
+wait 1000
+turn 3 25
+wait 500
+turn 1 -100
+wait 1500
+# page 2: freeze and the pre-delay at 0, Band at its centre
+expect led pth 1 00d1fd
+expect led pth 2 00d1fd
+expect led pth 3 fdfdfd
+# both off: the tails ring out
+tap KEY_12
+wait 100
+tap KEY_13
+wait 4000

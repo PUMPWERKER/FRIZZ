@@ -3,6 +3,7 @@
  */
 #pragma once
 #include "FxCommon.h"
+#include "FxOutput.h"
 #include "granularDelay.h"
 #include "TempoClock.h"
 
@@ -10,11 +11,13 @@ namespace chompi
 {
 
 /** TEMPO's tempo-synced delay (granularDelay.h) as a send.
- *  Params: 0 division (9 steps), 1 feedback, 2 random (bipolar, 0.5 = off), 3 level; page 2:
- *  4 freeze (the input shut and the loop's gain up to exactly 1, so the buffer loops; TEMPO's
- *  buffer lock, by degrees; no random events while frozen), 5 damping (bipolar: left a low cut, right a high cut in the
- *  feedback, the SP-404MK2's L DAMP and H DAMP; the centre off), 7 ducking (the echoes duck
- *  under what goes in). Page 2's 6, Band, filters what goes in (FxChain.h). */
+ *  Params: 0 division (9 steps), 1 feedback, 2 random (bipolar, 0.5 = off), 3 ducking (the
+ *  echoes duck under what goes in); page 2: 4 freeze (the input shut and the loop's gain up
+ *  to exactly 1, so the buffer loops; TEMPO's buffer lock, by degrees; no random events while
+ *  frozen), 5 damping (bipolar: left a low cut, right a high cut in the feedback, the
+ *  SP-404MK2's L DAMP and H DAMP; the centre off), 7 level, its return's, on the inserts'
+ *  Level scale (FxOutput::LevelGain: mute, then -36dB to +12dB, 0dB at 3/4), on page 2's
+ *  knob 4 as theirs (#172). Page 2's 6, Band, filters what goes in (FxChain.h). */
 class DelaySend : public FxBase
 {
 public:
@@ -23,10 +26,10 @@ public:
         DIVISION,
         FEEDBACK,
         RANDOM,
-        LEVEL,
+        DUCKING,
         FREEZE,
         DAMPING,
-        DUCKING = 7,
+        LEVEL = FxOutput::kLevel,
     };
     /** Its random events', for RESEED (MidiControl.h's namespace dev) */
     inline Rng& Random() { return delay_.Random(); }
@@ -108,7 +111,7 @@ public:
             delay_.setRandom(val);
             break;
         case LEVEL:
-            level_.target = val;
+            level_.target = FxOutput::LevelGain(val);
             break;
         case FREEZE:
             freeze_.target = val;
