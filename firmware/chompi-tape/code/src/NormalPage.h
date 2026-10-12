@@ -5,6 +5,7 @@
 #include "temp_led_stuff.h"
 #include "FileCopier.h"
 #include "Clock.h"
+#include "Hold.h"
 
 namespace chompi
 {
@@ -145,6 +146,7 @@ namespace chompi
 
             quantized_pitch_ = !ps_quant;
             split_delay_ = split_delay;
+            transport_hold.Init();
 
             for (int knob = 0; knob < 6; knob++)
             {
@@ -230,13 +232,12 @@ namespace chompi
             if(knob_page[0] == 2)
                 arp_knob.Update(now);
 
-            if(transport_held && now - transport_down >= kTransportHold)
+            if(transport_hold.Held(now))
             {
                 if(fx_->GetLooperIsEmpty())
                     beat_clock.NextBar();
                 else if(!fx_->IsLooperFirstRecording()) // not while the first loop records
                     fx_->LooperMakeLengthBase();
-                transport_held = false;
                 transport_flash = now;
             }
 
@@ -767,7 +768,10 @@ namespace chompi
                       bool isRetriggering) override
         {
             if (init_ignore || copier_->IsCopying())
+            {
+                OnFocusLost(); // drop the holds, their release may be swallowed here
                 return false;
+            }
 
             bool rising = numberOfPresses == 1;
             switch (buttonID)
@@ -823,10 +827,9 @@ namespace chompi
                     if(fx_->GetLooperIsEmpty())
                     {
                         if(rising)
-                            transport_down = System::GetNow();
-                        else if(transport_held)
+                            transport_hold.Press(System::GetNow());
+                        else if(transport_hold.Release())
                             beat_clock.SetMetronome(!beat_clock.Metronome());
-                        transport_held = rising;
                     }
                     break;
                 }
@@ -834,10 +837,9 @@ namespace chompi
                 if(fx_->GetTransportMode() != TransportMode::OFF)
                 {
                     if(rising)
-                        transport_down = System::GetNow();
-                    else if(transport_held)
+                        transport_hold.Press(System::GetNow());
+                    else if(transport_hold.Release())
                         fx_->LooperResetLength();
-                    transport_held = rising;
                     break;
                 }
 
@@ -1236,8 +1238,12 @@ namespace chompi
 
         inline void SetInitIgnore(bool ignore) { init_ignore = ignore; }
 
-        // the click's release goes to the shift menu
-        void OnFocusLost() override { transport_held = false; }
+        // the release went elsewhere: no click, no hold
+        void OnFocusLost() override
+        {
+            transport_hold.Lost();
+            arp_knob.Lost();
+        }
 
     private:
         static int KeySlice(size_t key) { return key_map[key] - 48; } // as StartPlayback picks it
@@ -1257,9 +1263,7 @@ namespace chompi
         bool switch_state = false;
         bool chompi_key_pressed = false;
         int8_t transport_turns = 0;
-        static const uint32_t kTransportHold = 500; // ms
-        bool transport_held = false;
-        uint32_t transport_down = 0;
+        Hold transport_hold;
         uint32_t transport_flash = 0;
         uint8_t* knob_page;
         bool quantized_pitch_;

@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include "Arp.h"
+#include "Hold.h"
 
 namespace chompi
 {
@@ -13,40 +14,40 @@ namespace chompi
       public:
         void Init()
         {
-            press_ = 0;
-            turned_ = latched_ = false;
+            hold_.Init();
+            turned_ = false;
             ticks_ = 0;
         }
 
         // true for a click that turns the page
         bool Click(bool down, uint32_t now)
         {
-            if(down)
-            {
-                press_ = now | 1;
-                turned_ = latched_ = false;
-                return false;
-            }
-            const bool click = press_ && !turned_ && !latched_;
-            press_ = 0;
-            return click;
+            if(!down)
+                return hold_.Release();
+            hold_.Press(now);
+            turned_ = false;
+            return false;
         }
 
         // while the arp page shows
         void Update(uint32_t now)
         {
-            if(press_ && !turned_ && !latched_ && now - press_ > 500)
-            {
+            if(hold_.Held(now))
                 arp.SetLatch(!arp.Latched());
-                latched_ = true;
-            }
         }
+
+        void Lost() { hold_.Lost(); }
 
         void Turn(int turns, bool shift)
         {
             const int dir = turns > 0 ? 1 : -1;
-            turned_ |= press_ != 0;
-            if(!shift && !press_ && arp.Note() == Arp::kFree && (dir > 0 || arp.Slow() > 0.f))
+            const bool press = hold_.Down();
+            if(press)
+            {
+                turned_ = true;
+                hold_.Cancel();
+            }
+            if(!shift && !press && arp.Note() == Arp::kFree && (dir > 0 || arp.Slow() > 0.f))
             {
                 arp.SetSlow(arp.Slow() + dir * .025f);
                 return;
@@ -55,7 +56,7 @@ namespace chompi
                 return;
             if(shift)
                 arp.SetOctaves(arp.Octaves() + dir);
-            else if(press_)
+            else if(press)
                 arp.SetPattern(arp.Pattern() + dir);
             else
                 arp.SetNote(arp.Note() + dir);
@@ -80,7 +81,7 @@ namespace chompi
             static const float kWhite[3] = {1.f, 1.f, 1.f};
 
             const int n = arp.Note();
-            const bool pattern = press_ && turned_;
+            const bool pattern = hold_.Down() && turned_;
             const float* c = pattern ? kPatternColors[arp.Pattern()] : n >= 0 && n < Arp::kNotes ? kNoteColors[n] : kWhite;
             float k = shift ? arp.Octaves() / 3.f : pattern ? 1.f : n < 0 ? .1f : n < Arp::kNotes ? 1.f : 1.f - .8f * arp.Slow();
             if(shift)
@@ -102,8 +103,8 @@ namespace chompi
             return true;
         }
 
-        uint32_t press_; // 0 while up
-        bool turned_, latched_;
+        Hold hold_;
+        bool turned_;
         int8_t ticks_;
     };
 
