@@ -759,6 +759,36 @@ def daw_ccreset(r, d):
     r.check("REAPER stopped, its preferences as they come: back to 0", stopped <= .002, "%.3f" % stopped, "0")
 
 
+@case("daw-input", "8: REAPER automation on channel 16 sets the input (#177): CC 116 AUX dry, then "
+      "CC 84 the mic and CC 117 it live, in that order; REAPER stopped (CC reset off), it stays; "
+      "feedback sends what the hand changes")
+def daw_input(r, d):
+    GLOBAL = midisuite.GLOBAL
+    r.setting(midi_out=OUTS["all"], midi_feedback=1)
+    d.clear()
+    d.send(midisuite.cc(GLOBAL, 84, 0))  # AUX: the cable is in on the device
+    time.sleep(.3)
+    start = midisuite.input_bits(r)
+    d.lane(4, [(.1, 0xBF, 116, 127), (.3, 0xBF, 84, 127), (.5, 0xBF, 117, 127)])
+    d.tempo(120)
+    d.locate(0)
+    d.play()
+    time.sleep(1.2)
+    played = midisuite.input_bits(r)
+    d.stop_transport()
+    time.sleep(.5)
+    stopped = midisuite.input_bits(r)
+    d.clear()
+    d.send(midisuite.cc(GLOBAL, 117, 0) + midisuite.cc(GLOBAL, 84, 0))  # the mic off again, AUX
+    time.sleep(.3)
+    aux = midisuite.input_bits(r)
+    r.check("AUX through the effects, live at first", start == 4, start, 4)
+    r.check("the lane played: the mic (its own effects), live", played & 1 and played & 4, played, "the mic, live: 5 or 7")
+    r.check("REAPER stopped: the input as the lane left it", stopped == played, stopped, played)
+    r.check("CC 117 at 0, CC 84 at 0: the mic off, AUX dry as CC 116 left it, live", aux == 6, aux, 6)
+    d.clear()
+
+
 @case("daw-monitor", "8: REAPER recording what it also sends (a track monitoring FRIZZ's input "
       "onto its output), MIDI out and feedback on: automation that plays back into FRIZZ doesn't "
       "come back and double up; a knob turned goes out, nothing loops (#109)")

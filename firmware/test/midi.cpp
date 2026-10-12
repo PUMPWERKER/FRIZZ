@@ -2,7 +2,7 @@
 // virtual CHOMPI: clock ticks among other messages and inside them, the messages it ignores,
 // rubbish, and the two inputs, the jack and USB: which one locks, and when the other takes
 // over; and what MidiControl.h makes of what comes: (N)RPN turning no knob, a key tapped within
-// a block, a Song Position after a program change, FRIZZ's SysEx in a bug report. Each case on a fresh device. Run by unit.sh midi.
+// a block, a Song Position after a program change, the input's CCs (#177), FRIZZ's SysEx in a bug report. Each case on a fresh device. Run by unit.sh midi.
 #include "timing.h"
 #include "twin.h"
 
@@ -346,6 +346,53 @@ int main()
         const std::string st = Ask({0x20});
         Check(latched.size() > 9 && st.size() > 9 && st[9] == latched[9] && (st[9] & (1 << 4)),
               "spp-after-pc: the filter stays latched: no program change 0 came of it");
+    }});
+
+    // the input's CCs (#177): 84 the source, 116 its effects (dry from 64), 117 it live (on
+    // from 64), over the jack and USB alike; 116 and 117 the source's own, each source keeps
+    // its; RAM only. STATE's input byte: the mic 1, dry 2, live 4
+    cases.push_back({"input-cc", [] {
+        RunMs(kReadyMs);
+        const std::string card = CardFiles()["/FRIZZ/frizz_master.txt"];
+        auto input = [] {
+            const std::string st = Ask({0x20});
+            return st.size() > 25 ? st[25] : -1;
+        };
+        const int boot = input();
+        Trs({kCC, 116, 127}); // AUX dry
+        RunMs(50);
+        const int aux_dry = input();
+        Usb({kCC, 117, 63}); // AUX off
+        RunMs(50);
+        const int aux_off = input();
+        Trs({kCC, 116, 0}); // AUX through, while off
+        RunMs(50);
+        const int aux_off_through = input();
+        Trs({kCC, 116, 64}); // and dry again
+        Usb({kCC, 84, 64}); // the mic
+        RunMs(50);
+        const int mic = input();
+        Usb({kCC, 117, 127}); // the mic live
+        Trs({kCC, 116, 100}); // dry
+        RunMs(50);
+        const int mic_dry_live = input();
+        Trs({kCC, 84, 63}); // AUX again
+        RunMs(50);
+        const int aux_again = input();
+        Usb({kCC, 84, 127}); // and the mic
+        RunMs(50);
+        const int mic_again = input();
+        RunMs(3000);
+        Report("input-cc: boot %d, AUX dry %d, off %d, through while off %d; the mic %d, dry and live %d; "
+               "AUX again %d, the mic again %d", boot, aux_dry, aux_off, aux_off_through, mic,
+               mic_dry_live, aux_again, mic_again);
+        Check(boot == 4, "input-cc: at power-on AUX through the effects, live");
+        Check(aux_dry == 6 && aux_off == 2 && aux_off_through == 0,
+              "input-cc: CC 116 sets AUX's effects, CC 117 its live, 116 also while it's off");
+        Check(mic == 1, "input-cc: CC 84 at 64 picks the mic, its own: through the effects, not live");
+        Check(mic_dry_live == 7, "input-cc: CC 116 and 117 then set the mic's");
+        Check(aux_again == 2 && mic_again == 7, "input-cc: CC 84 back and forth: each source keeps its own");
+        Check(CardFiles()["/FRIZZ/frizz_master.txt"] == card, "input-cc: none of it goes to the card");
     }});
 
     // FRIZZ's SysEx in a bug report as it came: the mode switch has one data byte, and the

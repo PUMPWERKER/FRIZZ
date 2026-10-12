@@ -134,16 +134,16 @@ namespace chompi
         }
     }
 
-    /** The brightness the settings page sets (SettingsPage.h), in quarters: 4 is full, as
-     *  FRIZZ always was, 3 and 2 dimmer */
-    static uint8_t led_quarters = 4;
-    inline void SetLedQuarters(uint8_t quarters) { led_quarters = quarters; }
+    /** The brightness the settings page sets (SettingsPage.h), in percent: 100 is full, as
+     *  FRIZZ always was, down to 25 (#176) */
+    static uint8_t led_percent = 100;
+    inline void SetLedPercent(uint8_t percent) { led_percent = percent; }
 
     /** A colour byte to the chain's: v / div at full, less when dimmed, rounded in one step so
      *  a dim colour keeps its hue, and a channel lit at full stays lit */
     inline uint8_t LedDim(uint8_t v, uint32_t div)
     {
-        const uint32_t d = v * led_quarters / (4u * div);
+        const uint32_t d = v * led_percent / (100u * div);
         return static_cast<uint8_t>(d == 0 && v >= div ? 1 : d);
     }
 

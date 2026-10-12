@@ -697,22 +697,18 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, "knobs on   filter"), "remote: the script's key selected the filter");
 
-    // the LEDs dimmed to 50 % on the settings page (A# twice, led_brightness 50 on the card):
-    // the same expectations, at full scale, hold at the level that fits them, said (#94)
-    auto brightness_key = [](int presses) {
+    // the LEDs dimmed to 50 % on the settings page (knob 1 ten detents down, led_brightness 50
+    // on the card, #176): the same expectations, at full scale, hold at the level that fits
+    // them, said (#94)
+    auto brightness_knob = [](int detents) {
         SetToggle(true);
         RunMs(300);
-        for (int i = 0; i < presses; i++)
-        {
-            Press("KEY_24", true);
-            RunMs(60);
-            Press("KEY_24", false);
-            RunMs(100);
-        }
+        Turn(4, detents); // knob 1, SW4
+        RunMs(300);
         SetToggle(false);
         RunMs(300);
     };
-    brightness_key(2);
+    brightness_knob(-10);
     const std::string dim_off = Hex(SmtLedFull(kFilterKeyLed));
     Write(script, "booted\ndown KEY_5\nwait 300\nexpect led smt 20 " + on + "\nup KEY_5\nwait 300\n"
                   "expect led smt 20 " + off + "\n");
@@ -725,7 +721,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc = Remote({"play", script}, out);
     Check(rc == 1 && Has(out, "line 4: smt 20 is "),
           "remote: and an LED that isn't as expected at any brightness still fails");
-    brightness_key(1); // and round to 100 %
+    brightness_knob(10); // and back to 100 %
     Check(Hex(SmtLedFull(kFilterKeyLed)) == off, "remote: the LEDs at full again");
 
     // whatever ends a script, the keys it holds are let go, the switch is the hand's again
@@ -761,11 +757,11 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, "page       settings; the mode switch stands down, SysEx holds it up"),
           "remote: switch up shows the settings page, and state says so");
-    Write(script, "booted\ntap KEY_23\nwait 100\n"); // the upper F#: mono
+    Write(script, "booted\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n"); // SHIFT + the upper F#: mono
     rc = Remote({"play", script, "--save"}, out);
     const std::string refused = out;
     Remote({"state"}, out);
-    Check(rc != 0 && Has(refused, "line 2: tap KEY_23 on the settings page") && Has(refused, "--force")
+    Check(rc != 0 && Has(refused, "line 2: down KEY_26 on the settings page") && Has(refused, "--force")
               && !Has(out, ", mono"),
           "remote: play refuses a key on the settings page the device shows, saying why, and sends none (#58)");
     if (rc == 0 || !Has(refused, "--force"))
@@ -776,9 +772,10 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc == 0 && Has(out, ", mono") && Has(out, "page       play; the mode switch stands down\n"),
           "remote: a SysEx key there sets mono; switch hand, the play page again");
     // a script's toggle: up and down over SysEx, the real switch again at its end
-    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_23\nwait 100\ntoggle 0\nwait 100\n");
+    Write(script, "booted\ntoggle 1\nwait 100\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n"
+                  "toggle 0\nwait 100\n");
     rc = Remote({"play", script, "--save"}, out);
-    Check(rc != 0 && Has(out, "line 4: tap KEY_23 on the settings page"),
+    Check(rc != 0 && Has(out, "line 4: down KEY_26 on the settings page"),
           "remote: and one the script toggles up to, by the line (#58)");
     rc = Remote({"play", script, "--save", "--force"}, out);
     const int played = rc;
@@ -797,7 +794,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_25\nwait 100\ntap KEY_25\nwait 100\ntoggle 0\nwait 100\n");
     rc = Remote({"play", script, "--save"}, out);
     Check(rc != 0 && Has(out, "line 4: tap KEY_25 on the settings page"),
-          "remote: and one that taps the input's key there is refused: AUX's variant is saved (#152)");
+          "remote: and one that taps A# (live) there is refused: each source's is saved (#177)");
     // VOLUME's page 2 on the play page, the input gain, is saved too (#152); page 1 isn't
     Write(script, "booted\nturn 6 -2\nwait 100\ntap ENC_6_SW\nwait 100\nturn 6 2\nwait 100\n");
     rc = Remote({"play", script, "--save"}, out);
@@ -883,8 +880,8 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     // a channel over SysEx, the compressor's knob and a scene saved change FRIZZ, not its files
     const std::string master_file = CardFiles()["/FRIZZ/frizz_master.txt"];
     const std::string scenes_file = CardFiles()["/FRIZZ/frizz_scenes.txt"];
-    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_23\nwait 100\ntoggle 0\nwait 100\n"
-                  "midi F0 7D 43 48 13 00 05 F7\ntap KEY_15\nwait 100\nturn 4 10\nwait 100\n"
+    Write(script, "booted\ntoggle 1\nwait 100\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n"
+                  "toggle 0\nwait 100\nmidi F0 7D 43 48 13 00 05 F7\ntap KEY_15\nwait 100\nturn 4 10\nwait 100\n"
                   "tap KEY_23\nwait 100\ntap KEY_20\nwait 100\ntap KEY_26\nwait 2500\n");
     rc = Remote({"play", script}, out);
     const std::string in_ram = out;
@@ -911,7 +908,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc |= Remote({"get", "settings"}, out);
     Check(rc == 0 && Has(out, "clock_factor    50\n") && Has(out, "midi_channel    5\n"),
           "remote: set the clock factor, get reads every setting");
-    rc = Remote({"set", "settings", "led_brightness", "60"}, out);
+    rc = Remote({"set", "settings", "led_brightness", "20"}, out);
     Check(rc != 0 && Has(out, "refused"), "remote: a value a setting doesn't take is refused");
     rc = Remote({"set", "volume", "mix", "1"}, out);
     rc |= Remote({"get", "volume"}, out);

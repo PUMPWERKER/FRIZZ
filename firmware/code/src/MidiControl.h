@@ -82,11 +82,13 @@ static const uint8_t kFaderCC = 80;     // the crossfader: a running morph from 
 static const uint8_t kStopMorphCC = 81; // stops a morph where it is, crossing 64 upward
 static const uint8_t kTapCC = 82;       // a tempo tap, crossing 64 upward
 static const uint8_t kDropCC = 83;      // a hard drop to the scene 0-4 on a bar line (CC 9's), as CC 3
-static const uint8_t kSourceCC = 84;    // the input: 0-42 AUX through the FX, 43-84 AUX dry, 85-127 the mic
+static const uint8_t kSourceCC = 84;    // the input's source: 0-63 AUX, 64-127 the mic (#177)
 static const uint8_t kOutGainCC = 85, kInGainCC = 86, kMixCC = 87;
 static const uint8_t kHpCueCC = 89;     // the headphone feed as VOLUME's knob: 0 the input, 127 the master
 static const uint8_t kSpeedCC = 90;     // the loop's speed in semitones: 0 1/16x, 64 1x, 127 2x
 static const uint8_t kKeyLatchCC = 102; // 102-115: white key 1-14's latch, as 22
+static const uint8_t kDryCC = 116;      // the source's effects: 0-63 through, 64-127 dry (#177)
+static const uint8_t kLiveCC = 117;     // the source live: 0-63 off, 64-127 on
 static const uint8_t kAllSoundOffCC = 120, kAllNotesOffCC = 123;
 static const uint8_t kMorphBarsMax = 8;
 // Free on purpose, so what hosts and keyboards send by themselves reaches nothing: 0/32, 1,
@@ -104,7 +106,6 @@ enum Value : uint8_t
     kHpCue,
     kSpeed,
     kFader,
-    kSource,
     kNumValues,
 };
 } // namespace midimap
@@ -315,6 +316,7 @@ public:
             TAP,        // at ms
             PROGRAM,    // arg: the scene 0-4
             DROP,       // arg: as MORPH's, a drop (CC 83)
+            INPUT,      // arg: the source 0 (CC 84), its effects 1 (116), live 2 (117) | on << 2
         };
         uint8_t kind, arg;
         uint16_t ms; // when it came, System::GetNow()'s lower 16 bits
@@ -704,8 +706,12 @@ private:
             Set(kFader, v);
             return true;
         case kSourceCC:
-            Set(kSource, v);
-            return true;
+        case kDryCC:
+        case kLiveCC:
+            // in the order they came, not the latest of each: 116 and 117 are the source's
+            // own, so one before a CC 84 is the source's before it (#177)
+            return Push(Event::INPUT, static_cast<uint8_t>((cc == kSourceCC ? 0 : cc == kDryCC ? 1 : 2)
+                                                          | (v >= 64 ? 4 : 0)));
         default:
             return false;
         }
