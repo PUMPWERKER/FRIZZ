@@ -19,9 +19,10 @@ what FRIZZ does.
   MANUAL.md, "Timed scene changes".
 - **The built-in microphone as an input** (#113), as on TAPE and TEMPO: with no cable in AUX,
   FRIZZ hears CHOMPI's mic, and records it into the looper like AUX. Plugging a cable into AUX
-  switches to AUX, pulling it out back to the mic; at power-on the jack decides. The mic is
-  never live on the master (#152): a speaker would feed it back. Record it and play the loop;
-  hear it live on the headphones' input-only feed (VOLUME's page 3). It's mono, 5 times the
+  switches to AUX, pulling it out back to the mic; at power-on the jack decides. The mic starts
+  not live on the master (#152, #177): a speaker would feed it back. Record it and play the
+  loop, hear it on the headphones' input-only feed (VOLUME's page 3), or switch it live on the
+  settings page (below). It's mono, 5 times the
   input gain and through a highpass at about 150 Hz, as on TAPE (without TAPE's narrow
   notches, #127), and the mono setting doesn't touch it. See MANUAL.md, "Input: AUX or the
   mic".
@@ -29,12 +30,24 @@ what FRIZZ does.
   VOLUME and the safety limiter, so a drum machine or a finished song plays as it is while you
   play the loop through the effects. The mix knob still sets the balance (its input share is
   the dry AUX), and the mix's automatism stays: a recording finishes on the loop alone, an
-  erase goes back to the input alone. On the settings page, A# of the upper octave steps
-  through the inputs: AUX through the effects (green), AUX dry (white), the mic (magenta),
-  until the next cable goes in or out of AUX, which picks AUX in the variant chosen last, or
-  the mic. Which AUX you chose is saved; AUX or the mic isn't. MIDI CC 84 picks one too (0-42,
-  43-84, 85-127), without saving it, and MIDI feedback sends it. See MANUAL.md, "Input: AUX or
+  erase goes back to the input alone. See MANUAL.md, "Input: AUX or the mic".
+- **The input's three keys: source, effects, live** (#177). On the settings page's upper
+  octave, left to right as the signal goes: F# picks the source, AUX (green) or the mic
+  (magenta), until the next cable goes in or out of AUX; G# sends the source through the
+  effects (green) or dry past them (white); A# puts it live on the outputs (lit) or not (dim).
+  G# and A# are each source's own and saved: the jack or F# brings up the other's. So **the mic
+  can go live**, through the effects or dry (mind the feedback near a speaker), and **AUX can be
+  not live**, recorded without being heard on the master. Out of the box AUX is live through
+  the effects, the mic through the effects but not live. G# is dark while the source isn't
+  live; pressed then, it blinks red 3 times and changes nothing. The looper always records the
+  source as it is. Over MIDI, CC 84 picks the source (0-63 AUX, 64-127 the mic), CC 116 sets its
+  effects (64 and up dry), CC 117 it live (64 and up on), without saving them, and MIDI
+  feedback sends all three. A beta.1 card's AUX dry is AUX's G#. See MANUAL.md, "Input: AUX or
   the mic".
+- **The LEDs' brightness on knob 1, 25-100 %** (#176): on the settings page knob 1 sets it, 5 %
+  a detent; SHIFT + turn steps 25, 50, 75, 100 %; SHIFT + press is 100 %. Its LED is white and
+  dims with the others. A card's 50, 75 or 100 % stays as it was. See MANUAL.md, "LED
+  brightness".
 - **An input gain for each input, saved** (#152): AUX and the mic each have their own input
   gain (VOLUME's page 2), kept on the card; switching the input picks its gain. VOLUME works on
   the settings page too: page 1 the output, page 2 the input gain, a press the other page; its
@@ -261,9 +274,10 @@ what FRIZZ does.
 - **The settings page's dark keys are grouped by topic** (#97): the lower octave is MIDI in,
   C# every channel (as before), D# the effect channels over TRS (new), F# transport following
   (was D#), G# the clock factor (as before), A# the clock source (was the upper G#); the upper
-  octave C# MIDI out (was the upper D#), F# mono (was the lower F#), G# the LEDs' brightness
-  (was the lower A#), and the upper D# MIDI feedback (new). Each keeps its colours. See
-  MANUAL.md, "Settings page".
+  octave C# MIDI out (was the upper D#), F# the input's source and SHIFT + F# mono (was the
+  lower F#), G# and A# the input's effects and live (#177), and the upper D# MIDI feedback
+  (new). The LEDs' brightness (was the lower A#) is on knob 1 now (#176). See MANUAL.md,
+  "Settings page".
 
 - **The resonator, slicer, wow & flutter and tape stop are one key to the right** (#68): the
   8th, 9th, 10th and 11th white keys, making room for the phaser on the 7th, next to the
@@ -301,6 +315,12 @@ what FRIZZ does.
 
 ### Fixed
 
+- **With the mix at the loop alone, none of the input is left** (#168): a trace of it, about
+  86 dB down, stayed on the master; the headphone feed likewise settles exactly on the master
+  or the input now.
+- **A settings file with a word where a number belongs is kept, not read as 0** (#168): a
+  garbled `gain_aux` silenced AUX and was saved back. Now `frizz_master.txt` is set aside as
+  `frizz_master.bak` on the next save, and the settings start from their defaults.
 - **A hot input no longer distorts in the loop** (#152). Live it sounded clean, but the loop is
   stored at 16 bits and clipped hard: at the default input gain from about 7 dB below the
   input's full scale (measured: 1 kHz at full scale, the loop 26 % distortion, live under 1 %). Now

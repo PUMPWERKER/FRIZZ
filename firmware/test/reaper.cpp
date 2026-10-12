@@ -81,6 +81,9 @@ int main()
     cases.push_back({"monitor", [] {
         Run("monitor", true, "daw-monitor", {"PASS daw-monitor"}, 0);
     }});
+    cases.push_back({"input", [] {
+        Run("input", true, "daw-input", {"PASS daw-input"}, 0);
+    }});
     cases.push_back({"jitter", [] {
         Run("jitter", true, "daw-jitter,daw-ccreset --seconds 2",
             {"PASS daw-jitter", "PASS daw-ccreset", "dummy (Stub 48000 512; its script", "REAPER dummy (Stub", "**The clock's jitter (#83)**",

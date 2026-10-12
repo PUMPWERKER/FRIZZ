@@ -1,23 +1,42 @@
-# The input (#113, #152): a cable in AUX picks AUX; the settings page's upper A# steps by hand
-# through AUX through the effects, AUX dry and the mic, and round again. AUX's variant is
-# saved (on the device play keeps it in RAM), the source isn't. On the device AUX has its
-# cable in, as the twin has at first
+# The input (#113, #177): a cable in AUX picks AUX; the settings page's upper F# picks the
+# other source by hand, G# sets the source's effects (through / dry, dark while not live), A#
+# it live; each source has its own, saved (on the device play keeps them in RAM), the source
+# isn't. On the device AUX has its cable in, as the twin has at first
 input sine 220 0.3
 at 6000
 toggle 1
 wait 300
-# AUX through the effects: the upper A# green
-expect led smt 9 00fc00
-tap KEY_25
-wait 300
-# AUX dry: white
+# AUX, live through the effects: F# green, G# green, A# white
+expect led smt 7 00fc00
+expect led smt 8 00fc00
 expect led smt 9 fcfcfc
+tap KEY_24
+wait 300
+# AUX dry: G# white
+expect led smt 8 fcfcfc
+tap KEY_23
+wait 300
+# the mic, its own: not live, so G# dark, A# dim
+expect led smt 7 fc00fc
+expect led smt 8 000000
+expect led smt 9 242424
 tap KEY_25
 wait 300
-# the mic: magenta
-expect led smt 9 fc00fc
+# the mic live, through the effects
+expect led smt 8 00fc00
+expect led smt 9 fcfcfc
+wait 1000
 tap KEY_25
 wait 300
-expect led smt 9 00fc00
+expect led smt 9 242424
+tap KEY_23
+wait 300
+# AUX again, dry as it was left
+expect led smt 7 00fc00
+expect led smt 8 fcfcfc
+expect led smt 9 fcfcfc
+tap KEY_24
+wait 300
+expect led smt 8 00fc00
 toggle 0
 wait 300

@@ -3,12 +3,18 @@
  *  through the Volume Engine: input gain -> input/loop mix -> punch-in FX (FxChain.h) ->
  *  master compressor (MasterComp.h) -> output gain -> safety limiter.
  *
- *  The input (#152) is one of three (Input): AUX through the effects, as above; AUX dry, its
- *  share of the mix added after the compressor, past the effects and the compressor (a
- *  mastered song, a drum machine), still through VOLUME and the limiter; or the mic, which
- *  is never live on the master (speakers would feed it back), only in the looper's recording
- *  and the headphones' input on its own. Each source has its own input gain. A switch
- *  crossfades over kMicFadeSamples.
+ *  The source is AUX or the mic (#152), and each has its own settings (#177): live or not, on
+ *  the outputs at all; and if live, through the effects, as above, or dry, its share of the
+ *  mix added after the compressor, past the effects and the compressor (a mastered song, a
+ *  drum machine), still through VOLUME and the limiter. The mic is off unless asked for: a
+ *  speaker would feed it back. The looper records the source as it is, whatever those say,
+ *  and so do the headphones' input on its own. Each source has its own input gain.
+ *
+ *  A switch fades over kMicFadeSamples. Each source has its own gates to the effects and past
+ *  them, each fading towards its own target, and each takes only its own source: so during a
+ *  switch of the source the one going fades out of the outputs while the one coming fades in,
+ *  and a source that isn't live adds nothing at any sample (#168: one gate on the crossfaded
+ *  input let the mic through, up to a quarter, while the two fades crossed).
  *
  *  The mic (SetMicInput) is TAPE's: DC blocked after the input gain and its own x5, highpassed
  *  (MicFilter.h), and the same on both sides. It replaces AUX for everything that takes the
@@ -96,9 +102,22 @@ public:
     FRIZZ_HOT void Process(const float *const *in, float **out, size_t size)
     {
         float dryl[size], dryr[size], wetl[size], wetr[size];
+        // the input's share through the effects and past them, before the mix; filled here
+        // only during a switch of the source (ProcessSwitch)
+        float sigl[size], sigr[size], bypl[size], bypr[size];
 
+        // the source heard, and where it goes: through the effects, past them, or nowhere
         const bool mic = mic_in_;
-        if (!mic && mic_fade_ == 0.f)
+        const size_t src = mic ? 1 : 0, other = mic ? 0 : 1;
+        const bool live = live_[src], dry = dry_[src];
+        const float to_fx = live && !dry ? 1.f : 0.f;
+        const float to_dry = live && dry ? 1.f : 0.f;
+        // a switch of the source done: the input at it alone, the other's gates shut
+        const bool switching = mic_fade_ != (mic ? 1.f : 0.f) || in_fx_[other] != 0.f
+                               || in_dry_[other] != 0.f;
+        if (switching)
+            ProcessSwitch(in, dryl, dryr, sigl, sigr, bypl, bypr, size, mic, to_fx, to_dry);
+        else if (!mic)
         {
             // AUX alone, as it usually is; the mic's gain, unheard, stands at its target
             mic_gain_ = mic_gain_target_;
@@ -115,7 +134,15 @@ public:
             }
         }
         else
-            ProcessMic(in, dryl, dryr, size, mic);
+        {
+            // the mic alone; AUX's gain, unheard, at its target
+            aux_gain_ = aux_gain_target_;
+            for (size_t i = 0; i < size; i++)
+            {
+                fonepole(mic_gain_, mic_gain_target_, .001f);
+                dryl[i] = dryr[i] = Mic(in[0][i]);
+            }
+        }
         // the input's peak as the looper records it, while the UI shows its meter
         if (in_meter_)
         {
@@ -163,14 +190,24 @@ public:
             Scramble(jump);
         BENCH_MARK(TEMPO);
 
-        float sigl[size], sigr[size], bypl[size], bypr[size];
-        // where the input goes: through the effects (AUX), past them (AUX dry) or nowhere
-        // (the mic), crossfading on a switch; the dry branch's buffer only while it's heard
-        const float to_fx = !mic && !aux_dry_ ? 1.f : 0.f;
-        const float to_dry = !mic && aux_dry_ ? 1.f : 0.f;
-        const bool routed = in_fx_ == 1.f && in_dry_ == 0.f && to_fx == 1.f; // as ever
-        const bool bypass = in_dry_ != 0.f || to_dry != 0.f;
-        if (routed)
+        // the source's gates, fading on a change; the dry branch's buffer only while it's heard
+        float& in_fx = in_fx_[src];
+        float& in_dry = in_dry_[src];
+        const bool routed = !switching && in_fx == 1.f && in_dry == 0.f && to_fx == 1.f; // as ever
+        const bool bypass = switching || in_dry != 0.f || to_dry != 0.f;
+        if (switching)
+            for (size_t i = 0; i < size; i++)
+            {
+                // the gates applied already (ProcessSwitch): the mix's input share on them
+                MixStep();
+                const float dry_amt = dry_amt_;
+                const float wet_amt = wet_amt_;
+                sigl[i] = sigl[i] * dry_amt + wetl[i] * wet_amt;
+                sigr[i] = sigr[i] * dry_amt + wetr[i] * wet_amt;
+                bypl[i] *= dry_amt;
+                bypr[i] *= dry_amt;
+            }
+        else if (routed)
             for (size_t i = 0; i < size; i++)
             {
                 MixStep();
@@ -185,12 +222,12 @@ public:
                 MixStep();
                 const float dry_amt = dry_amt_;
                 const float wet_amt = wet_amt_;
-                in_fx_ = Toward(in_fx_, to_fx);
-                in_dry_ = Toward(in_dry_, to_dry);
-                const float fx_amt = dry_amt * in_fx_;
+                in_fx = Toward(in_fx, to_fx);
+                in_dry = Toward(in_dry, to_dry);
+                const float fx_amt = dry_amt * in_fx;
                 sigl[i] = dryl[i] * fx_amt + wetl[i] * wet_amt;
                 sigr[i] = dryr[i] * fx_amt + wetr[i] * wet_amt;
-                const float dry_branch = dry_amt * in_dry_;
+                const float dry_branch = dry_amt * in_dry;
                 bypl[i] = dryl[i] * dry_branch;
                 bypr[i] = dryr[i] * dry_branch;
             }
@@ -203,7 +240,7 @@ public:
         comp_.Process(sigl, sigr, size);
         BENCH_MARK(COMP);
 
-        // AUX dry joins after the compressor, before VOLUME and the limiter
+        // the dry branch joins after the compressor, before VOLUME and the limiter
         if (bypass)
             for (size_t i = 0; i < size; i++)
             {
@@ -229,7 +266,7 @@ public:
             // headphone feed: the cue blends from the master's mirror to the input on its own,
             // slewed so a jump doesn't click; at rest on the mirror (as it usually is) no blend
             if (hp_cue_ != hp_cue_target_)
-                fonepole(hp_cue_, hp_cue_target_, .001f);
+                hp_cue_ = Glide(hp_cue_, hp_cue_target_); // on 0 the blend stops
             if (hp_cue_ == 0.f)
             {
                 out[0][i] = hpl;
@@ -276,23 +313,17 @@ public:
     inline void SetHeadphoneCue(float cue) { hp_cue_target_ = cue; }
     /** AUX input: false = stereo, true = mono, the left channel to both sides */
     inline void SetMonoInput(bool mono) { mono_in_ = mono; }
-    /** The input: false = AUX, true = the built-in mic, crossfaded over kMicFadeSamples */
+    /** The source: false = AUX, true = the built-in mic, faded over kMicFadeSamples */
     inline void SetMicInput(bool mic) { mic_in_ = mic; }
     inline bool MicInput() const { return mic_in_; }
-    /** AUX's variant: false = through the effects, true = dry, past them and the compressor */
-    inline void SetAuxDry(bool dry) { aux_dry_ = dry; }
-    inline bool AuxDry() const { return aux_dry_; }
-    /** The three in one (#152): AUX through the effects, AUX dry, the mic */
-    enum class Input : uint8_t
-    {
-        AUX_FX,
-        AUX_DRY,
-        MIC,
-    };
-    inline Input GetInput() const
-    {
-        return mic_in_ ? Input::MIC : aux_dry_ ? Input::AUX_DRY : Input::AUX_FX;
-    }
+    /** A source's effects (#177), AUX's (mic false) or the mic's: false = through them, true =
+     *  dry, past them and the compressor */
+    inline void SetDry(bool mic, bool dry) { dry_[mic] = dry; }
+    inline bool Dry(bool mic) const { return dry_[mic]; }
+    inline void SetAuxDry(bool dry) { SetDry(false, dry); }
+    /** And whether it's live, on the outputs at all */
+    inline void SetLive(bool mic, bool live) { live_[mic] = live; }
+    inline bool Live(bool mic) const { return live_[mic]; }
     /** The input's meter on (VOLUME's page 2 shown) or off, which costs nothing */
     inline void MeterInput(bool on) { in_meter_ = on; }
     /** The input's peak, as the looper records it (full scale 1), since the last call; from
@@ -384,30 +415,52 @@ public:
 
     chompi::Looper looper;
 
-private:
-    /** The input while the mic is heard: the mic alone, or crossfading between it and AUX
-     *  (mic: towards the mic) */
-    FRIZZ_HOT void ProcessMic(const float *const *in, float* dryl, float* dryr, size_t size,
-                              bool mic)
+    /** v slewed a sample toward target (fonepole's ~21 ms), and snapped onto it once it's
+     *  within 1e-5 or a step no longer moves it, so it settles (#168): near 1 a step smaller
+     *  than half the float's spacing there stalls short of it */
+    static inline float Glide(float v, float target)
     {
-        if (mic && mic_fade_ == 1.f)
-            aux_gain_ = aux_gain_target_; // unheard: at its target
+        float next = v;
+        fonepole(next, target, .001f);
+        return next == v || fabsf(next - target) < 1e-5f ? target : next;
+    }
+
+private:
+    /** The mic's sample: after its gain, DC blocked and filtered */
+    __attribute__((always_inline)) inline float Mic(float in)
+    {
+        return mic_filter_.Process(dcblock_mic_in_.Process(in * mic_gain_ * kMicGain));
+    }
+
+    /** The input during a switch of the source (mic: towards the mic): the looper's crossfades
+     *  from one source to the other, and each source goes through its own gates, fading
+     *  towards to_fx and to_dry for the source heard and shut for the other. sig and byp get
+     *  the input's share through the effects and past them, before the mix */
+    FRIZZ_HOT void ProcessSwitch(const float *const *in, float* dryl, float* dryr, float* sigl,
+                                 float* sigr, float* bypl, float* bypr, size_t size, bool mic,
+                                 float to_fx, float to_dry)
+    {
+        const float aux_fx = mic ? 0.f : to_fx, aux_dry = mic ? 0.f : to_dry;
+        const float mic_fx = mic ? to_fx : 0.f, mic_dry = mic ? to_dry : 0.f;
         for (size_t i = 0; i < size; i++)
         {
             fonepole(mic_gain_, mic_gain_target_, .001f);
-            const float m = mic_filter_.Process(dcblock_mic_in_.Process(in[0][i] * mic_gain_ * kMicGain));
-            if (mic && mic_fade_ == 1.f)
-            {
-                dryl[i] = dryr[i] = m;
-                continue;
-            }
+            const float m = Mic(in[0][i]);
             fonepole(aux_gain_, aux_gain_target_, .001f);
-            mic_fade_ = mic ? fminf(mic_fade_ + kMicFadeStep, 1.f) : fmaxf(mic_fade_ - kMicFadeStep, 0.f);
             const float in_r = mono_in_ ? in[2][i] : in[3][i];
             const float l = dcblock_line_in_l_.Process(in[2][i] * aux_gain_ * kLineInGain);
             const float r = dcblock_line_in_r_.Process(in_r * aux_gain_ * kLineInGain);
+            mic_fade_ = Toward(mic_fade_, mic ? 1.f : 0.f);
             dryl[i] = l + (m - l) * mic_fade_;
             dryr[i] = r + (m - r) * mic_fade_;
+            in_fx_[0] = Toward(in_fx_[0], aux_fx);
+            in_dry_[0] = Toward(in_dry_[0], aux_dry);
+            in_fx_[1] = Toward(in_fx_[1], mic_fx);
+            in_dry_[1] = Toward(in_dry_[1], mic_dry);
+            sigl[i] = l * in_fx_[0] + m * in_fx_[1];
+            sigr[i] = r * in_fx_[0] + m * in_fx_[1];
+            bypl[i] = l * in_dry_[0] + m * in_dry_[1];
+            bypr[i] = r * in_dry_[0] + m * in_dry_[1];
         }
     }
 
@@ -417,9 +470,7 @@ private:
     {
         if (mix_ != mix_target_)
         {
-            fonepole(mix_, mix_target_, .001f);
-            if (fabsf(mix_ - mix_target_) < 1e-5f)
-                mix_ = mix_target_;
+            mix_ = Glide(mix_, mix_target_);
             dry_amt_ = cosf(mix_ * HALFPI_F);
             wet_amt_ = sinf(mix_ * HALFPI_F);
         }
@@ -490,9 +541,12 @@ private:
     chompi::MasterComp comp_;
     volatile bool mono_in_ = false;
     volatile bool mic_in_ = false;
-    volatile bool aux_dry_ = false;
-    float mic_fade_ = 0.f; // 0 AUX .. 1 the mic, towards mic_in_
-    float in_fx_ = 1.f, in_dry_ = 0.f; // the input's share through the effects, past them
+    // each source's settings, AUX's then the mic's: past the effects, live
+    volatile bool dry_[2] = {false, false};
+    volatile bool live_[2] = {true, false};
+    float mic_fade_ = 0.f; // the looper's input: 0 AUX .. 1 the mic, towards mic_in_
+    // each source's gates, AUX's then the mic's: its share through the effects, past them
+    float in_fx_[2] = {1.f, 0.f}, in_dry_[2] = {0.f, 0.f};
     volatile bool in_meter_ = false;
     volatile float in_peak_ = 0.f; // TakeInputPeak
     // live values start at 0 and slew up to the targets the play page sets at boot

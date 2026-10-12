@@ -8,7 +8,7 @@ Your first ten minutes with FRIZZ. Every detail is in the [manual](MANUAL.md).
 AUX in or mic -> input gain -+-----------------+
                              |                 +-> input/loop mix -> effects (white keys) -> compressor -+-> output volume -> out
                              +-> looper -------+         |                                               |
-                                                         +-- AUX dry: past effects and compressor -------+
+                                                         +-- dry: past effects and compressor -----------+
 ```
 
 The looper records the input **before** the effects, so you can play effects over a loop and
@@ -18,11 +18,13 @@ headphones carry the same as the master out, or, from VOLUME's page 3, only the 
 loop, no effects).
 
 The input is AUX while a cable is plugged in there, and CHOMPI's built-in microphone while
-none is: pull the cable to record your voice or the room. The mic is never live on the master
-(a speaker would feed back): record it, then play the loop; hear it live on the headphones'
-page 3. Flip the mode switch **up** and press A# of the upper octave to step through the
-inputs: green AUX through the effects, white **AUX dry** (past the effects and the
-compressor, for a drum machine or a finished song next to your loop), magenta the mic.
+none is: pull the cable to record your voice or the room. Flip the mode switch **up** for the
+input's three keys on the upper octave, left to right as the signal goes: **F#** the source
+(green AUX, magenta the mic), **G#** its effects (green through them, white **dry**: past the
+effects and the compressor, for a drum machine or a finished song next to your loop), **A#**
+it live on the outputs (lit) or not (dim). Each source keeps its own G# and A#. The mic starts
+not live (a speaker would feed back): record it, then play the loop, and hear it on the
+headphones' page 3; switch it live with A# when you're on headphones.
 
 **SHIFT** means holding the CHOMPI key. The key lights white while it acts as SHIFT.
 
@@ -40,9 +42,10 @@ compressor, for a drum machine or a finished song next to your loop), magenta th
 Each press blinks the page's number in white: once for output, twice for input, three times
 for the headphones.
 
-A mono cable (TS) in AUX? Flip the mode switch **up** to the settings page and press F# of the
-upper octave (a dark key, dimly white) so it lights fully: mono. Flip back down to play. The settings page also sets the MIDI channel and shows the battery on VOLUME's LED
-(MANUAL.md, "Settings page").
+A mono cable (TS) in AUX? Flip the mode switch **up** to the settings page, hold CHOMPI
+(SHIFT) and press F# of the upper octave: while you hold SHIFT it shows mono, lit fully. Flip
+back down to play. The settings page also sets the MIDI channel, the LEDs' brightness (knob
+1) and shows the battery on VOLUME's LED (MANUAL.md, "Settings page").
 
 ## 2. Record a loop
 

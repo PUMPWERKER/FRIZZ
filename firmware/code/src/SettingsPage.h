@@ -23,17 +23,28 @@
  *    C# (upper octave)   MIDI out, each press the next: off, the jack, the jack and USB
  *                                                            dim, orange, white
  *    D# (upper octave)   MIDI feedback, on / off             light blue, lit when on
- *    F# (upper octave)   mono input, on / off                white, lit when on
- *    G# (upper octave)   the LEDs' brightness, each press the next: 100, 75, 50 %
- *                                                            purple, dimmed as all are
- *    A# (upper octave)   the input, each press the next: AUX through the effects, AUX dry
- *                        (past them and the compressor), the built-in mic (#152)
- *                                                            green, white, magenta
+ *  The upper octave's F#, G# and A# are the input (#177), left to right as the signal goes:
  *
- *  AUX's jack picks AUX or the mic at power-on and whenever a cable goes in or out
- *  (chompi_main.cpp), AUX in the variant chosen last, which is saved; the key picks the next
- *  until then. The source itself isn't saved. Each source has its own input gain, saved too:
- *  VOLUME's page 2, here and on the play page, sets the one heard.
+ *    F# (upper octave)   the source, AUX / the mic           green / magenta, lit
+ *    SHIFT + F#          AUX mono, on / off                  white while SHIFT is held, lit
+ *                                                            when on
+ *    G# (upper octave)   the source's effects: through them / dry (past them and the
+ *                        compressor)                         green / white, lit; dark while
+ *                                                            the source isn't live
+ *    A# (upper octave)   the source live, on the outputs, on / off
+ *                                                            white, lit when on
+ *
+ *  AUX's jack picks the source at power-on and whenever a cable goes in or out
+ *  (chompi_main.cpp); F# picks the other until then. The source itself isn't saved. G# and A#
+ *  show and set the source's own, each source's saved (passthroughEngine.h keeps both, so the
+ *  jack brings up the other's), as is its input gain: VOLUME's page 2, here and on the play
+ *  page, sets the one heard. Out of the box AUX is live through the effects, the mic dry
+ *  through them but not live (a speaker would feed it back).
+ *
+ *    knob 1              the LEDs' brightness (#176), 25-100 % by 5 % a detent; SHIFT + turn
+ *                        the next quarter, 25, 50, 75, 100 %; SHIFT + press 100 %. Its LED is
+ *                        white, dimmed as all are, so it shows the level. Knobs 2-4 do
+ *                        nothing here, their LEDs dark
  *
  *    VOLUME              turned: page 1 the output, page 2 the input gain, as on the play
  *                        page (NormalPage.h, which handles it); a press, page 1 or 2; no
@@ -90,32 +101,92 @@ public:
         midi_->SetMidiOut(static_cast<MidiOutPorts>(master.midi_out));
         midi_->SetBlockTrs(master.midi_block_trs);
         midi_->SetFeedback(master.midi_feedback);
-        quarters_ = master.led_brightness / 25;
-        SetLedQuarters(quarters_);
-        engine_->SetAuxDry(master.aux_dry);
-        saved_dry_ = master.aux_dry;
+        // on the knob's steps: a value set over SysEx between them goes to the nearest
+        percent_ = Brightness((master.led_brightness + kBrightnessStep / 2) / kBrightnessStep
+                              * kBrightnessStep);
+        SetLedPercent(percent_);
+        saved_dry_[0] = master.aux_dry;
+        saved_dry_[1] = master.mic_dry;
+        saved_live_[0] = master.aux_live;
+        saved_live_[1] = master.mic_live;
+        for (bool mic : {false, true})
+        {
+            engine_->SetDry(mic, saved_dry_[mic]);
+            engine_->SetLive(mic, saved_live_[mic]);
+        }
         SetGain(false, master.gain_aux / 100.f);
         SetGain(true, master.gain_mic / 100.f);
         saved_gain_[0] = gain_[0];
         saved_gain_[1] = gain_[1];
     }
 
-    /** A key going down on the page. True if it changed a setting, which then goes to the card */
-    bool Key(int key)
+    /** A key going down on the page, shift: SHIFT held from the play page. True if it changed
+     *  a setting, which then goes to the card */
+    bool Key(int key, bool shift, uint32_t now)
     {
-        if (key == static_cast<int>(kInputKey))
+        shift = shift || ShiftHeld();
+        // the source heard, read once: the jack may switch it meanwhile
+        const bool mic = engine_->MicInput();
+        if (key == static_cast<int>(kInSourceKey) && !shift)
         {
-            // AUX through the effects, AUX dry, the mic, ...: AUX's variant goes to the card
-            using Input = PassthroughEngine::Input;
-            const Input in = engine_->GetInput();
-            SetInput(in == Input::AUX_FX ? Input::AUX_DRY : in == Input::AUX_DRY ? Input::MIC : Input::AUX_FX);
-            if (engine_->AuxDry() == saved_dry_)
+            // AUX, the mic, AUX ...: until the jack picks again, not for the card
+            engine_->SetMicInput(!mic);
+            return false;
+        }
+        if (key == static_cast<int>(kInFxKey) || key == static_cast<int>(kLiveKey))
+        {
+            // the source's own, for the card; G# dark (not live) does nothing, and blinks red
+            const bool fx = key == static_cast<int>(kInFxKey);
+            if (fx && !engine_->Live(mic))
+            {
+                dark_fx_.Start(now);
                 return false;
-            saved_dry_ = engine_->AuxDry();
+            }
+            if (fx)
+                engine_->SetDry(mic, !engine_->Dry(mic));
+            else
+                engine_->SetLive(mic, !engine_->Live(mic));
+            bool& saved = fx ? saved_dry_[mic] : saved_live_[mic];
+            const bool now = fx ? engine_->Dry(mic) : engine_->Live(mic);
+            if (now == saved)
+                return false;
+            saved = now;
+        }
+        else if (key == static_cast<int>(kBrightnessKnobKey))
+        {
+            // SHIFT + press: full, as every knob's reset
+            if (!shift || !SetBrightness(100))
+                return false;
+        }
+        else if (key == static_cast<int>(kInSourceKey))
+        {
+            if (!SetMono(!mono_))
+                return false;
         }
         else if (!Apply(key))
             return false;
         unsaved_key_ = key;
+        return true;
+    }
+
+    /** Knob 1 turned detents on the page (the others do nothing here), shift: SHIFT held from
+     *  the play page. True if the brightness changed, which then goes to the card */
+    bool KnobTurned(int16_t detents, bool shift)
+    {
+        int percent = percent_;
+        if (shift || ShiftHeld())
+        {
+            // the next quarter that way, a detent at a time
+            for (; detents > 0; detents--)
+                percent = (percent / kQuarter + 1) * kQuarter;
+            for (; detents < 0; detents++)
+                percent = (percent + kQuarter - 1) / kQuarter * kQuarter - kQuarter;
+        }
+        else
+            percent += detents * kBrightnessStep;
+        if (!SetBrightness(Brightness(percent)))
+            return false;
+        unsaved_key_ = kBrightnessKnobKey;
         return true;
     }
 
@@ -147,8 +218,6 @@ private:
             midi_->SetTransport(!midi_->Transport());
             return true;
         }
-        if (key == static_cast<int>(kMonoKey))
-            return SetMono(!mono_);
         if (key == static_cast<int>(kFactorKey))
         {
             // x1, x2, x1/2, x1 ...: ClockFactor's next, round
@@ -180,14 +249,21 @@ private:
             midi_->SetMidiOut(static_cast<MidiOutPorts>(next));
             return true;
         }
-        if (key == static_cast<int>(kBrightnessKey))
-        {
-            // 100, 75, 50 %, 100 ...
-            quarters_ = quarters_ > 2 ? quarters_ - 1 : 4;
-            SetLedQuarters(quarters_);
-            return true;
-        }
         return false;
+    }
+
+    /** The LEDs' brightness, in percent: true if it changed */
+    bool SetBrightness(int percent)
+    {
+        if (percent == percent_)
+            return false;
+        percent_ = static_cast<uint8_t>(percent);
+        SetLedPercent(percent_);
+        return true;
+    }
+    static inline int Brightness(int percent)
+    {
+        return percent < kMinBrightness ? kMinBrightness : percent > 100 ? 100 : percent;
     }
 
 public:
@@ -217,17 +293,12 @@ public:
         return true;
     }
 
-    /** The input, AUX's variant in RAM: true if it changed. The key keeps it for the card;
-     *  CC 84 doesn't (#97) */
-    bool SetInput(PassthroughEngine::Input in)
-    {
-        using Input = PassthroughEngine::Input;
-        engine_->SetMicInput(in == Input::MIC);
-        if (in == Input::MIC || engine_->AuxDry() == (in == Input::AUX_DRY))
-            return false;
-        engine_->SetAuxDry(in == Input::AUX_DRY);
-        return true;
-    }
+    /** MIDI's input settings (#177), in RAM only, as all MIDI's (#97): the source (CC 84),
+     *  and the source's effects dry (CC 116) and live (CC 117). The source's are set even
+     *  while it isn't live */
+    inline void SetSource(bool mic) { engine_->SetMicInput(mic); }
+    inline void SetDry(bool dry) { engine_->SetDry(engine_->MicInput(), dry); }
+    inline void SetLive(bool live) { engine_->SetLive(engine_->MicInput(), live); }
 
     /** The input gain of the source heard now, 0..1, and setting it: VOLUME's page 2, which
      *  keeps it for the card; CC 86 doesn't (keep false, #97) */
@@ -284,8 +355,11 @@ public:
         master.midi_out = static_cast<uint8_t>(midi_->GetMidiOut());
         master.midi_block_trs = midi_->BlockTrs();
         master.midi_feedback = midi_->Feedback();
-        master.led_brightness = quarters_ * 25;
-        master.aux_dry = saved_dry_;
+        master.led_brightness = percent_;
+        master.aux_dry = saved_dry_[0];
+        master.mic_dry = saved_dry_[1];
+        master.aux_live = saved_live_[0];
+        master.mic_live = saved_live_[1];
         master.gain_aux = static_cast<uint8_t>(saved_gain_[0] * 100.f + .5f);
         master.gain_mic = static_cast<uint8_t>(saved_gain_[1] * 100.f + .5f);
     }
@@ -301,7 +375,6 @@ public:
         KeyLed(kChannel15Key, channel == 16 ? white : med_blue, channel >= 15);
         KeyLed(Hardware::SwId::KEY_16, med_blue, channel == 0);
         KeyLed(kTransportKey, green, midi_->Transport());
-        KeyLed(kMonoKey, white, mono_);
         // the factor's colour, on the beats of the tempo the effects follow (TempoClock.h)
         const bool beat = engine_->FxClockPosition() % kPulsesPerBeat < kPulsesPerBeat / 2;
         KeyLed(kFactorKey, kFactorColors[static_cast<uint8_t>(factor_)], beat);
@@ -310,8 +383,21 @@ public:
         KeyLed(kMidiOutKey, out == MidiOutPorts::TRS ? orange : white, out != MidiOutPorts::OFF);
         KeyLed(kBlockTrsKey, med_blue, midi_->BlockTrs());
         KeyLed(kFeedbackKey, med_blue, midi_->Feedback());
-        KeyLed(kBrightnessKey, purple, true); // dimmed with every LED: it shows itself
-        KeyLed(kInputKey, kInputColors[static_cast<uint8_t>(engine_->GetInput())], true);
+        // the input: the source (with SHIFT AUX's mono), its effects (dark unless it's live)
+        // and live
+        const bool mic = engine_->MicInput(), live = engine_->Live(mic);
+        if (shift || ShiftHeld())
+            KeyLed(kInSourceKey, white, mono_);
+        else
+            KeyLed(kInSourceKey, mic ? magenta : green, true);
+        if (dark_fx_.Active(now))
+            SmtLed(KeyLedOf(kInFxKey), red, dark_fx_.BlinkLit(now) ? 1.f : 0.f);
+        else
+            SmtLed(KeyLedOf(kInFxKey), engine_->Dry(mic) ? white : green, live ? 1.f : 0.f);
+        KeyLed(kLiveKey, white, live);
+        // knob 1 the brightness, white and dimmed with every LED: it shows itself
+        for (uint8_t k = 0; k < 4; k++)
+            PthLed(kKnobLeds[k], white, k == 0 ? 1.f : 0.f);
 
         const unsigned level = hw_->GetBatteryLevel();
         const float* battery = level < 4 ? kBatteryColors[level] : green;
@@ -320,8 +406,13 @@ public:
         PthLed(kTransportLedFwd, purple, 1.f);
         PthLed(kChompiKeyLed, white, shift || (held_ & kShiftHeld) ? 1.f : 0.f);
         if (refused_.Active(now))
-            SmtLed(KeyLedOf(static_cast<Hardware::SwId>(unsaved_key_)), red,
-                   refused_.BlinkLit(now) ? 1.f : 0.f);
+        {
+            const float lit = refused_.BlinkLit(now) ? 1.f : 0.f;
+            if (unsaved_key_ == kBrightnessKnobKey)
+                PthLed(kKnobLeds[0], red, lit);
+            else
+                SmtLed(KeyLedOf(static_cast<Hardware::SwId>(unsaved_key_)), red, lit);
+        }
     }
 
 private:
@@ -373,16 +464,18 @@ private:
     static const Hardware::SwId kSourceKey = Hardware::SwId::KEY_20;
     static const Hardware::SwId kMidiOutKey = Hardware::SwId::KEY_21;
     static const Hardware::SwId kFeedbackKey = Hardware::SwId::KEY_22;
-    static const Hardware::SwId kMonoKey = Hardware::SwId::KEY_23;
-    static const Hardware::SwId kBrightnessKey = Hardware::SwId::KEY_24;
-    static const Hardware::SwId kInputKey = Hardware::SwId::KEY_25;
+    // the input (#177): the source (SHIFT: mono), its effects, live
+    static const Hardware::SwId kInSourceKey = Hardware::SwId::KEY_23;
+    static const Hardware::SwId kInFxKey = Hardware::SwId::KEY_24;
+    static const Hardware::SwId kLiveKey = Hardware::SwId::KEY_25;
+    // knob 1's press, the brightness's (#176), and its LED and the others' (PanelLeds.h)
+    static const int kBrightnessKnobKey = static_cast<int>(Hardware::SwId::ENC_1_SW);
+    static constexpr uint8_t kKnobLeds[4] = {1, 2, 3, 4};
+    static const int kBrightnessStep = 5, kQuarter = 25, kMinBrightness = 25; // percent
     // the factor's hue, by ClockFactor: x1/2 light blue, x1 yellow, x2 red
     static constexpr const float* kFactorColors[3] = {med_blue, yellow, red};
     // the source's, by ClockSource: Auto white, TRS orange, USB blue, internal pink
     static constexpr const float* kSourceColors[kNumClockSources] = {white, orange, blue, pink};
-    // the input's, by PassthroughEngine::Input: AUX through the effects green, AUX dry white,
-    // the mic magenta
-    static constexpr const float* kInputColors[3] = {green, white, magenta};
     static constexpr Hardware::SwId kWhiteKeys[15] = {
         Hardware::SwId::KEY_1,  Hardware::SwId::KEY_2,  Hardware::SwId::KEY_3,
         Hardware::SwId::KEY_4,  Hardware::SwId::KEY_5,  Hardware::SwId::KEY_6,
@@ -402,21 +495,24 @@ private:
     Hardware* hw_ = nullptr;
     bool mono_ = false;
     ClockFactor factor_ = ClockFactor::ONE;
-    uint8_t quarters_ = 4;
+    uint8_t percent_ = 100; // the LEDs' brightness
     float gain_[2] = {.75f, .75f}; // the input gain, AUX's and the mic's
-    // what the card gets of AUX's variant and the gains: the hand's and SysEx's, not MIDI's CCs
-    bool saved_dry_ = false;
+    // what the card gets of each source's effects and live (AUX's, the mic's) and the gains:
+    // the hand's and SysEx's, not MIDI's CCs
+    bool saved_dry_[2] = {false, false};
+    bool saved_live_[2] = {true, false};
     float saved_gain_[2] = {.75f, .75f};
     uint8_t held_ = 0;          // SHIFT and VOLUME's press down on the page, by Held's bits
     uint32_t held_since_ = 0;   // since when both are
     bool reported_ = false;     // this hold has asked for its bug report
     int unsaved_key_ = kNoKey;  // the key that changed a setting last, not yet on the card
     LedSignal refused_;         // its write failed: 3 red blinks on it
+    LedSignal dark_fx_;         // G# pressed while dark: 3 red blinks on it
 };
 
 constexpr const float* SettingsPage::kFactorColors[];
 constexpr const float* SettingsPage::kSourceColors[];
-constexpr const float* SettingsPage::kInputColors[];
+constexpr uint8_t SettingsPage::kKnobLeds[];
 constexpr Hardware::SwId SettingsPage::kWhiteKeys[];
 constexpr Hardware::SwId SettingsPage::kDarkKeys[];
 constexpr const float* SettingsPage::kBatteryColors[];

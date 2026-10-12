@@ -71,6 +71,8 @@ enum Item : uint8_t
     kSpeed,
     kFader,
     kSource,
+    kDry,  // CC 116, the source's effects (#177)
+    kLive, // CC 117, the source live
     kNumItems,
 };
 static const uint8_t kNone = 0xFF; // in the table: not sent yet
@@ -158,7 +160,7 @@ private:
     static uint8_t Cc(uint8_t item)
     {
         using namespace feedback;
-        static const uint8_t kGlobal[] = {23, 85, 86, 87, 89, 90, 80, 84}; // kFocus .. kSource
+        static const uint8_t kGlobal[] = {23, 85, 86, 87, 89, 90, 80, 84, 116, 117}; // kFocus .. kLive
         if (item < kGlobalLatches)
             return static_cast<uint8_t>(14 + item % kKeySlots);
         if (item < kFocusItems)

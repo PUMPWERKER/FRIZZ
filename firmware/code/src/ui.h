@@ -80,7 +80,8 @@ namespace chompi
         // the messages that came.
         // The mode switch up (GetToggleState() false, or SysEx's kCmdSwitch) shows the settings
         // page: a key the panel presses then goes to it, as kSettingsKeyBase plus the key, and
-        // its turns go nowhere but VOLUME's (the play page handles them for it, #152). The panel is the hand and FRIZZ's SysEx keys and detents, so a
+        // its turns go nowhere but VOLUME's and knob 1's, the LEDs' brightness (the play page
+        // handles them for it, #152, #176). The panel is the hand and FRIZZ's SysEx keys and detents, so a
         // computer can play it as a hand would; MIDI's notes and CCs still play. A key belongs to the side it went down on until
         // it's let go, so flipping the switch while holding one neither lets go of it on the
         // play page (an FX punched in, PLAY or CHOMPI acting on their release) nor presses it
@@ -124,7 +125,7 @@ namespace chompi
                 int inc = hw_->enc[i].Increment();
                 if (inc == 1 || inc == -1)
                 {
-                    if (!settings_ || encoder_map[i] == kVolumeEncoder)
+                    if (!settings_ || encoder_map[i] == kVolumeEncoder || encoder_map[i] == 0)
                         event_queue.AddEncoderTurned(encoder_map[i], inc, 0);
                     log_->Add(EventLog::TURN, i + 1, inc);
                 }
@@ -133,7 +134,7 @@ namespace chompi
             for (uint16_t knob = 0; knob < midimap::kNumKnobs; knob++)
             {
                 const int panel_turn = midi_->TakePanelTurn(knob);
-                if (panel_turn && (!settings_ || knob == kVolumeEncoder))
+                if (panel_turn && (!settings_ || knob == kVolumeEncoder || knob == 0))
                     event_queue.AddEncoderTurned(knob, static_cast<int16_t>(panel_turn), 0);
             }
         }

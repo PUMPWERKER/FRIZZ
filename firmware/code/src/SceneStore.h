@@ -6,8 +6,8 @@
  *
  *  Next to it, frizz_master.txt holds the master compressor's knobs, the mono input and the
  *  MIDI settings (MasterSettings.h): read at boot, written when the play page asks, a while after they were
- *  last turned. It goes through the same .tmp; one that can't be read is simply replaced, it
- *  holds little.
+ *  last turned. It goes through the same .tmp; one that's there but can't be read (#168) is
+ *  kept as frizz_master.bak by the next save, as the scenes' is.
  *
  *  The write runs in MainLoop (Process), not in the button handler: the audio callback runs
  *  the UI during boot. It goes to frizz_scenes.tmp first, which then replaces the old file,
@@ -40,6 +40,7 @@ static const char kSceneTmpFile[] = "frizz_scenes.tmp";
 static const char kSceneBakFile[] = "frizz_scenes.bak";
 static const char kMasterFile[] = "frizz_master.txt";
 static const char kMasterTmpFile[] = "frizz_master.tmp";
+static const char kMasterBakFile[] = "frizz_master.bak";
 
 // FRIZZ's folder on the card, so it can share a card with other firmwares (the launcher at
 // github.com/sfaber02/CHOMPI gives each its own folder)
@@ -86,6 +87,7 @@ public:
         path_ = path;
         save_state_ = SaveState::IDLE;
         unreadable_ = false;
+        master_unreadable_ = false;
         for (size_t s = 0; s < kNumScenes; s++)
             Saved()[s].used = false;
         master.Reset();
@@ -142,6 +144,12 @@ public:
             Remount();
             failed_ = !(loaded_ && mounted_);
             const size_t len = FormatMaster(master, buf_, kMasterFileMax);
+            // a file that couldn't be read is kept, not overwritten
+            if (!failed_ && len && master_unreadable_)
+            {
+                failed_ = !KeepUnreadable(kMasterFile, kMasterBakFile);
+                master_unreadable_ = failed_;
+            }
             failed_ = failed_ || !(len && WriteText(kMasterFile, kMasterTmpFile, len));
             master_failed_ = failed_;
         }
@@ -226,7 +234,7 @@ private:
         {
             // the file that couldn't be read is kept, as a save keeps it; if it can't be
             // moved, the .tmp stays too, and the next save tries again
-            if (there && !KeepUnreadable())
+            if (there && !KeepUnreadable(kSceneFile, kSceneBakFile))
                 return false;
             FinishRename(kSceneFile, kSceneTmpFile);
             return true;
@@ -234,24 +242,32 @@ private:
         return !there;
     }
 
-    /** A scene file that couldn't be read to frizz_scenes.bak, in place of the one there;
-     *  true once it's out of the way, or gone meanwhile (deleted, or the card swapped) */
-    static bool KeepUnreadable()
+    /** A file that couldn't be read to its .bak, in place of the one there; true once it's
+     *  out of the way, or gone meanwhile (deleted, or the card swapped) */
+    static bool KeepUnreadable(const char* name, const char* bak)
     {
-        const FRESULT del = f_unlink(kSceneBakFile);
+        const FRESULT del = f_unlink(bak);
         if (del != FR_OK && del != FR_NO_FILE)
             return false;
-        const FRESULT moved = f_rename(kSceneFile, kSceneBakFile);
+        const FRESULT moved = f_rename(name, bak);
         return moved == FR_OK || moved == FR_NO_FILE;
     }
 
-    /** The master settings, or a .tmp a save cut short before its rename, which it finishes */
+    /** The master settings, or a .tmp a save cut short before its rename, which it finishes;
+     *  a file there that can't be read is kept for the next save to move aside */
     void LoadMaster()
     {
         if (ReadText(kMasterFile) && ParseMaster(buf_, master))
             return;
+        const bool there = Exists(kMasterFile);
         if (ReadText(kMasterTmpFile) && ParseMaster(buf_, master))
+        {
+            if (there && !KeepUnreadable(kMasterFile, kMasterBakFile))
+                return;
             FinishRename(kMasterFile, kMasterTmpFile);
+            return;
+        }
+        master_unreadable_ = there;
     }
 
     /** A save cut short before its rename (only tmp was read): finish it */
@@ -278,7 +294,7 @@ private:
         // a file that couldn't be read is kept, not overwritten
         if (unreadable_)
         {
-            if (!KeepUnreadable())
+            if (!KeepUnreadable(kSceneFile, kSceneBakFile))
                 return false;
             unreadable_ = false;
         }
@@ -298,6 +314,7 @@ private:
     volatile SaveState save_state_;
     bool master_pending_ = false;
     bool master_failed_ = false;
+    bool master_unreadable_ = false; // a master file is there that couldn't be read
     bool in_ram_ = false;
 };
 
