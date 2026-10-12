@@ -31,6 +31,9 @@ void SetCardPresent(bool present);
 /** Bytes the card can still take (a full card: 0; SIZE_MAX at first), and the files open on it */
 void SetCardSpace(size_t bytes);
 int CardOpenFiles();
+/** Each write to the card holds up main() for ms, as a slow card does on the device (0 at
+ *  first: no time) */
+void SetCardWriteMs(uint32_t ms);
 
 /** Before the first Run(): the firmware's clock (System::GetNow, GetUs, GetTick) starts at ms
  *  instead of 0, so a check can cross the millisecond counter's wrap. NowMs() and the scripts

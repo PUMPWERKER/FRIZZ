@@ -407,7 +407,16 @@ replay writes the same events again.
 
 A bug report on a full card (the twin's card can run full, `SetCardSpace`, and counts the
 files open, `CardOpenFiles`): the transport blinks red, the file isn't left open, and with
-room again the next one is written.
+room again the next one is written. On a slow card (`SetCardWriteMs`: each write holds up
+`main()` that long) a save that comes due while a report is written, after one that failed,
+waits for it rather than mounting the card again under its open file (`remount-bug-report`,
+#169; the card here, as ff.c, makes the files open before a mount invalid).
+
+From the pre-1.0 audit (#169): a hand's tap tempo goes by when the audio callback saw LOOP,
+not by MainLoop's 2 ms grid (`tap-at-key`); the compressor key isn't red from limiting
+while the settings page was up (`limiter-led-settings`); an empty scene put over SysEx into
+the active slot leaves no scene active (`scene-put-empty`); the developers' SET of a setting
+keeps CC 86's, 116's and 117's values (`dev-set-keeps-midi`).
 
 The bug report's hold (`bug-hold`): SHIFT + transport press on the play page (the combo until
 v0.11) writes nothing, nor SHIFT + VOLUME let go after 1.5 s; VOLUME then SHIFT held 5 s
@@ -537,7 +546,8 @@ the device only. A check asks for a twin with defines of its own with a
 
 `host/` holds the stand-ins for the parts of libDaisy the engine touches: `daisy.h` (two sample
 conversions), `MidiClock.h` (no clock, unless a test sets its fields, as `tempo.cpp`
-does) and `fatfs.h` (an SD card in memory, for `store.cpp`). DaisySP is compiled for the host once into `build/`,
+does) and `fatfs.h` (an SD card in memory, for `store.cpp` and the twin; a mount makes the
+files open before it invalid, as in ff.c). DaisySP is compiled for the host once into `build/`,
 which is ignored.
 
 ## How the scripts are built

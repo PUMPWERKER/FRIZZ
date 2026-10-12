@@ -12,7 +12,7 @@ struct FakeHost
     bool fx_held = false; // an FX key held, so SHIFT going down queues a latch
     bool can_quantize = true;
     Looper::State state = Looper::State::EMPTY;
-    uint32_t now = 0;
+    uint32_t now = 0; // when the audio callback saw the key, which the keys are given
     int confirms = 0, shift_presses = 0, shift_uses = 0, taps = 0, refusals = 0;
     int toggles = 0, records = 0, quantized = 0, stops = 0;
     int erases = 0, erases_at_end = 0, cancels = 0;
@@ -30,9 +30,13 @@ struct FakeHost
         return fx_held;
     }
     void ShiftUsed() { shift_uses++; }
-    void Tap() { taps++; }
+    uint32_t tap_at = 0;
+    void Tap(uint32_t at)
+    {
+        taps++;
+        tap_at = at;
+    }
     void Refused() { refusals++; }
-    uint32_t Now() const { return now; }
     Looper::State LooperState() const { return state; }
     bool CanRecordQuantized() const { return can_quantize; }
     void StartRecording(bool q)
@@ -121,12 +125,12 @@ static void TestPlayLoop()
     Keys k;
     Fresh(h, k);
 
-    k.Loop(true);
+    k.Loop(true, h.now);
     Check(h.records == 1 && h.quantized == 0, "LOOP on empty: records at once");
-    k.Loop(false);
-    k.Loop(true);
+    k.Loop(false, h.now);
+    k.Loop(true, h.now);
     Check(h.stops == 1, "LOOP again: stops, plays");
-    k.Loop(false);
+    k.Loop(false, h.now);
 
     k.Play(true);
     Check(h.toggles == 0, "PLAY: nothing on the press");
@@ -136,24 +140,24 @@ static void TestPlayLoop()
     Check(h.toggles == 1, "a PLAY release without its press: nothing");
 
     // LOOP on a loop: erases at once, but not just after it stopped a recording
-    k.Loop(true);
+    k.Loop(true, h.now);
     Check(h.erases == 0, "LOOP right after the stop: no erase");
-    k.Loop(false);
+    k.Loop(false, h.now);
     h.now = Keys::kEraseLockMs - 1;
-    k.Loop(true);
+    k.Loop(true, h.now);
     Check(h.erases == 0, "LOOP within the lock: no erase");
-    k.Loop(false);
+    k.Loop(false, h.now);
     h.now = Keys::kEraseLockMs;
-    k.Loop(true);
+    k.Loop(true, h.now);
     Check(h.erases == 1 && h.state == Looper::State::EMPTY, "LOOP on a loop: erases at once");
-    k.Loop(false);
+    k.Loop(false, h.now);
 
     // PLAY held + LOOP on a loop: erases at its end, and PLAY's release doesn't toggle
     h.state = Looper::State::PLAYING;
     k.Play(true);
-    k.Loop(true);
+    k.Loop(true, h.now);
     Check(h.erases_at_end == 1 && h.erases == 1, "PLAY + LOOP on a loop: erase at its end");
-    k.Loop(false);
+    k.Loop(false, h.now);
     k.Play(false);
     Check(h.toggles == 1 && h.cancels == 0, "... PLAY's release neither toggles nor cancels");
 
@@ -164,46 +168,46 @@ static void TestPlayLoop()
 
     // waiting: LOOP erases at once, with PLAY held or not
     k.Play(true);
-    k.Loop(true);
-    k.Loop(false);
+    k.Loop(true, h.now);
+    k.Loop(false, h.now);
     k.Play(false);
     Check(h.erases_at_end == 2, "PLAY + LOOP again: waits again");
-    k.Loop(true);
+    k.Loop(true, h.now);
     Check(h.erases == 2 && !h.erase_pending, "waiting: LOOP erases at once");
-    k.Loop(false);
+    k.Loop(false, h.now);
     h.state = Looper::State::PLAYING;
     k.Play(true);
-    k.Loop(true);
-    k.Loop(false);
-    k.Loop(true);
+    k.Loop(true, h.now);
+    k.Loop(false, h.now);
+    k.Loop(true, h.now);
     Check(h.erases == 3 && h.erases_at_end == 3, "waiting, PLAY held: LOOP erases at once");
-    k.Loop(false);
+    k.Loop(false, h.now);
     k.Play(false);
     Check(h.toggles == 1 && h.cancels == 1, "... PLAY's release does nothing");
 
     // LOOP first erases; PLAY after it is nothing more
     h.state = Looper::State::PLAYING;
-    k.Loop(true);
+    k.Loop(true, h.now);
     k.Play(true);
     k.Play(false);
-    k.Loop(false);
+    k.Loop(false, h.now);
     Check(h.erases == 4 && h.erases_at_end == 3 && h.toggles == 2,
           "LOOP, then PLAY: one erase; PLAY is PLAY, on the empty looper");
 
     // quantized record: PLAY held, LOOP on an empty looper
     h.state = Looper::State::EMPTY;
     k.Play(true);
-    k.Loop(true);
+    k.Loop(true, h.now);
     Check(h.quantized == 1, "PLAY + LOOP on empty: quantized record");
-    k.Loop(false);
+    k.Loop(false, h.now);
     k.Play(false);
     Check(h.toggles == 2, "... and PLAY's release doesn't toggle");
     h.state = Looper::State::EMPTY;
     h.can_quantize = false;
     k.Play(true);
-    k.Loop(true);
+    k.Loop(true, h.now);
     Check(h.refusals == 1 && h.records == 2, "quantized record without a clock: refused");
-    k.Loop(false);
+    k.Loop(false, h.now);
     k.Play(false);
 }
 
@@ -214,15 +218,17 @@ static void TestShiftCombos()
     Fresh(h, k);
     h.state = Looper::State::PLAYING;
 
-    // SHIFT + LOOP: a tap, nothing else
+    // SHIFT + LOOP: a tap, nothing else, at when the key went down, not when MainLoop got to it
     k.Chompi(true);
-    k.Loop(true);
-    k.Loop(false);
+    h.now = 1234;
+    k.Loop(true, h.now);
+    k.Loop(false, h.now);
     Check(h.taps == 1 && h.records == 0 && h.stops == 0 && h.shift_uses == 1,
           "SHIFT + LOOP: tap tempo only, and SHIFT used");
+    Check(h.tap_at == 1234, "SHIFT + LOOP: the tap at the key's time");
     k.Play(true);
-    k.Loop(true);
-    k.Loop(false);
+    k.Loop(true, h.now);
+    k.Loop(false, h.now);
     k.Play(false);
     Check(h.taps == 2 && h.toggles == 0, "PLAY held + SHIFT + LOOP: no toggle on PLAY's release");
 

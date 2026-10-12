@@ -426,6 +426,13 @@ public:
     inline int Source() const { return src_; }
     /** The last scene recalled or saved, kNoScene if none or deleted */
     inline int Active() const { return active_; }
+    /** A slot emptied from outside (an empty scene put over SysEx): no longer the active one,
+     *  as DELETE */
+    void Emptied(size_t slot)
+    {
+        if (active_ == static_cast<int>(slot))
+            active_ = kNoScene;
+    }
     /** The controls changed since the active scene was recalled or saved */
     inline bool Edited() const { return fx_->Edited(); }
 

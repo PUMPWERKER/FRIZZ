@@ -332,11 +332,28 @@ public:
         using namespace masterfile;
         if (line >= sizeof(kLines) / sizeof(kLines[0]) || !kLines[line].Takes(v))
             return false;
-        MasterSettings master;
-        Store(master);
+        MasterSettings before, master;
+        Store(before);
+        master = before;
         *Field(master, kLines[line]) = static_cast<uint8_t>(kLines[line].kind == Line::SWITCH ? v != 0 : v);
+        // what MIDI set without the card (CC 86, 116, 117) stays unless this sets it
+        const float gain[2] = {gain_[0], gain_[1]};
+        const bool dry[2] = {engine_->Dry(false), engine_->Dry(true)};
+        const bool live[2] = {engine_->Live(false), engine_->Live(true)};
         // a setter leaves a setting that stays as it is (the clock keeps its state)
         Init(engine_, midi_, hw_, master);
+        if (master.gain_aux == before.gain_aux)
+            SetGain(false, gain[0]);
+        if (master.gain_mic == before.gain_mic)
+            SetGain(true, gain[1]);
+        if (master.aux_dry == before.aux_dry)
+            engine_->SetDry(false, dry[0]);
+        if (master.mic_dry == before.mic_dry)
+            engine_->SetDry(true, dry[1]);
+        if (master.aux_live == before.aux_live)
+            engine_->SetLive(false, live[0]);
+        if (master.mic_live == before.mic_live)
+            engine_->SetLive(true, live[1]);
         midi_->SetChannel(master.midi_channel);
         midi_->SetTransport(master.midi_transport);
         return true;

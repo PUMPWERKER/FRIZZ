@@ -329,6 +329,14 @@ what FRIZZ does.
 
 ### Fixed
 
+- **Tap tempo and LOOP's erase lock go by when you pressed LOOP** (#169), not by when FRIZZ got
+  round to it: a tap was up to 2 ms off, and while the card was being written (a scene saved)
+  tens of ms, so the tapped tempo came out a little off. MIDI taps already were.
+- **The compressor key no longer flashes red after the settings page** (#169) from limiting
+  that happened while the page was up; it turns red only while the limiter still works.
+- **A bug report is no longer cut short by a save** (#169): after a save that had failed, the
+  next one (a scene, or the settings 2 s after a change) mounted the card again while a report
+  was being written, and the report failed. That save now waits until the report is written.
 - **With the mix at the loop alone, none of the input is left** (#168): a trace of it, about
   86 dB down, stayed on the master; the headphone feed likewise settles exactly on the master
   or the input now.
