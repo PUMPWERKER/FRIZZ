@@ -435,6 +435,9 @@ private:
             engine.SetFxParam(FX_REVERB, 0, 1.f);
             SetBefore(engine, FX_REVERB, 3, 1.f); // its level, at 0dB
         }
+        // the freezer's roll on 1/16 of its length (1/4 bar at .5), 1/64 bar: where main's
+        // automatic roll at .5 got to, halving on, before the roll was played by hand (#173)
+        engine.SetFxParam(FX_FREEZER, Freezer::ROLL, 1.f);
         if (seg.flags & SCENE4)
             engine.SetFxParam(FX_SHIFTER, 0, .5f + 7.f / 24.f);
         engine.SetFxPool(seg.flags & CHAOS ? kInserts : 0);

@@ -188,14 +188,13 @@ int main()
         panel &= PthLedFull(i).g > 200 && PthLedFull(i).r == 0;
     Check(panel, "bench: at the end the panel is green");
 
-    // the tune goes through: every 3 s after the boot something comes out (above -66dBFS), but
+    // the tune goes through: every 3 s after the boot something comes out (above -60dBFS), but
     // for the tape stop's segment (the windows don't line up with the segments exactly). With
-    // every effect on, the compressor down hard, it comes out at about -60dBFS here: a few dB
-    // lower since the phaser joined them (a phaser takes 3dB of a broadband sound in its
-    // notches), and a dB since the freezer's roll holds its step (#173) instead of halving on
+    // every effect on, the compressor down hard, it comes out at about -50dBFS here, a few dB
+    // lower since the phaser joined them (a phaser takes 3dB of a broadband sound in its notches)
     int quiet = 0;
     for (size_t w = 1; w < rms.size(); w++)
-        quiet += rms[w] < .0005f;
+        quiet += rms[w] < .001f;
     Check(rms.size() >= kNum && quiet <= 2, "bench: its tune reaches the master out throughout");
 
     // it answers FRIZZ's SysEx as FRIZZ does; IDENT tells the two apart (above). Its load
