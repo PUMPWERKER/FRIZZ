@@ -42,5 +42,6 @@ C_INCLUDES = -I$(LIBDAISY_DIR)/Middlewares/ST/STM32_USB_Device_Library/Class/CDC
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
 include $(SYSTEM_FILES_DIR)/Makefile
 
-# A change to the memory layout relinks
-$(BUILD_DIR)/$(TARGET).elf: $(LDSCRIPT)
+# A change to the memory layout, or to a prebuilt library it links (a libDaisy fix rebuilt
+# into libdaisy.a, THIRD_PARTY.md), relinks (#161)
+$(BUILD_DIR)/$(TARGET).elf: $(LDSCRIPT) $(LIBDAISY_DIR)/build/libdaisy.a $(DAISYSP_DIR)/build/libdaisysp.a
