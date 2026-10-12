@@ -401,7 +401,8 @@ tools/midisuite.py --cases out-loop,start-spp -v    # a few, every check as it's
 (`~/Apps/REAPER/reaper`, or `FRIZZ_REAPER`): its MIDI clock at 120, 200 and 300 BPM, its
 Start / Stop / Continue / Song Position on play, stop, locating and a loop range's turns,
 automation lanes on the effect channels, a track monitoring FRIZZ's input, and its clock's
-jitter against a clock from this computer (#83). Wiring A (the CHOMPI's TRS out into the
+jitter against a clock from this computer (#83); and the other way round, REAPER synced to
+FRIZZ's MIDI out (`daw-follows`, #150). Wiring A (the CHOMPI's TRS out into the
 interface's MIDI in) shows what FRIZZ passes on; without it the jitter is a SKIP.
 
 ```bash
@@ -433,6 +434,19 @@ tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouc
   (`Midi-Bridge:FrizZ: MIDI 1`), as a desktop REAPER here does; **dummy** uses ALSA's raw node
   (`hw:FrizZ`). Its CC reset on stop and at a loop's turn is off (`ccresettab=cc0-120=-1`)
   but in the last REAPER.
+- **REAPER following FRIZZ** (`daw-follows`) runs in a REAPER of its own after the others,
+  started only when the case is: its project synchronized to its MIDI input, its clock out
+  off (`midiouts_clock=0`; the tool's SysEx still goes out through it). The switch is the
+  project's, not reaper.ini's ("External timecode synchronization", the transport's right
+  click): the project file's `SMPTESYNC 5 30 100 40 1000 300 4223 0 0 0 0`, which
+  `reaper.lua` opens first and reads back (`projsmptesync` 5: on, and start playing on a valid
+  clock; `projsmpteinput` 4223: MIDI clock and Song Position from all inputs). FRIZZ at 100
+  tapped, a free loop of 4 beats, MIDI out on TRS and USB: REAPER starts with the loop's
+  Start on its beat 1, its beats in step with the loop's, stops on a pause and goes on at
+  PLAY's Song Position, and follows the clock factor. REAPER keeps its own tempo (120) and
+  play rate (1.0) and varies its speed to keep its beats on the clock's, holding still about
+  a second first (it seeks 1 s ahead), and only within about half to twice its tempo: beyond
+  (x1/2 against its 120, 3.3x) it goes in jumps, so x1/2 is judged with its project at 60.
 - `test/reaper.cpp` runs it on the twin with `test/reaper_stub.py` in REAPER's place, and
   `REAPERCHECK="--cases ID -v" test/unit.sh reaper` plays it there once.
 

@@ -21,6 +21,9 @@ node to itself (remote.py, flash.py and the other tools can't reach FRIZZ then).
      REAPER's MIDI input. midisuite.py's Rig runs on that as on the node, slower (each
      query ~70 ms).
   3. This tool on the node again: everything put back.
+The cases marked synced (daw-follows) run in one more REAPER after those, in the first audio
+mode, started only when one is: REAPER synchronized to what comes in (SYNC_PROJECT) and
+sending no clock of its own (midiouts_clock=0), only the commands' bytes.
 What FRIZZ sends shows on the TRS jack (wiring A: the CHOMPI's TRS out into the interface's
 MIDI in, FRIZZ's MIDI out on TRS: a clock coming in is passed on, a tick within its block) and
 over USB, through REAPER's input.
@@ -62,8 +65,8 @@ import chompi  # noqa: E402
 import midiport  # noqa: E402
 import midisuite  # noqa: E402
 import remote  # noqa: E402
-from midiport import START, CONTINUE, STOP  # noqa: E402
-from midisuite import SOURCES, OUTS, WHITE_FX, EMPTY, knob7, fit, count  # noqa: E402
+from midiport import START, CONTINUE, STOP, SPP  # noqa: E402
+from midisuite import SOURCES, OUTS, WHITE_FX, EMPTY, PLAY, knob7, fit, count  # noqa: E402
 
 HOME = os.path.expanduser("~")
 USER_CONFIG = os.path.join(HOME, ".config", "REAPER")
@@ -73,6 +76,20 @@ RUNNER = os.path.join(HERE, "reaper.lua")
 STARTUP = 20.  # s for REAPER to run the script's first line
 QUIT = 15.  # s for it to quit when asked
 AUDIO_MODES = dict(jack=0, dummy=2)  # linux_audio_mode
+# REAPER's "External timecode synchronization" is the project's (Project Settings, or the
+# transport's right click), not reaper.ini's: its line in the project file, the project
+# variables projsmptesync, projsmpterate, ... projsmpteinput in that order. 5: on (1), "Start
+# playback on valid timecode when stopped" (4); 30 fps; re-synchronize past 100 ms; skip
+# frames past 40 ms; seek 1000 ms ahead; freewheel 300 ms; input 4223: MIDI clock and Song
+# Position (SPP) from all MIDI inputs (4159 would be MTC; the Ultraschall API's project file
+# notes list them); the rest 0. reaper.lua opens it before anything else, and logs what REAPER
+# has then ("sync").
+SYNC = (5, 4223)
+SYNC_PROJECT = """<REAPER_PROJECT 0.1 "7.0" 0 0
+  TEMPO 120 4 4 0
+  SMPTESYNC %d 30 100 40 1000 300 %d 0 0 0 0
+>
+""" % SYNC
 
 
 def binary():
@@ -167,10 +184,11 @@ class Daw:
     whose card REAPER sends its clock and the commands' bytes to, and whose input it logs
     (tap: what FRIZZ sends over USB, as it's read from the log); None for none"""
 
-    def __init__(self, audio="jack", node=None, verbose=False, name=None, settings=None):
+    def __init__(self, audio="jack", node=None, verbose=False, name=None, settings=None, sync=False):
         """name: a MIDI device by REAPER's name for it instead (virtual: REAPER's own port);
-        settings: more of reaper.ini's [reaper] keys, {key: value}"""
-        self.audio, self.verbose = audio, verbose
+        settings: more of reaper.ini's [reaper] keys, {key: value}; sync: REAPER following the
+        clock that comes in (SYNC_PROJECT), its own clock out off"""
+        self.audio, self.verbose, self.sync = audio, verbose, sync
         # REAPER's own "Reset MIDI CC/Pitch on: playback stop / playback loop/skip" (on by
         # default: each CC a track sent goes back to 0) off, through "CC reset overrides"
         self.settings = dict(dict(ccresettab="cc0-120=-1"), **(settings or {}))
@@ -227,6 +245,10 @@ class Daw:
                     raise ReaperError("REAPER's devices: %s" % "; ".join(self.errors()))
             if self.audio == "jack" and jack_links():
                 raise ReaperError("REAPER's ports are linked: %s" % "; ".join(jack_links()))
+            self.sync_info = next((r for _, _, w, r in self.lines if w == "sync"), "?")
+            # (REAPER doesn't give midiouts_clock to a script: reaper.ini's, written above, says it)
+            if self.sync and self.sync_info.split()[:2] != [str(v) for v in SYNC]:
+                raise ReaperError("REAPER's synchronization: %s, not %d %d" % ((self.sync_info,) + SYNC))
         except BaseException:
             self.close()
             raise
@@ -242,7 +264,8 @@ class Daw:
             "linux_audio_bufs=3", "linux_audio_nch_in=2", "linux_audio_nch_out=2",
             "linux_audio_bits=32", "alsa_indev=frizz_none", "alsa_outdev=frizz_none",
             "jack_options=2",  # REAPER links its ports to nothing by itself
-            "midiouts=%d" % mask, "midiouts_clock=%d" % mask, "midiouts_noreset=%d" % mask,
+            # synced, REAPER sends no clock, Start, Stop or Song Position: only the commands' bytes
+            "midiouts=%d" % mask, "midiouts_clock=%d" % (0 if self.sync else mask), "midiouts_noreset=%d" % mask,
             "midiins=%d" % bit(self.in_index),
             "splashlog=0", "lastproject=", "projecttab1=",
         ] + ["%s=%s" % kv for kv in sorted(self.settings.items())] + [
@@ -262,6 +285,10 @@ class Daw:
                 f.write("\n".join(cache) + "\n")
         plan = dict(log=self.log_path, cmds=self.cmds_path, project=os.path.join(self.dir, "run.rpp"),
                     out=self.out_index, out_name=self.out_name, input=self.in_index, in_name=self.in_name)
+        if self.sync:
+            plan["sync"] = os.path.join(self.dir, "sync.rpp")
+            with open(plan["sync"], "w") as f:
+                f.write(SYNC_PROJECT)
         with open(RUNNER) as f:
             runner = f.read()
         with open(os.path.join(self.dir, "Scripts", "__startup.lua"), "w") as f:
@@ -462,6 +489,18 @@ class Daw:
     def trace(self, on):
         return self.cmd("trace", "on" if on else "off", wait=True)
 
+    def traced(self, t0, t1=None):
+        """The play position traced between t0 and t1: (this computer's time, s, beats, play
+        state, play rate, tempo)"""
+        got = []
+        with self.lock:
+            for now, _, w, r in self.lines:
+                if w == "pos" and now >= t0 and (t1 is None or now <= t1):
+                    v = r.split()
+                    got.append((now, float(v[0]), float(v[1]), int(v[3]),
+                                float(v[5]) if len(v) > 5 else 1., float(v[7]) if len(v) > 7 else 0.))
+        return got
+
     def positions(self, t0, t1=None):
         """(this computer's time, REAPER's position in beats) traced between t0 and t1"""
         with self.lock:
@@ -486,12 +525,13 @@ def frizz_through(daw):
 CASES = []
 
 
-def case(id, item, needs=(), every=False, last=False):
+def case(id, item, needs=(), every=False, last=False, synced=False):
     """every: in each REAPER (audio mode), not only the first; last: only in the last, when it
-    isn't the first, which runs with REAPER's preferences as they come"""
+    isn't the first, which runs with REAPER's preferences as they come; synced: in a REAPER of
+    its own after them, following the clock that comes in (Daw's sync)"""
     def add(fn):
         c = midisuite.Case(id, item, fn, needs)
-        c.every, c.last = every, last
+        c.every, c.last, c.synced = every, last, synced
         CASES.append(c)
         return fn
     return add
@@ -746,6 +786,228 @@ def daw_monitor(r, d):
     d.clear()
 
 
+def loop_beats(r, tempo):
+    """The loop's length in whole beats at its tempo (PROBE's length: a free loop counts none)"""
+    return round(chompi.get7(remote.dev_data(r.f, chompi.PROBE, [1], "PROBE")[2:6]) / 48000. * tempo / 60.)
+
+
+def line_of(points):
+    """The line through (t, y) points: (slope, its y at t = 0, the farthest a point is from it);
+    None for fewer than 3"""
+    n = len(points)
+    if n < 3:
+        return None
+    mt, my = sum(t for t, _ in points) / n, sum(y for _, y in points) / n
+    var = sum((t - mt) ** 2 for t, _ in points)
+    if var <= 0:
+        return None
+    k = sum((t - mt) * (y - my) for t, y in points) / var
+    return k, my - k * mt, max(abs(y - (my + k * (t - mt))) for t, y in points)
+
+
+def followed(d, t0, t1):
+    """REAPER's beats while it played between t0 and t1: (its tempo, the line, the readings), the
+    line as line_of's over this computer's time; None"""
+    pts = [(now, b) for now, _, b, state, _, _ in d.traced(t0, t1) if state & 1]
+    line = line_of(pts)
+    return (line[0] * 60., line, pts) if line else None
+
+
+def first_after(log, byte, t0, timeout=0.):
+    """The first message starting with byte at or after t0, waiting up to timeout: (time,
+    message), or (None, None)"""
+    end = time.perf_counter() + timeout
+    while True:
+        got = next(((t, m) for t, m in list(log) if t >= t0 and m[0] == byte), (None, None))
+        if got[0] is not None or time.perf_counter() >= end:
+            return got
+        time.sleep(.02)
+
+
+def playing_from(d, t0, timeout=4.):
+    """When REAPER's trace first shows it playing (or not, playing=False) from t0 on; None"""
+    end = time.perf_counter() + timeout
+    while time.perf_counter() < end:
+        got = next((now for now, _, _, state, _, _ in d.traced(t0) if state & 1), None)
+        if got is not None:
+            return got
+        time.sleep(.05)
+    return None
+
+
+def moves_from(d, t0, timeout=4.):
+    """When REAPER's position, playing, first moves on from t0 on; None"""
+    end = time.perf_counter() + timeout
+    while time.perf_counter() < end:
+        pts = [(now, b) for now, _, b, state, _, _ in d.traced(t0) if state & 1]
+        got = next((now for now, b in pts if b > pts[0][1] + .02), None) if pts else None
+        if got is not None:
+            return got
+        time.sleep(.05)
+    return None
+
+
+def stopped_from(d, t0, timeout=4.):
+    end = time.perf_counter() + timeout
+    while time.perf_counter() < end:
+        got = next((now for now, _, _, state, _, _ in d.traced(t0) if not state & 1), None)
+        if got is not None:
+            return got
+        time.sleep(.05)
+    return None
+
+
+FOLLOW_BPM = 100  # FRIZZ's tempo, tapped: away from REAPER's own 120
+SETTLE = 2.  # s from REAPER playing to judging it: it holds still a second first (seeking ahead)
+
+
+@case("daw-follows", "7: MIDI out on TRS and USB into a DAW synced to external clock: the DAW "
+      "follows the loop (#73): REAPER synced to FRIZZ's clock and Song Position (its own clock "
+      "out off) starts with the loop on its beat 1, plays at its tempo and in step with it, "
+      "stops on pause, goes on where PLAY's Song Position says, follows the clock factor",
+      synced=True)
+def daw_follows(r, d):
+    r.setting(clock_source=SOURCES["internal"], midi_out=OUTS["all"], clock_factor=100)
+    usb, trs = r.usb.log, r.trs.log if r.trs else None
+    d.tempo(120)
+    d.locate(0)
+    d.trace(True)
+    midisuite.tap_tempo(r, FOLLOW_BPM)
+    took, tempo = r.wait_tempo(FOLLOW_BPM, 1, 3)
+    r.check("FRIZZ tapped to %d BPM (REAPER's project at 120)" % FOLLOW_BPM, took is not None, tempo,
+            "%d +-1" % FOLLOW_BPM)
+    time.sleep(1.)
+    t0 = time.perf_counter()
+    early = playing_from(d, t0, 1.5)
+    r.note("FRIZZ's clock out, no loop, no Start: REAPER %s" % (
+        "plays %.2f s in" % (early - t0) if early else "waits"))
+    if early:
+        d.stop_transport()
+    # a free loop of 4 beats at FRIZZ's tempo
+    t0 = time.perf_counter()
+    r.record_loop(quantized=False, seconds=4 * 60. / FOLLOW_BPM)
+    tempo = r.tempo()
+    beats = loop_beats(r, tempo)
+    t_start, _ = first_after(usb, START, t0, 1.)
+    r.check("the loop plays: Start over USB", t_start is not None, "after %.2f s" % (t_start - t0) if t_start else "none",
+            "Start")
+    if t_start is None:
+        return
+    began = playing_from(d, t_start)
+    r.check("REAPER starts playing", began is not None,
+            "%.0f ms after FRIZZ's Start" % ((began - t_start) * 1000) if began else "not in 4 s", "it plays")
+    if began is None:
+        return
+    moving = moves_from(d, began)
+    r.note("REAPER plays %.0f ms after FRIZZ's Start (its trace's every ~33 ms), its position moving %s" % (
+        (began - t_start) * 1000, "%.2f s after (it seeks ahead first)" % (moving - t_start) if moving else "not in 4 s"))
+    loop_s = beats * 60. / tempo
+    time.sleep(max(0., began + SETTLE + 2.5 * loop_s - time.perf_counter()))
+    # FRIZZ's loop position against REAPER's beat, now and then
+    phase = []
+    for _ in range(6):
+        a = time.perf_counter()
+        pos = r.state()["pos"]
+        b = time.perf_counter()
+        phase.append(((a + b) / 2., pos))
+        time.sleep(.15)
+    t1 = time.perf_counter()
+    got = followed(d, began + SETTLE, t1)
+    if not got:
+        r.check("REAPER's position while it plays", False, "too few readings", "a trace")
+        return
+    bpm, (k, y0, worst), pts = got
+    at_start = y0 + k * t_start
+    r.note("REAPER over %.1f s of playing: %.2f BPM, its beat at FRIZZ's Start %.3f, readings up to %.3f "
+           "beats off its line, play rate %s, tempo %s" % (
+               t1 - began - SETTLE, bpm, at_start, worst,
+               sorted({x[4] for x in d.traced(began, t1)}), sorted({x[5] for x in d.traced(began, t1)})))
+    r.tcheck("REAPER plays at the loop's tempo (%.1f BPM, %d beats)" % (tempo, beats),
+             abs(bpm - tempo) <= tempo * .01 * r.loose, "%.2f BPM" % bpm, "%.1f +-%g %%" % (tempo, r.loose))
+    r.check("on its beat 1: REAPER's beat when FRIZZ sent Start", abs(at_start) <= .25,
+            "%+.3f beats" % at_start, "0 +-0.25")
+    r.check("steadily: no jumps", worst <= .25, "%.3f beats off its line at most" % worst, "0.25")
+    offs = []
+    for t, pos in phase:
+        rb = y0 + k * t
+        diff = (rb - pos * beats + beats / 2.) % beats - beats / 2.
+        offs.append(diff)
+    r.check("in step with the loop over %d wraps: REAPER's beat in the loop against FRIZZ's position"
+            % int((t1 - t_start) / loop_s), offs and max(abs(x) for x in offs) <= .3,
+            " ".join("%+.2f" % x for x in offs), "0 +-0.3 beats")
+    # pause, PLAY
+    tp = time.perf_counter()
+    r.tap(PLAY)
+    t_stop, _ = first_after(usb, STOP, tp, 1.)
+    halted = stopped_from(d, t_stop or tp)
+    r.check("PLAY: FRIZZ paused, Stop; REAPER stops", t_stop is not None and halted is not None,
+            "Stop %s, REAPER %s" % ("sent" if t_stop else "none",
+                                    "stopped %.0f ms after" % ((halted - (t_stop or tp)) * 1000) if halted else "plays on"),
+            "both")
+    time.sleep(.8)
+    tr = time.perf_counter()
+    r.tap(PLAY)
+    t_spp, m = first_after(usb, SPP, tr, 1.)
+    t_cont, _ = first_after(usb, CONTINUE, tr, 1.)
+    at = (m[1] | m[2] << 7) / 4. if m else None
+    resumed = playing_from(d, t_cont or tr)
+    r.check("PLAY again: Song Position, Continue; REAPER plays", at is not None and t_cont and resumed,
+            "Song Position %s, Continue %s, REAPER %s" % (
+                "%g beats" % at if at is not None else "none", "sent" if t_cont else "none",
+                "%.0f ms after" % ((resumed - t_cont) * 1000) if resumed and t_cont else "no"), "all")
+    if not (at is not None and t_cont and resumed):
+        return
+    time.sleep(max(0., resumed + SETTLE + 3. - time.perf_counter()))
+    got = followed(d, resumed + SETTLE, time.perf_counter())
+    if got:
+        bpm, (k, y0, worst), _ = got
+        there = y0 + k * t_cont
+        r.check("REAPER goes on where the Song Position says", abs(there - at) <= .25,
+                "beat %.3f at Continue" % there, "%g +-0.25" % at)
+        r.tcheck("at the loop's tempo again", abs(bpm - tempo) <= tempo * .01 * r.loose, "%.2f BPM" % bpm,
+                 "%.1f" % tempo)
+    # the clock factor while it plays: REAPER follows a clock within about half to twice its
+    # project's tempo, beyond that in jumps (seeking ahead each time), so x1/2 is judged with
+    # its project at 60, and only noted at 120
+    project = 120.
+    for value, bpm, judged in ((200, 120., True), (50, 120., False), (50, 60., True)):
+        if bpm != project:
+            d.tempo(bpm)
+            project = bpm
+        tf = time.perf_counter()
+        r.setting(clock_factor=value)
+        time.sleep(SETTLE)
+        want = tempo * value / 100.
+        a = time.perf_counter()
+        time.sleep(4.)
+        got = followed(d, a, time.perf_counter())
+        sent = [m.hex() for t, m in usb if t >= tf and m[0] in (START, STOP, CONTINUE, SPP)]
+        what = "clock factor %s, REAPER's project at %d (%.1fx)" % (
+            "x2" if value == 200 else "x1/2", bpm, want / bpm)
+        measured = "%.2f BPM, %.2f beats off its line at most" % (got[0], got[1][2]) if got else "not playing"
+        r.note("%s: FRIZZ sent %s; REAPER %s" % (what, " ".join(sent) or "no transport", measured))
+        if judged:
+            r.tcheck("%s: REAPER at FRIZZ's tempo, steadily" % what,
+                     got and abs(got[0] - want) <= want * .01 * r.loose and got[1][2] <= .25,
+                     measured, "%.1f +-%g %%, 0.25 beats" % (want, r.loose))
+    r.setting(clock_factor=100)
+    tp = time.perf_counter()
+    r.tap(PLAY)
+    t_stop, _ = first_after(usb, STOP, tp, 1.)
+    halted = stopped_from(d, t_stop or tp)
+    r.check("paused again: REAPER stops", halted is not None,
+            "%.0f ms after the Stop" % ((halted - (t_stop or tp)) * 1000) if halted else "plays on", "it stops")
+    if trs is not None:
+        def transport(log):
+            return [m[0] for t, m in log if t >= t0 and m[0] in (START, STOP, CONTINUE, SPP)]
+        what = "the same Start, Stop, Song Position and Continue out of TRS as over USB (#157)"
+        r.known.add(what)  # #157: PLAY's Song Position comes twice over USB
+        r.check(what, transport(trs) == transport(usb),
+                "TRS %s, USB %s" % (" ".join("%02x" % b for b in transport(trs)),
+                                    " ".join("%02x" % b for b in transport(usb))), "the same")
+    d.trace(False)
+
+
 def jitter_row(ticks):
     """(ticks, mean, 99 %, max) of their distances from the line through them, ms"""
     p, _ = fit(ticks)
@@ -974,34 +1236,42 @@ def main():
         r.usb.close()
         os.close(r.usb.fd)
 
-        # 2. REAPER, once per audio mode
+        # 2. REAPER, once per audio mode; then, for the cases that want it, once more in the
+        # first, synchronized to what comes in
+        plan = []
         for n, audio in enumerate(audios):
             last = n == len(audios) - 1 and n > 0
-            todo = [c for c in cases if c.every or (c.last and last) or (n == 0 and not c.last)]
+            todo = [c for c in cases if not c.synced and (c.every or (c.last and last) or (n == 0 and not c.last))]
             if n == 0 and len(audios) == 1:
                 results += [(c, "SKIP", "needs a second REAPER (--audio jack,dummy)", [], audio)
                             for c in cases if c.last]
+            plan.append((audio, last, False, todo))
+        plan.append((audios[0], False, True, [c for c in cases if c.synced]))
+        for audio, last, sync, todo in plan:
+            label = audio + (", synced" if sync else "")
             if not todo:
                 continue
             if not binary():
-                results += [(c, "SKIP", "no REAPER", [], audio) for c in todo]
+                results += [(c, "SKIP", "no REAPER", [], label) for c in todo]
                 continue
             try:
                 # the last REAPER with its preferences as they come: its CC reset on
-                d = Daw(audio, device, a.verbose, settings=dict(ccresettab="") if last else None)
+                d = Daw(audio, device, a.verbose, settings=dict(ccresettab="") if last else None, sync=sync)
             except ReaperError as e:
-                print("REAPER %s: %s" % (audio, e), file=sys.stderr)
-                results += [(c, "FAIL", "REAPER %s: %s" % (audio, str(e).splitlines()[0]), [], audio) for c in todo]
+                print("REAPER %s: %s" % (label, e), file=sys.stderr)
+                results += [(c, "FAIL", "REAPER %s: %s" % (label, str(e).splitlines()[0]), [], label) for c in todo]
                 continue
-            sessions.append("%s (%s; its script %.1f s after the start%s)" % (
-                audio, d.audio_info, d.started, "" if last else "; CC reset overrides cc0-120=-1"))
+            sessions.append("%s (%s; its script %.1f s after the start%s%s)" % (
+                audio, d.audio_info, d.started, "" if last else "; CC reset overrides cc0-120=-1",
+                "; synchronized to its MIDI input: projsmptesync %s, projsmpteinput %s; midiouts_clock=0" % tuple(
+                    d.sync_info.split()[:2]) if sync else ""))
             print("REAPER %s" % sessions[-1], flush=True)
             try:
                 r = midisuite.Rig(frizz_through(d), trs_fd, a, usb=d.tap, trs=trs, patience=2.)
                 r.wiring, r.jitter = wiring, []
                 for c in todo:
                     status, detail = run_case(r, d, c, snap)
-                    results.append((c, status, detail, r.checks, audio))
+                    results.append((c, status, detail, r.checks, label))
                     report(c, status, detail, r)
                     for note in r.notes:
                         print("       " + note, flush=True)
