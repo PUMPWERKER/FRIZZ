@@ -1064,8 +1064,8 @@ def morph_hold(r):
     r.send_usb(cc(GLOBAL, 81, 0) + cc(GLOBAL, 81, 127) + cc(GLOBAL, 81, 0))  # stopped where it is
 
 
-def landed(r, seconds=10.):
-    """Waits until no morph runs, at most seconds (a bar at 50 BPM, the slowest, is 4.8 s);
+def landed(r, seconds=12.):
+    """Waits until no morph runs, at most seconds (2 bars at 50 BPM, the slowest, are 9.6 s);
     the state then"""
     end = time.monotonic() + seconds
     s = r.state()
@@ -1080,7 +1080,8 @@ def landed(r, seconds=10.):
       "one where it is")
 def morph_sequences(r):
     two_scenes(r)
-    r.send_usb(cc(GLOBAL, 9, 1) + cc(GLOBAL, 83, 127) + cc(GLOBAL, 83, 2))
+    # over 2 bars: none lands before it's looked at
+    r.send_usb(cc(GLOBAL, 9, 2) + cc(GLOBAL, 83, 127) + cc(GLOBAL, 83, 2))
     time.sleep(.2)
     s = r.state()
     r.check("CC 83 2: a drop to scene 2 waits", s["morphing"] and s["scene"] == 2,

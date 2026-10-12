@@ -758,9 +758,9 @@ def daw_scenes(r, d):
     def shown(s):
         return "scene %d%s" % (s["scene"], ", morphing" if s["morphing"] else "")
 
-    # just after beat 0: a drop to scene 2 (CC 9 1, CC 83 2); beat 1 (0.5 s): CC 3 1, a morph to
-    # scene 1
-    playing([(.1, g, 9, 1), (.1, g, 83, 127), (.12, g, 83, 2), (1., g, 3, 127), (1.02, g, 3, 1)], .3)
+    # just after beat 0: a drop to scene 2 over 2 bars (CC 9 2, CC 83 2), so none lands before
+    # it's looked at; beat 1 (0.5 s): CC 3 1, a morph to scene 1
+    playing([(.1, g, 9, 2), (.1, g, 83, 127), (.12, g, 83, 2), (1., g, 3, 127), (1.02, g, 3, 1)], .3)
     s = r.state()
     r.check("beat 0, CC 83 2: a drop to scene 2 waits", s["morphing"] and s["scene"] == 2, shown(s), "scene 2, morphing")
     time.sleep(.5)
