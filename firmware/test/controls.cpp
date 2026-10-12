@@ -75,17 +75,17 @@ struct FakeEngine
     bool dropping = false;
     float drop_to[kNumFx][kNumFxParams] = {};
     uint16_t drop_ui_on = 0, drop_on = 0;
-    bool DropFxMorph(const float to[kNumFx][kNumFxParams], uint16_t ui_on, uint16_t o)
+    bool drop_glide = false; // a build-up
+    bool DropFxMorph(const float to[kNumFx][kNumFxParams], uint16_t ui_on, uint16_t o, bool glide)
     {
-        if (!morphing)
+        if (!morphing || !held || dropping)
             return false;
         for (size_t f = 0; f < kNumFx; f++)
             for (size_t p = 0; p < kNumFxParams; p++)
                 drop_to[f][p] = to[f][p];
         drop_ui_on = ui_on;
         drop_on = o;
-        held = false;
-        bars = 1;
+        drop_glide = glide;
         dropping = true;
         return true;
     }
@@ -734,16 +734,14 @@ static void TestMorph()
           "turned on, a folder: its tone too fades in from neutral, sent before the start");
     Check(!(plan.deferred >> FX_CRUSHER & 1) && e.on[FX_CRUSHER], "a held key stays on");
 
-    // more taps on the same key, not on another
-    Check(sc.SlotPressed(2, true) == Scenes::Slot::MORPH_MORE && sc.MorphMore() && e.bars == 2,
-          "SHIFT + the same key: a bar more");
+    // more taps on the same key (TestGestures has the hold's other keys)
+    Check(sc.MorphMore() && e.bars == 2, "SHIFT + the same key: a bar more");
     while (sc.MorphMore())
         ;
     Check(e.bars == kMaxMorphBars, "... up to 8");
-    Check(sc.SlotPressed(1, true) == Scenes::Slot::REFUSED, "SHIFT + another key meanwhile: refused");
     fx.KeyPressed(FX_CRUSHER, false, false);
 
-    // SHIFT + PLAY: stopped where it is, which is neither scene
+    // stopped (SHIFT + its key in a later hold, CC 81): where it is, which is neither scene
     Check(sc.FreezeMorph() && !e.morphing && sc.Morphing() == kNoScene, "stopped: it ends");
     Check(sc.Active() == 2 && sc.Edited(), "stopped: its scene active, edited");
     Check(fx.Param(FX_FILTER, 0) == .2f && fx.Param(FX_REVERB, 7) == 0.f,
@@ -776,8 +774,10 @@ static void TestMorph()
           "fading: Mix's neutral is dry; the shifter fades in with it, the freezer not");
 }
 
-/** A drop (#153): SHIFT + a scene key, then PLAY (SceneControls::Drop) */
-static void TestDrop()
+/** The gestures of a SHIFT hold (#175, SceneControls::Press, TransportPressed,
+ *  TransportTurned, Tick, Remote): every row of the issue's table, one sequence at a time, the
+ *  crossfader's protection, and MIDI's */
+static void TestGestures()
 {
     FakeEngine e;
     Fx fx;
@@ -786,83 +786,160 @@ static void TestDrop()
     Scenes sc;
     sc.Init(store, &fx);
     const uint16_t filter = 1u << FX_FILTER, delay = 1u << FX_DELAY, reverb = 1u << FX_REVERB;
-    // scene 1: filter and delay on; scene 2: filter and reverb
-    for (size_t s = 1; s <= 2; s++)
+    // scene 1: filter and delay on; scene 2: filter and reverb; scene 3: the filter alone
+    for (size_t s = 1; s <= 3; s++)
         store[s] = store[kBlankSlot];
     store[1].latched = filter | delay;
     store[1].params[FX_FILTER][0] = .2f;
     store[2].latched = filter | reverb;
     store[2].params[FX_FILTER][0] = .8f;
+    store[3].latched = filter;
+    store[3].params[FX_FILTER][0] = .5f;
+    using Slot = Scenes::Slot;
+    // SHIFT let go: the engine's release (FxMorph::Release) unless the hand had the crossfader
+    auto let_go = [&] {
+        const bool fader = sc.ShiftUp();
+        if (fader)
+            sc.EndFade();
+        else
+            e.held = false;
+        return fader;
+    };
 
-    // SHIFT + scene 2, then PLAY: the held morph becomes a drop to it
+    // let go: a morph, over the taps' bars
     sc.Recall(1);
     sc.ShiftDown();
-    Check(sc.Press(2, true) == Scenes::Slot::MORPH && e.morphing && e.held && !sc.Dropping(),
-          "drop: SHIFT + scene key, a held morph first");
-    Check(sc.Drop() && e.dropping && !e.held && sc.Dropping() && sc.Morphing() == 2 && sc.Active() == 2,
-          "drop: then PLAY, a drop to it");
-    Check(e.drop_to[FX_FILTER][0] == .8f && e.drop_on == (filter | reverb)
-              && e.drop_ui_on == (filter | reverb) && e.bars == 1,
-          "drop: to where the morph goes, on the next bar line");
-    Check(!sc.Drop(), "drop: PLAY again in the same hold, no scene key since: none");
+    Check(sc.Press(2, true) == Slot::MORPH && e.morphing && e.held && sc.Morphing() == 2,
+          "gestures: SHIFT + a scene key, a held sequence");
+    Check(sc.Press(2, true) == Slot::MORPH_MORE && sc.Press(2, true) == Slot::MORPH_MORE && e.bars == 3,
+          "gestures: its taps add bars");
+    Check(!let_go() && e.morphing && !e.dropping, "morph: SHIFT let go, a morph");
 
-    // three taps, then PLAY: the third bar line; a new hold forgets them
+    // SHIFT + its blinking key in a later hold: stopped where it is; the rest of the hold idle
+    sc.ShiftDown();
+    Check(sc.Press(2, true) == Slot::CANCEL && !e.morphing && e.landings == 0 && sc.Active() == 2 && sc.Edited(),
+          "cancel: SHIFT + the blinking key in a later hold stops it where it is, edited");
+    Check(sc.Press(2, true) == Slot::SELECTED && sc.Press(3, true) == Slot::SELECTED && !e.morphing,
+          "cancel: the rest of that hold starts nothing");
+    Check(!sc.TransportPressed() && !sc.TransportTurned(2, 0), "cancel: nor the transport, which turns the speed");
+    let_go();
+
+    // pressed: a drop, held, its bars kept
     sc.Recall(1);
     sc.ShiftDown();
-    for (int tap = 0; tap < 3; tap++)
-        sc.Press(2, true);
-    Check(sc.Drop() && e.dropping && e.bars == 3, "drop: three taps, then PLAY, on the third bar line");
-    Check(sc.Press(2, true) == Scenes::Slot::MORPH_MORE && e.bars == 4,
-          "drop: a tap after PLAY, a bar later");
+    sc.Press(2, true);
+    sc.Press(2, true);
+    Check(sc.TransportPressed() && e.dropping && e.held && !e.drop_glide && e.bars == 2,
+          "drop: the transport pressed, a drop, still held, on the second bar line from the release");
+    Check(e.drop_to[FX_FILTER][0] == .8f && e.drop_on == (filter | reverb) && sc.Morphing() == 2
+              && sc.DropSlot() == 2 && sc.Active() == 2,
+          "drop: to the scene tapped, its key red");
+    Check(!sc.TransportPressed() && e.bars == 2, "drop: a second press does nothing");
+    Check(sc.Press(2, true) == Slot::MORPH_MORE && e.bars == 3, "drop: a tap after the press, a bar more");
+    Check(sc.Press(3, true) == Slot::SELECTED && sc.DropSlot() == 2 && !e.drop_glide,
+          "drop: another scene key after it does nothing");
+    Check(sc.TransportTurned(3, 0) && !sc.FaderWaiting() && !sc.Tick(1000) && !sc.Fading() && e.fader < 0.f,
+          "drop: turns after it do nothing, neither the crossfader nor the speed");
+    Check(!let_go() && e.dropping, "drop: SHIFT let go, it waits for its line");
     sc.ShiftDown();
-    Check(!sc.Drop(), "drop: a new SHIFT hold, no scene picked");
+    Check(sc.Press(2, true) == Slot::CANCEL && !e.morphing && !sc.Dropping(),
+          "drop: SHIFT + its red key in a later hold: it doesn't happen");
+    let_go();
 
-    // a morph to scene 1 gliding; SHIFT + scene 2 is refused, as ever; PLAY then drops to it
-    sc.Recall(2);
+    // a second scene key: a build-up, the morph to A and B dropping at its end
+    sc.Recall(1);
     sc.ShiftDown();
-    sc.Press(1, true);
-    e.held = false; // SHIFT let go: it glides
+    sc.Press(2, true);
+    sc.Press(2, true);
+    Check(sc.Press(3, true) == Slot::BUILD_UP && e.dropping && e.drop_glide && e.held && e.bars == 2,
+          "build-up: SHIFT + A twice, then B: the morph glides on, B drops at its end");
+    Check(sc.Morphing() == 2 && sc.DropSlot() == 3 && sc.Active() == 3 && e.drop_to[FX_FILTER][0] == .5f
+              && e.drop_on == filter && e.drop_ui_on == (filter | reverb),
+          "build-up: A blinks white, B red; the controls show B; from A's keys to B's");
+    Check(sc.Press(2, true) == Slot::MORPH_MORE && e.bars == 3, "build-up: A again, a bar more");
+    Check(sc.Press(3, true) == Slot::SELECTED && sc.Press(1, true) == Slot::SELECTED && sc.DropSlot() == 3,
+          "build-up: B again or a third scene: nothing");
+    Check(!sc.TransportPressed() && sc.TransportTurned(4, 0) && !sc.Tick(1000) && !sc.Fading(),
+          "build-up: the transport does nothing");
+    Check(!let_go(), "build-up: let go, it runs");
+    sc.ShiftDown();
+    Check(sc.Press(3, true) == Slot::CANCEL && !e.morphing, "build-up: SHIFT + B in a later hold stops it too");
+    let_go();
+
+    // SHIFT + another scene in a later hold: the one running stopped where it is, a new one
+    // from there; an empty slot refused, the one running untouched
+    sc.Recall(1);
+    sc.ShiftDown();
+    sc.Press(2, true);
+    let_go();
+    sc.ShiftDown();
+    Check(sc.Press(4, true) == Slot::REFUSED && e.morphing && sc.Morphing() == 2,
+          "replace: an empty slot refused, the morph runs on");
+    Check(sc.Press(3, true) == Slot::MORPH && e.morphing && e.held && e.landings == 0 && sc.Morphing() == 3
+              && e.plan.start[FX_FILTER][0] == .2f,
+          "replace: SHIFT + another scene stops it where it got to and starts a new one from there");
+    let_go();
+    // a plain scene key: at once, ending it
+    Check(sc.Press(1, false) == Slot::RECALL && !e.morphing && sc.Active() == 1 && sc.Morphing() == kNoScene,
+          "plain key: recalled at once, the sequence ended");
+
+    // the crossfader's protection: 2 detents one way, the second 150 ms old, no press
+    sc.ShiftDown();
+    sc.Press(2, true);
+    Check(sc.TransportTurned(1, 1000) && !sc.FaderWaiting() && sc.TransportTurned(-1, 1010)
+              && !sc.FaderWaiting(),
+          "protection: one detent, then one back: not yet");
+    Check(sc.TransportTurned(-1, 1020) && sc.FaderWaiting() && !sc.Tick(1169) && !sc.Fading(),
+          "protection: 2 detents one way: not before 150 ms");
+    Check(sc.TransportPressed() && e.dropping && !sc.FaderWaiting() && !sc.Tick(2000) && !sc.Fading(),
+          "protection: a press within the 150 ms: a drop, the detents ignored");
+    let_go();
+    sc.Press(1, false);
+    sc.ShiftDown();
+    sc.Press(2, true);
+    sc.TransportTurned(1, 0);
+    sc.TransportTurned(1, 10);
+    sc.TransportTurned(1, 100);
+    Check(!sc.Tick(159) && sc.Tick(160) && sc.Fading() && sc.HandFader() && Near(sc.FaderPos(), 3.f / 24.f),
+          "protection: 150 ms after the second, the crossfader where the 3 detents put it");
+    Check(!sc.TransportPressed() && !e.dropping, "crossfader: a press after it does nothing");
+    Check(sc.TransportTurned(2, 200) && Near(sc.FaderPos(), 5.f / 24.f), "crossfader: then every detent at once");
+    Check(sc.Press(3, true) == Slot::SELECTED && sc.Press(2, true) == Slot::REFUSED,
+          "crossfader: another scene nothing; A no bar more");
+    Check(let_go() && !e.morphing, "crossfader: let go, it ends where it is");
+    sc.Press(1, false);
+    sc.ShiftDown();
+    sc.Press(2, true);
+    sc.TransportTurned(1, 0);
+    sc.TransportTurned(1, 10);
+    Check(!let_go() && !sc.Tick(500) && e.morphing && !sc.Fading(),
+          "protection: let go before the 150 ms, a morph, the detents dropped");
+    sc.Press(1, false);
+
+    // MIDI: CC 3 a morph over CC 9's bars, CC 83 a drop; during one, the new one from where it
+    // got to
+    Check(sc.Remote(2, 2, false) && e.morphing && e.held && e.bars == 2 && !e.dropping && sc.Morphing() == 2,
+          "MIDI: CC 3 a morph over CC 9's bars");
+    e.held = false;
     const int landings = e.landings;
-    sc.ShiftDown();
-    Check(sc.Press(2, true) == Scenes::Slot::REFUSED && e.morphing && !e.dropping && sc.Morphing() == 1,
-          "drop on a morph: SHIFT + another scene, refused, the morph runs on");
-    Check(sc.Drop() && e.dropping && sc.Morphing() == 2 && sc.Active() == 2,
-          "drop on a morph: then PLAY, a drop to the other scene");
-    Check(fx.Param(FX_FILTER, 0) == .8f && fx.IsLatched(FX_REVERB) && !fx.IsLatched(FX_DELAY) && !sc.Edited(),
-          "drop on a morph: the controls show it at once");
-    Check(e.drop_ui_on == (filter | delay) && e.drop_on == (filter | reverb)
-              && e.drop_to[FX_FILTER][0] == .8f && e.landings == landings,
-          "drop on a morph: the morph not landed, the drop's keys and parameters to the engine");
-
-    // a plain scene key meanwhile: recalled at once, the drop taken back
-    Check(sc.Press(1, false) == Scenes::Slot::RECALL && !e.morphing && !sc.Dropping() && sc.Active() == 1
-              && fx.IsLatched(FX_DELAY),
-          "drop: a plain scene key meanwhile recalls at once");
-
-    // an empty slot doesn't count; the crossfader's morph isn't dropped
+    Check(sc.Remote(3, 3, true) && e.morphing && e.held && e.dropping && !e.drop_glide && e.bars == 3
+              && sc.DropSlot() == 3 && e.landings == landings,
+          "MIDI: CC 83 during it: stopped, a drop to the new one");
+    Check(!sc.FaderTo(.5f), "MIDI: CC 80 can't take a drop");
+    e.held = false;
+    Check(sc.FreezeMorph() && !e.morphing, "MIDI: CC 81 stops it where it is");
+    sc.ModePressed(SceneMode::SAVE);
+    Check(!sc.Remote(1, 1, false), "MIDI: not in a scene mode");
+    sc.ModePressed(SceneMode::SAVE);
+    Check(!sc.Remote(4, 1, true), "MIDI: not to an empty slot");
+    // with the hand's hold started: the hold has nothing of its own then
     sc.ShiftDown();
     sc.Press(2, true);
-    sc.Press(3, true);
-    Check(sc.Drop() && e.dropping, "drop: an empty slot tapped after it changes nothing");
+    sc.Remote(3, 1, false);
+    Check(sc.Press(2, true) == Slot::SELECTED && sc.Morphing() == 3 && !sc.TransportPressed(),
+          "MIDI: a morph in the hand's hold takes it over");
+    let_go();
     sc.Press(1, false);
-    sc.ShiftDown();
-    sc.Press(3, true);
-    Check(!sc.Drop(), "drop: only an empty slot tapped, none (PLAY stops a morph, as ever)");
-    sc.ShiftDown();
-    sc.Press(2, true);
-    Check(sc.FaderTurned(3.f) && !sc.Drop() && !e.dropping && sc.Fading(),
-          "drop: not once the crossfader has the morph");
-    sc.EndFade();
-    sc.Press(1, false);
-
-    // MIDI (CC 83, DropTo): without a morph, one to it first; over CC 9's bars
-    Check(sc.DropTo(2, 2) && e.dropping && e.bars == 2 && sc.Active() == 2 && sc.Morphing() == 2,
-          "drop over MIDI: without a morph, on the second bar line");
-    Check(!sc.FaderTo(.5f), "drop over MIDI: CC 80 can't take it");
-    sc.ModePressed(SceneMode::SAVE);
-    Check(!sc.DropTo(1, 1), "drop over MIDI: not in a scene mode");
-    sc.ModePressed(SceneMode::SAVE);
-    Check(!sc.DropTo(3, 1), "drop over MIDI: not to an empty slot");
 }
 
 static void TestTails()
@@ -1152,7 +1229,7 @@ int main()
     TestComp();
     TestScenes();
     TestMorph();
-    TestDrop();
+    TestGestures();
     TestTails();
     TestFader();
     TestPool();
