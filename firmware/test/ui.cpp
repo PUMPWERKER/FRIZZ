@@ -4742,7 +4742,8 @@ int main()
         }});
         // and set apart by a stereo offset (CC 19, page 2's knob 2, at .25) and back to 0:
         // apart as they were, until the next punch-in, where the right channel takes the
-        // left's taps, unheard, before its fade-in (Move)
+        // left's taps, unheard, before its fade-in, or the shift leaving the centre, where the
+        // output was dry (Move)
         cases.push_back({"shifter-stereo-relock", [] {
             RunMs(kReadyMs);
             freq = 311.f;
@@ -4764,6 +4765,21 @@ int main()
                    together);
             Check(off && together > .9999f,
                   "shifter-stereo-relock: back at stereo 0, punched out and in: L and R the same again (#223)");
+            // apart again, then the shift to the centre for a second (the output dry) and up:
+            // the same again as it leaves the centre
+            Trs({0xB1, 19, 32});
+            run(1500);
+            Trs({0xB1, 19, 0});
+            run(1000);
+            const float again = run(1500);
+            Trs({0xB1, 14, 64});
+            run(1000);
+            Trs({0xB1, 14, 101});
+            run(1000);
+            const float centre = run(1500);
+            printf("      apart again %.6f; through the centre to +7: %.6f\n", again, centre);
+            Check(again < .999f && centre > .9999f,
+                  "shifter-stereo-relock: apart again, then through the centre (dry): L and R the same again (#223)");
             freq = 220.f;
         }});
     }
