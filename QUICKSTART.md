@@ -5,7 +5,7 @@ Your first ten minutes with FRIZZ. Every detail is in the [manual](MANUAL.md).
 ## How the sound flows
 
 ```
-AUX in or mic -> input gain -+-----------------+
+AUX in or mic -> input gain -+-> if live ------+
                              |                 +-> input/loop mix -> effects (white keys) -> compressor -+-> output volume -> out
                              +-> looper -------+         |                                               |
                                                          +-- dry: past effects and compressor -----------+
@@ -119,7 +119,8 @@ Things to try first:
 
 - **Freezer (1st key)** on a beat: hold SHIFT, tap the key, and keep holding SHIFT while you
   turn knob 1 down five clicks to 1/8 (without SHIFT, a step takes three clicks). It grabs that much from the moment you press and repeats it while you hold the
-  key. Turn knob 3 right a click or three at a time for a roll: each step halves the repeat.
+  key. Turn knob 3 right three clicks at a time (with SHIFT, one) for a roll: each step halves
+  the repeat, and back at off it's the whole length again.
 - **Shifter (2nd key):** hold SHIFT, tap the key, and with SHIFT still held turn knob 1 up two
   clicks for a fifth, then hold the key to hear it.
 - **Resonator (8th key)** with the crusher or the shifter latched: the ringing goes through them on

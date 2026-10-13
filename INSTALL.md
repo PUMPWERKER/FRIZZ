@@ -23,18 +23,21 @@ tools or drivers, and the CHOMPI's bootloader is never touched.
 5. **Wait.** A slow rainbow LED pattern means the CHOMPI is writing FRIZZ into its memory.
    Don't switch it off while that runs. FRIZZ starts by itself when it's done.
 
-Leave the card in: FRIZZ keeps its FX scenes on it, in `FRIZZ/frizz_scenes.txt`, and its
-master settings (compressor, mono input, MIDI) in `FRIZZ/frizz_master.txt`; the `.bak` files
-next to them are the previous versions, and `bug-N.txt` are [bug reports](MANUAL.md#bug-reports). FRIZZ
-creates the `FRIZZ` folder the first time it starts, and moves a `frizz_scenes.txt` an older
-FRIZZ left in the top folder into it. Without a card FRIZZ still runs, but scenes you save are
-gone at power-off. A later FRIZZ update keeps your scenes as long as that folder stays on the
-card.
+Leave the card in: FRIZZ keeps its FX scenes on it, in `FRIZZ/frizz_scenes.txt`, and its master
+settings in `FRIZZ/frizz_master.txt`: the compressor, the MIDI settings, the LEDs' brightness,
+AUX mono, and for AUX and the mic each their input gain, effects and live; the `.bak` files
+next to them are the previous versions, and `bug-N.txt` are [bug
+reports](MANUAL.md#bug-reports). FRIZZ creates the `FRIZZ` folder the first time it starts, and
+moves a `frizz_scenes.txt` an older FRIZZ left in the top folder into it. Without a card FRIZZ
+still runs, but scenes you save are gone at power-off. A later FRIZZ update keeps your scenes
+as long as that folder stays on the card.
 
 ## Check that it works
 
-1. Plug a stereo source into the **AUX input**, and headphones or a mixer into the outputs.
-   (FRIZZ doesn't use the built-in microphone.)
+1. Make sure the mode switch is **down** (the play page). Plug a stereo source into the
+   **AUX input**, and headphones or a mixer into the outputs. (Without a cable in AUX, FRIZZ
+   listens to the built-in microphone, but doesn't put it on the outputs at first, so a
+   speaker can't feed it back: see [Input: AUX or the mic](MANUAL.md#input-aux-or-the-mic).)
 2. Turn the **VOLUME** knob. You should hear your source, and the VOLUME LED moves with the level.
 
 If you hear nothing, press VOLUME once and turn it to raise the input gain. Press it twice more
@@ -92,5 +95,6 @@ overdub, then the CHOMPI key.
 |---|---|
 | No rainbow, the old firmware starts | Check that `FRIZZ.bin` is in the top folder, that it's the only `.bin` there, and that the card is FAT32 |
 | Rainbow, but then nothing works | Copy `FRIZZ.bin` to the card again (the copy may be damaged) and switch on again |
-| Silence | Check the input gain (press VOLUME, then turn) and the input/loop mix (SHIFT + turn VOLUME, turn towards green) |
+| The keys don't play | The mode switch is up, on the settings page: flip it down |
+| Silence | Check the input gain (press VOLUME, then turn) and the input/loop mix (SHIFT + turn VOLUME, turn towards green). Is the cable in AUX all the way? Without one, the input is the mic, which isn't live at first. On the settings page (mode switch up), the upper A# puts the input you hear live (lit) |
 | The CHOMPI doesn't respond at all | The bootloader may be damaged. Reinstall CHOMPI's own bootloader (`firmware/bin/CHOMPI_Bootloader_V6_2_0.bin`) as described in [`firmware/README.md`](firmware/README.md#4-put-it-on-the-chompi), then install FRIZZ again. Don't install the generic Daisy bootloader instead |
