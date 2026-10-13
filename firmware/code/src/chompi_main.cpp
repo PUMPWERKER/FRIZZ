@@ -18,6 +18,7 @@
 #include "EventLog.h"
 #include "MidiControl.h"
 #include "MidiOut.h"
+#include "SdCard.h"
 #include "Crash.h"
 #if FRIZZ_BENCH
 #include "Bench.h"
@@ -445,6 +446,7 @@ int main(void)
     sd_cfg.speed = SdmmcHandler::Speed::FAST;
     sd_cfg.width = SdmmcHandler::BusWidth::BITS_4;
     sdmmc.Init(sd_cfg);
+    SdFlowControl();
     System::Delay(100);
     fsi.Init(FatFSInterface::Config::MEDIA_SD);
     System::Delay(100);
