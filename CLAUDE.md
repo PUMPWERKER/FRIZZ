@@ -61,6 +61,10 @@ against this before it merges:
      15 cells, one per white key (`–` for an unused one); the landing page builds its key row
      from it and links each name to the manual heading `Name`, `Name key` or `Master Name`.
    - `MANUAL.md`, `QUICKSTART.md` and `INSTALL.md` keep exactly one H1 each (the page title).
+   - `MANUAL.md`'s parts: a line `<!-- part: Name -->` on its own (a blank line before and
+     after, not in a code block) right before a `##` starts a part, a folding group in the
+     site's sidebar; chapters before the first marker go to "Getting started". Invisible on
+     GitHub, headings and anchors unchanged. A new chapter goes into the part it belongs to.
 5. **No version history in the user docs:** "until v0.11 …" belongs in `CHANGELOG.md`, not in
    `MANUAL.md`, `QUICKSTART.md` or `INSTALL.md`.
 6. **To see it:** in a frizz-web worktree of your own (not the user's checkout),

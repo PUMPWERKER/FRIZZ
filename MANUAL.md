@@ -24,6 +24,8 @@ sits on the outputs, and MIDI over TRS and USB reaches every control.
   combinations](#key-combinations) has every gesture in one table, and the appendices the
   [MIDI](#appendix-midi) reference and the [technical data](#appendix-technical-data).
 
+<!-- part: Basics -->
+
 ## Panel
 
 ![A schematic of the panel: the 15 white keys with the effects, the chaos key and the master
@@ -345,6 +347,8 @@ Waiting for something blinks slowly: LOOP while a recording finishes its bar, a 
 slot, the CHOMPI key ready to confirm. On the knobs, white is a parameter's neutral point.
 The [LED brightness](#led-brightness) sets how bright all of them are.
 
+<!-- part: Looper and tempo -->
+
 ## Looper
 
 | Looper | Key | Result |
@@ -484,6 +488,8 @@ standstill), the scrub speed in white while it's paused, and nothing without a l
 
 With MIDI transport following on, a DAW's Start and Stop play and pause the loop too: see
 [Start and Stop](#start-and-stop).
+
+<!-- part: Effects -->
 
 ## Punch-in FX
 
@@ -1033,6 +1039,8 @@ Mix, Sidechain and Makeup sit on the knobs an effect has its Mix, Band and Level
   12 dB, and red while the safety limiter works (above); it flashes when pressed, white, or dark while it's already bright. While selected, the knobs go light blue (0%) to orange
   (100%).
 
+<!-- part: Scenes and settings -->
+
 ## FX scenes
 
 A scene holds every effect's four knob values and whether it's latched. Five dark keys in the
@@ -1425,6 +1433,8 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | Gesture | Does | See |
 |---|---|---|
 | Hold CHOMPI, PLAY and LOOP while switching on | Shipping mode | [Power and battery](#power-and-battery) |
+
+<!-- part: Reference -->
 
 ## Power, battery and bug reports
 
