@@ -125,9 +125,22 @@ public:
         }
         if (__builtin_expect((still_[0] && ratio_[0] != 1.f) || (still_[1] && ratio_[1] != 1.f), 0))
             Move(gate * (1.f - dry));
-        if (__builtin_expect(apart_, 0))
-            Relock();
+        // back at stereo 0 after an offset, while the right channel fades to the left's taps
+        // (Relock, #226): the channels with the fade, out of line, so the loop here stays as
+        // it was
+        if (__builtin_expect(apart_, 0) && (fade_ > 0.f || ratio_[0] == ratio_[1]) && Relock())
+            FadeChannels(l, r, gate, dry, feedback);
+        else
+            Channels<false>(l, r, gate, dry, feedback);
+    }
 
+    /** The taps of both channels on by a sample, read, written back with the feedback, and
+     *  the output; with kFade, the right channel's output faded towards the left's taps by
+     *  fade_ (Relock) */
+    template <bool kFade>
+    __attribute__((always_inline)) inline void Channels(float* l, float* r, float gate, float dry,
+                                                        float feedback)
+    {
         float* const io[2] = {l, r};
         for (size_t c = 0; c < 2; c++)
         {
@@ -170,7 +183,7 @@ public:
             const float a = ring_.Read(c, d[0]);
             const float b = ring_.Read(c, d[1]);
             float wet = a * w0 + b * (1.f - w0);
-            if (__builtin_expect(c == 1 && fade_ > 0.f, 0))
+            if (kFade && c == 1)
                 wet += fade_ * (LeftTaps() - wet);
 
             ring_.Write(c, SoftClip(*io[c] + wet * feedback));
@@ -179,6 +192,13 @@ public:
             *io[c] += gate * (out - *io[c]);
         }
         ring_.Advance();
+    }
+
+    /** Channels with the right channel's fade (Relock) */
+    __attribute__((noinline)) void FadeChannels(float* l, float* r, float gate, float dry,
+                                                float feedback)
+    {
+        Channels<true>(l, r, gate, dry, feedback);
     }
 
     /** The slewed parameters jump to their targets, at Init */
@@ -316,8 +336,9 @@ private:
      *  (LeftTaps), the triangles as the taps' own, and at the end takes them (TakeLeft): it
      *  reads there already, so nothing jumps. Through the fade both run on as before, each
      *  splicing on its own. Turned apart again meanwhile, it fades back to its own. Out of
-     *  line: Process only checks apart_ */
-    __attribute__((noinline)) void Relock()
+     *  line, as the channels with the fade (FadeChannels): Process checks apart_, and once
+     *  the speeds are the same again or the fade runs, calls it. True while the fade runs */
+    __attribute__((noinline)) bool Relock()
     {
         if (ratio_[0] == ratio_[1] && !still_[0] && !still_[1])
         {
@@ -329,10 +350,11 @@ private:
         }
         else
             fade_ = fmaxf(0.f, fade_ - fade_step_);
+        return fade_ > 0.f;
     }
 
     /** The left channel's two taps, as they stand this sample, read from the right's input */
-    __attribute__((noinline)) float LeftTaps()
+    float LeftTaps()
     {
         const float w0 = 1.f - fabsf(2.f * window_[0] - 1.f);
         return ring_.Read(1, delay_[0][0]) * w0 + ring_.Read(1, delay_[0][1]) * (1.f - w0);
