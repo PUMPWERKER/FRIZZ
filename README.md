@@ -33,7 +33,7 @@ and you can go back to the stock firmware the same way.
 | | |
 |---|---|
 | [**Install**](INSTALL.md) | Put FRIZZ on your CHOMPI, and go back to stock firmware |
-| [**Quick guide**](QUICKSTART.md) | Your first loop and your first effects in ten minutes |
+| [**Quick start**](QUICKSTART.md) | Your first loop and your first effects in ten minutes |
 | [**Manual**](MANUAL.md) | Every control, every effect, every knob |
 
 ## For developers

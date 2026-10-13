@@ -671,3 +671,6 @@ what FRIZZ does.
 
 The first public release. See its
 [release notes](https://github.com/ZUHcYa/FrizZ/releases/tag/v0.9).
+
+- FRIZZ keeps its files in a folder `FRIZZ` on the card, which it creates at its first start;
+  a `frizz_scenes.txt` an earlier build left in the card's top folder is moved into it.

@@ -1,33 +1,36 @@
 # FRIZZ Manual
 
-Every control in FRIZZ. For a first session, start with the [quick guide](QUICKSTART.md).
+Every control in FRIZZ. For a first session, start with the [Quick start](QUICKSTART.md).
 
 ## Overview
 
+<!-- summary: What FRIZZ does, and how this manual names things. -->
+
 FRIZZ turns the CHOMPI into a stereo effects box and looper for whatever you plug into its AUX
 input, or for its built-in microphone. You record a loop and play it faster, slower or
-backwards, punch effects in over it and over the live input on the white keys, and keep the
+backwards, punch effects in over it and over the input on the white keys, and keep the
 effects' settings as scenes, to recall, morph or drop to on the bar line. A master compressor
 sits on the outputs, and MIDI over TRS and USB reaches every control.
 
 ### How to read this manual
 
 - **SHIFT** means holding the CHOMPI key. The **play page** and the **settings page** are the
-  mode switch's two positions, down and up; the knobs' **page 2** and VOLUME's pages are
-  something else, picked with a press of the knob. [Playing basics](#playing-basics) has all
-  three.
-- **The keys** are named as on a keyboard: the white keys counted from the left, the 1st to the
-  15th, and the dark keys by their note, C#, D#, F#, G# and A#, in the **lower** (left) or the
-  **upper** (right) octave.
+  mode switch's two positions, down and up. Every other page is named with its control: an
+  effect's **page 2**, picked with a press of a knob, and **VOLUME's pages** 1-3.
+  [Playing basics](#playing-basics) has all of them.
+- **The keys** are named as on a keyboard: the white keys counted from the left, **white key
+  1** to **white key 15**, and the dark keys by their note, C#, D#, F#, G# and A#, in the
+  **lower** (left) or the **upper** (right) octave: the lower F#, the upper G#.
 - The chapters go from the panel and the basics of playing, through the looper and the tempo,
   the way the sound runs and one chapter per effect, to the scenes, the settings, the input and
-  the card. [Key
-  combinations](#key-combinations) has every gesture in one table, and the appendices the
-  [MIDI](#appendix-midi) reference and the [technical data](#appendix-technical-data).
+  the card. [Key combinations](#key-combinations) has every gesture in one table, and the
+  appendices the [MIDI](#appendix-midi) reference and the [technical data](#appendix-technical-data).
 
 <!-- part: Basics -->
 
 ## Panel
+
+<!-- summary: Every control at a glance. -->
 
 ![A schematic of the panel: the 15 white keys with the effects, the chaos key and the master
 compressor; above them the 10 dark keys with the blank scene, scenes 1-4, save, copy and
@@ -40,7 +43,7 @@ On the play page (the mode switch down), the controls are:
 |---|---|
 | White keys 1-13 | The [punch-in effects](#punch-in-fx), in the order the sound goes through them: [Freezer](#freezer), [Shifter](#shifter), [Folder](#folder), [Crusher](#crusher), [Filter](#filter), [Flanger](#flanger), [Phaser](#phaser), [Resonator](#resonator), [Slicer](#slicer), [Wow & flutter](#wow--flutter), [Tape stop](#tape-stop), [Delay](#delay), [Reverb](#reverb) |
 | White key 14 | The [Chaos key](#chaos-key) |
-| White key 15, the last | The [Master compressor](#master-compressor) on knobs 1-4 |
+| White key 15 | The [Master compressor](#master-compressor) on knobs 1-4 |
 | Lower C# and D# | Nothing, kept free |
 | Lower F#, G#, A#, upper C#, D# | The [FX scenes](#fx-scenes): the blank scene, then scenes 1-4 |
 | Upper F#, G#, A# | [Save, copy and delete](#save-copy-and-delete) a scene |
@@ -59,6 +62,8 @@ On the settings page, the keys and knob 1 set other things: see [Settings page](
 
 ## Playing basics
 
+<!-- summary: SHIFT, the pages, the VOLUME knob and what the LEDs say. -->
+
 ### SHIFT and the mode switch
 
 **SHIFT** means holding the CHOMPI key. The CHOMPI key lights white while it acts as SHIFT.
@@ -69,50 +74,47 @@ play, flip it down.
 Holding CHOMPI while you use another key or knob is SHIFT; tapping it alone confirms a scene
 [save, copy or delete](#save-copy-and-delete).
 
+### Pages
+
+Some controls do more than one thing, each on a page of its own, picked with a press:
+VOLUME's pages 1-3 (below), and on knobs 1-4 an effect's [page 2](#page-2), the second set of
+its parameters. Picking a page blinks its number in white on the LEDs: once for page 1, twice
+for page 2, and so on. These pages are not the play page and the settings page, which the
+mode switch picks.
+
 ### VOLUME knob
 
 | Control | Function | LED |
 |---|---|---|
 | Turn (page 1, default) | Output gain, headphone + master (default 75%) | VU meter of the master, scaled by gain: dim when silent, then green, yellow, pink at the loudest |
 | Press, then turn (page 2) | Input gain of the input you hear, AUX or the mic: each has its own, saved (default 75%) | the input's meter: dim when silent, then green, yellow, **red where the loop would clip**; while you turn, the gain: blue (0%) to red (100%) |
-| Press twice, then turn (page 3) | Headphone feed: left towards the input on its own, right back to the master out (default: the master out) | white (master) to green (input) |
-| SHIFT + turn | Input/loop mix: input only to looper only | green (input) to purple (loop) |
-| SHIFT + press | Resets the mix: the loop only while there is one, otherwise the input only | |
+| Press twice, then turn (page 3) | Headphone feed: left towards the input alone, right back to the master out (default: the master out) | white (master) to green (input) |
+| Press on page 3 | Back to page 1 | blinks once |
+| SHIFT + turn | Input/loop mix: input only to loop only | green (input) to purple (loop) |
+| SHIFT + press | Resets the input/loop mix: the loop only while there is one, otherwise the input only | |
 
-Turning moves the gains 2% per detent, the mix (SHIFT + turn) 4% and the headphone feed 1%.
-The input gain is the one setting here that's saved: AUX and the mic each keep their own on the
-card (2 s after the last turn), and switching the input picks its gain. The output gain, the
-mix and the headphone feed start from their defaults at every power-on.
+Turning moves the gains 2% per detent, the input/loop mix (SHIFT + turn) 4% and the headphone
+feed 1%. Whether a press is SHIFT + press is decided when it goes down, so letting go of
+CHOMPI first doesn't also change the page.
 
-**The input's meter (page 2):** it shows what the looper records, after the input gain. It's
-red where the loop's limiter takes the level down (just under full scale, see
-[Looper](#looper)), held a moment so a short peak is seen; turn the gain down until it only
-flashes red on the loudest hits. For a second after a turn it shows the gain instead, blue to
-red.
-Pressing again on page 3 returns to page 1.
-Picking a page blinks its number in white: once for page 1, twice for 2, and so on. Whether a press
-is SHIFT + press is decided when it goes down, so letting go of CHOMPI first doesn't also
-change the page. The mix starts
-on the input only, jumps to the loop only when a recording finishes and back to the input only
-when the loop is erased; SHIFT + press puts it back there. The punch-in FX come after this mix,
-so they act on the input as well as the loop.
-
-**Headphone feed (page 3):** the master out always carries the full signal. Turned left, the
-headphones carry the input (AUX or the mic) on its own instead, after input gain and VOLUME: no loop, no
-effects, no mix, no compressor. It's where you hear the mic while it isn't live (see
-[The input](#input-aux-or-the-mic)). Use it when the master goes to a PA, mixer or recorder and the
-headphones are your monitor; with headphones alone, leave it at the master. It's back on the
-master at every power-on.
-
-Mono and the battery check are on the [settings page](#settings-page), the master compressor
-on its own key (see [Master compressor](#master-compressor)).
-
-### Pages
-
-Some controls do more than one thing, each on a page of its own, picked with a press:
-VOLUME's pages 1-3 (above), and knobs 1-4's [page 2](#page-2), the second set of the selected
-effect's parameters. Picking a page blinks its number on the LEDs in white. These pages are
-not the play page and the settings page, which the mode switch picks.
+- **The input gain** is the one setting here that's saved: AUX and the mic each keep their own
+  on the card (2 s after the last turn), and switching the input picks its gain. The output
+  gain, the input/loop mix and the headphone feed start from their defaults at every power-on.
+- **The input/loop mix moves by itself:** it starts on the input only, jumps to the loop only
+  when a recording finishes, so the loop isn't heard twice, and back to the input only when
+  the loop is erased. SHIFT + press puts it back there whenever you've turned it. The punch-in
+  FX come after this mix, so they act on the input as well as the loop.
+- **The input's meter (page 2)** shows what the looper records, after the input gain. It's
+  red where the loop's limiter takes the level down (just under full scale, see
+  [Looper](#looper)), held a moment so a short peak is seen; turn the gain down until it only
+  flashes red on the loudest hits. For a second after a turn it shows the gain instead, blue
+  to red.
+- **Headphone feed (page 3):** the master out always carries the full signal. Turned left, the
+  headphones carry the input alone instead (AUX or the mic, after input gain and VOLUME): no
+  loop, no effects, no compressor. It's where you hear the mic while it isn't live (see
+  [Input: AUX or the mic](#input-aux-or-the-mic)). Use it when the master goes to a PA, mixer
+  or recorder and the headphones are your monitor; with headphones alone, leave it at the
+  master. It's back on the master at every power-on.
 
 ### LED colours
 
@@ -130,17 +132,28 @@ The [LED brightness](#led-brightness) sets how bright all of them are.
 
 ## Looper
 
+<!-- summary: Record, play and erase a loop, and change its speed. -->
+
+FRIZZ has one loop. It records the input before the effects, so you can play effects over it
+without printing them into it. LOOP and PLAY run it:
+
 | Looper | Key | Result |
 |---|---|---|
 | Empty | LOOP | Start recording |
-| Empty | hold PLAY, press LOOP | Start a **quantized** recording (needs MIDI clock from the [clock source](#clock-source), otherwise LOOP blinks red 3 times) |
-| Recording | LOOP | Stop now, or for a quantized recording at the end of the current bar, then play |
+| Recording | LOOP | Stop and play |
 | Loop exists | PLAY | Play / pause, when you let go of PLAY (not if you pressed LOOP while holding it) |
-| Loop exists | LOOP | Erase now, as LOOP goes down |
+| Loop exists | LOOP | Erase, at once |
+
+**More looper gestures:**
+
+| Looper | Key | Result |
+|---|---|---|
+| Empty | hold PLAY, press LOOP | Start a **quantized** recording (needs MIDI clock from the [clock source](#clock-source), otherwise LOOP blinks red 3 times) |
+| Recording quantized | LOOP | Stop at the end of the current bar, then play |
 | Loop exists, playing | hold PLAY, press LOOP | Erase at the **end of the loop** (LOOP blinks red until then; paused, it erases now) |
 | Erase waiting for the end | LOOP / PLAY | LOOP erases now; PLAY takes the erase back, the loop plays on |
 | Any | SHIFT + LOOP | Tap tempo (see [Tap tempo](#tap-tempo)); never records, stops or erases |
-| Loop exists | SHIFT + PLAY | As PLAY: play / pause. The [scene gestures](#timed-scene-changes) don't use PLAY |
+| Loop exists | SHIFT + PLAY | As PLAY: play / pause |
 
 - **Quantized:** recording starts on the press, which counts as bar 1 (4/4). Ending it records
   to the end of the bar in progress, so the loop is always a whole number of bars. It closes
@@ -149,11 +162,9 @@ The [LED brightness](#led-brightness) sets how bright all of them are.
   the loop's own end, so it needs no clock. For half a second after LOOP stopped a recording,
   LOOP doesn't erase, so a double press can't lose the new loop.
 - **Length:** up to 2:45. The loop lives in RAM and is gone at power-off. There's no overdub.
-- **Level:** the loop doesn't clip. Live, a hot input is float until the safety limiter;
-  the loop is stored at 16 bits, so what goes into it is held just under full scale by a
-  limiter of its own, which takes a peak at once and lets go over about 150 ms. Below that it
-  records exactly what came in. A source loud enough to reach it records a little quieter
-  than it sounds live (from about 7 dB below the input's full scale at input gain 75%).
+- **Level:** the loop never clips: a limiter holds what goes into it just under full scale
+  (details in [Technical data](#audio)). If the meter on VOLUME's page 2 shows red on more
+  than the loudest hits, turn the input gain down.
 
 LEDs: LOOP is red while recording and blinks while a quantized recording finishes its bar or
 an erase waits for the loop's end, at the slow blink everything waiting uses (a picked scene
@@ -162,7 +173,7 @@ While a loop plays, PLAY and LOOP crossfade in white to show the position (dimme
 paused).
 
 PLAY also shows the beat the effects follow (see [Tempo and transport](#tempo-and-transport)), as the settings
-page's G# does:
+page's lower G# does:
 
 | Looper | PLAY |
 |---|---|
@@ -176,16 +187,21 @@ dims with the [LED brightness](#led-brightness).
 
 ### Transport knob
 
-The transport knob, the big purple one, works once a loop exists:
+The transport knob, the big purple one, sets the loop's speed: turn it for faster, slower or
+backwards, press it for 1× forward again; paused, it scrubs. Its speed and scrub need a loop.
+With a scene morph held (SHIFT + a scene key), it's the [crossfader](#crossfading-by-hand) and
+the [drop](#dropping-to-a-scene) instead, with or without a loop.
 
 | Control | Function |
 |---|---|
 | Turn while playing | Speed in semitones (2 detents per semitone), as TAPE's knob runs: from 2× down to 1/16×, then a **standstill** for about 4 detents (the tape glides to a stop, 0×), then reverse from −1/16× up to −2×; the same way back. Stops at 2× and −2× |
 | SHIFT + turn while playing | Speed in 5ths and octaves (4 detents per step): from between two of them, to the next one in the turn's direction. Past 1/16× it flips into reverse at the same speed and climbs back up to −2×; from a standstill, 1/16× the way you turn |
 | Turn while paused | Scrub |
-| SHIFT + turn while paused | Nothing (while you hold a scene morph, the [crossfader](#crossfading-by-hand)) |
+| SHIFT + turn while paused | Nothing |
+| SHIFT + turn, with a scene morph held | The [crossfader](#crossfading-by-hand), playing, paused or without a loop |
 | Press | Back to 1× forward |
-| SHIFT + press | With a scene morph held: a [drop](#dropping-to-a-scene). Otherwise nothing (the [bug report](#bug-reports) is on the settings page) |
+| SHIFT + press, with a scene morph held | A [drop](#dropping-to-a-scene), with or without a loop |
+| SHIFT + press otherwise | Nothing (the [bug report](#bug-reports) is on the settings page) |
 
 - **Standstill** (the transport knob between 1/16× and −1/16×): the tape glides to a stop
   and the loop fades out with it, a tape stop rather than a click, and stays silent while it
@@ -198,22 +214,29 @@ standstill), the scrub speed in white while it's paused, and nothing without a l
 
 ## Tempo and transport
 
-The effects that follow a tempo (the delay, the filter LFO, the freezer, the slicer, the tape stop, the phaser's rate in its synced half, the chaos key's grid) take it from one of three places, the first that applies:
+<!-- summary: One tempo for every effect: the loop's, a MIDI clock's or tapped. -->
+
+Every effect that follows a tempo follows the same one: the loop's while there is one,
+otherwise a MIDI clock's, otherwise the last tempo, tapped or left by a loop or a clock. The
+effects that do are the delay, the filter LFO, the freezer, the slicer, the tape stop, the
+phaser's rate in its synced half and the chaos key's grid; the [clock factor](#clock-factor)
+can double or halve their tempo. In detail, the first that applies:
 
 1. **The loop, while there is one**, with or without MIDI clock. Beat 1 is the loop's start,
    so the slicer chops on the loop's beat from the first pass and the delay's echoes land on
    it. The effects follow the transport knob: at half speed the tempo halves and in reverse
-   the beats run backwards. While the loop is paused, the beat runs on by itself at the
-   loop's tempo, so the effects keep working on the input; scrubbing doesn't move it. At a
-   [standstill](#transport-knob) it does the same, at the slowest speed's tempo (50 BPM). When
-   the loop resumes, the beat snaps back onto it at the next 1/48 of a bar: a filter LFO
-   or slicer can jump there. Once a loop exists, MIDI clock
-   no longer matters: a tempo change in your DAW moves neither the loop nor the effects.
+   the beats run backwards. Once a loop exists, MIDI clock no longer matters: a tempo change
+   in your DAW moves neither the loop nor the effects.
 2. **MIDI clock**, when there's no loop, from the input the [clock source](#clock-source)
    picks (none when it's internal). The effects get it in whole BPM, measured over the last
    few seconds, so it holds still however unsteady the clock: a jump in tempo is followed at
    once, a change of a BPM or so within about 2 seconds.
 3. **The last tempo**: tapped, from the last loop or from the clock. 120 BPM at power-on.
+
+While the loop is paused, the beat runs on by itself at the loop's tempo, so the effects keep
+working on the input; scrubbing doesn't move it. At a [standstill](#transport-knob) it does the
+same, at the slowest speed's tempo (50 BPM). When the loop plays again, the beat snaps back
+onto it at the next 1/48 of a bar: a filter LFO or slicer can jump there.
 
 A loop gets a whole number of beats:
 - **Quantized:** its bars from the clock it was recorded to, exactly.
@@ -228,9 +251,9 @@ With MIDI transport following on, a DAW's Start and Stop play and pause the loop
 
 ### Tap tempo
 
-**SHIFT + LOOP:** tap at least three times, at the tempo you want; the last five
-taps (four gaps) count, and a pause of over 2 s starts over. LOOP flashes on each tap: white,
-or dark when it's already lit nearly white.
+**SHIFT + LOOP:** tap at least 3 times, at the tempo you want; the last 5 taps (4 gaps) count,
+and a pause of over 2 s starts over. LOOP flashes on each tap: white, or dark when it's
+already lit nearly white.
 - With a loop, the taps pick how many beats the loop holds; the loop's length then gives the
   exact tempo, so the effects' beats stay locked to it even if the taps were a little off,
   delay times and freezer lengths included. Tapping
@@ -246,9 +269,9 @@ effects stop slowing down at 50 BPM.
 
 ### Clock factor
 
-The lower octave's G# on the [settings page](#settings-page) sets it, each press the next:
+The lower G# on the [settings page](#settings-page) sets it, each press the next:
 **as sent** (yellow, the default), **double** (red), **half** (light blue). It multiplies the
-effects' tempo, whichever of the three above it comes from: tap the tempo of a song on AUX
+effects' tempo, whichever of the 3 above it comes from: tap the tempo of a song on AUX
 (SHIFT + LOOP), then put the delay, the slicer and the rest at double or half of it; or
 record a loop and let the effects run at half its tempo. The loop itself stays as it is: its
 length, its beats, and the bars a quantized recording ends on. With MIDI clock, FRIZZ
@@ -258,13 +281,13 @@ follows the clock at the factor (see [MIDI clock](#midi-clock)), so a loop recor
 - Changed while a loop plays, the effects' beat stays on the loop: beat 1 on its start.
   Without a loop, a tapped beat stays on the beats you tapped: at double with one more
   halfway, at half on every other one.
-- At half, a loop of an odd number of beats (three, say) holds a beat and a half per pass.
+- At half, a loop of an odd number of beats (3, say) holds a beat and a half per pass.
   The effects' beats run on evenly across its start, so beat 1 lands on the loop's start
   every other pass, and halfway through a beat on the others. A quantized loop always holds
   whole bars, so it's never one of them.
 - The 50-300 BPM limit applies after the factor: 200 tapped at double is 300, at half 100.
-- The beat on G# and PLAY and the clock [MIDI out](#midi-out) sends show the tempo with the
-  factor.
+- The beat on the lower G# and PLAY and the clock [MIDI out](#midi-out) sends show the tempo
+  with the factor.
 
 It's kept as `clock_factor` in `FRIZZ/frizz_master.txt` (50, 100 or 200).
 
@@ -1148,12 +1171,10 @@ and the bar lines don't count while you hold it.
 
 ## Settings page
 
-With the mode switch **up**, the keys set what you'd set once for a setup rather
-than play: the MIDI channel, MIDI transport following, where FRIZZ takes a MIDI clock from
-and how it follows it, whether it sends one, how bright its LEDs are, and the input: its
-source (AUX or the built-in mic), whether it goes through the effects, whether it's live, AUX
-mono, and its input gain. The loop, the effects and MIDI play on meanwhile; only your hands are
-on this page. Switch back down to play.
+<!-- summary: MIDI, the clock, the input and the LEDs, set once for a setup. -->
+
+With the mode switch **up**, the keys set up MIDI, the input and the LEDs. The loop, the
+effects and MIDI play on meanwhile; switch back down to play.
 
 Each key sets one thing on its press. The white keys pick the MIDI channel; the dark keys
 and knob 1 set the rest:
@@ -1161,34 +1182,34 @@ and knob 1 set the rest:
 | Control | Setting | Colour |
 |---|---|---|
 | White keys 1 to 14 | [MIDI channel](#channels) 1 to 14; the one in force lit, the others dim | light blue |
-| White key 15 (the last) | Channel 15; pressed again 16, again 15, and so on (default 16) | light blue for 15, white for 16, dim for neither |
-| C# (lower octave) | MIDI on every channel: lit when on. It only switches it on; a channel key switches it off | light blue |
-| D# | [Effect channels over TRS](#channels): on (lit, default) / off (dim). Over USB they always count | light blue |
-| F# | [MIDI transport following](#start-and-stop): on (lit) / off (dim) | green |
-| G# | [Clock factor](#clock-factor), each press the next: as sent (default), double, half. It also shows the [beat](#tempo-and-transport): lit for the first half of every beat, dim for the second | yellow (as sent), red (double), light blue (half) |
-| A# | [Clock source](#clock-source), each press the next: Auto (default), TRS, USB, internal | white (Auto), orange (TRS), blue (USB), pink (internal) |
-| C# (upper octave) | [MIDI out](#midi-out), each press the next: off (default), TRS, TRS and USB | dim (off), orange (TRS), white (TRS and USB) |
-| D# (upper octave) | [MIDI feedback](#midi-feedback): on (lit) / off (dim, default) | light blue |
-| F# (upper octave) | [The input's source](#input-aux-or-the-mic), each press the other: AUX / the built-in mic. Not saved: AUX's jack picks again when a cable goes in or out | green (AUX), magenta (mic) |
-| SHIFT + F# (upper octave) | [Mono input](#mono-input), AUX only: mono / stereo (default). While you hold SHIFT, F# shows it: lit when mono, dim when stereo | white |
-| G# (upper octave) | [The source's effects](#input-aux-or-the-mic): through them (default) / dry, past them and the compressor. Dark while the source isn't live: pressed then, it blinks red 3 times and changes nothing | green (through), white (dry) |
-| A# (upper octave) | [The source live](#input-aux-or-the-mic), on the outputs: on (lit) / off (dim). AUX on, the mic off at first | white |
-| Knob 1 | [LED brightness](#led-brightness): turned, 5 % a detent from 25 % to 100 % (default); SHIFT + turn the next of 25, 50, 75, 100 %; SHIFT + press 100 % | its LED white, as bright as the LEDs are |
+| White key 15 | Channel 15; pressed again 16, again 15, and so on (default 16) | light blue for 15, white for 16, dim for neither |
+| Lower C# | MIDI on every channel: lit when on. It only switches it on; a channel key switches it off | light blue |
+| Lower D# | [Effect channels over TRS](#channels): on (lit, default) / off (dim). Over USB they always count | light blue |
+| Lower F# | [MIDI transport following](#start-and-stop): on (lit) / off (dim) | green |
+| Lower G# | [Clock factor](#clock-factor), each press the next: as sent (default), double, half. It also shows the [beat](#tempo-and-transport): lit for the first half of every beat, dim for the second | yellow (as sent), red (double), light blue (half) |
+| Lower A# | [Clock source](#clock-source), each press the next: Auto (default), TRS, USB, internal | white (Auto), orange (TRS), blue (USB), pink (internal) |
+| Upper C# | [MIDI out](#midi-out), each press the next: off (default), TRS, TRS and USB | dim (off), orange (TRS), white (TRS and USB) |
+| Upper D# | [MIDI feedback](#midi-feedback): on (lit) / off (dim, default) | light blue |
+| Upper F# | [The input's source](#input-aux-or-the-mic), each press the other: AUX / the built-in mic. Not saved: AUX's jack picks again when a cable goes in or out | green (AUX), magenta (mic) |
+| SHIFT + upper F# | [Mono input](#mono-input), AUX only: mono / stereo (default). While you hold SHIFT, the upper F# shows it: lit when mono, dim when stereo | white |
+| Upper G# | [The source's effects](#input-aux-or-the-mic): through them (default) / past them and the compressor. Dark while the source isn't live: pressed then, it blinks red 3 times and changes nothing | green (through), white (past) |
+| Upper A# | [The source live](#input-aux-or-the-mic), on the outputs: on (lit) / off (dim). AUX on, the mic off at first | white |
+| Knob 1 | [LED brightness](#led-brightness): turned, 5% a detent from 25% to 100% (default); SHIFT + turn the next of 25, 50, 75, 100%; SHIFT + press 100% | its LED white, as bright as the LEDs are |
 
-The dark keys are grouped by topic: the lower octave's are MIDI in, the upper octave's MIDI out
-and the rest.
+The dark keys are grouped by topic: the lower ones are MIDI in, the upper ones MIDI out and
+the input.
 
-- **The beat on G#** is the tempo the effects follow right now (see [Tempo and transport](#tempo-and-transport)): with a
+- **The beat on the lower G#** is the tempo the effects follow right now (see [Tempo and transport](#tempo-and-transport)): with a
   loop, the loop's at its speed; otherwise the MIDI clock's; otherwise the last tempo, each
   with the clock factor applied (a loop, a clock or a tapped tempo of 120 at double beats at
   240). It's there to see the
   tempo, not to play to: it can be a little late, up to a few hundredths of a second. The
   play page shows it on PLAY too (see [Looper](#looper)).
 
-- **VOLUME** works here as on the play page, on two pages: turned, page 1 sets the output
-  gain, page 2 the input gain (of the input you hear); a press picks the other page. There's
-  no page 3 and no mix here: SHIFT + turn does nothing. Coming from the play page's page 3,
-  it's on page 1.
+- **VOLUME** works here as on the play page, on two of its pages: turned, page 1 sets the
+  output gain, page 2 the input gain (of the input you hear); a press picks the other page.
+  There's no page 3 and no input/loop mix here: SHIFT + turn does nothing. Coming from
+  VOLUME's page 3 on the play page, it's on page 1.
 - **VOLUME's LED** shows the battery, but for 2 s after you turn or press VOLUME, when it
   shows its page as on the play page: white while the charging cable is in,
   green above 3.3 V, yellow below. Below 3 V, on any page, the low-battery countdown starts
@@ -1196,7 +1217,7 @@ and the rest.
   the cable and it shows the battery's colour within a few seconds; after that the level is
   read every 30 s.
 - The transport LEDs are purple, so the page can't be mistaken for the play page.
-- **SHIFT + VOLUME, held 2 s:** hold CHOMPI and press and hold the VOLUME knob, in either
+- **SHIFT + VOLUME, held 2 s:** hold SHIFT and press and hold the VOLUME knob, in either
   order; after 2 s it writes a [bug report](#bug-reports), once per hold. CHOMPI lights white
   while you hold it, as on the play page.
 - Otherwise knobs 2-4 (their LEDs dark), CHOMPI (but as SHIFT), PLAY and LOOP do nothing
@@ -1204,8 +1225,8 @@ and the rest.
 - A key you're holding when you flip the switch stays where it went down until you let go:
   an effect you hold keeps going, and the key doesn't also change a setting. The same the
   other way round.
-- Flipping up ends a scene mode (SAVE, COPY, DELETE): nothing is saved, copied or deleted,
-  and you're out of the mode when you flip back down.
+- Flipping up ends a [save, copy or delete](#save-copy-and-delete) function: nothing is
+  saved, copied or deleted, and you're out of the function when you flip back down.
 - The low-battery warning dims with the LEDs too.
 - Every setting but the source itself (AUX or the mic) is saved on the card with the master
   compressor, 2 s after the last change, so it comes back at power-on: each source's effects
@@ -1216,60 +1237,66 @@ and the rest.
 
 ### LED brightness
 
-Knob 1 on the settings page sets how bright every LED is, for a dark stage: turned, 5 % a
-detent, from 25 % to 100 %; SHIFT + turn goes to the next of 25, 50, 75 and 100 %; SHIFT +
-press is back to 100 %. Its own LED is white and dims with all the others, so it shows where
-you are. The dim colours keep their hue, and nothing lit at 100 % goes dark; below 25 % they
+Knob 1 on the settings page sets how bright every LED is, for a dark stage: turned, 5% a
+detent, from 25% to 100%; SHIFT + turn goes to the next of 25, 50, 75 and 100%; SHIFT +
+press is back to 100%. Its own LED is white and dims with all the others, so it shows where
+you are. The dim colours keep their hue, and nothing lit at 100% goes dark; below 25% they
 would. Saved 2 s after the last turn.
 
 ## Input: AUX or the mic
 
+<!-- summary: AUX or the built-in mic, through the effects or past them. -->
+
+With a cable in AUX, you hear AUX through the effects. With no cable, the input is CHOMPI's
+built-in microphone, as on TAPE and TEMPO: the looper can record it, but it stays off the
+outputs, so a loudspeaker near CHOMPI can't feed it back. Three keys on the [settings
+page](#settings-page) change this, left to right as the signal goes: the upper F# picks **the
+source**, the upper G# sends it **through the effects** or past them, and the upper A# puts it
+**live** on the outputs or not.
+
 ![The input: AUX or the mic, each with its own gain, picked by the upper F# or AUX's jack; the
-source as it is to the looper and the headphone feed; the upper G# through the effects or dry,
-the upper A# live on the outputs or not; the dry share joining after the compressor](images/input.svg)
+source as it is to the looper and the headphone feed; the upper G# through the effects or past
+them, the upper A# live on the outputs or not; the share past the effects joining after the
+compressor](images/input.svg)
 
-FRIZZ hears CHOMPI's built-in microphone too, as TAPE and TEMPO do. The upper
-octave's F#, G# and A# on the [settings page](#settings-page) set the input left to right, as
-the signal goes: **the source** (F#), whether it goes **through the effects** (G#), and whether it's **live** on the outputs at all
-(A#).
-
-- **F#, the source:** AUX or the mic. AUX's jack picks: with a cable plugged in, it's AUX;
+- **Upper F#, the source:** AUX or the mic. AUX's jack picks: with a cable plugged in, it's AUX;
   pull it out and it's the mic; plug one in and it's AUX again. At power-on the jack decides
-  the same way. F# picks the other by hand, until a cable next goes in or out of AUX. A jack
-  change while recording just switches. The source isn't saved.
-- **G#, the effects:** through them, through the input/loop mix, the effects and the master
-  compressor; or **dry**, past the effects and the compressor, at the
+  the same way. The upper F# picks the other by hand, until a cable next goes in or out of
+  AUX. A jack change while recording just switches. The source isn't saved.
+- **Upper G#, the effects:** through them, through the input/loop mix, the effects and the
+  master compressor; or **past them**, past the effects and the compressor, at the input/loop
   mix's input share, straight to VOLUME and the safety limiter. Lit green for through, white
-  for dry; dark while the source isn't live, when it doesn't matter (pressed then, it blinks red
-  3 times and changes nothing; its setting is kept for when the source is live again).
-- **A#, live:** the source on the outputs or not, lit when it is. Not live, you can still
-  record it and hear it on the headphones' input-only feed, without it on the master.
+  for past; dark while the source isn't live, when it doesn't matter (pressed then, it blinks
+  red 3 times and changes nothing; its setting is kept for when the source is live again).
+- **Upper A#, live:** the source on the outputs or not, lit when it is. Not live, you can
+  still record it and hear it alone on the headphones' feed, without it on the master.
 
-G# and A# are **each source's own**: they show and set the source heard now, and switching the
-source (F# or the jack) brings up the other's. Both sources' are saved. Out of the box AUX is
-live through the effects, and the mic is through the effects but **not live**: a
-loudspeaker near CHOMPI would feed it back.
+The upper G# and A# are **each source's own**: they show and set the source heard now, and
+switching the source (the upper F# or the jack) brings up the other's. Both sources' are
+saved. Out of the box AUX is live through the effects, and the mic is through the effects but
+**not live**.
 
-**The looper always records the source as it is**, whatever G# and A# say; the loop always
-goes through the effects. The mix (SHIFT + VOLUME) and its automatism work for either source: it goes to
-the loop alone when a recording finishes and back to the input alone when the loop is erased,
-so a loop isn't heard twice; with the source not live, the mix's input share is silent. The
-headphone feed (VOLUME's page 3) too: turned left, the source on its own.
+**The looper always records the source as it is**, whatever the upper G# and A# say; the loop
+always goes through the effects. The input/loop mix (SHIFT + VOLUME) moves by itself for
+either source: to the loop alone when a recording finishes and back to the input alone when
+the loop is erased, so a loop isn't heard twice; with the source not live, its input share is
+silent. The headphone feed (VOLUME's page 3) too: turned left, the input alone.
 
-What you hear, by the mix's position (SHIFT + VOLUME). The headphones carry the same as the
-line out with the feed at the master, the source on its own with it turned left, a blend
-between:
+What you hear, by the input/loop mix's position (SHIFT + VOLUME), as a reference. The
+headphones carry the same as the line out with the feed at the master, the input alone with
+it turned left, a blend between:
 
-| F# source | G# effects | A# live | Line, mix at "input" (no loop, or after an erase) | Line, mix in the middle | Line, mix at "loop" (after a recording) | Headphones, feed left |
+| Upper F# source | Upper G# effects | Upper A# live | Line, mix at "input" (no loop, or after an erase) | Line, mix in the middle | Line, mix at "loop" (after a recording) | Headphones, feed left |
 |---|---|---|---|---|---|---|
 | AUX | through | on | AUX through the effects + compressor | AUX and the loop together through the effects + compressor | the loop through the effects + compressor | AUX pure |
-| AUX | dry | on | AUX pure (VOLUME and the limiter only) | AUX pure + the loop through the effects | the loop through the effects | AUX pure |
+| AUX | past | on | AUX pure (VOLUME and the limiter only) | AUX pure + the loop through the effects | the loop through the effects | AUX pure |
 | AUX | – | off | silence (delay/reverb tails at most) | the loop alone through the effects, at its share | the loop through the effects | AUX pure |
 | mic | through | on ⚠ | the mic through the effects + compressor | the mic and the loop together through the effects | the loop through the effects | mic pure |
-| mic | dry | on ⚠ | the mic pure | the mic pure + the loop through the effects | the loop through the effects | mic pure |
+| mic | past | on ⚠ | the mic pure | the mic pure + the loop through the effects | the loop through the effects | mic pure |
 | mic | – | off | silence | the loop alone through the effects, at its share | the loop through the effects | mic pure |
 
-- "–": G# doesn't matter while the source isn't live (its key dark, its value kept).
+- "Mix" in the column heads is the input/loop mix.
+- "–": the upper G# doesn't matter while the source isn't live (its key dark, its value kept).
 - The looper records the source as it is in every row.
 
 **⚠ The mic live feeds back** through a loudspeaker near CHOMPI, through the effects more so
@@ -1277,19 +1304,18 @@ between:
 away and down. Mind the headphones' volume too: turned up near CHOMPI, they can feed back
 into the mic as well.
 
-**AUX dry** is for a source that should stay as it is while you play the loop through the
-effects: a drum machine, a mastered song. Record it, and the mix goes to the loop alone as
-always; turn the mix to the middle to play an existing loop through the effects next to the
-device. **AUX not live** records AUX without hearing it on the master (on the headphones'
-input-only feed you still do).
+**AUX past the effects** is for a source that should stay as it is while you play the loop
+through the effects: a drum machine, a mastered song. Record it, and the input/loop mix goes
+to the loop alone as always; turn it to the middle to play an existing loop through the
+effects next to the device. **AUX not live** records AUX without hearing it on the master (on
+the headphones' feed, turned left, you still do).
 
-**The mic** is mono, the same on both sides. FRIZZ treats it as TAPE does: 5 times the input
-gain (AUX gets 3 times), its DC taken out, and a highpass at about 150 Hz (TAPE's narrow
-notches above it are left out: they did next to nothing). VOLUME's page 2 sets the input gain
-of the source heard: the mic's is its own, kept apart from AUX's and saved. A switch of the
-source, of G# or of A# fades over 5 ms, so it doesn't click; the source going out fades out of
-the outputs while the one coming in fades in, so a source that isn't live is never heard, not
-even during a switch.
+**The mic** is mono, the same on both sides. FRIZZ treats it as TAPE does: 5× the input gain
+(AUX gets 3×), its DC taken out, and a highpass at about 150 Hz. VOLUME's page 2 sets the
+input gain of the source heard: the mic's is its own, kept apart from AUX's and saved. A
+switch of the source, of the upper G# or of the upper A# fades over 5 ms, so it doesn't
+click; the source going out fades out of the outputs while the one coming in fades in, so a
+source that isn't live is never heard, not even during a switch.
 
 Over MIDI, CC 84 picks the source, CC 116 sets its effects and CC 117 it live (see
 [Controllers](#controllers)), without saving them.
@@ -1299,16 +1325,18 @@ Over MIDI, CC 84 picks the source, CC 116 sets its effects and CC 117 it live (s
 Mono is for a mono (TS) cable, such as one from a Lyra-8 or a guitar pedal: the plug grounds
 the right channel, so in stereo the source is heard on the left only. In mono the left channel
 feeds both sides, and the effects' stereo knobs spread it from there. On the [settings
-page](#settings-page), SHIFT + F# of the upper octave toggles it; while you hold SHIFT, F# shows it (lit when mono). It's for AUX only: the
-mic is mono anyway, and plays on both sides either way.
+page](#settings-page), SHIFT + upper F# toggles it; while you hold SHIFT, the upper F# shows it
+(lit when mono). It's for AUX only: the mic is mono anyway, and plays on both sides either way.
 
 ## Card and files
+
+<!-- summary: What FRIZZ keeps on the SD card, and how to edit it. -->
 
 FRIZZ keeps what it saves on the SD card, in a folder `FRIZZ`, as text files. Leave the card in.
 
 | File | Holds | Written |
 |---|---|---|
-| `FRIZZ/frizz_scenes.txt` | The four [FX scenes](#fx-scenes) | When you save, copy or delete a scene |
+| `FRIZZ/frizz_scenes.txt` | The 4 [FX scenes](#fx-scenes) | When you save, copy or delete a scene |
 | `FRIZZ/frizz_master.txt` | The [master compressor](#master-compressor) and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, and for AUX and the mic each their input gain, effects and live | 2 s after the last change |
 | `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | The versions before | With each write of the file |
 | `FRIZZ/bug-1.txt`, `bug-2.txt` … | [Bug reports](#bug-reports) | When you ask for one |
@@ -1321,9 +1349,8 @@ you save, copy or delete, never on a recall. Saving takes a moment in which the 
 read (from another version, or edited into something else) starts it with no scenes but
 isn't lost: the first save moves it to `frizz_scenes.bak`.
 
-If FRIZZ couldn't read the card at power-on (rare: it loads from the card, so the card is
-there), every save flashes red until you switch off and on again, so the scenes on the card
-aren't replaced by the session's.
+If FRIZZ couldn't read the card at power-on, every save flashes red until you switch off and
+on again, so the scenes on the card aren't replaced by the session's.
 
 `frizz_master.txt` holds one setting per line, which can be edited on a computer too:
 
@@ -1339,7 +1366,7 @@ aren't replaced by the session's.
 | `led_brightness` | [LED brightness](#led-brightness) | 25-100 |
 | `mono` | [Mono input](#mono-input) | 1 mono, 0 stereo |
 | `gain_aux`, `gain_mic` | Each source's input gain ([VOLUME knob](#volume-knob)) | 0-100 |
-| `aux_dry`, `mic_dry` | Each source's effects ([Input: AUX or the mic](#input-aux-or-the-mic)) | 0 through them, 1 dry |
+| `aux_dry`, `mic_dry` | Each source's effects ([Input: AUX or the mic](#input-aux-or-the-mic)) | 0 through them, 1 past them |
 | `aux_live`, `mic_live` | Each source live | 1 on, 0 off |
 | `compressor2` | The master compressor's knobs | |
 
@@ -1349,33 +1376,20 @@ A line FRIZZ doesn't know is skipped, and a setting left out keeps its default.
 
 Take the card out or swap it only while the CHOMPI is off: a card pulled while FRIZZ runs
 isn't looked after. To get files on or off it (scenes, bug reports), use the multi-firmware
-launcher's USB storage mode instead of taking it out.
-
-With the [multi-firmware launcher](INSTALL.md#with-the-multi-firmware-launcher), FRIZZ is one
-firmware of several on the card: at power-on each key with a firmware lights up, and pressing
-one starts it. FRIZZ keeps its `FRIZZ` folder apart from the other firmwares' files. The
-launcher's key 15 is the USB storage mode: the card shows up on the computer as a drive, so you
-can copy files (bug reports, scenes) without taking the card out. Leave it with overdub, then
-the CHOMPI key.
+launcher's [USB storage mode](INSTALL.md#usb-storage-mode) instead of taking it out. On a card
+with several firmwares, FRIZZ keeps its `FRIZZ` folder apart from the others' files.
 
 ### Files from an older FRIZZ
 
-- A `frizz_scenes.txt` in the card's top folder, where older versions kept it, is moved into
-  the `FRIZZ` folder at the first start.
-- **Scenes from before page 2** load with page 2 on its defaults (the shifter's mix kept from a
-  test build that had it), and with every value where its knob went: stereo to page 2's
-  knob 2, the effect's own setting to page 1's knob 4, the delay's and reverb's level to page
-  2's knob 4 at the same loudness in dB (one below -36 dB off) and their ducking to page 1's
-  knob 4.
-- A scene file from before the phaser or the chaos key loads with them off, on their defaults.
-- **Compressor settings from before its Attack and Release:** the old Speed knob becomes both
-  Attack and Release, Mix moves to page 2, and Makeup starts at 0 dB, so a compressor you had set comes back quieter
-  than before, by what the automatic makeup added (half of what a 0 dB signal lost).
-- The LEDs' brightness an older FRIZZ saved, 50 %, 75 % or 100 %, is kept.
+FRIZZ reads the scene and settings files of earlier versions and carries their values over
+to where the knobs and keys are now; the [changelog](CHANGELOG.md) says what changed with
+each version.
 
 <!-- part: Reference -->
 
 ## Key combinations
+
+<!-- summary: Every gesture in one table, with where it's explained. -->
 
 Every gesture on one page; each row links to where it's explained. SHIFT is holding CHOMPI.
 
@@ -1395,16 +1409,16 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | Turn VOLUME | Page 1 output gain, page 2 input gain, page 3 the headphone feed | [VOLUME knob](#volume-knob) |
 | Press VOLUME | The next page | [VOLUME knob](#volume-knob) |
 | SHIFT + turn VOLUME | Input/loop mix | [VOLUME knob](#volume-knob) |
-| SHIFT + press VOLUME | The mix back to the loop alone, or the input alone without a loop | [VOLUME knob](#volume-knob) |
+| SHIFT + press VOLUME | The input/loop mix back to the loop alone, or the input alone without a loop | [VOLUME knob](#volume-knob) |
 | Hold an FX key | The effect on while held | [Playing an effect](#playing-an-effect) |
 | Hold FX keys, then SHIFT | Latch them on, or off | [Playing an effect](#playing-an-effect) |
 | SHIFT, then an FX key | Select it for the knobs, without hearing it | [Playing an effect](#playing-an-effect) |
 | An FX key on a latched effect | Unlatch it; on until you let go | [Playing an effect](#playing-an-effect) |
-| The last white key | The master compressor on the knobs | [Master compressor](#master-compressor) |
+| White key 15 | The master compressor on the knobs | [Master compressor](#master-compressor) |
 | Turn knobs 1-4 | The selected effect's parameters | [Keys and knobs](#keys-and-knobs) |
 | SHIFT + turn knobs 1-4 | Coarse, to the next point of the grid | [Coarse steps](#coarse-steps) |
 | SHIFT + press knobs 1-4 | That parameter back to its default | [Playing an effect](#playing-an-effect) |
-| Press knobs 1-4 | Page 2, and back to page 1 | [Page 2](#page-2) |
+| Press knobs 1-4 | The effect's page 2, and back to page 1 | [Page 2](#page-2) |
 | A scene key | Recall the scene | [FX scenes](#fx-scenes) |
 | The active scene's key | Back to the scene as saved | [FX scenes](#fx-scenes) |
 | The blank scene's key (lower F#) | Every effect off, every knob on its default | [FX scenes](#fx-scenes) |
@@ -1421,7 +1435,7 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 
 | Gesture | Does | See |
 |---|---|---|
-| White keys 1-15 | The global MIDI channel; the 15th again for 16 | [Channels](#channels) |
+| White keys 1-15 | The global MIDI channel; white key 15 again for 16 | [Channels](#channels) |
 | Lower C# | MIDI on every channel | [Channels](#channels) |
 | Lower D# | Effect channels over TRS | [Channels](#channels) |
 | Lower F# | MIDI transport following | [Start and Stop](#start-and-stop) |
@@ -1431,9 +1445,9 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | Upper D# | MIDI feedback | [MIDI feedback](#midi-feedback) |
 | Upper F# | The input's source: AUX or the mic | [Input: AUX or the mic](#input-aux-or-the-mic) |
 | SHIFT + upper F# | AUX mono | [Mono input](#mono-input) |
-| Upper G# | The source through the effects, or dry | [Input: AUX or the mic](#input-aux-or-the-mic) |
+| Upper G# | The source through the effects, or past them | [Input: AUX or the mic](#input-aux-or-the-mic) |
 | Upper A# | The source live on the outputs | [Input: AUX or the mic](#input-aux-or-the-mic) |
-| Turn knob 1; SHIFT + turn; SHIFT + press | LED brightness; in steps of 25 %; back to 100 % | [LED brightness](#led-brightness) |
+| Turn knob 1; SHIFT + turn; SHIFT + press | LED brightness; in steps of 25%; back to 100% | [LED brightness](#led-brightness) |
 | Turn VOLUME; press | Output gain, input gain | [Settings page](#settings-page) |
 | SHIFT + VOLUME held 2 s | A bug report | [Bug reports](#bug-reports) |
 
@@ -1444,6 +1458,8 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | Hold CHOMPI, PLAY and LOOP while switching on | Shipping mode | [Power and battery](#power-and-battery) |
 
 ## Power, battery and bug reports
+
+<!-- summary: Low battery, shipping mode, and how to send a bug report. -->
 
 ### Power and battery
 
@@ -1460,7 +1476,7 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 
 ### Bug reports
 
-On the [settings page](#settings-page) (mode switch up), hold SHIFT (CHOMPI) and
+On the [settings page](#settings-page) (mode switch up), hold SHIFT and
 press and hold the VOLUME knob for 2 seconds: FRIZZ writes everything you did since switching
 on to the card, as `/FRIZZ/bug-1.txt` (the next one `bug-2.txt`, and so on): every key, knob detent and
 mode-switch flip with its time, the MIDI clock's tempo, every MIDI message FRIZZ acted on, and
@@ -1481,6 +1497,8 @@ did, key for key.
 
 ## Appendix: MIDI
 
+<!-- summary: Clock, channels, notes, CCs and FRIZZ's own SysEx. -->
+
 FRIZZ takes MIDI from the TRS MIDI input and over USB (CHOMPI is a USB device, so USB MIDI
 comes from a computer or a host), both alike. With [MIDI out](#midi-out) on, it sends its
 clock and the loop's Start, Stop and Continue out of the TRS MIDI output, and over USB if you
@@ -1494,7 +1512,7 @@ Quantized recording, and the effects' tempo while there's no loop, follow MIDI c
 
 ### Clock source
 
-The lower octave's A# on the [settings page](#settings-page) picks whose clock counts, each
+The lower A# on the [settings page](#settings-page) picks whose clock counts, each
 press the next:
 
 - **Auto** (the default): whichever input ticks first, TRS or
@@ -1531,12 +1549,6 @@ FRIZZ listens on 16 channels, with two kinds of map:
   3 folder, 4 crusher, 5 filter, 6 flanger, 7 phaser, 8 resonator, 9 slicer, 10 wow & flutter,
   11 tape stop, 12 delay, 13 reverb, 14 chaos key, 15 master compressor. Each has the same
   CCs, so in a DAW one MIDI track per effect has the same automation lanes everywhere.
-
-**Knobs back to 0 when the DAW stops:** REAPER 7 as it comes sends every CC its tracks played
-back to 0 when you stop, so the knobs you automated jump to 0. To keep them where the
-automation left them, untick *Reset MIDI CC/Pitch on: playback stop* (and *playback
-loop/skip*, which does the same at a loop's turn) in REAPER's Preferences, Playback, or enter
-`cc0-120=-1` under *CC reset overrides* there. Other DAWs may do something similar.
 
 On the global channel, its own map wins: set it to 5, and channel 5 is the global channel,
 with the filter reached through the focus (CC 23 and CC 14-22) and its latch (CC 106). Set to
@@ -1581,7 +1593,7 @@ save, copy and delete 66, 68 and 70. Below them:
 | CC | Function |
 |---|---|
 | 14, 15, 16, 17 | Page 1's knobs 1-4, set outright |
-| 18, 19, 20, 21 | [Page 2](#page-2)'s knobs 1-4 (mix or the sends' freeze, stereo or its own, band, level), set outright |
+| 18, 19, 20, 21 | [Page 2](#page-2)'s knobs 1-4 (Mix or the sends' Freeze, stereo or its own, Band, Level), set outright |
 | 22 | Latch: 64 and above on, below off, acting as the value crosses 64. The compressor (channel 15) has none, nor a page 2 knob 2: its CC 19 does nothing |
 
 **On the global channel:**
@@ -1590,12 +1602,12 @@ save, copy and delete 66, 68 and 70. Below them:
 |---|---|
 | 14-22 | The effect in focus, as on its own channel |
 | 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the compressor). It's the effect the knobs edit, as SHIFT + its key picks it, and it follows when you pick one by hand |
-| 24-31 | The master compressor's knobs, as channel 15's 14-21: 24-27 page 1 (threshold, ratio, attack, release), 28, 30 and 31 page 2 (mix, sidechain highpass, makeup); 29 does nothing |
+| 24-31 | The master compressor's knobs, as channel 15's 14-21: 24-27 page 1 (threshold, ratio, attack, release), 28, 30 and 31 page 2 (the compressor's Mix, sidechain highpass, Makeup); 29 does nothing |
 | 84 | [The input's source](#input-aux-or-the-mic): 0-63 AUX, 64-127 the mic, as the settings page's upper F# picks it |
 | 85 | Output gain |
 | 86 | Input gain, of the input heard (AUX or the mic) |
 | 87 | Input/loop mix |
-| 89 | Headphone feed, as VOLUME's page 3: 127 the master out, 0 the input (AUX or the mic) on its own |
+| 89 | Headphone feed, as VOLUME's page 3: 127 the master out, 0 the input alone (AUX or the mic) |
 | 90 | The loop's speed in semitones, set outright: 64 as recorded (1×), 0 the slowest (1/16×), 127 double. Only with a loop; forward or in reverse as it runs |
 | 3 | Morph to scene 0-4 (0 the blank one), as SHIFT + its key, landing on the bar line (CC 9's), counted from the CC. During a morph, drop or build-up, it stops that where it is and starts the new one from there. It acts as the value changes: to morph to the same scene again, send another value first (127, no scene) |
 | 9 | How many bars a morph over CC 3, or a drop over CC 83, takes, 1-8 (1 at first) |
@@ -1604,7 +1616,7 @@ save, copy and delete 66, 68 and 70. Below them:
 | 82 | A [tempo tap](#tap-tempo), as the value crosses 64 upward: a button sending 127 and 0 |
 | 83 | [Drop](#dropping-to-a-scene) to scene 0-4 (0 the blank one) hard on the next bar line, or CC 9's, counted from the CC, as SHIFT + its key and a press of the transport knob. Like CC 3, it stops a sequence running and acts as the value changes: to drop to the same scene again, send another value first (127, no scene) |
 | 102-115 | The latch of white key 1-14 (102 the freezer … 108 the phaser … 114 the reverb, 115 the chaos key), as CC 22 |
-| 116 | [The source's effects](#input-aux-or-the-mic), the source heard now: 0-63 through them, 64-127 dry, as the settings page's upper G#. Set also while the source isn't live |
+| 116 | [The source's effects](#input-aux-or-the-mic), the source heard now: 0-63 through them, 64-127 past them, as the settings page's upper G#. Set also while the source isn't live |
 | 117 | [The source live](#input-aux-or-the-mic), the source heard now: 0-63 off, 64-127 on, as the settings page's upper A# |
 | 120, 123 | All Sound Off, All Notes Off: let go of every key MIDI holds |
 
@@ -1619,8 +1631,8 @@ save, copy and delete 66, 68 and 70. Below them:
 - **Automation isn't saved:** nothing that comes in by CC goes to the card. After a restart the
   compressor is as you left it by hand (its knobs, the settings page, or FRIZZ's SysEx), the
   source (CC 84) as the jack picks it, each source's effects and live (CC 116, 117) as the
-  settings page's G# and A# left them, the input gains as you last turned them,
-  and the output gain and the mix at their power-on levels. Scenes you save keep what the CCs set, as ever.
+  settings page's upper G# and A# left them, the input gains as you last turned them,
+  and the output gain and the input/loop mix at their power-on levels. Scenes you save keep what the CCs set, as ever.
 - **Left free on purpose**, so what hosts and keyboards send by themselves reaches nothing:
   bank select (0, 32), mod wheel (1), breath (2), foot (4), volume (7), pan (10), expression
   (11), the pedals (64-69), keyboards' sound controllers (70-79), NRPN and RPN with their data entry (6, 38,
@@ -1639,7 +1651,7 @@ delete mode the slot. 5 and above are ignored.
 ### Start and Stop
 
 With transport following on, a DAW's play button starts and stops the loop with the song. It's
-off at first; switch it on on the [settings page](#settings-page) (F# of the lower octave),
+off at first; switch it on on the [settings page](#settings-page) (the lower F#),
 with `firmware/remote.py transport on`, or `midi_transport 1` in `FRIZZ/frizz_master.txt`.
 
 | Message | A loop recorded to the clock (quantized) | A free loop |
@@ -1661,14 +1673,14 @@ count only from that input; on Auto or internal, from both.
 ### MIDI out
 
 FRIZZ sends its clock, so a drum machine, a sequencer or a synth's arpeggio plays
-in time with it, and with the loop. The upper octave's C# on the [settings
+in time with it, and with the loop. The upper C# on the [settings
 page](#settings-page) switches it, each press the next: **off** (the default, dim), **TRS**
 (the TRS MIDI output, orange), **TRS and USB** (white). It's kept as `midi_out` in
 `FRIZZ/frizz_master.txt` (0 off, 1 TRS, 2 TRS and USB), and `firmware/remote.py out
 off|trs|all` sets it too.
 
 **The clock** (24 PPQN) runs all the time while MIDI out is on, at the tempo FRIZZ thinks in,
-the beat on the settings page's G#:
+the beat on the settings page's lower G#:
 
 - **With a loop:** the loop's tempo, at its speed and the [clock factor](#clock-factor), with
   the loop's start on beat 1 (at half, a loop of an odd number of beats on every other pass,
@@ -1689,7 +1701,7 @@ the beat on the settings page's G#:
 - A pause sends **Stop**. PLAY sends **Song Position** (where the loop goes on, to the 16th)
   and then **Continue** on that 16th, so the gear goes on where the loop does. Gear that
   ignores Song Position goes on where it stopped, which is the same place, unless the loop
-  moved while paused. A [standstill](#looper) of the transport knob is a pause to the gear
+  moved while paused. A [standstill](#transport-knob) of the transport knob is a pause to the gear
   too: Stop going into it, Song Position and Continue when you turn out of it.
 - A loop taken back to its start by a DAW's Start (with [transport
   following](#start-and-stop) on) sends **Start** with that tick, so the gear starts over with it.
@@ -1712,7 +1724,7 @@ feedback](#midi-feedback) on.
 - A DAW that follows FRIZZ's clock (synced to an external MIDI clock): set its project tempo
   roughly to the loop's. REAPER, for one, keeps its own tempo and follows a clock smoothly
   only within about half to twice it (measured); further off, it plays in jumps. So the
-  [clock factor](#clock-factor) at x2 or x1/2 may need the DAW's tempo moved along. It also
+  [clock factor](#clock-factor) at double or half may need the DAW's tempo moved along. It also
   holds still about a second after Start before it runs, then plays in step.
 - Gear with MIDI thru on that sends FRIZZ's clock back into its TRS input: with the clock
   source on Auto, FRIZZ follows its own clock coming back. Set the clock source to internal
@@ -1726,14 +1738,14 @@ feedback](#midi-feedback) on.
 
 What you change on the panel goes out as the CCs that would set it (see
 [Controllers](#controllers)), so a controller with LED rings or motor faders, or a DAW
-picking up a knob, follows the panel. Off at first; the upper octave's D# on the [settings
+picking up a knob, follows the panel. Off at first; the upper D# on the [settings
 page](#settings-page) switches it (`midi_feedback 1` in `FRIZZ/frizz_master.txt`). It goes
 where [MIDI out](#midi-out) goes, so MIDI out has to be on too.
 
 - **What goes out:** an effect's knobs (CC 14-21) and latch (CC 22) on its own channel, and
   for the effect in focus also on the global channel (CC 14-22); the latches by key (CC
   102-115), the focus (CC 23) as you pick an effect, the compressor (CC 24-31), the gains and
-  mix (CC 85-87), the headphone feed (CC 89), the input (CC 84: 0 AUX, 127 the mic, also
+  the input/loop mix (CC 85-87), the headphone feed (CC 89), the input (CC 84: 0 AUX, 127 the mic, also
   when the jack switches it; CC 116 and 117, 0 or 127, the source's effects and live, also
   when a switch of the source brings up the other's), the loop's speed (CC 90), and the crossfader
   (CC 80) while you hold it by hand.
@@ -1762,15 +1774,21 @@ The `7D` in that header is MIDI's ID for projects without a manufacturer ID of t
 the multi-firmware launcher uses the same header. FRIZZ keeps it until the launcher moves to an ID of its
 own, and then follows (#103).
 
-For developers, one more command over USB, `0x3E` (`firmware/README.md`, *The developers'
-SysEx*), lets the tools tell which build runs (`remote.py ident`), read and set any effect or
-compressor knob, VOLUME's levels and every setting of the settings page by number rather than
-by CC (`remote.py get` / `set`), follow the CPU bench and fetch its results, keep a test
-from writing the card until FRIZZ restarts (`remote.py ram-only`; `play` does this first), read
-the clock, the looper, the levels and the battery, play a test signal in place of the input
-until FRIZZ restarts, and start the random numbers from a seed.
+For developers, one more command over USB, `0x3E`, lets the test tools read and set FRIZZ's
+state by number: see [the developers' SysEx](firmware/README.md#4-put-it-on-the-chompi) in
+the developer guide.
+
+### DAW notes
+
+**Knobs back to 0 when the DAW stops:** REAPER 7 as it comes sends every CC its tracks played
+back to 0 when you stop, so the knobs you automated jump to 0. To keep them where the
+automation left them, untick *Reset MIDI CC/Pitch on: playback stop* (and *playback
+loop/skip*, which does the same at a loop's turn) in REAPER's Preferences, Playback, or enter
+`cc0-120=-1` under *CC reset overrides* there. Other DAWs may do something similar.
 
 ## Appendix: Technical data
+
+<!-- summary: The numbers: audio, processing load, timing and formats. -->
 
 The numbers behind FRIZZ, for planning a setup. The timings were measured on a CHOMPI.
 
@@ -1778,8 +1796,12 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
 
 - 48 kHz, stereo in and out, through a 24-bit codec. FRIZZ works in floating point, in blocks
   of 24 samples (0.5 ms).
-- The loop: up to 2:45 of stereo, stored at 16 bits in RAM, gone at power-off; a limiter of
-  its own keeps what goes in just under full scale (see [Looper](#looper)).
+- The loop: up to 2:45 of stereo, stored at 16 bits in RAM, gone at power-off (see
+  [Looper](#looper)). Live, the input is floating point up to the safety limiter; what goes
+  into the loop is held just under full scale by a limiter of its own, which takes a peak at
+  once and lets go over about 150 ms. Below that it records exactly what came in. A source
+  loud enough to reach it records a little quieter than it sounds live (from about 7 dB below
+  the input's full scale at input gain 75%).
 - The freezer records up to 5 s; the delay holds 10 s, so 2 bars fit at the slowest tempo.
 - The tempo: 50-300 BPM, 120 at power-on.
 - Every output has a fixed safety limiter after VOLUME (see [Master
@@ -1793,9 +1815,9 @@ working hard, for example) can need more time than there is, which is heard as c
 switching one of them off clears it.
 
 Measured on a build that runs a set of combinations by itself, as a share of the time each
-block has: FRIZZ alone about 35 %, one effect at most about 50 %, all the inserts with a loop
-about 70 %, every effect at once about 80 %. Every effect at once with a loop, and page 2
-turned off its defaults on all of them (Mix, Band and Level), needs more than there is.
+block has: FRIZZ alone about 35%, one effect at most about 50%, all the inserts with a loop
+about 70%, every effect at once about 80%. Every effect at once with a loop, and every
+effect's page 2 turned off its defaults (Mix, Band and Level), needs more than there is.
 
 ### Timing
 
@@ -1808,7 +1830,7 @@ turned off its defaults on all of them (Mix, Band and Level), needs more than th
 | The clock source on Auto, its clock stopping | The other input's clock counts within about 0.8 s |
 | MIDI clock out over TRS (120 BPM) | Jitter 0.53 ms; 0.64 ms with MIDI feedback sending 1652 CCs meanwhile |
 | MIDI clock out over USB | Its tempo right (120.08 BPM for 120), its ticks less even, bunched while the card is written |
-| A computer's clock over USB, passed on out of TRS (200 and 300 BPM) | Each tick 0.13-0.16 ms off even on average, 99 % within 0.5 ms |
+| A computer's clock over USB, passed on out of TRS (200 and 300 BPM) | Each tick 0.13-0.16 ms off even on average, 99% within 0.5 ms |
 | MIDI feedback | One CC per value every 10 ms at most |
 | Switching on | Sound about a second after FRIZZ starts |
 
