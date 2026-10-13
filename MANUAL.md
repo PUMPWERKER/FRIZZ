@@ -984,6 +984,7 @@ in two ways. It has no page 2: a knob press does nothing.
   bar's steps are kept once rolled and only now and then rolled again, so at the right one
   bar repeats and grooves. Each time the key comes on (a press, a latch, a scene), it rolls
   a fresh bar.
+- A morph fades it in and out on its two chances.
 - Effects that react to coming on do so each time chaos lets them back in: the freezer
   grabs, the tape stop stops, the slicer attacks. A latched tape stop under chaos makes
   random stops.
@@ -1367,6 +1368,7 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | LOOP | Record; stop and play; erase | [Looper](#looper) |
 | PLAY | Play / pause, when you let go | [Looper](#looper) |
 | Hold PLAY, press LOOP | No loop: a quantized recording. A loop playing: erase at its end | [Looper](#looper) |
+| PLAY while an erase waits | Takes the erase back | [Looper](#looper) |
 | SHIFT + LOOP | Tap tempo | [Tap tempo](#tap-tempo) |
 | SHIFT + PLAY | As PLAY | [Looper](#looper) |
 | Turn the transport knob | Speed in semitones; paused, a scrub | [Transport knob](#transport-knob) |
@@ -1386,12 +1388,16 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | SHIFT + press knobs 1-4 | That parameter back to its default | [Playing an effect](#playing-an-effect) |
 | Press knobs 1-4 | Page 2, and back to page 1 | [Page 2](#page-2) |
 | A scene key | Recall the scene | [FX scenes](#fx-scenes) |
+| The active scene's key | Back to the scene as saved | [FX scenes](#fx-scenes) |
+| The blank scene's key (lower F#) | Every effect off, every knob on its default | [FX scenes](#fx-scenes) |
 | SHIFT + a scene key, let go | Morph to it on the bar line; tap it again for each bar more, up to 8 | [Morphing to a scene](#morphing-to-a-scene) |
 | SHIFT + a scene key, press the transport knob | Drop to it on the bar line | [Dropping to a scene](#dropping-to-a-scene) |
 | SHIFT + a scene key, turn the transport knob | The crossfader | [Crossfading by hand](#crossfading-by-hand) |
 | SHIFT + scene key A, then scene key B | Build-up to A, B dropping at its end | [Dropping to a scene](#dropping-to-a-scene) |
 | SHIFT + a blinking scene key | Stop the morph, drop or build-up where it is | [Timed scene changes](#timed-scene-changes) |
-| Upper F#, G# or A#, a slot, then CHOMPI | Save, copy or delete a scene | [Save, copy and delete](#save-copy-and-delete) |
+| SHIFT + another scene key, while one runs | Stop it there and start the new one from there | [Timed scene changes](#timed-scene-changes) |
+| Upper F#, G# or A#, the slot (copy: the source, then the destination), then CHOMPI | Save, copy or delete a scene | [Save, copy and delete](#save-copy-and-delete) |
+| The function's key again, or the mode switch up | Out of save, copy or delete, doing nothing | [Save, copy and delete](#save-copy-and-delete) |
 
 ### On the settings page
 
@@ -1770,21 +1776,21 @@ switching one of them off clears it.
 
 Measured on a build that runs a set of combinations by itself, as a share of the time each
 block has: FRIZZ alone about 35 %, one effect at most about 50 %, all the inserts with a loop
-about 70 %, every effect at once about 80 %. Every effect at once with a loop and page 2's
-Mix and Band in use on all of them needs more than there is.
+about 70 %, every effect at once about 80 %. Every effect at once with a loop, and page 2
+turned off its defaults on all of them (Mix, Band and Level), needs more than there is.
 
 ### Timing
 
 | What | Measured |
 |---|---|
 | A quantized loop against the clock it was recorded to, over TRS | 0.4 ms a minute at most (1 bar, at 120 and 174 BPM) |
-| The same over USB | 4 bars: 0.35 ms a minute at most; 1 bar: up to about 2.3 ms a minute, depending on the recording |
+| The same over USB | 4 bars: 0.35 ms a minute at most; 1 bar: from −2.2 to +2.3 ms a minute, depending on the recording |
 | A loop recorded to REAPER over USB (87 BPM, 4 bars) | 0.66 ms a minute; every bar within 1.5 ms of the song |
 | The effects' tempo following a clock that changes | 10 BPM within about 0.4 s, 1 BPM within about 2 s |
 | The clock source on Auto, its clock stopping | The other input's clock counts within about 0.8 s |
-| MIDI clock out over TRS | Ticks within about 0.5 ms of even, 0.65 ms with MIDI feedback going out too |
+| MIDI clock out over TRS (120 BPM) | Jitter 0.53 ms; 0.64 ms with MIDI feedback sending 1652 CCs meanwhile |
 | MIDI clock out over USB | Its tempo right (120.08 BPM for 120), its ticks less even, bunched while the card is written |
-| A clock passed on from TRS in to TRS out | Less than half a millisecond later |
+| A computer's clock over USB, passed on out of TRS (200 and 300 BPM) | Each tick 0.13-0.16 ms off even on average, 99 % within 0.5 ms |
 | MIDI feedback | One CC per value every 10 ms at most |
 | Switching on | Sound about a second after FRIZZ starts |
 
