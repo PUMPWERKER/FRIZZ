@@ -29,6 +29,11 @@ what FRIZZ does.
   back to 0 while the shifter plays, its left and right channel stayed apart (hollow when
   summed to mono) until it was punched in again or the shift passed the centre. Now the right
   channel glides onto the left's within a grain (about 30 ms), without a click.
+- **An SD card error no longer freezes the panel for half a minute** (#213): if the card fails
+  while FRIZZ saves a scene or the settings, writes a bug report or reads at power-on, the
+  LEDs and keys come back within seconds, not after 30 or 60 (the sound never stopped), and
+  the save flashes red as when the card can't be written. A card that stops answering
+  altogether can take a few seconds longer.
 
 ## v1.0.1 (2026-10-13)
 

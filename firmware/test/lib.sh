@@ -3,7 +3,7 @@
 # DaisySP include flags) and BUILD, builds DaisySP for the host when needed, and provides
 # units (the unit checks' names), twin_for NAME (below) and unit_test NAME: builds NAME.cpp
 # against the working tree's headers, with the host MidiClock in place of the real one (it
-# opens MIDI), and runs it. FRIZZ's code is built with -funsigned-char, as on the CHOMPI, where
+# opens MIDI), and runs it (with C sources of its own, if it names them: unit_test). FRIZZ's code is built with -funsigned-char, as on the CHOMPI, where
 # char is unsigned (on x86 it's signed); DaisySP needn't be, it doesn't depend on it.
 set -e -o pipefail
 T=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -82,8 +82,19 @@ unit_test()
         extra+=(-I"$T/$d")
     done
     log=$dir/build.log
+    # a line "// unit sources: FILE.c ..." in NAME.cpp compiles those C files, from here, with the
+    # same folders, and links them (sddisk.cpp: FatFs and libDaisy's sd_diskio.c themselves)
+    local objs=() c
+    for c in $(sed -n 's|^// unit sources: *||p' "$T/$name.cpp" | head -1); do
+        if ! gcc -O1 -w -funsigned-char "${extra[@]}" -I"$T/host" -c "$T/$c" -o "$dir/$(basename "$c" .c).o" 2> "$log"; then
+            cat "$log"
+            echo "$c didn't build"
+            exit 1
+        fi
+        objs+=("$dir/$(basename "$c" .c).o")
+    done
     if ! g++ -O2 -std=gnu++14 -funsigned-char -Wall -Wno-unused-function -Wno-unused-variable "${extra[@]}" -I"$dir" \
-        -I"$T/host" $INC "$T/$name.cpp" "$BUILD/libdaisysp_host.a" -o "$dir/$name" 2> "$log"; then
+        -I"$T/host" $INC "$T/$name.cpp" "${objs[@]}" "$BUILD/libdaisysp_host.a" -o "$dir/$name" 2> "$log"; then
         cat "$log"
         echo "$name.cpp didn't build"
         exit 1

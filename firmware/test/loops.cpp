@@ -552,6 +552,15 @@ static void TestWrite()
           "write test: 64 KB in 256-byte writes, renamed, read back: passed");
     Check(!card.dirs.count("/FRIZZ/LOOPS/T") && !card.dirs.count("/FRIZZ/LOOPS") && card.files.empty() && card.open == 0,
           "write test: its file, its folder and /FRIZZ/LOOPS it made are gone");
+    // a fault for the device test (#213) in KB's high group: FatFs's next write of more than a
+    // sector armed (SdDisk.h; the host card's FatFs doesn't go through it), the KB as they were
+    const uint8_t faulty[] = {6, 0x10 | 1024 >> 7, 0, 32, 0}; // 1024 KB in 4096-byte writes
+    l.Dev(faulty, 5, d);
+    const uint8_t armed = sddisk::Fault();
+    Check(Run(l) && l.GetState() == LoopLoader::WRITTEN && l.Dev(part0, 1, d) && d[3] == 0
+              && (d[13] << 21 | d[14] << 14 | d[15] << 7 | d[16]) == 1024 * 1024
+              && armed == (sddisk::kCutShort | sddisk::kWrites) && sddisk::Fault() == 0,
+          "write test: LOOPS 6's fault in KB's high group, armed for the writes, disarmed after");
     card.dirs["/FRIZZ/LOOPS"] = true;
     const uint8_t odd[] = {6, 0, 3, 2, 44}; // 3 KB in 300-byte writes
     l.Dev(odd, 5, d);

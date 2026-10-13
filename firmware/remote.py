@@ -54,13 +54,17 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
                                       for RESET, the crash record and the watchdog
     ./remote.py loops [--scan]        the loop slots on the card (/FRIZZ/LOOPS/A-H/01-15.wav)
                                       as FRIZZ's scan found them; --scan scans again first
-    ./remote.py loops load BANK SLOT [--fault no-flow|past-end|cut-short|reinit] [--check WAV]
+    ./remote.py loops load BANK SLOT [--fault no-flow|past-end|cut-short|reinit|fatfs-cut-short|
+                                      fatfs-past-end] [--check WAV]
                                       loads one (A 1 ... H 15) into the loop buffer, following
                                       it: its time, the audio callback's load meanwhile,
                                       MainLoop's longest step; --check: the CRC-32 of what
                                       landed against WAV's data. A fault provokes an error
-    ./remote.py loops write KB CHUNK  the write test: KB written to /FRIZZ/LOOPS/T in CHUNK-
-                                      byte writes, renamed, read back, deleted with its folder
+                                      (fatfs-: in FatFs's read as it opens the file)
+    ./remote.py loops write KB CHUNK [--fault cut-short|past-end]
+                                      the write test: KB written to /FRIZZ/LOOPS/T in CHUNK-
+                                      byte writes, renamed, read back, deleted with its folder;
+                                      a fault in FatFs's next write of more than a sector
 
 `play` presses the keys and turns the knobs of a script over FRIZZ's SysEx, at the script's
 times, sends its `midi` and `clock` to the device, and checks its `expect led` lines against the
@@ -747,7 +751,11 @@ LOOP_RESULTS = ["empty", "mono", "stereo", "not RIFF/WAVE", "no fmt chunk before
                 "card error", "timeout", "card lost", "its clusters end before its data",
                 "a write failed", "read back other than written"]
 LOOP_FAULTS = {"no-flow": 1, "past-end": 2, "cut-short": 4,
-               "reinit": 4 | 8}  # cut short, the card then set up from scratch
+               "reinit": 4 | 8,  # cut short, the card then set up from scratch
+               # FatFs's own read as the load opens the file (SdDisk.h, #213)
+               "fatfs-cut-short": 16, "fatfs-past-end": 32}
+# the write test's: FatFs's next write of more than a sector
+WRITE_FAULTS = {"cut-short": 16, "past-end": 32}
 BANKS = "ABCDEFGH"
 
 
@@ -865,18 +873,25 @@ def loops_load(f, bank, slot, fault, check):
     return ok
 
 
-def loops_write(f, kb, chunk):
+def loops_write(f, kb, chunk, fault=None):
     load(f)
-    loops_status(f)
-    got = f.dev(chompi.LOOPS, [6, kb >> 7, kb & 0x7F, chunk >> 7, chunk & 0x7F])
+    before = loops_status(f)
+    # the fault in KB's high group (KB up to 1024: 8 at most there; the SysEx takes 5 bytes)
+    args = [6, kb >> 7 | WRITE_FAULTS.get(fault, 0), kb & 0x7F, chunk >> 7, chunk & 0x7F]
+    got = f.dev(chompi.LOOPS, args)
     if not got or got[0] != chompi.OK:
         sys.exit("loops write: refused")
     s, secs, worst = loops_wait(f, [6], 120)
     mx, mean, over = load(f)
-    print("write test, %d KB in %d-byte writes: %s in %.2f s; the audio callback max %.1f %%, "
+    print("write test, %d KB in %d-byte writes%s: %s in %.2f s; the audio callback max %.1f %%, "
           "mean %.1f %%%s; MainLoop's longest step %.1f ms" % (
-              kb, chunk, "passed" if not s["error"] else loop_result(s["error"]), secs, mx, mean,
+              kb, chunk, ", FatFs's write %s" % fault if fault else "",
+              "passed" if not s["error"] else loop_result(s["error"]), secs, mx, mean,
               "" if over is None else ", %d over" % over, worst / 1000))
+    if s["recoveries"] != before["recoveries"] or s["sd"]:
+        print("  card recovered %d times, %d set up again%s" % (
+            (s["recoveries"] - before["recoveries"]) % 128, (s["reinits"] - before["reinits"]) % 128,
+            ", SD error 0x%x" % s["sd"] if s["sd"] else ""))
     return not s["error"]
 
 
@@ -1350,7 +1365,8 @@ def main():
     p.add_argument("action", nargs="?", choices=["load", "write"])
     p.add_argument("args", nargs="*")
     p.add_argument("--scan", action="store_true", help="scan the card again first")
-    p.add_argument("--fault", choices=sorted(LOOP_FAULTS))
+    p.add_argument("--fault", choices=sorted(set(LOOP_FAULTS) | set(WRITE_FAULTS)),
+                   help="load: any; write: cut-short or past-end, FatFs's write (#213)")
     p.add_argument("--check", metavar="WAV", help="the CRC of what loaded against WAV's data")
     a = ap.parse_args()
 
@@ -1469,7 +1485,9 @@ def command(a):
         if len(a.args) != 2 or not all(x.isdigit() for x in a.args) or not 1 <= int(a.args[0]) <= 1024 \
                 or not 1 <= int(a.args[1]) < 1 << 14:
             sys.exit("loops write KB CHUNK: 1-1024 KB, CHUNK bytes")
-        sys.exit(0 if loops_write(f, int(a.args[0]), int(a.args[1])) else 1)
+        if a.fault and a.fault not in WRITE_FAULTS:
+            sys.exit("loops write --fault: %s" % " or ".join(sorted(WRITE_FAULTS)))
+        sys.exit(0 if loops_write(f, int(a.args[0]), int(a.args[1]), a.fault) else 1)
     elif a.cmd == "loops":
         loops_show(f, a.scan)
     elif a.cmd == "play":

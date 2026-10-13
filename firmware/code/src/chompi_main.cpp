@@ -473,6 +473,7 @@ int main(void)
     SdFlowControl();
     System::Delay(100);
     fsi.Init(FatFSInterface::Config::MEDIA_SD);
+    SdDiskLink(fsi.GetSDPath());
     System::Delay(100);
     // FRIZZ's files live in /FRIZZ, created on first start (SceneStore.h)
     scene_store.Init(&fsi.GetSDFileSystem(), fsi.GetSDPath());

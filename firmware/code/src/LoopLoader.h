@@ -250,6 +250,10 @@ public:
     static const uint8_t kFaultPastEnd = 2;       // its third run reads past the card's end
     static const uint8_t kFaultCutShort = 4;      // its third run is given no time
     static const uint8_t kFaultReinit = 8;        // a recovery sets the card up from scratch
+    // FatFs's own (SdDisk.h): a load's next read as it opens the file, the write test's next
+    // write of more than a sector
+    static const uint8_t kFaultDiskCutShort = 16; // given no time: stopped mid-transfer
+    static const uint8_t kFaultDiskPastEnd = 32;  // past the card's end
 
     /** buf: kBufBytes, 32-byte aligned; ms: a clock in ms; ticks: a finer one, tick_freq a
      *  second (System::GetTick's, which wraps every ~18 s: only differences are taken).
@@ -268,8 +272,8 @@ public:
 
     /** From MainLoop (the developers' SysEx, the play page): starts a scan, a load of bank's
      *  slot (from 0) with arg its faults into a buffer of kBufBytes or more (Init's without
-     *  one), the CRC of what's loaded, or the write test (arg: KB << 16 | the bytes a write),
-     *  in Init's buffer. False while one runs */
+     *  one), the CRC of what's loaded, or the write test (arg: KB << 16 | the bytes a write;
+     *  bank its faults), in Init's buffer. False while one runs */
     bool Request(State what, uint8_t bank = 0, uint8_t slot = 0, uint32_t arg = 0,
                  uint8_t* into = nullptr)
     {
@@ -338,10 +342,12 @@ public:
      *   1 BANK      -> the bank's scan: SCANNING, then its 15 slots' results
      *   2 BANK SLOT -> its result, frames (4), its data's offset in the file (5)
      *   3           scans again
-     *   4 BANK SLOT FAULTS  loads it (slots from 0)
+     *   4 BANK SLOT FAULTS  loads it (slots from 0); FAULTS the kFault bits
      *   5 [1]       -> state, the CRC-32 (5) of the data loaded once it's LOADED again; with
      *               1 it starts
-     *   6 KB(2) CHUNK(2)    the write test: KB written in CHUNK-byte writes
+     *   6 KB(2) CHUNK(2)    the write test: KB written in CHUNK-byte writes; KB's high group
+     *               can carry kFaultDiskCutShort or kFaultDiskPastEnd (KB is at most 1024,
+     *               the developers' SysEx 5 bytes)
      *  3-6 are refused (-1) while something runs */
     LOOP_LOADER_ONCE int Dev(const uint8_t* arg, size_t len, uint8_t* d)
     {
@@ -396,7 +402,7 @@ public:
             n = Put(d, n, crc_, 5);
         }
         else if (part == 6 && len >= 5)
-            return dev_free_ && Request(WRITING, 0, 0, (arg[1] << 7 | arg[2]) << 16 | (arg[3] << 7 | arg[4])) ? 0 : -1;
+            return dev_free_ && Request(WRITING, arg[1] & 0x30, 0, ((arg[1] & 0x0F) << 7 | arg[2]) << 16 | (arg[3] << 7 | arg[4])) ? 0 : -1;
         else
             return -1;
         return static_cast<int>(n);
@@ -458,12 +464,15 @@ private:
         {
             total_ = (arg >> 16) * 1024u;
             chunk_ = arg & 0xFFFF;
+            faults_ = bank;
             phase_ = 0;
             at_ = 0;
             done_ = 0;
             bad_ = 0;
             if (!total_ || !chunk_ || total_ > kWriteMax)
                 End(WRITTEN, loops::WRITE_FAILED);
+            else
+                DiskFaultArm(true);
         }
     }
 
@@ -558,7 +567,9 @@ private:
     /** The load's first pass: the file opened, its header checked again, the map begun */
     LOOP_LOADER_ONCE void OpenStep()
     {
+        DiskFaultArm(false);
         result_ = Open(bank_, slot_, frames_, data_, true);
+        DiskFaultEnd();
         if (result_ != loops::MONO && result_ != loops::STEREO)
         {
             End(FAILED, result_);
@@ -740,6 +751,25 @@ private:
         End(FAILED, why);
     }
 
+    /** FatFs's fault for a test armed (SdDisk.h), from faults_; and what its recoveries are
+     *  counted from, so LOOPS 0 counts FatFs's in this load's open or this write test too */
+    void DiskFaultArm(bool writes)
+    {
+        const uint8_t f = (faults_ & kFaultDiskCutShort ? sddisk::kCutShort : 0)
+                          | (faults_ & kFaultDiskPastEnd ? sddisk::kPastEnd : 0);
+        sddisk::Fault() = f ? static_cast<uint8_t>(f | (writes ? sddisk::kWrites : 0)) : 0;
+        disk_ = sddisk::GetStats();
+    }
+    void DiskFaultEnd()
+    {
+        sddisk::Fault() = 0;
+        const sddisk::Stats& s = sddisk::GetStats();
+        recoveries_ += s.recoveries - disk_.recoveries;
+        reinits_ += s.reinits - disk_.reinits;
+        if (s.errors != disk_.errors)
+            sd_error_ = s.last_error;
+    }
+
     // ---- the test's CRC-32 (zlib's), 16 KB a pass (~3 ms) ----
     LOOP_LOADER_ONCE void CrcStep()
     {
@@ -829,6 +859,7 @@ private:
     /** Whatever the test left, deleted: its files, its folder, /FRIZZ/LOOPS if it made it */
     void WriteEnd(uint8_t error)
     {
+        DiskFaultEnd();
         f_unlink("/FRIZZ/LOOPS/T/w.tmp");
         f_unlink("/FRIZZ/LOOPS/T/w.bin");
         f_unlink("/FRIZZ/LOOPS/T");
@@ -865,6 +896,7 @@ private:
     uint32_t frag_at_ = 0, run_ = 0, done_ = 0, total_ = 0, runs_ = 0;
     uint32_t run_t_ = 0, timeout_ = 0, start_ms_ = 0, ms_ = 0, worst_us_ = 0; // ticks, ms, us
     uint8_t recoveries_ = 0, reinits_ = 0;
+    sddisk::Stats disk_ = {};
     uint32_t frags_ = 0;
     // the CRC, the write test
     uint32_t crc_ = 0, at_ = 0, chunk_ = 0, bad_ = 0;
