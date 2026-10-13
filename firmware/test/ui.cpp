@@ -4693,14 +4693,11 @@ int main()
     // through +7, −7, +12 and −12 (CC 14 on its channel), 1.5 s each after a second to settle.
     // Each channel searching its splices on its own, the hair picked other lags, and the two
     // read from other places from there on
-    cases.push_back({"shifter-stereo-0", [] {
-        RunMs(kReadyMs);
-        freq = 311.f;
-        Latch("KEY_2");
-        uint32_t noise = 223, hair = 221;
+    {
         // ms of the sine and noise into AUX, the hair on the right; the headphones' L/R
-        // correlation
-        auto run = [&noise, &hair](uint32_t ms) {
+        // correlation over them
+        static auto run = [](uint32_t ms) {
+            static uint32_t noise = 223, hair = 221;
             float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
             double ll = 0., rr = 0., lr = 0.;
             for (uint32_t b = 0; b < ms * 2; b++)
@@ -4726,19 +4723,50 @@ int main()
             }
             return static_cast<float>(lr / sqrt(ll * rr + 1e-30));
         };
-        run(500);
-        float worst = 1.f;
-        for (int cc : {101, 26, 127, 0})
-        {
-            Trs({0xB1, 14, cc});
+        cases.push_back({"shifter-stereo-0", [] {
+            RunMs(kReadyMs);
+            freq = 311.f;
+            Latch("KEY_2");
+            run(500);
+            float worst = 1.f;
+            for (int cc : {101, 26, 127, 0})
+            {
+                Trs({0xB1, 14, cc});
+                run(1000);
+                const float r = run(1500);
+                printf("      shift %+d: L/R correlation %.6f\n", cc == 101 ? 7 : cc == 26 ? -7 : cc ? 12 : -12, r);
+                worst = std::min(worst, r);
+            }
+            Check(worst > .9999f, "shifter-stereo-0: L and R the same signal at every shift, a hair apart at the input (#223)");
+            freq = 220.f;
+        }});
+        // and set apart by a stereo offset (CC 19, page 2's knob 2, at .25) and back to 0:
+        // apart as they were, until the next punch-in, where the right channel takes the
+        // left's taps, unheard, before its fade-in (Move)
+        cases.push_back({"shifter-stereo-relock", [] {
+            RunMs(kReadyMs);
+            freq = 311.f;
+            Latch("KEY_2");
+            Trs({0xB1, 14, 101}); // +7
             run(1000);
-            const float r = run(1500);
-            printf("      shift %+d: L/R correlation %.6f\n", cc == 101 ? 7 : cc == 26 ? -7 : cc ? 12 : -12, r);
-            worst = std::min(worst, r);
-        }
-        Check(worst > .9999f, "shifter-stereo-0: L and R the same signal at every shift, a hair apart at the input (#223)");
-        freq = 220.f;
-    }});
+            Trs({0xB1, 19, 32});
+            run(1500);
+            Trs({0xB1, 19, 0});
+            run(1000);
+            const float apart = run(1500);
+            Latch("KEY_2");
+            run(300);
+            const bool off = !(LatchedFx(Ask({0x20})) & 2);
+            Latch("KEY_2");
+            run(1000);
+            const float together = run(1500);
+            printf("      stereo .25 then 0: L/R correlation %.6f; punched out and in: %.6f\n", apart,
+                   together);
+            Check(off && together > .9999f,
+                  "shifter-stereo-relock: back at stereo 0, punched out and in: L and R the same again (#223)");
+            freq = 220.f;
+        }});
+    }
 
     // ---- the built-in mic (#113): AUX's jack picks the source at power-on and on each change,
     // the settings page's upper F# the other until the next (#177); TAPE's gain and filter ----

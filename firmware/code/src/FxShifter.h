@@ -121,7 +121,7 @@ public:
                                    : static_cast<float>(semitones_));
         }
         if (__builtin_expect((still_[0] && ratio_[0] != 1.f) || (still_[1] && ratio_[1] != 1.f), 0))
-            Move();
+            Move(gate);
 
         float* const io[2] = {l, r};
         for (size_t c = 0; c < 2; c++)
@@ -244,8 +244,12 @@ private:
      *  the other way meanwhile, #140), or, going up, a tap is beyond a grain turned shorter
      *  meanwhile (#167), so the taps start afresh: tap 1 halfway through its life, carrying
      *  the sound, tap 0 silent at the start of its own, spliced to match it as at any
-     *  crossing. Otherwise they go on from where they were */
-    __attribute__((noinline)) void Move()
+     *  crossing. Otherwise they go on from where they were.
+     *
+     *  Punched in at stereo 0 (the gate's first step, nothing heard yet), the right channel
+     *  takes the left's taps as they move on, so the two are the same again where a stereo
+     *  offset had set them apart, and stay so (StartSplice, #223) */
+    __attribute__((noinline)) void Move(float gate)
     {
         for (size_t c = 0; c < 2; c++)
         {
@@ -253,6 +257,19 @@ private:
             if (!still_[c] || ratio == 1.f)
                 continue;
             still_[c] = false;
+            if (c == 1 && gate <= kFxGateCoeff && !still_[0] && ratio_[0] == ratio)
+            {
+                window_[1] = window_[0];
+                window_frames_[1] = window_frames_[0];
+                delay_[1][0] = delay_[0][0];
+                delay_[1][1] = delay_[0][1];
+                nominal_[1] = nominal_[0];
+                other_at_[1] = other_at_[0];
+                waiting_[1] = waiting_[0];
+                held_[1] = held_[0];
+                follows_ = waiting_[0] != 0;
+                continue;
+            }
             const bool up = ratio > 1.f;
             float* const d = delay_[c];
             const float w = window_[c];

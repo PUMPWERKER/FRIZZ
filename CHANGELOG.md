@@ -387,7 +387,8 @@ what FRIZZ does.
   chose where to splice each on their own, and the slightest difference between CHOMPI's two
   input channels set them apart, so they read from different places. Summed to mono, that
   was a moving comb filter, a hollow sound. Now the right channel follows the left's choice
-  while stereo is at 0, and both play the same.
+  while stereo is at 0, and both play the same; after stereo was turned up and back to 0, from
+  the shifter's next punch-in.
 - **The crusher's dive after a quick tap** (#167): a tap shorter than the dive's 0.1 s fall,
   then a pause, and the next press started the dive from too high a rate, as if the first
   fall had been cut off where the tap ended. It now picks up where it would have got to.
