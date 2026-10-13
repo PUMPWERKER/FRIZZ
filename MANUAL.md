@@ -1298,8 +1298,8 @@ Over MIDI, CC 84 picks the source, CC 116 sets its effects and CC 117 it live (s
 
 Mono is for a mono (TS) cable, such as one from a Lyra-8 or a guitar pedal: the plug grounds
 the right channel, so in stereo the source is heard on the left only. In mono the left channel
-feeds both sides, and the effects' stereo knobs spread it from there. SHIFT + F# of the upper
-octave toggles it; while you hold SHIFT, F# shows it (lit when mono). It's for AUX only: the
+feeds both sides, and the effects' stereo knobs spread it from there. On the [settings
+page](#settings-page), SHIFT + F# of the upper octave toggles it; while you hold SHIFT, F# shows it (lit when mono). It's for AUX only: the
 mic is mono anyway, and plays on both sides either way.
 
 ## Card and files
