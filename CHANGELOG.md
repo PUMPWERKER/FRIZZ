@@ -5,7 +5,7 @@ a release renames that section to its version, and its notes on GitHub's Release
 from it. Developer-only changes (refactoring, tests, docs) aren't listed unless they change
 what FRIZZ does.
 
-## Unreleased
+## v1.0.1 (2026-10-13)
 
 ### Changed
 
