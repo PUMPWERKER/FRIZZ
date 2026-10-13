@@ -123,6 +123,9 @@ struct InputJack
 };
 InputJack input_jack;
 
+// how long main() reads the keys at boot, for shipping mode, while the boot ripple runs
+static const uint32_t kKeyReadMs = 500;
+
 // a restart over MIDI waits this long at most for the card (MainLoop)
 static const uint32_t kRestartWaitMs = 1000;
 static uint32_t restart_asked = 0;
@@ -388,11 +391,14 @@ int main(void)
 
     batt = now;
 
-    // get any junk out of the SRs, takes .5s; CHOMPI, PLAY and LOOP held throughout: shipping mode
-    uint32_t sleep_state = 0;
+    // get any junk out of the SRs for kKeyReadMs, timed: 5000 reads 0.1 ms apart took longer
+    // on the device, the reads' own time on top; CHOMPI, PLAY and LOOP held throughout (4 of
+    // 5 reads): shipping mode
+    uint32_t sleep_state = 0, reads = 0;
+    const uint32_t read_start = System::GetNow();
 
     main_reads_keys = true;
-    for(int i = 0; i < 5000; i++)
+    for(; System::GetNow() - read_start < kKeyReadMs; reads++)
     {
         hw.ProcessAllControls();
         sleep_state += hw.button_sr.State(int(Hardware::SwId::KEY_26))
@@ -411,7 +417,7 @@ int main(void)
 
     main_reads_keys = false;
 
-    if(sleep_state > 4000)
+    if(sleep_state > reads / 5 * 4)
         hw.MpWrite(0x08, 0B10111111); // SHIPPING MODE
 
     // the event log starts here, the card read
