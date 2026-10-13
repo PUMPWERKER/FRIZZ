@@ -54,10 +54,9 @@ float FxSlewT<Unused>::coeff = kFxParamCoeff;
 using FxSlew = FxSlewT<>;
 
 /** v slewed a sample toward target (fonepole), and snapped onto it once it's within 1e-5 or
- *  a step no longer moves it, so it settles (#167, #168): near 1 a step smaller than half the
- *  float's spacing there stalls short of it (the shifter's dry 3e-5 short of 1, a knob turned
- *  back to its default never at rest again, #51), and towards 0 it would creep on through the
- *  denormals (FZ is off, as on the twin) to stall at ~7e-43 */
+ *  a step no longer moves it, so it settles (#168): near 1 a step smaller than half the
+ *  float's spacing there stalls short of it, and towards 0 it would creep on through the
+ *  denormals (FZ is off, as on the twin) to stall at ~7e-43. Smoothed::Settle's rule */
 inline float Glide(float v, float target, float coeff)
 {
     float next = v;
@@ -65,7 +64,11 @@ inline float Glide(float v, float target, float coeff)
     return next == v || fabsf(next - target) < 1e-5f ? target : next;
 }
 
-/** A setting with a target, set from the UI, and a live value that follows it (Glide) */
+/** A setting with a target, set from the UI, and a live value that follows it. Process slews
+ *  as fonepole does and stops short of the target near 1 (3e-5) or creeps through the
+ *  denormals towards 0; what waits on the target uses Settle, which lands (#51). Landing in
+ *  Process too (#167, finding 6) cost a morph, which moves dozens at once, 2-4 points on the
+ *  device, out of line or in: the shifter's dry 3e-5 short of 1 (-90 dB) is cheaper */
 struct Smoothed
 {
     float value, target;
@@ -76,24 +79,25 @@ struct Smoothed
     void Snap() { value = target; }
     /** Once per sample, at the knobs' slew (FxSlew) */
     float Process() { return Process(FxSlew::coeff); }
-    /** Once per sample, at a slew of its own; at the target there's nothing to do */
+    /** Once per sample, at a slew of its own */
     float Process(float coeff)
     {
-        if (__builtin_expect(value != target, 0))
-            Slew(coeff);
+        fonepole(value, target, coeff);
         return value;
     }
-    /** A step of the slew, out of line: it runs only while a knob moves, and inlined into
-     *  every Smoothed it grew the effects past where GCC inlines them into the chain, so even
-     *  asleep they cost a call a sample (the bench's idle +0.8 points, #167) */
-    __attribute__((noinline)) void Slew(float coeff) { value = Glide(value, target, coeff); }
-    /** For a value that's costly to apply: true if it moved this sample, so it needs
+    /** For a value that's costly to apply: slews while it isn't at the target, and lands on
+     *  it once within 1e-5, or once a step no longer moves it: near 1 the slew's step falls
+     *  below a float's resolution and it would stall short of the target for good, a knob
+     *  turned back to its default never at rest again (#51). True if it moved, so it needs
      *  applying */
     bool Settle(float coeff = FxSlew::coeff)
     {
         if (value == target)
             return false;
+        const float before = value;
         Process(coeff);
+        if (value == before || fabsf(value - target) < 1e-5f)
+            Snap();
         return true;
     }
 };

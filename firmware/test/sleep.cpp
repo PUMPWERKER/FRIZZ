@@ -188,10 +188,11 @@ static void TestResonatorEnv()
           "resonator: punched in after a sleep, its env mod starts from silence");
 }
 
-/** A Smoothed lands on its target exactly, so what waits on it (Settle, the flanger's
- *  glide, the reverb's pre-delay, the shifter's dry centre) comes to rest: up to 1, where a
- *  step falls below a float's resolution, down to 0, through the denormals, and between; at
- *  the knobs' slew and a recall's (#167) */
+/** A Smoothed's Settle lands on the target exactly, so what waits on it (the filter's
+ *  resonance, the delay's feedback, page 2, the compressor, the reverb's pre-delay) comes to
+ *  rest: up to 1, where a step falls below a float's resolution, down to 0, through the
+ *  denormals, and between; at the knobs' slew and a recall's. Process doesn't, as on main:
+ *  landing there cost a morph too much (#167, finding 6) */
 static void TestSmoothed()
 {
     struct Move
@@ -211,13 +212,13 @@ static void TestSmoothed()
         s.target = m.to;
         long at = -1;
         for (long i = 0; i < 10 * 48000 && at < 0; i++)
-            if (s.Process(m.coeff) == m.to)
+            if (!s.Settle(m.coeff) && s.value == m.to)
                 at = i;
-        printf("      Smoothed %g to %g at %g: there after %ld samples\n", m.from, m.to, m.coeff,
-               at);
+        printf("      Smoothed::Settle %g to %g at %g: at rest after %ld samples\n", m.from, m.to,
+               m.coeff, at);
         all = all && at > 0 && at < 48000;
     }
-    Check(all, "Smoothed: lands on its target exactly, within a second");
+    Check(all, "Smoothed: Settle lands on its target exactly, within a second");
 }
 
 static float delay_mem[480000 * 2];
