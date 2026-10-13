@@ -91,9 +91,9 @@ namespace chompi
         bool open_, mapped_, unmappable_, failed_; // no initialisers: in SDRAM, which is zeroed in main, not before
     };
 
-    // One transfer at a time between a file and SDRAM, by DMA in as few runs as the file's fragments allow.
-    // Start it from the SD timer and poll Busy() there; nothing else may use the card until it returns false.
-    // Then the file's Failed() tells how it went.
+    // One transfer at a time between a file and SDRAM, by DMA in as few runs as the file's fragments allow, or of
+    // raw sectors. Start it from the SD timer and poll Busy() there; nothing else may use the card until it returns
+    // false. Then Failed(), the file's or for sectors this one's, tells how it went.
     // buf: 32-byte aligned, room for bytes rounded up to sectors. offset: sector aligned.
     class SdDma
     {
@@ -101,7 +101,7 @@ namespace chompi
         static constexpr size_t kChunk = 32768;         // bytes per transfer
         static constexpr size_t kBuffer = kChunk + 512; // for a chunk that starts inside a sector
 
-        void Init() { file_ = nullptr; }
+        void Init() { active_ = false; }
 
         // false if it failed to start
         bool Read(SdFile &file, FSIZE_t offset, void *buf, uint32_t bytes) { return Start(file, offset, buf, bytes, false); }
@@ -110,13 +110,21 @@ namespace chompi
             return Start(file, offset, const_cast<void *>(buf), bytes, true);
         }
 
+        bool Sectors(uint32_t sector, uint32_t count, void *buf, bool write)
+        {
+            file_ = nullptr;
+            sector_ = sector;
+            return Start(buf, count * 512, write);
+        }
+
         // a transfer started and not yet seen to end by Busy
-        bool Active() const { return file_; }
+        bool Active() const { return active_; }
+        bool Failed() const { return failed_; }
 
         // advances the transfer; false once it is done or failed
         bool Busy()
         {
-            if(!file_)
+            if(!active_)
                 return false;
             const bool timeout = daisy::System::GetNow() - started_ > kTimeout;
             if(HAL_SD_GetState(&hsd1) != HAL_SD_STATE_READY || HAL_SD_GetCardState(&hsd1) != HAL_SD_CARD_TRANSFER)
@@ -132,6 +140,7 @@ namespace chompi
                 SCB_InvalidateDCache_by_Addr(reinterpret_cast<uint32_t *>(buf_), run_ * 512);
             buf_ += run_ * 512;
             offset_ += run_ * 512;
+            sector_ += run_;
             bytes_ -= std::min<uint32_t>(bytes_, run_ * 512);
             return Next();
         }
@@ -143,11 +152,18 @@ namespace chompi
         {
             file_ = &file;
             offset_ = offset;
+            file.failed_ = false;
+            return Start(buf, bytes, write);
+        }
+
+        bool Start(void *buf, uint32_t bytes, bool write)
+        {
             buf_ = static_cast<uint8_t *>(buf);
             bytes_ = bytes;
             write_ = write;
-            file.failed_ = false;
-            return Next() || !file.failed_;
+            failed_ = false;
+            active_ = true;
+            return Next() || !failed_;
         }
 
         // starts the next run; false when there is none
@@ -155,12 +171,12 @@ namespace chompi
         {
             if(!bytes_)
             {
-                file_ = nullptr;
+                active_ = false;
                 return false;
             }
-            DWORD sector;
-            uint32_t count;
-            if(!file_->Map() || !file_->Run(offset_, (bytes_ + 511) / 512, sector, count))
+            DWORD sector = sector_;
+            uint32_t count = bytes_ / 512;
+            if(file_ && (!file_->Map() || !file_->Run(offset_, (bytes_ + 511) / 512, sector, count)))
                 return FatFs();
             if(write_)
                 SCB_CleanDCache_by_Addr(reinterpret_cast<uint32_t *>(buf_), count * 512);
@@ -188,22 +204,25 @@ namespace chompi
                 res = f_sync(&file_->fil); // Close drops FatFS's sector buffer
             if(res != FR_OK || (write_ && done != bytes))
                 return Fail();
-            file_ = nullptr;
+            active_ = false;
             return false;
         }
 
         bool Fail()
         {
-            file_->failed_ = true;
-            file_ = nullptr;
+            if(file_)
+                file_->failed_ = true;
+            failed_ = true;
+            active_ = false;
             return false;
         }
 
-        SdFile *file_;
+        SdFile *file_; // null for sectors
         FSIZE_t offset_;
+        uint32_t sector_;
         uint8_t *buf_;
         uint32_t bytes_, run_, started_;
-        bool write_;
+        bool write_, active_, failed_;
     };
 
     extern SdDma sd_dma;

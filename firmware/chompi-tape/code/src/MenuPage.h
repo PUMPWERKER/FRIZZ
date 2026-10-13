@@ -84,6 +84,11 @@ namespace chompi
                     undo_ok = !copier_->IsCopying() && fx_->LooperUndo();
                     undo_flash = now;
                 }
+                else if(long_press_key == static_cast<uint16_t>(Hardware::SwId::KEY_24)) // copy held: the card as a USB drive
+                {
+                    preset_mode = PresetMode::NONE;
+                    card_mode_request_ = true;
+                }
                 else if(copier_->IsCopying())
                     bake_refused = now;
                 else
@@ -356,6 +361,8 @@ namespace chompi
             {
                 if(no_sd_card_ && i != 15)
                     SetSmtLedFloat(25 - i, red[0], red[1], red[2]);
+                else if(card_mode_)
+                    SetSmtLedFloat(25 - i, blue[0], blue[1], blue[2]);
                 else if(preset_mode == PresetMode::SAVE_SEL && i == 15)
                     SetSmtLedFloat(25 - i, pink[0], pink[1], pink[2]);
                 else if(ss_bank == fx_->GetBank() && selected_slot == i && preset_mode == PresetMode::SAVE_SEL && fx_->GetVoiceMode() == ss_mode)
@@ -918,6 +925,10 @@ namespace chompi
 
             case static_cast<uint16_t>(Hardware::SwId::KEY_24): // copy
             {
+                if(rising)
+                    StartLongPress(buttonID);
+                else if(long_press_key == buttonID)
+                    long_press_key = kNoKey;
                 if(rising && !no_sd_card_)
                 {                    
                     if(preset_mode == PresetMode::NONE)
@@ -1156,6 +1167,14 @@ namespace chompi
 
         bool no_sd_card_ = false;
         inline void NoSDCard() { no_sd_card_ = true; }
+        bool card_mode_ = false, card_mode_request_ = false; // the card as a USB drive
+        void CardMode(bool on) { card_mode_ = on; }
+        bool TakeCardModeRequest()
+        {
+            const bool request = card_mode_request_;
+            card_mode_request_ = false;
+            return request;
+        }
 
     private:
         Hardware *hw_;

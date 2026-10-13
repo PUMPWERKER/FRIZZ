@@ -3,16 +3,19 @@
 #include "tusb.h"
 #include "usb_descriptors.h"
 
-// the ST stack's VID/PID, so MIDI setups carry over; bcdDevice bumped from 0x0200, so hosts re-read the interfaces
+// the ST stack's VID/PID, so MIDI setups carry over; bcdDevice bumped from its 0x0200 with each change of the
+// interfaces, so hosts re-read them
 #define USB_VID 0x0483
 #define USB_PID 0x5740
-#define USB_BCD_DEVICE 0x0300
+#define USB_BCD_DEVICE 0x0301
 
 #define EPNUM_AUDIO_RX 0x01
 #define EPNUM_AUDIO_FB 0x81
 #define EPNUM_AUDIO_TX 0x82
 #define EPNUM_MIDI_OUT 0x03
 #define EPNUM_MIDI_IN  0x83
+#define EPNUM_MSC_OUT  0x04
+#define EPNUM_MSC_IN   0x84
 
 enum
 {
@@ -22,6 +25,7 @@ enum
     STRID_SERIAL,
     STRID_AUDIO,
     STRID_MIDI,
+    STRID_MSC,
     STRID_CH_MIX_L, // the TX channel names, consecutive and in the order usb::Send() takes them
     STRID_CH_MIX_R,
     STRID_CH_IN_L,
@@ -74,7 +78,7 @@ uint8_t const *tud_descriptor_device_cb(void)
 
 #define MIDI_IAD_LEN 8
 
-#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + AUDIO_DESC_LEN + MIDI_IAD_LEN + TUD_MIDI_DESC_LEN)
+#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + AUDIO_DESC_LEN + MIDI_IAD_LEN + TUD_MIDI_DESC_LEN + TUD_MSC_DESC_LEN)
 
 #define RX_EP_SIZE CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_MAX
 #define TX_EP_SIZE CFG_TUD_AUDIO_FUNC_1_EP_IN_SZ_MAX
@@ -136,6 +140,8 @@ static uint8_t const desc_configuration[] = {
     MIDI_IAD_LEN, TUSB_DESC_INTERFACE_ASSOCIATION, ITF_NUM_MIDI, 2, TUSB_CLASS_AUDIO, AUDIO_FUNCTION_SUBCLASS_UNDEFINED,
     AUDIO_FUNC_PROTOCOL_CODE_UNDEF, 0x00,
     TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, STRID_MIDI, EPNUM_MIDI_OUT, EPNUM_MIDI_IN, 64),
+
+    TUD_MSC_DESCRIPTOR(ITF_NUM_MSC, STRID_MSC, EPNUM_MSC_OUT, EPNUM_MSC_IN, 64),
 };
 
 TU_VERIFY_STATIC(sizeof(desc_configuration) == CONFIG_TOTAL_LEN, "Incorrect size");
@@ -152,6 +158,7 @@ static char const *const string_desc[] = {
     [STRID_SERIAL]       = NULL, // from the chip's unique ID
     [STRID_AUDIO]        = "CHOMPI",
     [STRID_MIDI]         = "CHOMPI",
+    [STRID_MSC]          = "CHOMPI SD",
     [STRID_CH_MIX_L]     = "Mix L",
     [STRID_CH_MIX_R]     = "Mix R",
     [STRID_CH_IN_L]      = "Input L",

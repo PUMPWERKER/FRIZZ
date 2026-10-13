@@ -51,6 +51,8 @@ In TAPE:
   with libDaisy's in place the link fails on the duplicate, and they would pull ST's USB host and
   device stack into the image. libDaisy's own USB on that port (`UsbHandle::FS_EXTERNAL`, `MidiUsbTransport`
   `EXTERNAL`, the USB host) no longer works in this copy.
+- `src/util/sd_diskio.c` — a remount doesn't initialise the SD card again; TAPE remounts after the card
+  was a USB drive.
 - `src/sys/fatfs.cpp` — no USB host media: `FatFSInterface` fails `MEDIA_USB`. TAPE only mounts the
   SD card, and the USB host driver linked ST's USB host and device middleware into the image. With
   this and the change above, TAPE's binary contains none of ST's USB middleware.

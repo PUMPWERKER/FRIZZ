@@ -28,6 +28,14 @@ namespace chompi
 
         // kTxChannels to the host, null ones as silence; dropped while it doesn't record
         void Send(const float *const *to_host, size_t size);
+
+        // the card as a USB drive: the medium is in while on, and CHOMPI leaves the card to the host meanwhile
+        void CardMode(bool on);
+        bool InCardMode();
+        // the host ejected it, once
+        bool TakeCardEjected();
+        // SD timer, while the card is free: the host's transfers
+        void CardTask();
     }
 
     // libDaisy's MidiHandler transport on TinyUSB: Tx queues from any context, Process() in usb's task sends and receives

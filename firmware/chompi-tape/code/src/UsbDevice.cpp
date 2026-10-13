@@ -6,6 +6,7 @@
 #include "util/scopedirqblocker.h"
 #include "tusb.h"
 #include "usb_descriptors.h"
+#include "SdDma.h"
 
 namespace chompi
 {
@@ -227,6 +228,74 @@ namespace chompi
         }
     }
 
+    namespace usb
+    {
+        // the card as a drive: TinyUSB asks in its task, the SD timer moves the sectors, then the answer is ready
+        static uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) card_buf[CFG_TUD_MSC_EP_BUFSIZE];
+        enum class CardIo : uint8_t { kIdle, kPosted, kRunning, kDone, kFailed };
+        static volatile CardIo card_io = CardIo::kIdle;
+        static volatile bool card_on = false, card_ejected = false;
+        static uint32_t card_lba, card_count;
+        static bool card_write;
+
+        void CardMode(bool on)
+        {
+            card_on = on;
+            card_ejected = false;
+        }
+
+        bool InCardMode() { return card_on; }
+
+        bool TakeCardEjected()
+        {
+            const bool ejected = card_ejected;
+            card_ejected = false;
+            return ejected;
+        }
+
+        void CardTask()
+        {
+            if(card_io == CardIo::kPosted && !card_on) // the mode ended first
+                card_io = CardIo::kIdle;
+            else if(card_io == CardIo::kPosted)
+            {
+                card_io = CardIo::kRunning;
+                if(!sd_dma.Sectors(card_lba, card_count, card_buf, card_write))
+                    card_io = CardIo::kFailed;
+            }
+            else if(card_io == CardIo::kRunning && !sd_dma.Active())
+                card_io = sd_dma.Failed() ? CardIo::kFailed : CardIo::kDone;
+        }
+
+        // posts the transfer, then busy until it's done; bytes moved, or -1
+        static int32_t CardTransfer(uint32_t lba, uint8_t *buffer, uint32_t bytes, bool write)
+        {
+            const uint32_t count = bytes / 512;
+            if(!card_on || !count || bytes > sizeof(card_buf))
+                return -1;
+            if(card_io == CardIo::kIdle)
+            {
+                card_lba = lba;
+                card_count = count;
+                card_write = write;
+                if(write)
+                    memcpy(card_buf, buffer, bytes);
+                card_io = CardIo::kPosted;
+            }
+            else if(card_io == CardIo::kDone || card_io == CardIo::kFailed)
+            {
+                const bool same = card_lba == lba && card_count == count && card_write == write;
+                const bool ok = card_io == CardIo::kDone;
+                card_io = CardIo::kIdle; // another transfer: the host gave the last one up, this one posts next time
+                if(same && ok && !write)
+                    memcpy(buffer, card_buf, bytes);
+                if(same)
+                    return ok ? int32_t(bytes) : -1;
+            }
+            return TUD_MSC_RET_BUSY;
+        }
+    }
+
     static MidiTinyUsbTransport::MidiRxParseCallback midi_rx_cb = nullptr;
     static void *midi_rx_ctx = nullptr;
 
@@ -290,6 +359,59 @@ namespace chompi
 // TinyUSB's callbacks
 extern "C"
 {
+    void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t product_id[16], uint8_t product_rev[4])
+    {
+        (void)lun;
+        memcpy(vendor_id, "CHOMPI  ", 8);
+        memcpy(product_id, "SD card         ", 16);
+        memcpy(product_rev, "1.0 ", 4);
+    }
+
+    bool tud_msc_test_unit_ready_cb(uint8_t lun)
+    {
+        if(chompi::usb::card_on)
+            return true;
+        tud_msc_set_sense(lun, SCSI_SENSE_NOT_READY, 0x3a, 0x00); // medium not present
+        return false;
+    }
+
+    void tud_msc_capacity_cb(uint8_t lun, uint32_t *block_count, uint16_t *block_size)
+    {
+        (void)lun;
+        *block_count = chompi::usb::card_on ? hsd1.SdCard.LogBlockNbr : 0;
+        *block_size = 512;
+    }
+
+    bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool start, bool load_eject)
+    {
+        (void)lun;
+        (void)power_condition;
+        if(load_eject && !start)
+            chompi::usb::card_ejected = true;
+        return true;
+    }
+
+    int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset, void *buffer, uint32_t bufsize)
+    {
+        (void)lun;
+        return offset ? -1 : chompi::usb::CardTransfer(lba, static_cast<uint8_t *>(buffer), bufsize, false);
+    }
+
+    int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset, uint8_t *buffer, uint32_t bufsize)
+    {
+        (void)lun;
+        return offset ? -1 : chompi::usb::CardTransfer(lba, buffer, bufsize, true);
+    }
+
+    int32_t tud_msc_scsi_cb(uint8_t lun, uint8_t const scsi_cmd[16], void *buffer, uint16_t bufsize)
+    {
+        (void)scsi_cmd;
+        (void)buffer;
+        (void)bufsize;
+        tud_msc_set_sense(lun, SCSI_SENSE_ILLEGAL_REQUEST, 0x20, 0x00); // invalid command
+        return -1;
+    }
+
     void TIM7_IRQHandler(void)
     {
         TIM7->SR = 0;

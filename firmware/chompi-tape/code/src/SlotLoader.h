@@ -113,6 +113,13 @@ namespace chompi
             edit_time_ = now;
         }
 
+        // the card goes away for a while: a load stops, edits are saved, it loads again after. The card must be free
+        void Release()
+        {
+            Drop();
+            name_[0] = '\0';
+        }
+
         // its files changed: load it again next time, a load under way stops
         void Forget(const char *name)
         {

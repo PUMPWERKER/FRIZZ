@@ -21,6 +21,7 @@ TINYUSB_SOURCES = $(TINYUSB_DIR)/tusb.c \
 	$(TINYUSB_DIR)/device/usbd.c \
 	$(TINYUSB_DIR)/class/audio/audio_device.c \
 	$(TINYUSB_DIR)/class/midi/midi_device.c \
+	$(TINYUSB_DIR)/class/msc/msc_device.c \
 	$(TINYUSB_DIR)/portable/synopsys/dwc2/dcd_dwc2.c \
 	$(TINYUSB_DIR)/portable/synopsys/dwc2/dwc2_common.c
 C_SOURCES += $(TINYUSB_SOURCES) usb_descriptors.c

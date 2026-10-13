@@ -109,6 +109,9 @@ namespace chompi
             menu_page_.NoSDCard();
         }
 
+        void CardMode(bool on) { menu_page_.CardMode(on); }
+        bool TakeCardModeRequest() { return menu_page_.TakeCardModeRequest(); }
+
         void NoSDCardAnimation(bool run)
         {
             if(run)

@@ -210,10 +210,53 @@ extern "C" void __wrap_HAL_SD_IRQHandler(SD_HandleTypeDef *hsd)
         TIM4->EGR = TIM_EGR_UG;
 }
 
+// our own folder on a multi-firmware card, else the one shared with TAPE, else the root
+void MountCard()
+{
+    f_mount(&fsi.GetSDFileSystem(), fsi.GetSDPath(), 1);
+    if(f_chdir("/MIXTAPE") != FR_OK)
+        f_chdir("/TAPE");
+}
+
+// the card as a USB drive: CHOMPI lets go of it while the host has it, and takes it back as it finds it.
+// All card work runs on the SD timer; while card_lent it serves only the host, and this runs alone on the card
+bool card_lent = false;
+void CardMode(bool on)
+{
+    if(on)
+    {
+        card_lent = true;
+        while(sd_dma.Active()) // the SD timer ends the transfer under way
+            System::Delay(1);
+        engine.StopAllVoices();
+        slot_loader.Release();
+        f_mount(nullptr, fsi.GetSDPath(), 0);
+        usb::CardMode(true);
+    }
+    else
+    {
+        usb::CardMode(false);
+        while(sd_dma.Active())
+            System::Delay(1);
+        MountCard();
+        streamer.Forget();
+        ui.InitFromPresets();
+        engine.UpdateFileExists();
+        card_lent = false;
+        engine.SetVoiceSlot(engine.GetVoiceSlot(), true);
+    }
+    ui.CardMode(on);
+}
+
 void SDCallback(void* data)
 {
     if(sd_dma.Busy()) // a transfer owns the card
         return;
+    if(card_lent)
+    {
+        usb::CardTask();
+        return;
+    }
 
     const uint32_t now = System::GetNow();
     if (now - sd_checkt > 1000 && !no_sd_card && !booting)
@@ -313,6 +356,11 @@ void MainLoop(void* data)
         ui.DoEvents();
         ui.ProcessMidi();
         uit = now;
+
+        if(ui.TakeCardModeRequest() && (usb::InCardMode() || (usb::Connected() && !engine.Recording() && !copier.IsCopying())))
+            CardMode(!usb::InCardMode());
+        else if(usb::InCardMode() && (usb::TakeCardEjected() || !usb::Connected()))
+            CardMode(false);
     }
 
     if (now - pre_startt > 5000)
@@ -427,10 +475,7 @@ int main(void)
     // sd_cfg.clock_powersave = true;
     sdmmc.Init(sd_cfg);
     fsi.Init(FatFSInterface::Config::MEDIA_SD);
-    f_mount(&fsi.GetSDFileSystem(), fsi.GetSDPath(), 1);
-    // our own folder on a multi-firmware card, else the one shared with TAPE, else the root
-    if(f_chdir("/MIXTAPE") != FR_OK)
-        f_chdir("/TAPE");
+    MountCard();
 
     // delete the battery log if it exists
     char filename[32];

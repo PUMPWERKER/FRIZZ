@@ -22,6 +22,8 @@
 #include "util/sd_diskio.h"
 #include "stm32h7xx_hal.h"
 
+extern SD_HandleTypeDef hsd1; // CHOMPI: SD_initialize looks at it
+
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -106,7 +108,8 @@ DSTATUS SD_initialize(BYTE lun)
 {
 #if !defined(DISABLE_SD_INIT)
 
-    if(BSP_SD_Init() == MSD_OK)
+    // CHOMPI: a remount keeps the card as it is, only the first mount initialises it
+    if(hsd1.State != HAL_SD_STATE_RESET || BSP_SD_Init() == MSD_OK)
     {
         Stat = SD_CheckStatus(lun);
     }

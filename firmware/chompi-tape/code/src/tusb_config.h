@@ -22,7 +22,7 @@ extern "C" {
 #define CFG_TUD_AUDIO              1
 #define CFG_TUD_MIDI               1
 #define CFG_TUD_CDC                0
-#define CFG_TUD_MSC                0
+#define CFG_TUD_MSC                1
 #define CFG_TUD_HID                0
 #define CFG_TUD_VENDOR             0
 
@@ -50,6 +50,8 @@ extern "C" {
 
 #define CFG_TUD_MIDI_RX_BUFSIZE    64
 #define CFG_TUD_MIDI_TX_BUFSIZE    64
+
+#define CFG_TUD_MSC_EP_BUFSIZE     4096 // sectors a transfer
 
 #ifdef __cplusplus
 }

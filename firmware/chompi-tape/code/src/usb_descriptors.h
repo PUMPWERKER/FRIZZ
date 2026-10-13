@@ -7,6 +7,7 @@ enum
     ITF_NUM_AUDIO_STREAMING_TX, // CHOMPI -> host
     ITF_NUM_MIDI,
     ITF_NUM_MIDI_STREAMING,
+    ITF_NUM_MSC, // the card as a drive
     ITF_NUM_TOTAL
 };
 
