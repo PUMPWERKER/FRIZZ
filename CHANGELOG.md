@@ -340,6 +340,12 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The headphones in phase with the input** (#209). CHOMPI's headphone out came out
+  polarity-inverted against what went into AUX, and against the line out; on its own that's
+  inaudible, but mixed with the dry signal (FRIZZ as a send effect beside the DAW's dry
+  track, or the headphone out and the line out summed) the lows cancelled. Now the
+  headphones and the line out are both in phase with AUX. The stock firmwares do the same as
+  FRIZZ did; it comes from CHOMPI's analog stages, and FRIZZ turns the headphones back.
 - **MIDI out: a new loop's Start goes with its first tick** (#198), so the gear behind plays
   beat 1 with the loop. When the clock going out had just ticked as the loop started, that
   tick was taken for the loop's first, and the next came a tick (about 20 ms at 120 BPM)
