@@ -50,6 +50,12 @@ struct Card
     // faults: the next transfer never ends (hang) or fails (fail), the card busy after it
     bool hang = false, fail = false, busy_after = false, dead = false, reinit = false;
     bool stuck = false; // and a recovery doesn't bring it back
+    // a write stopped: the card programs what it got until then (ms on the clock), and set up
+    // again meanwhile it stays at the setup's 400 kHz and 1 bit (slow), as it did on the device
+    uint32_t programming_until = 0;
+    uint32_t programs_ms = 300;
+    bool writing = false, slow = false;
+    int reinits = 0;
     int polls = 2; // a transfer is done on its polls-th poll (the new driver's)
     int left = 0;
     uint32_t error = 0;
@@ -135,23 +141,38 @@ struct TestPort
 {
     static uint32_t Ms() { return now_ms++; }
     static bool Idle() { return true; }
-    static bool Transferring() { return !card.busy_after; }
+    static bool Transferring() { return !card.busy_after && !card.stuck && !card.dead && now_ms >= card.programming_until; }
     static uint32_t Error() { return card.error; }
-    static bool Recover(bool& reinit)
+    static void Abort()
     {
         card.recoveries++;
-        if (card.stuck)
+        if (card.writing && (card.hang || card.left > 0))
+            card.programming_until = now_ms + card.programs_ms;
+        if (!card.stuck)
+            card.hang = card.fail = false;
+    }
+    static bool Reinit()
+    {
+        card.reinits++;
+        if (card.dead || card.stuck)
             return false;
-        card.hang = card.fail = card.busy_after = false;
-        reinit = card.reinit;
-        return !card.dead;
+        if (now_ms < card.programming_until)
+        {
+            card.slow = true; // HAL_SD_Init failed on the busy card
+            return false;
+        }
+        card.busy_after = false;
+        return true;
     }
     static void Clean(uintptr_t from, int32_t size) { card.cache.push_back({static_cast<uint32_t>(from), size}); }
     static void Invalidate(uintptr_t from, int32_t size) { card.cache.push_back({static_cast<uint32_t>(from), -size}); }
     static bool Start(bool write, uint8_t* buf, uint32_t sector, uint32_t count)
     {
-        card.left = card.polls;
-        return card.Transfer(write, buf, sector, count);
+        // refused, nothing goes to the card
+        const bool ok = card.Transfer(write, buf, sector, count);
+        card.left = ok ? card.polls : 0;
+        card.writing = write && ok;
+        return ok;
     }
     static sddisk::Io Poll()
     {
@@ -353,9 +374,11 @@ static void TestErrors()
     card.busy_after = false;
     Check(!ok && ms >= 30000, "before: a card busy after a write held sd_diskio.c 30 s");
     card.busy_after = true;
+    card.reinits = 0;
     ok = Through(&new_driver, true, ms);
-    Check(!ok && ms >= sddisk::kTimeoutMs && ms < sddisk::kTimeoutMs + 10 && card.recoveries == 2,
-          "timeout: a card busy after a write: RES_ERROR after 1 s, recovered");
+    Check(!ok && ms >= 2 * sddisk::kTimeoutMs && ms < 2 * sddisk::kTimeoutMs + 20 && card.recoveries == 2
+              && card.reinits == 1 && !card.slow,
+          "timeout: a card busy after a write: RES_ERROR after 1 s, a second's wait, then set up again");
 
     card.fail = true;
     ok = Through(&new_driver, false, ms);
@@ -369,7 +392,7 @@ static void TestErrors()
     ok = Through(&new_driver, false, ms);
     card.dead = false;
     const sddisk::Stats& s = sddisk::GetStats();
-    Check(!ok && ms < sddisk::kTimeoutMs + 10 && s.errors - s0.errors == 5 && s.timeouts - s0.timeouts == 3
+    Check(!ok && ms < 2 * sddisk::kTimeoutMs + 20 && s.errors - s0.errors == 5 && s.timeouts - s0.timeouts == 3
               && s.recoveries - s0.recoveries == 4,
           "error: a card that doesn't come back: RES_ERROR, not counted recovered; 5 errors, 3 timeouts");
     Check(Through(&new_driver, false, ms), "error: a card back again reads");
@@ -403,10 +426,41 @@ static void TestErrors()
     store.Process(false);
     const uint32_t gone = now_ms - t;
     card.hang = card.stuck = false;
-    Check(store.GetSaveState() == SceneStore::SaveState::FAILED && gone < 3 * sddisk::kTimeoutMs,
+    Check(store.GetSaveState() == SceneStore::SaveState::FAILED && gone < 5 * sddisk::kTimeoutMs,
           "FatFs: a save on a card that stays gone fails within seconds");
-    if (gone >= 3 * sddisk::kTimeoutMs)
+    if (gone >= 5 * sddisk::kTimeoutMs)
         printf("      %u ms\n", gone);
+}
+
+/** A write stopped mid-transfer: the card programs what it got, and set up again meanwhile it
+ *  would stay at 400 kHz and 1 bit (found on the device, #213): it's waited for instead */
+static void TestWriteStopped()
+{
+    uint32_t ms = 0;
+    card.reinits = 0;
+    card.slow = false;
+    card.programs_ms = 300;
+    sddisk::Fault() = sddisk::kCutShort | sddisk::kWrites;
+    bool ok = Through(&new_driver, true, ms, 1000, 8);
+    Check(!ok && card.reinits == 0 && !card.slow && ms >= 300 && ms < 320,
+          "write stopped: the card waited for while it programs (300 ms), not set up again, not slowed");
+    Check(Through(&new_driver, true, ms, 1000, 8) && ms < 10, "write stopped: the next write goes through at once");
+    card.hang = true;
+    ok = Through(&new_driver, true, ms, 1000, 8);
+    Check(!ok && card.reinits == 0 && !card.slow && ms >= sddisk::kTimeoutMs + 300 && ms < sddisk::kTimeoutMs + 320,
+          "write stopped: one that never ended too, after its second");
+    // one that programs longer than the wait (the SD spec's longest is 500 ms): set up again,
+    // which fails while it's busy; said so, not counted recovered
+    card.programs_ms = 3 * sddisk::kTimeoutMs;
+    const sddisk::Stats before = sddisk::GetStats();
+    sddisk::Fault() = sddisk::kCutShort | sddisk::kWrites;
+    ok = Through(&new_driver, true, ms, 1000, 8);
+    const sddisk::Stats& after = sddisk::GetStats();
+    Check(!ok && card.reinits == 2 && after.recoveries == before.recoveries && after.reinits == before.reinits + 1,
+          "write stopped: programming past the wait: set up again twice, failed, not counted recovered");
+    card.programs_ms = 300;
+    card.programming_until = 0;
+    card.slow = false;
 }
 
 static void TestFaults()
@@ -438,6 +492,7 @@ int main()
     FormatCard();
     TestSame();
     TestErrors();
+    TestWriteStopped();
     TestFaults();
     return Finish();
 }

@@ -72,49 +72,6 @@ inline SdRaw SdRawPoll(uint8_t* to, uint32_t count)
 /** HAL_SD_ERROR_*: the last transfer's, 0 if none */
 inline uint32_t SdRawError() { return hsd1.ErrorCode; }
 
-/** After a failed or overdue transfer: stops it, and sets the card up again from scratch when
- *  it isn't back in its transfer state, or always with force (a test's), saying so in reinit.
- *  A card that doesn't answer at all makes each command wait the HAL's 5 s. True once the card
- *  is ready again */
-inline bool SdRawRecover(bool& reinit, bool force = false)
-{
-    // as the HAL's interrupt does on a data error: the FIFO emptied (with flow control a full
-    // one holds the card's clock), the data path aborted with CMD12, the DMA off. HAL_SD_Abort
-    // stops neither the data path nor the FIFO
-    HAL_NVIC_DisableIRQ(SDMMC1_IRQn);
-    __HAL_SD_DISABLE_IT(&hsd1, SDMMC_IT_DATAEND | SDMMC_IT_DCRCFAIL | SDMMC_IT_DTIMEOUT
-                                   | SDMMC_IT_TXUNDERR | SDMMC_IT_RXOVERR);
-    __SDMMC_CMDTRANS_DISABLE(SDMMC1);
-    SDMMC1->DCTRL |= SDMMC_DCTRL_FIFORST;
-    SDMMC1->CMD |= SDMMC_CMD_CMDSTOP;
-    SDMMC_CmdStopTransfer(SDMMC1); // the card refuses it when it isn't sending: no matter
-    SDMMC1->CMD &= ~SDMMC_CMD_CMDSTOP;
-    SDMMC1->IDMACTRL = SDMMC_DISABLE_IDMA;
-    __HAL_SD_CLEAR_FLAG(&hsd1, SDMMC_STATIC_FLAGS | SDMMC_FLAG_DABORT);
-    hsd1.Context = SD_CONTEXT_NONE;
-    hsd1.State = HAL_SD_STATE_READY;
-    NVIC_ClearPendingIRQ(SDMMC1_IRQn);
-    HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
-    reinit = false;
-    for (int i = 0; i < 3 && !force; i++)
-        if (HAL_SD_GetCardState(&hsd1) == HAL_SD_CARD_TRANSFER)
-            return true;
-    reinit = true;
-    HAL_SD_DeInit(&hsd1);
-    return BSP_SD_Init() == 0 && HAL_SD_GetCardState(&hsd1) == HAL_SD_CARD_TRANSFER;
-}
-
-/** For a test on the device (LoopLoader's faults): flow control off, or on again. Only while
- *  no transfer runs */
-inline void SdRawFlowControl(bool on)
-{
-    if (on)
-        SDMMC1->CLKCR |= SDMMC_CLKCR_HWFC_EN;
-    else
-        SDMMC1->CLKCR &= ~SDMMC_CLKCR_HWFC_EN;
-}
-inline uint32_t SdRawClkcr() { return SDMMC1->CLKCR; }
-
 /** SdDisk.h's port: the card's HAL, as sd_diskio.c drives it */
 struct SdHalPort
 {
@@ -122,7 +79,6 @@ struct SdHalPort
     static bool Idle() { return hsd1.State == HAL_SD_STATE_READY; }
     static bool Transferring() { return HAL_SD_GetCardState(&hsd1) == HAL_SD_CARD_TRANSFER; }
     static uint32_t Error() { return hsd1.ErrorCode; }
-    static bool Recover(bool& reinit) { return SdRawRecover(reinit); }
     static void Clean(uintptr_t from, int32_t size) { SCB_CleanDCache_by_Addr(reinterpret_cast<uint32_t*>(from), size); }
     static void Invalidate(uintptr_t from, int32_t size)
     {
@@ -141,7 +97,49 @@ struct SdHalPort
         // the interrupt sets the error before the state
         return hsd1.ErrorCode == HAL_SD_ERROR_NONE ? sddisk::DONE : sddisk::FAILED;
     }
+    /** A transfer stopped, as the HAL's interrupt does on a data error: the FIFO emptied (with
+     *  flow control a full one holds the card's clock), the data path aborted with CMD12, the
+     *  DMA off. HAL_SD_Abort stops neither the data path nor the FIFO */
+    static void Abort()
+    {
+        HAL_NVIC_DisableIRQ(SDMMC1_IRQn);
+        __HAL_SD_DISABLE_IT(&hsd1, SDMMC_IT_DATAEND | SDMMC_IT_DCRCFAIL | SDMMC_IT_DTIMEOUT
+                                       | SDMMC_IT_TXUNDERR | SDMMC_IT_RXOVERR);
+        __SDMMC_CMDTRANS_DISABLE(SDMMC1);
+        SDMMC1->DCTRL |= SDMMC_DCTRL_FIFORST;
+        SDMMC1->CMD |= SDMMC_CMD_CMDSTOP;
+        SDMMC_CmdStopTransfer(SDMMC1); // the card refuses it when it isn't sending: no matter
+        SDMMC1->CMD &= ~SDMMC_CMD_CMDSTOP;
+        SDMMC1->IDMACTRL = SDMMC_DISABLE_IDMA;
+        __HAL_SD_CLEAR_FLAG(&hsd1, SDMMC_STATIC_FLAGS | SDMMC_FLAG_DABORT);
+        hsd1.Context = SD_CONTEXT_NONE;
+        hsd1.State = HAL_SD_STATE_READY;
+        NVIC_ClearPendingIRQ(SDMMC1_IRQn);
+        HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
+    }
+    /** The card set up from scratch, as at boot: flow control on again with it (SdFlowControl) */
+    static bool Reinit()
+    {
+        HAL_SD_DeInit(&hsd1);
+        return BSP_SD_Init() == 0 && HAL_SD_GetCardState(&hsd1) == HAL_SD_CARD_TRANSFER;
+    }
 };
+
+/** After a failed or overdue transfer: stopped, and the card back (sddisk::Recover: waited for,
+ *  else set up again from scratch, or always with force, a test's), saying so in reinit. A card
+ *  that doesn't answer at all makes each command wait the HAL's 5 s. True once it's ready */
+inline bool SdRawRecover(bool& reinit, bool force = false) { return sddisk::Recover<SdHalPort>(reinit, force); }
+
+/** For a test on the device (LoopLoader's faults): flow control off, or on again. Only while
+ *  no transfer runs */
+inline void SdRawFlowControl(bool on)
+{
+    if (on)
+        SDMMC1->CLKCR |= SDMMC_CLKCR_HWFC_EN;
+    else
+        SDMMC1->CLKCR &= ~SDMMC_CLKCR_HWFC_EN;
+}
+inline uint32_t SdRawClkcr() { return SDMMC1->CLKCR; }
 
 inline DRESULT SdDiskRead(BYTE, BYTE* buf, DWORD sector, UINT count)
 {

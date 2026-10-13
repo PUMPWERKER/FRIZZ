@@ -60,7 +60,28 @@ inline void CacheRange(uintptr_t addr, uint32_t bytes, uintptr_t& from, int32_t&
     size = static_cast<int32_t>(bytes + (addr - from));
 }
 
-/** After an error or a timeout: the transfer stopped, the card set up again */
+/** After a failed or overdue transfer: it's stopped (P::Abort), then the card waited for back
+ *  in its transfer state for kTimeoutMs, or set up again from scratch (P::Reinit, twice at
+ *  most), or always with force (a test's), saying so in reinit. After a write the card first
+ *  programs what it got: set up while it did, it stayed at the setup's 400 kHz and 1 bit, as
+ *  slow as that until a restart (#213). True once it's ready again */
+template <class P>
+bool Recover(bool& reinit, bool force = false)
+{
+    P::Abort();
+    reinit = false;
+    const uint32_t t = P::Ms();
+    while (!force && P::Ms() - t < kTimeoutMs)
+        if (P::Transferring())
+            return true;
+    reinit = true;
+    for (int i = 0; i < 2; i++)
+        if (P::Reinit())
+            return true;
+    return false;
+}
+
+/** After an error or a timeout: the transfer stopped, the card recovered */
 template <class P>
 bool Failed(bool timeout)
 {
@@ -69,7 +90,7 @@ bool Failed(bool timeout)
     s.timeouts += timeout;
     s.last_error = P::Error();
     bool reinit = false;
-    s.recoveries += P::Recover(reinit);
+    s.recoveries += Recover<P>(reinit);
     s.reinits += reinit;
     return false;
 }
