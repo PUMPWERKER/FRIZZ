@@ -88,6 +88,13 @@ the same (checked for `usb_midi.o`, #157, and `usbd_conf.o`, #88; `midi_parser.o
 from the source before #166 disassembles as the archive's). A changed `libdaisy.a` (or `libdaisysp.a`) links
 FRIZZ again on the next `make` (#161).
 
+FRIZZ doesn't use `src/util/sd_diskio.c`'s `SD_read` and `SD_write` (they stay in the archive,
+unchanged): its own, `firmware/code/src/SdDisk.h`, take their place in FatFs's driver table
+after `FatFSInterface::Init` (`SdDiskLink`, #213), the rest of the driver (`SD_initialize`,
+`SD_status`, `SD_ioctl`) being sd_diskio.c's. They make the same transfers, but end a wait on
+an SD error after 1 s and recover the card, where sd_diskio.c waited 30 s. `firmware/test/sddisk.cpp`
+runs both, with FatFs, on the host.
+
 The bootloader's copy, `reference/firmware/chompi-bootloader-v6.4-beta/libs/libDaisy/`, is the same adaptation plus
 the changes that bootloader needs, listed in its `LIBDAISY_PATCH.md`.
 

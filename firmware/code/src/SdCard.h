@@ -1,15 +1,20 @@
 /** @file SdCard.h
- *  @brief The SDMMC's settings that libDaisy's SdmmcHandler::Config has no field for, and
- *  reads of whole runs of sectors past FatFs, for the loop loader (LoopLoader.h). libDaisy's
- *  sdmmc.cpp and sd_diskio.c are vendored and stay as they are (THIRD_PARTY.md); their handle,
- *  hsd1, is used here. On the twin the card is test/host/fatfs.h's, raw reads too.
+ *  @brief The SDMMC's settings that libDaisy's SdmmcHandler::Config has no field for, reads
+ *  of whole runs of sectors past FatFs, for the loop loader (LoopLoader.h), and FatFs's own
+ *  reads and writes (SdDisk.h, SdDiskLink). libDaisy's sdmmc.cpp and sd_diskio.c are vendored
+ *  and stay as they are (THIRD_PARTY.md); their handle, hsd1, is used here. On the twin the
+ *  card is test/host/fatfs.h's, raw reads too.
  */
 #pragma once
+#include "SdDisk.h"
 #ifdef __arm__
 #include "daisy_seed.h"
+#include "ff_gen_drv.h"
+#include "util/sd_diskio.h"
 
 extern "C" SD_HandleTypeDef hsd1;
 extern "C" uint8_t BSP_SD_Init(void);
+extern "C" Disk_drvTypeDef disk;
 #else
 #include "fatfs.h"
 #endif
@@ -109,6 +114,52 @@ inline void SdRawFlowControl(bool on)
         SDMMC1->CLKCR &= ~SDMMC_CLKCR_HWFC_EN;
 }
 inline uint32_t SdRawClkcr() { return SDMMC1->CLKCR; }
+
+/** SdDisk.h's port: the card's HAL, as sd_diskio.c drives it */
+struct SdHalPort
+{
+    static uint32_t Ms() { return HAL_GetTick(); }
+    static bool Idle() { return hsd1.State == HAL_SD_STATE_READY; }
+    static bool Transferring() { return HAL_SD_GetCardState(&hsd1) == HAL_SD_CARD_TRANSFER; }
+    static uint32_t Error() { return hsd1.ErrorCode; }
+    static bool Recover(bool& reinit) { return SdRawRecover(reinit); }
+    static void Clean(uintptr_t from, int32_t size) { SCB_CleanDCache_by_Addr(reinterpret_cast<uint32_t*>(from), size); }
+    static void Invalidate(uintptr_t from, int32_t size)
+    {
+        SCB_InvalidateDCache_by_Addr(reinterpret_cast<uint32_t*>(from), size);
+    }
+    static bool Start(bool write, uint8_t* buf, uint32_t sector, uint32_t count)
+    {
+        return (write ? HAL_SD_WriteBlocks_DMA(&hsd1, buf, sector, count)
+                      : HAL_SD_ReadBlocks_DMA(&hsd1, buf, sector, count))
+               == HAL_OK;
+    }
+    static sddisk::Io Poll()
+    {
+        if (hsd1.State == HAL_SD_STATE_BUSY)
+            return sddisk::BUSY;
+        // the interrupt sets the error before the state
+        return hsd1.ErrorCode == HAL_SD_ERROR_NONE ? sddisk::DONE : sddisk::FAILED;
+    }
+};
+
+inline DRESULT SdDiskRead(BYTE, BYTE* buf, DWORD sector, UINT count)
+{
+    return sddisk::Transfer<SdHalPort>(false, buf, sector, count) ? RES_OK : RES_ERROR;
+}
+inline DRESULT SdDiskWrite(BYTE, const BYTE* buf, DWORD sector, UINT count)
+{
+    return sddisk::Transfer<SdHalPort>(true, const_cast<BYTE*>(buf), sector, count) ? RES_OK : RES_ERROR;
+}
+
+/** After fsi.Init: FatFs's driver for the card with SdDisk.h's reads and writes, the rest
+ *  sd_diskio.c's (SD_Driver) */
+inline void SdDiskLink(const char* path)
+{
+    static const Diskio_drvTypeDef driver = {SD_Driver.disk_initialize, SD_Driver.disk_status, SdDiskRead,
+                                             SdDiskWrite, SD_Driver.disk_ioctl};
+    disk.drv[path[0] - '0'] = &driver;
+}
 #else
 inline int SdRawStart(uint8_t* to, uint32_t sector, uint32_t count)
 {
@@ -127,4 +178,5 @@ inline bool SdRawRecover(bool& reinit, bool force = false)
 }
 inline void SdRawFlowControl(bool) {}
 inline uint32_t SdRawClkcr() { return 0; }
+inline void SdDiskLink(const char*) {}
 #endif

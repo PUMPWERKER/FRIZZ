@@ -14,6 +14,13 @@ what FRIZZ does.
   into the launcher's picker if you use it, or else FRIZZ starts again. A loop in RAM is lost,
   as with the power switch.
 
+### Fixed
+
+- **An SD card error no longer freezes the panel for half a minute** (#213): if the card fails
+  while FRIZZ saves a scene or the settings, writes a bug report or reads at power-on, the
+  LEDs and keys come back within about a second (the sound never stopped), and the save
+  reports that it failed. FRIZZ waited up to 30 s, or 60, before.
+
 ## v1.0.1 (2026-10-13)
 
 ### Changed
