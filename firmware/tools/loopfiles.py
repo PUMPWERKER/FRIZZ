@@ -12,7 +12,8 @@ device. Nothing here is for players: the files are patterns, not music.
     tools/loopfiles.py page ROOT        the Loops page's set onto the card mounted at ROOT:
                                         the loops twin/scenarios/loops.txt puts on the twin's
                                         card (its `card wav` lines), so it plays on the device
-                                        as on the twin (remote.py play)
+                                        as on the twin (remote.py play); refused if one of its
+                                        banks is there, the others left alone
 
 The set, by slot, and what FRIZZ's scan says (LoopLoader's Result):
     A/01  16 bars at 50 BPM (3,686,400 frames), stereo, the most it takes     stereo
@@ -163,18 +164,19 @@ def sine(seconds, channels, hz, beats=0):
 
 def page(root):
     loops = os.path.join(root, "FRIZZ", "LOOPS")
-    if os.path.exists(loops):
-        sys.exit("%s is there already: not made by this, not touched" % loops)
     with open(SCENARIO) as f:
-        for line in f:
-            w = line.split()
-            if w[:2] != ["card", "wav"]:
-                continue
-            path = os.path.join(root, w[2].lstrip("/"))
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "wb") as g:
-                g.write(sine(float(w[3]), int(w[4]), float(w[5]), int(w[6]) if len(w) > 6 else 0))
-            print("  %s" % w[2])
+        lines = [line.split() for line in f if line.split()[:2] == ["card", "wav"]]
+    # only its own banks, and only where there's none yet: other banks are left as they are
+    banks = sorted({w[2].split("/")[3] for w in lines})
+    there = [b for b in banks if os.path.exists(os.path.join(loops, b))]
+    if there:
+        sys.exit("%s already there: not made by this, not touched" % ", ".join(os.path.join(loops, b) for b in there))
+    for w in lines:
+        path = os.path.join(root, w[2].lstrip("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as g:
+            g.write(sine(float(w[3]), int(w[4]), float(w[5]), int(w[6]) if len(w) > 6 else 0))
+        print("  %s" % w[2])
     os.sync()
     print("put on the card under %s" % loops)
 
