@@ -1,5 +1,7 @@
 # Quick start
 
+<!-- summary: Your levels, your first loop and your first effects, in ten minutes. -->
+
 Your first ten minutes with FRIZZ. Every detail is in the [manual](MANUAL.md).
 
 ## How the sound flows
