@@ -37,6 +37,36 @@ Hand-written source is `firmware/code/src/` (~60 files). Everything under `libs/
 exclude it from greps. `reference/` holds three more independent copies of a similar tree, so
 scope searches to `firmware/`.
 
+## Docs that feed the website
+
+https://frizz.friedrichwagner.eu is built from `MANUAL.md`, `QUICKSTART.md`, `INSTALL.md` and
+`README.md` (repo `friedrich/frizz-web` on the user's Gitea), fetched at the **latest stable
+release** tag, so a docs change on `main` goes live with the next release. Its build fails on
+any internal link or anchor that doesn't resolve. Every PR that touches these files is checked
+against this before it merges:
+
+1. **Headings are URLs.** Each `##` of `MANUAL.md` becomes its own page (`/manual/<slug>/`),
+   each `###` an anchor on it (GitHub's slugs: "Wow & flutter" → `wow--flutter`). Renaming a
+   heading breaks links to it from outside: keep headings stable, unique within the manual,
+   and plain text (no links, code or emphasis in them).
+2. **Cross-references are Markdown links**, `[Settings page](MANUAL.md#settings-page)`, not
+   prose ("MANUAL.md, *Settings page*"). Links between the four files and to their anchors
+   become site URLs, links to other repo paths go to GitHub at the release tag; an anchor
+   must match an existing heading.
+3. **A `##` chapter is one web page:** keep it readable as one; split a chapter that grows very
+   long (Punch-in FX) into several `##` chapters, e.g. one per effect.
+4. **Formats the site parses:**
+   - `README.md`: the first paragraph after the H1 is the site's intro; everything up to the
+     first `##` (the feature bullets and the line after them) is the landing page's feature list.
+   - `QUICKSTART.md`: the white keys' table keeps its row starting `| Effect |`, then exactly
+     15 cells, one per white key (`–` for an unused one); the landing page builds its key row
+     from it and links each name to the manual heading `Name`, `Name key` or `Master Name`.
+   - `MANUAL.md`, `QUICKSTART.md` and `INSTALL.md` keep exactly one H1 each (the page title).
+5. **No version history in the user docs:** "until v0.11 …" belongs in `CHANGELOG.md`, not in
+   `MANUAL.md`, `QUICKSTART.md` or `INSTALL.md`.
+6. **To see it:** in frizz-web, `FRIZZ_REF=<tag or branch> npm run build` builds the site from
+   that ref and fails on a broken link.
+
 ## Git workflow: branches first, checked by the sessions, merged by the user
 
 Never commit development work to `main`. Start every change (feature, fix, refactor, docs) on
