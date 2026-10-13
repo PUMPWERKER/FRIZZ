@@ -91,15 +91,16 @@ def knob7(v):
     return v / 128. if v <= 64 else .5 + .5 * (v - 64) / 63.
 
 
-def fit(times):
-    """A line through times (index -> time): (period, worst distance from it in s)"""
+def fit(times, timed=None):
+    """A line through times (index -> time): (period, worst distance from it in s), of those
+    timed says (all if None)"""
     n = len(times)
     if n < 3:
         return None, None
     mx, my = (n - 1) / 2., sum(times) / n
     sxx = sum((i - mx) ** 2 for i in range(n))
     slope = sum((i - mx) * (t - my) for i, t in enumerate(times)) / sxx
-    worst = max(abs(t - (my + slope * (i - mx))) for i, t in enumerate(times))
+    worst = max([abs(t - (my + slope * (i - mx))) for i, t in enumerate(times) if timed is None or timed[i]] or [0.])
     return slope, worst
 
 
@@ -358,6 +359,18 @@ def case(id, item, needs=(), literal=None):
 
 def ticks_after(log, t0, t1=None):
     return [t for t, m in log if m[0] == TICK and t >= t0 and (t1 is None or t <= t1)]
+
+
+def ticks_timed(log, t0, t1=None):
+    """ticks_after's ticks, and whether each was the last message of its read: a read brings
+    all that came since the last, each message with its time, so a tick with bytes behind it in
+    its read looks late by their time on the wire (two CCs on TRS: 1.9 ms, #146)"""
+    ticks, timed = [], []
+    for i, (t, m) in enumerate(log):
+        if m[0] == TICK and t >= t0 and (t1 is None or t <= t1):
+            ticks.append(t)
+            timed.append(not (i + 1 < len(log) and log[i + 1][0] == t))
+    return ticks, timed
 
 
 def count(log, byte, t0, t1=None):
@@ -819,7 +832,7 @@ def out_knobs(r):
     t0 = time.perf_counter()
     time.sleep(3.)
     t1 = time.perf_counter()
-    p0, w0 = fit(ticks_after(log, t0, t1))
+    p0, w0 = fit(*ticks_timed(log, t0, t1))
     ccs = sum(1 for t, m in log if t >= t1 and m[0] & 0xF0 == 0xB0)
     end = time.monotonic() + 4.
     i = 0
@@ -830,7 +843,7 @@ def out_knobs(r):
         time.sleep(.02)
     t2 = time.perf_counter()
     time.sleep(.3)
-    p1, w1 = fit(ticks_after(log, t1 + .05, t2))
+    p1, w1 = fit(*ticks_timed(log, t1 + .05, t2))  # the ticks timed alone in their reads
     ccs = sum(1 for t, m in log if t >= t1 and m[0] & 0xF0 == 0xB0) - ccs
     r.check("knobs turned fast for 4 s: feedback out of %s" % port.upper(), ccs >= 20, "%d CCs" % ccs, ">= 20")
     r.tcheck("the clock's rate meanwhile", p0 and p1 and abs(p1 / p0 - 1.) <= .001 * r.loose,
