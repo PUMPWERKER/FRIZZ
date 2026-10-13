@@ -97,6 +97,12 @@ public:
      *  add, and its meter isn't needed */
     inline bool Sleeping() const { return tail_.quiet >= sleep_samples_; }
 
+    /** Once per block, from FxChain::Land: the knobs' slews onto their targets (the feedback and the freeze land as they settle) */
+    void Land()
+    {
+        level_.Land();
+    }
+
     void SetParam(size_t param, float val) override
     {
         switch (param)

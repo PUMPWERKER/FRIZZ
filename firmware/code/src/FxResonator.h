@@ -127,6 +127,16 @@ public:
         lp_coeff_.Snap();
     }
 
+    /** Once per block, from FxChain::Land: the knobs' slews onto their targets */
+    void Land()
+    {
+        feedback_.Land();
+        level_.Land();
+        lp_coeff_.Land();
+        delay_[0].Land();
+        delay_[1].Land();
+    }
+
     void SetParam(size_t param, float val) override
     {
         switch (param)

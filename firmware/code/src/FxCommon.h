@@ -65,10 +65,11 @@ inline float Glide(float v, float target, float coeff)
 }
 
 /** A setting with a target, set from the UI, and a live value that follows it. Process slews
- *  as fonepole does and stops short of the target near 1 (3e-5) or creeps through the
- *  denormals towards 0; what waits on the target uses Settle, which lands (#51). Landing in
- *  Process too (#167, finding 6) cost a morph, which moves dozens at once, 2-4 points on the
- *  device, out of line or in: the shifter's dry 3e-5 short of 1 (-90 dB) is cheaper */
+ *  as fonepole does, and alone would stop short of the target near 1 (3e-5) or creep through
+ *  the denormals towards 0; Land, once per block (FxChain::Land), puts it there (#190). Not
+ *  per sample: landing in Process (#167, finding 6) cost a morph, which moves dozens at once,
+ *  2-4 points on the device. What waits on the target to recompute something uses Settle,
+ *  which lands as it steps (#51), and isn't landed by Land */
 struct Smoothed
 {
     float value, target;
@@ -84,6 +85,21 @@ struct Smoothed
     {
         fonepole(value, target, coeff);
         return value;
+    }
+    /** Once per block, not per sample: onto the target by Settle's rule, once a step at coeff
+     *  (the slew its Process runs at) no longer moves it or it's within 1e-5. Only the check
+     *  inline: off the target is rare */
+    inline void Land(float coeff = FxSlew::coeff)
+    {
+        if (__builtin_expect(value != target, 0))
+            LandStep(coeff);
+    }
+    __attribute__((noinline)) void LandStep(float coeff)
+    {
+        float next = value;
+        fonepole(next, target, coeff);
+        if (next == value || fabsf(next - target) < 1e-5f)
+            Snap();
     }
     /** For a value that's costly to apply: slews while it isn't at the target, and lands on
      *  it once within 1e-5, or once a step no longer moves it: near 1 the slew's step falls

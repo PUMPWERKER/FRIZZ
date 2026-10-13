@@ -123,6 +123,16 @@ public:
         tone_coeff_.Snap();
     }
 
+    /** Once per block, from FxChain::Land: the knobs' slews onto their targets */
+    void Land()
+    {
+        drive_.Land();
+        stereo_.Land();
+        shape_.Land();
+        bias_.Land();
+        tone_coeff_.Land();
+    }
+
     void SetParam(size_t param, float val) override
     {
         switch (param)

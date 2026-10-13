@@ -125,6 +125,13 @@ public:
         filter_.SetRes(res_.value);
     }
 
+    /** Once per block, from FxChain::Land: the knobs' slews onto their targets (the resonance lands as it settles) */
+    void Land()
+    {
+        cutoff_.Land();
+        depth_.Land();
+    }
+
     void SetParam(size_t param, float val) override
     {
         switch (param)

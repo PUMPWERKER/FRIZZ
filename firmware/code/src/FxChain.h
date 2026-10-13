@@ -205,6 +205,7 @@ public:
                     fx_[fx]->SetOn(on);
                 }
         }
+        Land();
         return step;
     }
     /** The chaos key's pool, from the UI: the effects it may drop (FxControls::Pool) */
@@ -438,6 +439,24 @@ private:
         BENCH_MARK_FX(FX_REVERB);
     }
     static_assert(kFxMaxBlock <= 32, "Run's res_idle, a bit per sample");
+
+    /** Once per block, from Block: every effect's knobs onto their targets once their slews
+     *  have all but arrived (Smoothed::Land), so the shifter's dry reaches 1 and a knob turned
+     *  down reaches 0. Here and not per sample, which cost a morph 2-4 points (#190); out of
+     *  line and outside the samples' code, which the audio callback's I-cache holds (#51) */
+    __attribute__((noinline)) void Land()
+    {
+        shifter_.Land();
+        folder_.Land();
+        crusher_.Land();
+        filter_.Land();
+        flanger_.Land();
+        phaser_.Land();
+        resonator_.Land();
+        warble_.Land();
+        delay_.Land();
+        reverb_.Land();
+    }
 
     inline void Meter(size_t fx, float sum) { meter_[fx].Process(sum * kFxMeterScale); }
     inline uint16_t OutBusy() const { return out_busy_.load(std::memory_order_relaxed); }

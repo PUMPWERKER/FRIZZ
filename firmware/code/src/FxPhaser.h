@@ -111,6 +111,16 @@ public:
         }
     }
 
+    /** Once per block, from FxChain::Land: the knobs' slews onto their targets, at the rate
+     *  Retune steps them */
+    void Land()
+    {
+        const float coeff = fminf(FxSlew::coeff * kRetune, 1.f);
+        depth_.Land(coeff);
+        centre_.Land(coeff);
+        feedback_knob_.Land(coeff);
+    }
+
     void SetParam(size_t param, float val) override
     {
         switch (param)

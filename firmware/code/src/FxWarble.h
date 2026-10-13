@@ -158,6 +158,15 @@ public:
         stereo_.Snap();
     }
 
+    /** Once per block, from FxChain::Land: the knobs' slews onto their targets */
+    void Land()
+    {
+        mix_.Land();
+        depth_.Land();
+        tone_.Land();
+        stereo_.Land();
+    }
+
     void SetParam(size_t param, float val) override
     {
         switch (param)

@@ -191,8 +191,8 @@ static void TestResonatorEnv()
 /** A Smoothed's Settle lands on the target exactly, so what waits on it (the filter's
  *  resonance, the delay's feedback, page 2, the compressor, the reverb's pre-delay) comes to
  *  rest: up to 1, where a step falls below a float's resolution, down to 0, through the
- *  denormals, and between; at the knobs' slew and a recall's. Process doesn't, as on main:
- *  landing there cost a morph too much (#167, finding 6) */
+ *  denormals, and between; at the knobs' slew and a recall's. Process alone doesn't: the
+ *  chain lands those once per block (TestLanding) */
 static void TestSmoothed()
 {
     struct Move
@@ -324,6 +324,99 @@ static void TestReverb()
     Check(wet && !reverb.Sleeping(), "reverb: on again, it reverberates");
 }
 
+/** Every knob the effects slew per sample (Smoothed::Process) arrives exactly, through the
+ *  chain as the audio callback runs it (FxChain::Land, once per block): turned to 1, to 0
+ *  and back to between, every key on. Process alone stalls a hair short: the shifter's dry
+ *  at 1 - 3e-5, a knob turned down in the denormals, the resonator's delay a tenth of a frame
+ *  off (#190) */
+static void TestLanding()
+{
+    static const size_t kFreezerFrames = 48000, kTapeFrames = 1u << 16; // a power of 2
+    static float fz_l[kFreezerFrames], fz_r[kFreezerFrames];
+    static float tape_l[kTapeFrames], tape_r[kTapeFrames];
+    static daisysp::Reverb engine;
+    static FxChain chain;
+    chain.Init(kSr, delay_mem, 480000, &engine, fz_l, fz_r, kFreezerFrames, tape_l, tape_r,
+               kTapeFrames);
+    chain.SetTempo(120.f, 2000.f);
+    for (size_t fx = 0; fx < kNumSoundFx; fx++)
+        chain.SetOn(fx, true);
+    struct Knob
+    {
+        const char* name;
+        Smoothed* s;
+    } knobs[] = {
+        {"shifter dry", &chain.shifter_.dry_},
+        {"shifter feedback", &chain.shifter_.feedback_},
+        {"folder drive", &chain.folder_.drive_},
+        {"folder stereo", &chain.folder_.stereo_},
+        {"folder shape", &chain.folder_.shape_},
+        {"folder bias", &chain.folder_.bias_},
+        {"folder tone", &chain.folder_.tone_coeff_},
+        {"crusher rate", &chain.crusher_.rate_},
+        {"crusher tone", &chain.crusher_.tone_coeff_},
+        {"filter cutoff", &chain.filter_.cutoff_},
+        {"filter depth", &chain.filter_.depth_},
+        {"flanger depth", &chain.flanger_.depth_},
+        {"flanger mix", &chain.flanger_.mix_},
+        {"flanger feedback", &chain.flanger_.feedback_},
+        {"flanger stereo", &chain.flanger_.stereo_mix_},
+        {"phaser depth", &chain.phaser_.depth_},
+        {"phaser centre", &chain.phaser_.centre_},
+        {"phaser feedback", &chain.phaser_.feedback_knob_},
+        {"resonator feedback", &chain.resonator_.feedback_},
+        {"resonator level", &chain.resonator_.level_},
+        {"resonator tone", &chain.resonator_.lp_coeff_},
+        {"resonator delay l", &chain.resonator_.delay_[0]},
+        {"resonator delay r", &chain.resonator_.delay_[1]},
+        {"warble mix", &chain.warble_.mix_},
+        {"warble depth", &chain.warble_.depth_},
+        {"warble tone", &chain.warble_.tone_},
+        {"warble stereo", &chain.warble_.stereo_},
+        {"delay level", &chain.delay_.level_},
+        {"reverb level", &chain.reverb_.level_},
+        {"reverb freeze", &chain.reverb_.freeze_},
+        {"reverb decay", &chain.reverb_.decay_},
+        {"reverb tone", &chain.reverb_.tone_},
+        {"reverb diffusion", &chain.reverb_.diffusion_},
+    };
+    long n = 0;
+    bool all = true;
+    for (float to : {1.f, 0.f, .37f})
+    {
+        for (size_t fx = 0; fx < kNumSoundFx; fx++)
+            for (size_t p = 0; p < kNumFxParams; p++)
+                chain.SetParam(fx, p, to);
+        for (long end = n + 3 * 48000; n < end; n += kFxMaxBlock)
+        {
+            float jump;
+            chain.Block(&jump);
+            float l[kFxMaxBlock], r[kFxMaxBlock];
+            for (size_t i = 0; i < kFxMaxBlock; i++)
+                l[i] = r[i] = Sine(n + i);
+            chain.Process(l, r, kFxMaxBlock);
+        }
+        const Knob* worst = nullptr;
+        size_t off = 0;
+        for (const Knob& k : knobs)
+            if (k.s->value != k.s->target)
+            {
+                off++;
+                if (!worst || fabsf(k.s->value - k.s->target) > fabsf(worst->s->value - worst->s->target))
+                    worst = &k;
+            }
+        if (worst)
+            printf("      knobs to %g: %zu of %zu short after 3 s, the most %s, %g off %g\n", to, off,
+                   sizeof knobs / sizeof knobs[0], worst->name, worst->s->value - worst->s->target,
+                   worst->s->target);
+        else
+            printf("      knobs to %g: all %zu on their targets after 3 s\n", to,
+                   sizeof knobs / sizeof knobs[0]);
+        all = all && !worst;
+    }
+    Check(all, "Smoothed: every knob the effects slew per sample lands on its target (#190)");
+}
+
 int main()
 {
     static chompi::Shifter shifter;
@@ -345,5 +438,6 @@ int main()
     TestSmoothed();
     TestDelay();
     TestReverb();
+    TestLanding();
     return Finish();
 }

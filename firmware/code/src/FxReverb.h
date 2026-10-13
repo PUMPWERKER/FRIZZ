@@ -111,6 +111,16 @@ public:
     /** The pre-delay up, or still on its way down: its buffer written and read */
     inline bool PreDelaying() const { return pre_.value > 0.f || pre_.target > 0.f; }
 
+    /** Once per block, from FxChain::Land: the knobs' slews onto their targets (the pre-delay lands as it settles) */
+    void Land()
+    {
+        level_.Land();
+        freeze_.Land();
+        decay_.Land();
+        tone_.Land();
+        diffusion_.Land();
+    }
+
     void SetParam(size_t param, float val) override
     {
         switch (param)
