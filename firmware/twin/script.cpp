@@ -180,6 +180,41 @@ static bool ReadWav(const char* path, std::vector<float>& to)
     return false;
 }
 
+std::string SineWav(uint32_t frames, int channels, float freq, uint32_t beats)
+{
+    if (channels != 1 && channels != 2)
+        return "";
+    std::string w = "RIFF";
+    auto u32 = [&](std::string& to, uint32_t v) {
+        for (int i = 0; i < 4; i++)
+            to.push_back(static_cast<char>(v >> (8 * i)));
+    };
+    const uint32_t bytes = frames * 2u * static_cast<uint32_t>(channels);
+    u32(w, 36 + bytes + (beats ? 32 : 0));
+    w += "WAVEfmt ";
+    for (uint32_t v : {16u, 1u | static_cast<uint32_t>(channels) << 16, 48000u,
+                       48000u * 2u * static_cast<uint32_t>(channels),
+                       2u * static_cast<uint32_t>(channels) | 16u << 16})
+        u32(w, v);
+    if (beats)
+    {
+        w += "acid";
+        for (uint32_t v : {24u, 0u, 60u, 0u, beats, 4u | 4u << 16, 0x42f00000u}) // 120.0f
+            u32(w, v);
+    }
+    w += "data";
+    u32(w, bytes);
+    for (uint32_t i = 0; i < frames; i++)
+        for (int c = 0; c < channels; c++)
+        {
+            const float ph = 6.2831853f * freq * static_cast<float>(i) / 48000.f + c * 1.5707963f;
+            const int16_t v = static_cast<int16_t>(lrintf(.3f * 32767.f * sinf(ph)));
+            w.push_back(static_cast<char>(v & 0xFF));
+            w.push_back(static_cast<char>((v >> 8) & 0xFF));
+        }
+    return w;
+}
+
 // `set`'s groups and names, as remote.py's set has them: the effects by FxId, then the
 // developers' SysEx's groups (MidiControl.h's namespace dev)
 static const char* const kFxNames[] = {"freezer", "shifter",  "folder", "crusher", "filter",
@@ -345,6 +380,18 @@ int PlayScript(std::istream& src_in, FILE* leds, std::vector<float>* out)
                 ss << f.rdbuf();
                 CardFiles()[path] = ss.str();
             }
+            else if (what == "wav" && in >> path)
+            {
+                // a loop for the loop loader (#70): SECONDS of a sine at HZ, 16-bit 48 kHz,
+                // CHANNELS 1 or 2 (the right a quarter period on), an acid chunk of BEATS
+                float seconds = 0.f, hz = 0.f;
+                int channels = 0;
+                uint32_t beats = 0;
+                in >> seconds >> channels >> hz >> beats;
+                if (seconds <= 0.f || (channels != 1 && channels != 2))
+                    Fail(line_no, "card wav PATH SECONDS CHANNELS HZ [BEATS]");
+                CardFiles()[path] = SineWav(static_cast<uint32_t>(seconds * 48000.f + .5f), channels, hz, beats);
+            }
             else if (what == "remove")
                 SetCardPresent(false);
             else if (what == "insert")
@@ -353,7 +400,7 @@ int PlayScript(std::istream& src_in, FILE* leds, std::vector<float>* out)
                 for (auto& f : CardFiles())
                     printf("--- %s\n%s\n", f.first.c_str(), f.second.c_str());
             else
-                Fail(line_no, "card: file PATH, put PATH FILE, remove, insert or dump");
+                Fail(line_no, "card: file PATH, put PATH FILE, wav PATH SECONDS CHANNELS HZ [BEATS], remove, insert or dump");
             continue;
         }
         if (cmd == "battery")

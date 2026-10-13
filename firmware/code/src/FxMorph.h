@@ -365,6 +365,7 @@ public:
         land_ = false;
         drop_ = false;
         active_ = false;
+        landings_++;
     }
 
     /** Stops it where it is (SHIFT + its blinking key, CC 81): the parameters stay where the
@@ -420,6 +421,8 @@ public:
     }
 
     inline bool Active() const { return active_; }
+    /** One more for each landing (Land), for a loop from the card landing with it (#70) */
+    inline uint32_t Landings() const { return landings_; }
 
 private:
     /** A fade-in's key comes on, its glide under way. In a build-up it's on now whatever the
@@ -508,6 +511,7 @@ private:
     volatile bool holding_ = false; // started held, not released yet
     volatile bool manual_ = false;  // on the crossfader (Fader)
     volatile bool drop_ = false;    // a drop: lands hard on drop_to_ (Drop)
+    uint32_t landings_ = 0;
     float drop_to_[kNumFx][kNumFxParams]; // a drop's landing, as the plan's target a morph's
     volatile float fader_ = 0.f;    // its position, 0 the start to 1 the target
     uint16_t sent_on_ = 0;          // on the crossfader: the switched keys as sent

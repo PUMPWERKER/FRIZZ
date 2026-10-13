@@ -66,7 +66,8 @@ Bench bench;
 BenchProfile chompi::bench_profile;
 #endif
 
-int16_t SDRAM_NOINIT loop_mem[kLoopMemSize];
+// the looper's, 32-byte aligned as the loop loader's DMA lands in it too (LoopControls.h)
+int16_t SDRAM_NOINIT __attribute__((aligned(32))) loop_mem[kLoopMemSize];
 
 // the crash record and the build running (Crash.h), in the backup SRAM, which a reset leaves
 // alone: after libDaisy's boot_info (chompi_sram.lds: .backup_sram before .backup_sram.*),
@@ -380,6 +381,8 @@ void MainLoop(void* data)
     // loops from the card: a step, before the card's other users; it leaves them the card
     // when they want it (LoopLoader.h)
     loop_loader.Process(scene_store.Busy() || event_log.Writing());
+    // the Loops page's: the loads it asks for, the switch (LoopControls.h)
+    ui.LoopsProcess();
 #endif
     // a scene saved, copied or deleted: the card is written here, never in the audio callback
     scene_store.Process(event_log.Writing());
@@ -491,6 +494,9 @@ int main(void)
                       24.f / hw.seed.AudioSampleRate());
     midi_out.Init(&midi_clock, &midi_control.feedback_trs);
     ui.Init(&engine, &hw, &scene_store, &event_log, &midi_control);
+#if !FRIZZ_BENCH
+    ui.InitLoops(&loop_loader, loop_mem);
+#endif
     input_jack.plugged = hw.jack_detect.Read();
     engine.SetMicInput(!input_jack.plugged);
 #if FRIZZ_BENCH

@@ -66,7 +66,8 @@ On the settings page, the keys and knob 1 set other things: see [Settings page](
 
 ### SHIFT and the mode switch
 
-**SHIFT** means holding the CHOMPI key. The CHOMPI key lights white while it acts as SHIFT.
+**SHIFT** means holding the CHOMPI key. The CHOMPI key lights white while it acts as SHIFT,
+and glows dimly while you're on the [Loops page](#the-loops-page).
 The mode switch picks the page: **down** is the play page, which most of this manual is about; **up** is the
 [settings page](#settings-page), for what you set once rather than play. If the keys don't
 play, flip it down.
@@ -80,7 +81,7 @@ Some controls do more than one thing, each on a page of its own, picked with a p
 VOLUME's pages 1-3 (below), and on knobs 1-4 an effect's [page 2](#page-2), the second set of
 its parameters. Picking a page blinks its number in white on the LEDs: once for page 1, twice
 for page 2, and so on. These pages are not the play page and the settings page, which the
-mode switch picks.
+mode switch picks, nor the [Loops page](#the-loops-page), which SHIFT + the lower C# opens.
 
 ### VOLUME knob
 
@@ -125,7 +126,7 @@ recording or waiting to erase, the compressor's key while the safety limiter wor
 2), on the settings page the clock factor on double, and VOLUME in the low-battery countdown.
 
 Waiting for something blinks slowly: LOOP while a recording finishes its bar, a picked scene
-slot, the CHOMPI key ready to confirm. On the knobs, white is a parameter's neutral point.
+slot, the CHOMPI key ready to confirm, a planned loop's key on the Loops page. On the knobs, white is a parameter's neutral point.
 The [LED brightness](#led-brightness) sets how bright all of them are.
 
 <!-- part: Looper and tempo -->
@@ -290,6 +291,110 @@ follows the clock at the factor (see [MIDI clock](#midi-clock)), so a loop recor
   with the factor.
 
 It's kept as `clock_factor` in `FRIZZ/frizz_master.txt` (50, 100 or 200).
+
+## Loop loader
+
+<!-- summary: Your own loops from the SD card, switched in time. -->
+
+FRIZZ plays loops from the SD card: 8 banks of 15, one on each white key of the **Loops
+page**. A loop from the card is the loop, as if you had recorded it: LOOP, PLAY, the transport
+knob and the input/loop mix act on it the same way. Switching to one can happen at once, at
+the end of the loop playing, or together with a [scene change in time](#scene-changes-in-time).
+
+**A loop you recorded is gone once you switch to a loaded one.** FRIZZ doesn't write loops to
+the card, and there's no way back to the recording.
+
+### Loops on the card
+
+Put your loops in a folder `FRIZZ/LOOPS` on the card, one folder per bank, `A` to `H`, and in
+each the files `01.wav` to `15.wav`: the number is the white key, from the left. A missing
+number is an empty key. To get them onto the card, use the launcher's
+[USB storage mode](INSTALL.md#usb-storage-mode); FRIZZ reads the folder when it starts.
+
+- **WAV, 16-bit, 48 kHz**, stereo or mono (a mono loop plays on both sides).
+- **At most about 77 s**: 16 bars at 50 BPM.
+- Anything else (44.1 kHz, 24-bit, compressed, longer) is refused: its key shows dim red.
+- A WAV with an `acid` chunk (many sample packs and DAWs write one) says how many beats it
+  holds, and FRIZZ takes its tempo from that.
+
+### The Loops page
+
+**SHIFT + the lower C#** opens the Loops page. **SHIFT + the lower C#** again, or **two quick
+taps of SHIFT** (each a short tap with nothing else in between), takes you back to the play
+page. On the play page a double tap does nothing, so it's a safe way home wherever you are.
+Opening the Loops page ends a [save, copy or delete](#save-copy-and-delete) you had started.
+
+While you're on the Loops page, the CHOMPI key glows dimly in the bank's colour (white while
+you hold it as SHIFT). The CHOMPI key's LED only ever shows SHIFT held, the page you're on,
+the confirm of a scene save, copy or delete and the start-up ripple.
+
+| Control | Function | LED |
+|---|---|---|
+| Lower C#, lower D# | The bank before, the bank after; empty banks are skipped | both in the bank's colour; 3 red blinks at the first or last bank |
+| A white key | Switch to its loop at once | see below |
+| SHIFT + a white key, tapped N times | Switch at the end of the N-th pass | blinks on the beat while it waits |
+| Scene keys, the transport knob, PLAY, LOOP, SHIFT + LOOP, VOLUME | As on the play page | as on the play page |
+| Knobs 1-4, upper F#, G#, A# | Nothing | dark |
+
+The banks' colours: A orange, B yellow, C green, D teal, E light blue, F blue, G purple,
+H pink. A white key shows its loop:
+
+| LED | Means |
+|---|---|
+| Dark | No loop on that key |
+| Dim, the bank's colour | A loop |
+| Dim red | A file FRIZZ refuses; pressing it blinks red 3 times |
+| Bright | The loop playing |
+| Blinking on the beat | Planned: it takes over when its time comes |
+| Blinking fast | Planned, still loading from the card |
+
+The effects can't be punched in by hand there, since the white keys are the loops, but the
+latched ones and the [chaos key](#chaos-key) play on, and MIDI notes still play the effects.
+
+### Switching loops
+
+- **A white key** switches to its loop at once, with a short crossfade, from its start. With
+  no loop playing it starts playing and the input/loop mix goes to the loop, as after a
+  recording; paused, it waits at its start for PLAY. The key of the loop playing starts it
+  again from the top.
+- **SHIFT + a white key** switches at the end of the loop playing, without a gap. Tap the
+  white key more times for more passes: twice is the end of the next pass, and so on, up to
+  8. The passes count from when you let go of SHIFT. With no loop playing, or paused, it
+  switches at once.
+- **The last white key counts:** another white key replaces what you planned.
+- **Loading** takes under a second for the longest loops. A loop not loaded by its time
+  switches at the end of the first pass after it is.
+- **To cancel**, hold SHIFT and tap the blinking key again: nothing switches.
+- A white key while LOOP records blinks red 3 times.
+
+### A loop with a scene change
+
+A loop can join a [scene change in time](#scene-changes-in-time) in the same SHIFT hold:
+tap the scene key (once per bar), and a white key, before or after it. Then let go of
+SHIFT.
+
+- **With a morph**, the loop switches where the morph arrives.
+- **With a drop or a build-up** (the transport pressed, or a second scene key), it switches
+  with the drop, on its bar line.
+- **With the crossfader** (the transport turned), it switches at once.
+- If it isn't loaded by then, the scene lands anyway and the loop follows at the next bar
+  line once it is.
+- **SHIFT + any blinking key** (the scene's or the loop's) cancels all of it: the scene stops
+  where it is and the loop doesn't switch. A scene recalled meanwhile, or the change stopped
+  any other way, takes its loop with it.
+
+A planned switch carries on if you leave the Loops page.
+
+### A loaded loop is the loop
+
+- **LOOP** erases it, as it erases a recording (and a switch waiting with it); then LOOP
+  records a new one. **PLAY** pauses and plays it; the **transport knob** changes its speed,
+  scrubs it while paused.
+- **Its tempo:** a loop plays at its own speed and pitch, 1× forward, and the effects' tempo
+  follows it from its start. FRIZZ takes its beats from its `acid` chunk; without one it
+  guesses them from its length, the power of two beats (1, 2, 4, 8 …) that puts it closest to
+  the tempo playing, between 50 and 300 BPM. If that lands at half or double the tempo, or the
+  loop holds 3 or 6 bars, [tap the tempo](#tap-tempo) (SHIFT + LOOP) and the beats fit again.
 
 <!-- part: Effects -->
 
@@ -953,7 +1058,8 @@ keys in the middle are scene keys: lower F#, lower G#, lower A#, upper C# and up
 - **The other four (lower G#, lower A#, upper C#, upper D#) hold your scenes 1-4.** They're
   saved to the SD card and come back at power-on.
 
-The lower C# and D# do nothing on the play page.
+On the play page the lower D# does nothing, and the lower C# only opens the
+[Loops page](#the-loops-page) with SHIFT.
 
 A saved scene stays as you saved it: changes you make after recalling one are only kept if you
 save again.
@@ -1363,6 +1469,7 @@ FRIZZ keeps what it saves on the SD card, in a folder `FRIZZ`, as text files. Le
 | `FRIZZ/frizz_master.txt` | The [master compressor](#master-compressor) and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, and for AUX and the mic each their input gain, monitoring and effects | 2 s after the last change |
 | `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | The versions before | With each write of the file |
 | `FRIZZ/bug-1.txt`, `bug-2.txt` … | [Bug reports](#bug-reports) | When you ask for one |
+| `FRIZZ/LOOPS/A/01.wav` … `H/15.wav` | Your [loops](#loops-on-the-card) | Never: FRIZZ only reads them |
 
 ### Scenes and settings on the card
 
@@ -1453,6 +1560,19 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | SHIFT + another scene key, while one runs | Stop it there and start the new one from there | [Timed scene changes](#timed-scene-changes) |
 | Upper F#, G# or A#, the slot (copy: the source, then the destination), then CHOMPI | Save, copy or delete a scene | [Save, copy and delete](#save-copy-and-delete) |
 | The function's key again, or the mode switch up | Out of save, copy or delete, doing nothing | [Save, copy and delete](#save-copy-and-delete) |
+| SHIFT + lower C# | The Loops page | [The Loops page](#the-loops-page) |
+
+### On the Loops page
+
+| Gesture | Does | See |
+|---|---|---|
+| SHIFT + lower C#, or two quick taps of SHIFT | Back to the play page | [The Loops page](#the-loops-page) |
+| Lower C#, lower D# | The bank before, after | [The Loops page](#the-loops-page) |
+| A white key | Its loop at once | [Switching loops](#switching-loops) |
+| SHIFT + a white key, N times | Its loop at the end of the N-th pass | [Switching loops](#switching-loops) |
+| SHIFT + a scene key (and the transport or a second scene key) and a white key | The loop with the morph or the drop | [A loop with a scene change](#a-loop-with-a-scene-change) |
+| SHIFT + a blinking key | Cancel the planned switch, and its scene change | [A loop with a scene change](#a-loop-with-a-scene-change) |
+| Scene keys, the transport knob, PLAY, LOOP, VOLUME | As on the play page | [On the play page](#on-the-play-page) |
 
 ### On the settings page
 
