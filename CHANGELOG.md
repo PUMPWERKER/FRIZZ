@@ -314,7 +314,9 @@ what FRIZZ does.
   up to +14 dB, to everything) but a knob on page 2, at 0 dB at first. Speed is split into
   Attack (knob 3) and Release (knob 4), and Mix moves to page 2's knob 1. Saved settings
   come back with Speed as both and Makeup at 0 dB, so a compressor you had turned up is
-  quieter until you set its makeup. Over MIDI: CC 24-31 (the new MIDI map, above).
+  quieter until you set its makeup. Over MIDI: CC 24-31 (the new MIDI map, above). The
+  safety limiter after VOLUME stays: it is the old one-knob compressor at its lowest setting,
+  which was its default.
 - **Transport knob in semitones:** while a loop plays, turning it changes the speed a
   semitone every 2 detents, from 2× down to 1/16×, then on through a standstill into reverse
   up to −2× (#174, above), and stops at both ends. SHIFT + turn jumps in fifths and octaves as
