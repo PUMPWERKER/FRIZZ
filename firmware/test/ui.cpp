@@ -277,6 +277,21 @@ static void Save(int slot)
 }
 static bool Same(const Rgb& a, const Rgb& b) { return a.r == b.r && a.g == b.g && a.b == b.b; }
 
+/** Runs to just past the tempo's next bar line (TempoClock.h, 12 pulses a beat, 4 a bar), so a
+ *  morph started then lands a whole bar on, whatever the grid's phase since power-on */
+static void ToBarLine()
+{
+    uint32_t was = Probe().position;
+    for (int ms = 0; ms < 4000; ms++)
+    {
+        RunMs(1);
+        const uint32_t now = Probe().position;
+        if (now != was && now % 48 == 0)
+            return;
+        was = now;
+    }
+}
+
 // MIDI (MidiControl.h): bytes into the jack, or over USB; FRIZZ listens on channel 16 at first
 static void Trs(std::initializer_list<int> bytes)
 {
@@ -396,11 +411,18 @@ static int Knob7(float k) { return k <= .5f ? static_cast<int>(k * 128.f + .5f) 
 
 int main()
 {
+    // power-on to playable in about a second (#195): on the twin main() reads the keys from
+    // ~0.4 s to ~0.9 s, the ripple runs meanwhile, then the play page and the sound
     cases.push_back({"boot", [] {
-        const float booting = RunMs(1000);
-        Check(booting == 0.f, "boot: the outputs stay muted while the boot animation runs");
-        RunMs(kReadyMs - 1000);
-        Check(RunMs(200) > .05f, "boot: then the input reaches the master out");
+        const float booting = RunMs(850);
+        Check(booting == 0.f, "boot: the outputs stay muted while the boot ripple runs");
+        RunMs(150);
+        Check(RunMs(200) > .05f, "boot: then the input reaches the master out, after 1 s");
+        Tap("ENC_6_SW");
+        RunMs(100);
+        Check(Ask({0x20}).size() > 12 && Ask({0x20})[12] == 1,
+              "boot: and the play page takes keys: VOLUME's press steps to the input gain's page");
+        RunMs(kReadyMs);
         bool all_dim = true;
         for (int led : {24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 13, 12})
             all_dim &= Max(SmtLedFull(led)) > 0 && Max(SmtLedFull(led)) < 80;
@@ -436,6 +458,24 @@ int main()
         RunMs(300);
         Check(Ask({0x20}).size() > 12 && Ask({0x20})[12] == 1,
               "boot-volume: then a press steps to the input gain's page");
+    }});
+
+    // keys held from power-on, through main()'s read for shipping mode and the ripple, let go
+    // on the play page: neither the press nor the release does anything there
+    cases.push_back({"boot-held", [] {
+        Press("KEY_28", true);
+        Press("KEY_1", true);
+        RunMs(1500);
+        const bool dark = Max(PthLedFull(kLoopLed)) == 0;
+        Press("KEY_28", false);
+        Press("KEY_1", false);
+        RunMs(300);
+        Check(dark && Max(PthLedFull(kLoopLed)) == 0, "boot-held: LOOP held from power-on records nothing");
+        Check(LatchedFx(Ask({0x20})) == 0, "boot-held: an FX key held from power-on latches nothing");
+        Tap("KEY_28");
+        RunMs(100);
+        const Rgb rec = PthLedFull(kLoopLed);
+        Check(rec.r > 100 && rec.g == 0 && rec.b == 0, "boot-held: the next LOOP records");
     }});
 
     cases.push_back({"hold", [] {
@@ -3284,6 +3324,7 @@ int main()
             once = once && c.second == 1;
         Check(latch_off && once, "midi-feedback-scenes: a recall sends what changed, each once");
         // a morph to scene 1: nothing of the filter's while it glides, where it lands after
+        ToBarLine();
         Press("KEY_26", true);
         RunMs(60);
         Tap(kSceneKeys[1]);
@@ -3829,6 +3870,7 @@ int main()
         Trs({kPC, 0});
         RunMs(500);
         Check(fabsf(RunMs(300) - dry) < dry * .05f, "midi scenes: program change 0, the blank scene");
+        ToBarLine();
         Trs({kCC, 3, 1}); // morph to it: over a bar at 120 BPM, 2 s
         RunMs(200);
         const float midway = RunMs(100);

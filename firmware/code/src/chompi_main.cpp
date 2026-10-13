@@ -25,9 +25,6 @@
 using namespace daisy;
 using namespace chompi;
 
-// How long the outputs stay muted at boot, from the audio's start
-static const uint32_t kBootScreenMs = 1250;
-
 Hardware hw;
 UserInterface ui;
 
@@ -94,10 +91,10 @@ volatile bool main_loop_running = false;
 // the audio callback leaves them alone: both bit-banging the same chain garbles it
 volatile bool main_reads_keys = false;
 
-// both read by the audio callback, which keeps the outputs muted until they are done
+// read by the audio callback, which keeps the outputs muted and the engine still until main()
+// has read the keys and MainLoop's first pass has checked the battery
 volatile bool booting = true;
 bool boot_done = false; // the boot ripple closed: the play page from here
-volatile bool loading_screen = true;
 
 /** AUX's jack, as TAPE and TEMPO read it (Hardware's jack_detect, high with a cable in): a
  *  cable plugged in makes AUX the input, pulled out the built-in mic. At power-on it decides;
@@ -203,7 +200,7 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
         BENCH_MARK(EVENTS);
     }
 
-    if(booting || loading_screen)
+    if(booting)
     {
         if(!main_loop_running)
             ui.DoEvents(false);
@@ -243,7 +240,7 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
 #endif
 }
 
-uint32_t uit, now, boot_start;
+uint32_t uit, now;
 
 uint32_t batt;
 
@@ -294,9 +291,6 @@ void MainLoop(void* data)
     bench.Process();
     bench.DrawLeds(now);
 #endif
-
-    if (loading_screen && now - boot_start > kBootScreenMs)
-        loading_screen = false;
 
     if(now - batt > 20)
     {
@@ -383,7 +377,6 @@ int main(void)
 
     now = daisy::System::GetNow();
     uit = now;
-    boot_start = now;
 
     batt = now;
 
