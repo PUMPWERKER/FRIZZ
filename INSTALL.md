@@ -1,5 +1,7 @@
 # Installing FRIZZ
 
+<!-- summary: Put FRIZZ on your CHOMPI, update it, and go back to stock firmware. -->
+
 FRIZZ installs from the SD card, the same way as any CHOMPI firmware update. You don't need any
 tools or drivers, and the CHOMPI's bootloader is never touched.
 

@@ -513,7 +513,7 @@ direction you turn, so a value set finely snaps onto the grid with the first coa
 | Everything else, filter cutoff included | 10% steps |
 
 ## Freezer
-<!-- summary: Grabs a slice of what's playing and repeats it, a beat repeat. -->
+<!-- summary: Grabs a slice of what's playing, from a whole bar down to a 16th, and repeats it while you hold the key. Turn up the roll for a beat repeat's build-up. -->
 
 White key 1. Grabs a slice of what's playing, from a whole bar down to a 16th, and repeats it
 while you hold the key. Turn up the roll for a beat repeat's build-up.
@@ -549,7 +549,7 @@ while you hold the key. Turn up the roll for a beat repeat's build-up.
 - LEDs: the key is purple; the knobs go purple to light blue.
 
 ## Shifter
-<!-- summary: Shifts the pitch in semitones, with feedback and a swoop. -->
+<!-- summary: Shifts the pitch in semitones, with big steps at fourths, fifths and octaves. Feedback shifts again on every pass. -->
 
 White key 2. Shifts the pitch in semitones, with big steps at fourths, fifths and octaves.
 Feedback shifts again on every pass.
@@ -571,7 +571,7 @@ Feedback shifts again on every pass.
   orange (up), as every knob with a centre does, feedback and swoop blue to red.
 
 ## Folder
-<!-- summary: A wavefolder for bright, gritty overtones. -->
+<!-- summary: A wavefolder: past the fold point the signal mirrors back on itself, for bright, gritty overtones. -->
 
 White key 3. A wavefolder: past the fold point the signal mirrors back on itself, for bright,
 gritty overtones.
@@ -598,7 +598,7 @@ gritty overtones.
 - LEDs: the key is magenta; the knobs go magenta to orange.
 
 ## Crusher
-<!-- summary: Fewer bits and a lower sample rate, with a dive on every press. -->
+<!-- summary: Fewer bits and a lower sample rate, down to 480 Hz, with a dive on every press. -->
 
 White key 4. Fewer bits and a lower sample rate, down to 480 Hz, with a dive on every press.
 
@@ -621,7 +621,7 @@ White key 4. Fewer bits and a lower sample rate, down to 480 Hz, with a dive on 
 - LEDs: the key is orange; the knobs go yellow to red.
 
 ## Filter
-<!-- summary: A DJ filter with a tempo-synced LFO on the cutoff. -->
+<!-- summary: A DJ filter, lowpass one way and highpass the other, with an LFO on the cutoff that follows the tempo. -->
 
 White key 5. A DJ filter, lowpass one way and highpass the other, with an LFO on the cutoff
 that follows the tempo (the DJ filter of TAPE, TEMPO and WAVE).
@@ -642,7 +642,7 @@ that follows the tempo (the DJ filter of TAPE, TEMPO and WAVE).
   pink to light blue.
 
 ## Flanger
-<!-- summary: A swept short delay with feedback: the jet sweep. -->
+<!-- summary: A swept short delay with feedback: the jet sweep, a chorus, or at the top a vibrato. -->
 
 White key 6. A swept short delay with feedback: the jet sweep, a chorus, or at the top a
 vibrato.
@@ -662,7 +662,7 @@ vibrato.
 - LEDs: the key is light blue; the knobs go light blue to purple.
 
 ## Phaser
-<!-- summary: Sweeping notches with resonance, free or locked to the tempo. -->
+<!-- summary: Sweeping notches with resonance, free-running or locked to the tempo. -->
 
 White key 7. Sweeping notches with resonance, free-running or locked to the tempo (after the
 SP-404MK2's Phaser and the Elektron Tonverk's Phase 98).
@@ -710,7 +710,7 @@ SP-404MK2's Phaser and the Elektron Tonverk's Phase 98).
   yellow.
 
 ## Resonator
-<!-- summary: A tuned comb loop that rings at a note you set. -->
+<!-- summary: A tuned comb loop that rings at a note you set. Latch the crusher or the shifter and the ringing goes through them on every pass. -->
 
 White key 8. A tuned comb feedback loop that rings at a note you set. While on, it taps the
 signal after the phaser and feeds it back in after the freezer, so the ringing goes through
@@ -760,7 +760,7 @@ White key 9. Chops the sound in 16th-note patterns, locked to the tempo.
 - LEDs: the key is yellow; the knobs go yellow to green.
 
 ## Wow & flutter
-<!-- summary: Tape warble: slow pitch drift and a fast capstan wobble. -->
+<!-- summary: Tape warble: a slow drift in pitch and the fast wobble of a capstan, with worn tape's dropouts. -->
 
 White key 10. Tape warble: a slow drift in pitch and the fast wobble of a capstan, with worn
 tape's dropouts.
@@ -783,7 +783,7 @@ tape's dropouts.
 - LEDs: the key is teal; the knobs go teal to purple.
 
 ## Tape stop
-<!-- summary: Winds the tape down to a standstill and spins it back up. -->
+<!-- summary: Winds the tape down to a standstill while you hold the key, and spins it back up when you let go. -->
 
 White key 11. Winds the tape down to a standstill while you hold the key, and spins it back
 up when you let go.
@@ -815,7 +815,7 @@ up when you let go.
 - LEDs: the key is amber; the knobs go amber to red.
 
 ## Delay
-<!-- summary: Tempo-synced echoes that ring on after you let go. -->
+<!-- summary: Echoes in time with the tempo, with random events and shimmer. They keep ringing after you let go. -->
 
 White key 12. Echoes in time with the tempo, with random events and shimmer; they keep ringing
 after you let go.
@@ -843,7 +843,7 @@ after you let go.
   shows the echoes coming back (see [Page 2](#page-2)).
 
 ## Reverb
-<!-- summary: From a room to a long wash, ringing on after you let go. -->
+<!-- summary: From a room to a long wash. The tail rings on after you let go. -->
 
 White key 13. From a room to a long wash; the tail rings on after you let go.
 
@@ -860,7 +860,7 @@ White key 13. From a room to a long wash; the tail rings on after you let go.
   the room coming back (see [Page 2](#page-2)).
 
 ## Chaos key
-<!-- summary: Drops latched effects out at random and scrambles the loop's steps. -->
+<!-- summary: Makes no sound of its own: drops your latched effects out at random and scrambles the steps of the loop. -->
 
 White key 14. Makes no sound of its own: it drops your latched effects out at random and
 scrambles the steps of the loop, on its grid (like the Red Panda Tensor's RAND and the Chase
@@ -897,7 +897,7 @@ latch, part of scenes and morphs. It has no page 2: a knob press does nothing.
 - LEDs: the key is rose; the knobs go light blue to rose.
 
 ## Master compressor
-<!-- summary: A stereo compressor on the master out, and the safety limiter. -->
+<!-- summary: A stereo compressor on the master out, always in the path; its key hands knobs 1 to 4 over to it. A limiter guards every output. -->
 
 White key 15. A stereo compressor on the master out, after the effects and before VOLUME, so
 turning VOLUME doesn't change how hard it works. It's always in the signal path; at the
