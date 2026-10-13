@@ -236,16 +236,26 @@ longer than a block, which crackle), `settings`, `channel N`, `transport on|off`
 script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over SysEx at the
 script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs, at the
 brightness the card's `led_brightness` sets (25-100 % by 5: the levels that fit every line,
-said when it isn't 100 %).
+said when it isn't 100 %). Its `input sine HZ AMP` goes as the developers' test signal
+(`SIGNAL`, below), which takes AUX's place where the twin's sine does, in the input the audio
+callback hands the engine, at the same full scale, so the effects hear what they hear on the
+twin (#219); `input off` and the script's end, however it ends, turn it off again. Unlike the
+twin's, it takes the mic's place too, its frequency is whole hertz and its phase starts
+afresh with each line. Its other inputs (`input wav`, `mic`, `jack`) and the rest only the
+twin has (the card, the battery, power-on) are skipped, saying so.
 With `--cpu` it reports the worst load FRIZZ.bin itself had, measured in the audio callback as
 the bench does, and how many blocks took longer than a block, so a scenario can be tried for
 crackles on the build that plays, not the bench's (it says how many readings went unanswered,
-if any). Whatever ends a script (an error, Ctrl-C), it lets go of the keys it holds and gives
-the mode switch back to the hand.
+if any). Whatever ends a script (an error, Ctrl-C), it lets go of the keys it holds, gives
+the mode switch back to the hand and turns the test signal off.
 
 A script plays on FRIZZ as it stands: a twin script starts from power-on, but on the device the
 scripts played before it since FRIZZ started have left the effect selected, its knobs, the
-page or a loop in RAM, so its `expect led` lines can fail after another one (#123).
+page or a loop in RAM, so its `expect led` lines can fail after another one (#123). And it
+starts from the player's card, not a fresh one: a script's `set GROUP INDEX VALUE` goes as
+the developers' `SET` (below), as `./remote.py set` sends it, so the scenarios set what they
+depend on first, the compressor's knobs or a setting, to what a fresh card has (#214); a `set`
+FRIZZ refuses fails its line.
 `play --fresh` first starts the slot again through the launcher, as `flash.py --run N` does:
 FRIZZ boots from the card, which a start doesn't write, with nothing left from before. Every
 `play` after the first since `flash.py` started the slot wants it (about 10 s each); a failed
@@ -261,7 +271,8 @@ page (`twin/scenarios/settings.txt`, most bug reports, #58; its upper G# and A# 
 each source's effects and live are saved, `mic.txt`, #152, #177), VOLUME turned on its page
 2, the input gain
 (`volume.txt`, #152), and the compressor's knobs (`comp.txt`: its key, then knobs 1-4, or with
-it in focus by CC 23; its CCs themselves never reach the card, #97) go to
+it in focus by CC 23; its CCs themselves never reach the card, #97), and a script's `set` of
+a setting, the compressor or the input gain (most scenarios' first lines, #214) go to
 `/FRIZZ/frizz_master.txt`, with no `.bak`; SAVE / COPY / DELETE confirmed (`scenes.txt`) or a
 scene put over SysEx to `/FRIZZ/frizz_scenes.txt`, whose `.bak` keeps only the one before
 (#78).
@@ -357,12 +368,15 @@ then run `bin/install_bootloader.sh`.
 ## Measure timing and sound on the device
 
 `tools/measure.py` measures what the twin can't, on the real CHOMPI, with no hands at the
-panel. It needs an audio interface: its line outputs 3+4 into AUX, the CHOMPI's line out into
-its inputs 3+4 (the left, input 3, is recorded), its MIDI out into the TRS jack (found by name,
+panel. It needs an audio interface: its line outputs 3+4 into AUX, the CHOMPI's headphone out
+into its inputs 3+4 (the left, input 3, is recorded; the bench is wired so, the line out stays
+free), its MIDI out into the TRS jack (found by name,
 the Scarlett's `HiFi__Line4__sink` and `HiFi__Line8__source`; `FRIZZ_AUX_SINK`,
 `FRIZZ_LINE_SOURCE`, `FRIZZ_TRS_MIDI` set them). Outputs 1+2 are the user's monitors: the
 tools never play into them. In the Scarlett's mixer (alsa-scarlett-gui), line outputs 3+4 get
-PCM 3+4 directly, not a mix, or nothing played into `HiFi__Line4__sink` reaches AUX. Python 3 with numpy (a venv:
+PCM 3+4 directly, not a mix, or nothing played into `HiFi__Line4__sink` reaches AUX. Linux
+restores the mixer from `/var/lib/alsa/asound.state` whenever the interface is plugged in: once
+it's set, `sudo alsactl store` keeps it (it had reverted to Mix G/H, a loop through AUX). Python 3 with numpy (a venv:
 `python3 -m venv ~/.venvs/frizz && ~/.venvs/frizz/bin/pip install numpy`).
 
 ```bash
@@ -469,8 +483,10 @@ tools/midisuite.py --cases out-loop,start-spp -v    # a few, every check as it's
 Start / Stop / Continue / Song Position on play, stop, locating and a loop range's turns,
 automation lanes on the effect channels, a track monitoring FRIZZ's input, and its clock's
 jitter against a clock from this computer (#83); and the other way round, REAPER synced to
-FRIZZ's MIDI out (`daw-follows`, #150). Wiring A (the CHOMPI's TRS out into the
-interface's MIDI in) shows what FRIZZ passes on; without it the jitter is a SKIP.
+FRIZZ's MIDI out (`daw-follows`, #150); and with music (#55's DAW items by ear): REAPER
+playing a song into AUX and recording the line out (`daw-loop-audio`, `daw-loop-restart`,
+`daw-follows-audio`, below). Wiring A (the CHOMPI's TRS out into the interface's MIDI in)
+shows what FRIZZ passes on; without it the jitter is a SKIP.
 
 ```bash
 cd firmware && tools/chompi.py hold sh -c '
@@ -480,6 +496,10 @@ cd firmware && tools/chompi.py hold sh -c '
 tools/reaper.py --list                          # the cases
 tools/reaper.py --cases daw-transport -v        # one, with REAPER's log
 tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouched
+# the cases with music: numpy, so measure.py's venv
+~/.venvs/frizz/bin/python tools/reaper.py --audio jack \
+  --cases daw-loop-audio,daw-loop-restart,daw-follows-audio --out card/reaper-audio.md
+# daw-follows-audio's timing needs a song whose bars differ: --material generated
 ```
 
 - **One REAPER per audio mode** (`--audio jack,dummy`): the first runs every case, the last
@@ -496,7 +516,8 @@ tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouc
   (the license copied in), deleted after; a file in `~/.config/REAPER` or `~/Apps/REAPER`
   newer than the start fails the run. Its window shows for a moment, and an evaluation copy
   its notice. Nothing reaches Line 1/2: a silent project, the master muted, its JACK ports
-  linked to nothing (`jack_options=2`; a link fails the run). A REAPER that runs no script
+  linked to nothing (`jack_options=2`; a link fails the run), the music's REAPER only to AUX
+  and from the line out (below). A REAPER that runs no script
   within 20 s, or doesn't quit when asked, has a dialog in the way: killed, and said so.
 - **JACK** (through pipewire-jack, the default) takes FRIZZ's MIDI as PipeWire's bridge ports
   (`Midi-Bridge:FrizZ: MIDI 1`), as a desktop REAPER here does; **dummy** uses ALSA's raw node
@@ -518,6 +539,41 @@ tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouc
   project at 60 (3.3x, a try by hand), so x1/2 is judged with its project at 60. `--quick`
   (the host check) leaves out the x1/2 against 120, which is only noted, and listens 2 s to
   each clock factor instead of 4.
+- **With music** (`sound` cases): a REAPER of its own after the first, JACK only, its audio
+  linked by the tool and nothing else: its outputs 3/4 into AUX's sink (measure.py's
+  `FRIZZ_AUX_SINK`, the Scarlett's line outputs 3+4), the line out's left (`FRIZZ_LINE_SOURCE`)
+  into its input 1; any other link fails the run, and so does a Scarlett whose Analogue Output
+  3/4 isn't PCM 3/4 (read with amixer, never set). A track plays the song to outputs 3/4 alone
+  (no master), at a gain that puts its peak at -7 dBFS; a track records input 1, not monitored.
+  The song: `--material FILE`, a WAV of whole bars at 87 BPM (`FRIZZ_DAW_MATERIAL`; else the
+  longest WAV in `card/audio`, the main checkout's if this one has none; `generated`:
+  measure.py's notes and noise), kept out of git. They need numpy: without it they're a SKIP
+  saying so, the other cases run on. `--keep DIR` keeps the takes and the song (in `card/`).
+  - FRIZZ records its loop of 4 bars from notes on a track of REAPER's (PLAY 46 held, LOOP 47
+    on bar 4, channel 16), as a DAW user would: a quantized recording starts on the press
+    (MANUAL), so a press by SysEx lands wherever this computer is. The notes' track goes
+    once the loop is in.
+  - Each bar of the take is found in the song by correlation (GCC-PHAT, `measure.find()`)
+    near where the time line puts it: before the loop the song through FRIZZ live (the dry
+    signal: REAPER's latency compensation, about +38 ms off under pipewire-jack, plus the
+    CHOMPI's own), after it the loop, against the dry signal. The CHOMPI's line out is upside
+    down against AUX; the search takes either polarity and says which.
+  - `daw-loop-audio`: the loop over `--minutes` (2), bar by bar, its drift in ms a minute, its
+    length (PROBE) against 4 bars. `daw-loop-restart`: REAPER stopped and played from the
+    start, the playhead into the loop's middle, a loop range; at x1 and x1/2. After Start the
+    loop's start sits where its LOOP note put it, as REAPER's MIDI reaches FRIZZ against its
+    audio; the other restarts are judged against that. A loop range's turns each start where
+    REAPER's MIDI at the turn lands, on the edge of one of its blocks (0-21 ms at 1024
+    samples), so each turn is judged steady and within a block. `daw-follows-audio`: the loop
+    recorded, REAPER restarted synchronized to FRIZZ (as `daw-follows`), playing the song into
+    AUX, FRIZZ's mix in the middle (CC 87 64): the line out (pw-record; REAPER recording would
+    run on by itself, deaf to a Stop) carries the song as REAPER plays it and the loop, found
+    apart near where REAPER's trace puts the song; the transport turned into a standstill
+    (#174) and pressed back to 1x, the loop against the song before and after. A song whose
+    bars are all alike (a drum loop) can't be told from the loop: said so, not judged;
+    `--material generated` measures it.
+  - On the twin (`test/reaper.cpp`) the stand-in plays the song into the twin's AUX and records
+    its line out (`test/ptytwin.h`'s Audio), with measure.py's generated material.
 - **Stopped and restarted** as `midisuite.py`: Ctrl-C, SIGTERM or SIGHUP put things back and
   close REAPER first (exit 130, 143, 129), and a FRIZZ that restarted stops the run (#171).
 - `test/reaper.cpp` runs it on the twin with `test/reaper_stub.py` in REAPER's place, and

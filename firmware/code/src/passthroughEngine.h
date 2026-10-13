@@ -26,7 +26,9 @@
  *
  *  The headphones mirror the master out, or with SetHeadphoneCue() blend in the input on its
  *  own: after the input gain and VOLUME, but no loop, no FX, no MIX and no compressor. The
- *  headphones' safety limiter comes after that blend, so it guards the input too.
+ *  headphones' safety limiter comes after that blend, so it guards the input too. They go
+ *  out turned against the line out: the CHOMPI's headphone stages don't turn the signal, its
+ *  AUX in and line out stages do, so turned they're in phase with AUX at the jacks (#209).
  *
  *  The FX's tempo (TempoClock.h) comes from the loop while there is one, otherwise from MIDI
  *  clock or taps. A scene morph (FxMorph.h) sits between the UI and the FX and lands on that
@@ -278,9 +280,12 @@ public:
                 out[1][i] = hpr + (dryr[i] * kHpGain * mgain_ - hpr) * hp_cue_;
             }
 
-            // safety limiter: TAPE's master compressor at its lowest setting (limiter.h)
-            out[0][i] = lim_hp_l_.ProcessComp(out[0][i], 1.f, kLimThresh, 1.f, kLimMakeup);
-            out[1][i] = lim_hp_r_.ProcessComp(out[1][i], 1.f, kLimThresh, 1.f, kLimMakeup);
+            // safety limiter: TAPE's master compressor at its lowest setting (limiter.h). The
+            // headphones turned (#209): the analog stages turn AUX in and the line out once
+            // each, the headphones' none, so turned here they come out in phase with AUX, as
+            // the line out does (routing.cpp's TestPolarity)
+            out[0][i] = -lim_hp_l_.ProcessComp(out[0][i], 1.f, kLimThresh, 1.f, kLimMakeup);
+            out[1][i] = -lim_hp_r_.ProcessComp(out[1][i], 1.f, kLimThresh, 1.f, kLimMakeup);
             out[2][i] = lim_line_l_.ProcessComp(out[2][i], 1.f, kLimThresh, 1.f, kLimMakeup);
             out[3][i] = lim_line_r_.ProcessComp(out[3][i], 1.f, kLimThresh, 1.f, kLimMakeup);
         }

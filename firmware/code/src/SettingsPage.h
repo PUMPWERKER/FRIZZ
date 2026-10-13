@@ -23,16 +23,17 @@
  *    C# (upper octave)   MIDI out, each press the next: off, the jack, the jack and USB
  *                                                            dim, orange, white
  *    D# (upper octave)   MIDI feedback, on / off             light blue, lit when on
- *  The upper octave's F#, G# and A# are the input (#177), left to right as the signal goes:
+ *  The upper octave's F#, G# and A# are the input (#177): the source, then whether you hear
+ *  it, then how (#243):
  *
  *    F# (upper octave)   the source, AUX / the mic           green / magenta, lit
  *    SHIFT + F#          AUX mono, on / off                  white while SHIFT is held, lit
  *                                                            when on
- *    G# (upper octave)   the source's effects: through them / dry (past them and the
+ *    G# (upper octave)   the source live, on the outputs, on / off
+ *                                                            white, lit when on
+ *    A# (upper octave)   the source's effects: through them / dry (past them and the
  *                        compressor)                         green / white, lit; dark while
  *                                                            the source isn't live
- *    A# (upper octave)   the source live, on the outputs, on / off
- *                                                            white, lit when on
  *
  *  AUX's jack picks the source at power-on and whenever a cable goes in or out
  *  (chompi_main.cpp); F# picks the other until then. The source itself isn't saved. G# and A#
@@ -136,7 +137,7 @@ public:
         }
         if (key == static_cast<int>(kInFxKey) || key == static_cast<int>(kLiveKey))
         {
-            // the source's own, for the card; G# dark (not live) does nothing, and blinks red
+            // the source's own, for the card; A# dark (not live) does nothing, and blinks red
             const bool fx = key == static_cast<int>(kInFxKey);
             if (fx && !engine_->Live(mic))
             {
@@ -398,18 +399,18 @@ public:
         KeyLed(kMidiOutKey, out == MidiOutPorts::TRS ? orange : white, out != MidiOutPorts::OFF);
         KeyLed(kBlockTrsKey, med_blue, midi_->BlockTrs());
         KeyLed(kFeedbackKey, med_blue, midi_->Feedback());
-        // the input: the source (with SHIFT AUX's mono), its effects (dark unless it's live)
-        // and live
+        // the input: the source (with SHIFT AUX's mono), live and its effects (dark unless it's
+        // live)
         const bool mic = engine_->MicInput(), live = engine_->Live(mic);
         if (shift || ShiftHeld())
             KeyLed(kInSourceKey, white, mono_);
         else
             KeyLed(kInSourceKey, mic ? magenta : green, true);
+        KeyLed(kLiveKey, white, live);
         if (dark_fx_.Active(now))
             SmtLed(KeyLedOf(kInFxKey), red, dark_fx_.BlinkLit(now) ? 1.f : 0.f);
         else
             SmtLed(KeyLedOf(kInFxKey), engine_->Dry(mic) ? white : green, live ? 1.f : 0.f);
-        KeyLed(kLiveKey, white, live);
         // knob 1 the brightness, white and dimmed with every LED: it shows itself
         for (uint8_t k = 0; k < 4; k++)
             PthLed(kKnobLeds[k], white, k == 0 ? 1.f : 0.f);
@@ -465,10 +466,10 @@ private:
     static const Hardware::SwId kSourceKey = Hardware::SwId::KEY_20;
     static const Hardware::SwId kMidiOutKey = Hardware::SwId::KEY_21;
     static const Hardware::SwId kFeedbackKey = Hardware::SwId::KEY_22;
-    // the input (#177): the source (SHIFT: mono), its effects, live
+    // the input (#177): the source (SHIFT: mono), live, its effects (#243)
     static const Hardware::SwId kInSourceKey = Hardware::SwId::KEY_23;
-    static const Hardware::SwId kInFxKey = Hardware::SwId::KEY_24;
-    static const Hardware::SwId kLiveKey = Hardware::SwId::KEY_25;
+    static const Hardware::SwId kLiveKey = Hardware::SwId::KEY_24;
+    static const Hardware::SwId kInFxKey = Hardware::SwId::KEY_25;
     // knob 1's press, the brightness's (#176), and its LED and the others' (PanelLeds.h)
     static const int kBrightnessKnobKey = static_cast<int>(Hardware::SwId::ENC_1_SW);
     static constexpr uint8_t kKnobLeds[4] = {1, 2, 3, 4};
@@ -497,7 +498,7 @@ private:
     bool reported_ = false;     // this hold has asked for its bug report
     int unsaved_key_ = kNoKey;  // the key that changed a setting last, not yet on the card
     LedSignal refused_;         // its write failed: 3 red blinks on it
-    LedSignal dark_fx_;         // G# pressed while dark: 3 red blinks on it
+    LedSignal dark_fx_;         // A# pressed while dark: 3 red blinks on it
 };
 
 constexpr const float* SettingsPage::kFactorColors[];

@@ -5,10 +5,13 @@
 // twin until it's done; lag says how far the twin fell behind the wall clock meanwhile, and
 // Unjudged() which of its cases failed on timing alone that far behind: under load (all.sh, or
 // several side by side) the twin's answers come late and bunched, where a tool's timing can't
-// be judged (#183). For a check (NAME.cpp) that includes twin.h first.
+// be judged (#183). With audio_dir set, the twin has an audio interface too, through files a
+// tool's stand-in (reaper_stub.py) shares with it there: Audio's. For a check (NAME.cpp) that
+// includes twin.h first.
 #pragma once
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <termios.h>
@@ -16,6 +19,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -155,6 +159,117 @@ void Pump(long ms)
         perror("trs pty");
 }
 
+/** Where a tool's stand-in and the twin share its audio (FRIZZ_TWIN_AUDIO), empty for none */
+std::string audio_dir;
+
+/** The twin's audio interface, in files in audio_dir, the time this computer's monotonic clock
+ *  (Python's perf_counter, steady_clock here) in s, the twin's sample n at start + n / 48000:
+ *    start         that start, written here
+ *    timeline.f32  a song as REAPER plays it from 0 (float, mono, 48 kHz), the stand-in's
+ *    aux.txt       where it plays from when: lines "TIME SONG_S RATE" (1 playing, 0 stopped)
+ *    out.f32       the line out's left, every sample from the start, written here
+ *  AUX gets the song where aux.txt has it at each sample's time, both sides */
+struct Audio
+{
+    std::vector<float> timeline;
+    std::vector<double> moves; // TIME, SONG_S, RATE each
+    off_t timeline_size = -1, aux_size = -1;
+    double start = 0;
+    FILE* out = nullptr;
+
+    static off_t Size(const std::string& path)
+    {
+        struct stat st;
+        return stat(path.c_str(), &st) ? -1 : st.st_size;
+    }
+
+    void Open(double start_s)
+    {
+        start = start_s;
+        FILE* f = fopen((audio_dir + "/start").c_str(), "w");
+        if (f)
+        {
+            fprintf(f, "%.9f\n", start);
+            fclose(f);
+        }
+        out = fopen((audio_dir + "/out.f32").c_str(), "w");
+    }
+
+    /** What the stand-in wrote since, read again */
+    void Look()
+    {
+        const off_t t = Size(audio_dir + "/timeline.f32");
+        if (t >= 0 && t != timeline_size)
+        {
+            timeline_size = t;
+            timeline.assign(t / sizeof(float), 0.f);
+            FILE* f = fopen((audio_dir + "/timeline.f32").c_str(), "rb");
+            if (f)
+            {
+                timeline.resize(fread(timeline.data(), sizeof(float), timeline.size(), f));
+                fclose(f);
+            }
+        }
+        const off_t a = Size(audio_dir + "/aux.txt");
+        if (a >= 0 && a != aux_size)
+        {
+            aux_size = a;
+            moves.clear();
+            std::string text;
+            FILE* f = fopen((audio_dir + "/aux.txt").c_str(), "r");
+            if (f)
+            {
+                char buf[4096];
+                size_t n;
+                while ((n = fread(buf, 1, sizeof(buf), f)) > 0)
+                    text.append(buf, n);
+                fclose(f);
+            }
+            std::istringstream lines(text.substr(0, text.rfind('\n') + 1));
+            double time, song, rate;
+            while (lines >> time >> song >> rate)
+                moves.insert(moves.end(), {time, song, rate});
+        }
+    }
+
+    float At(double time) const
+    {
+        size_t i = moves.size();
+        while (i >= 3 && moves[i - 3] > time)
+            i -= 3;
+        if (i < 3)
+            return 0.f;
+        const double song = moves[i - 2] + (time - moves[i - 3]) * moves[i - 1];
+        const long at = std::lround(song * kSampleRate);
+        return at >= 0 && at < long(timeline.size()) ? timeline[at] : 0.f;
+    }
+
+    /** 2 blocks (1 ms) from sample n on: AUX in, the line out written */
+    void Run2(long n)
+    {
+        static const size_t kFrames = 2 * kBlockSize;
+        float in[kFrames * kChannels] = {}, o[kFrames * kChannels];
+        for (size_t k = 0; k < kFrames; k++)
+            in[k * kChannels + 2] = in[k * kChannels + 3] = At(start + (n + long(k)) / double(kSampleRate));
+        twin::Run(2, in, o);
+        float left[kFrames];
+        for (size_t k = 0; k < kFrames; k++)
+            left[k] = o[k * kChannels + 2];
+        if (out)
+        {
+            fwrite(left, sizeof(float), kFrames, out);
+            fflush(out);
+        }
+    }
+
+    void Close()
+    {
+        if (out)
+            fclose(out);
+        out = nullptr;
+    }
+};
+
 /** tools/TOOL ARGS (--device and --trs given) against the twin, at the wall clock's pace until
  *  it's done (limit s at most), with env's NAME=VALUE pairs set: its exit code; out gets what
  *  it printed. stop_signal (SIGINT, SIGTERM) goes to it once it has printed stop_at */
@@ -199,6 +314,9 @@ int Tool(const std::string& tool, const std::string& args, std::string& out, int
     reading = true;
     std::thread reader(Reader, start);
     const uint32_t twin_start = NowMs();
+    Audio audio;
+    if (!audio_dir.empty())
+        audio.Open(std::chrono::duration<double>(start.time_since_epoch()).count());
     int status = -1;
     while (true)
     {
@@ -227,14 +345,23 @@ int Tool(const std::string& tool, const std::string& args, std::string& out, int
         lag = std::max(lag, behind);
         if (behind > 0)
         {
-            Pump(long(NowMs() - twin_start));
-            Run(2, nullptr, nullptr);
+            const long ms = long(NowMs() - twin_start);
+            Pump(ms);
+            if (audio_dir.empty())
+                Run(2, nullptr, nullptr);
+            else
+            {
+                if (ms % 10 == 0)
+                    audio.Look();
+                audio.Run2(ms * long(kSampleRate / 1000));
+            }
         }
         else
             std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
     reading = false;
     reader.join();
+    audio.Close();
     char buf[512];
     ssize_t n;
     while ((n = read(pipe_fd[0], buf, sizeof(buf))) > 0)

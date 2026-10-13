@@ -1,6 +1,13 @@
 # the settings page (mode switch up): an FX held through the flip, channel, mono, clock
 # factor and source, brightness (knob 1), the battery on VOLUME; then back down to play
 input sine 220 0.3
+# what the card keeps, as a fresh card has it: the device's card holds the player's own (#214)
+set settings midi_block_trs 1
+set settings midi_transport 0
+set settings mono 0
+set settings clock_factor 100
+set settings clock_source 0
+set settings led_brightness 100
 at 6000
 down KEY_5
 wait 300

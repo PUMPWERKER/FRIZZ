@@ -209,6 +209,24 @@ static void PCD_SetupStageCallback(PCD_HandleTypeDef *hpcd)
 void HAL_PCD_SetupStageCallback(PCD_HandleTypeDef *hpcd)
 #endif /* USE_HAL_PCD_REGISTER_CALLBACKS */
 {
+    /* FRIZZ (#88): a SETUP ends the control transfer before it, so EP0 IN starts afresh.
+     * The USB interrupt shares its priority with the audio DMA's: answered late, the
+     * last packet's XFRC of the transfer before can be handled after this SETUP came in.
+     * USBD_LL_DataInStage then stalls EP0 IN, which the core clears only on receiving a
+     * SETUP, so the STALL holds into this transfer; the host retries it, and the reply
+     * written for the stalled try stays in EP0's TxFIFO, sent in place of each reply
+     * after it (the USB names one string late). Clear both before answering. */
+    USB_OTG_GlobalTypeDef *USBx      = hpcd->Instance;
+    uint32_t               USBx_BASE = (uint32_t)USBx;
+    if(USBx_INEP(0U)->DIEPCTL & USB_OTG_DIEPCTL_STALL)
+    {
+        USBx_INEP(0U)->DIEPCTL &= ~USB_OTG_DIEPCTL_STALL;
+    }
+    if((USBx_INEP(0U)->DTXFSTS & USB_OTG_DTXFSTS_INEPTFSAV)
+       != (USBx->DIEPTXF0_HNPTXFSIZ >> 16))
+    {
+        (void)USB_FlushTxFifo(USBx, 0U);
+    }
     USBD_LL_SetupStage((USBD_HandleTypeDef *)hpcd->pData,
                        (uint8_t *)hpcd->Setup);
 }
