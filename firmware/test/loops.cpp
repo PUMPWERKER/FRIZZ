@@ -313,7 +313,7 @@ static void TestLoad()
     Check(card.open == 0 && card.raw_clash == 0, "load: no file left open, no FatFs call during a run");
     uint8_t d[40];
     const uint8_t part0[] = {0};
-    Check(l.Dev(part0, 1, d) == 33 && d[0] == LoopLoader::LOADED && d[3] == 0, "load: LOOPS 0 says it's loaded");
+    Check(l.Dev(part0, 1, d) == 35 && d[33] == 0 && d[34] == 1 && d[0] == LoopLoader::LOADED && d[3] == 0, "load: LOOPS 0 says it's loaded");
 
     l.Request(LoopLoader::LOADING, 0, 1, 0);
     Check(Run(l) && Loaded(l, odd) && l.Channels() == 1, "load: mono, its data at 504 (8 bytes in the first sector)");
@@ -335,7 +335,8 @@ static void TestLoad()
     PutLoop("/FRIZZ/LOOPS/B/05.wav", Stereo(frag));
     LoopLoader& f = Fresh();
     f.Request(LoopLoader::LOADING, 1, 4, 0);
-    Check(Run(f) && Loaded(f, frag), "load: a file in 11 fragments, a gap between each: every byte");
+    Check(Run(f) && Loaded(f, frag) && f.Dev(part0, 1, d) && d[34] == 11,
+          "load: a file in 11 fragments, a gap between each: every byte, LOOPS 0 counts them");
     // 200 fragments of a cluster each: within the map
     NewCard();
     card.frag_clusters = 1;

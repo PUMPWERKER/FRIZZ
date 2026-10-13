@@ -620,7 +620,8 @@ def loops_status(f):
     g = chompi.get7
     return dict(state=d[0], bank=d[1], slot=d[2], error=d[3], sd=g(d[4:9]), done=g(d[9:13]),
                 total=g(d[13:17]), ms=g(d[17:20]), runs=g(d[20:23]), worst_us=g(d[23:26]),
-                clkcr=g(d[26:31]) & 0xFFFFFFFF, recoveries=d[31], reinits=d[32])
+                clkcr=g(d[26:31]) & 0xFFFFFFFF, recoveries=d[31], reinits=d[32],
+                frags=g(d[33:35]) if len(d) >= 35 else None)
 
 
 def loops_wait(f, busy, timeout, progress=False):
@@ -693,9 +694,10 @@ def loops_load(f, bank, slot, fault, check):
     mx, mean, over = load(f)
     ok = s["state"] == 3
     mb = s["done"] / 1e6
-    print("%s/%02d %s: %.2f of %.2f MB in %d ms (%.1f MB/s), %d runs%s" % (
+    print("%s/%02d %s: %.2f of %.2f MB in %d ms (%.1f MB/s), %d runs%s%s" % (
         BANKS[bank], slot, "loaded" if ok else "failed, " + loop_result(s["error"]), mb,
         s["total"] / 1e6, s["ms"], mb * 1000 / s["ms"] if s["ms"] else 0, s["runs"],
+        ", the file in %d fragment%s" % (s["frags"], "" if s["frags"] == 1 else "s") if s["frags"] else "",
         ", SD error 0x%x" % s["sd"] if s["sd"] else ""))
     print("  the audio callback meanwhile: max %.1f %%, mean %.1f %%%s; MainLoop's longest "
           "step %.1f ms" % (mx, mean, "" if over is None else ", %d blocks over 100 %%" % over,

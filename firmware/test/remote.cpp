@@ -715,7 +715,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
         if (rc != 0)
             printf("%s\n", out.c_str());
         rc = Remote({"loops", "load", "a", "1", "--check", wav}, out);
-        Check(rc == 0 && Has(out, "A/01 loaded: 0.38 of 0.38 MB in ") && Has(out, ", 3 runs")
+        Check(rc == 0 && Has(out, "A/01 loaded: 0.38 of 0.38 MB in ") && Has(out, ", 3 runs, the file in 1 fragment\n")
                   && Has(out, "the audio callback meanwhile: max ") && Has(out, "a01.wav's data 0x")
                   && Has(out, ": the same"),
               "remote: loops load reads a slot in runs, its CRC-32 the file's data's");

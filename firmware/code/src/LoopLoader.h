@@ -297,7 +297,7 @@ public:
      *  length, -1 for a request it doesn't take). Numbers in 7-bit groups, the highest first
      *   0           -> state, bank, slot, result, the SD error (5), bytes loaded (4) of (4),
      *                  ms (3), runs (3), MainLoop's longest step in us (3), CLKCR (5),
-     *                  recoveries, of them set up again
+     *                  recoveries, of them set up again, the file's fragments (2)
      *   1 BANK      -> the bank's scan: SCANNING, then its 15 slots' results
      *   2 BANK SLOT -> its result, frames (4), its data's offset in the file (5)
      *   3           scans again
@@ -326,6 +326,7 @@ public:
             n = Put(d, n, SdRawClkcr(), 5);
             d[n++] = recoveries_ & 0x7F;
             d[n++] = reinits_ & 0x7F;
+            n = Put(d, n, frags_, 2);
             worst_us_ = 0;
             return static_cast<int>(n);
         }
@@ -399,7 +400,7 @@ private:
             slot_ = slot;
             faults_ = static_cast<uint8_t>(arg);
             opened_ = false;
-            done_ = total_ = runs_ = ms_ = 0;
+            done_ = total_ = runs_ = ms_ = frags_ = 0;
             start_ms_ = ms_clock_();
         }
         else if (what == CHECKING)
@@ -504,6 +505,8 @@ private:
             mem_->map[0] = loops::kMapSize;
             file.cltbl = mem_->map;
             const FRESULT m = f_lseek(&file, CREATE_LINKMAP);
+            // the map's size it took, or would have: also when it's too small
+            frags_ = (mem_->map[0] - 2) / 2;
             if (m != FR_OK)
                 r = m == FR_NOT_ENOUGH_CORE ? loops::FRAGMENTED : loops::UNREADABLE;
         }
@@ -728,6 +731,7 @@ private:
     uint32_t frag_at_ = 0, run_ = 0, done_ = 0, total_ = 0, runs_ = 0;
     uint32_t run_t_ = 0, timeout_ = 0, start_ms_ = 0, ms_ = 0, worst_us_ = 0; // ticks, ms, us
     uint8_t recoveries_ = 0, reinits_ = 0;
+    uint32_t frags_ = 0;
     // the CRC, the write test
     uint32_t crc_ = 0, at_ = 0, chunk_ = 0;
     uint8_t phase_ = 0;
