@@ -876,7 +876,8 @@ def loops_load(f, bank, slot, fault, check):
 def loops_write(f, kb, chunk, fault=None):
     load(f)
     before = loops_status(f)
-    args = [6, kb >> 7, kb & 0x7F, chunk >> 7, chunk & 0x7F] + ([WRITE_FAULTS[fault]] if fault else [])
+    # the fault in KB's high group (KB up to 1024: 8 at most there; the SysEx takes 5 bytes)
+    args = [6, kb >> 7 | WRITE_FAULTS.get(fault, 0), kb & 0x7F, chunk >> 7, chunk & 0x7F]
     got = f.dev(chompi.LOOPS, args)
     if not got or got[0] != chompi.OK:
         sys.exit("loops write: refused")

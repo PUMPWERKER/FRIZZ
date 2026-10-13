@@ -327,7 +327,7 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | | `02` BANK SLOT | the slot's result, frames (4), its data's offset in the file (5) |
 | | `03` / `04` BANK SLOT FAULTS | scans again / loads the slot (banks and slots from 0). FAULTS for a test: 1 the flow control off for it, 2 its third run read past the card's end, 4 its third run given no time, 8 the recovery after it sets the card up from scratch (`HAL_SD_DeInit`, `BSP_SD_Init`), 16 FatFs's next read as it opens the file given no time, 32 that read past the card's end (`SdDisk.h`, #213). Refused (status 1) while something runs |
 | | `05` [`01`] | the state, the CRC-32 (5) of the data loaded (zlib's); with `01` it starts, 16 KB a MainLoop pass |
-| | `06` KB(2) CHUNK(2) [FAULTS] | the write test: KB (1-1024) written to `/FRIZZ/LOOPS/T/w.tmp` in CHUNK-byte writes, the `.bin` it replaces deleted, renamed, read back, compared, then the file, the folder and a `/FRIZZ/LOOPS` it made deleted. FAULTS for a test, in FatFs's next write of more than a sector (its data, never the FAT or a folder): 16 given no time, 32 past the card's end |
+| | `06` KB(2) CHUNK(2) | the write test: KB (1-1024) written to `/FRIZZ/LOOPS/T/w.tmp` in CHUNK-byte writes, the `.bin` it replaces deleted, renamed, read back, compared, then the file, the folder and a `/FRIZZ/LOOPS` it made deleted. KB's high group can carry a fault for a test, in FatFs's next write of more than a sector (its data, never the FAT or a folder): 16 given no time, 32 past the card's end |
 
 The groups of GET and SET: `00`-`1F` an effect's knobs by its FxId (`FxParams.h`: 0-3 page 1,
 4-7 page 2), `20` the compressor's, `21` the latches (index by FxId, 0 or 1), `22` VOLUME's

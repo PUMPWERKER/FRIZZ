@@ -345,8 +345,9 @@ public:
      *   4 BANK SLOT FAULTS  loads it (slots from 0); FAULTS the kFault bits
      *   5 [1]       -> state, the CRC-32 (5) of the data loaded once it's LOADED again; with
      *               1 it starts
-     *   6 KB(2) CHUNK(2) [FAULTS]  the write test: KB written in CHUNK-byte writes; FAULTS
-     *               kFaultDiskCutShort or kFaultDiskPastEnd
+     *   6 KB(2) CHUNK(2)    the write test: KB written in CHUNK-byte writes; KB's high group
+     *               can carry kFaultDiskCutShort or kFaultDiskPastEnd (KB is at most 1024,
+     *               the developers' SysEx 5 bytes)
      *  3-6 are refused (-1) while something runs */
     LOOP_LOADER_ONCE int Dev(const uint8_t* arg, size_t len, uint8_t* d)
     {
@@ -401,7 +402,7 @@ public:
             n = Put(d, n, crc_, 5);
         }
         else if (part == 6 && len >= 5)
-            return dev_free_ && Request(WRITING, len > 5 ? arg[5] : 0, 0, (arg[1] << 7 | arg[2]) << 16 | (arg[3] << 7 | arg[4])) ? 0 : -1;
+            return dev_free_ && Request(WRITING, arg[1] & 0x30, 0, ((arg[1] & 0x0F) << 7 | arg[2]) << 16 | (arg[3] << 7 | arg[4])) ? 0 : -1;
         else
             return -1;
         return static_cast<int>(n);
