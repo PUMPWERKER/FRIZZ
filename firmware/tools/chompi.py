@@ -49,6 +49,7 @@ Linux only: ALSA's raw MIDI and udisks, Python 3 without packages.
 """
 import argparse
 import contextlib
+import errno
 import fcntl
 import glob
 import os
@@ -514,9 +515,16 @@ def run(slot, wanted, timeout=120, device=None, rename=True):
 
 
 def send_run(node, slot):
-    """The launcher's RUN for slot SLOT, exiting if it can't"""
-    with link(node) as to:
-        reply = to.call(RUN, bytes([slot]), timeout=1.0, retries=2, required=False)
+    """The launcher's RUN for slot SLOT, exiting if it can't. A launcher that went away from
+    USB before its reply was read has started the slot (#203): the caller's wait finds it"""
+    try:
+        with link(node) as to:
+            reply = to.call(RUN, bytes([slot]), timeout=1.0, retries=2, required=False)
+    except OSError as e:
+        if e.errno not in (errno.ENODEV, errno.EIO):
+            raise
+        say("the launcher left USB before it answered RUN: it is starting slot %d (#203)" % slot)
+        reply = None
     if reply and reply[0] == BAD_SLOT:
         sys.exit("the launcher has nothing in slot %d" % slot)
     if reply and reply[0] == BAD_MESSAGE:
