@@ -664,8 +664,7 @@ MicFilter.h            the built-in mic's highpass, TAPE's (without its notches)
 hardware.h             the CHOMPI hardware: encoders, keys, switches, LEDs, battery
 encoder.h / .cpp       encoder driver
 temp_led_stuff.h       LED driver (ui_utils.h: LED flush/clear helpers)
-BootPage.h, RainbowWavePage.h
-                       boot animation, rainbow-wave animation
+BootPage.h             boot animation: the ripple from SHIFT
 chompi_sram.lds        linker script (the firmware runs from SRAM, placed there by the bootloader)
 ```
 

@@ -623,6 +623,9 @@ int main()
     cases.push_back({"lead", [] {
         RunMs(kReadyMs);
         SetOut(1);
+        // what FRIZZ's own clock sent before one came in isn't the jack's: whether a tick went
+        // out then depends on the grid's phase since power-on (#195)
+        TakeSent();
         StartTrs(Clock(120.));
         RunMs(2000);
         Sent s = TakeSent();
