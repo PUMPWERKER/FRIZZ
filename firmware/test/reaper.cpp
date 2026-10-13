@@ -187,7 +187,7 @@ int main()
     }});
     cases.push_back({"loop-restart", [] {
         RunAudio("loop-restart", "daw-loop-restart",
-                 {"PASS daw-loop-restart", "a loop range of bars 1-3, three turns (clock factor x1/2): the loop in step"});
+                 {"PASS daw-loop-restart", "a loop range of bars 1-3, three turns (clock factor x1/2): each turn steady"});
     }});
     cases.push_back({"follows-audio", [] {
         RunAudio("follows-audio", "daw-follows-audio",
