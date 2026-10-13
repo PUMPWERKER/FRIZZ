@@ -57,8 +57,6 @@ against this before it merges:
 3. **A `##` chapter is one web page:** keep it readable as one; split a chapter that grows very
    long (Punch-in FX) into several `##` chapters, e.g. one per effect.
 4. **Formats the site parses:**
-   - `README.md`: the first paragraph after the H1 is the site's intro; everything up to the
-     first `##` (the feature bullets and the line after them) is the landing page's feature list.
    - `QUICKSTART.md`: the white keys' table keeps its row starting `| Effect |`, then exactly
      15 cells, one per white key (`–` for an unused one); the landing page builds its key row
      from it and links each name to the manual heading `Name`, `Name key` or `Master Name`.
