@@ -236,12 +236,18 @@ longer than a block, which crackle), `settings`, `channel N`, `transport on|off`
 script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over SysEx at the
 script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs, at the
 brightness the card's `led_brightness` sets (25-100 % by 5: the levels that fit every line,
-said when it isn't 100 %).
+said when it isn't 100 %). Its `input sine HZ AMP` goes as the developers' test signal
+(`SIGNAL`, below), which takes AUX's place where the twin's sine does, in the input the audio
+callback hands the engine, at the same full scale, so the effects hear what they hear on the
+twin (#219); `input off` and the script's end, however it ends, turn it off again. Unlike the
+twin's, it takes the mic's place too, its frequency is whole hertz and its phase starts
+afresh with each line. Its other inputs (`input wav`, `mic`, `jack`) and the rest only the
+twin has (the card, the battery, power-on) are skipped, saying so.
 With `--cpu` it reports the worst load FRIZZ.bin itself had, measured in the audio callback as
 the bench does, and how many blocks took longer than a block, so a scenario can be tried for
 crackles on the build that plays, not the bench's (it says how many readings went unanswered,
-if any). Whatever ends a script (an error, Ctrl-C), it lets go of the keys it holds and gives
-the mode switch back to the hand.
+if any). Whatever ends a script (an error, Ctrl-C), it lets go of the keys it holds, gives
+the mode switch back to the hand and turns the test signal off.
 
 A script plays on FRIZZ as it stands: a twin script starts from power-on, but on the device the
 scripts played before it since FRIZZ started have left the effect selected, its knobs, the

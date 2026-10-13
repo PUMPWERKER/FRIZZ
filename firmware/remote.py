@@ -50,8 +50,12 @@ times, sends its `midi` and `clock` to the device, and checks its `expect led` l
 LEDs the device shows, dimmed as the card's led_brightness (the settings page) has them: at
 100, 75 or 50 %, the one level that fits every line, said when it isn't 100 %; its
 `toggle 0|1` sets the mode switch (down, up) over SysEx, back to the real one when the script
-ends; its `set GROUP INDEX VALUE` goes as SET, as `set` sends it (a line FRIZZ refuses fails). What only the twin has (the card, the input, the mic, AUX's jack, the battery, power-on)
-is skipped, and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
+ends; its `set GROUP INDEX VALUE` goes as SET, as `set` sends it (a line FRIZZ refuses fails);
+its `input sine HZ AMP` as SIGNAL (signal above), the test signal in AUX's place where the
+twin's sine goes in, at the same full scale (and in the mic's place too, which the twin leaves
+silent), `input off` and the script's end, however it ends, the input again (#219). What only
+the twin has (the card, `input wav`, the mic, AUX's jack, the battery, power-on) is skipped,
+and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
 and prints the worst, the way to try a scenario for crackles on FRIZZ.bin itself rather than on
 the bench's build; right after a start it waits (3 s at most) until FRIZZ counts its load, so the
 start isn't in the worst. A bug report (/FRIZZ/bug-N.txt) plays too, from where the device is.
@@ -561,13 +565,22 @@ def levels(f):
         print("  %-13s %.4f %s" % (n, v, dbfs(v)))
 
 
-def signal(f, wave, hz, level):
+def signal_args(wave, hz, level):
+    """SIGNAL's arguments: the wave, HZ (1-16383, whole) and LEVEL (0-1 of full scale) as
+    14 bits each; None for a frequency out of range"""
     w = WAVES.index(wave)
     v = max(0, min(16383, int(level * 16383 + .5))) if w else 0
-    hz = int(hz) if w else 0
+    hz = int(hz + .5) if w else 0
     if w and not 1 <= hz <= 16383:
+        return None
+    return [w, hz >> 7 & 0x7F, hz & 0x7F, v >> 7 & 0x7F, v & 0x7F]
+
+
+def signal(f, wave, hz, level):
+    args = signal_args(wave, hz, level)
+    if args is None:
         sys.exit("signal: 1-16383 Hz")
-    dev_data(f, chompi.SIGNAL, [w, hz >> 7 & 0x7F, hz & 0x7F, v >> 7 & 0x7F, v & 0x7F], "SIGNAL")
+    dev_data(f, chompi.SIGNAL, args, "SIGNAL")
 
 
 def draws(start, state, lcg=False):
@@ -814,8 +827,8 @@ def card_use(path, up, comp, mode, page=0):
 
 def play(f, path, cpu):
     """A twin script on the device; returns how many expectations failed. Whatever ends it
-    (an error, Ctrl-C, no answer), the keys it holds are let go and the mode switch it set is
-    given back to the hand"""
+    (an error, Ctrl-C, no answer), the keys it holds are let go, the mode switch it set is
+    given back to the hand and the test signal it turned on is turned off"""
     start = time.monotonic()
     clock = {"bpm": 0.0}
     stop = threading.Event()
@@ -883,6 +896,7 @@ def play(f, path, cpu):
     skipped = set()
     at_base = 0.0
     toggled = False
+    signalled = False  # SIGNAL on: off again whatever ends the script
     levels = list(LED_PERCENTS)  # the brightnesses that fit every expect led so far
     try:
         for line_no, cmd, args in script_lines(path):
@@ -911,6 +925,38 @@ def play(f, path, cpu):
                 why = try_set(f, *args) if len(args) == 3 else "set GROUP INDEX VALUE"
                 if why:
                     print("line %d: set %s: %s" % (line_no, " ".join(args), why), file=sys.stderr)
+                    failed += 1
+            elif cmd == "input" and cmd not in skipped:
+                # AUX's sine as the developers' test signal, where the twin's goes in: in place
+                # of the input the engine takes, at full scale 1 (MidiControl.h's dev::Audio).
+                # It takes the mic's place too, which the twin's leaves silent
+                what = args[0] if args else "off"
+                sine = what == "sine"
+                if what not in ("sine", "off"):
+                    print("skipped (twin only): input %s (the device's test signal plays a sine)"
+                          "%s" % (what, ": the signal off" if signalled else ""),
+                          file=sys.stderr)
+                if not sine and not signalled:
+                    continue
+                sig = signal_args("sine", float(args[1]), float(args[2])) if sine else [0]
+                if sig is None:
+                    print("line %d: input %s: 1-16383 Hz" % (line_no, " ".join(args)),
+                          file=sys.stderr)
+                    failed += 1
+                    continue
+                if sine and not signalled:
+                    print("input: the test signal (SIGNAL) in AUX's place, and the mic's")
+                signalled = sine  # before it goes: an interrupt then still turns it off
+                got = f.dev(chompi.SIGNAL, sig)
+                if not got or got[0] == chompi.NOT_HERE:
+                    print("skipped (twin only): input, a FRIZZ without SIGNAL (the test signal)",
+                          file=sys.stderr)
+                    skipped.add(cmd)
+                    signalled = False
+                elif got[0] != chompi.OK:
+                    print("line %d: input %s: SIGNAL %s" % (
+                        line_no, " ".join(args), chompi.DEV_STATUS.get(got[0], got[0])),
+                        file=sys.stderr)
                     failed += 1
             elif cmd == "clock":
                 clock["bpm"] = float(args[0])
@@ -946,6 +992,8 @@ def play(f, path, cpu):
             f.release()
             if toggled:
                 f.send(SWITCH, [0])  # the real switch again
+            if signalled:
+                f.dev(chompi.SIGNAL, [0])  # the input again
         except OSError:
             pass  # the device went away: what ended the run says more
     if levels != [100] and len(levels) < len(LED_PERCENTS):
