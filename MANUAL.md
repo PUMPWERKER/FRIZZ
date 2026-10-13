@@ -142,7 +142,7 @@ without printing them into it. LOOP and PLAY run it:
 | Empty | LOOP | Start recording |
 | Recording | LOOP | Stop and play |
 | Loop exists | PLAY | Play / pause, when you let go of PLAY (not if you pressed LOOP while holding it) |
-| Loop exists | LOOP | Erase, at once |
+| Loop exists | LOOP | Erase now, as LOOP goes down |
 
 **More looper gestures:**
 
@@ -1295,7 +1295,7 @@ it turned left, a blend between:
 | mic | past | on ⚠ | the mic pure | the mic pure + the loop through the effects | the loop through the effects | mic pure |
 | mic | – | off | silence | the loop alone through the effects, at its share | the loop through the effects | mic pure |
 
-- "Mix" in the column heads is the input/loop mix.
+- In the column heads, "mix" is the input/loop mix.
 - "–": the upper G# doesn't matter while the source isn't live (its key dark, its value kept).
 - The looper records the source as it is in every row.
 
