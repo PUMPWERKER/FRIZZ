@@ -342,6 +342,11 @@ what FRIZZ does.
 
 ### Fixed
 
+- **FRIZZ's USB names no longer come up garbled** (#88). Now and then (about 1 start in 20)
+  the computer listed FRIZZ as "Љ" by "FrizZ" instead of "FrizZ" by "Chompi Club": each name
+  one string late, and a DAW looking for FRIZZ by its name didn't find it until it was switched
+  off and on. It happened when the audio started just as the computer asked FRIZZ for its
+  names; now FRIZZ answers each question afresh.
 - **The headphones in phase with the input** (#209). CHOMPI's headphone out came out
   polarity-inverted against what went into AUX, and against the line out; on its own that's
   inaudible, but mixed with the dry signal (FRIZZ as a send effect beside the DAW's dry
