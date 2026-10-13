@@ -2,8 +2,10 @@
 // (twin/twin.h) at the wall clock's pace: the twin's USB MIDI and its TRS jack each on a
 // pseudo-terminal, in place of the CHOMPI's ALSA node and the audio interface's, the jack wired
 // in, out or both (trs_in, trs_out) as the TRS adapter can be. Tool() runs one and pumps the
-// twin until it's done; lag says how far the twin fell behind the wall clock meanwhile. For a
-// check (NAME.cpp) that includes twin.h first.
+// twin until it's done; lag says how far the twin fell behind the wall clock meanwhile, and
+// Unjudged() which of its cases failed on timing alone that far behind: under load (all.sh, or
+// several side by side) the twin's answers come late and bunched, where a tool's timing can't
+// be judged (#183). For a check (NAME.cpp) that includes twin.h first.
 #pragma once
 #include <fcntl.h>
 #include <poll.h>
@@ -19,6 +21,7 @@
 #include <cstring>
 #include <deque>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -58,6 +61,36 @@ long lag = 0; // the most the twin fell behind the wall clock, ms
 // Behind by more than this, the twin's timing isn't the wall clock's: a case that failed on
 // timing alone ([timing], "failed on timing alone") isn't judged
 const long kLagMs = 5;
+
+/** The cases a tool's run in out failed on timing alone (its "failed on timing alone: ..."
+ *  line, of the checks it tags [timing]), if the twin fell too far behind to judge timing */
+std::vector<std::string> Unjudged(const std::string& out)
+{
+    std::vector<std::string> ids;
+    const std::string tag = "failed on timing alone: ";
+    const size_t at = out.find(tag);
+    if (lag <= kLagMs || at == std::string::npos)
+        return ids;
+    std::istringstream list(out.substr(at + tag.size(), out.find('\n', at) - at - tag.size()));
+    std::string id;
+    while (std::getline(list, id, ','))
+        ids.push_back(id);
+    return ids;
+}
+
+/** attempt() (a tool's run against the twin: true if it passed), and once more if it didn't
+ *  with the twin more than kLagMs behind the wall clock: so far behind (hundreds of ms on a
+ *  machine whose cores are all busy) its answers can come after the tool stopped waiting for
+ *  them, beyond what Unjudged() covers. Said in a line FLAKY (all.sh lists them); a run that
+ *  fails twice, or once with the twin on time, fails (#183) */
+template <class Attempt>
+void Twice(const std::string& name, Attempt attempt)
+{
+    if (attempt() || lag <= kLagMs)
+        return;
+    printf("FLAKY  %s: failed with the twin %ld ms behind the wall clock, run again\n", name.c_str(), lag);
+    attempt();
+}
 
 /** A byte the suite sent, and when it came, in ms of the wall clock since the run started */
 struct Arrival
