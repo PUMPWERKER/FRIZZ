@@ -16,7 +16,7 @@ comes in on its MIDI device, which here is the twin's USB pseudo-terminal (the d
   - synchronized to its input (PLAN.sync, a project with SMPTESYNC; reaper.ini's
     midiouts_clock=0), as REAPER 7 was seen to be on the device: it sends nothing of its own,
     waits for a Start (a clock alone doesn't start it), then plays on the ticks that come in,
-    24 a beat in its own beats whatever its tempo; Stop pauses it, Song Position puts it there,
+    24 a beat in its own beats whatever its tempo (its song too, put right at every tick); Stop pauses it, Song Position puts it there,
     Continue plays on from there. (REAPER holds still for a second first, seeking ahead, and
     varies its speed to keep up only within about half to twice its tempo: not here.)
   - with FRIZZ_TWIN_AUDIO (ptytwin.h's Audio), audio as REAPER's on the device: a media track
@@ -100,6 +100,7 @@ class Stub:
         self.ticks = 0  # synchronized: the play position in ticks, as they came in
         self.paused = False  # synchronized: stopped by a Stop (REAPER's play state 2)
         self.tick_at = 0.  # synchronized: when the last tick (or Start, Continue) came
+        self.song_at = None  # where moved() last put the song: (time, s, rate)
         if plan.get("sync"):
             with open(plan["sync"]) as f:
                 m = re.search(r"SMPTESYNC (\d+) \S+ \S+ \S+ \S+ \S+ (\d+)", f.read())
@@ -144,6 +145,7 @@ class Stub:
                 self.playing, self.paused = False, True
             elif msg[0] == TICK and self.playing:
                 self.ticks += 1
+                self.moved(slack=.003)  # its song kept on the ticks, as REAPER keeps in step with them
             elif msg[0] == 0xF2 and len(msg) == 3:
                 self.ticks = (msg[1] | msg[2] << 7) * 6
             if msg[0] in (START, CONTINUE, STOP, 0xF2):
@@ -157,12 +159,19 @@ class Stub:
         return (1 if self.playing else 2 if self.paused else 0) | (4 if self.recording else 0)
 
     # ---- audio (ptytwin.h's Audio) ----
-    def moved(self, now=None):
-        """Where the song plays from now, for the twin's AUX"""
+    def moved(self, now=None, slack=0.):
+        """Where the song plays from now, for the twin's AUX; with slack (s), only if it's
+        further than that from where it plays already"""
         if AUDIO:
             now = time.perf_counter() if now is None else now
+            song = self.pos(now) * 60. / self.bpm
+            if slack and self.song_at and self.playing:
+                t, s, rate = self.song_at
+                if abs(s + (now - t) * rate - song) <= slack:
+                    return
+            self.song_at = (now, song, 1 if self.playing else 0)
             with open(os.path.join(AUDIO, "aux.txt"), "a") as f:
-                f.write("%.6f %.6f %d\n" % (now, self.pos(now) * 60. / self.bpm, 1 if self.playing else 0))
+                f.write("%.6f %.6f %d\n" % self.song_at)
 
     def media(self, path, beats):
         """The song: the WAV looped over beats from 0, its left as the twin's AUX gets it"""
@@ -386,7 +395,18 @@ class Stub:
             if self.tracing:
                 p = self.pos()
                 self.log("pos %.4f %.4f state %d rate 1.0000 bpm %.3f", p * 60. / self.bpm, p, self.state(), self.bpm)
-            time.sleep(.03)
+            # what comes in read as it comes (synchronized, a tick's time is when it came), the
+            # commands every 30 ms
+            end = time.perf_counter() + .03
+            while self.fd is not None and time.perf_counter() < end:
+                r, _, _ = select.select([self.fd], [], [], max(0., end - time.perf_counter()))
+                if r:
+                    try:
+                        self.tap.feed(os.read(self.fd, 4096), time.perf_counter())
+                    except OSError:
+                        pass
+            if self.fd is None:
+                time.sleep(.03)
 
 
 def main():

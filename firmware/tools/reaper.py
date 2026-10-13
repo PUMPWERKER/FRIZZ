@@ -1647,72 +1647,172 @@ def daw_loop_restart(r, d):
 STANDSTILL = -98  # the transport's detents from 1x down through 1/16x into the standstill (#174)
 
 
+class LineOut:
+    """The line out's left, recorded from now until stop(): pw-record from measure.py's source
+    on the device; on the twin, ptytwin.h's out.f32 for the same time (FRIZZ_TWIN_AUDIO)"""
+
+    def __init__(self):
+        self.t0 = time.perf_counter()
+        self.twin = os.environ.get("FRIZZ_TWIN_AUDIO") if os.environ.get("FRIZZ_REAPER") else None
+        if not self.twin:
+            fd, self.path = tempfile.mkstemp(suffix=".f32")
+            os.close(fd)
+            self.proc = subprocess.Popen(["pw-record", "--target", measure.line_source(), "--rate", str(SR),
+                                          "--channels", "1", "--format", "f32", "--raw", self.path],
+                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def stop(self):
+        """The samples, and the time this computer had at the first"""
+        if self.twin:
+            t1 = time.perf_counter()
+            with open(os.path.join(self.twin, "start")) as f:
+                start = float(f.read())
+            n0, n1 = int((self.t0 - start) * SR), int((t1 - start) * SR)
+            path = os.path.join(self.twin, "out.f32")
+            while os.path.getsize(path) < n1 * 4 and time.perf_counter() < t1 + 3.:
+                time.sleep(.01)
+            with open(path, "rb") as f:
+                f.seek(n0 * 4)
+                return np.frombuffer(f.read((n1 - n0) * 4), "<f4").astype(np.float64), self.t0
+        self.proc.terminate()
+        self.proc.wait()
+        y = np.fromfile(self.path, "<f4").astype(np.float64)
+        os.remove(self.path)
+        return y, self.t0
+
+    def close(self):
+        if not self.twin and self.proc.poll() is None:
+            self.proc.kill()
+            self.proc.wait()
+            os.remove(self.path)
+
+
+def against_song(m, y, a, n, t0, where, every=.25, near=.2):
+    """FRIZZ's line out with the mix in the middle: the song as REAPER plays it (into AUX,
+    live) and the loop (the song's bars a..a+n-1, a a multiple of n) both. where(t): the song's
+    position in s at this computer's time t, from REAPER's trace (None: not playing). For each
+    window of about half a bar, every quarter, the song found within +-near s of where REAPER
+    is, the loop within as much of where it would be in step, where the two hold different
+    bars: (this computer's time, the loop's phase against the song's in ms, mod the loop's
+    length, the correlations). REAPER following FRIZZ puts its song where FRIZZ's Song Position
+    says, the loop's start on a multiple of its length: in step, 0, give or take REAPER's own
+    latency"""
+    w = int(.45 * m.bar)
+    song = np.concatenate([m.mono, m.mono, m.mono])  # past its end: its start again
+    total = m.bars * m.bar
+    length = n * m.bar
+    got = []
+    for i in range(0, len(y) - w, int(every * m.bar)):
+        t = t0 + i / float(SR)
+        pos = where(t)
+        x = y[i:i + w]
+        if pos is None or np.sqrt(np.mean(x ** 2)) < 1e-4:
+            continue
+        at = (pos * SR) % total
+        bar = int(at // m.bar)
+        if a <= bar < a + n or a <= int(((at + w) % total) // m.bar) < a + n:
+            continue  # the song in the loop's bars: the two alike
+        sa, la = song[int(at):][:w], song[int(a * m.bar + at % length):][:w]
+        if abs(np.dot(sa, la)) > .3 * np.sqrt(np.dot(sa, sa) * np.dot(la, la) + 1e-20):
+            continue  # a song that repeats its bars: here as the loop's, alike too
+        so = measure.find(song, x, at + total, near * SR)
+        lo = measure.find(song, x, a * m.bar + at % length + total, near * SR)
+        if not lo or not so or abs(lo[1]) < CLEAR / 2 or abs(so[1]) < CLEAR / 2:
+            continue
+        d = ((lo[0] - a * m.bar) - so[0] + length / 2.) % length - length / 2.
+        got.append((t, d / SR * 1000., abs(lo[1]), abs(so[1])))
+    return got
+
+
+def where_from(d):
+    """The song's position in s at this computer's time, from REAPER's trace: between two
+    readings while it plays, as their line; None elsewhere"""
+    pts = [(now, sec) for now, sec, _, state, _, _ in d.traced(0.) if state & 1]
+
+    def where(t):
+        k = next((i for i, (now, _) in enumerate(pts) if now > t), None)
+        if not k or t - pts[k - 1][0] > .2:
+            return None
+        (u0, s0), (u1, s1) = pts[k - 1], pts[k]
+        return s0 + (s1 - s0) * (t - u0) / (u1 - u0) if u1 > u0 else s0
+    return where
+
+
+def stretch(got, t0, t1):
+    """against_song()'s readings between t0 and t1: their ms"""
+    return [d for t, d, _, _ in got if t0 <= t <= t1]
+
+
 @case("daw-follows-audio", "7: a DAW synced to FRIZZ, with music (#159), through a standstill (#174): a "
       "loop recorded from REAPER's song, then REAPER synced to FRIZZ's clock and Song Position, "
-      "recording the line out: the loop against REAPER's time line before the transport is turned "
-      "into a standstill and after it's pressed back to 1x", sound=True)
+      "playing the song into AUX, FRIZZ's mix in the middle: the loop against the song in the line out "
+      "before the transport is turned into a standstill and after it's pressed back to 1x", sound=True)
 def daw_follows_audio(r, d):
     m, n, a = audio_ready(r, d)
-    takes, dry, _ = record_song_loop(r, d, m, n, a, until=a + n + 1)
-    content = loop_content(a, n)
+    record_song_loop(r, d, m, n, a, until=a + n + 1)
     usb = r.usb.log
-    # FRIZZ's own clock (the loop's) out over USB, REAPER following it: its clock out off
+    # FRIZZ's own clock (the loop's) out over USB, REAPER following it: its clock out off. (Not
+    # recording: REAPER recording runs on by itself, deaf to a Stop; the line out by pw-record)
     r.setting(clock_source=SOURCES["internal"], midi_transport=0, midi_out=OUTS["all"])
+    d.send(midisuite.cc(midisuite.GLOBAL, 87, 64))  # the mix in the middle: the song and the loop
     d.restart(sync=True)
     r.note("REAPER restarted synchronized: %s; FRIZZ %s" % (d.sync_info, remote.LOOPER[r.state()["looper"]]))
     d.tempo(DAW_BPM)
-    d.media(m.path, m.beats(4 * n + 8))
-    d.rec()
+    d.media(m.path, m.beats(4 * n + 16))
     d.locate(0)
     d.trace(True)
     if r.state()["looper"] == 2:
         r.tap(PLAY)
         time.sleep(.5)
-    passes = []
-    for what in ("before", "after"):
-        t = time.perf_counter()
-        if what == "before":
-            r.tap(PLAY)
-        else:
-            r.tap("ENC_5_SW")  # the transport pressed: 1x
-        t_cont, _ = first_after(usb, CONTINUE, t, 3.)
-        began = playing_from(d, t_cont or t, 4.)
-        r.check("%s: FRIZZ's Continue, REAPER plays" % ("PLAY" if what == "before" else "out of the standstill"),
-                t_cont is not None and began is not None,
-                "Continue %s, REAPER %s" % ("sent" if t_cont else "none",
-                                           "%.0f ms after" % ((began - t_cont) * 1000) if began and t_cont else "no"), "both")
-        if began is None:
-            return
-        time.sleep(SETTLE)
-        if not d.traced(time.perf_counter() - .2)[-1][3] & 4:
-            d.record()  # (punched in where it plays)
-        t1 = time.perf_counter()
-        time.sleep(1.5 * n * m.bar / SR + .5)
-        info = d.traced(t1)
-        if what == "before":
-            tp = time.perf_counter()
-            r.turn(midisuite.TRANSPORT_ENC, STANDSTILL)
-            t_stop, _ = first_after(usb, STOP, tp, 4.)
-            halted = stopped_from(d, t_stop or tp, 6.)
-            r.check("the transport turned into a standstill: Stop, REAPER pauses", t_stop is not None and halted is not None,
-                    "Stop %s, REAPER %s" % ("sent" if t_stop else "none", "paused" if halted else "plays on"), "both")
-            time.sleep(2.)
-        else:
-            d.stop_transport()
-        time.sleep(.3)
-        got = recorded(d)
-        beats = [b for _, _, b, st, _, _ in info if st & 1]
-        want = list(range(int(np.ceil(beats[0] / 4.)) + 1, int(beats[-1] / 4.))) if beats else []
-        passes.append((what, got, want, info))
-    d.trace(False)
+    rec = LineOut()
+    try:
+        spans = []
+        for what in ("before", "after"):
+            t = time.perf_counter()
+            r.tap(PLAY if what == "before" else "ENC_5_SW")  # the transport pressed: 1x
+            t_cont, _ = first_after(usb, CONTINUE, t, 3.)
+            began = playing_from(d, t_cont or t, 4.)
+            r.check("%s: FRIZZ's Continue, REAPER plays" % ("PLAY" if what == "before" else "out of the standstill"),
+                    t_cont is not None and began is not None,
+                    "Continue %s, REAPER %s" % ("sent" if t_cont else "none",
+                                               "%.0f ms after" % ((began - t_cont) * 1000) if began and t_cont else "no"), "both")
+            if began is None:
+                return
+            time.sleep(SETTLE)
+            t1 = time.perf_counter()
+            time.sleep(1.5 * n * m.bar / SR)
+            spans.append((what, t1, time.perf_counter()))
+            if what == "before":
+                tp = time.perf_counter()
+                r.turn(midisuite.TRANSPORT_ENC, STANDSTILL)
+                t_stop, _ = first_after(usb, STOP, tp, 4.)
+                halted = stopped_from(d, t_stop or tp, 6.)
+                r.check("the transport turned into a standstill: Stop, REAPER pauses", t_stop is not None and halted is not None,
+                        "Stop %s, REAPER %s" % ("sent" if t_stop else "none", "paused" if halted else "plays on"), "both")
+                time.sleep(2.)
+        y, t0 = rec.stop()
+    finally:
+        rec.close()
+        d.stop_transport()
+        d.trace(False)
+    if getattr(d, "keep", None):
+        os.makedirs(d.keep, exist_ok=True)
+        measure.write_wav(os.path.join(d.keep, "line-out.wav"), np.repeat(y[:, None], 2, 1))
+        with open(os.path.join(d.keep, "line-out.txt"), "w") as f:
+            f.write("t0 %.6f\n" % t0 + "".join("%s %.6f %.6f\n" % s for s in spans))
+    got = against_song(m, y, a, n, t0, where_from(d))
     res = {}
-    for what, got, want, info in passes:
-        rates = sorted({round(x[4], 4) for x in info})
-        res[what] = judged(r, "%s the standstill: the loop against REAPER's time line (REAPER following, play rate %s)" % (
-            what, "/".join("%g" % x for x in rates[:4])), loop_offsets(m, got, content, want, dry), want, 20., m, got, dry)
-    if res.get("before") and res.get("after"):
-        mb = sum(x for _, x, _ in res["before"]) / len(res["before"])
-        ma = sum(x for _, x, _ in res["after"]) / len(res["after"])
+    for what, t1, t2 in spans:
+        ms = stretch(got, t1, t2)
+        res[what] = ms
+        r.tcheck("%s the standstill: the loop against REAPER's song in the line out, steady" % what,
+                 len(ms) >= 3 and max(ms) - min(ms) <= 2. * r.slack,
+                 "%d readings: %s ms" % (len(ms), " ".join("%+.1f" % x for x in ms)) if ms else "none",
+                 "3 at least, within %g ms" % (2. * r.slack))
+    if len(res.get("before", [])) >= 3 and len(res.get("after", [])) >= 3:
+        mb, ma = sorted(res["before"])[len(res["before"]) // 2], sorted(res["after"])[len(res["after"]) // 2]
+        r.note("REAPER following: its song against FRIZZ's loop in the line out %+.2f ms before the standstill, "
+               "%+.2f after (its own latency in it)" % (mb, ma))
         r.tcheck("after the standstill where it was before: REAPER went on where the loop is", abs(ma - mb) <= TOL * r.slack,
                  "%+.2f ms (before %+.2f, after %+.2f)" % (ma - mb, mb, ma), "+-%g ms" % (TOL * r.slack))
 
