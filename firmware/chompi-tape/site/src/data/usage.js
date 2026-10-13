@@ -102,6 +102,31 @@ export const groups = [
   ['Drum kits', ['kits']],
 ].map(([title, ids]) => ({ title, cards: ids.map((id) => card[id]) }));
 
+// USB, a section of its own
+export const usb = [
+  {
+    id: 'usb-audio', title: 'Audio interface', colour: 'blue', keys: ['USB', '_to a computer'],
+    diagram: { type: 'legend', rows: [['Main L / R', 'blue', 'the mix, as the speakers get it'], ['Input L / R', 'red', 'the input, as CHOMPI records it'],
+      ['Stereo in', 'pink', 'what the computer plays']] },
+    items: ['48 kHz, 24 bit, in and out at once',
+      'Shows up as <b>CHOMPI</b>, no driver needed'],
+  },
+  {
+    id: 'usb-input', title: 'USB as input', colour: 'blue', keys: ['MIC', '_hold'],
+    panel: { hl: ['mic'], leds: { mic: LED.blue }, labels: { mic: ['hold', 0, 80] } },
+    items: ['Audio from the computer becomes the input as soon as it plays, mic LED <b>blue</b>',
+      'Same level as line in: sample it, loop it, monitor it',
+      'Picking mic, line in or resample overrides it until the computer reconnects',
+      '<b>Hold MIC</b>: mic ↔ USB',
+      'Unplugged: back to line in or mic'],
+  },
+  {
+    id: 'usb-midi', title: 'MIDI', colour: 'blue', keys: ['USB'],
+    items: ['MIDI in and out, same as the TRS jack',
+      'Clock in syncs the tempo and the delay'],
+  },
+];
+
 // the arpeggiator, a section of its own
 export const arp = [
   {

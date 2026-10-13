@@ -17,7 +17,7 @@ const sw = (name) => r(lw * (on(name) ? 1.8 : 1));
 
 const keys = [
   ...WHITE.map((x) => ({ x, y: 19.5, size: 17 })),
-  ...Object.entries(BLACK).map(([n, x]) => ({ x, y: 39.5, size: 15, black: true, name: { 19: 'line', 24: 'copy' }[n] })),
+  ...Object.entries(BLACK).map(([n, x]) => ({ x, y: 39.5, size: 15, black: true, name: { 18: 'mic', 19: 'line', 24: 'copy' }[n] })),
   ...['shift', 'play', 'loop'].map((name) => ({ x: KEYS[name][0], y: KEYS[name][1], size: KEYS[name][2], name })),
 ];
 const ledList = [
@@ -42,7 +42,9 @@ const [wx, wy, wr] = WHEEL;
     <rect class:list={['key', { black, hl: on(name) }]} x={r(X(x) - size * s / 2)} y={r(Y(y) - size * s / 2)}
           width={r(size * s)} height={r(size * s)} rx={r(1.5 * s)} stroke-width={sw(name)} />
   ))}
-  {leds.line && <circle class="dot" cx={X(BLACK[19])} cy={r(Y(39.5) + 4.2 * s)} r={r(1.8 * s)} style={`fill: ${leds.line}`} stroke-width="1.2" />}
+  {['mic', 'line'].filter((k) => leds[k]).map((k) => (
+    <circle class="dot" cx={X(KEYS[k][0])} cy={r(Y(39.5) + 4.2 * s)} r={r(1.8 * s)} style={`fill: ${leds[k]}`} stroke-width="1.2" />
+  ))}
   {callouts.map(([name, [text, dx, dy]]) => {
     const px = X(POS[name][0]), py = Y(POS[name][1]);
     const ly = dy < 0 ? r(Y(105) - 40) : r(Y(0) + 44);
