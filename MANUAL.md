@@ -816,6 +816,8 @@ The 12th white key: TEMPO's tempo-synced delay, a send.
 
 - **Tempo:** the [tempo](#tempo): with a loop, its exact tempo, so the echoes stay on its
   beats; otherwise rounded to whole BPM. Limited to 50-300 BPM so 2 bars fit the 10 s buffer.
+- **Stereo:** the left echoes come 20 ms after their beat, the right ones 10 ms, which spreads
+  them; every repeat as late as the first, so they stay on the beats.
 - **Random events** are rolled on every 8th note; the knob's distance from centre is the
   chance. (TEMPO rolled them on its arpeggiator's step instead.)
 - **Beat phase:** the 8th notes that random events follow are counted from the loop's start.

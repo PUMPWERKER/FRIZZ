@@ -80,9 +80,11 @@ public:
     {
         gate_.Process();
         // off, on the live signal: the buffer (in SDRAM) waits, only this frame is kept, for
-        // a press's first read, which reaches one frame behind it
+        // a press's first read, which reaches one frame behind it. The key's fade, unused
+        // here, lands on 0, so it stops running (#167)
         if (state_ == State::IDLE && !gate_.IsOn())
         {
+            gate_.Asleep();
             held_[0] = *l;
             held_[1] = *r;
             recording_ = false;

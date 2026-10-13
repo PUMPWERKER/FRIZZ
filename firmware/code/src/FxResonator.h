@@ -68,12 +68,14 @@ public:
     {
         const float gate = gate_.Process();
         // off and faded out: no loop, so nothing to read. Tap still fills the ring, so a
-        // punch-in rings from the recent sound as ever, with the knobs where they're going
+        // punch-in rings from the recent sound as ever, with the knobs where they're going;
+        // the env mod's follower from silence, not from the level it last had (#167)
         if (gate_.Asleep())
         {
             SnapParams();
             lp_at_[i] = lp_coeff_.value;
             ret_[0] = ret_[1] = 0.f;
+            env_ = 0.f;
             return;
         }
         const float feedback = feedback_.Process();

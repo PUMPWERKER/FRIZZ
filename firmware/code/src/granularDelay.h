@@ -6,13 +6,18 @@
  *     (ClockPulse) and 8th-note edges (setClockEdge), from TempoClock.h via FxDelay.h.
  *     TEMPO's edges came from its arpeggiator step instead.
  *   - TEMPO's bipolar main knob (division by distance from centre, random side / shimmer side,
- *     on/off dead zone) is split into setDivision and setRandom; the delay is always on and
- *     wet_amt_ stays at 1, so the return level is applied outside and doesn't shorten tails.
+ *     on/off dead zone) is split into setDivision and setRandom; the delay is always on, and
+ *     its return level is applied outside (FxDelay.h), so it doesn't shorten tails.
  *   - no buffer mute option and no getColors (the LEDs are drawn in NormalPage).
  *   - no freeze (TEMPO's buffer lock), so no frozen buffer.
  *   - a jump in tempo crossfades to the new delay time instead of sliding to it.
  *   - the tempo is a float (TEMPO's was whole BPM in microseconds per beat), so on a loop
  *     whose tempo isn't whole the echoes don't drift off its beats.
+ *   - the stereo offset (20ms left, 10ms right) is on the output only: TEMPO read the voices
+ *     that far back and fed that back, so every repeat came that much later, the 5th echo at
+ *     1/4 and 120 BPM 100ms off the beat on the left (#167). The voices read both channels at
+ *     the read head now, for the feedback, and the output is that, the offset later
+ *     (delay_out_l, delay_out_r): each echo the offset late and no more.
  */
 #pragma once
 #include "FrizzHot.h"
@@ -28,46 +33,50 @@ constexpr uint32_t kMaxCrossfadeSamps = 256;       // a division change
 constexpr uint32_t kMaxEventCrossfadeSamps = 1024; // a random event's fade in and out
 constexpr float kTempoJump = .02f; // a tempo change this much of the delay time crossfades
 
-constexpr float delayStereoOffsetLeft = 960.f;
-constexpr float delayStereoOffsetRight = 480.f;
+// FRIZZ: the stereo offset, on the output only (granularDelay::read)
+constexpr uint32_t delayStereoOffsetLeft = 960;
+constexpr uint32_t delayStereoOffsetRight = 480;
+// the output's line, per channel: what the voices read, the offset later; a power of 2 past
+// each offset
+constexpr uint32_t kDelayOutLeft = 1024, kDelayOutRight = 512;
+static_assert(delayStereoOffsetLeft < kDelayOutLeft && delayStereoOffsetRight < kDelayOutRight,
+              "the offsets fit the output's line");
+// In DTCMRAM (6 KB), as the reverb (chompi_main.cpp): read and written every sample, in SDRAM
+// it took the cache from the other effects (the bench's "everything" +0.9 points for the
+// delay, #167). Not zeroed at startup: Init clears it
+#if defined(__arm__)
+#define FRIZZ_DTCM_BSS __attribute__((section(".dtcmram_bss")))
+#else
+#define FRIZZ_DTCM_BSS
+#endif
+__attribute__((weak)) float delay_out_l[kDelayOutLeft] FRIZZ_DTCM_BSS;
+__attribute__((weak)) float delay_out_r[kDelayOutRight] FRIZZ_DTCM_BSS;
 
 namespace chompi {
+    /** The frame at read_head, interpolated, added to out_l and out_r */
     inline void getSample(float *buffer, float read_head, float *out_l, float *out_r, size_t buffer_size) {
-        float right_read_head = read_head - delayStereoOffsetRight;
-        if (right_read_head < 0.f) {
-            right_read_head += static_cast<float>(buffer_size);
+        // a head can be behind the buffer's start (an event's, or a crossfade's, at a long
+        // delay): TEMPO's offset subtraction wrapped it
+        if (read_head < 0.f) {
+            read_head += static_cast<float>(buffer_size);
         }
-        float left_read_head = read_head - delayStereoOffsetLeft;
-        if (left_read_head < 0.f) {
-            left_read_head += static_cast<float>(buffer_size);
+        size_t i0 = static_cast<int>(read_head);
+        if (i0 >= buffer_size) {
+            i0 -= buffer_size;
         }
-
-        size_t i0_l = static_cast<int>(left_read_head);
-        if (i0_l >= buffer_size) {
-            i0_l -= buffer_size;
-        }
-        size_t i1_l = (i0_l + 1);
-        if (i1_l >= buffer_size) {
-            i1_l -= buffer_size;
+        size_t i1 = (i0 + 1);
+        if (i1 >= buffer_size) {
+            i1 -= buffer_size;
         }
 
-        size_t i0_r = static_cast<int>(right_read_head);
-        if (i0_r >= buffer_size) {
-            i0_r -= buffer_size;
-        }
-        size_t i1_r = (i0_r + 1);
-        if (i1_r >= buffer_size) {
-            i1_r -= buffer_size;
-        }
-
-        float frac = left_read_head - static_cast<float>(i0_l);
+        float frac = read_head - static_cast<float>(i0);
 
         // Read interleaved stereo
-        float a_l = buffer[i0_l * 2];
-        float b_l = buffer[i1_l * 2];
+        float a_l = buffer[i0 * 2];
+        float b_l = buffer[i1 * 2];
 
-        float a_r = buffer[i0_r * 2 + 1];
-        float b_r = buffer[i1_r * 2 + 1];
+        float a_r = buffer[i0 * 2 + 1];
+        float b_r = buffer[i1 * 2 + 1];
 
         *out_l += (a_l + frac * (b_l - a_l));
         *out_r += (a_r + frac * (b_r - a_r));
@@ -342,6 +351,13 @@ class granularDelay {
         SetTempo(120);
         delay_samples_ = delay_samples_target_ = BarSamples() * delayDivs[kStartDiv];
         cur_sig_l_ = cur_sig_r_ = 0.f;
+        for (uint32_t i = 0; i < kDelayOutLeft; ++i) {
+            delay_out_l[i] = 0.f;
+        }
+        for (uint32_t i = 0; i < kDelayOutRight; ++i) {
+            delay_out_r[i] = 0.f;
+        }
+        out_pos_ = 0;
 
         division_ = kStartDiv;
         shimmer_ = false;
@@ -468,25 +484,43 @@ class granularDelay {
             myVoices[nextIdx].startFadeOut();
         }
 
+        // the voices at the read head, as they're fed back
+        float fb_l = 0.f, fb_r = 0.f;
         for (size_t i = 0; i < 2; ++i) {
-            myVoices[i].Read(out_l, out_r);
+            myVoices[i].Read(&fb_l, &fb_r);
         }
+        // FRIZZ: the output, the stereo offset later; not fed back, so the echoes stay on the
+        // beat (#167)
+        delay_out_l[out_pos_ & (kDelayOutLeft - 1)] = fb_l;
+        delay_out_r[out_pos_ & (kDelayOutRight - 1)] = fb_r;
+        *out_l = delay_out_l[(out_pos_ - delayStereoOffsetLeft) & (kDelayOutLeft - 1)];
+        *out_r = delay_out_r[(out_pos_ - delayStereoOffsetRight) & (kDelayOutRight - 1)];
+        out_pos_ = (out_pos_ + 1) & (kDelayOutLeft - 1);
 
-        cur_sig_l_ = *out_l * delay_feedback_amt_;
-        cur_sig_r_ = *out_r * delay_feedback_amt_;
+        cur_sig_l_ = fb_l * delay_feedback_amt_;
+        cur_sig_r_ = fb_r * delay_feedback_amt_;
         // FRIZZ: the damping in the feedback (FxDelay.h), a one-pole each way, darker or
-        // thinner with every repeat
+        // thinner with every repeat. Off, the lowpass follows the signal and the highpass's
+        // lows rest at 0, so turning it on by a jump starts from now, not from an old sample,
+        // a click in the feedback (#167)
         if (damp_hi_ < 1.f) {
             damp_lp_l_ += damp_hi_ * (cur_sig_l_ - damp_lp_l_);
             damp_lp_r_ += damp_hi_ * (cur_sig_r_ - damp_lp_r_);
             cur_sig_l_ = damp_lp_l_;
             cur_sig_r_ = damp_lp_r_;
         }
+        else {
+            damp_lp_l_ = cur_sig_l_;
+            damp_lp_r_ = cur_sig_r_;
+        }
         if (damp_lo_ > 0.f) {
             damp_hp_l_ += damp_lo_ * (cur_sig_l_ - damp_hp_l_);
             damp_hp_r_ += damp_lo_ * (cur_sig_r_ - damp_hp_r_);
             cur_sig_l_ -= damp_hp_l_;
             cur_sig_r_ -= damp_hp_r_;
+        }
+        else {
+            damp_hp_l_ = damp_hp_r_ = 0.f;
         }
     }
 
@@ -566,6 +600,7 @@ class granularDelay {
     uint32_t buffer_size_;
     float delay_samples_, delay_samples_target_;
     float cur_sig_l_, cur_sig_r_;
+    uint32_t out_pos_; // in delay_out_l and delay_out_r
     float delay_feedback_amt_;
     float damp_hi_ = 1.f, damp_lo_ = 0.f;
     float damp_lp_l_ = 0.f, damp_lp_r_ = 0.f, damp_hp_l_ = 0.f, damp_hp_r_ = 0.f;

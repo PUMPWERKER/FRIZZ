@@ -5,8 +5,9 @@
 // must pick the same lag for every one of kTrials searches; and so must the search spread
 // over two blocks as the shifter runs it, with a block written to the ring in between.
 // Then the shifter itself, at the ends of its shift, grain, swoop and stereo, from power-on,
-// after the shift was turned while it was off, and turned from the centre while it plays: no
-// sounding tap may run into the end of its delay (#137, #140). Built and run by unit.sh splice.
+// after the shift or the grain was turned while it was off, turned from the centre while it
+// plays, and the grain turned at once while it plays: no sounding tap may run into the end of its delay
+// (#137, #140, #167). Built and run by unit.sh splice.
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -68,6 +69,10 @@ static int OldLag(const float* b, size_t last, float nominal, float other, float
 }
 
 static float buf[kBufSize];
+
+// a channel's window: one for both channels before #167
+static float Window(float w, size_t) { return w; }
+static float Window(const float (&w)[2], size_t c) { return w[c]; }
 
 int main()
 {
@@ -187,7 +192,8 @@ int main()
             shifter.Process(&l, &r);
             for (size_t c = 0; c < 2; c++)
             {
-                const float max_delay = shifter.window_frames_ + chompi::Shifter::kDelayPast;
+                const float max_delay =
+                    Window(shifter.window_frames_, c) + chompi::Shifter::kDelayPast;
                 const float w = shifter.window_[c];
                 const float weight[2] = {1.f - fabsf(2.f * w - 1.f), fabsf(2.f * w - 1.f)};
                 waits += shifter.held_[c] == 1;
@@ -234,6 +240,39 @@ int main()
         {"+12, off, +7", 1.f, .5f + 7.f / 24, false},
         {"-12, off, -12", 0.f, 0.f, false},
     };
+    // and the grain turned while it's off (#167): a long grain's taps, a short one on waking
+    struct GrainTurn
+    {
+        const char* name;
+        float shift, from, to;
+    } grain_turns[] = {
+        {"+12 grain 50ms, off, 10ms", 1.f, 1.f, 0.f},
+        {"-12 grain 50ms, off, 10ms", 0.f, 1.f, 0.f},
+        {"+12 grain 10ms, off, 50ms", 1.f, 0.f, 1.f},
+        {"-12 grain 10ms, off, 50ms", 0.f, 0.f, 1.f},
+    };
+    for (const GrainTurn& g : grain_turns)
+        for (int at : {0, 211, 777})
+        {
+            shifter.Init(48000.f);
+            shifter.SetParam(chompi::Shifter::SHIFT, g.shift);
+            shifter.SetParam(chompi::Shifter::GRAIN, g.from);
+            shifter.SetOn(true);
+            play(48000 + at);
+            shifter.SetOn(false);
+            play(24000);
+            shifter.SetParam(chompi::Shifter::GRAIN, g.to);
+            play(100);
+            shifter.SetOn(true);
+            waits = waiting_stuck = stuck = 0;
+            play(48000);
+            if (at != 0 && stuck == 0)
+                continue;
+            char line[160];
+            snprintf(line, sizeof(line), "%s, %d samples later: a sounding tap at the end of its "
+                     "delay %d samples", g.name, at, stuck);
+            Check(stuck == 0, line);
+        }
     for (const Turn& turn : turns)
     {
         shifter.Init(48000.f);
@@ -288,5 +327,56 @@ int main()
                  static_cast<int>(lroundf(to * 24.f)) - 12, stuck);
         Check(waits > 0 && stuck == 0, line);
     }
+    // the grain turned at once while it plays (a scene recall, MIDI, a fast hand): the taps
+    // were placed for the window they had, so the new one comes in at the splices as far as
+    // they fit it. Before #167 it came in at once: going up into a longer window, a tap ran
+    // into delay 1 (+12 with 10 to 50ms: ~1000 samples), going down into a shorter one, into
+    // the end of it, and played unshifted for up to ~20ms, a click
+    struct Grain
+    {
+        const char* name;
+        float shift, from, to, swoop;
+    } grains[] = {
+        {"+12, grain 10 to 50ms", 1.f, 0.f, 1.f, 0.f},
+        {"-12, grain 50 to 10ms", 0.f, 1.f, 0.f, 0.f},
+        {"+12, grain 50 to 10ms", 1.f, 1.f, 0.f, 0.f},
+        {"-12, grain 10 to 50ms", 0.f, 0.f, 1.f, 0.f},
+        {"+3, grain 10 to 50ms", .5f + 3.f / 24, 0.f, 1.f, 0.f},
+        {"-3, grain 50 to 10ms", .5f - 3.f / 24, 1.f, 0.f, 0.f},
+        {"+12, swoop, grain 10 to 50ms", 1.f, 0.f, 1.f, 1.f},
+        {"-12, swoop, grain 50 to 10ms", 0.f, 1.f, 0.f, 1.f},
+    };
+    for (const Grain& g : grains)
+        for (int at : {0, 97, 333, 1001})
+        {
+            shifter.Init(48000.f);
+            shifter.SetParam(chompi::Shifter::SHIFT, g.shift);
+            shifter.SetParam(chompi::Shifter::GRAIN, g.from);
+            shifter.SetParam(chompi::Shifter::SWOOP, g.swoop);
+            shifter.SetOn(true);
+            play(24000 + at);
+            // back and forth a few times, then to the end
+            waits = waiting_stuck = stuck = 0;
+            for (int i = 0; i < 3; i++)
+            {
+                shifter.SetParam(chompi::Shifter::GRAIN, g.to);
+                play(1500 + at);
+                shifter.SetParam(chompi::Shifter::GRAIN, g.from);
+                play(700);
+            }
+            shifter.SetParam(chompi::Shifter::GRAIN, g.to);
+            play(48000);
+            const float want = g.to < .5f ? 480.f : 2400.f;
+            const bool there = Window(shifter.window_frames_, 0) == want
+                               && Window(shifter.window_frames_, 1) == want;
+            if (at != 0 && stuck == 0 && there)
+                continue; // one line per setting, unless one fails
+            char line[160];
+            snprintf(line, sizeof(line),
+                     "%s, %d samples later: a sounding tap at the end of its delay %d samples, "
+                     "%s the grain a second on",
+                     g.name, at, stuck, there ? "at" : "NOT at");
+            Check(stuck == 0 && there, line);
+        }
     return Finish();
 }

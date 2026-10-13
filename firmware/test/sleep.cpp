@@ -5,7 +5,10 @@
 #include <cmath>
 #include <cstdio>
 #include "check.h"
+// the resonator's follower, to see where it wakes
+#define private public
 #include "FxChain.h"
+#undef private
 
 using namespace chompi;
 
@@ -153,6 +156,71 @@ static void TestResonator()
     Check(rings && !reso.Idle(), "resonator: on again, it rings");
 }
 
+/** The resonator with env mod up, loud, then off and asleep: punched in again on a quiet
+ *  input, its follower starts from silence, not from the loud level it had, which pushed the
+ *  feedback up for ~100ms (#167) */
+static void TestResonatorEnv()
+{
+    static chompi::Resonator reso;
+    reso.Init(kSr);
+    reso.SetParam(chompi::Resonator::FEEDBACK, .3f);
+    reso.SetParam(chompi::Resonator::ENV_MOD, 1.f);
+    reso.SetOn(true);
+    long n = 0;
+    const auto Run = [&](long samples, float gain) {
+        for (long end = n + samples; n < end; n++)
+        {
+            float l = 3.f * gain * Sine(n), r = l;
+            reso.Feed(&l, &r);
+            reso.Tap(l, r);
+        }
+    };
+    Run(24000, 1.f);
+    const float loud = reso.env_;
+    reso.SetOn(false);
+    Run(48000, 1.f);
+    const bool asleep = reso.Idle();
+    reso.SetOn(true);
+    Run(1, .01f);
+    printf("      resonator's env mod: %.3f loud, %.5f on waking on a quiet input\n", loud,
+           reso.env_);
+    Check(asleep && loud > .5f && reso.env_ < .01f,
+          "resonator: punched in after a sleep, its env mod starts from silence");
+}
+
+/** A Smoothed's Settle lands on the target exactly, so what waits on it (the filter's
+ *  resonance, the delay's feedback, page 2, the compressor, the reverb's pre-delay) comes to
+ *  rest: up to 1, where a step falls below a float's resolution, down to 0, through the
+ *  denormals, and between; at the knobs' slew and a recall's. Process doesn't, as on main:
+ *  landing there cost a morph too much (#167, finding 6) */
+static void TestSmoothed()
+{
+    struct Move
+    {
+        float from, to, coeff;
+    } moves[] = {
+        {0.f, 1.f, chompi::kFxParamCoeff},   {1.f, 0.f, chompi::kFxParamCoeff},
+        {.3f, .7f, chompi::kFxParamCoeff},   {0.f, 1.f, chompi::kFxRecallCoeff},
+        {1.f, 0.f, chompi::kFxRecallCoeff},  {2400.f, 480.f, chompi::kFxParamCoeff},
+        {1e-4f, 0.f, chompi::kFxParamCoeff},
+    };
+    bool all = true;
+    for (const Move& m : moves)
+    {
+        chompi::Smoothed s;
+        s.Reset(m.from);
+        s.target = m.to;
+        long at = -1;
+        for (long i = 0; i < 10 * 48000 && at < 0; i++)
+            if (!s.Settle(m.coeff) && s.value == m.to)
+                at = i;
+        printf("      Smoothed::Settle %g to %g at %g: at rest after %ld samples\n", m.from, m.to,
+               m.coeff, at);
+        all = all && at > 0 && at < 48000;
+    }
+    Check(all, "Smoothed: Settle lands on its target exactly, within a second");
+}
+
 static float delay_mem[480000 * 2];
 
 /** The delay: off, it keeps ringing out; it sleeps only after its whole buffer of silence,
@@ -273,6 +341,8 @@ int main()
     TestSkip();
     TestTapeStop();
     TestResonator();
+    TestResonatorEnv();
+    TestSmoothed();
     TestDelay();
     TestReverb();
     return Finish();

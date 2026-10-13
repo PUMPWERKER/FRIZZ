@@ -193,6 +193,11 @@ what FRIZZ does.
   loop. Both transport LEDs are red there. MIDI out treats it as a pause: Stop going in, Song
   Position and Continue coming out. A control change the user let in before 1.0 as an
   exception to the feature freeze. See MANUAL.md, "Looper".
+- **The delay's echoes stay on the beat** (#167): its stereo spread (the left echoes 20 ms
+  late, the right 10 ms, from TEMPO) went round the feedback too, so every repeat came that
+  much later than the one before: at 1/4 and 120 BPM the 5th left echo was 100 ms off the beat.
+  Now every echo is just the spread late, and the repeats stay on the beats as MANUAL.md
+  always said. The delay sounds tighter, its long tails no longer smear.
 - **The scene keys moved two dark keys to the right** (#67): the blank scene is now on F# of
   the lower octave, scenes 1-4 on the lower G# and A# and the upper C# and D#. The lower C#
   and D# do nothing on the play page for now; they're kept free for pages to come. Your
@@ -348,6 +353,20 @@ what FRIZZ does.
 - **MIDI out over USB keeps the transport while FRIZZ writes the card** (#166): a scene saved
   while the loop paused or played on could hold USB up long enough that its Stop, or its Song
   Position and Continue, were dropped with the ticks. Now ticks are dropped first.
+- **No click when the shifter's Grain jumps** (#167): a scene recall, MIDI or a fast turn of
+  Grain while the shifter plays could let one of its two voices play unshifted for up to
+  20 ms, a click (worst with a long grain after a short one, shifting up). The new grain now
+  comes in as the voices start over, within a few of their lives (a split second).
+- **The crusher's dive after a quick tap** (#167): a tap shorter than the dive's 0.1 s fall,
+  then a pause, and the next press started the dive from too high a rate, as if the first
+  fall had been cut off where the tap ended. It now picks up where it would have got to.
+- **The resonator's env mod after a pause** (#167): punched in again after it had gone quiet,
+  with Env Mod up, it rang at the feedback the last loud passage had pushed it to for about
+  0.1 s. It now starts from what it hears.
+- **No click in the echoes when the delay's damping comes on at once** (#167): a scene recall
+  or MIDI turning Damping from the centre to one side could click in the feedback, the filter
+  starting from the sound it had when it was last on. It now starts from the echoes as they
+  are.
 - **With the mix at the loop alone, none of the input is left** (#168): a trace of it, about
   86 dB down, stayed on the master; the headphone feed likewise settles exactly on the master
   or the input now.

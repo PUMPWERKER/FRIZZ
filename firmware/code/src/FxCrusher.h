@@ -74,9 +74,9 @@ public:
         }
         if (asleep_samples_ > 0)
         {
-            // back: the dive where it would have decayed to, the tone's lowpass settled on
-            // the input
-            dive_.value *= powf(dive_decay_coeff_, static_cast<float>(asleep_samples_));
+            // back: the dive where it would have got to (an attack it was in finished, #167),
+            // the tone's lowpass settled on the input
+            dive_.Skip(asleep_samples_, dive_attack_inc_, dive_decay_coeff_);
             asleep_samples_ = 0;
             lp_l_ = *l;
             lp_r_ = *r;

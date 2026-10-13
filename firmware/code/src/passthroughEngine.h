@@ -266,7 +266,7 @@ public:
             // headphone feed: the cue blends from the master's mirror to the input on its own,
             // slewed so a jump doesn't click; at rest on the mirror (as it usually is) no blend
             if (hp_cue_ != hp_cue_target_)
-                hp_cue_ = Glide(hp_cue_, hp_cue_target_); // on 0 the blend stops
+                hp_cue_ = chompi::Glide(hp_cue_, hp_cue_target_, .001f); // on 0 the blend stops
             if (hp_cue_ == 0.f)
             {
                 out[0][i] = hpl;
@@ -415,16 +415,6 @@ public:
 
     chompi::Looper looper;
 
-    /** v slewed a sample toward target (fonepole's ~21 ms), and snapped onto it once it's
-     *  within 1e-5 or a step no longer moves it, so it settles (#168): near 1 a step smaller
-     *  than half the float's spacing there stalls short of it */
-    static inline float Glide(float v, float target)
-    {
-        float next = v;
-        fonepole(next, target, .001f);
-        return next == v || fabsf(next - target) < 1e-5f ? target : next;
-    }
-
 private:
     /** The mic's sample: after its gain, DC blocked and filtered */
     __attribute__((always_inline)) inline float Mic(float in)
@@ -470,7 +460,7 @@ private:
     {
         if (mix_ != mix_target_)
         {
-            mix_ = Glide(mix_, mix_target_);
+            mix_ = chompi::Glide(mix_, mix_target_, .001f);
             dry_amt_ = cosf(mix_ * HALFPI_F);
             wet_amt_ = sinf(mix_ * HALFPI_F);
         }
