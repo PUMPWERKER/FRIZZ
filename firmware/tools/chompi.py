@@ -10,8 +10,9 @@ It is in one of four states, as the computer sees it:
 
 and None for nothing on USB. FRIZZ's keys: 10 the latest release, 13 the latest beta (the
 user's both), 12 a branch's build under test, 11 the bench, 15 the USB storage firmware. Every way between them goes through the launcher: FRIZZ restarts
-into it on its SysEx F0 7D 43 48 10 F7 (MidiClock.h), the storage firmware on an eject, and
-the launcher starts a slot on its RUN (05). Launchers and storage firmwares from before those
+into it on its SysEx F0 7D 43 48 10 F7 (MidiClock.h), and one that doesn't get there (its
+MainLoop hung) on its developers' RESET, taken in the audio callback (to_launcher, #105); the
+storage firmware on an eject, and the launcher starts a slot on its RUN (05). Launchers and storage firmwares from before those
 two need a hand instead, and this says which.
 
 Which build runs, FRIZZ says itself since its developers' SysEx (ident(): kCmdDev's IDENT,
@@ -79,7 +80,10 @@ BAD_MESSAGE, BAD_SLOT = 1, 8
 # FRIZZ's developers' SysEx (MidiControl.h's namespace dev): F0 7D 43 48 3E SUB SEQ ARGS F7,
 # answered 7E SUB SEQ STATUS DATA
 DEV = 0x3E
-IDENT, PERSIST, GET, SET, BENCH, PROBE, LEVELS, SIGNAL, RESEED, BATTERY = range(10)
+IDENT, PERSIST, GET, SET, BENCH, PROBE, LEVELS, SIGNAL, RESEED, BATTERY, RESET, CRASH, TEST = range(13)
+# RESET, handled in FRIZZ's audio callback, so it reaches one whose MainLoop hangs; sent once,
+# never asked again (a FRIZZ started meanwhile would take it too), and unanswered
+RESET_SYSEX = midi_send.HEADER + bytes([DEV, RESET, 0]) + b"RST" + b"\xF7"
 DEV_STATUS = {0: "ok", 1: "refused", 2: "not in this build", 3: "not yet"}
 OK, REFUSED, NOT_HERE, NOT_YET = range(4)
 RAM_ONLY = 1  # IDENT's and PERSIST's flags: the card isn't written until a restart
@@ -358,13 +362,22 @@ def ask_midi(device):
     return "frizz" if len(reply) >= 2 else "launcher"
 
 
-def restart(device):
-    """Asks a running FRIZZ to restart into the launcher; the launcher ignores it"""
+def restart(device, hard=False):
+    """Asks a running FRIZZ to restart into the launcher; the launcher ignores it. HARD: its
+    developers' RESET, from the audio callback, for one whose MainLoop doesn't answer: at once,
+    not waiting for the card (a scene or the settings being written are cut short)"""
     try:
         with link(device) as to:
-            os.write(to.fd, RESTART)
+            os.write(to.fd, RESET_SYSEX if hard else RESTART)
     except OSError:
         pass
+
+
+def frizz_node(node):
+    """Whether NODE is FRIZZ's by its USB names (product "FrizZ", or maker when garbled, #88):
+    another firmware isn't sent its RESET"""
+    m = re.search(r"midiC(\d+)D", node or "")
+    return bool(m) and "frizz" in card_names(m.group(1)).lower()
 
 
 # ---- the card, as a drive -----------------------------------------------------------------
@@ -470,6 +483,17 @@ def wait_for(wanted, timeout, device=None, hint=None, hint_after=8):
 
 
 BUSY = 20  # s a FRIZZ (or the bench) may leave unanswered before it's taken for another firmware
+RESCUE = 15  # s a FRIZZ asked to restart has before it's RESET from its audio callback
+
+
+def reached(wanted, timeout, device=None):
+    """Whether the CHOMPI gets to state WANTED within TIMEOUT s"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if state(device)[0] == wanted:
+            return True
+        time.sleep(0.5)
+    return False
 
 
 def to_launcher(timeout=120, device=None):
@@ -487,6 +511,16 @@ def to_launcher(timeout=120, device=None):
         say("restarting FRIZZ into the launcher ...")
         restart(where)
         hint = "no launcher yet: switch the CHOMPI off and on"
+        # one that took the restart but whose MainLoop hangs before it gets there (#105)
+        if not reached("launcher", RESCUE, device):
+            say("FRIZZ hasn't restarted: resetting it from its audio callback (RESET) ...")
+            restart(where, hard=True)
+    elif now == "other" and frizz_node(where):
+        # FRIZZ by its names, its MainLoop silent for BUSY s: hung, while its audio callback
+        # may still take RESET (#105)
+        say("FRIZZ doesn't answer: resetting it from its audio callback (RESET) ...")
+        restart(where, hard=True)
+        hint = "still no launcher: FRIZZ's audio callback hangs too; switch the CHOMPI off and on"
     elif now == "storage":
         say("ejecting the card, which restarts the CHOMPI into the launcher ...")
         eject(where)
