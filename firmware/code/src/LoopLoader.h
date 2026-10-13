@@ -616,12 +616,12 @@ private:
         End(FAILED, why);
     }
 
-    // ---- the test's CRC-32 (zlib's), 64 KB a pass ----
+    // ---- the test's CRC-32 (zlib's), 16 KB a pass (~3 ms) ----
     LOOP_LOADER_ONCE void CrcStep()
     {
         const uint32_t bytes = frames_ * Channels() * 2u;
         const uint8_t* p = buf_ + skip_;
-        const uint32_t end = at_ + 65536 < bytes ? at_ + 65536 : bytes;
+        const uint32_t end = at_ + 16384 < bytes ? at_ + 16384 : bytes;
         uint32_t c = crc_;
         for (; at_ < end; at_++)
         {

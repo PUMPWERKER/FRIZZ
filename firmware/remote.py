@@ -685,6 +685,7 @@ def wav_data(path):
 def loops_load(f, bank, slot, fault, check):
     import zlib
     load(f)  # the meter from here
+    loops_status(f)  # and MainLoop's longest step
     got = f.dev(chompi.LOOPS, [4, bank, slot - 1, LOOP_FAULTS.get(fault, 0)])
     if not got:
         sys.exit("no answer to LOOPS: a FRIZZ from before it")
@@ -722,10 +723,11 @@ def loops_load(f, bank, slot, fault, check):
 
 
 def loops_write(f, kb, chunk):
+    load(f)
+    loops_status(f)
     got = f.dev(chompi.LOOPS, [6, kb >> 7, kb & 0x7F, chunk >> 7, chunk & 0x7F])
     if not got or got[0] != chompi.OK:
         sys.exit("loops write: refused")
-    load(f)
     s, secs, worst = loops_wait(f, [6], 120)
     mx, mean, over = load(f)
     print("write test, %d KB in %d-byte writes: %s in %.2f s; the audio callback max %.1f %%, "
