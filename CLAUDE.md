@@ -195,12 +195,12 @@ through with why, and the issue is closed with it; the next one opens.
 A build handed out for testing goes on GitHub as a **pre-release**, never as Latest:
 
 - Each release candidate (or other test round the user asks for) gets a numbered one,
-  `v<next>-beta.N` (next: `v1.0.0-beta.3`), tagged on the pushed commit, with that commit's
+  `v<next>-beta.N` (next: `v1.0.0-beta.4`), tagged on the pushed commit, with that commit's
   build attached: `make` in a clean worktree at the tag (`git worktree add ../FrizZ-<tag>
   <tag>`, GCC 10.3), and its `firmware/code/src/build/FRIZZ.bin` uploaded under that name. The
   notes name its md5 and are taken from `CHANGELOG.md`'s Unreleased section, plus a link to
   the release-test issue (or the PR). The number never moves, so feedback can name the build.
-- The pre-release **`beta`** always carries the newest numbered one (now v1.0.0-beta.2), and
+- The pre-release **`beta`** always carries the newest numbered one (now v1.0.0-beta.3), and
   moves only with a new one, at a fixed link
   (`https://github.com/ZUHcYa/FrizZ/releases/download/beta/FRIZZ.bin`): `git tag -f beta
   <commit> && git push -f origin beta`, `gh release upload beta <the numbered one's FRIZZ.bin>
@@ -212,8 +212,8 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   to **key 10** (`FRIZZ`), each on the user's word once it's cut, from the clean worktree of
   its tag: `./flash.py --slot 13` (or `--slot 10`) there. `flash.py` sends to 10 or 13 nothing
   else: only when the key is named, and only the build of a clean `v*` tag's checkout. Until
-  `v1.0.0`, key 10 keeps v1.0.0-beta.1, which reads the scene layout of beta.2 and later wrong
-  (the sends' Level and Ducking swapped): no scene saves on key 10 once a newer beta has run.
+  `v1.0.0`, key 10 carries the newest beta too (the user's call, 2026-10-13: beta.1 read the
+  newer betas' scene layout wrong); from 1.0 on, 10 the release and 13 the beta again.
 
 ## The CHOMPI is shared: the lock and the slots
 
