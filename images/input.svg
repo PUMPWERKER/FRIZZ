@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 650" width="720" height="650" role="img" aria-labelledby="title desc">
 <title id="title">FRIZZ input</title>
-<desc id="desc">The input. AUX (stereo, or mono: its left to both sides) and the built-in mic each have their own input gain; AUX is then amplified 3 times and its DC taken out, the mic 5 times, DC blocked, highpassed at about 150 Hz and the same on both sides. Switch A (upper F#, or the AUX jack) picks the source, with a 5 ms crossfade. The source goes as it is to the looper and to the headphone feed. Switch B (upper G#) sends it through the effects or dry, switch C (upper A#) has it live on the outputs or not. The mix sets the input's share against the loop's; the dry share joins after the compressor, before VOLUME.</desc>
+<desc id="desc">The input. AUX (stereo, or mono: its left to both sides) and the built-in mic each have their own input gain; AUX is then amplified 3× and its DC taken out, the mic 5×, DC blocked, highpassed at about 150 Hz and the same on both sides. Switch A (upper F#, or the AUX jack) picks the source, with a 5 ms crossfade. The source goes as it is to the looper and to the headphone feed. Switch B (upper G#) sends it through the effects or past them, switch C (upper A#) has it live on the outputs or not. The input/loop mix sets the input's share against the loop's; the share past the effects joins after the compressor, before VOLUME.</desc>
 <style>text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
 <defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
 <rect width="720" height="650" fill="#131314"/>
@@ -70,7 +70,7 @@
 <circle cx="175" cy="331" r="9" class="g"/>
 <text x="175" y="335.5" class="gt" font-size="12" font-weight="bold">C</text>
 <polyline points="190,355 330,355" class="ls" marker-end="url(#ms)"/>
-<text x="260" y="348" class="m" font-size="12">dry</text>
+<text x="260" y="348" class="m" font-size="12">past the effects</text>
 <polyline points="40,420 200,420" class="ls" marker-end="url(#ms)"/>
 <circle cx="40" cy="420" r="3" class="ds"/>
 <text x="120" y="412" class="m" font-size="12">meter: VOLUME page 2</text>
@@ -93,14 +93,14 @@
 <text x="512" y="319.5" class="t as" font-weight="bold">to the effects</text>
 <text x="512" y="336" class="m as" font-size="12">and the compressor</text>
 <polyline points="470,385 505,385" class="ls" marker-end="url(#ms)"/>
-<text x="512" y="389.5" class="t as">dry: joins after the</text>
-<text x="512" y="406" class="m as" font-size="12">compressor, before VOLUME</text>
+<text x="512" y="389.5" class="t as">past the effects:</text>
+<text x="512" y="406" class="m as" font-size="12">joins after the compressor</text>
 <circle cx="37" cy="536" r="9" class="g"/>
 <text x="37" y="540.5" class="gt" font-size="12" font-weight="bold">A</text>
 <text x="60" y="540" class="t as" font-size="12">upper F#: the source, AUX or the mic. The AUX jack picks it; F# the other one</text>
 <circle cx="37" cy="558" r="9" class="g"/>
 <text x="37" y="562.5" class="gt" font-size="12" font-weight="bold">B</text>
-<text x="60" y="562" class="t as" font-size="12">upper G#: through the effects, or dry: past them and the compressor</text>
+<text x="60" y="562" class="t as" font-size="12">upper G#: through the effects, or past them and the compressor</text>
 <circle cx="37" cy="580" r="9" class="g"/>
 <text x="37" y="584.5" class="gt" font-size="12" font-weight="bold">C</text>
 <text x="60" y="584" class="t as" font-size="12">upper A#: live, on the outputs, or not (both switches together)</text>
