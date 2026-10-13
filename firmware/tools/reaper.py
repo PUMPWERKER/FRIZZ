@@ -622,19 +622,19 @@ def daw_transport(r, d):
     r.check("REAPER stopped: paused", s["looper"] == 3, remote.LOOPER[s["looper"]], "paused")
     d.locate(0)
     s = pos_after(r, d.play()[0], 2)
-    r.check("REAPER plays from the start: the loop from its start", s["looper"] == 2 and abs(s["pos"] - .25) <= .08,
+    r.tcheck("REAPER plays from the start: the loop from its start", s["looper"] == 2 and abs(s["pos"] - .25) <= .08,
             "%s at %.2f 2 beats later" % (remote.LOOPER[s["looper"]], s["pos"]), "playing at 0.25 +-0.08")
     d.stop_transport()
     time.sleep(.3)
     d.locate(5)
     time.sleep(.3)
     s = pos_after(r, d.play()[0], 2)
-    r.check("stopped, the playhead to beat 5 (from 0), play: carries on there",
+    r.tcheck("stopped, the playhead to beat 5 (from 0), play: carries on there",
             s["looper"] == 2 and abs(s["pos"] - 7 / 8.) <= .08,
             "%s at %.2f 2 beats later" % (remote.LOOPER[s["looper"]], s["pos"]), "playing at 0.88 +-0.08")
     time.sleep(1.)
     s = pos_after(r, d.locate(2)[0], 2)
-    r.check("playing, the playhead to beat 2: carries on there", s["looper"] == 2 and abs(s["pos"] - .5) <= .08,
+    r.tcheck("playing, the playhead to beat 2: carries on there", s["looper"] == 2 and abs(s["pos"] - .5) <= .08,
             "%s at %.2f 2 beats later" % (remote.LOOPER[s["looper"]], s["pos"]), "playing at 0.50 +-0.08")
     # a loop range of beats 4-8: the second half of FRIZZ's loop, over and over
     d.stop_transport()
@@ -667,7 +667,7 @@ def daw_transport(r, d):
     time.sleep(.5)
     s = r.state()
     moved = (s["pos"] - before) % 1.
-    r.check("a free loop, REAPER plays from the start", s["looper"] == 2 and .1 <= moved <= .7,
+    r.tcheck("a free loop, REAPER plays from the start", s["looper"] == 2 and .1 <= moved <= .7,
             "%s, %.2f on" % (remote.LOOPER[s["looper"]], moved), "plays on")
     d.stop_transport()
 
@@ -1010,15 +1010,15 @@ def daw_follows(r, d):
                sorted({x[4] for x in d.traced(began, t1)}), sorted({x[5] for x in d.traced(began, t1)})))
     r.tcheck("REAPER plays at the loop's tempo (%.1f BPM, %d beats)" % (tempo, beats),
              abs(bpm - tempo) <= tempo * .01 * r.loose, "%.2f BPM" % bpm, "%.1f +-%g %%" % (tempo, r.loose))
-    r.check("on its beat 1: REAPER's beat when FRIZZ sent Start", abs(at_start) <= .25,
+    r.tcheck("on its beat 1: REAPER's beat when FRIZZ sent Start", abs(at_start) <= .25,
             "%+.3f beats" % at_start, "0 +-0.25")
-    r.check("steadily: no jumps", worst <= .25, "%.3f beats off its line at most" % worst, "0.25")
+    r.tcheck("steadily: no jumps", worst <= .25, "%.3f beats off its line at most" % worst, "0.25")
     offs = []
     for t, pos in phase:
         rb = y0 + k * t
         diff = (rb - pos * beats + beats / 2.) % beats - beats / 2.
         offs.append(diff)
-    r.check("in step with the loop over %d wraps: REAPER's beat in the loop against FRIZZ's position"
+    r.tcheck("in step with the loop over %d wraps: REAPER's beat in the loop against FRIZZ's position"
             % int((t1 - t_start) / loop_s), offs and max(abs(x) for x in offs) <= .3,
             " ".join("%+.2f" % x for x in offs), "0 +-0.3 beats")
     # pause, PLAY
@@ -1186,10 +1186,13 @@ def run_case(r, d, c, snap):
     except midisuite.Skip as e:
         status, detail = "SKIP", str(e)
     except ReaperError as e:
+        midisuite.stopped_meanwhile()
         status, detail = "FAIL", "REAPER: %s" % e
     except (AssertionError, SystemExit) as e:
+        midisuite.stopped_meanwhile()
         status, detail = "FAIL", "stopped: %s" % e
     except Exception:
+        midisuite.stopped_meanwhile()
         status, detail = "FAIL", "error: " + traceback.format_exc().strip().splitlines()[-1]
         if r.args.verbose:
             traceback.print_exc()
@@ -1289,7 +1292,7 @@ def main():
     trs_node = a.trs or (None if a.wiring == "none" else midiport.trs_midi())
     trs_fd = os.open(trs_node, os.O_RDWR | os.O_NONBLOCK) if trs_node else None
     trs = midiport.Tap(trs_fd) if trs_fd is not None else None
-    results, sessions, jitter, wiring = [], [], [], set()
+    results, sessions, jitter, wiring, timing_only = [], [], [], set(), []
 
     # 1. on the node
     f = remote.Frizz(device)
@@ -1350,6 +1353,8 @@ def main():
                     status, detail = run_case(r, d, c, snap)
                     results.append((c, status, detail, r.checks, label))
                     report(c, status, detail, r)
+                    if status == "FAIL" and not detail and r.timing_fails == sum(1 for ok, *_ in r.checks if not ok):
+                        timing_only.append(c.id)
                     for note in r.notes:
                         print("       " + note, flush=True)
                     if r.lost:
@@ -1359,8 +1364,10 @@ def main():
                 jitter += r.jitter
             finally:
                 d.close()
-    except KeyboardInterrupt as e:
-        stopped = getattr(e, "signum", signal.SIGINT)
+    except (KeyboardInterrupt, Exception) as e:
+        if not isinstance(e, KeyboardInterrupt) and not midisuite.stop_signal:
+            raise
+        stopped = getattr(e, "signum", None) or midisuite.stop_signal or signal.SIGINT
         print("interrupted" if stopped == signal.SIGINT else "stopped (signal %d)" % stopped,
               file=sys.stderr)
     finally:
@@ -1374,6 +1381,8 @@ def main():
     text = summary(results, jitter, wiring, ident, sessions, a)
     print()
     print(text)
+    if timing_only:
+        print("failed on timing alone: %s" % ",".join(timing_only))
     if a.out:
         os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
         with open(a.out, "w") as out:

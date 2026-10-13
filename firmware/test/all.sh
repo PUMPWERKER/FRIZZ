@@ -3,7 +3,9 @@
 # each unit check (every NAME.cpp but the harness). Prints one line per check and exits 0 when
 # all pass, with the faults the checks know of (Known() in check.h) listed under theirs. A
 # changed sound (check.sh not bit-identical) counts as a failure: run ./check.sh to
-# see what changed.
+# see what changed. A run of a tool against the twin (midisuite, reaper) that failed with the
+# twin far behind the wall clock and passed when run again is listed as FLAKY under its check
+# (ptytwin.h's Twice(), #183).
 #
 # The checks run side by side, one per core (JOBS=N sets how many), once DaisySP and the twins
 # they share are built; their lines come in the order above. The ones on the twin go first,
@@ -50,7 +52,7 @@ for t in check $(units); do
     rc=$(cat "$OUT/$t.rc" 2>/dev/null)
     if [ "$rc" = 0 ]; then
         echo "ok    $t: $(echo "$out" | tail -1)$(echo "$out" | grep -m1 -E '^[0-9]+ known$' | sed 's/^/, /')"
-        echo "$out" | grep "^KNOWN" | sed 's/^/      /'
+        echo "$out" | grep -E "^(KNOWN|FLAKY)" | sed 's/^/      /'
         continue
     fi
     failed="$failed $t"

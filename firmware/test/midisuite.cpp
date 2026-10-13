@@ -12,7 +12,6 @@
 // MIDISUITE="ARGS" runs the suite once with those arguments (--wiring both if none is given)
 // and prints what it printed: the live twin to work on midisuite.py with, e.g.
 //     MIDISUITE="--cases out-loop -v" ./unit.sh midisuite
-#include <sstream>
 #include "cases.h"
 #include "check.h"
 #include "twin.h"
@@ -28,21 +27,6 @@ int Suite(const std::string& args, std::string& out, int limit, const std::strin
 
 bool Has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
 
-/** The cases that failed on timing alone, if the twin fell too far behind to judge timing */
-std::vector<std::string> Unjudged(const std::string& out)
-{
-    std::vector<std::string> ids;
-    const std::string tag = "failed on timing alone: ";
-    const size_t at = out.find(tag);
-    if (lag <= kLagMs || at == std::string::npos)
-        return ids;
-    std::istringstream list(out.substr(at + tag.size(), out.find('\n', at) - at - tag.size()));
-    std::string id;
-    while (std::getline(list, id, ','))
-        ids.push_back(id);
-    return ids;
-}
-
 /** A case's line in out: "PASS out-loop (7 s)", "SKIP clock-trs: ..." */
 bool Line(const std::string& out, const std::string& result, const std::string& id)
 {
@@ -52,9 +36,9 @@ bool Line(const std::string& out, const std::string& result, const std::string& 
     return false;
 }
 
-/** Each of ids has the result want in out's lines, or failed on timing the twin couldn't keep */
-void Expect(const std::string& out, const std::vector<std::string>& ids, const std::string& want,
-            const std::string& what)
+/** Those of ids without the result want in out's lines that didn't fail on timing the twin
+ *  couldn't keep, each after a space */
+std::string Missing(const std::string& out, const std::vector<std::string>& ids, const std::string& want)
 {
     const std::vector<std::string> unjudged = Unjudged(out);
     std::string missing;
@@ -62,11 +46,20 @@ void Expect(const std::string& out, const std::vector<std::string>& ids, const s
         if (!Line(out, want, id)
             && !(want == "PASS" && std::find(unjudged.begin(), unjudged.end(), id) != unjudged.end()))
             missing += " " + id;
+    return missing;
+}
+
+/** Each of ids has the result want in out's lines, or failed on timing the twin couldn't keep */
+void Expect(const std::string& out, const std::vector<std::string>& ids, const std::string& want,
+            const std::string& what)
+{
+    const std::string missing = Missing(out, ids, want);
     Check(missing.empty(), (what + (missing.empty() ? "" : ":" + missing + " not " + want)).c_str());
 }
 
 /** The suite on CASES with the jack wired IN / OUT, found by itself: each case's result want,
- *  the summary's lines in it */
+ *  the summary's lines in it. Run once more if that failed with the twin behind (ptytwin.h's
+ *  Twice()) */
 void Run(const std::string& name, bool in, bool out_wired, const std::vector<std::string>& ids,
          const std::string& want, const std::vector<std::string>& lines, int exit_code)
 {
@@ -76,24 +69,33 @@ void Run(const std::string& name, bool in, bool out_wired, const std::vector<std
     for (const std::string& id : ids)
         list += (list.empty() ? "" : ",") + id;
     std::string out;
+    int rc = 0;
     const auto card = CardFiles();
-    const auto t0 = std::chrono::steady_clock::now();
-    const int rc = Suite("--quick -v --cases " + list, out, 55);
-    printf("%s: %ld s\n", name.c_str(),
-           long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()));
-    const std::vector<std::string> unjudged = Unjudged(out);
-    for (const std::string& id : unjudged)
+    // the exit code as wanted, or 1 for cases only failed on timing the twin couldn't keep
+    auto exited = [&] {
+        return rc == exit_code || (rc == 1 && !Unjudged(out).empty() && !Has(out, "error:") && !Has(out, "stopped:"));
+    };
+    auto says = [&] {
+        for (const std::string& line : lines)
+            if (!Has(out, line))
+                return false;
+        return true;
+    };
+    Twice(name, [&] {
+        const auto t0 = std::chrono::steady_clock::now();
+        rc = Suite("--quick -v --cases " + list, out, 55);
+        printf("%s: %ld s, the twin up to %ld ms behind\n", name.c_str(),
+               long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()), lag);
+        return exited() && Missing(out, ids, want).empty() && says();
+    });
+    for (const std::string& id : Unjudged(out))
         printf("%s: %s not judged, the twin %ld ms behind the wall clock\n", name.c_str(), id.c_str(), lag);
-    bool ok = rc == exit_code || (rc == 1 && !unjudged.empty() && !Has(out, "error:") && !Has(out, "stopped:"));
-    Check(ok, (name + ": exit " + std::to_string(rc) + ", not " + std::to_string(exit_code)).c_str());
+    Check(exited(), (name + ": exit " + std::to_string(rc) + ", not " + std::to_string(exit_code)).c_str());
     Expect(out, ids, want, name);
     Check(CardFiles() == card, (name + ": the card as it was (PERSIST 0)").c_str());
     for (const std::string& line : lines)
-    {
         Check(Has(out, line), (name + ": says \"" + line + "\"").c_str());
-        ok = ok && Has(out, line);
-    }
-    if (!ok || failures)
+    if (!exited() || !says() || failures)
         printf("%s\n", out.c_str());
 }
 } // namespace

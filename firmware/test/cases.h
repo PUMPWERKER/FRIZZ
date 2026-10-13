@@ -3,13 +3,16 @@
 // firmware's globals allow one power cycle per process. RunAllCases() runs them side by side,
 // CASE_JOBS at a time (the cores by default), and prints what each printed in the order they
 // were declared. A case that takes the card another one kept (KeepCard(), TakeCard()) runs
-// after it, on that chain's card: Chain() names them. A case still running after CASE_TIMEOUT
-// seconds (60) is stopped and fails by name. CASES="a b" runs only those, with the cases
-// before them in their chains; a name no case has fails the run.
+// after it, on that chain's card: Chain() names them. A case that has used CASE_TIMEOUT
+// seconds (60) of the CPU, or run ten times that long by the wall clock, is stopped and fails
+// by name: the CPU's time, as under load (several all.sh side by side) a case gets a share of
+// a core and takes longer by the wall clock for the same work (#183). CASES="a b" runs only
+// those, with the cases before them in their chains; a name no case has fails the run.
 #pragma once
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/mman.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <algorithm>
@@ -212,7 +215,9 @@ __attribute__((unused)) static void RunAllCases(const std::function<bool(const C
             close(fd);
             static char line[BUFSIZ]; // line by line, so what a case that hangs printed still shows
             setvbuf(stdout, line, _IOLBF, sizeof(line));
-            alarm(timeout);
+            const itimerval cpu = {{0, 0}, {time_t(timeout), 0}};
+            setitimer(ITIMER_PROF, &cpu, nullptr);
+            alarm(timeout * 10); // one that hangs without using the CPU
             failures = known = 0; // the run's own stay with the run
             case_name = cases[i].name;
             card_file = run_dir + "/card-" + std::to_string(t);
@@ -249,8 +254,12 @@ __attribute__((unused)) static void RunAllCases(const std::function<bool(const C
             const std::string text((std::istreambuf_iterator<char>(out)), std::istreambuf_iterator<char>());
             fwrite(text.data(), 1, text.size(), stdout);
             const int st = status[i];
-            if (WIFSIGNALED(st) && WTERMSIG(st) == SIGALRM)
-                printf("FAIL  %s: still running after %u s (CASE_TIMEOUT), stopped\n", cases[i].name.c_str(), timeout);
+            if (WIFSIGNALED(st) && WTERMSIG(st) == SIGPROF)
+                printf("FAIL  %s: still running after %u s of the CPU (CASE_TIMEOUT), stopped\n", cases[i].name.c_str(),
+                       timeout);
+            else if (WIFSIGNALED(st) && WTERMSIG(st) == SIGALRM)
+                printf("FAIL  %s: still running after %u s (ten times CASE_TIMEOUT), stopped\n", cases[i].name.c_str(),
+                       timeout * 10);
             else if (WIFSIGNALED(st))
                 printf("FAIL  %s: crashed (%s)\n", cases[i].name.c_str(), strsignal(WTERMSIG(st)));
             else if (!result[i].done)
