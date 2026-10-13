@@ -1309,13 +1309,14 @@ def audio_ready(r, d):
     latched = [n for n, v in zip(remote.FX_NAMES, r.get("latch")) if v]
     for n in latched:
         r.set("latch", n, 0)
-    vol = sink_volume(d.links[0][1]) if not os.environ.get("FRIZZ_REAPER") else 100
+    vol = sink_volume(d.links[0][1].split(":")[0]) if not os.environ.get("FRIZZ_REAPER") else 100
     r.note("the material: %s%d bars at %g BPM, its peak %.1f dBFS, into AUX at %+.1f dB: %.1f dBFS%s%s" % (
         "generated, " if src == "generated" else "", m.bars, DAW_BPM, m.peak_in, m.gain, m.peak,
         ", the sink at %d %%" % vol if vol is not None else "", "; unlatched: %s" % " ".join(latched) if latched else ""))
     r.check("the material into AUX at -6 dBFS at most (REAPER's track at 0 dB, the sink at 100 % at most)",
-            m.peak <= -6. and (vol is None or vol <= 100), "%.1f dBFS%s" % (m.peak, ", %d %%" % vol if vol is not None else ""),
-            "<= -6 dBFS")
+            m.peak <= -6. and vol is not None and vol <= 100,
+            "%.1f dBFS, %s" % (m.peak, "the sink at %d %%" % vol if vol is not None else "the sink's volume unknown (pactl)"),
+            "<= -6 dBFS, 100 % at most")
     bars = 2 if r.args.quick else 4
     return m, bars, bars
 

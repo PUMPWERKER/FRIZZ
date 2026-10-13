@@ -461,6 +461,7 @@ tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouc
 # the cases with music: numpy, so measure.py's venv
 ~/.venvs/frizz/bin/python tools/reaper.py --audio jack \
   --cases daw-loop-audio,daw-loop-restart,daw-follows-audio --out card/reaper-audio.md
+# daw-follows-audio's timing needs a song whose bars differ: --material generated
 ```
 
 - **One REAPER per audio mode** (`--audio jack,dummy`): the first runs every case, the last
