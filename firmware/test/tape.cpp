@@ -4,7 +4,8 @@
 //  - the flutter's pitch wobble (by zero crossings) stays within its 2 pi f A bound, real
 //    tape's at half the knob; TAPE's wow at the top stays finite and bounded
 //  - a stop is silent once its time is up, on a linear and a brake curve; a spin-up, or none,
-//    ends on the input bit for bit; releasing mid-stop and pressing mid-spin-up stay smooth
+//    ends on the input bit for bit, the key's fade at rest (#167); releasing mid-stop and
+//    pressing mid-spin-up stay smooth
 #include <cmath>
 #include <vector>
 #include "FxTapeStop.h"
@@ -211,6 +212,10 @@ static void CheckTapeStop()
         tapestop.SetOn(false);
         run.Run(2 * k16th + 720 + 10);
         Check(run.Live(48000), "spun up over 1/8: then the input bit for bit");
+        // the key's fade landed on 0 (FxGate::Asleep), so it no longer runs every sample;
+        // before #167 it crept on through the denormals for good
+        printf("      the key's fade a second later: %g\n", tapestop.Fade());
+        Check(tapestop.Fade() == 0.f, "back on the input: the key's fade at rest on 0");
         Check(run.finite && run.max_step < kMaxStep, "the stop and spin-up: no step between samples");
         printf("      largest step %.4f\n", run.max_step);
     }

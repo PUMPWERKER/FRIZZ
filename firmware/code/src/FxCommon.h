@@ -53,7 +53,22 @@ template <class Unused>
 float FxSlewT<Unused>::coeff = kFxParamCoeff;
 using FxSlew = FxSlewT<>;
 
-/** A setting with a target, set from the UI, and a live value that follows it */
+/** v slewed a sample toward target (fonepole), and snapped onto it once it's within 1e-5 or
+ *  a step no longer moves it, so it settles (#168): near 1 a step smaller than half the
+ *  float's spacing there stalls short of it, and towards 0 it would creep on through the
+ *  denormals (FZ is off, as on the twin) to stall at ~7e-43. Smoothed::Settle's rule */
+inline float Glide(float v, float target, float coeff)
+{
+    float next = v;
+    fonepole(next, target, coeff);
+    return next == v || fabsf(next - target) < 1e-5f ? target : next;
+}
+
+/** A setting with a target, set from the UI, and a live value that follows it. Process slews
+ *  as fonepole does and stops short of the target near 1 (3e-5) or creeps through the
+ *  denormals towards 0; what waits on the target uses Settle, which lands (#51). Landing in
+ *  Process too (#167, finding 6) cost a morph, which moves dozens at once, 2-4 points on the
+ *  device, out of line or in: the shifter's dry 3e-5 short of 1 (-90 dB) is cheaper */
 struct Smoothed
 {
     float value, target;

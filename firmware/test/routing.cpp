@@ -179,8 +179,8 @@ static void TestGlide()
     int up_at = -1, down_at = -1;
     for (int i = 0; i < 48000; i++)
     {
-        up = PassthroughEngine::Glide(up, 1.f);
-        down = PassthroughEngine::Glide(down, 0.f);
+        up = chompi::Glide(up, 1.f, .001f);
+        down = chompi::Glide(down, 0.f, .001f);
         if (up == 1.f && up_at < 0)
             up_at = i;
         if (down == 0.f && down_at < 0)
