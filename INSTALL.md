@@ -24,14 +24,9 @@ tools or drivers, and the CHOMPI's bootloader is never touched.
    Don't switch it off while that runs. FRIZZ starts by itself when it's done: a light-blue
    ripple spreads from the CHOMPI key, then the FX keys glow in their colours.
 
-Leave the card in: FRIZZ keeps its FX scenes on it, in `FRIZZ/frizz_scenes.txt`, and its master
-settings in `FRIZZ/frizz_master.txt`: the compressor, the MIDI settings, the LEDs' brightness,
-AUX mono, and for AUX and the mic each their input gain, effects and live; the `.bak` files
-next to them are the previous versions, and `bug-N.txt` are [bug
-reports](MANUAL.md#bug-reports). FRIZZ creates the `FRIZZ` folder the first time it starts, and
-moves a `frizz_scenes.txt` an older FRIZZ left in the top folder into it. Without a card FRIZZ
-still runs, but scenes you save are gone at power-off. A later FRIZZ update keeps your scenes
-as long as that folder stays on the card.
+Leave the card in: FRIZZ keeps your scenes and settings on it, in a folder `FRIZZ`
+([Card and files](MANUAL.md#card-and-files)). Without a card FRIZZ runs, but nothing you save
+lasts past power-off.
 
 ## Check that it works
 
@@ -42,17 +37,18 @@ as long as that folder stays on the card.
 2. Turn the **VOLUME** knob. You should hear your source, and the VOLUME LED moves with the level.
 
 If you hear nothing, press VOLUME once and turn it to raise the input gain. Press it twice more
-to get back to output volume. The [quick guide](QUICKSTART.md) takes it from here.
+to get back to output volume. The [Quick start](QUICKSTART.md) takes it from here.
 
 ## Updating FRIZZ
 
-Same as installing: replace `FRIZZ.bin` on the card with the new one and switch on.
+Same as installing: replace `FRIZZ.bin` on the card with the new one and switch on. Your
+scenes and settings stay, as long as the `FRIZZ` folder stays on the card.
 
 ## With the multi-firmware launcher
 
 The [multi-firmware launcher](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE/releases)
 (a community project by hiwatts, chomplex music theory and lnetzel) keeps several firmwares on
-one card: at power-on each key with a firmware lights up, and pressing one starts it. FRIZZ
+one card: at power-on each white key with a firmware lights up, and pressing one starts it. FRIZZ
 works as one of them, next to TAPE, TEMPO and WAVE.
 
 1. **Set up the card with the launcher**, as its
@@ -66,7 +62,7 @@ works as one of them, next to TAPE, TEMPO and WAVE.
    it to the card.
 
    **Or by hand:** copy `FRIZZ.bin` into the card's `FIRMWARE` folder, named after the key you
-   want it on, for example `FIRMWARE/04_FRIZZ.bin` for key 4.
+   want it on, for example `FIRMWARE/04_FRIZZ.bin` for white key 4.
 3. Copy your `FRIZZ` folder over too, if you have scenes from another card. Otherwise FRIZZ
    creates it on its first start and keeps its scenes there, apart from the other firmwares'
    files.
@@ -76,9 +72,16 @@ FRIZZ, pick it again on the setup page, or copy the new `FRIZZ.bin` over the old
 `FIRMWARE/04_FRIZZ.bin`; no rainbow pattern, since the launcher stays installed. The setup
 page offers releases only: a test build (a pre-release on the Releases page) goes on by hand.
 
-The launcher's key 15 is a USB storage mode: the card shows up on the computer as a drive,
-so you can copy files (bug reports, scenes) without taking the card out. Leave it with
-overdub, then the CHOMPI key.
+### USB storage mode
+
+The launcher's white key 15 is a USB storage mode: connect the CHOMPI to a computer over USB
+and the card shows up there as a drive named `CHOMPI-SD`, so you can copy files (bug reports,
+scenes) without taking the card out. To leave, eject the drive on the computer first. With
+[USB storage v1.6](https://github.com/lnetzel/CHOMPI-lnetzel/releases/tag/usb-storage-v1.6),
+the CHOMPI then restarts into the launcher's picker by itself. With an older one (a card set
+up from the launcher's v1.5 release has v1.5), press the LOOP key, which glows red: it blinks
+and the CHOMPI key turns red; tap the CHOMPI key to confirm, and the CHOMPI restarts into the
+picker. Pressing the blinking LOOP again cancels.
 
 ## Going back to stock firmware
 
