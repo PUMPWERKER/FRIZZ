@@ -544,6 +544,9 @@ int main()
             const char* what;
             bool latched_before, latched_after;
             std::vector<const char*> keys;
+            // the bounce's press 15 ms after the release, kShiftGraceMs itself: taken back in
+            // half the ms phases (#202)
+            bool at_limit = false;
         };
         const std::vector<Seq> seqs = {
             {"SHIFT let go 1 ms after the key's contact", true, true,
@@ -574,12 +577,18 @@ int main()
               "1", "+KEY_5", "150", "-KEY_5"}},
             {"select, SHIFT up, the key's release touching again 7 ms on", true, true,
              {"+KEY_26", "50", "+KEY_5", "100", "-KEY_26", "100", "-KEY_5", "7", "+KEY_5", "1",
+              "-KEY_5"}, true},
+            {"select, SHIFT up, the key's release touching again 6 ms on", true, true,
+             {"+KEY_26", "50", "+KEY_5", "100", "-KEY_26", "100", "-KEY_5", "6", "+KEY_5", "1",
               "-KEY_5"}},
             {"select, the key's release touching again 7 ms on, SHIFT held", true, true,
              {"+KEY_26", "50", "+KEY_5", "100", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5", "100",
               "-KEY_26"}},
             {"the latch gesture, its release touching again 7 ms on", false, true,
              {"+KEY_5", "100", "+KEY_26", "100", "-KEY_26", "100", "-KEY_5", "7", "+KEY_5", "1",
+              "-KEY_5"}, true},
+            {"the latch gesture, its release touching again 6 ms on", false, true,
+             {"+KEY_5", "100", "+KEY_26", "100", "-KEY_26", "100", "-KEY_5", "6", "+KEY_5", "1",
               "-KEY_5"}},
             {"a plain tap", true, false, {"+KEY_5", "60", "-KEY_5"}},
             {"a plain tap, its release touching again 7 ms on", true, false,
@@ -592,19 +601,28 @@ int main()
         };
         for (const Seq& s : seqs)
         {
-            if (((LatchedFx(Ask({0x20})) & filter) != 0) != s.latched_before)
-                Latch("KEY_5");
-            Tap("KEY_2"); // the shifter on the knobs
-            RunMs(300);
-            const unsigned before = LatchedFx(Ask({0x20}));
-            Keys(s.keys);
-            RunMs(400);
-            const std::string st = Ask({0x20});
             const bool comp = strstr(s.what, "compressor") != nullptr;
-            Check(((before & filter) != 0) == s.latched_before && ((LatchedFx(st) & filter) != 0) == s.latched_after
-                      && st.size() > 4 && st[4] == (comp ? 14 : 4),
-                  (std::string("select-grace: ") + s.what + (s.latched_after ? ": latched" : ": unlatched")
-                   + (comp ? ", the compressor selected" : ", the filter selected")).c_str());
+            // one at the limit twice, a ms apart: once in each phase of MainLoop's 2 ms tick
+            bool ok = true;
+            for (int pad = 0; pad < (s.at_limit ? 2 : 1); pad++)
+            {
+                if (((LatchedFx(Ask({0x20})) & filter) != 0) != s.latched_before)
+                    Latch("KEY_5");
+                Tap("KEY_2"); // the shifter on the knobs
+                RunMs(300 + pad);
+                const unsigned before = LatchedFx(Ask({0x20}));
+                Keys(s.keys);
+                RunMs(400);
+                const std::string st = Ask({0x20});
+                ok = ok && ((before & filter) != 0) == s.latched_before
+                     && ((LatchedFx(st) & filter) != 0) == s.latched_after && st.size() > 4
+                     && st[4] == (comp ? 14 : 4);
+            }
+            (s.at_limit ? Known : Check)(
+                ok, (std::string("select-grace: ") + s.what + (s.latched_after ? ": latched" : ": unlatched")
+                     + (comp ? ", the compressor selected" : ", the filter selected")
+                     + (s.at_limit ? " (#202: in either ms phase)" : ""))
+                        .c_str());
         }
     }});
 

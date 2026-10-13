@@ -235,9 +235,9 @@ int main()
         while (start < s.trs.size() && s.trs[start].byte != 0xFA)
             start++;
         Check(start < s.trs.size() && Count(s.trs, 0xFA) == 1, "loop: a new loop sends Start");
-        Known(start + 1 < s.trs.size() && s.trs[start + 1].byte == 0xF8
+        Check(start + 1 < s.trs.size() && s.trs[start + 1].byte == 0xF8
                   && s.trs[start + 1].ms - s.trs[start].ms < .5,
-              "loop: with its first tick right after (#198: in some phases a tick later)");
+              "loop: with its first tick right after");
         const ClockState c = Probe();
         // an unquantized loop's beats are fitted to the tempo (TempoClock.h), which says them
         const int beats = static_cast<int>(c.loop_length / kSr * c.fx_bpm / 60. + .5);
