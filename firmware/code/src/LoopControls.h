@@ -229,6 +229,9 @@ public:
         const LoopLoader::State st = loader_->GetState();
         if (load_ == kNone && (st == LoopLoader::LOADING || st == LoopLoader::WRITING))
             bufs_[1].id = kNone;
+        // scanned again (the developers' SysEx): a slot may hold another file now
+        if (st == LoopLoader::SCANNING)
+            bufs_[0].id = bufs_[1].id = kNone;
 
         if (looper.Switches() != switches_)
         {
