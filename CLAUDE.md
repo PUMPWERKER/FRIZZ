@@ -97,8 +97,12 @@ these files is checked against this before it merges:
    rule firing. What the manual's tables say (knobs used, steps, coarse grids, CCs, colours) is
    checked against the code by the unit check `docs`: a change to a control fails `all.sh`
    until `MANUAL.md` follows.
-7. **The site updates itself:** frizz-web checks every 15 to 30 minutes for a new FrizZ tag and
-   rebuilds then, so a release or beta is live within half an hour; nothing to trigger.
+7. **The site updates itself:** frizz-web checks every 20 minutes for a new release and rebuilds
+   when there is one, so it is live within about 20 minutes; nothing to trigger. New means a
+   published GitHub release (not a draft) with its `.bin` attached; a bare tag isn't picked up.
+   The rolling `beta` pre-release is ignored: the newest numbered pre-release after the latest
+   stable one becomes `/beta/`. `curl https://frizz.friedrichwagner.eu/build.json` shows which
+   tags the site has (`{"stable": …, "prerelease": …}`): check it after cutting a release.
 
 ## Git workflow: branches first, checked by the sessions, merged by the user
 
