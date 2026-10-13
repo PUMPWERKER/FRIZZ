@@ -10,3 +10,7 @@ Icon?
 
 # Build output
 build/
+
+# built with the firmware
+firmware/chompi-tape/code/libs/libDaisy/build/
+firmware/chompi-tape/code/libs/DaisySP/build/

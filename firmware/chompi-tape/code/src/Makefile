@@ -47,5 +47,12 @@ DAISYSP_DIR = ../libs/DaisySP
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
 include $(SYSTEM_FILES_DIR)/Makefile
 
+# the libs build with the firmware: their sources carry CHOMPI changes
+$(BUILD_DIR)/$(TARGET).elf: libs
+.PHONY: libs
+libs:
+	$(MAKE) -C $(LIBDAISY_DIR)
+	$(MAKE) -C $(DAISYSP_DIR)
+
 # for size
 $(addprefix $(BUILD_DIR)/,$(notdir $(TINYUSB_SOURCES:.c=.o))): OPT = -Os
