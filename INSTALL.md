@@ -21,7 +21,8 @@ tools or drivers, and the CHOMPI's bootloader is never touched.
 3. **Copy `FRIZZ.bin`** to the top folder of the card, not into a subfolder.
 4. **Eject the card** properly, put it in the CHOMPI and switch it on.
 5. **Wait.** A slow rainbow LED pattern means the CHOMPI is writing FRIZZ into its memory.
-   Don't switch it off while that runs. FRIZZ starts by itself when it's done.
+   Don't switch it off while that runs. FRIZZ starts by itself when it's done: a light-blue
+   ripple spreads from the CHOMPI key, then the FX keys glow in their colours.
 
 Leave the card in: FRIZZ keeps its FX scenes on it, in `FRIZZ/frizz_scenes.txt`, and its master
 settings in `FRIZZ/frizz_master.txt`: the compressor, the MIDI settings, the LEDs' brightness,
