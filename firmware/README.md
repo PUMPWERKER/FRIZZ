@@ -344,12 +344,15 @@ then run `bin/install_bootloader.sh`.
 ## Measure timing and sound on the device
 
 `tools/measure.py` measures what the twin can't, on the real CHOMPI, with no hands at the
-panel. It needs an audio interface: its line outputs 3+4 into AUX, the CHOMPI's line out into
-its inputs 3+4 (the left, input 3, is recorded), its MIDI out into the TRS jack (found by name,
+panel. It needs an audio interface: its line outputs 3+4 into AUX, the CHOMPI's headphone out
+into its inputs 3+4 (the left, input 3, is recorded; the bench is wired so, the line out stays
+free), its MIDI out into the TRS jack (found by name,
 the Scarlett's `HiFi__Line4__sink` and `HiFi__Line8__source`; `FRIZZ_AUX_SINK`,
 `FRIZZ_LINE_SOURCE`, `FRIZZ_TRS_MIDI` set them). Outputs 1+2 are the user's monitors: the
 tools never play into them. In the Scarlett's mixer (alsa-scarlett-gui), line outputs 3+4 get
-PCM 3+4 directly, not a mix, or nothing played into `HiFi__Line4__sink` reaches AUX. Python 3 with numpy (a venv:
+PCM 3+4 directly, not a mix, or nothing played into `HiFi__Line4__sink` reaches AUX. Linux
+restores the mixer from `/var/lib/alsa/asound.state` whenever the interface is plugged in: once
+it's set, `sudo alsactl store` keeps it (it had reverted to Mix G/H, a loop through AUX). Python 3 with numpy (a venv:
 `python3 -m venv ~/.venvs/frizz && ~/.venvs/frizz/bin/pip install numpy`).
 
 ```bash
