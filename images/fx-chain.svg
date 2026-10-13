@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 830" width="720" height="830" role="img" aria-labelledby="title desc">
+<title id="title">FRIZZ effects chain</title>
+<desc id="desc">The order FRIZZ computes the effects in. From the input/loop mix: the freezer (key 1), then the shifter, folder, crusher, filter, flanger and phaser (keys 2-7), which sit inside the resonator's feedback loop (key 8): it taps the signal after the phaser and feeds its ringing back in after the freezer. Then the slicer, wow &amp; flutter and the tape stop (keys 9-11). The delay (key 12) and the reverb (key 13) are sends: the key fades what goes in, page 2's Band filters it, Level sets the return, which is added to the signal; the reverb gets the delay's echoes too. The keys and knobs come from the panel, MIDI and scene morphs; the chaos key (14) drops latched effects and scrambles the loop. After the effects the master compressor (key 15); then the input past the effects joins, then VOLUME and a safety limiter on the line out and on the headphones, whose feed blends towards the input alone. Below: every insert's page 2, Band, Level and Mix.</desc>
+<style>svg{font-size:13px}text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
+<defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
+<rect width="720" height="830" fill="#131314"/>
+<rect x="20" y="14" width="170" height="46" class="b"/>
+<text x="105" y="33.5" class="t" font-weight="bold">PANEL · MIDI</text>
+<text x="105" y="49.5" class="m" font-size="12">keys and knobs</text>
+<polyline points="105,60 105,84" class="lc"/>
+<rect x="210" y="14" width="190" height="46" class="b"/>
+<text x="305" y="33.5" class="t" font-weight="bold">SCENES · MORPHS</text>
+<text x="305" y="49.5" class="m" font-size="12">the dark keys</text>
+<polyline points="305,60 305,84" class="lc"/>
+<rect x="420" y="14" width="180" height="56" class="b"/>
+<text x="510" y="30.5" class="t" font-weight="bold">CHAOS  14</text>
+<text x="510" y="46.5" class="m" font-size="12">drops latched effects,</text>
+<text x="510" y="62.5" class="m" font-size="12">scrambles the loop</text>
+<polyline points="510,70 510,84" class="lc"/>
+<polyline points="40,84 690,84" class="lc"/>
+<text x="612" y="36" class="m as" font-size="12">to every effect,</text>
+<text x="612" y="52" class="m as" font-size="12">in both rows</text>
+<polyline points="14,130 50,130" class="la" marker-end="url(#ma)"/>
+<text x="30" y="122" class="m" font-size="12">mix</text>
+<rect x="46" y="108" width="80" height="44" class="ba"/>
+<text x="86" y="126.5" class="t" font-weight="bold">FREEZER</text>
+<text x="86" y="142.5" class="m" font-size="12">1</text>
+<polyline points="86,84 86,107" class="lc" marker-end="url(#mc)"/>
+<polyline points="126,130 137,130" class="la" marker-end="url(#ma)"/>
+<circle cx="146" cy="130" r="9" class="b"/>
+<path d="M141,130h10M146,125v10" class="ls"/>
+<polyline points="155,130 170,130" class="la" marker-end="url(#ma)"/>
+<rect x="168" y="108" width="78" height="44" class="ba"/>
+<text x="207" y="126.5" class="t" font-weight="bold">SHIFTER</text>
+<text x="207" y="142.5" class="m" font-size="12">2</text>
+<polyline points="207,84 207,107" class="lc" marker-end="url(#mc)"/>
+<polyline points="246,130 254,130" class="la" marker-end="url(#ma)"/>
+<rect x="254" y="108" width="78" height="44" class="ba"/>
+<text x="293" y="126.5" class="t" font-weight="bold">FOLDER</text>
+<text x="293" y="142.5" class="m" font-size="12">3</text>
+<polyline points="293,84 293,107" class="lc" marker-end="url(#mc)"/>
+<polyline points="332,130 340,130" class="la" marker-end="url(#ma)"/>
+<rect x="340" y="108" width="78" height="44" class="ba"/>
+<text x="379" y="126.5" class="t" font-weight="bold">CRUSHER</text>
+<text x="379" y="142.5" class="m" font-size="12">4</text>
+<polyline points="379,84 379,107" class="lc" marker-end="url(#mc)"/>
+<polyline points="418,130 426,130" class="la" marker-end="url(#ma)"/>
+<rect x="426" y="108" width="78" height="44" class="ba"/>
+<text x="465" y="126.5" class="t" font-weight="bold">FILTER</text>
+<text x="465" y="142.5" class="m" font-size="12">5</text>
+<polyline points="465,84 465,107" class="lc" marker-end="url(#mc)"/>
+<polyline points="504,130 512,130" class="la" marker-end="url(#ma)"/>
+<rect x="512" y="108" width="78" height="44" class="ba"/>
+<text x="551" y="126.5" class="t" font-weight="bold">FLANGER</text>
+<text x="551" y="142.5" class="m" font-size="12">6</text>
+<polyline points="551,84 551,107" class="lc" marker-end="url(#mc)"/>
+<polyline points="590,130 598,130" class="la" marker-end="url(#ma)"/>
+<rect x="598" y="108" width="78" height="44" class="ba"/>
+<text x="637" y="126.5" class="t" font-weight="bold">PHASER</text>
+<text x="637" y="142.5" class="m" font-size="12">7</text>
+<polyline points="637,84 637,107" class="lc" marker-end="url(#mc)"/>
+<polyline points="676,130 708,130 708,250 30,250 30,290 50,290" class="la" marker-end="url(#ma)"/>
+<circle cx="690" cy="130" r="3" class="da"/>
+<polyline points="690,130 690,200 520,200" class="ls" marker-end="url(#ms)"/>
+<rect x="380" y="178" width="140" height="44" class="b"/>
+<text x="450" y="196.5" class="t" font-weight="bold">RESONATOR  8</text>
+<text x="450" y="212.5" class="m" font-size="12">Band in, Level out</text>
+<polyline points="380,200 146,200 146,139" class="ls" marker-end="url(#ms)"/>
+<text x="263" y="216" class="m" font-size="12">its ringing, back in</text>
+<text x="600" y="216" class="m" font-size="12">the loop from the phaser</text>
+<rect x="50" y="260" width="74" height="60" class="ba"/>
+<text x="87" y="286.5" class="t" font-weight="bold">SLICER</text>
+<text x="87" y="302.5" class="m" font-size="12">9</text>
+<polyline points="124,290 138,290" class="la" marker-end="url(#ma)"/>
+<rect x="138" y="260" width="90" height="60" class="ba"/>
+<text x="183" y="278.5" class="t" font-weight="bold">WOW &amp;</text>
+<text x="183" y="294.5" class="t" font-weight="bold">FLUTTER</text>
+<text x="183" y="310.5" class="m" font-size="12">10</text>
+<polyline points="228,290 242,290" class="la" marker-end="url(#ma)"/>
+<rect x="242" y="260" width="80" height="60" class="ba"/>
+<text x="282" y="278.5" class="t" font-weight="bold">TAPE</text>
+<text x="282" y="294.5" class="t" font-weight="bold">STOP</text>
+<text x="282" y="310.5" class="m" font-size="12">11</text>
+<polyline points="322,290 479,290" class="la" marker-end="url(#ma)"/>
+<polyline points="497,290 643,290" class="la" marker-end="url(#ma)"/>
+<circle cx="346" cy="290" r="3" class="da"/>
+<polyline points="346,290 346,370 356,370" class="ls" marker-end="url(#ms)"/>
+<rect x="356" y="330" width="120" height="80" class="b"/>
+<text x="416" y="350.5" class="t" font-weight="bold">DELAY  12</text>
+<text x="416" y="366.5" class="m" font-size="12">in: the key, Band</text>
+<text x="416" y="382.5" class="m" font-size="12">out: Level</text>
+<text x="416" y="398.5" class="m" font-size="12">knob 4: ducking</text>
+<polyline points="476,370 488,370 488,299" class="ls" marker-end="url(#ms)"/>
+<circle cx="488" cy="290" r="9" class="b"/>
+<path d="M483,290h10M488,285v10" class="ls"/>
+<circle cx="508" cy="290" r="3" class="da"/>
+<polyline points="508,290 508,370 518,370" class="ls" marker-end="url(#ms)"/>
+<rect x="518" y="330" width="120" height="80" class="b"/>
+<text x="578" y="350.5" class="t" font-weight="bold">REVERB  13</text>
+<text x="578" y="366.5" class="m" font-size="12">in: the key, Band</text>
+<text x="578" y="382.5" class="m" font-size="12">out: Level</text>
+<text x="578" y="398.5" class="m" font-size="12">knob 4: ducking</text>
+<polyline points="638,370 652,370 652,299" class="ls" marker-end="url(#ms)"/>
+<circle cx="652" cy="290" r="9" class="b"/>
+<path d="M647,290h10M652,285v10" class="ls"/>
+<text x="414" y="283" class="m" font-size="12">sends</text>
+<text x="568" y="283" class="m" font-size="12">echoes into the reverb</text>
+<polyline points="661,290 708,290 708,440 24,440 24,480 40,480" class="la" marker-end="url(#ma)"/>
+<rect x="40" y="456" width="120" height="48" class="ba"/>
+<text x="100" y="476.5" class="t" font-weight="bold">COMPRESSOR</text>
+<text x="100" y="492.5" class="m" font-size="12">15, always on</text>
+<polyline points="160,480 176,480" class="la" marker-end="url(#ma)"/>
+<circle cx="185" cy="480" r="9" class="b"/>
+<path d="M180,480h10M185,475v10" class="ls"/>
+<polyline points="185,535 185,489" class="ls" marker-end="url(#ms)"/>
+<text x="185" y="552" class="m" font-size="12">the input past the effects</text>
+<polyline points="194,480 220,480" class="la" marker-end="url(#ma)"/>
+<rect x="220" y="456" width="100" height="48" class="ba"/>
+<text x="270" y="476.5" class="t" font-weight="bold">VOLUME</text>
+<text x="270" y="492.5" class="m" font-size="12">output gain</text>
+<polyline points="320,480 340,480 340,460 520,460" class="la" marker-end="url(#ma)"/>
+<circle cx="340" cy="480" r="3" class="da"/>
+<polyline points="340,480 340,525 390,525" class="ls" marker-end="url(#ms)"/>
+<rect x="390" y="503" width="110" height="44" class="b"/>
+<text x="445" y="521.5" class="t" font-weight="bold">PHONES FEED</text>
+<text x="445" y="537.5" class="m" font-size="12">VOLUME page 3</text>
+<polyline points="500,525 520,525" class="ls" marker-end="url(#ms)"/>
+<polyline points="445,580 445,547" class="ls" marker-end="url(#ms)"/>
+<text x="445" y="596" class="m" font-size="12">the input alone, at VOLUME</text>
+<rect x="520" y="440" width="90" height="40" class="ba"/>
+<text x="565" y="464.5" class="t" font-weight="bold">LIMITER</text>
+<polyline points="610,460 632,460" class="la" marker-end="url(#ma)"/>
+<circle cx="639" cy="460" r="5" class="b"/>
+<text x="650" y="464.5" class="t as" font-size="12" font-weight="bold">LINE OUT</text>
+<rect x="520" y="505" width="90" height="40" class="b"/>
+<text x="565" y="529.5" class="t" font-weight="bold">LIMITER</text>
+<polyline points="610,525 632,525" class="ls" marker-end="url(#ms)"/>
+<circle cx="639" cy="525" r="5" class="b"/>
+<text x="650" y="529.5" class="t as" font-size="12" font-weight="bold">PHONES</text>
+<text x="20" y="640" class="t as" font-weight="bold">Every insert (keys 1–7 and 9–11), with its page 2:</text>
+<polyline points="20,700 80,700" class="ls" marker-end="url(#ms)"/>
+<text x="40" y="692" class="m" font-size="12">in</text>
+<rect x="80" y="678" width="90" height="44" class="b"/>
+<text x="125" y="696.5" class="t" font-weight="bold">BAND</text>
+<text x="125" y="712.5" class="m" font-size="12">splits off</text>
+<polyline points="125,678 125,664 540,664 540,691" class="ls" marker-end="url(#ms)"/>
+<text x="330" y="657" class="m" font-size="12">the rest of the sound passes by</text>
+<polyline points="170,700 200,700" class="ls" marker-end="url(#ms)"/>
+<circle cx="185" cy="700" r="3" class="ds"/>
+<rect x="200" y="678" width="90" height="44" class="b"/>
+<text x="245" y="696.5" class="t" font-weight="bold">EFFECT</text>
+<text x="245" y="712.5" class="m" font-size="12">page 1</text>
+<polyline points="290,700 310,700" class="ls" marker-end="url(#ms)"/>
+<rect x="310" y="678" width="80" height="44" class="b"/>
+<text x="350" y="696.5" class="t" font-weight="bold">LEVEL</text>
+<text x="350" y="712.5" class="m" font-size="12">knob 4</text>
+<polyline points="390,700 420,700" class="ls" marker-end="url(#ms)"/>
+<rect x="420" y="678" width="80" height="44" class="b"/>
+<text x="460" y="696.5" class="t" font-weight="bold">MIX</text>
+<text x="460" y="712.5" class="m" font-size="12">knob 1</text>
+<polyline points="185,700 185,740 460,740 460,722" class="ls" marker-end="url(#ms)"/>
+<text x="320" y="754" class="m" font-size="12">the band, dry</text>
+<polyline points="500,700 531,700" class="ls" marker-end="url(#ms)"/>
+<circle cx="540" cy="700" r="9" class="b"/>
+<path d="M535,700h10M540,695v10" class="ls"/>
+<polyline points="549,700 590,700" class="ls" marker-end="url(#ms)"/>
+<text x="598" y="704.5" class="m as" font-size="12">out</text>
+<text x="20" y="782" class="m as" font-size="12">The key fades Level and Mix with the effect: off, the sound passes as it is.</text>
+<polyline points="24,808 50,808" class="la"/>
+<text x="60" y="812" class="t as" font-size="12">the usual way</text>
+<polyline points="216,808 242,808" class="ls"/>
+<text x="252" y="812" class="t as" font-size="12">other ways</text>
+<polyline points="396,808 422,808" class="lc"/>
+<text x="432" y="812" class="t as" font-size="12">control</text>
+</svg>

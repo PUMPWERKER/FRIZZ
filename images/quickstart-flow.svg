@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 450" width="480" height="450" role="img" aria-labelledby="title desc">
+<title id="title">How the sound flows</title>
+<desc id="desc">The input, AUX or the built-in mic after its input gain, goes two ways: to the looper, which records it before the effects, so nothing is printed into the loop; and, if monitored (the mic starts off), on to the input/loop mix, SHIFT + VOLUME, where the loop joins it. From there input and loop alike go through the effects (white keys 1-14), the compressor (white key 15) and VOLUME, the output gain, to the line out and the headphones.</desc>
+<style>svg{font-size:13px}text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
+<defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
+<rect width="480" height="450" fill="#131314"/>
+<rect x="50" y="20" width="200" height="60" class="ba"/>
+<text x="150" y="38.5" class="t" font-weight="bold">INPUT</text>
+<text x="150" y="54.5" class="m" font-size="12">AUX in, or the built-in mic</text>
+<text x="150" y="70.5" class="m" font-size="12">input gain</text>
+<polyline points="150,80 150,212" class="la" marker-end="url(#ma)"/>
+<circle cx="150" cy="100" r="3" class="da"/>
+<polyline points="150,100 375,100 375,116" class="ls" marker-end="url(#ms)"/>
+<text x="262" y="92" class="m" font-size="12">the input</text>
+<rect x="290" y="116" width="170" height="80" class="b"/>
+<text x="375" y="136.5" class="t" font-weight="bold">LOOPER</text>
+<text x="375" y="152.5" class="m" font-size="12">records here, before</text>
+<text x="375" y="168.5" class="m" font-size="12">the effects: nothing is</text>
+<text x="375" y="184.5" class="m" font-size="12">printed into the loop</text>
+<text x="142" y="150" class="t ae" font-size="12">if monitored</text>
+<text x="142" y="166" class="m ae" font-size="12">the mic: off at first</text>
+<rect x="50" y="212" width="200" height="60" class="b"/>
+<text x="150" y="230.5" class="t" font-weight="bold">MIX</text>
+<text x="150" y="246.5" class="m" font-size="12">input ↔ loop</text>
+<text x="150" y="262.5" class="m" font-size="12">SHIFT + VOLUME</text>
+<polyline points="375,196 375,242 250,242" class="ls" marker-end="url(#ms)"/>
+<text x="312" y="235" class="m" font-size="12">loop</text>
+<polyline points="150,272 150,292" class="la" marker-end="url(#ma)"/>
+<rect x="50" y="292" width="200" height="60" class="ba"/>
+<text x="150" y="310.5" class="t" font-weight="bold">EFFECTS</text>
+<text x="150" y="326.5" class="m" font-size="12">white keys 1–14,</text>
+<text x="150" y="342.5" class="m" font-size="12">on input and loop alike</text>
+<polyline points="150,352 150,372" class="la" marker-end="url(#ma)"/>
+<rect x="80" y="372" width="140" height="48" class="ba"/>
+<text x="150" y="392.5" class="t" font-weight="bold">COMPRESSOR</text>
+<text x="150" y="408.5" class="m" font-size="12">white key 15</text>
+<polyline points="220,396 240,396" class="la" marker-end="url(#ma)"/>
+<rect x="240" y="372" width="110" height="48" class="ba"/>
+<text x="295" y="392.5" class="t" font-weight="bold">VOLUME</text>
+<text x="295" y="408.5" class="m" font-size="12">output gain</text>
+<polyline points="350,396 385,396" class="la" marker-end="url(#ma)"/>
+<circle cx="392" cy="396" r="5" class="b"/>
+<text x="404" y="400.5" class="t as" font-weight="bold">OUT</text>
+<text x="404" y="416" class="m as" font-size="12">line out,</text>
+<text x="404" y="431" class="m as" font-size="12">phones</text>
+</svg>

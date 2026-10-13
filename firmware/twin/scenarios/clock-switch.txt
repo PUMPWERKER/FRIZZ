@@ -3,15 +3,20 @@
 # around the ticks, and the delay listening throughout
 input sine 220 0.3
 clock 120 jitter 0.2 drift 50
+# what the card keeps, as a fresh card has it: the device's card holds the player's own (#214)
+set settings midi_channel 16
 at 6000
 down KEY_12
 wait 80
 tap KEY_26
 up KEY_12
+# SHIFT let go before the turn, or its first detents step coarse on the twin, whose keys
+# are debounced, and not over the device's SysEx (#219)
+wait 100
 turn 3 20
 wait 3000
 # the delay's level on knob 4
-expect led pth 4 00f242
+expect led pth 4 00f22c
 clock 100 usb jitter 0.3
 usb 90 3C 64
 wait 2000
@@ -21,5 +26,5 @@ clock 0
 wait 4000
 clock 0 usb
 wait 2000
-expect led pth 4 00f242
+expect led pth 4 00f22c
 expect on

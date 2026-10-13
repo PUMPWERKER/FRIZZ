@@ -19,6 +19,7 @@
 #include "MidiControl.h"
 #include "MidiOut.h"
 #include "SdCard.h"
+#include "Crash.h"
 #if !FRIZZ_BENCH
 #include "LoopLoader.h"
 #endif
@@ -68,6 +69,15 @@ BenchProfile chompi::bench_profile;
 // the looper's, 32-byte aligned as the loop loader's DMA lands in it too (LoopControls.h)
 int16_t SDRAM_NOINIT __attribute__((aligned(32))) loop_mem[kLoopMemSize];
 
+// the crash record and the build running (Crash.h), in the backup SRAM, which a reset leaves
+// alone: after libDaisy's boot_info (chompi_sram.lds: .backup_sram before .backup_sram.*),
+// written before it's read. An ordinary static on the twin
+#ifdef __arm__
+#define BACKUP_SRAM __attribute__((section(".backup_sram.crash")))
+#else
+#define BACKUP_SRAM
+#endif
+crash::Backup BACKUP_SRAM crash_mem;
 #if !FRIZZ_BENCH
 // loops from the card (LoopLoader.h, #70): the buffer one loads into, 16 bars at 50 BPM, and
 // the loader's own. Not in the bench, which has no room for it
@@ -153,11 +163,12 @@ extern "C" uint32_t _esdram_bss;
 
 /** What kCmdDev's IDENT tells (MidiControl.h): the image as the bootloader copied it to
  *  SRAM_EXEC, from the vector table to the end of .data's initial values, which is the .bin
- *  byte for byte (chompi_sram.lds: .data's values are copied out of it, never into it), and
- *  why the chip last reset (RCC_RSR, left as the bootloader left it). The kind of build, and
+ *  byte for byte (chompi_sram.lds: .data's values are copied out of it, never into it), its
+ *  CRC-32, and why the chip reset since FRIZZ last started (RCC_RSR, cleared once read: a
+ *  watchdog reset is recorded, Crash.h). The option bytes, for CRASH. The kind of build, and
  *  the bench's answer to BENCH */
 #ifdef __arm__
-extern "C" uint32_t g_pfnVectors, _sidata, _sdata, _edata;
+extern "C" uint32_t g_pfnVectors, _sidata, _sdata, _edata, _stext;
 #endif
 static void DevInfo(dev::Info& info)
 {
@@ -166,7 +177,14 @@ static void DevInfo(dev::Info& info)
     info.image_len = reinterpret_cast<uint32_t>(&_sidata) - reinterpret_cast<uint32_t>(&g_pfnVectors)
                      + (reinterpret_cast<uint32_t>(&_edata) - reinterpret_cast<uint32_t>(&_sdata));
     info.reset_cause = RCC->RSR;
+    RCC->RSR |= RCC_RSR_RMVF;
+    info.option_bytes = FLASH->OPTSR_CUR;
+    System::InitBackupSram();
 #endif
+    info.crc = crash::Crc32(info.image, info.image_len);
+    info.crc_done = true;
+    info.crash = &crash_mem;
+    crash::Boot(crash_mem, info.reset_cause, info.crc, info.image_len);
 #if FRIZZ_BENCH
     info.kind = 1;
     info.bench = [](uint8_t part, uint32_t offset, uint8_t* d) { return bench.Report(part, offset, d); };
@@ -174,6 +192,68 @@ static void DevInfo(dev::Info& info)
     info.loops = [](const uint8_t* arg, size_t len, uint8_t* d) { return loop_loader.Dev(arg, len, d); };
 #endif
 }
+
+#ifdef __arm__
+/** A fault's registers into the crash record (Crash.h), then the chip's reset, as the launcher
+ *  hands over: the bootloader starts the launcher. FrizzFaultEntry passes the stacked frame.
+ *  The MPU is off in a HardFault (no HFNMIENA), so the backup SRAM is cached here as the
+ *  default map has it: the record is cleaned out of the D-cache, or the reset loses it */
+extern "C" __attribute__((used, noinline)) void FrizzFault(const uint32_t* frame, uint32_t ipsr)
+{
+    const uint32_t fault[] = {SCB->CFSR, SCB->HFSR, SCB->MMFAR, SCB->BFAR};
+    crash::Write(crash_mem.record, ipsr & 0x1FF, crash_mem.running, System::GetNow(),
+                 midi_control.dev.reset_cause, frame, fault);
+    SCB_CleanDCache();
+    NVIC_SystemReset();
+}
+
+/** HardFault, MemManage, BusFault and UsageFault: the stack the frame went to, by EXC_RETURN */
+extern "C" __attribute__((naked)) void FrizzFaultEntry()
+{
+    __asm__ volatile("tst lr, #4    \n"
+                     "ite eq        \n"
+                     "mrseq r0, msp \n"
+                     "mrsne r0, psp \n"
+                     "mrs r1, ipsr  \n"
+                     "b FrizzFault  \n");
+}
+
+/** The vector table, copied where the faults can be FrizzFaultEntry's: libDaisy's
+ *  HardFault_Handler (system.cpp) stops at a breakpoint, which without a debugger locks the
+ *  core up. The image's own table stays as loaded, for IDENT's CRC. In the DTCM, uncached,
+ *  1 KB aligned as VTOR wants for the H750's 166 vectors */
+static uint32_t __attribute__((section(".dtcmram_bss"), aligned(1024))) vectors[256];
+static void CatchFaults()
+{
+    const uint32_t* from = reinterpret_cast<const uint32_t*>(SCB->VTOR);
+    const size_t n = std::min<size_t>(256, &_stext - &g_pfnVectors);
+    for (size_t i = 0; i < n; i++)
+        vectors[i] = from[i];
+    for (size_t i = 3; i <= 6; i++)
+        vectors[i] = reinterpret_cast<uint32_t>(&FrizzFaultEntry);
+    __DSB();
+    SCB->VTOR = reinterpret_cast<uint32_t>(vectors);
+    __DSB();
+    __ISB();
+}
+
+/** The watchdog (Crash.h), fed only by the audio callback: LSI's 32 kHz by 32, a count a ms */
+static void StartWatchdog()
+{
+    IWDG1->KR = 0xCCCC;
+    IWDG1->KR = 0x5555;
+    IWDG1->PR = 3;
+    IWDG1->RLR = crash::kWatchdogMs;
+    for (uint32_t i = 0; IWDG1->SR && i < 1000000; i++)
+        ;
+    IWDG1->KR = 0xAAAA;
+}
+static inline void FeedWatchdog() { IWDG1->KR = 0xAAAA; }
+#else
+static void CatchFaults() {}
+static void StartWatchdog() {}
+static inline void FeedWatchdog() {}
+#endif
 
 /** Clears the buffers in the Daisy Seed's external SDRAM at boot. The delay's, freezer's,
  *  tape stop's and reverb pre-delay's buffers live there, and unlike internal-RAM statics
@@ -206,6 +286,7 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
 #else
     const uint32_t start_tick = System::GetTick(); // the load, for MIDI (MidiControl.h)
 #endif
+    FeedWatchdog(); // here only: a hung MainLoop doesn't set it off
     midi_clock.Process(sample_clock);
     sample_clock += size;
     // MIDI's Start, Stop, Continue and Song Position, for the loop before it plays this block
@@ -269,6 +350,10 @@ uint32_t batt;
 void MainLoop(void* data)
 {
     midi_control.dev.passes = midi_control.dev.passes + 1; // for kCmdDev's IDENT
+#if FRIZZ_BENCH
+    while (midi_control.dev.hang) // kCmdDev's TEST: a hung MainLoop, for RESET
+        ;
+#endif
     if(booting)
     {
         hw.LowBatteryLockoutCheck();
@@ -281,6 +366,7 @@ void MainLoop(void* data)
     }
 
     now = daisy::System::GetNow();
+    crash_mem.running.alive_ms = now; // when MainLoop last ran, for a watchdog's record
 
     if (now - uit > 1)
     {
@@ -354,8 +440,9 @@ static void CopyItcm() {}
 int main(void)
 {
     CopyItcm();
-    DevInfo(midi_control.dev);
     hw.Init();
+    DevInfo(midi_control.dev);
+    CatchFaults();
 
     midi_clock.Init(hw.seed.AudioSampleRate());
 
@@ -417,6 +504,10 @@ int main(void)
 #endif
 
     hw.StartAudio(AudioCallback);
+    // after the battery checks above, so their low-battery sleep (STOP, hardware.h), which
+    // stops the clocks, never starts with the watchdog on: else every start would reset into
+    // the same sleep again (Crash.h). Keep it after them
+    StartWatchdog();
 
     // safe while audio runs: the engine (looper, delay) doesn't run until booting is done
     ZeroSDRAM();

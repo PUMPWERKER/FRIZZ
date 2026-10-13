@@ -44,6 +44,14 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
                                       without, how many each has drawn since the last
     ./remote.py battery               the battery's level and the charger's status, as FRIZZ
                                       last read them
+    ./remote.py reset [--no-wait]     resets the chip from FRIZZ's audio callback, even with
+                                      MainLoop hung, and waits for the launcher (sent once,
+                                      to whatever runs: a hung FRIZZ doesn't answer)
+    ./remote.py crash [--clear]       the crash record: the last fault's registers, or the
+                                      watchdog's reset, and the build's .elf for addr2line
+    ./remote.py crash-test hang-main|fault-main|hang-audio|fault-audio
+                                      the bench (FRIZZ-bench.bin) hangs or faults on purpose,
+                                      for RESET, the crash record and the watchdog
     ./remote.py loops [--scan]        the loop slots on the card (/FRIZZ/LOOPS/A-H/01-15.wav)
                                       as FRIZZ's scan found them; --scan scans again first
     ./remote.py loops load BANK SLOT [--fault no-flow|past-end|cut-short|reinit] [--check WAV]
@@ -59,8 +67,12 @@ times, sends its `midi` and `clock` to the device, and checks its `expect led` l
 LEDs the device shows, dimmed as the card's led_brightness (the settings page) has them: at
 100, 75 or 50 %, the one level that fits every line, said when it isn't 100 %; its
 `toggle 0|1` sets the mode switch (down, up) over SysEx, back to the real one when the script
-ends. What only the twin has (the card, the input, the mic, AUX's jack, the battery, power-on)
-is skipped, and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
+ends; its `set GROUP INDEX VALUE` goes as SET, as `set` sends it (a line FRIZZ refuses fails);
+its `input sine HZ AMP` as SIGNAL (signal above), the test signal in AUX's place where the
+twin's sine goes in, at the same full scale (and in the mic's place too, which the twin leaves
+silent), `input off` and the script's end, however it ends, the input again (#219). What only
+the twin has (the card, `input wav`, the mic, AUX's jack, the battery, power-on) is skipped,
+and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
 and prints the worst, the way to try a scenario for crackles on FRIZZ.bin itself rather than on
 the bench's build; right after a start it waits (3 s at most) until FRIZZ counts its load, so the
 start isn't in the worst. A bug report (/FRIZZ/bug-N.txt) plays too, from where the device is.
@@ -337,10 +349,10 @@ def show_state(f):
             "settings" if flags & 64 else "play", "up" if d[23] & 1 else "down",
             {0: "", 2: ", SysEx holds it down", 4: ", SysEx holds it up"}.get(d[23] & 6, "")))
     if len(d) > 25:
-        # the source, its effects and live (#177)
+        # the source, its effects and monitoring (#177; "live" in the code)
         print("input      %s, %s, %s" % ("the mic" if d[25] & 1 else "AUX",
                                          "dry" if d[25] & 2 else "through the effects",
-                                         "live" if d[25] & 4 else "not live"))
+                                         "monitored" if d[25] & 4 else "not monitored"))
 
 
 def load(f, required=True):
@@ -400,21 +412,46 @@ def show_get(f, name):
                                               for p in (0, 4)))
 
 
-def dev_set(f, name, index, value):
-    group = group_of(name)
+def try_set(f, name, index, value):
+    """SET GROUP INDEX VALUE, by names as `set` and a script's `set` have them: None once
+    FRIZZ took it, else why not"""
+    if name not in GROUPS:
+        return "no group %s: %s" % (name, ", ".join(GROUPS))
+    group = GROUPS[name]
     names = {GROUP_SETTINGS: SETTING_NAMES, GROUP_VOLUME: VOLUME_NAMES,
              GROUP_LATCH: FX_NAMES}.get(group, [])
-    i = names.index(index) if index in names else int(index)
-    if group in (GROUP_SETTINGS, GROUP_LATCH):
-        v = {"on": 1, "off": 0}.get(value)
-        v = int(value) if v is None else v
-    else:
-        v = to14(float(value))
+    try:
+        i = names.index(index) if index in names else int(index)
+        if group in (GROUP_SETTINGS, GROUP_LATCH):
+            v = {"on": 1, "off": 0}.get(value)
+            v = int(value) if v is None else v
+        elif 0 <= float(value) <= 1:
+            v = to14(float(value))
+        else:
+            return "a knob's value is 0-1"
+    except ValueError as e:
+        return str(e)
+    if not 0 <= i < 128 or not 0 <= v < 1 << 14:
+        return "out of range"
     got = f.dev(chompi.SET, [group, i, v >> 7 & 0x7F, v & 0x7F])
     if not got:
-        sys.exit("no answer to SET: a FRIZZ from before it")
+        return "no answer to SET: a FRIZZ from before it"
     if got[0] != chompi.OK:
-        sys.exit("SET %s %s %s: %s" % (name, index, value, chompi.DEV_STATUS.get(got[0], got[0])))
+        return chompi.DEV_STATUS.get(got[0], got[0])
+    return None
+
+
+def dev_set(f, name, index, value):
+    group_of(name)
+    why = try_set(f, name, index, value)
+    if why:
+        sys.exit("SET %s %s %s: %s" % (name, index, value, why))
+
+
+def set_saves(group, index):
+    """Whether a SET of GROUP INDEX (as named) is what FRIZZ saves to the card: a setting, the
+    compressor's knobs, VOLUME's input gain (#171)"""
+    return group in ("settings", "comp") or group == "volume" and index in ("in", "1")
 
 
 def bench_state(f, missing_ok=False):
@@ -545,13 +582,22 @@ def levels(f):
         print("  %-13s %.4f %s" % (n, v, dbfs(v)))
 
 
-def signal(f, wave, hz, level):
+def signal_args(wave, hz, level):
+    """SIGNAL's arguments: the wave, HZ (1-16383, whole) and LEVEL (0-1 of full scale) as
+    14 bits each; None for a frequency out of range"""
     w = WAVES.index(wave)
     v = max(0, min(16383, int(level * 16383 + .5))) if w else 0
-    hz = int(hz) if w else 0
+    hz = int(hz + .5) if w else 0
     if w and not 1 <= hz <= 16383:
+        return None
+    return [w, hz >> 7 & 0x7F, hz & 0x7F, v >> 7 & 0x7F, v & 0x7F]
+
+
+def signal(f, wave, hz, level):
+    args = signal_args(wave, hz, level)
+    if args is None:
         sys.exit("signal: 1-16383 Hz")
-    dev_data(f, chompi.SIGNAL, [w, hz >> 7 & 0x7F, hz & 0x7F, v >> 7 & 0x7F, v & 0x7F], "SIGNAL")
+    dev_data(f, chompi.SIGNAL, args, "SIGNAL")
 
 
 def draws(start, state, lcg=False):
@@ -599,6 +645,98 @@ def battery(f):
     print("MP2722     status 0x11-0x16: %s" % " ".join("%02x" % b for b in raw))
 
 
+CRASH_KINDS = {1: "the watchdog: the audio callback stopped for 1 s", 3: "HardFault",
+               4: "MemManage fault", 5: "BusFault", 6: "UsageFault"}
+CFSR_BITS = {0: "IACCVIOL", 1: "DACCVIOL", 3: "MUNSTKERR", 4: "MSTKERR", 5: "MLSPERR",
+             7: "MMARVALID", 8: "IBUSERR", 9: "PRECISERR", 10: "IMPRECISERR", 11: "UNSTKERR",
+             12: "STKERR", 13: "LSPERR", 15: "BFARVALID", 16: "UNDEFINSTR", 17: "INVSTATE",
+             18: "INVPC", 19: "NOCP", 24: "UNALIGNED", 25: "DIVBYZERO"}
+HFSR_BITS = {1: "VECTTBL", 30: "FORCED", 31: "DEBUGEVT"}
+CRASH_TESTS = {"hang-main": 1, "fault-main": 2, "hang-audio": 3, "fault-audio": 4}
+ADDR2LINE = "arm-none-eabi-addr2line"
+
+
+def bits(v, names):
+    return " ".join(n for b, n in sorted(names.items()) if v >> b & 1) or "-"
+
+
+def crash_elf(crc, length):
+    """The .elf of the build that crashed, if it's one built here"""
+    for path in ("code/src/build/FRIZZ.bin", "code/src/build-bench/FRIZZ-bench.bin"):
+        path = os.path.join(HERE, path)
+        if os.path.isfile(path) and chompi.image_id(path) == (crc, length):
+            return os.path.relpath(path[:-4] + ".elf")
+    return None
+
+
+def crash(f, clear):
+    g = chompi.get7
+    d = dev_data(f, chompi.CRASH, [0], "CRASH")
+    if not d[0] & 1:
+        print("crash      none recorded since it was cleared (or since power-on)")
+    else:
+        r = dev_data(f, chompi.CRASH, [1], "CRASH")
+        pc, lr, xpsr, cfsr, hfsr, mmfar, bfar = (g(r[5 * i:5 * i + 5]) & 0xFFFFFFFF for i in range(7))
+        count, ms, crc, length = g(d[2:5]), g(d[5:10]), g(d[10:15]) & 0xFFFFFFFF, g(d[15:18])
+        rsr, sp = g(d[18:23]) & 0xFFFFFFFF, g(d[23:28]) & 0xFFFFFFFF
+        kind = CRASH_KINDS.get(d[1], "exception %d" % d[1])
+        print("crash      %s, %d since cleared" % (kind, count))
+        print("build      %s" % chompi.describe_ident(dict(kind="frizz", crc=crc, length=length)))
+        if d[1] == 1:
+            print("when       MainLoop last ran at %.3f s up; RCC_RSR %08x (%s) at the start "
+                  "after it" % (ms / 1000, rsr, chompi.reset_cause(rsr)))
+        else:
+            print("when       %.3f s up (that start's RCC_RSR %08x: %s)" % (
+                ms / 1000, rsr, chompi.reset_cause(rsr)))
+            print("PC         %08x\nLR         %08x\nxPSR       %08x (exception %d)\nSP         %08x"
+                  % (pc, lr, xpsr, xpsr & 0x1FF, sp))
+            print("CFSR       %08x %s" % (cfsr, bits(cfsr, CFSR_BITS)))
+            print("HFSR       %08x %s" % (hfsr, bits(hfsr, HFSR_BITS)))
+            if cfsr >> 7 & 1:
+                print("MMFAR      %08x" % mmfar)
+            if cfsr >> 15 & 1:
+                print("BFAR       %08x" % bfar)
+            elf = crash_elf(crc, length)
+            print("addr2line  %s -f -C -i -e %s %08x %08x" % (
+                ADDR2LINE, elf or "FRIZZ.elf (make in a checkout of that build; "
+                "tools/builds.py md5 names it)", pc, lr & ~1))
+    optsr = g(d[28:33]) & 0xFFFFFFFF
+    if not optsr:
+        print("watchdog   no option bytes (the twin)")
+    else:
+        print("watchdog   option bytes %08x: %s, %s in Stop" % (
+            optsr, "started by software (a reset stops it)" if optsr >> 4 & 1
+            else "HARDWARE (always on)", "running" if optsr >> 17 & 1 else "frozen"))
+    if clear:
+        dev_data(f, chompi.CRASH, [2], "CRASH")
+        print("cleared")
+
+
+def reset(device, wait):
+    """RESET, once, to whatever runs there, then the launcher waited for"""
+    chompi.restart(device, hard=True)
+    if not wait:
+        print("RESET sent")
+        return
+    print("RESET sent; waiting for the launcher")
+    chompi.wait_for("launcher", 30, hint="no launcher: FRIZZ's audio callback hangs too, or "
+                    "it isn't FRIZZ; switch the CHOMPI off and on", hint_after=10)
+    print("in the launcher")
+
+
+def crash_test(f, what):
+    n = CRASH_TESTS[what]
+    if n in (1, 2):
+        got = f.dev(chompi.TEST, [n], retries=1)
+        if got and got[0] != chompi.OK:
+            sys.exit("TEST: %s" % chompi.DEV_STATUS.get(got[0], got[0]))
+    else:
+        # taken in the audio callback, as it comes: no answer
+        chompi._seq[0] = chompi._seq[0] % 127 + 1
+        f.send(chompi.DEV, [chompi.TEST, chompi._seq[0], n])
+    print({1: "MainLoop hangs (RESET brings it back)", 2: "faulted: read where nothing is",
+           3: "the audio callback hangs (the watchdog resets in 1 s)",
+           4: "faulted: an undefined instruction in the audio callback"}[n])
 # the loop loader (LoopLoader.h): its states, a slot's result or why a load stopped, faults
 LOOP_STATES = ["idle", "scanning", "loading", "loaded", "failed", "checking", "writing", "written"]
 LOOP_RESULTS = ["empty", "mono", "stereo", "not RIFF/WAVE", "no fmt chunk before the data",
@@ -892,6 +1030,8 @@ def card_use(path, up, comp, mode, page=0):
             used = "turn %s on VOLUME's page 2, the input gain" % args[0], MASTER
         elif cmd == "turn" and comp and 1 <= int(args[0]) <= 4:
             used = "turn %s with the compressor selected" % args[0], MASTER
+        elif cmd == "set" and len(args) >= 2 and set_saves(args[0], args[1]):
+            used = "set %s" % " ".join(args), MASTER
         elif cmd in ("midi", "usb"):
             for m in midi_messages([int(b, 16) for b in args]):
                 kind = m[0] & 0xF0
@@ -938,8 +1078,8 @@ def card_use(path, up, comp, mode, page=0):
 
 def play(f, path, cpu):
     """A twin script on the device; returns how many expectations failed. Whatever ends it
-    (an error, Ctrl-C, no answer), the keys it holds are let go and the mode switch it set is
-    given back to the hand"""
+    (an error, Ctrl-C, no answer), the keys it holds are let go, the mode switch it set is
+    given back to the hand and the test signal it turned on is turned off"""
     start = time.monotonic()
     clock = {"bpm": 0.0}
     stop = threading.Event()
@@ -1007,6 +1147,7 @@ def play(f, path, cpu):
     skipped = set()
     at_base = 0.0
     toggled = False
+    signalled = False  # SIGNAL on: off again whatever ends the script
     levels = list(LED_PERCENTS)  # the brightnesses that fit every expect led so far
     try:
         for line_no, cmd, args in script_lines(path):
@@ -1031,6 +1172,43 @@ def play(f, path, cpu):
                     detents -= step
             elif cmd in ("midi", "usb"):
                 f.raw(int(b, 16) for b in args)
+            elif cmd == "set":
+                why = try_set(f, *args) if len(args) == 3 else "set GROUP INDEX VALUE"
+                if why:
+                    print("line %d: set %s: %s" % (line_no, " ".join(args), why), file=sys.stderr)
+                    failed += 1
+            elif cmd == "input" and cmd not in skipped:
+                # AUX's sine as the developers' test signal, where the twin's goes in: in place
+                # of the input the engine takes, at full scale 1 (MidiControl.h's dev::Audio).
+                # It takes the mic's place too, which the twin's leaves silent
+                what = args[0] if args else "off"
+                sine = what == "sine"
+                if what not in ("sine", "off"):
+                    print("skipped (twin only): input %s (the device's test signal plays a sine)"
+                          "%s" % (what, ": the signal off" if signalled else ""),
+                          file=sys.stderr)
+                if not sine and not signalled:
+                    continue
+                sig = signal_args("sine", float(args[1]), float(args[2])) if sine else [0]
+                if sig is None:
+                    print("line %d: input %s: 1-16383 Hz" % (line_no, " ".join(args)),
+                          file=sys.stderr)
+                    failed += 1
+                    continue
+                if sine and not signalled:
+                    print("input: the test signal (SIGNAL) in AUX's place, and the mic's")
+                signalled = sine  # before it goes: an interrupt then still turns it off
+                got = f.dev(chompi.SIGNAL, sig)
+                if not got or got[0] == chompi.NOT_HERE:
+                    print("skipped (twin only): input, a FRIZZ without SIGNAL (the test signal)",
+                          file=sys.stderr)
+                    skipped.add(cmd)
+                    signalled = False
+                elif got[0] != chompi.OK:
+                    print("line %d: input %s: SIGNAL %s" % (
+                        line_no, " ".join(args), chompi.DEV_STATUS.get(got[0], got[0])),
+                        file=sys.stderr)
+                    failed += 1
             elif cmd == "clock":
                 clock["bpm"] = float(args[0])
             elif cmd == "toggle":
@@ -1065,6 +1243,8 @@ def play(f, path, cpu):
             f.release()
             if toggled:
                 f.send(SWITCH, [0])  # the real switch again
+            if signalled:
+                f.dev(chompi.SIGNAL, [0])  # the input again
         except OSError:
             pass  # the device went away: what ended the run says more
     if levels != [100] and len(levels) < len(LED_PERCENTS):
@@ -1158,6 +1338,12 @@ def main():
     p = sub.add_parser("reseed", parents=[common])
     p.add_argument("seed", type=int, nargs="?")
     sub.add_parser("battery", parents=[common])
+    p = sub.add_parser("reset", parents=[common])
+    p.add_argument("--no-wait", action="store_true", help="don't wait for the launcher")
+    p = sub.add_parser("crash", parents=[common])
+    p.add_argument("--clear", action="store_true", help="and clear it")
+    p = sub.add_parser("crash-test", parents=[common])
+    p.add_argument("what", choices=CRASH_TESTS)
     p = sub.add_parser("loops", parents=[common])
     p.add_argument("action", nargs="?", choices=["load", "write"])
     p.add_argument("args", nargs="*")
@@ -1181,7 +1367,11 @@ def run(a):
 
 
 def command(a):
-    if a.cmd in ("bench", "ident") and not a.device and not a.slot:
+    if a.cmd == "reset":
+        # whatever runs: a hung FRIZZ doesn't answer, so isn't asked
+        return reset(a.device or chompi.find_device() or sys.exit("no CHOMPI on USB MIDI"),
+                     not a.no_wait)
+    if a.cmd in ("bench", "ident", "crash", "crash-test") and not a.device and not a.slot:
         # whatever runs, the bench too, which answers as FRIZZ does
         a.device = chompi.wait_for("frizz", 30)
     # FRIZZ found or started by the tools, which can start it again (play --fresh, restore);
@@ -1263,6 +1453,10 @@ def command(a):
         reseed(f, a.seed)
     elif a.cmd == "battery":
         battery(f)
+    elif a.cmd == "crash":
+        crash(f, a.clear)
+    elif a.cmd == "crash-test":
+        crash_test(f, a.what)
     elif a.cmd == "loops" and a.action == "load":
         if len(a.args) != 2 or a.args[0].upper() not in BANKS or not a.args[1].isdigit() \
                 or not 1 <= int(a.args[1]) <= 15:
@@ -1320,7 +1514,7 @@ def writes_card(a):
     if a.cmd == "scene":
         return a.action == "put"
     if a.cmd == "set":
-        return a.group in ("settings", "comp") or a.group == "volume" and a.index in ("in", "1")
+        return set_saves(a.group, a.index)
     return a.cmd in CARD_SETTERS
 
 

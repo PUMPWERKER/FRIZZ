@@ -55,6 +55,16 @@ static Source aux_in, mic_in;
 // MIDI clock out of a virtual sequencer on the jack and a DAW over USB (clockgen.h)
 static ClockGen clock_trs, clock_usb;
 
+// what FRIZZ sent over USB that the script hasn't looked at yet: TakeUsbOut's, less the
+// answers to its own `set`s
+static std::string usb_kept;
+static std::string TakeUsb()
+{
+    std::string out = usb_kept + TakeUsbOut();
+    usb_kept.clear();
+    return out;
+}
+
 static std::string Hex(const Rgb& c)
 {
     char s[8];
@@ -203,6 +213,114 @@ std::string LoopWav(uint32_t frames, int channels, float freq, uint32_t beats)
     return w;
 }
 
+// `set`'s groups and names, as remote.py's set has them: the effects by FxId, then the
+// developers' SysEx's groups (MidiControl.h's namespace dev)
+static const char* const kFxNames[] = {"freezer", "shifter",  "folder", "crusher", "filter",
+                                       "flanger", "resonator", "slicer", "warble",  "tapestop",
+                                       "delay",   "reverb",    "phaser", "chaos"};
+static const int kNumFxNames = sizeof(kFxNames) / sizeof(kFxNames[0]);
+static const int kGroupComp = 0x20, kGroupLatch = 0x21, kGroupVolume = 0x22, kGroupSettings = 0x23;
+static const char* const kVolumeNames[] = {"out", "in", "mix", "headphones"};
+// masterfile::kLines' order (MasterSettings.h)
+static const char* const kSettingNames[] = {
+    "mono",     "midi_channel",  "midi_transport", "clock_factor", "clock_source",
+    "midi_out", "led_brightness", "midi_block_trs", "midi_feedback", "aux_dry",
+    "gain_aux", "gain_mic",       "mic_dry",        "aux_live",      "mic_live"};
+
+static int IndexOf(const char* const* names, int count, const std::string& name)
+{
+    for (int i = 0; i < count; i++)
+        if (name == names[i])
+            return i;
+    return -1;
+}
+
+/** A whole number 0..max from text, or -1 */
+static long Whole(const std::string& s, long max)
+{
+    char* end = nullptr;
+    const long v = strtol(s.c_str(), &end, 10);
+    return s.empty() || *end || v < 0 || v > max ? -1 : v;
+}
+
+/** set GROUP INDEX VALUE: the developers' SET over USB, as remote.py's set sends it, played
+ *  until FRIZZ answers (MainLoop does, within a few ms; from power-on, once it runs), the
+ *  answer kept from the script's `replies` and `expect usb`. An empty string, or why not */
+static std::string DevSet(const std::string& group_name, const std::string& index_name,
+                          const std::string& value)
+{
+    int group = IndexOf(kFxNames, kNumFxNames, group_name);
+    const char* const* names = nullptr;
+    int count = 0;
+    if (group_name == "comp")
+        group = kGroupComp;
+    else if (group_name == "latch")
+    {
+        group = kGroupLatch;
+        names = kFxNames;
+        count = kNumFxNames;
+    }
+    else if (group_name == "volume")
+    {
+        group = kGroupVolume;
+        names = kVolumeNames;
+        count = sizeof(kVolumeNames) / sizeof(kVolumeNames[0]);
+    }
+    else if (group_name == "settings")
+    {
+        group = kGroupSettings;
+        names = kSettingNames;
+        count = sizeof(kSettingNames) / sizeof(kSettingNames[0]);
+    }
+    if (group < 0)
+        return "no group " + group_name;
+    long index = names ? IndexOf(names, count, index_name) : -1;
+    if (index < 0)
+        index = Whole(index_name, 127);
+    if (index < 0)
+        return "no index " + index_name;
+    long raw;
+    if (group == kGroupSettings || group == kGroupLatch)
+        raw = value == "on" ? 1 : value == "off" ? 0 : Whole(value, 16383);
+    else
+    {
+        // a knob's 0-1 in 14 bits, 8192 its centre (MidiControl.h's KnobToMidi14)
+        char* end = nullptr;
+        const float k = strtof(value.c_str(), &end);
+        raw = value.empty() || *end || !(k >= 0.f && k <= 1.f)
+                  ? -1
+                  : static_cast<long>((k <= .5f ? k * 2.f * 8192.f : 8192.f + (k - .5f) * 2.f * 8191.f) + .5f);
+    }
+    if (raw < 0)
+        return "no value " + value;
+
+    static uint8_t seq = 0;
+    seq = static_cast<uint8_t>(seq % 127 + 1);
+    const uint8_t set[] = {0xF0, 0x7D, 0x43, 0x48, 0x3E, 3, seq, static_cast<uint8_t>(group),
+                           static_cast<uint8_t>(index), static_cast<uint8_t>(raw >> 7 & 0x7F),
+                           static_cast<uint8_t>(raw & 0x7F), 0xF7};
+    for (uint8_t b : set)
+        UsbMidi(b);
+    // FRIZZ answers once its main loop runs (`booted`), the card read
+    while (!MainLoopRunning() && NowMs() < 10000)
+        RunMs(1);
+    // the answer: F0 7D 43 48 7E 03 SEQ STATUS GROUP INDEX F7
+    const std::string answer = std::string("\xF0\x7D\x43\x48\x7E\x03", 6) + static_cast<char>(seq);
+    for (int ms = 0; ms < 100; ms++)
+    {
+        RunMs(1);
+        usb_kept += TakeUsbOut();
+        const size_t at = usb_kept.find(answer);
+        const size_t end = at == std::string::npos ? at : usb_kept.find('\xF7', at);
+        if (end == std::string::npos)
+            continue;
+        const uint8_t status = static_cast<uint8_t>(usb_kept[at + answer.size()]);
+        usb_kept.erase(at, end + 1 - at);
+        return status == 0 ? "" : "refused";
+    }
+    return "no answer";
+}
+
 static void Fail(int line, const std::string& what)
 {
     fprintf(stderr, "line %d: %s\n", line, what.c_str());
@@ -215,6 +333,7 @@ int PlayScript(std::istream& src_in, FILE* leds, std::vector<float>* out)
     led_log = leds;
     out_samples = out;
     failures = 0;
+    usb_kept.clear();
     std::string text;
     int line_no = 0;
     uint32_t at_base = 0; // `at` counts from here: power-on, or the main loop's start (booted)
@@ -389,7 +508,7 @@ int PlayScript(std::istream& src_in, FILE* leds, std::vector<float>* out)
         else if (cmd == "replies")
         {
             // what came back over USB since the last look, as hex
-            printf("%7u usb%s\n", NowMs(), UsbHex(TakeUsbOut()).c_str());
+            printf("%7u usb%s\n", NowMs(), UsbHex(TakeUsb()).c_str());
         }
         else if (cmd == "clock")
         {
@@ -418,6 +537,15 @@ int PlayScript(std::istream& src_in, FILE* leds, std::vector<float>* out)
                 gen.Start(c, BlockMs());
             else
                 gen.Stop();
+        }
+        else if (cmd == "set")
+        {
+            // set GROUP INDEX VALUE: a knob, latch, VOLUME's value or setting, absolutely
+            std::string group, index, value;
+            in >> group >> index >> value;
+            const std::string why = DevSet(group, index, value);
+            if (!why.empty())
+                Fail(line_no, "set " + group + " " + index + " " + value + ": " + why);
         }
         else if (cmd == "leds")
             printf("%7u %s\n", NowMs(), LedLine().c_str());
@@ -455,7 +583,7 @@ int PlayScript(std::istream& src_in, FILE* leds, std::vector<float>* out)
                              static_cast<unsigned>(strtol(b.c_str(), nullptr, 16)));
                     want += hex;
                 }
-                const std::string got = UsbHex(TakeUsbOut());
+                const std::string got = UsbHex(TakeUsb());
                 if (got != want)
                     Fail(line_no, "usb sent" + (got.empty() ? std::string(" nothing") : got) +
                                       ", not" + want);

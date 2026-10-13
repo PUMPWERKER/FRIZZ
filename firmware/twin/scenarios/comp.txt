@@ -1,6 +1,12 @@
 # The master compressor: selected, every knob of page 1 (threshold, ratio, attack, release)
 # swept up and down on a loud input
 input sine 110 0.8
+# its knobs where the factory has them, whatever the card keeps: the device's card holds the
+# player's own (#214); the turns below start from there
+set comp 0 0
+set comp 1 0.5
+set comp 2 0.5
+set comp 3 0.5
 at 6000
 tap KEY_15
 wait 200

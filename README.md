@@ -14,10 +14,10 @@ box and looper for whatever you plug into its AUX input, or for its built-in mic
   at once, drop to them hard on the next bar line, morph to them on the bar line or crossfade
   by hand on the transport knob, copy and delete them. Kept on the SD card. A fifth key clears every effect at once.
 - **An input/loop mix** between the live input and the loop, plus input gain, output gain and a
-  headphone feed that can carry the dry input alone, all on the VOLUME knob.
+  headphone feed that can carry the input alone, all on the VOLUME knob.
 - **Two inputs:** AUX, or the built-in microphone while no cable is in AUX, each with its own
-  input gain. Either can go through the effects or **dry** past them (a drum machine or a
-  finished song next to your loop), and be live on the outputs or only recorded.
+  input gain. Either can go through the effects or **past them** (a drum machine or a
+  finished song next to your loop), and be monitored on the outputs or only recorded.
 - **A master compressor** on its own key, and a safety limiter on every output.
 - **MIDI** over TRS or USB: clock for quantized loops and the tempo-synced effects, notes
   playing the keys, CCs setting every parameter, program changes recalling scenes, a MIDI
@@ -33,7 +33,7 @@ and you can go back to the stock firmware the same way.
 | | |
 |---|---|
 | [**Install**](INSTALL.md) | Put FRIZZ on your CHOMPI, and go back to stock firmware |
-| [**Quick guide**](QUICKSTART.md) | Your first loop and your first effects in ten minutes |
+| [**Quick start**](QUICKSTART.md) | Your first loop and your first effects in ten minutes |
 | [**Manual**](MANUAL.md) | Every control, every effect, every knob |
 
 ## For developers
