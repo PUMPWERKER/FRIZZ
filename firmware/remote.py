@@ -629,9 +629,12 @@ def loops_wait(f, busy, timeout, progress=False):
     step meanwhile in us)"""
     t0 = time.time()
     worst = 0
+    flow_off = False
     while True:
         s = loops_status(f)
         worst = max(worst, s["worst_us"])
+        flow_off = flow_off or s["state"] in busy and not s["clkcr"] & 0x20000
+        s["flow_off"] = flow_off
         if s["state"] not in busy:
             if progress:
                 print()
@@ -703,9 +706,9 @@ def loops_load(f, bank, slot, fault, check):
     print("  the audio callback meanwhile: max %.1f %%, mean %.1f %%%s; MainLoop's longest "
           "step %.1f ms" % (mx, mean, "" if over is None else ", %d blocks over 100 %%" % over,
                             worst / 1000))
-    print("  SDMMC CLKCR 0x%08x (flow control %s, divider %d); card recovered %d times, %d set "
+    print("  SDMMC CLKCR 0x%08x (flow control %s, divider %d%s); card recovered %d times, %d set "
           "up again" % (s["clkcr"], "on" if s["clkcr"] & 0x20000 else "off", s["clkcr"] & 0x3FF,
-                        s["recoveries"], s["reinits"]))
+                        ", off while it loaded" if s["flow_off"] else "", s["recoveries"], s["reinits"]))
     if ok and check:
         want = zlib.crc32(wav_data(check)) & 0xFFFFFFFF
         dev_data(f, chompi.LOOPS, [5, 1], "LOOPS")

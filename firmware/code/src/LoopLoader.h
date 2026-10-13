@@ -330,7 +330,9 @@ public:
             worst_us_ = 0;
             return static_cast<int>(n);
         }
-        if (bank >= loops::kBanks || (part == 2 && slot >= loops::kSlots) || (part == 4 && len < 4))
+        const bool banked = part == 1 || part == 2 || part == 4;
+        if ((banked && bank >= loops::kBanks) || ((part == 2 || part == 4) && slot >= loops::kSlots)
+            || (part == 4 && len < 4))
             return -1;
         if (part == 1)
         {
