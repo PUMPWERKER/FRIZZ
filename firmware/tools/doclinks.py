@@ -157,6 +157,10 @@ def check(root):
             checked += 1
             file, _, frag = target.partition('#')
             dest = os.path.normpath(os.path.join(os.path.dirname(path), file)) if file else path
+            if path in SITE_PAGES and dest == 'README.md':
+                errors.append(f'{path}:{line}: {target}: the site has no page for the README '
+                              '(frizz-web #17): link to the manual or to GitHub instead')
+                continue
             if not os.path.exists(os.path.join(root, dest)):
                 (warnings if image else errors).append(f'{path}:{line}: {target}: no such file')
                 continue
@@ -505,6 +509,8 @@ def landing(root, anchors, errors):
                     if len(s) > 20:
                         err(n, f'the control "{s}" is {len(s)} characters, at most 20')
                 continue
+            if '`' in v:
+                err(n, f'`code` in the field "{f}" of {where}: only in Controls')
             if len(plain(v)) > fields[f]:
                 err(n, f'the field "{f}" of {where} is {len(plain(v))} characters, at most {fields[f]}')
             if (section, f) in EMPHASIS_ONCE and level == 2 and len(re.findall(r'(?<!\*)\*[^*]+\*(?!\*)', v)) > 1:
@@ -564,106 +570,188 @@ def inline(path, n, s, anchors, root, errors):
     return count
 
 
+# A valid site/landing.md for the selftest, so its breaks don't depend on the real one's words
+LANDING_FIXTURE = """# Front page
+
+<!-- a comment -->
+
+## Meta
+
+- Title: A title
+- Description: A description.
+
+## Hero
+
+- Eyebrow: An eyebrow
+- Title: Loop it, then *mangle* it
+- Assure: Free.
+
+**FRIZZ** turns it into a box, with the
+[looper](MANUAL.md#looper) in it.
+
+## Keys
+
+- Title: Hold a key.
+
+The hint.
+
+## Session
+
+- Eyebrow: How it plays
+- Title: To the *drop*
+
+### One
+
+- Controls: `LOOP`
+
+Move one.
+
+### Two
+
+- Controls: `A` `B`
+
+Move two.
+
+### Three
+
+- Controls: `C`
+
+Move three.
+
+## Get started
+
+- Eyebrow: Get started
+- Title: From the card
+- Install: Swap the file.
+- Quick start: Ten minutes.
+- Manual link: The manual
+
+The hint.
+
+## Credits
+
+Builds on [the release](https://example.com/).
+"""
+
+
 def selftest(root, quiet=False):
-    """Breaks a copy of the docs one way at a time; each break must be reported."""
-    def regex(path, pattern, new):
+    """Breaks a copy of the docs one way at a time; each break must be reported. The breaks find
+    their place by structure (the first knob table, the first effect's summary …), not by words."""
+    def edit(path, fn):
         def apply(dir):
             p = os.path.join(dir, path)
             assert not os.path.islink(p), p
             t = open(p, encoding='utf-8').read()
-            t2 = re.sub(pattern, new, t, count=1, flags=re.M)
-            assert t2 != t, f'selftest: /{pattern}/ not in {path}'
+            t2 = fn(t)
+            if t2 is None or t2 == t:
+                raise LookupError(f'nothing to break in {path}')
             open(p, 'w', encoding='utf-8').write(t2)
         return apply
+
+    def sub(path, pattern, new):
+        """the first match of pattern replaced"""
+        return edit(path, lambda t: re.sub(pattern, new, t, count=1, flags=re.M))
+
+    def after_table(pattern, new):
+        """the first match of pattern after MANUAL.md's first `| Knob | Page 1 |` table head"""
+        def fn(t):
+            i = t.find('| Knob | Page 1 |')
+            return None if i < 0 else t[:i] + re.sub(pattern, new, t[i:], count=1, flags=re.M)
+        return edit('MANUAL.md', fn)
+
+    def effect_summary(new):
+        """the summary of the first chapter with a `| Knob | Page 1 |` table, its line replaced
+        by new(line)"""
+        def fn(t):
+            i = t.find('| Knob | Page 1 |')
+            starts = [m for m in re.finditer(r'^<!-- summary:.*$', t[:i], re.M)]
+            if i < 0 or not starts:
+                return None
+            m = starts[-1]
+            return t[:m.start()] + new(m.group(0)) + t[m.end():]
+        return edit('MANUAL.md', fn)
 
     M, Q, I, S = 'MANUAL.md', 'QUICKSTART.md', 'INSTALL.md', LANDING
     LED, FX, PK = (f'{SRC}/{f}' for f in ('LedColors.h', 'FxSlots.h', 'PanelKeys.h'))
     cases = [
         # the knob tables
-        ('a knob table without row 4', regex(M, r'^\| 4 \| Gate:.*\n', ''), 'has no row 4'),
-        ('a knob table without row 1', regex(M, r'^\| 1 \| Rate: 21.*\n', ''), 'has no row 1'),
-        ('a knob row without a name', regex(M, r'^\| 2 \| Bits:', '| 2 | (16 down to 2):'),
-         'knob 2 of "Crusher" has no name'),
-        ('an effect without its knob table',
-         regex(M, r'^\| Knob \| Page 1 \| Page 2 \|\n(\|---\|---\|---\|\n\| 1 \| Drive)',
-               r'| Knob | Page one | Page 2 |\n\1'),
-         '"Folder" (white key "Folder") has no knob table'),
+        ('a knob table without row 4', after_table(r'^\| 4 \|.*\n', ''), 'has no row 4'),
+        ('a knob table without row 1', after_table(r'^\| 1 \|.*\n', ''), 'has no row 1'),
+        ('a knob row without a name', after_table(r'^\| 2 \| ', '| 2 | (no name): '), 'knob 2 of'),
+        ('an effect without its knob table', sub(M, r'^\| Knob \| Page 1 \|', '| Knob | Page one |'),
+         'has no knob table'),
         # summaries
-        ('a second summary', regex(M, r'^(<!-- summary: A wavefolder.*\n)', r'\1<!-- summary: Again. -->\n'),
-         'a second summary'),
-        ('a summary after text', regex(M, r'^(<!-- summary: A wavefolder.*)\n((?:.*\n){2})', r'\2\1\n'),
-         'right under its heading'),
-        ('a summary under a ###', regex(M, r'^(### Transport knob\n)', r'\1<!-- summary: The knob. -->\n'),
+        ('a second summary', effect_summary(lambda s: s + '\n<!-- summary: Again. -->'), 'a second summary'),
+        ('a summary after text', effect_summary(lambda s: 'Text first.\n\n' + s), 'right under its heading'),
+        ('a summary under a ###', sub(M, r'^(### .*\n)', r'\1<!-- summary: A section. -->\n'),
          'not under a ## heading'),
-        ('an effect without a summary', regex(M, r'^<!-- summary: A DJ filter.*\n', ''),
-         '"Filter" (white key "Filter") has no `<!-- summary'),
+        ('an effect without a summary', effect_summary(lambda s: ''), 'has no `<!-- summary'),
         ('an effect summary over 160 characters',
-         regex(M, r'^<!-- summary: A wavefolder.*-->', '<!-- summary: ' + 'A fold, ' * 20 + 'folding. -->'),
-         'at most 160'),
+         effect_summary(lambda s: '<!-- summary: ' + 'A fold, ' * 20 + 'folding. -->'), 'at most 160'),
         ('an effect summary of 3 sentences',
-         regex(M, r'^<!-- summary: A wavefolder.*-->', '<!-- summary: Folds. Bright. Gritty. -->'),
-         '1 to 2 sentences'),
+         effect_summary(lambda s: '<!-- summary: Folds. Bright. Gritty. -->'), '1 to 2 sentences'),
         ('a chapter summary of 2 sentences',
-         regex(M, r'^<!-- summary: What FRIZZ does.*-->', '<!-- summary: What it does. How to read it. -->'),
+         sub(M, r'^<!-- summary:.*-->', '<!-- summary: What it does. How to read it. -->'), 'one sentence'),
+        ('a typo in a marker', effect_summary(lambda s: s.replace('summary:', 'sumary:')),
+         "isn't a marker the site reads"),
+        ('a marker over 2 lines', effect_summary(lambda s: s.replace(' -->', '\n-->')),
+         "isn't a marker the site reads"),
+        ('a guide without its summary', sub(I, r'^<!-- summary:.*\n', ''), 'INSTALL.md: no `<!-- summary'),
+        ('a guide summary of 2 sentences', sub(Q, r'^<!-- summary:.*-->', '<!-- summary: Levels. A loop. -->'),
          'one sentence'),
-        ('a typo in a marker', regex(M, r'^<!-- summary: A wavefolder', '<!-- sumary: A wavefolder'),
-         "isn't a marker the site reads"),
-        ('a marker over 2 lines', regex(M, r'^<!-- summary: A wavefolder(.*) -->', r'<!-- summary: A wavefolder\n\1 -->'),
-         "isn't a marker the site reads"),
-        ('a guide without its summary', regex(I, r'^<!-- summary: .*\n', ''), 'INSTALL.md: no `<!-- summary'),
         # parts
-        ('a part marker without a blank line after', regex(M, r'^(<!-- part: Effects -->)\n\n', r'\1\n'),
+        ('a part marker without a blank line after', sub(M, r'^(<!-- part: .*-->)\n\n', r'\1\n'),
          'blank line before and after'),
-        ('a part marker away from a ##', regex(M, r'^<!-- part: Effects -->\n\n(## .*)\n',
-                                               r'<!-- part: Effects -->\n\nText.\n\n\1\n'),
+        ('a part marker away from a ##', sub(M, r'^(<!-- part: .*-->)\n\n', r'\1\n\nText.\n\n'),
          'right before a ## heading'),
-        ('a part marker in a code block', regex(M, r'^(## Overview\n)', r'\1\n```\n<!-- part: X -->\n```\n'),
+        ('a part marker in a code block', sub(M, r'^(## .*\n)', r'\1\n```\n<!-- part: X -->\n```\n'),
          'in a code block'),
         # headings, the key row, links
-        ('a second H1', regex(M, r'^## Overview$', '# Overview'), 'H1 headings'),
-        ('a key row of 14 cells', regex(Q, r'^(\| Effect \|.*) Compressor \|$', r'\1'), 'has 14 cells'),
-        ('a link to no heading', regex(Q, r'MANUAL\.md#input-aux-or-the-mic', 'MANUAL.md#no-such'),
-         'no such heading'),
+        ('a second H1', sub(M, r'^## ', '# '), 'H1 headings'),
+        ('a key row of 14 cells', sub(Q, r'^(\| Effect \|.*\|)[^|\n]*\|$', r'\1'), 'has 14 cells'),
+        ('a link to no heading', sub(Q, r'MANUAL\.md#[\w-]+', 'MANUAL.md#no-such'), 'no such heading'),
+        ('a link to the README', sub(Q, r'\]\(MANUAL\.md\)', '](README.md)'), 'the README'),
         # the keys' colours
-        ('a slot colour not in LedColors.h', regex(FX, r'(KEY_5, )pink,', r'\1rosa,'), 'colour "rosa"'),
-        ('a colour that is no float literal', regex(LED, r'(pink\[3\] = \{)1\.f', r'\1ONE'), "isn't 3 float literals"),
-        ('a slot entry the site can\'t read', regex(FX, r'\{Hardware::SwId::KEY_9, ', '{kSlicerKey, '),
+        ('a slot colour not in LedColors.h', sub(FX, r'(\{Hardware::SwId::KEY_\d+, )\w+,', r'\1rosa,'),
+         'colour "rosa"'),
+        ('a colour that is no float literal', sub(LED, r'(\[3\] = \{)[^,]*', r'\1ONE'), "isn't 3 float literals"),
+        ("a slot entry the site can't read", sub(FX, r'\{Hardware::SwId::KEY_(\d+), ', r'{kKey\1, '),
          "an entry the site can't read"),
-        ('a key without a slot', regex(FX, r'^.*KEY_10, teal.*\n', ''), 'white key 10 ("Wow & flutter") has no slot'),
-        ('no compressor key', regex(FX, r'kCompKey = ', 'kCompressorKey = '), 'no `kCompKey'),
-        ('the white keys out of order', regex(PK, r'KEY_1,  Hardware::SwId::KEY_2,', 'KEY_2,  Hardware::SwId::KEY_1,'),
+        ('a key without a slot', sub(FX, r'^\s*\{Hardware::SwId::KEY_\d+,.*\n', ''), 'has no slot'),
+        ('no compressor key', sub(FX, r'kCompKey\s*=', 'kCompressorKey ='), 'no `kCompKey'),
+        ('the white keys out of order', sub(PK, r'(kWhiteKeys\[\w*\]\s*=\s*\{\s*Hardware::SwId::)KEY_1,', r'\1KEY_25,'),
          "kWhiteKeys isn't KEY_1 to KEY_15"),
-        # site/landing.md
-        ('a landing field missing', regex(S, r'^- Assure: .*\n', ''), 'Hero has no field "Assure"'),
-        ('a landing field unknown', regex(S, r'^(- Eyebrow: Free.*\n)', r'\1- Subtitle: More.\n'),
-         'unknown field "Subtitle"'),
-        ('a landing field twice', regex(S, r'^(- Title: Hold a key.*\n)', r'\1\1'), 'twice'),
-        ('a landing field too long', regex(S, r'^- Eyebrow: Free firmware for the CHOMPI$',
-                                           '- Eyebrow: Free firmware for the CHOMPI, the sampler by CHOMPI Club'),
-         'at most 40'),
-        ('a landing section missing', regex(S, r'^## Keys\n(?:.*\n)*?(?=## Session)', ''), 'the sections are'),
-        ('the last landing section missing', regex(S, r'^(## Credits\n(?:.*\n)*)', ''), 'the sections are'),
-        ('a landing section unknown', regex(S, r'^## Keys$', '## Keyboard'), 'unknown section "Keyboard"'),
-        ('a landing paragraph too many', regex(S, r'^(Press LOOP, play.*\n)', r'\1\nAnd more.\n'),
-         'exactly one paragraph'),
-        ('a landing paragraph missing', regex(S, r'^Turn the transport knob(?:.*\n)+?\n', ''), 'exactly one paragraph'),
-        ('a paragraph in Meta', regex(S, r'^(- Description: .*\n)', r'\1\nA word.\n'), 'no paragraph of its own'),
-        ('no blank line after the fields', regex(S, r'^(- Title: Hold a key.*)\n\n', r'\1\n'), 'blank line must separate'),
-        ('too many controls', regex(S, r'^- Controls: `LOOP`$', '- Controls: `A` `B` `C` `D` `E`'), '1 to 4'),
-        ('2 moves', regex(S, r'^### Bend it(?:.*\n)+?(?=### Lock)', ''), 'expected 3 to 6'),
-        ('raw HTML in landing.md', regex(S, r'^(\*\*FRIZZ\*\* turns)', r'<b>FRIZZ</b> turns'), 'raw HTML'),
-        ('code outside Controls', regex(S, r'^Press LOOP, play', 'Press `LOOP`, play'), 'only in Controls'),
-        ('a landing link to no heading', regex(S, r'^(Press LOOP, play)', r'[\1](MANUAL.md#no-such-heading)'),
+        # site/landing.md (LANDING_FIXTURE)
+        ('a landing field missing', sub(S, r'^- Assure: .*\n', ''), 'Hero has no field "Assure"'),
+        ('a landing field unknown', sub(S, r'^(- Assure: .*\n)', r'\1- Subtitle: More.\n'), 'unknown field "Subtitle"'),
+        ('a landing field twice', sub(S, r'^(- Title: Hold a key.*\n)', r'\1\1'), 'twice'),
+        ('a landing field too long', sub(S, r'^- Eyebrow: An eyebrow$', '- Eyebrow: ' + 'x' * 41), 'at most 40'),
+        ('a landing field empty', sub(S, r'^- Manual link: .*$', '- Manual link:'), 'is empty'),
+        ('a landing section missing', sub(S, r'^## Keys\n(?:.*\n)*?(?=## Session)', ''), 'the sections are'),
+        ('the last landing section missing', sub(S, r'^## Credits\n(?:.*\n)*', ''), 'the sections are'),
+        ('a landing section unknown', sub(S, r'^## Keys$', '## Keyboard'), 'unknown section "Keyboard"'),
+        ('a landing paragraph too many', sub(S, r'^(Move one\.\n)', r'\1\nAnd more.\n'), 'exactly one paragraph'),
+        ('a landing paragraph missing', sub(S, r'^Move two\.\n', ''), 'exactly one paragraph'),
+        ('a paragraph in Meta', sub(S, r'^(- Description: .*\n)', r'\1\nA word.\n'), 'no paragraph of its own'),
+        ('no blank line after the fields', sub(S, r'^(- Title: Hold a key.*)\n\n', r'\1\n'), 'blank line must separate'),
+        ('too many controls', sub(S, r'^- Controls: `LOOP`$', '- Controls: `A` `B` `C` `D` `E`'), '1 to 4'),
+        ('a control too long', sub(S, r'^- Controls: `LOOP`$', '- Controls: `' + 'x' * 21 + '`'), 'at most 20'),
+        ('2 moves', sub(S, r'^### Two\n(?:.*\n)+?(?=## Get)', ''), 'expected 3 to 6'),
+        ('raw HTML in landing.md', sub(S, r'^\*\*FRIZZ\*\*', '<b>FRIZZ</b>'), 'raw HTML'),
+        ('an image in landing.md', sub(S, r'^Move one\.', '![A key](images/key.svg)'), 'an image'),
+        ('a list in landing.md', sub(S, r'^Move one\.', '- Move one.'), 'a list in'),
+        ('code in a paragraph', sub(S, r'^Move one\.', 'Press `LOOP`.'), 'only in Controls'),
+        ('code in a field', sub(S, r'^- Install: .*$', '- Install: Swap `FRIZZ.bin`.'), 'only in Controls'),
+        ('a landing link to no heading', sub(S, r'MANUAL\.md#looper', 'MANUAL.md#no-such-heading'),
          'no such heading in MANUAL.md'),
-        ('a landing link into the repo', regex(S, r'^(Press LOOP, play)', r'[\1](firmware/README.md)'),
+        ('a landing link into the repo', sub(S, r'MANUAL\.md#looper', 'firmware/README.md'),
          'a link goes to MANUAL.md'),
-        ('two emphases in a title', regex(S, r'^- Title: Loop it, then \*mangle\* it live$',
-                                          '- Title: *Loop* it, then *mangle*'), 'one *emphasis*'),
+        ('two emphases in a title', sub(S, r'^- Title: Loop it, then \*mangle\* it$', '- Title: *Loop* it, *mangle*'),
+         'one *emphasis*'),
     ]
-    files = LINKED + ['firmware/README.md', LANDING] + [f'{SRC}/{f}' for f in ('LedColors.h', 'FxSlots.h', 'PanelKeys.h')]
+    files = LINKED + ['firmware/README.md', LANDING] + [LED, FX, PK]
     failed = 0
-    base_errors = check(root)[0]
-    if base_errors:
+    if check(root)[0]:
         print('FAIL selftest: the docs as they are already have errors; fix those first')
         return 1
     for name, apply, expect in cases:
@@ -678,7 +766,15 @@ def selftest(root, quiet=False):
                 for entry in os.listdir(os.path.join(root, d)):
                     if not os.path.lexists(os.path.join(dir, d, entry)):
                         os.symlink(os.path.join(root, d, entry), os.path.join(dir, d, entry))
-            apply(dir)
+            open(os.path.join(dir, LANDING), 'w', encoding='utf-8').write(LANDING_FIXTURE)
+            try:
+                if check(dir)[0]:
+                    raise LookupError(f'the copy has errors before the break: {check(dir)[0]}')
+                apply(dir)
+            except LookupError as e:
+                failed += 1
+                print(f'FAIL  {name}: the case no longer applies ({e}): update it in doclinks.py')
+                continue
             errors = check(dir)[0]
         hit = [e for e in errors if expect in e]
         if hit:
