@@ -191,23 +191,28 @@ static Table FindTable(const Strings& lines, const std::string& prefix, int n = 
     return {};
 }
 
-/** A bullet ("- " then prefix) with its continuation lines, as one line */
+static std::string Strip(const std::string& s, const std::regex& re) { return std::regex_replace(s, re, ""); }
+static const std::regex kParens("\\s*\\([^()]*\\)");
+
+/** The bullet that starts with prefix, its bold left out, with its continuation lines, as
+ *  one line without bold */
 static std::string Bullet(const Strings& lines, const std::string& prefix)
 {
+    static const std::regex bold("\\*\\*");
     for (size_t i = 0; i < lines.size(); i++)
     {
-        if (lines[i].compare(0, 2 + prefix.size(), "- " + prefix) != 0)
+        if (lines[i].compare(0, 2, "- ") != 0)
             continue;
-        std::string text = lines[i].substr(2);
+        std::string text = Strip(lines[i].substr(2), bold);
+        if (text.compare(0, prefix.size(), prefix) != 0)
+            continue;
         for (size_t j = i + 1; j < lines.size() && lines[j].compare(0, 2, "  ") == 0; j++)
-            text += " " + Trim(lines[j]);
+            text += " " + Strip(Trim(lines[j]), bold);
         return text;
     }
     return "";
 }
 
-static std::string Strip(const std::string& s, const std::regex& re) { return std::regex_replace(s, re, ""); }
-static const std::regex kParens("\\s*\\([^()]*\\)");
 
 static std::vector<double> Numbers(const std::string& s)
 {
@@ -632,8 +637,8 @@ static bool Stepped(size_t fx, size_t q) { return kFxParams[fx].steps[q] && (kFx
 static void CheckSteppedBullet()
 {
     const Strings lines = Under(Under(manual, "## Punch-in FX"), "### Playing an effect");
-    const std::string bullet = Lower(Bullet(lines, "**Stepped parameters**"));
-    CheckF(!bullet.empty(), "Punch-in FX: a bullet \"**Stepped parameters** ...\"");
+    const std::string bullet = Lower(Bullet(lines, "Stepped parameters"));
+    CheckF(!bullet.empty(), "Punch-in FX: a bullet \"Stepped parameters ...\"");
     std::smatch m;
     std::regex_search(bullet, m, std::regex("one step per (\\d+) detents"));
     CheckF(!m.empty() && atof(m[1].str().c_str()) == kFxDetentsPerStep,
@@ -780,6 +785,11 @@ static void CheckCoarse()
             if (grid.find("Quarter") != std::string::npos)
                 CheckF(GridOf(FX_SHIFTER, kFxStereoParam).spacing == .25f,
                        "Coarse steps: the shifter's stereo in quarters (of its semitone)");
+        }
+        else if ((prefix("Mix and Band") || prefix("Level")) && Numbers(grid).empty())
+        {
+            CheckF(false, "Coarse steps: %s, a number in its grid", label.c_str());
+            continue;
         }
         else if (prefix("Mix and Band"))
         {
@@ -976,7 +986,7 @@ static void CheckCompCoarse()
     std::smatch m;
     std::regex_search(ratio, m, std::regex("\\(default ([\\d.]+):1\\)"));
     CheckF(ratios.size() == points && !m.empty() && at < ratios.size() && atof(m[1].str().c_str()) == ratios[at],
-           "Master compressor: its %zu ratios, its coarse points, the default the %zuth", points, at + 1);
+           "Master compressor: its %zu ratios, its coarse points, the default on point %zu", points, at + 1);
     double lo, hi;
     const std::string& makeup = knobs[kComp].cell[kNumFxKnobs + 3];
     const bool range = Range(makeup, "([\\d.]+) dB to \\+([\\d.]+) dB", &lo, &hi);
@@ -1064,7 +1074,7 @@ static void CheckMidi()
     for (const auto& l : notes)
         text += l + " ";
     std::smatch m;
-    std::regex_search(text, m, std::regex("from \\*\\*note (\\d+)\\*\\*"));
+    std::regex_search(text, m, std::regex("from (?:\\*\\*)?note (\\d+)"));
     CheckF(!m.empty() && atoi(m[1].str().c_str()) == Midi("kBaseNote"),
            "MIDI: the keys from note %d (MidiControl.h)", Midi("kBaseNote"));
     const int knob = Midi("kKnobNote"), chompi = Midi("kChompiNote");
@@ -1074,10 +1084,10 @@ static void CheckMidi()
                {chompi, 1, "chompi"}, {chompi + 1, 1, "play"}, {chompi + 2, 1, "loop"}});
 
     // the effect channels, by their keys
-    const std::string channels = Bullet(Under(appendix, "### Channels"), "**The effect channels");
-    const size_t from = channels.find("left to right:");
+    const std::string channels = Bullet(Under(appendix, "### Channels"), "The effect channels");
+    const size_t from = channels.find("left to right");
     CheckF(from != std::string::npos, "MIDI: the effect channels, \"left to right: 1 freezer, ...\"");
-    const std::string list = from == std::string::npos ? "" : channels.substr(from + 14, channels.find('.', from) - from - 14);
+    const std::string list = from == std::string::npos ? "" : channels.substr(from + 13, channels.find('.', from) - from - 13);
     static const std::regex entry("(\\d+) ([a-z][a-z &]*[a-z])");
     std::set<int> seen;
     Group order("MIDI: the effect channels in the keys' order (FxSlots.h)");
@@ -1169,8 +1179,8 @@ static void CheckMidi()
     CheckF(named >= 2, "MIDI: the latch CCs name their effects (%d)", named);
 
     // the CCs left free
-    const std::string free = Bullet(ccs, "**Left free on purpose**");
-    CheckF(!free.empty(), "MIDI: a bullet \"**Left free on purpose**\"");
+    const std::string free = Bullet(ccs, "Left free on purpose");
+    CheckF(!free.empty(), "MIDI: a bullet \"Left free on purpose ...\"");
     for (int n = knob_cc; n < knob_cc + params + 1; n++)
         used_ccs.insert(n);
     static const std::regex number("\\b(\\d+)(?:-(\\d+))?\\b(?!-bit)");
