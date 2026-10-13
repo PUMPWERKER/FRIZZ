@@ -18,6 +18,9 @@ down KEY_12
 wait 80
 tap KEY_26
 up KEY_12
+# SHIFT let go before the turn, or its first detents step coarse on the twin, whose keys
+# are debounced, and not over the device's SysEx (#219)
+wait 100
 turn 3 20
 wait 2000
 down KEY_5
