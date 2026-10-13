@@ -307,7 +307,7 @@ freezer -> shifter -> folder -> crusher -> filter -> flanger -> phaser -> slicer
   -> tape stop -> delay -> reverb
 ```
 
-Each white key is one of four kinds:
+The white keys are of these kinds:
 
 - **Inserts**, white keys 1-7 and 9-11 (the freezer to the phaser, then the slicer, wow &
   flutter and the tape stop): replace the signal while on and stop the moment they're off.
