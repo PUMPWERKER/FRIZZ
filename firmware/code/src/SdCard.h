@@ -68,9 +68,10 @@ inline SdRaw SdRawPoll(uint8_t* to, uint32_t count)
 inline uint32_t SdRawError() { return hsd1.ErrorCode; }
 
 /** After a failed or overdue transfer: stops it, and sets the card up again from scratch when
- *  it isn't back in its transfer state (reinit). A card that doesn't answer at all makes each
- *  command wait the HAL's 5 s. True once the card is ready again */
-inline bool SdRawRecover(bool& reinit)
+ *  it isn't back in its transfer state, or always with force (a test's), saying so in reinit.
+ *  A card that doesn't answer at all makes each command wait the HAL's 5 s. True once the card
+ *  is ready again */
+inline bool SdRawRecover(bool& reinit, bool force = false)
 {
     // as the HAL's interrupt does on a data error: the FIFO emptied (with flow control a full
     // one holds the card's clock), the data path aborted with CMD12, the DMA off. HAL_SD_Abort
@@ -90,7 +91,7 @@ inline bool SdRawRecover(bool& reinit)
     NVIC_ClearPendingIRQ(SDMMC1_IRQn);
     HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
     reinit = false;
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 3 && !force; i++)
         if (HAL_SD_GetCardState(&hsd1) == HAL_SD_CARD_TRANSFER)
             return true;
     reinit = true;
@@ -119,9 +120,9 @@ inline SdRaw SdRawPoll(uint8_t*, uint32_t)
     return r == 0 ? SdRaw::BUSY : (r > 0 ? SdRaw::DONE : SdRaw::FAILED);
 }
 inline uint32_t SdRawError() { return FakeCard::Get().raw_error; }
-inline bool SdRawRecover(bool& reinit)
+inline bool SdRawRecover(bool& reinit, bool force = false)
 {
-    reinit = false;
+    reinit = force;
     return FakeCard::Get().RawRecover();
 }
 inline void SdRawFlowControl(bool) {}

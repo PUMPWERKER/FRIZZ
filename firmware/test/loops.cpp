@@ -417,6 +417,12 @@ static void TestFaults()
     Check(Run(l, 20) && l.GetState() == LoopLoader::FAILED && l.Dev(part0, 1, d) && d[3] == TIMEOUT,
           "fault: a run cut short (no time given): stopped, TIMEOUT");
 
+    l.Request(LoopLoader::LOADING, 0, 0, LoopLoader::kFaultCutShort | LoopLoader::kFaultReinit);
+    Check(Run(l, 20) && l.GetState() == LoopLoader::FAILED && l.Dev(part0, 1, d) && d[3] == TIMEOUT && d[32] == 1,
+          "fault: cut short, the card set up from scratch: counted");
+    l.Request(LoopLoader::LOADING, 0, 0, 0);
+    Check(Run(l) && Loaded(l, big), "fault: and the next load reads it all");
+
     card.raw_fail = card.raw_dead = true;
     l.Request(LoopLoader::LOADING, 0, 0, 0);
     Check(Run(l, 20) && l.Dev(part0, 1, d) && d[3] == CARD_LOST, "fault: a card that doesn't come back: CARD_LOST");

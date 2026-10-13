@@ -233,6 +233,7 @@ public:
     static const uint8_t kFaultNoFlowControl = 1; // the SDMMC's flow control off for it
     static const uint8_t kFaultPastEnd = 2;       // its third run reads past the card's end
     static const uint8_t kFaultCutShort = 4;      // its third run is given no time
+    static const uint8_t kFaultReinit = 8;        // a recovery sets the card up from scratch
 
     /** buf: kBufBytes, 32-byte aligned; ms: a clock in ms; ticks: a finer one, tick_freq a
      *  second (System::GetTick's, which wraps every ~18 s: only differences are taken).
@@ -609,7 +610,7 @@ private:
         if (card)
         {
             bool reinit = false;
-            if (!SdRawRecover(reinit))
+            if (!SdRawRecover(reinit, faults_ & kFaultReinit))
                 why = loops::CARD_LOST;
             recoveries_++;
             reinits_ += reinit;

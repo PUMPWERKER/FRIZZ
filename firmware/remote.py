@@ -46,7 +46,7 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
                                       last read them
     ./remote.py loops [--scan]        the loop slots on the card (/FRIZZ/LOOPS/A-H/01-15.wav)
                                       as FRIZZ's scan found them; --scan scans again first
-    ./remote.py loops load BANK SLOT [--fault no-flow|past-end|cut-short] [--check WAV]
+    ./remote.py loops load BANK SLOT [--fault no-flow|past-end|cut-short|reinit] [--check WAV]
                                       loads one (A 1 ... H 15) into the loop buffer, following
                                       it: its time, the audio callback's load meanwhile,
                                       MainLoop's longest step; --check: the CRC-32 of what
@@ -607,7 +607,8 @@ LOOP_RESULTS = ["empty", "mono", "stereo", "not RIFF/WAVE", "no fmt chunk before
                 "longer than 16 bars at 50 BPM", "unreadable", "in too many fragments",
                 "card error", "timeout", "card lost", "its clusters end before its data",
                 "a write failed", "read back other than written"]
-LOOP_FAULTS = {"no-flow": 1, "past-end": 2, "cut-short": 4}
+LOOP_FAULTS = {"no-flow": 1, "past-end": 2, "cut-short": 4,
+               "reinit": 4 | 8}  # cut short, the card then set up from scratch
 BANKS = "ABCDEFGH"
 
 

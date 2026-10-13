@@ -232,7 +232,7 @@ longer than a block, which crackle), `settings`, `channel N`, `transport on|off`
 `source auto|trs|usb|internal`, `out off|trs|all`, `scene get|put SLOT FILE`, the developers'
 `ident`, `ram-only`, `get GROUP`, `set GROUP INDEX VALUE`, `bench [--wait] [--out FILE]`,
 `probe`, `levels`, `signal sine|saw|noise HZ LEVEL` / `signal off`, `reseed [SEED]`,
-`battery` and `loops [--scan]` / `loops load BANK SLOT [--fault no-flow|past-end|cut-short]
+`battery` and `loops [--scan]` / `loops load BANK SLOT [--fault no-flow|past-end|cut-short|reinit]
 [--check WAV]` / `loops write KB CHUNK` (the loop loader, #70: a load's time, the audio
 callback's load meanwhile, MainLoop's longest step, its CRC against WAV's data) (below), and
 `play SCRIPT [--cpu] [--fresh]`, which plays a twin
@@ -307,7 +307,7 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | `0D` LOOPS | `00` | the loop loader (`LoopLoader.h`, #70; FRIZZ.bin only, status 2 in the bench): its state (0 idle, 1 scanning, 2 loading, 3 loaded, 4 failed, 5 checking, 6 writing, 7 written), the bank and slot loading, the result (`loops::Result`: why a load or the write test stopped, 0 if it didn't), the SD error (5, `HAL_SD_ERROR_*`), bytes read (4) of (4), ms (3), runs (3), MainLoop's longest step since the last `00` in µs (3), the SDMMC's CLKCR (5), the card recovered (1) and set up again (1), the file's fragments (2) |
 | | `01` BANK | 1 while the scan runs, then the bank's 15 slots' results (0 empty, 1 mono, 2 stereo, more: refused, why) |
 | | `02` BANK SLOT | the slot's result, frames (4), its data's offset in the file (5) |
-| | `03` / `04` BANK SLOT FAULTS | scans again / loads the slot (banks and slots from 0). FAULTS for a test: 1 the flow control off for it, 2 its third run read past the card's end, 4 its third run given no time. Refused (status 1) while something runs |
+| | `03` / `04` BANK SLOT FAULTS | scans again / loads the slot (banks and slots from 0). FAULTS for a test: 1 the flow control off for it, 2 its third run read past the card's end, 4 its third run given no time, 8 the recovery after it sets the card up from scratch (`HAL_SD_DeInit`, `BSP_SD_Init`). Refused (status 1) while something runs |
 | | `05` [`01`] | the state, the CRC-32 (5) of the data loaded (zlib's); with `01` it starts, 16 KB a MainLoop pass |
 | | `06` KB(2) CHUNK(2) | the write test: KB (1-1024) written to `/FRIZZ/LOOPS/T/w.tmp` in CHUNK-byte writes, the `.bin` it replaces deleted, renamed, read back, compared, then the file, the folder and a `/FRIZZ/LOOPS` it made deleted |
 
