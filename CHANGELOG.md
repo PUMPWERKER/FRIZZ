@@ -171,6 +171,11 @@ what FRIZZ does.
 
 ### Changed
 
+- **The manual, reordered** (#220): from the panel and diagrams of the sound's way through
+  FRIZZ, its input, its effects and its clock, through the looper and the tempo, to a chapter
+  per effect, a page of every [key combination](MANUAL.md#key-combinations), and the MIDI
+  reference and technical data as appendices. On the website, the tempo's and MIDI's pages
+  moved to `/manual/tempo-and-transport/` and `/manual/appendix-midi/`.
 - **FRIZZ's own start-up, and a faster one** (#195): instead of the glow and the rainbow, a
   light-blue ripple spreads from the CHOMPI key across the panel, like a stone dropped into
   water, and runs out in half a second; then the play page, sound and keys at once. FRIZZ is
