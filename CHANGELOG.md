@@ -9,6 +9,15 @@ what FRIZZ does.
 
 ### Added
 
+- **Loops from the SD card** (#70): put your own WAVs in `FRIZZ/LOOPS/A` to `H` (`01.wav` to
+  `15.wav`, 16-bit 48 kHz, up to 16 bars at 50 BPM) and play them from the new Loops page,
+  SHIFT + the lower C#, one on each white key, the lower C# and D# for the banks. A white key
+  switches at once with a short crossfade, SHIFT + a white key at the end of the loop's pass
+  (tap it more for more passes), and in one SHIFT hold with a scene morph or drop the loop
+  lands with it. The loop sets the tempo; LOOP, PLAY and the transport knob work on it as on a
+  recording, which is gone once you switch. Two quick taps of SHIFT take you back to the play
+  page. See [Loop loader](MANUAL.md#loop-loader).
+
 - **A hung FRIZZ restarts by itself** (#105): if its sound stops for a second (a crash, or
   something stuck), the CHOMPI restarts instead of staying frozen until you switch it off:
   into the launcher's picker if you use it, or else FRIZZ starts again. A loop in RAM is lost,

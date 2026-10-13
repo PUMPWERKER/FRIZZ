@@ -344,6 +344,15 @@ public:
     inline int FadeFrom() const { return from_; }
     /** The hand's crossfader has the morph (until SHIFT goes up) */
     inline bool HandFader() const { return hold_ == Hold::FADER; }
+    /** This SHIFT hold started a sequence (A tapped), not on the crossfader: a loop from the
+     *  card joins it (#70, LoopControls.h) */
+    inline bool HoldSequence() const
+    {
+        return fx_->Morphing() && (hold_ == Hold::HELD || hold_ == Hold::DROP || hold_ == Hold::BUILD);
+    }
+    /** This hold stopped one: the rest of it does nothing */
+    inline bool HoldSpent() const { return hold_ == Hold::SPENT; }
+    inline void Spend() { hold_ = Hold::SPENT; }
 
     /** A drop waits for its line */
     inline bool Dropping() const { return fx_->Dropping(); }

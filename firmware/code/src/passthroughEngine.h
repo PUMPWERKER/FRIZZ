@@ -175,15 +175,19 @@ public:
         // where the loop was before this block's pulses, for MIDI out's next 16th (MidiOut.h)
         next_16th_ = tempo_clock_.HasLoop() ? tempo_clock_.NextLoopPulseOn(chompi::kPulsesPer16th) : 0;
         block_pulses_ = 0;
+        bool bar_line = false;
         for (uint32_t p = 0; p < pulses; p++)
         {
             const uint32_t pos = tempo_clock_.Pulse();
             fx_.ClockPulse(pos, tempo_clock_.Reverse());
+            bar_line |= chompi::TempoClock::IsBarLine(pos);
             morph_.Pulse(chompi::TempoClock::IsBarLine(pos));
             if (block_pulses_ < kMaxBlockPulses)
                 block_loop_pulse_[block_pulses_++] = tempo_clock_.LoopPulse();
         }
         morph_.Process(size, tempo_clock_.PulseSamples());
+        if (__builtin_expect(loop_landing_, 0))
+            LoopLanding(bar_line);
         if (morph_.Dropping())
             morph_.DropLead(tempo_clock_.PulsesToBarLine(), tempo_clock_.PulseSamples());
         // the keys, what the chaos key drops of them, and where it plays the loop
@@ -386,6 +390,20 @@ public:
     /** The crossfader (FxMorph::Fader): the morph at t, 0 where it started to 1 the scene,
      *  from now on in the UI's hands; with the audio interrupt blocked. False if none runs */
     bool FadeFxMorph(float t) { return morph_.Fader(t); }
+    /** A loop from the card planned with the scene sequence (#70, LoopControls.h): the looper's
+     *  held switch (Looper::Switch) goes where the morph lands from now on, or, not loaded by
+     *  then, at the first bar line after that it is. Off again, nothing. With the audio
+     *  interrupt blocked */
+    void LoopOnLanding(bool on)
+    {
+        loop_landing_ = on;
+        loop_landed_ = false;
+        landings_ = morph_.Landings();
+    }
+    inline bool LoopOnLanding() const { return loop_landing_; }
+    /** The morph landed since LoopOnLanding, the loop not switched yet */
+    inline bool LoopLanded() const { return loop_landing_ && loop_landed_; }
+
     /** The tempo clock, and the pulses its last block counted with each one's place in the
      *  loop (TempoClock::LoopPulse), at most kMaxBlockPulses: for MIDI out (MidiOut.h) */
     inline const chompi::TempoClock& Tempo() const { return tempo_clock_; }
@@ -497,19 +515,43 @@ private:
         looper.Scramble(offset);
     }
 
+    /** The landing a loop waits for (LoopOnLanding): the switch released then, or at a bar
+     *  line after it */
+    __attribute__((noinline, cold)) void LoopLanding(bool bar_line)
+    {
+        const bool now = !loop_landed_ && morph_.Landings() != landings_;
+        loop_landed_ = loop_landed_ || now;
+        if (loop_landed_ && (now || bar_line) && looper.SwitchHeld())
+        {
+            looper.ReleaseSwitch();
+            loop_landing_ = false;
+        }
+    }
+
     /** Hands a loop that just closed to the tempo clock, and takes an erased one away. A
      *  quantized loop knows its beats, as the clock was sent (the tempo clock applies the
-     *  factor); an unquantized one fits the tempo set before it, or is guessed */
+     *  factor); an unquantized one fits the tempo set before it, or is guessed. A loop from
+     *  the card (Looper::Switch) takes over the clock as it comes in, with its own beats or
+     *  the power of two nearest the tempo (NearestBeats) */
     void SyncLoopTempo()
     {
         const chompi::Looper::State state = looper.GetState();
         const bool loop = state == chompi::Looper::State::PLAYING
                           || state == chompi::Looper::State::PAUSED;
-        if (loop && !tempo_clock_.HasLoop())
+        if (loop && (!tempo_clock_.HasLoop() || looper.Switches() != switches_))
         {
             const size_t length = looper.GetLength();
             uint32_t beats = looper.GetSenderBeats();
-            if (beats == 0)
+            if (looper.Switches() != switches_)
+            {
+                switches_ = looper.Switches();
+                beats = looper.LoadedBeats();
+                if (beats == 0)
+                    beats = tempo_clock_.HasLoop() || tempo_clock_.TempoSet()
+                                ? chompi::NearestBeats(length, sample_rate_, tempo_clock_.FitBpm())
+                                : chompi::GuessBeats(length, sample_rate_);
+            }
+            else if (beats == 0)
                 beats = tempo_clock_.TempoSet()
                             ? chompi::FitBeats(length, sample_rate_, tempo_clock_.GetBpm())
                             : chompi::GuessBeats(length, sample_rate_);
@@ -528,6 +570,10 @@ private:
     chompi::EnvFollower output_env_follower;
     chompi::TempoClock tempo_clock_;
     uint32_t rewinds_ = 0; // the looper's Rewinds() as last seen
+    uint32_t switches_ = 0; // and its Switches()
+    volatile bool loop_landing_ = false; // a loop waits for the morph's landing (LoopOnLanding)
+    bool loop_landed_ = false;           // which has come
+    uint32_t landings_ = 0;              // the morph's Landings() when it began to wait
     uint32_t block_pulses_ = 0; // the last block's pulses, up to kMaxBlockPulses
     uint32_t block_loop_pulse_[kMaxBlockPulses] = {};
     uint32_t next_16th_ = 0;

@@ -7,7 +7,8 @@
  *  The card: one folder per bank, /FRIZZ/LOOPS/A ... H, slots 01.wav ... 15.wav in each (the
  *  name sets the slot, a missing one is empty). A loop is a WAV of 16-bit PCM at 48 kHz, mono
  *  or stereo, its data in the file, at most 16 bars at 50 BPM (3,686,400 frames); anything
- *  else is refused, with its reason (Result).
+ *  else is refused, with its reason (Result). An `acid` chunk before the data (ACID's,
+ *  Ableton's, many sample packs') gives its beats, which then set the tempo (#70).
  *
  *  Everything runs from MainLoop, a step a pass, as the card's other users do (SceneStore.h,
  *  EventLog.h); no FatFs object stays open from one pass to the next, so a remount by one of
@@ -101,7 +102,10 @@ public:
         size_ = size;
         pos_ = 0;
         fmt_ = false;
+        beats_ = 0;
     }
+    /** The beats an acid chunk before the data gave, 0 for none */
+    inline uint32_t Beats() const { return beats_; }
     /** Where the next window has to include */
     inline uint32_t Want() const { return pos_; }
 
@@ -153,6 +157,14 @@ public:
                     tag_ = Le16(c + 8 + 24);
                 fmt_ = true;
             }
+            // acid: flags (4), root note (2), 2, a float (4), then the beats (4)
+            if (!memcmp(c, "acid", 4) && len >= 16)
+            {
+                if (!has(pos_ + 8, 16))
+                    return MORE;
+                const uint32_t beats = Le32(c + 8 + 12);
+                beats_ = beats <= 1024 ? beats : 0;
+            }
             pos_ += 8 + len;
             if (len & 1)
             {
@@ -180,7 +192,7 @@ private:
         return channels_ == 1 ? MONO : STEREO;
     }
 
-    uint32_t size_ = 0, pos_ = 0, rate_ = 0;
+    uint32_t size_ = 0, pos_ = 0, rate_ = 0, beats_ = 0;
     uint16_t tag_ = 0, channels_ = 0, bits_ = 0;
     bool fmt_ = false;
 };
@@ -191,6 +203,7 @@ struct Slot
     uint8_t result; // Result
     uint32_t frames;
     uint32_t data; // where its data starts in the file
+    uint16_t beats; // an acid chunk's, 0 for none
 };
 
 /** The 2-digit slot of a file's name, NN.wav (any case), 1-15; 0 for anything else */
@@ -248,7 +261,7 @@ public:
     void Init(uint8_t* buf, loops::Mem* mem, FATFS* fs, uint32_t (*ms)(), uint32_t (*ticks)(),
               uint32_t tick_freq)
     {
-        buf_ = buf;
+        home_ = buf_ = buf;
         mem_ = mem;
         fs_ = fs;
         ms_clock_ = ms;
@@ -258,15 +271,35 @@ public:
     }
 
     /** From MainLoop (the developers' SysEx, the play page): starts a scan, a load of bank's
-     *  slot (from 0) with arg its faults, the CRC of what's loaded, or the write test (arg: KB
-     *  << 16 | the bytes a write; bank its faults). False while one runs */
-    bool Request(State what, uint8_t bank = 0, uint8_t slot = 0, uint32_t arg = 0)
+     *  slot (from 0) with arg its faults into a buffer of kBufBytes or more (Init's without
+     *  one), the CRC of what's loaded, or the write test (arg: KB << 16 | the bytes a write;
+     *  bank its faults), in Init's buffer. False while one runs */
+    bool Request(State what, uint8_t bank = 0, uint8_t slot = 0, uint32_t arg = 0,
+                 uint8_t* into = nullptr)
     {
         if (Busy() || (what == CHECKING && state_ != LOADED))
             return false;
+        if (what == LOADING || what == WRITING)
+            buf_ = into ? into : home_;
         Begin(what, bank, slot, arg);
         return true;
     }
+    /** A load stops at the next pass, after the run in flight (LoopControls.h: another loop
+     *  wanted). Then IDLE */
+    inline void Cancel()
+    {
+        if (state_ == LOADING)
+            cancel_ = true;
+    }
+    /** Whether the developers' SysEx may use Init's buffer, which the looper may be playing
+     *  from (LoopControls.h): its loads and the write test are refused otherwise */
+    inline void DevBuffer(bool free) { dev_free_ = free; }
+    inline const uint8_t* Buffer() const { return buf_; }
+    inline const uint8_t* Home() const { return home_; }
+    /** The slot loaded last, and its acid chunk's beats (0 for none) */
+    inline uint8_t Bank() const { return bank_; }
+    inline uint8_t SlotLoaded() const { return slot_; }
+    inline uint32_t Beats() const { return beats_; }
 
     /** From MainLoop, before the card's other users (SceneStore, EventLog): a step of what's
      *  asked. card_wanted: one of them is about to use the card; a run in flight is waited
@@ -359,7 +392,7 @@ public:
         else if (part == 3)
             return Request(SCANNING) ? 0 : -1;
         else if (part == 4)
-            return Request(LOADING, bank, slot, arg[3]) ? 0 : -1;
+            return dev_free_ && Request(LOADING, bank, slot, arg[3]) ? 0 : -1;
         else if (part == 5)
         {
             if (len > 1 && !Request(CHECKING))
@@ -368,7 +401,7 @@ public:
             n = Put(d, n, crc_, 5);
         }
         else if (part == 6 && len >= 5)
-            return Request(WRITING, len > 5 ? arg[5] : 0, 0, (arg[1] << 7 | arg[2]) << 16 | (arg[3] << 7 | arg[4])) ? 0 : -1;
+            return dev_free_ && Request(WRITING, len > 5 ? arg[5] : 0, 0, (arg[1] << 7 | arg[2]) << 16 | (arg[3] << 7 | arg[4])) ? 0 : -1;
         else
             return -1;
         return static_cast<int>(n);
@@ -387,6 +420,12 @@ private:
     {
         if (state_ == SCANNING)
             ScanStep();
+        else if (state_ == LOADING && cancel_)
+        {
+            if (faults_ & kFaultNoFlowControl)
+                SdRawFlowControl(true);
+            End(IDLE, 0);
+        }
         else if (state_ == LOADING)
             opened_ ? RunStep() : (mapping_ ? MapStep() : OpenStep());
         else if (state_ == CHECKING)
@@ -407,6 +446,7 @@ private:
         }
         else if (what == LOADING)
         {
+            cancel_ = false;
             bank_ = bank;
             slot_ = slot;
             faults_ = static_cast<uint8_t>(arg);
@@ -469,7 +509,7 @@ private:
             listed_ = true;
             found_ = 0;
             for (size_t s = 0; s < loops::kSlots; s++)
-                slots[s] = {loops::EMPTY, 0, 0};
+                slots[s] = {loops::EMPTY, 0, 0, 0};
             char path[16];
             BankPath(path, bank_);
             if (f_opendir(&mem_->dir, path) != FR_OK)
@@ -490,6 +530,7 @@ private:
         found_ &= found_ - 1;
         loops::Slot& s = slots[slot];
         s.result = Open(bank_, slot, s.frames, s.data, false);
+        s.beats = static_cast<uint16_t>(beats_);
     }
 
     /** Opens the slot's file and checks its header. The file is closed again, unless keep and
@@ -513,6 +554,7 @@ private:
             else
                 r = walk.Step(mem_->window, at, got, data, frames);
         }
+        beats_ = walk.Beats();
         if (r == loops::WavWalk::MORE)
             r = loops::NO_DATA;
         if (!keep || (r != loops::MONO && r != loops::STEREO))
@@ -825,7 +867,10 @@ private:
         End(WRITTEN, error);
     }
 
-    uint8_t* buf_ = nullptr;
+    uint8_t* buf_ = nullptr;  // the buffer of the last load or write test
+    uint8_t* home_ = nullptr; // Init's
+    bool cancel_ = false, dev_free_ = true;
+    uint32_t beats_ = 0;
     loops::Mem* mem_ = nullptr;
     FATFS* fs_ = nullptr;
     uint32_t (*ms_clock_)() = nullptr;
