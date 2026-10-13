@@ -20,11 +20,12 @@ The stock firmwares, bootloader and hardware files under `reference/`:
 
 | Path | What | Audience |
 |---|---|---|
-| `README.md`, `INSTALL.md`, `QUICKSTART.md`, `MANUAL.md`, `CHANGELOG.md` | what FRIZZ is, install, quick guide, full controls, what changed since the last release | users |
+| `README.md`, `INSTALL.md`, `QUICKSTART.md`, `MANUAL.md`, `CHANGELOG.md` | what FRIZZ is, install, quick start, full controls, what changed since the last release | users |
 | `firmware/` | FRIZZ source (`code/`, `bin/`, `test/`, `twin/`, `flash.py`, `card.py`, `remote.py`, `tools/`) | developers |
 | `docs/` | design notes: `LOOPER.md`, `FX_OVERVIEW.md`, `CAPACITY.md`, `STOCK_FIRMWARES.md` | developers |
 | `reference/` | the original CHOMPI release, unchanged except for links | reference only |
 | `images/` | the manual's diagrams (SVG, drawn by `firmware/tools/diagrams/`) | users |
+| `site/` | the website's front-page text (`landing.md`, read by the site at the tag) | users |
 | `LICENSE`, `THIRD_PARTY.md`, `TRADEMARKS.md`, `CLAUDE.md` | legal, this file | — |
 
 Keep the root user-facing: anything that only helps development goes in `docs/` or
@@ -40,11 +41,14 @@ scope searches to `firmware/`.
 
 ## Docs that feed the website
 
-https://frizz.friedrichwagner.eu is built from `MANUAL.md`, `QUICKSTART.md`, `INSTALL.md` and
-`README.md` (repo `friedrich/frizz-web` on the user's Gitea), fetched at the **latest stable
-release** tag, so a docs change on `main` goes live with the next release. Its build fails on
-any internal link or anchor that doesn't resolve. Every PR that touches these files is checked
-against this before it merges:
+https://frizz.friedrichwagner.eu is built from `MANUAL.md`, `QUICKSTART.md`, `INSTALL.md`,
+`images/`, `site/landing.md` and the key colours in `LedColors.h`/`FxSlots.h` (repo
+`friedrich/frizz-web` on the user's Gitea), fetched at the **latest stable release** tag (and
+`/beta/` at the newest pre-release), so a docs change on `main` goes live with the next tag.
+FrizZ holds every fact the site shows; frizz-web only renders it (design, layout, the trademark
+note). `README.md` is for GitHub only, not a site source. Its build fails on any internal link
+or anchor that doesn't resolve, and on any format below it can't read. Every PR that touches
+these files is checked against this before it merges:
 
 1. **Headings are URLs.** Each `##` of `MANUAL.md` becomes its own page (`/manual/<slug>/`),
    each `###` an anchor on it (GitHub's slugs: "Wow & flutter" → `wow--flutter`). Renaming a
@@ -67,18 +71,38 @@ against this before it merges:
      GitHub, headings and anchors unchanged. A new chapter goes into the part it belongs to.
    - `MANUAL.md`'s summaries: a line `<!-- summary: ... -->` right under a `##` is that
      chapter's one-line description on the site's Contents page and its meta description (a
-     sentence, under ~12 words; optional, a chapter without one gets none).
+     sentence, under ~12 words; optional, a chapter without one gets none). A white key's
+     chapter must have one, and it is its card on the landing page: 1 to 2 sentences, at most
+     160 characters, written for players. `INSTALL.md` and `QUICKSTART.md` each have one
+     under their H1, their description on the site.
    - Each chapter of a white key's effect (the chaos key and the master compressor too) keeps
      its knob table, `| Knob | Page 1 | …`, rows 1 to 4: the landing page's knob labels are
      each Page 1 cell's text up to the first ":", "," or " (", so that start names the knob.
+   - `site/landing.md` is the landing page's text (hero, the moves, the steps, the section
+     hints, credits) in frizz-web's fixed format: its sections in order, `- Name: value` fields
+     with length limits, one paragraph each, links only to the docs, `images/` or `https://`.
+     The format is spelled out in the file's head comment and checked by `doclinks.py`.
+   - The key colours: the site parses `LedColors.h` (`static const float name[3] = {r, g, b};`)
+     and `FxSlots.h` (`kFxSlots` entries `{Hardware::SwId::KEY_<n>, <colour>, …`, `kCompKey`);
+     keep those shapes when touching them.
 5. **No version history in the user docs:** "until v0.11 …" belongs in `CHANGELOG.md`, not in
    `MANUAL.md`, `QUICKSTART.md` or `INSTALL.md`.
 6. **To see it:** in a frizz-web worktree of your own (not the user's checkout),
    `FRIZZ_DIR=/abs/path/to/FrizZ-worktree npm run build` builds the site from that checkout and
    fails on a broken link, anchor or missing image (`FRIZZ_REF=<release tag>` builds a
    release). Images live in `images/`, linked relatively (`![…](images/name.svg)`) with real alt
-   text. Without the site, `firmware/tools/doclinks.py` checks the links, anchors,
-   headings and the QUICKSTART key row.
+   text. Without the site, `firmware/tools/doclinks.py` checks every rule above (links,
+   anchors, headings, summaries, parts, knob tables, the key row, the key colours,
+   `site/landing.md`); it runs in `all.sh` as the check `doclinks`, and `--selftest` shows each
+   rule firing. What the manual's tables say (knobs used, steps, coarse grids, CCs, colours) is
+   checked against the code by the unit check `docs`: a change to a control fails `all.sh`
+   until `MANUAL.md` follows.
+7. **The site updates itself:** frizz-web checks every 20 minutes for a new release and rebuilds
+   when there is one, so it is live within about 20 minutes; nothing to trigger. New means a
+   published GitHub release (not a draft) with its `.bin` attached; a bare tag isn't picked up.
+   The rolling `beta` pre-release is ignored: the newest numbered pre-release after the latest
+   stable one becomes `/beta/`. `curl https://frizz.friedrichwagner.eu/build.json` shows which
+   tags the site has (`{"stable": …, "prerelease": …}`): check it after cutting a release.
 
 ## Git workflow: branches first, checked by the sessions, merged by the user
 
@@ -310,7 +334,7 @@ checks need only `g++` and `python3`; the browser twin needs Emscripten in `~/op
 `firmware/test/all.sh` runs everything, side by side (about a minute; the first run ~80 s): `check.sh` (the engine against HEAD;
 a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
 `pitch`, `tape`, `block`, `crusher`, `freezer`, `scenes`, `store`, `clicks`, `delay`, `controls`, `keys`, `looper`, `tempo`,
-`comp`, `level`, `sleep`, `inserts`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `splice`, `usbmidi`, `routing`, `measure`. A new check is just a new
+`comp`, `level`, `sleep`, `inserts`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `splice`, `usbmidi`, `routing`, `measure`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
 `NAME.cpp`; [`firmware/test/README.md`](firmware/test/README.md) says what each covers.
 `check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail.
 
