@@ -53,6 +53,38 @@ static void Gaps(const std::vector<MidiOutByte>& v, double& mean, double& worst)
         worst = std::max(worst, fabs(t[i] - t[i - 1] - mean));
 }
 
+/** The phases the loop's start is tried in, 0.5 ms apart: a tick at 120 BPM */
+static const int kPhases = 42;
+
+/** Around status (Start, Continue), the one in v, as Record()s under key: "key" the ms from
+ *  it to the tick after it (1e3 if there's none, or not one status), "key-next" from that
+ *  tick to the next (one tick, not two at once), "key-before" from the last tick before it
+ *  to the one after it */
+static void RecordAround(const std::string& key, const std::vector<MidiOutByte>& v, uint8_t status)
+{
+    std::vector<double> before, after;
+    int n = 0;
+    for (const MidiOutByte& b : v)
+        if (b.byte == status)
+            n++;
+        else if (b.byte == 0xF8)
+            (n ? after : before).push_back(b.ms);
+    const double at = [&] {
+        for (const MidiOutByte& b : v)
+            if (b.byte == status)
+                return b.ms;
+        return 0.;
+    }();
+    if (n != 1 || after.size() < 2 || before.empty())
+    {
+        Record(key, 1e3);
+        return;
+    }
+    Record(key, after[0] - at);
+    Record(key + "-next", after[1] - after[0]);
+    Record(key + "-before", after[0] - before.back());
+}
+
 /** LOOP twice, ms apart: an unquantized loop, playing */
 static void RecordLoop(double ms)
 {
@@ -252,6 +284,64 @@ int main()
         }
     }});
 
+    // #198: the loop's start in every phase of the free-running clock, a tick (20.8 ms at 120)
+    // in blocks (0.5 ms): its Start goes with its first tick on the jack and over USB, never
+    // one tick late because the free-running one went out just before, nor with two. Judged
+    // over all phases together (the summary)
+    for (int step = 0; step < kPhases; step++)
+        cases.push_back({"start-phase-" + std::to_string(step), [step] {
+            RunMs(kReadyMs + .5 * step);
+            SetOut(2);
+            Tap("KEY_28");
+            RunMs(900);
+            TakeSent(); // with the ticks before it
+            RunMs(100);
+            Tap("KEY_28");
+            RunUntil([] { return Probe().loop_state == 2; }, 500);
+            RunMs(200);
+            const Sent s = TakeSent();
+            RecordAround("start-trs", s.trs, 0xFA);
+            RecordAround("start-usb", s.usb, 0xFA);
+        }});
+
+    // the same for playing on after a pause, Continue with its 16th's tick: the paused loop's
+    // grid ran on, so its ticks are on it already
+    for (int step = 0; step < kPhases; step++)
+        cases.push_back({"continue-phase-" + std::to_string(step), [step] {
+            RunMs(kReadyMs);
+            SetOut(2);
+            RecordLoop(1000);
+            RunMs(500);
+            Tap("KEY_27"); // pause
+            RunMs(400 + .5 * step);
+            TakeSent();
+            RunMs(100);
+            Tap("KEY_27"); // play on
+            RunMs(300);
+            const Sent s = TakeSent();
+            RecordAround("continue-trs", s.trs, 0xFB);
+            RecordAround("continue-usb", s.usb, 0xFB);
+        }});
+
+    // and out of a standstill (#174), whose clock ran at 50 BPM, off the loop's grid: a tick
+    // of it (50 ms) in 2.5 ms steps
+    for (int step = 0; step < 20; step++)
+        cases.push_back({"standstill-phase-" + std::to_string(step), [step] {
+            RunMs(kReadyMs);
+            SetOut(2);
+            RecordLoop(1000);
+            RunMs(500);
+            Turn(5, -98); // 1/16x, then a standstill
+            RunMs(1800 + 2.5 * step);
+            TakeSent();
+            RunMs(200);
+            Tap("ENC_5_SW"); // 1x
+            RunMs(1000);
+            const Sent s = TakeSent();
+            RecordAround("standstill-trs", s.trs, 0xFB);
+            RecordAround("standstill-usb", s.usb, 0xFB);
+        }});
+
     // #174: a standstill is a pause to the gear behind: Stop going into it, the clock running
     // on at 50 BPM; turned out of it, Song Position, then Continue on that 16th
     cases.push_back({"standstill", [] {
@@ -432,6 +522,43 @@ int main()
         Check(worst < .5 * kTick120, "handover: the ticks carry on across the loop's start");
     }});
 
+    // a quantized loop on a clock passed on, the gear behind stopped (no Start came): the
+    // loop starts on the clock's bar line, where a passed-on tick just went, and its Start
+    // goes with exactly one tick, on the jack and over USB (#198)
+    cases.push_back({"handover-stopped", [] {
+        RunMs(kReadyMs);
+        SetOut(2);
+        StartTrs(Clock(120.));
+        RunMs(1000);
+        Press("KEY_27", true); // PLAY held, LOOP: quantized
+        RunMs(80);
+        Tap("KEY_28");
+        RunMs(20);
+        Press("KEY_27", false);
+        RunUntil([] { return Probe().loop_state == 1; }, 3000);
+        RunMs(1000);
+        Tap("KEY_28"); // the bar ends it
+        RunUntil([] { return Probe().loop_state == 2; }, 3000);
+        RunMs(1000);
+        const Sent s = TakeSent();
+        for (const std::vector<MidiOutByte>* v : {&s.trs, &s.usb})
+        {
+            const char* port = v == &s.trs ? "the jack" : "USB";
+            size_t start = 0;
+            while (start < v->size() && (*v)[start].byte != 0xFA)
+                start++;
+            std::vector<double> after;
+            for (size_t i = start + 1; i < v->size() && after.size() < 2; i++)
+                if ((*v)[i].byte == 0xF8)
+                    after.push_back((*v)[i].ms);
+            const bool both = start < v->size() && after.size() == 2;
+            Report("handover-stopped: %s: Start, a tick %.2f ms on, the next %.2f ms after it", port,
+                   both ? after[0] - (*v)[start].ms : -1., both ? after[1] - after[0] : -1.);
+            Check(both && after[0] - (*v)[start].ms < 2. && after[1] - after[0] > .5 * kTick120,
+                  (std::string("handover-stopped: ") + port + ": Start with one tick").c_str());
+        }
+    }});
+
     // Start came in on the jack and went out over USB only, then a loop: the jack's gear never
     // got a Start, so it gets the loop's; USB's already plays, so not it (#166)
     cases.push_back({"handover-trs", [] {
@@ -448,6 +575,19 @@ int main()
         Report("handover-trs: Start %d to the jack, %d over USB", Count(s.trs, 0xFA), Count(s.usb, 0xFA));
         Check(Count(s.trs, 0xFA) == 1, "handover-trs: the loop's Start goes to the jack, which had none");
         Check(Count(s.usb, 0xFA) == 0, "handover-trs: not over USB, whose gear already plays");
+        // the jack's Start with its tick, whatever went over USB just before; USB's gear,
+        // which plays on, gets no tick more for it (#198)
+        size_t start = 0;
+        while (start < s.trs.size() && s.trs[start].byte != 0xFA)
+            start++;
+        double closest = 1e3;
+        for (size_t i = 1; i < s.usb.size(); i++)
+            closest = std::min(closest, s.usb[i].ms - s.usb[i - 1].ms);
+        Report("handover-trs: USB's ticks at least %.2f ms apart", closest);
+        Check(start + 1 < s.trs.size() && s.trs[start + 1].byte == 0xF8
+                  && s.trs[start + 1].ms - s.trs[start].ms < .5,
+              "handover-trs: the jack's Start goes with a tick");
+        Check(closest > .5 * kTick120, "handover-trs: and no tick more over USB");
     }});
 
     // MainLoop held up (a scene written to a slow card) while the loop pauses and plays on:
@@ -628,5 +768,31 @@ int main()
         Check(fabs(mean - tick) < .05 && worst < .8, "factor-odd: 3 beats at x1/2, 36 ticks a pass, steady across its starts");
     }});
 
-    return RunCases();
+    return RunCases([](const std::map<std::string, std::vector<double>>& r) {
+        // in how many phases Start or Continue went out without its tick right after it (on
+        // the jack the UART's next byte, over USB MainLoop's next passes), or with two; and
+        // how close the tick before came to it: what the fix costs gear that follows tempo
+        for (const char* key : {"start-trs", "start-usb", "continue-trs", "continue-usb",
+                                "standstill-trs", "standstill-usb"})
+        {
+            const std::string k = key;
+            auto it = r.find(k);
+            if (it == r.end())
+                continue; // its cases not run (CASES)
+            const bool usb = k.find("usb") != std::string::npos;
+            int late = 0;
+            for (double g : it->second)
+                late += g >= (usb ? 2. : .5);
+            double next = 1e3, before = 1e3;
+            for (double g : r.count(k + "-next") ? r.at(k + "-next") : std::vector<double>())
+                next = std::min(next, g);
+            for (double g : r.count(k + "-before") ? r.at(k + "-before") : std::vector<double>())
+                before = std::min(before, g);
+            Report("%s: %d of %d phases without the tick right after (the gap at most %.2f ms); "
+                   "the next one at least %.2f ms on; the one before at least %.2f ms before",
+                   key, late, (int)it->second.size(), Worst(r, key), next, before);
+            Check(late == 0, (k + ": in every phase, the tick right after it").c_str());
+            Check(next > 15., (k + ": and only one").c_str());
+        }
+    });
 }
