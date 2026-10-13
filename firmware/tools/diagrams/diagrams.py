@@ -226,9 +226,9 @@ def input_diagram():
             'have their own input gain; AUX is then amplified 3× and its DC taken out, the mic '
             '5×, DC blocked, highpassed at about 150 Hz and the same on both sides. Switch A '
             '(upper F#, or the AUX jack) picks the source, with a 5 ms crossfade. The source goes '
-            'as it is to the looper and to the headphone feed. Switch B (upper G#) sends it '
-            'through the effects or past them, switch C (upper A#) has it live on the outputs or '
-            'not. The input/loop mix sets the input\'s share against the loop\'s; the share past '
+            'as it is to the looper and to the headphone feed. Switch B (upper G#) has it live on '
+            'the outputs or not, switch C (upper A#) sends it through the effects or past them. '
+            'The input/loop mix sets the input\'s share against the loop\'s; the share past '
             'the effects joins after the compressor, before VOLUME.')
     # AUX
     s.jack(28, 90)
@@ -259,17 +259,15 @@ def input_diagram():
     s.line([(602, 140), (705, 140), (705, 262), (40, 262), (40, 330)], 'a', arrow=False)
     s.line([(40, 330), (40, 490)], arrow=False)
     s.dot(40, 330, 'a')
-    # B: through the effects or past them; C: live, on both
-    s.line([(40, 330), (87, 330)], 'a', arrow=False)
-    s.selector(90, 330, [(125, 305), (125, 355)], 0, 'B', (100, 298))
-    s.line([(127, 305), (160, 305)], 'a', arrow=False)
-    s.switch(160, 305, 'C')
-    s.line([(190, 305), (330, 305)], 'a')
-    s.text(260, 298, 'through the effects', 12, cls='m')
-    s.line([(127, 355), (160, 355)], arrow=False)
-    s.switch(160, 355, 'C')
-    s.line([(190, 355), (330, 355)])
-    s.text(260, 348, 'past the effects', 12, cls='m')
+    # B: live, whether you hear it; C: then how, through the effects or past them
+    s.line([(40, 330), (75, 330)], 'a', arrow=False)
+    s.switch(75, 330, 'B')
+    s.line([(105, 330), (157, 330)], 'a', arrow=False)
+    s.selector(160, 330, [(195, 305), (195, 355)], 0, 'C', (170, 298))
+    s.line([(197, 305), (330, 305)], 'a')
+    s.text(263, 298, 'through the effects', 12, cls='m')
+    s.line([(197, 355), (330, 355)])
+    s.text(263, 348, 'past the effects', 12, cls='m')
     # the looper and the phones take the source as it is
     s.line([(40, 420), (200, 420)])
     s.dot(40, 420)
@@ -290,8 +288,8 @@ def input_diagram():
     s.text(512, 406, 'joins after the compressor', 12, anchor='start', cls='m')
     s.legend(28, 540, [
         ('A', 'upper F#: the source, AUX or the mic. The AUX jack picks it; F# the other one'),
-        ('B', 'upper G#: through the effects, or past them and the compressor'),
-        ('C', 'upper A#: live, on the outputs, or not (both switches together)'),
+        ('B', 'upper G#: live, on the outputs, or not'),
+        ('C', 'upper A#: through the effects, or past them and the compressor'),
         ('M', 'SHIFT + upper F#: AUX mono, its left channel to both sides'),
     ])
     s.text(28, 634, 'On the settings page (mode switch up). Each source keeps its own gain, B and C.',
