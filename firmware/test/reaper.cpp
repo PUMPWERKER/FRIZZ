@@ -24,43 +24,57 @@ int Reaper(const std::string& args, std::string& out, int limit)
                 {{"FRIZZ_REAPER", firmware_dir + "/test/reaper_stub.py"}});
 }
 
-/** The tool on ids with the jack wired out (A) or not at all: each case's line, the summary's */
+/** The tool on ids with the jack wired out (A) or not at all: each case's line, the summary's.
+ *  A case that failed on timing alone with the twin behind isn't judged (ptytwin.h's
+ *  Unjudged()), said so; a run that failed so behind runs once more (Twice()) */
 void Run(const std::string& name, bool out_wired, const std::string& ids, const std::vector<std::string>& lines,
          int exit_code)
 {
     trs_in = false;
     trs_out = out_wired;
     std::string out;
-    const auto t0 = std::chrono::steady_clock::now();
-    const int rc = Reaper("-v --cases " + ids, out, 170);
-    printf("%s: %ld s, the twin up to %ld ms behind\n", name.c_str(),
-           long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()), lag);
-    // a case that failed on timing alone, the twin too far behind (ptytwin.h): not judged, said
-    // so; every other FAIL still fails
-    const std::vector<std::string> unjudged = Unjudged(out);
-    for (const std::string& id : unjudged)
-        printf("%s: %s not judged, the twin %ld ms behind the wall clock\n", name.c_str(), id.c_str(), lag);
-    bool judged_fail = false;
-    for (size_t at = out.find("\nFAIL "); at != std::string::npos; at = out.find("\nFAIL ", at + 1))
-    {
-        const std::string id = out.substr(at + 6, out.find_first_of(" :\n", at + 6) - at - 6);
-        judged_fail = judged_fail || std::find(unjudged.begin(), unjudged.end(), id) == unjudged.end();
-    }
-    bool ok = rc == exit_code
-              || (rc == 1 && !unjudged.empty() && !judged_fail && !Has(out, "not put back") && !Has(out, "putting things back:"));
-    Check(ok, (name + ": exit " + std::to_string(rc) + ", not " + std::to_string(exit_code)).c_str());
-    for (const std::string& line : lines)
-    {
-        // what says a case not judged passed (a summary's row names none)
+    int rc = 0;
+    std::vector<std::string> unjudged;
+    // the exit code as wanted, or 1 for cases only failed on timing the twin couldn't keep
+    auto exited = [&] {
+        bool judged_fail = false;
+        for (size_t at = out.find("\nFAIL "); at != std::string::npos; at = out.find("\nFAIL ", at + 1))
+        {
+            const std::string id = out.substr(at + 6, out.find_first_of(" :\n", at + 6) - at - 6);
+            judged_fail = judged_fail || std::find(unjudged.begin(), unjudged.end(), id) == unjudged.end();
+        }
+        return rc == exit_code
+               || (rc == 1 && !unjudged.empty() && !judged_fail && !Has(out, "not put back")
+                   && !Has(out, "putting things back:"));
+    };
+    // a line wanted: one that says a case not judged passed isn't (a summary's row names none)
+    auto wanted = [&](const std::string& line) {
         bool of_unjudged = !Has(line, "daw-");
         for (const std::string& id : unjudged)
             of_unjudged = of_unjudged || Has(line, id);
-        if (!unjudged.empty() && Has(line, "PASS") && of_unjudged)
-            continue;
-        Check(Has(out, line), (name + ": says \"" + line + "\"").c_str());
-        ok = ok && Has(out, line);
-    }
-    if (!ok || failures)
+        return unjudged.empty() || !Has(line, "PASS") || !of_unjudged;
+    };
+    auto says = [&] {
+        for (const std::string& line : lines)
+            if (wanted(line) && !Has(out, line))
+                return false;
+        return true;
+    };
+    Twice(name, [&] {
+        const auto t0 = std::chrono::steady_clock::now();
+        rc = Reaper("-v --cases " + ids, out, 170);
+        printf("%s: %ld s, the twin up to %ld ms behind\n", name.c_str(),
+               long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()), lag);
+        unjudged = Unjudged(out);
+        return exited() && says();
+    });
+    for (const std::string& id : unjudged)
+        printf("%s: %s not judged, the twin %ld ms behind the wall clock\n", name.c_str(), id.c_str(), lag);
+    Check(exited(), (name + ": exit " + std::to_string(rc) + ", not " + std::to_string(exit_code)).c_str());
+    for (const std::string& line : lines)
+        if (wanted(line))
+            Check(Has(out, line), (name + ": says \"" + line + "\"").c_str());
+    if (!exited() || !says() || failures)
         printf("%s\n", out.c_str());
 }
 } // namespace

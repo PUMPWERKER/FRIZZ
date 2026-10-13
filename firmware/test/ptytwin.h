@@ -78,6 +78,20 @@ std::vector<std::string> Unjudged(const std::string& out)
     return ids;
 }
 
+/** attempt() (a tool's run against the twin: true if it passed), and once more if it didn't
+ *  with the twin more than kLagMs behind the wall clock: so far behind (hundreds of ms on a
+ *  machine whose cores are all busy) its answers can come after the tool stopped waiting for
+ *  them, beyond what Unjudged() covers. Said in a line FLAKY (all.sh lists them); a run that
+ *  fails twice, or once with the twin on time, fails (#183) */
+template <class Attempt>
+void Twice(const std::string& name, Attempt attempt)
+{
+    if (attempt() || lag <= kLagMs)
+        return;
+    printf("FLAKY  %s: failed with the twin %ld ms behind the wall clock, run again\n", name.c_str(), lag);
+    attempt();
+}
+
 /** A byte the suite sent, and when it came, in ms of the wall clock since the run started */
 struct Arrival
 {
