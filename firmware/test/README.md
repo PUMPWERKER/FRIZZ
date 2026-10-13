@@ -124,7 +124,12 @@ over two blocks as the shifter runs it, with a block of new samples written in b
 the shifter itself at the ends of its shift, grain, swoop and stereo, from power-on,
 punched in again after the shift was turned while it was off, and turned from the centre
 while it plays: a tap that sounds must never sit at the end of its delay (1 or the longest),
-and waking in the direction it was left in, the taps go on where they were (#140). Built with `-mfma` instead, as the CHOMPI fuses its
+and waking in the direction it was left in, the taps go on where they were (#140). And back
+at stereo 0 while it plays (#226): the right channel fades from its own taps to the left's
+within a life, its steps sample to sample no larger than the left's (taking them at once
+would jump, by 3 times as much and more), both channels splicing through the fade, and
+after it L and R are the same to the bit; at every grain, with the swoop rising, and turned
+apart again halfway (back to its own taps first). Built with `-mfma` instead, as the CHOMPI fuses its
 multiply-adds, the searches come out the same too (checked by hand, not by `all.sh`).
 
 ## Tape FX check

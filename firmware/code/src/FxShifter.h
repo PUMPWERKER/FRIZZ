@@ -63,6 +63,9 @@ public:
             waiting_[c] = held_[c] = 0;
         }
         still_[0] = still_[1] = true;
+        apart_ = false;
+        fade_ = 0.f;
+        fade_step_ = 1.f / kWindowFrames;
         gate_.Init();
         env_.Reset();
         env_attack_inc_ = 1.f / (.1f * sample_rate);
@@ -122,7 +125,22 @@ public:
         }
         if (__builtin_expect((still_[0] && ratio_[0] != 1.f) || (still_[1] && ratio_[1] != 1.f), 0))
             Move(gate * (1.f - dry));
+        // back at stereo 0 after an offset, while the right channel fades to the left's taps
+        // (Relock, #226): the channels with the fade, out of line, so the loop here stays as
+        // it was
+        if (__builtin_expect(apart_, 0) && (fade_ > 0.f || ratio_[0] == ratio_[1]) && Relock())
+            FadeChannels(l, r, gate, dry, feedback);
+        else
+            Channels<false>(l, r, gate, dry, feedback);
+    }
 
+    /** The taps of both channels on by a sample, read, written back with the feedback, and
+     *  the output; with kFade, the right channel's output faded towards the left's taps by
+     *  fade_ (Relock) */
+    template <bool kFade>
+    __attribute__((always_inline)) inline void Channels(float* l, float* r, float gate, float dry,
+                                                        float feedback)
+    {
         float* const io[2] = {l, r};
         for (size_t c = 0; c < 2; c++)
         {
@@ -164,7 +182,9 @@ public:
             const float w0 = 1.f - fabsf(2.f * w - 1.f);
             const float a = ring_.Read(c, d[0]);
             const float b = ring_.Read(c, d[1]);
-            const float wet = a * w0 + b * (1.f - w0);
+            float wet = a * w0 + b * (1.f - w0);
+            if (kFade && c == 1)
+                wet += fade_ * (LeftTaps() - wet);
 
             ring_.Write(c, SoftClip(*io[c] + wet * feedback));
 
@@ -172,6 +192,13 @@ public:
             *io[c] += gate * (out - *io[c]);
         }
         ring_.Advance();
+    }
+
+    /** Channels with the right channel's fade (Relock) */
+    __attribute__((noinline)) void FadeChannels(float* l, float* r, float gate, float dry,
+                                                float feedback)
+    {
+        Channels<true>(l, r, gate, dry, feedback);
     }
 
     /** The slewed parameters jump to their targets, at Init */
@@ -250,7 +277,7 @@ private:
      *  output: punched in, the gate's first step; or the shift leaving the centre, where the
      *  output was dry), the right channel takes the left's taps as they move on, so the two
      *  are the same again where a stereo offset had set them apart, and stay so (StartSplice,
-     *  #223) */
+     *  #223). While it plays, Relock does it (#226) */
     __attribute__((noinline)) void Move(float wet)
     {
         for (size_t c = 0; c < 2; c++)
@@ -261,15 +288,7 @@ private:
             still_[c] = false;
             if (c == 1 && wet <= kFxGateCoeff && !still_[0] && ratio_[0] == ratio)
             {
-                window_[1] = window_[0];
-                window_frames_[1] = window_frames_[0];
-                delay_[1][0] = delay_[0][0];
-                delay_[1][1] = delay_[0][1];
-                nominal_[1] = nominal_[0];
-                other_at_[1] = other_at_[0];
-                waiting_[1] = waiting_[0];
-                held_[1] = held_[0];
-                follows_ = waiting_[0] != 0;
+                TakeLeft();
                 continue;
             }
             const bool up = ratio > 1.f;
@@ -291,6 +310,54 @@ private:
             d[1] = (up ? window + holds : 0.f) + kGuard + kSearch + (up ? -.5f : .5f) * window;
             StartSplice(c, 0, ratio, up);
         }
+    }
+
+    /** The right channel takes the left's taps as they stand, its life, its splice: from here
+     *  on the two are the same (Move, Relock) */
+    void TakeLeft()
+    {
+        window_[1] = window_[0];
+        window_frames_[1] = window_frames_[0];
+        delay_[1][0] = delay_[0][0];
+        delay_[1][1] = delay_[0][1];
+        nominal_[1] = nominal_[0];
+        other_at_[1] = other_at_[0];
+        waiting_[1] = waiting_[0];
+        held_[1] = held_[0];
+        follows_ = waiting_[0] != 0;
+        apart_ = false;
+        fade_ = 0.f;
+    }
+
+    /** Back at stereo 0 while the shifter plays, the two channels' taps are where the offset
+     *  left them, at other points of their lives, and stay so (#226): moved to the left's, the
+     *  right's taps would jump, as only a silent one can move unheard. So the right channel's
+     *  output fades over a life from its own taps to the left's taps read from its own input
+     *  (LeftTaps), the triangles as the taps' own, and at the end takes them (TakeLeft): it
+     *  reads there already, so nothing jumps. Through the fade both run on as before, each
+     *  splicing on its own. Turned apart again meanwhile, it fades back to its own. Out of
+     *  line, as the channels with the fade (FadeChannels): Process checks apart_, and once
+     *  the speeds are the same again or the fade runs, calls it. True while the fade runs */
+    __attribute__((noinline)) bool Relock()
+    {
+        if (ratio_[0] == ratio_[1] && !still_[0] && !still_[1])
+        {
+            if (fade_ == 0.f)
+                fade_step_ = 1.f / window_frames_[0];
+            fade_ += fade_step_;
+            if (fade_ >= 1.f)
+                TakeLeft();
+        }
+        else
+            fade_ = fmaxf(0.f, fade_ - fade_step_);
+        return fade_ > 0.f;
+    }
+
+    /** The left channel's two taps, as they stand this sample, read from the right's input */
+    float LeftTaps()
+    {
+        const float w0 = 1.f - fabsf(2.f * window_[0] - 1.f);
+        return ring_.Read(1, delay_[0][0]) * w0 + ring_.Read(1, delay_[0][1]) * (1.f - w0);
     }
 
     /** Where tap t, falling silent, starts over: its nominal start (the far end of the
@@ -527,6 +594,7 @@ private:
         ratio_[1] = powf(2.f, (semitones + stereo_semitones_) / 12.f);
         for (size_t c = 0; c < 2; c++)
             still_[c] |= ratio_[c] == 1.f;
+        apart_ |= ratio_[0] != ratio_[1];
     }
 
     StereoRing<kBufSize> ring_;
@@ -536,6 +604,10 @@ private:
     float nominal_[2], other_at_[2];
     uint8_t waiting_[2], held_[2];
     bool follows_ = false; // the right channel's splice takes the left's search (StartSplice)
+    // the two channels' taps may differ: a stereo offset moved them apart since they were the
+    // same; and the right channel's fade to the left's taps, 0..1, and its step (Relock)
+    bool apart_;
+    float fade_, fade_step_;
     bool still_[2]; // a channel's taps stood still (off, or at ratio 1) since they last moved
     float window_[2];   // through the taps' lives, 0..1; tap 0 starts over at 0, tap 1 at .5
     float delay_[2][2]; // per channel, per tap, frames behind the last write
