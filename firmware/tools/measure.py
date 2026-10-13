@@ -12,10 +12,11 @@
         PLAY + LOOP over SysEx, the line out recorded, then the loop's length against the
         clock's bars and its drift in ms a minute
     ./measure.py fx KEY [--cc CC=VALUE ...] [--seconds 30] [--material FILE] --out NAME
-        an effect latched (KEY: its key, KEY_1 .. KEY_13), CCs on its own MIDI channel (its
-        key's number, MANUAL.md "MIDI": 14-17 page 1's knobs, 18-21 page 2's; 21 is Level, the
-        sends' too since #172, at 0dB at first), material into AUX, the line out recorded to
-        NAME.f32
+        an effect latched alone (KEY: its key, KEY_1 .. KEY_13, or its name, e.g. delay; none:
+        nothing latched, the dry line), CCs on its own MIDI channel (its key's number,
+        MANUAL.md "MIDI": 14-17 page 1's knobs, 18-21 page 2's; 21 is Level, the sends' too
+        since #172, at 0dB at first), material into AUX, the line out recorded to NAME.f32;
+        the latches and the effect's knobs put back afterwards
     ./measure.py compare A.f32 B.f32
         two recordings' levels and octave bands, B against A, in dB
     ./measure.py material [--music FILE ...] --out FILE.wav
@@ -55,11 +56,17 @@ from midiport import Clock  # noqa: E402
 
 try:
     import numpy as np
-except ImportError:
-    sys.exit("measure.py needs numpy: python3 -m venv ~/.venvs/frizz && "
-             "~/.venvs/frizz/bin/pip install numpy")
+except ImportError:  # main() says so; importing works without it, for the host check
+    np = None
 
 SR = 48000
+# The effect on each white key (FxSlots.h; not in FxId's order: KEY_7 is the phaser)
+KEY_FX = {"KEY_1": "freezer", "KEY_2": "shifter", "KEY_3": "folder", "KEY_4": "crusher",
+          "KEY_5": "filter", "KEY_6": "flanger", "KEY_7": "phaser", "KEY_8": "resonator",
+          "KEY_9": "slicer", "KEY_10": "warble", "KEY_11": "tapestop", "KEY_12": "delay",
+          "KEY_13": "reverb"}
+
+
 def cc_status(key):
     """A CC's status byte on an effect's own channel, its white key's number (MidiControl.h)"""
     return 0xB0 | (int(key.split("_")[1]) - 1)
@@ -107,15 +114,36 @@ def frizz(a):
     return remote.Frizz(chompi.to_frizz(a.slot))
 
 
-def latch(f, name):
-    """An FX key held, SHIFT tapped: latched (MANUAL.md)"""
-    f.key(name, True)
-    time.sleep(.08)
-    f.key("KEY_26", True)
-    time.sleep(.05)
-    f.key("KEY_26", False)
-    time.sleep(.05)
-    f.key(name, False)
+def latched(f):
+    return [n for n, v in zip(remote.FX_NAMES, remote.dev_get(f, remote.GROUP_LATCH)) if v]
+
+
+def latch_only(f, name):
+    """Only NAME latched (None: nothing), over SysEx SET, then read back: exits unless exactly
+    that took. Not by the key held and SHIFT tapped, which on the device doesn't always latch
+    (#187). The latches as they were, for put_back()"""
+    was = latched(f)
+    for n in was:
+        if n != name:
+            remote.dev_set(f, "latch", n, 0)
+    if name and name not in was:
+        remote.dev_set(f, "latch", name, 1)
+    now = latched(f)
+    if now != ([name] if name else []):
+        put_back(f, was, name, [])
+        sys.exit("latched: %s, not %s: FRIZZ didn't take the latch (SysEx SET)"
+                 % (" ".join(now) or "nothing", name or "nothing"))
+    return was
+
+
+def put_back(f, was, name, knobs):
+    """NAME's knobs (14 bits, both pages) as KNOBS, the latches as WAS has them"""
+    for i, v in enumerate(knobs):
+        f.dev(chompi.SET, [remote.GROUPS[name], i, v >> 7 & 0x7F, v & 0x7F])
+    now = latched(f)
+    for n in remote.FX_NAMES:
+        if (n in was) != (n in now):
+            remote.dev_set(f, "latch", n, int(n in was))
 
 
 # ======== audio ========
@@ -300,21 +328,45 @@ def cmd_drift(a):
 
 
 def cmd_fx(a):
+    key = a.key if a.key in KEY_FX else {n: k for k, n in KEY_FX.items()}.get(a.key)
+    name = KEY_FX.get(key)
+    if a.key != "none" and not name:
+        sys.exit("fx %s: a key KEY_1 .. KEY_13, an effect (%s) or none"
+                 % (a.key, " ".join(KEY_FX.values())))
+    if a.cc and not name:
+        sys.exit("fx none: no effect for the CCs")
     f = frizz(a)
     material = a.material
     if not material:
         material = a.out + ".material.wav"
         write_wav(material, np.repeat(generated()[:, None], 2, 1))
-    p = play(material)
-    time.sleep(1)
-    latch(f, a.key)
-    for cc in a.cc or []:
-        number, value = (int(x) for x in cc.split("="))
-        f.raw([cc_status(a.key), number, value])
-    time.sleep(2)
-    y = record(a.seconds, a.out + ".f32")
-    p.terminate()
-    print("%s: %.1f s, RMS %.4f" % (a.out + ".f32", len(y) / SR, np.sqrt(np.mean(y ** 2))))
+    # latched and set before the material plays, then a few seconds for it to reach AUX and
+    # the sends' tails to build up (a beat is 1 s at the card's clock factor x1/2)
+    was = latch_only(f, name)
+    knobs = remote.dev_get(f, remote.GROUPS[name]) if name else []
+    try:
+        for cc in a.cc or []:
+            number, value = (int(x) for x in cc.split("="))
+            f.raw([cc_status(key), number, value])
+        if name:
+            time.sleep(.1)
+            print("%s latched alone, its knobs: %s" % (name, "  ".join(
+                "%.4f" % remote.knob(v) for v in remote.dev_get(f, remote.GROUPS[name]))))
+        else:
+            print("nothing latched")
+        p = play(material)
+        try:
+            time.sleep(3)
+            y = record(a.seconds, a.out + ".f32")
+        finally:
+            p.terminate()
+    finally:
+        put_back(f, was, name, knobs)
+    rms = np.sqrt(np.mean(y ** 2))
+    print("%s: %.1f s, RMS %.4f" % (a.out + ".f32", len(y) / SR, rms))
+    if rms < 1e-4:
+        sys.exit("nothing on the line in: is the material reaching AUX (%s), the line out %s?"
+                 % (aux_sink(), line_source()))
 
 
 def bands(y):
@@ -368,7 +420,7 @@ def main():
     p.add_argument("--seconds", type=float, default=180.)
     p.add_argument("--out", help="keep the recording as OUT.f32 and the material as OUT.material.wav")
     p = sub.add_parser("fx", parents=[on_frizz])
-    p.add_argument("key", choices=["KEY_%d" % i for i in range(1, 14)])
+    p.add_argument("key", help="KEY_1 .. KEY_13, an effect's name (delay), or none")
     p.add_argument("--cc", action="append", metavar="CC=VALUE",
                    help="a CC on the effect's own channel, e.g. 21=80 its Level")
     p.add_argument("--seconds", type=float, default=30.)
@@ -381,6 +433,9 @@ def main():
     p.add_argument("--music", nargs="*")
     p.add_argument("--out", required=True)
     a = ap.parse_args()
+    if np is None:
+        sys.exit("measure.py needs numpy: python3 -m venv ~/.venvs/frizz && "
+                 "~/.venvs/frizz/bin/pip install numpy")
     {"clock": cmd_clock, "drift": cmd_drift, "fx": cmd_fx, "compare": cmd_compare,
      "material": cmd_material}[a.cmd](a)
 
