@@ -84,6 +84,7 @@ IDENT, PERSIST, GET, SET, BENCH, PROBE, LEVELS, SIGNAL, RESEED, BATTERY, RESET, 
 # RESET, handled in FRIZZ's audio callback, so it reaches one whose MainLoop hangs; sent once,
 # never asked again (a FRIZZ started meanwhile would take it too), and unanswered
 RESET_SYSEX = midi_send.HEADER + bytes([DEV, RESET, 0]) + b"RST" + b"\xF7"
+LOOPS = 0x0D  # the loop loader's (LoopLoader.h): remote.py loops
 DEV_STATUS = {0: "ok", 1: "refused", 2: "not in this build", 3: "not yet"}
 OK, REFUSED, NOT_HERE, NOT_YET = range(4)
 RAM_ONLY = 1  # IDENT's and PERSIST's flags: the card isn't written until a restart

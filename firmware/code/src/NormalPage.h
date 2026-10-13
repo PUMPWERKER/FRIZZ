@@ -1062,6 +1062,13 @@ namespace chompi
                 status = NOT_HERE;
                 break;
 #endif
+            case LOOPS:
+            {
+                const int got = info.loops ? info.loops(q.arg, q.len, d + n) : 0;
+                status = !info.loops ? NOT_HERE : (got < 0 ? BAD : OK);
+                n += got > 0 ? static_cast<size_t>(got) : 0;
+                break;
+            }
             default:
                 status = BAD;
             }

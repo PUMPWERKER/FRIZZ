@@ -20,6 +20,9 @@
 #include "MidiOut.h"
 #include "SdCard.h"
 #include "Crash.h"
+#if !FRIZZ_BENCH
+#include "LoopLoader.h"
+#endif
 #if FRIZZ_BENCH
 #include "Bench.h"
 #endif
@@ -48,8 +51,12 @@ EventLog event_log;
 // event before it's counted, the card's files at Start). An ordinary static on the twin
 #ifdef __arm__
 #define SDRAM_NOINIT __attribute__((section(".sdram_noinit")))
+// the same, linked after it (chompi_sram.lds: .sdram_noinit*), so what came later doesn't
+// move the loop and the event log
+#define SDRAM_NOINIT_LATER __attribute__((section(".sdram_noinit.later")))
 #else
 #define SDRAM_NOINIT
+#define SDRAM_NOINIT_LATER
 #endif
 EventLogMem SDRAM_NOINIT event_log_mem;
 #if FRIZZ_BENCH
@@ -70,6 +77,13 @@ int16_t SDRAM_NOINIT loop_mem[kLoopMemSize];
 #define BACKUP_SRAM
 #endif
 crash::Backup BACKUP_SRAM crash_mem;
+#if !FRIZZ_BENCH
+// loops from the card (LoopLoader.h, #70): the buffer one loads into, 16 bars at 50 BPM, and
+// the loader's own. Not in the bench, which has no room for it
+uint8_t SDRAM_NOINIT_LATER __attribute__((aligned(32))) loop_load_mem[loops::kBufBytes];
+loops::Mem SDRAM_NOINIT_LATER loop_loader_mem;
+LoopLoader loop_loader;
+#endif
 
 // TEMPO's delay buffer: 10s of interleaved stereo float
 static const size_t kDelayFrames = 480000;
@@ -173,6 +187,8 @@ static void DevInfo(dev::Info& info)
 #if FRIZZ_BENCH
     info.kind = 1;
     info.bench = [](uint8_t part, uint32_t offset, uint8_t* d) { return bench.Report(part, offset, d); };
+#else
+    info.loops = [](const uint8_t* arg, size_t len, uint8_t* d) { return loop_loader.Dev(arg, len, d); };
 #endif
 }
 
@@ -360,6 +376,11 @@ void MainLoop(void* data)
     // MIDI out's bytes for USB, which only MainLoop may send (MidiOut.h)
     midi_out.FlushUsb();
 
+#if !FRIZZ_BENCH
+    // loops from the card: a step, before the card's other users; it leaves them the card
+    // when they want it (LoopLoader.h)
+    loop_loader.Process(scene_store.Busy() || event_log.Writing());
+#endif
     // a scene saved, copied or deleted: the card is written here, never in the audio callback
     scene_store.Process(event_log.Writing());
     // a bug report asked for: written a chunk per pass, also from MainLoop only; not with
@@ -452,6 +473,11 @@ int main(void)
     System::Delay(100);
     // FRIZZ's files live in /FRIZZ, created on first start (SceneStore.h)
     scene_store.Init(&fsi.GetSDFileSystem(), fsi.GetSDPath());
+#if !FRIZZ_BENCH
+    // the loop slots' scan starts, a step a MainLoop pass
+    loop_loader.Init(loop_load_mem, &loop_loader_mem, &fsi.GetSDFileSystem(), [] { return System::GetNow(); },
+                     [] { return System::GetTick(); }, System::GetTickFreq());
+#endif
 
     engine.Init(hw.seed.AudioSampleRate(), loop_mem, &midi_clock,
                 delay_mem, kDelayFrames, &reverb,

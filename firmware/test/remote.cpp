@@ -198,6 +198,33 @@ static void Write(const std::string& path, const std::string& text)
     std::ofstream(path) << text;
 }
 
+/** A WAV of 16-bit PCM: frames of a pattern, at rate, in channels */
+static std::string LoopWav(uint32_t frames, uint32_t rate, uint16_t channels)
+{
+    auto u32 = [](std::string& w, uint32_t v) {
+        for (int i = 0; i < 4; i++)
+            w.push_back(static_cast<char>(v >> (8 * i)));
+    };
+    const uint32_t bytes = frames * channels * 2;
+    std::string w = "RIFF";
+    u32(w, 36 + bytes);
+    w += "WAVEfmt ";
+    u32(w, 16);
+    u32(w, 1 | channels << 16);
+    u32(w, rate);
+    u32(w, rate * channels * 2);
+    u32(w, channels * 2 | 16 << 16);
+    w += "data";
+    u32(w, bytes);
+    uint32_t x = 12345;
+    for (uint32_t i = 0; i < bytes; i++)
+    {
+        x = x * 1103515245u + 12345u;
+        w.push_back(static_cast<char>(x >> 16));
+    }
+    return w;
+}
+
 static std::string Read(const std::string& path)
 {
     std::ifstream f(path);
@@ -754,6 +781,46 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     if (rc != 0)
         printf("%s\n", out.c_str());
 
+    // the loop loader (#70): slots put on the card and scanned again, one loaded and checked
+    // against its file, a fault provoked, the write test, which leaves nothing behind
+    {
+        const std::string a01 = LoopWav(96000, 48000, 2), wav = tmp_dir + "/a01.wav";
+        std::ofstream(wav, std::ios::binary) << a01;
+        CardFiles()["/FRIZZ/LOOPS/A/01.wav"] = a01;
+        CardFiles()["/FRIZZ/LOOPS/C/15.WAV"] = LoopWav(1000, 44100, 2);
+        rc = Remote({"loops", "--scan"}, out);
+        Check(rc == 0 && Has(out, "A/01  stereo, 96000 frames (2.00 s), its data at 44\n")
+                  && Has(out, "C/15  not 48 kHz\n") && Has(out, "2 slots filled"),
+              "remote: loops --scan lists the slots on the card, a refused one with why");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        rc = Remote({"loops", "load", "a", "1", "--check", wav}, out);
+        Check(rc == 0 && Has(out, "A/01 loaded: 0.38 of 0.38 MB in ") && Has(out, ", 3 runs, the file in 1 fragment\n")
+                  && Has(out, "the audio callback meanwhile: max ") && Has(out, "a01.wav's data 0x")
+                  && Has(out, ": the same"),
+              "remote: loops load reads a slot in runs, its CRC-32 the file's data's");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        rc = Remote({"loops", "load", "A", "1", "--fault", "past-end"}, out);
+        Check(rc == 1 && Has(out, "A/01 failed, card error: 0.26 of 0.38 MB") && Has(out, "SD error 0x2000000")
+                  && Has(out, "card recovered 1 times"),
+              "remote: a load's fault provoked: it stops at once, why, the card recovered");
+        if (rc != 1)
+            printf("%s\n", out.c_str());
+        CardFiles().erase("/FRIZZ/LOOPS/A/01.wav");
+        CardFiles().erase("/FRIZZ/LOOPS/C/15.WAV");
+        const size_t files = CardFiles().size();
+        rc = Remote({"loops", "write", "16", "300"}, out);
+        bool left = false;
+        for (const auto& f : CardFiles())
+            left = left || f.first.find("/LOOPS") != std::string::npos;
+        Check(rc == 0 && Has(out, "write test, 16 KB in 300-byte writes: passed") && !left
+                  && CardFiles().size() == files,
+              "remote: loops write writes, renames, reads back and deletes a file in /FRIZZ/LOOPS/T");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        unlink(wav.c_str());
+    }
     // the crash record (#105): none on the twin; one as the fault handler writes it, read back
     // and cleared; a watchdog's, as the next start records it
     rc = Remote({"crash"}, out);

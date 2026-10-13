@@ -232,7 +232,10 @@ longer than a block, which crackle), `settings`, `channel N`, `transport on|off`
 `source auto|trs|usb|internal`, `out off|trs|all`, `scene get|put SLOT FILE`, the developers'
 `ident`, `ram-only`, `get GROUP`, `set GROUP INDEX VALUE`, `bench [--wait] [--out FILE]`,
 `probe`, `levels`, `signal sine|saw|noise HZ LEVEL` / `signal off`, `reseed [SEED]`,
-`battery`, `reset`, `crash [--clear]` and `crash-test` (below), and `play SCRIPT [--cpu] [--fresh]`, which plays a twin
+`battery`, `reset`, `crash [--clear]`, `crash-test` and `loops [--scan]` / `loops load BANK SLOT
+[--fault no-flow|past-end|cut-short|reinit] [--check WAV]` / `loops write KB CHUNK` (the loop
+loader, #70: a load's time, the audio callback's load meanwhile, MainLoop's longest step, its CRC
+against WAV's data) (below), and `play SCRIPT [--cpu] [--fresh]`, which plays a twin
 script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over SysEx at the
 script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs, at the
 brightness the card's `led_brightness` sets (25-100 % by 5: the levels that fit every line,
@@ -319,6 +322,12 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | | `01` | PC, LR, xPSR, CFSR, HFSR, MMFAR, BFAR (5 each) |
 | | `02` | clears it -> flags |
 | `0C` TEST | WHAT | the bench only (FRIZZ.bin answers status 2): 1 MainLoop hangs (after answering), 2 a bus fault in MainLoop (a read where nothing is), 3 the audio callback hangs, 4 an undefined instruction in it (3 and 4 unanswered, as they come) |
+| `0D` LOOPS | `00` | the loop loader (`LoopLoader.h`, #70; FRIZZ.bin only, status 2 in the bench): its state (0 idle, 1 scanning, 2 loading, 3 loaded, 4 failed, 5 checking, 6 writing, 7 written), the bank and slot loading, the result (`loops::Result`: why a load or the write test stopped, 0 if it didn't), the SD error (5, `HAL_SD_ERROR_*`), bytes read (4) of (4), ms (3), runs (3), MainLoop's longest step since the last `00` in µs (3), the SDMMC's CLKCR (5), the card recovered (1) and set up again (1), the file's fragments (2) |
+| | `01` BANK | 1 while the scan runs, then the bank's 15 slots' results (0 empty, 1 mono, 2 stereo, more: refused, why) |
+| | `02` BANK SLOT | the slot's result, frames (4), its data's offset in the file (5) |
+| | `03` / `04` BANK SLOT FAULTS | scans again / loads the slot (banks and slots from 0). FAULTS for a test: 1 the flow control off for it, 2 its third run read past the card's end, 4 its third run given no time, 8 the recovery after it sets the card up from scratch (`HAL_SD_DeInit`, `BSP_SD_Init`). Refused (status 1) while something runs |
+| | `05` [`01`] | the state, the CRC-32 (5) of the data loaded (zlib's); with `01` it starts, 16 KB a MainLoop pass |
+| | `06` KB(2) CHUNK(2) | the write test: KB (1-1024) written to `/FRIZZ/LOOPS/T/w.tmp` in CHUNK-byte writes, the `.bin` it replaces deleted, renamed, read back, compared, then the file, the folder and a `/FRIZZ/LOOPS` it made deleted |
 
 The groups of GET and SET: `00`-`1F` an effect's knobs by its FxId (`FxParams.h`: 0-3 page 1,
 4-7 page 2), `20` the compressor's, `21` the latches (index by FxId, 0 or 1), `22` VOLUME's
@@ -329,6 +338,13 @@ AUX dry, the input gains of AUX and the mic, the mic dry, AUX live, the mic live
 as `frizz_master.txt` has them.
 The groups don't follow the MIDI map (CCs), so a tool keeps working when it changes. SETs
 aren't in the event log: a bug report taken after them won't replay them.
+
+LOOPS drives the loop loader until it has its controls (#70): `remote.py loops` (below) and
+`tools/loopfiles.py`, which makes its test files and puts them on the card in a test folder
+over USB storage (`card.py mount` in a hold), `/FRIZZ/LOOPS/A-C`, A/02 and A/12-13 written in
+pieces so they lie in fragments; `loopfiles.py clean ROOT` deletes `/FRIZZ/LOOPS` again. The
+write test writes the card whatever PERSIST says, only in `/FRIZZ/LOOPS/T`, and deletes what
+it wrote.
 
 PROBE to BATTERY are for tests without hands or an audio interface. All but SIGNAL and RESEED
 only read: BATTERY answers what the last reads left (the charger isn't asked, its voltage only

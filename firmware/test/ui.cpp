@@ -2778,6 +2778,76 @@ int main()
               "restart: under a stream of compressor CCs, within a second of being asked");
     }});
 
+    // the loop loader (LoopLoader.h, #70) in MainLoop beside the card's other users: a
+    // 16-bar loop loading while a scene is saved and a bug report written. They get the card
+    // between its runs, never in one (no FatFs call while a run's DMA has the card), and the
+    // loop lands byte for byte
+    cases.push_back({"loops-shared", [] {
+        RunMs(kReadyMs);
+        const uint32_t bytes = 3686400u * 4;
+        std::string wav = "RIFF";
+        auto u32 = [&](uint32_t v) {
+            for (int i = 0; i < 4; i++)
+                wav.push_back(static_cast<char>(v >> (8 * i)));
+        };
+        u32(36 + bytes);
+        wav += "WAVEfmt ";
+        for (uint32_t v : {16u, 1u | 2u << 16, 48000u, 192000u, 4u | 16u << 16})
+            u32(v);
+        wav += "data";
+        u32(bytes);
+        uint32_t x = 1, crc = 0xFFFFFFFFu;
+        for (uint32_t i = 0; i < bytes; i++)
+        {
+            x = x * 1103515245u + 12345u;
+            const uint8_t b = static_cast<uint8_t>(x >> 16);
+            wav.push_back(static_cast<char>(b));
+            crc ^= b;
+            for (int k = 0; k < 8; k++)
+                crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1)));
+        }
+        crc = ~crc;
+        CardFiles()["/FRIZZ/LOOPS/A/01.wav"] = wav;
+        const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
+        // each run takes ~40 ms: the load ~4.7 s, the save and the report inside it
+        SetCardRawPolls(4000);
+        Ask({0x3E, 0x0D, 1, 3}); // scan again
+        RunMs(300);
+        const std::string started = Ask({0x3E, 0x0D, 2, 4, 0, 0, 0});
+        RunMs(200);
+        Save(4);
+        SetToggle(true); // the settings page: SHIFT + VOLUME held 2 s, a bug report
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(2100);
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(100);
+        SetToggle(false);
+        const std::string during = Ask({0x3E, 0x0D, 3, 0});
+        std::string status;
+        for (int i = 0; i < 100; i++)
+        {
+            RunMs(100);
+            status = Ask({0x3E, 0x0D, 4, 0});
+            if (status.size() > 3 && status[3] != 2) // no longer loading
+                break;
+        }
+        Ask({0x3E, 0x0D, 5, 5, 1}); // the CRC of what loaded
+        RunMs(1000);
+        const std::string got = Ask({0x3E, 0x0D, 6, 5});
+        Check(started.size() == 3 && started[2] == 0 && during.size() > 3 && during[3] == 2,
+              "loops-shared: the load started, and still ran after the save and the report");
+        Check(status.size() > 3 && status[3] == 3 && got.size() >= 9 && DevNum(got, 4, 5) == crc,
+              "loops-shared: 16 bars at 50 BPM loaded, its CRC-32 the file's");
+        Check(Card("/FRIZZ/frizz_scenes.txt") != scenes && !Card("/FRIZZ/bug-1.txt").empty(),
+              "loops-shared: the scene saved and the bug report written meanwhile");
+        Check(CardRawClash() == 0 && CardOpenFiles() == 0,
+              "loops-shared: no FatFs call while a run had the card, nothing left open");
+    }});
+
     // the event log (EventLog.h): a session, SHIFT + VOLUME held on the settings page, its
     // file on the card
     cases.push_back({"bug-log", [] {
