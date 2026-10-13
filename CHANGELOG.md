@@ -5,6 +5,16 @@ a release renames that section to its version, and its notes on GitHub's Release
 from it. Developer-only changes (refactoring, tests, docs) aren't listed unless they change
 what FRIZZ does.
 
+## Unreleased
+
+### Changed
+
+- The quick start shows how the sound flows as a diagram that reads on a phone, and the
+  manual notes that the built-in mic hears CHOMPI's own keys and knobs (#245).
+- The manual's diagrams show their names at the size they were drawn for (browsers set them
+  larger), so the input diagram's last label ("to the phones feed") is no longer cut off at
+  its right edge.
+
 ## v1.0.0 (2026-10-13)
 
 ### Added

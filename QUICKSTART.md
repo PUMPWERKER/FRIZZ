@@ -6,17 +6,13 @@ Your first ten minutes with FRIZZ. Every detail is in the [manual](MANUAL.md).
 
 ## How the sound flows
 
-```
-AUX in or mic -> input gain -+-> if monitored -+
-                             |                 +-> input/loop mix -> effects (white keys) -> compressor -> output volume -> out
-                             +-> looper -------+
-```
+![The input, AUX or the mic after its input gain, goes to the looper, which records it before the effects, and, if monitored, to the input/loop mix, where the loop joins it; from there input and loop alike go through the effects, the compressor and VOLUME to the outputs](images/quickstart-flow.svg)
 
 Plug a source into AUX. The looper records it **before** the effects, so you can play effects
 over a loop and nothing gets printed into it. The effects come **after** the input/loop mix,
-so they act on everything you hear, the input as well as the loop. SHIFT + VOLUME balances
-input against loop. No cable in AUX? Then the input is CHOMPI's built-in microphone, which
-starts off the outputs so a speaker can't feed it back
+so they act on everything you hear, the input as well as the loop. No cable in AUX? Then the
+input is CHOMPI's built-in microphone, which starts off the outputs so a speaker can't feed it
+back
 ([Input: AUX or the mic](MANUAL.md#input-aux-or-the-mic)).
 
 **SHIFT** means holding the CHOMPI key. The key lights white while it acts as SHIFT.

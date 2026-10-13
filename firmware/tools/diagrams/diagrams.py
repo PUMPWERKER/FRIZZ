@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Draws the manual's diagrams into images/: signal-flow, input, fx-chain, clock-midi, panel.
+"""Draws the docs' diagrams into images/: signal-flow, input, fx-chain, clock-midi, panel and
+the quick start's quickstart-flow.
 
-Plain block diagrams, by hand in coordinates of a 720 px wide picture: boxes, arrows, lettered
+Plain block diagrams, by hand in coordinates of a 720 px wide picture (the quick start's 480,
+so it reads on a phone): boxes, arrows, lettered
 switches and a legend. What they show is the code's (firmware/code/src: passthroughEngine.h,
 FxChain.h, FxOutput.h, MasterComp.h, TempoClock.h, MidiClock.h, MidiOut.h, SettingsPage.h) and
 MANUAL.md's; the panel's positions come from firmware/twin/web/layout.json (CHOMPI's board
@@ -37,7 +39,7 @@ def num(v):
 
 def width(s, size, bold=False):
     """About how wide Arial sets s: for checking that a label fits its box"""
-    narrow = 'iljtfr.,:;|!()[]\' '
+    narrow = 'iljtfrI.,:;|!()[]\' '
     w = 0.0
     for c in s:
         if c in narrow:
@@ -50,7 +52,8 @@ def width(s, size, bold=False):
 
 
 class Svg:
-    def __init__(self, h, title, desc):
+    def __init__(self, h, title, desc, w=W):
+        self.w = w
         self.h = h
         self.title = title
         self.desc = desc
@@ -70,6 +73,11 @@ class Svg:
             attrs += ' font-weight="bold"'
         if rotate is not None:
             attrs += ' transform="rotate(%s %s %s)"' % (num(rotate), num(x), num(y))
+        else:
+            w = width(s, size, bold)
+            left = x - {'start': 0, 'middle': .5, 'end': 1}[anchor] * w
+            if left < 0 or left + w > self.w:
+                print('  past the edge: %r' % s)
         self.add('<text %s>%s</text>' % (attrs, escape(s)))
 
     def box(self, x, y, w, h, lines, accent=False, check=True):
@@ -135,7 +143,7 @@ class Svg:
             elif mark:
                 self.badge(x + 9, yy - 4, mark)
             self.text(x + 32, yy, s, 12, anchor='start', cls='t')
-            if width(s, 12) + x + 32 > W - 8:
+            if width(s, 12) + x + 32 > self.w - 8:
                 print('  legend too wide: %r' % s)
 
     def render(self):
@@ -145,7 +153,9 @@ class Svg:
             '<path d="M0,0L10,5L0,10z" fill="%s"/></marker>' % (k, c)
             for k, c in (('a', ACC), ('s', FG), ('c', MUTED)))
         style = (
-            'text{font-family:%s;fill:%s;text-anchor:middle}'
+            # 13 px on the picture, inherited: a text's own font-size wins over it, where a
+            # text{} rule's would win over the attribute
+            'svg{font-size:13px}text{font-family:%s;fill:%s;text-anchor:middle}'
             '.as{text-anchor:start}.ae{text-anchor:end}.m{fill:%s}.gt{fill:%s}'
             '.b{fill:none;stroke:%s;stroke-width:1.5}'
             '.ba{fill:none;stroke:%s;stroke-width:2}'
@@ -163,12 +173,12 @@ class Svg:
                FG, BG, KEY, FG, ACC, FG, MUTED))
         out = [
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" width="%d" height="%d" '
-            'role="img" aria-labelledby="title desc">' % (W, self.h, W, self.h),
+            'role="img" aria-labelledby="title desc">' % (self.w, self.h, self.w, self.h),
             '<title id="title">%s</title>' % escape(self.title),
             '<desc id="desc">%s</desc>' % escape(self.desc),
             '<style>%s</style>' % style,
             '<defs>%s</defs>' % defs,
-            '<rect width="%d" height="%d" fill="%s"/>' % (W, self.h, BG),
+            '<rect width="%d" height="%d" fill="%s"/>' % (self.w, self.h, BG),
         ] + self.items + ['</svg>']
         return '\n'.join(out) + '\n'
 
@@ -604,10 +614,49 @@ def panel():
     return s
 
 
+# ---------- 6. the quick start's way of the sound, narrow for a phone ----------
+def quickstart_flow():
+    s = Svg(450, 'How the sound flows',
+            'The input, AUX or the built-in mic after its input gain, goes two ways: to the '
+            'looper, which records it before the effects, so nothing is printed into the loop; '
+            'and, if monitored (the mic starts off), on to the input/loop mix, SHIFT + VOLUME, '
+            'where the loop joins it. From there input and loop alike go through the effects '
+            '(white keys 1-14), the compressor (white key 15) and VOLUME, the output gain, to '
+            'the line out and the headphones.', w=480)
+    s.box(50, 20, 200, 60, ['INPUT', ('AUX in, or the built-in mic', 'm'), ('input gain', 'm')],
+          accent=True)
+    # the looper takes the input before the monitoring, the mix and the effects
+    s.line([(150, 80), (150, 212)], 'a')
+    s.dot(150, 100, 'a')
+    s.line([(150, 100), (375, 100), (375, 116)])
+    s.text(262, 92, 'the input', 12, cls='m')
+    s.box(290, 116, 170, 80, ['LOOPER', ('records here, before', 'm'), ('the effects: nothing is', 'm'),
+                              ('printed into the loop', 'm')])
+    s.text(142, 150, 'if monitored', 12, anchor='end')
+    s.text(142, 166, 'the mic: off at first', 12, anchor='end', cls='m')
+    s.box(50, 212, 200, 60, ['MIX', ('input ↔ loop', 'm'), ('SHIFT + VOLUME', 'm')])
+    s.line([(375, 196), (375, 242), (250, 242)])
+    s.text(312, 235, 'loop', 12, cls='m')
+    s.line([(150, 272), (150, 292)], 'a')
+    s.box(50, 292, 200, 60, ['EFFECTS', ('white keys 1–14,', 'm'), ('on input and loop alike', 'm')],
+          accent=True)
+    s.line([(150, 352), (150, 372)], 'a')
+    s.box(80, 372, 140, 48, ['COMPRESSOR', ('white key 15', 'm')], accent=True)
+    s.line([(220, 396), (240, 396)], 'a')
+    s.box(240, 372, 110, 48, ['VOLUME', ('output gain', 'm')], accent=True)
+    s.line([(350, 396), (385, 396)], 'a')
+    s.jack(392, 396)
+    s.text(404, 400.5, 'OUT', 13, anchor='start', bold=True)
+    s.text(404, 416, 'line out,', 12, anchor='start', cls='m')
+    s.text(404, 431, 'phones', 12, anchor='start', cls='m')
+    return s
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     for name, make in (('signal-flow', signal_flow), ('input', input_diagram),
-                       ('fx-chain', fx_chain), ('clock-midi', clock_midi), ('panel', panel)):
+                       ('fx-chain', fx_chain), ('clock-midi', clock_midi), ('panel', panel),
+                       ('quickstart-flow', quickstart_flow)):
         print(name)
         svg = make().render()
         with open(os.path.join(OUT, name + '.svg'), 'w', encoding='utf-8') as f:
