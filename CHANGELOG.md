@@ -9,6 +9,10 @@ what FRIZZ does.
 
 ### Added
 
+- **A hung FRIZZ restarts by itself** (#105): if its sound stops for a second (a crash, or
+  something stuck), the CHOMPI restarts instead of staying frozen until you switch it off:
+  into the launcher's picker if you use it, or else FRIZZ starts again. A loop in RAM is lost,
+  as with the power switch.
 - **A hard drop to a scene on a bar line** (#153, #175), after the Neuzeit Instruments
   Drop's drop mode: hold SHIFT, tap a scene key, press the transport knob, let go. The scene
   lands all at once on the downbeat, as a recall would there: what it turns on starts on the

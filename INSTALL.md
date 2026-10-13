@@ -97,4 +97,5 @@ overdub, then the CHOMPI key.
 | Rainbow, but then nothing works | Copy `FRIZZ.bin` to the card again (the copy may be damaged) and switch on again |
 | The keys don't play | The mode switch is up, on the settings page: flip it down |
 | Silence | Check the input gain (press VOLUME, then turn) and the input/loop mix (SHIFT + turn VOLUME, turn towards green). Is the cable in AUX all the way? Without one, the input is the mic, which isn't live at first. On the settings page (mode switch up), the upper A# puts the input you hear live (lit) |
+| It restarts by itself while you play (FRIZZ starts again, or the launcher's picker shows) | FRIZZ crashed or its sound stopped, and it restarted rather than stay frozen. A loop in RAM is gone. If it happens again, note what you were doing and [open an issue](https://github.com/ZUHcYa/FrizZ/issues) |
 | The CHOMPI doesn't respond at all | The bootloader may be damaged. Reinstall CHOMPI's own bootloader (`firmware/bin/CHOMPI_Bootloader_V6_2_0.bin`) as described in [`firmware/README.md`](firmware/README.md#4-put-it-on-the-chompi), then install FRIZZ again. Don't install the generic Daisy bootloader instead |

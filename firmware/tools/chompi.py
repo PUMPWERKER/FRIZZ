@@ -10,8 +10,9 @@ It is in one of four states, as the computer sees it:
 
 and None for nothing on USB. FRIZZ's keys: 10 the latest release, 13 the latest beta (the
 user's both), 12 a branch's build under test, 11 the bench, 15 the USB storage firmware. Every way between them goes through the launcher: FRIZZ restarts
-into it on its SysEx F0 7D 43 48 10 F7 (MidiClock.h), the storage firmware on an eject, and
-the launcher starts a slot on its RUN (05). Launchers and storage firmwares from before those
+into it on its SysEx F0 7D 43 48 10 F7 (MidiClock.h), and one that doesn't get there (its
+MainLoop hung) on its developers' RESET, taken in the audio callback (to_launcher, #105); the
+storage firmware on an eject, and the launcher starts a slot on its RUN (05). Launchers and storage firmwares from before those
 two need a hand instead, and this says which.
 
 Which build runs, FRIZZ says itself since its developers' SysEx (ident(): kCmdDev's IDENT,
