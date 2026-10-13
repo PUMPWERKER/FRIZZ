@@ -727,15 +727,17 @@ namespace chompi
                         r = g = b = 0.f;
                     }
                 }
-                else if (fx_->Recording() && !fx_->IsRecordWaiting())
+                else if (fx_->Recording() ? !fx_->RecordEnding() : rec_hold.Down()) // red from the press on, off during the post-roll
                 {
                     r = red[0];
                     g = red[1];
                     b = red[2];
                 }
-                else if(fx_->IsRecordWaiting() && (now / 150) % 2) // waiting for the threshold, blinking
+                else if(fx_->IsRecordWaiting() && (now / 250) % 2) // armed: dim red against the input level, 2 Hz
                 {
-                    r = g = b = 0.f;
+                    r = .3f * red[0];
+                    g = .3f * red[1];
+                    b = .3f * red[2];
                 }
                 else
                 {

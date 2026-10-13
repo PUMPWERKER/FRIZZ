@@ -810,6 +810,7 @@ namespace daisy
         size_t RecordPost() const { return rec_post_ / 2; }
         size_t RecordFrames() { return chompi_writer.GetSize() / 2; }
         inline bool Recording() const { return rec_state_ == RecState::kRecording || rec_state_ == RecState::kEnding; }
+        inline bool RecordEnding() const { return rec_state_ == RecState::kEnding; }
 
         /**
          * @brief Resets the assignment of keyboard keys to voices used in voice stealing algorithm.
