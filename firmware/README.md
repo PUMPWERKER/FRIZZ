@@ -523,10 +523,16 @@ tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouc
     length (PROBE) against 4 bars. `daw-loop-restart`: REAPER stopped and played from the
     start, the playhead into the loop's middle, a loop range; at x1 and x1/2. After Start the
     loop's start sits where its LOOP note put it, as REAPER's MIDI reaches FRIZZ against its
-    audio; the other restarts are judged against that. `daw-follows-audio`: the loop
-    recorded, REAPER restarted synchronized to FRIZZ (as `daw-follows`), recording; the
-    transport turned into a standstill (#174) and pressed back to 1x; the loop against
-    REAPER's time line before and after.
+    audio; the other restarts are judged against that. A loop range's turns each start where
+    REAPER's MIDI at the turn lands, on the edge of one of its blocks (0-21 ms at 1024
+    samples), so each turn is judged steady and within a block. `daw-follows-audio`: the loop
+    recorded, REAPER restarted synchronized to FRIZZ (as `daw-follows`), playing the song into
+    AUX, FRIZZ's mix in the middle (CC 87 64): the line out (pw-record; REAPER recording would
+    run on by itself, deaf to a Stop) carries the song as REAPER plays it and the loop, found
+    apart near where REAPER's trace puts the song; the transport turned into a standstill
+    (#174) and pressed back to 1x, the loop against the song before and after. A song whose
+    bars are all alike (a drum loop) can't be told from the loop: said so, not judged;
+    `--material generated` measures it.
   - On the twin (`test/reaper.cpp`) the stand-in plays the song into the twin's AUX and records
     its line out (`test/ptytwin.h`'s Audio), with measure.py's generated material.
 - **Stopped and restarted** as `midisuite.py`: Ctrl-C, SIGTERM or SIGHUP put things back and

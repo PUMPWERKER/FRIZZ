@@ -1694,14 +1694,15 @@ def against_song(m, y, a, n, t0, where, every=.25, near=.2):
     window of about half a bar, every quarter, the song found within +-near s of where REAPER
     is, the loop within as much of where it would be in step, where the two hold different
     bars: (this computer's time, the loop's phase against the song's in ms, mod the loop's
-    length, the correlations). REAPER following FRIZZ puts its song where FRIZZ's Song Position
-    says, the loop's start on a multiple of its length: in step, 0, give or take REAPER's own
-    latency"""
+    length, the correlations); and how many windows were left out as the song's bars there were
+    too like the loop's at the same place (a song whose bars repeat: drums). REAPER following
+    FRIZZ puts its song where FRIZZ's Song Position says, the loop's start on a multiple of its
+    length: in step, 0, give or take REAPER's own latency"""
     w = int(.45 * m.bar)
     song = np.concatenate([m.mono, m.mono, m.mono])  # past its end: its start again
     total = m.bars * m.bar
     length = n * m.bar
-    got = []
+    got, alike = [], 0
     for i in range(0, len(y) - w, int(every * m.bar)):
         t = t0 + i / float(SR)
         pos = where(t)
@@ -1714,6 +1715,7 @@ def against_song(m, y, a, n, t0, where, every=.25, near=.2):
             continue  # the song in the loop's bars: the two alike
         sa, la = song[int(at):][:w], song[int(a * m.bar + at % length):][:w]
         if abs(np.dot(sa, la)) > .3 * np.sqrt(np.dot(sa, sa) * np.dot(la, la) + 1e-20):
+            alike += 1
             continue  # a song that repeats its bars: here as the loop's, alike too
         so = measure.find(song, x, at + total, near * SR)
         lo = measure.find(song, x, a * m.bar + at % length + total, near * SR)
@@ -1721,7 +1723,7 @@ def against_song(m, y, a, n, t0, where, every=.25, near=.2):
             continue
         d = ((lo[0] - a * m.bar) - so[0] + length / 2.) % length - length / 2.
         got.append((t, d / SR * 1000., abs(lo[1]), abs(so[1])))
-    return got
+    return got, alike
 
 
 def where_from(d):
@@ -1800,7 +1802,11 @@ def daw_follows_audio(r, d):
         measure.write_wav(os.path.join(d.keep, "line-out.wav"), np.repeat(y[:, None], 2, 1))
         with open(os.path.join(d.keep, "line-out.txt"), "w") as f:
             f.write("t0 %.6f\n" % t0 + "".join("%s %.6f %.6f\n" % s for s in spans))
-    got = against_song(m, y, a, n, t0, where_from(d))
+    got, alike = against_song(m, y, a, n, t0, where_from(d))
+    if alike and len(got) < 6:
+        r.note("the song's bars too like the loop's to tell the two apart in the line out (%d windows of %d): "
+               "the loop against the song not judged; --material generated measures it" % (alike, alike + len(got)))
+        return
     res = {}
     for what, t1, t2 in spans:
         ms = stretch(got, t1, t2)
