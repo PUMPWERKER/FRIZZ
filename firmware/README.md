@@ -347,6 +347,7 @@ cd firmware/tools
 ~/.venvs/frizz/bin/python measure.py drift --bpm 174 --seconds 180    # a 1-bar loop against a TRS clock
 ~/.venvs/frizz/bin/python measure.py material --music a.wav b.wav --out music.wav
 ~/.venvs/frizz/bin/python measure.py fx KEY_13 --cc 17=100 --material music.wav --out rev-main
+~/.venvs/frizz/bin/python measure.py fx none --material music.wav --out dry   # nothing latched
 ~/.venvs/frizz/bin/python measure.py compare rev-main.f32 rev-branch.f32
 ```
 
@@ -361,10 +362,15 @@ cd firmware/tools
   Measure 3 minutes or more: a 1-bar loop is good to about ±1.5 ms a minute. The generated
   material never repeats, so a pass can't be matched to the wrong place (real music loops
   can be).
-- `fx` latches an effect and sets its level (the sends' level knobs start at 0: CC 113 the
-  delay, 117 the reverb), plays material into AUX and records the line out; `compare` gives
-  two recordings' level and octave bands, for an A/B of two builds. Real music
-  (`material --music`) is the better test here.
+- `fx` latches the effect alone over SysEx SET (by its key or its name; `none` latches
+  nothing, the dry line to compare against), reads the latches back and stops unless exactly
+  that one took (#187: the key held and SHIFT tapped over SysEx didn't always latch on the
+  device, and every effect recorded the dry line), sends the CCs on the effect's channel
+  (e.g. `--cc 21=80`, its Level), plays material into AUX and records the line out; it says
+  what was latched and the knobs FRIZZ has, and puts the latches and the effect's knobs back
+  afterwards. `compare` gives two recordings' level and octave bands, for an A/B of two
+  builds. Real music (`material --music`) is the better test here; level and bands don't
+  show an effect's timing (an echo's place), which takes a script of its own.
 
 `tools/loopclip.py [--source aux|signal]` asks whether the loop distorts where the live input
 doesn't (#152): a 1 kHz sine at rising levels, into AUX or as FRIZZ's own test signal
