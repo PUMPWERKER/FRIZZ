@@ -58,7 +58,7 @@ TAPE's monitor-routing modes.
 - **"No clock"** means no tick received in the last 0.5 s. Quantized recording is refused then.
 - The clock matters **only while a quantized recording is running.** After that the loop
   free-runs and ignores the incoming tempo, and the loop is the punch-in FX's clock
-  (`TempoClock.h`, MANUAL.md "Tempo"): its bars from the clock give its beats, and the FX's
+  (`TempoClock.h`, MANUAL.md "Tempo and transport"): its bars from the clock give its beats, and the FX's
   beat grid starts at the loop's start and follows its play position.
 - **Clock stops mid-recording** (no tick for 0.5 s, e.g. the DAW is stopped before the bar
   ends): the loop closes immediately at the current position, as if unquantized.
@@ -76,7 +76,7 @@ TAPE's monitor-routing modes.
   whichever ticks next takes over. The settings page can pin it to TRS or USB, or ignore MIDI
   clock (internal): `MidiClock.h`, MANUAL.md *Clock source*.
 - For the looper, only clock ticks are used. (Since v0.11 FRIZZ also takes notes, CCs, program
-  changes and, optionally, Start/Stop: MANUAL.md, *MIDI*.) MIDI out isn't needed for the
+  changes and, optionally, Start/Stop: MANUAL.md, *Appendix: MIDI*.) MIDI out isn't needed for the
   looper; since v0.12 FRIZZ sends its clock and the loop's transport (MANUAL.md, *MIDI out*).
 
 USB-MIDI implications (already shipped in WAVE/TAPE/TEMPO, so low risk):
