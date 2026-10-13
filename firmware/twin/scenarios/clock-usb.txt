@@ -2,6 +2,8 @@
 # on it, a quantized 2-bar loop, a ramp down to 120 with the loop playing, then the clock gone
 input sine 220 0.3
 clock 174 usb jitter 0.3
+# what the card keeps, as a fresh card has it: the device's card holds the player's own (#214)
+set settings clock_source 0
 at 6000
 down KEY_12
 wait 80

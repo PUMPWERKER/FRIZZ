@@ -881,6 +881,34 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     if (rc == 0 || !Has(refused_save, "frizz_scenes"))
         printf("%s\n", refused_save.c_str());
 
+    // a script's set (twin/README.md) goes as the developers' SET, in RAM as the rest (#214);
+    // one FRIZZ refuses, or that can't be sent, fails its line. The old guard (--save) refuses
+    // a set FRIZZ would save: the compressor's knobs, a setting, the input gain; not an effect's
+    Write(script, "booted\nset comp 0 0.3\nset settings led_brightness 100\nwait 100\n");
+    rc = Remote({"play", script}, out);
+    const std::string set_played = out;
+    Remote({"get", "comp"}, out);
+    Check(rc == 0 && Has(out, "page 1  0.3000  0.5000"),
+          "remote: play's set sets the compressor's knob 1 to 0.3 (#214)");
+    if (rc != 0 || !Has(out, "0.3000"))
+        printf("%s\n%s\n", set_played.c_str(), out.c_str());
+    Write(script, "booted\nset comp 0 0\nset comp 0 2\nset settings 99 1\nset nothing 0 0\nwait 100\n");
+    rc = Remote({"play", script}, out);
+    const std::string set_failed = out;
+    Remote({"get", "comp"}, out);
+    Check(rc == 1 && Has(set_failed, "line 3: set comp 0 2: a knob's value is 0-1")
+              && Has(set_failed, "line 4: set settings 99 1: refused") && Has(set_failed, "line 5: set nothing 0 0: no group")
+              && Has(out, "page 1  0.0000  0.5000"),
+          "remote: a set out of range, refused or of no group fails its line; the others are set");
+    if (rc != 1)
+        printf("%s\n", set_failed.c_str());
+    Write(script, "booted\nset filter 0 0.5\nset comp 1 0.5\nwait 100\n");
+    rc = Remote({"play", script, "--save"}, out);
+    Check(rc != 0 && Has(out, "line 3: set comp 1 0.5") && Has(out, "/FRIZZ/frizz_master.txt"),
+          "remote: and with --save a set of the compressor is refused, naming the master file; an effect's isn't");
+    if (rc == 0)
+        printf("%s\n", out.c_str());
+
     // a setter FRIZZ saves keeps the card out of it the same way, unless --save (#171): the
     // channel changes in RAM, the master file stays as it was; --save after that can't write
     {

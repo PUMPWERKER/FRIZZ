@@ -3,6 +3,8 @@
 # around the ticks, and the delay listening throughout
 input sine 220 0.3
 clock 120 jitter 0.2 drift 50
+# what the card keeps, as a fresh card has it: the device's card holds the player's own (#214)
+set settings midi_channel 16
 at 6000
 down KEY_12
 wait 80

@@ -3,6 +3,10 @@
 # beside the loop through the effects; then the mic (not live unless asked for) and AUX through
 # the effects again
 input sine 220 0.3
+# what the card keeps, as a fresh card has it: the device's card holds the player's own (#214)
+set settings aux_dry 0
+set settings aux_live 1
+set settings mic_live 0
 at 6000
 # the global channel 16, whatever the device's card says (in RAM while remote.py plays)
 usb F0 7D 43 48 13 00 10 F7

@@ -3,6 +3,10 @@
 # then the blank scene. Each change goes out as its CC: test/ui.cpp checks them (compare.sh
 # doesn't see MIDI out), on the device a capture of the jack does
 input sine 220 0.3
+# what the card keeps, as a fresh card has it: the device's card holds the player's own (#214)
+set settings aux_dry 0
+set settings aux_live 1
+set settings gain_aux 75
 at 6000
 usb F0 7D 43 48 13 03 02 F7
 usb F0 7D 43 48 3E 03 01 23 08 00 01 F7
