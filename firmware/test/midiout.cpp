@@ -522,6 +522,43 @@ int main()
         Check(worst < .5 * kTick120, "handover: the ticks carry on across the loop's start");
     }});
 
+    // a quantized loop on a clock passed on, the gear behind stopped (no Start came): the
+    // loop starts on the clock's bar line, where a passed-on tick just went, and its Start
+    // goes with exactly one tick, on the jack and over USB (#198)
+    cases.push_back({"handover-stopped", [] {
+        RunMs(kReadyMs);
+        SetOut(2);
+        StartTrs(Clock(120.));
+        RunMs(1000);
+        Press("KEY_27", true); // PLAY held, LOOP: quantized
+        RunMs(80);
+        Tap("KEY_28");
+        RunMs(20);
+        Press("KEY_27", false);
+        RunUntil([] { return Probe().loop_state == 1; }, 3000);
+        RunMs(1000);
+        Tap("KEY_28"); // the bar ends it
+        RunUntil([] { return Probe().loop_state == 2; }, 3000);
+        RunMs(1000);
+        const Sent s = TakeSent();
+        for (const std::vector<MidiOutByte>* v : {&s.trs, &s.usb})
+        {
+            const char* port = v == &s.trs ? "the jack" : "USB";
+            size_t start = 0;
+            while (start < v->size() && (*v)[start].byte != 0xFA)
+                start++;
+            std::vector<double> after;
+            for (size_t i = start + 1; i < v->size() && after.size() < 2; i++)
+                if ((*v)[i].byte == 0xF8)
+                    after.push_back((*v)[i].ms);
+            const bool both = start < v->size() && after.size() == 2;
+            Report("handover-stopped: %s: Start, a tick %.2f ms on, the next %.2f ms after it", port,
+                   both ? after[0] - (*v)[start].ms : -1., both ? after[1] - after[0] : -1.);
+            Check(both && after[0] - (*v)[start].ms < 2. && after[1] - after[0] > .5 * kTick120,
+                  (std::string("handover-stopped: ") + port + ": Start with one tick").c_str());
+        }
+    }});
+
     // Start came in on the jack and went out over USB only, then a loop: the jack's gear never
     // got a Start, so it gets the loop's; USB's already plays, so not it (#166)
     cases.push_back({"handover-trs", [] {
