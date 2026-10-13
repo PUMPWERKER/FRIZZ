@@ -8,6 +8,7 @@ card wav /FRIZZ/LOOPS/A/02.wav 1.5 2 330
 card wav /FRIZZ/LOOPS/A/03.wav 4 2 220
 card wav /FRIZZ/LOOPS/A/04.wav 2 1 440
 card wav /FRIZZ/LOOPS/A/05.wav 7.2 2 165 12
+card wav /FRIZZ/LOOPS/A/15.wav 76.8 2 125
 card wav /FRIZZ/LOOPS/B/01.wav 2 2 275
 input sine 220 0.3
 at 6000

@@ -9,6 +9,10 @@ device. Nothing here is for players: the files are patterns, not music.
                                         A/12 and A/13 written in pieces between a filler's, which
                                         is then deleted, so they lie in fragments
     tools/loopfiles.py clean ROOT       ROOT/FRIZZ/LOOPS deleted, all of it
+    tools/loopfiles.py page ROOT        the Loops page's set onto the card mounted at ROOT:
+                                        the loops twin/scenarios/loops.txt puts on the twin's
+                                        card (its `card wav` lines), so it plays on the device
+                                        as on the twin (remote.py play)
 
 The set, by slot, and what FRIZZ's scan says (LoopLoader's Result):
     A/01  16 bars at 50 BPM (3,686,400 frames), stereo, the most it takes     stereo
@@ -30,6 +34,7 @@ The set, by slot, and what FRIZZ's scan says (LoopLoader's Result):
 The data: little-endian 32-bit words, word j = j * 2654435761 ^ 0x5A5A5A5A (mod 2^32), as
 #70's measurement had them; each file's data starts at word 0.
 """
+import math
 import os
 import shutil
 import struct
@@ -141,6 +146,39 @@ def card(src, root):
     print("put on the card under %s" % loops)
 
 
+SCENARIO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "twin", "scenarios", "loops.txt")
+
+
+def sine(seconds, channels, hz, beats=0):
+    """twin/script.cpp's LoopWav: a sine at .3, the right a quarter period on, an acid chunk
+    of BEATS before the data"""
+    frames = int(seconds * 48000 + .5)
+    out = bytearray()
+    for i in range(frames):
+        for c in range(channels):
+            out += struct.pack("<h", int(round(.3 * 32767 * math.sin(2 * math.pi * hz * i / 48000 + c * math.pi / 2))))
+    acid = chunk(b"acid", struct.pack("<IHHfIHHf", 0, 60, 0, 0., beats, 4, 4, 120.)) if beats else b""
+    return wav(bytes(out), channels=channels, before=acid)
+
+
+def page(root):
+    loops = os.path.join(root, "FRIZZ", "LOOPS")
+    if os.path.exists(loops):
+        sys.exit("%s is there already: not made by this, not touched" % loops)
+    with open(SCENARIO) as f:
+        for line in f:
+            w = line.split()
+            if w[:2] != ["card", "wav"]:
+                continue
+            path = os.path.join(root, w[2].lstrip("/"))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as g:
+                g.write(sine(float(w[3]), int(w[4]), float(w[5]), int(w[6]) if len(w) > 6 else 0))
+            print("  %s" % w[2])
+    os.sync()
+    print("put on the card under %s" % loops)
+
+
 def clean(root):
     loops = os.path.join(root, "FRIZZ", "LOOPS")
     if os.path.exists(loops):
@@ -157,6 +195,8 @@ def main():
         card(a[1], a[2])
     elif a[:1] == ["clean"] and len(a) == 2:
         clean(a[1])
+    elif a[:1] == ["page"] and len(a) == 2:
+        page(a[1])
     else:
         sys.exit(__doc__)
 
