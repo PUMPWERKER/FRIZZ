@@ -227,8 +227,8 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
 
 - Each release candidate (or other test round the user asks for) gets a numbered one,
   `v<next>-beta.N` (next: `v1.1.0-beta.1`, or `v1.0.1-beta.1` for a fix release), tagged on
-  the pushed commit, with that commit's build attached: `make` in a clean worktree at the tag (`git worktree add ../FrizZ-<tag>
-  <tag>`, GCC 10.3), and its `firmware/code/src/build/FRIZZ.bin` uploaded under that name. The
+  the pushed commit, with that commit's build attached: `make` in a clean worktree at the tag
+  (`git worktree add ../FrizZ-<tag> <tag>`, GCC 10.3), and its `firmware/code/src/build/FRIZZ.bin` uploaded under that name. The
   notes name its md5 and are taken from `CHANGELOG.md`'s Unreleased section, plus a link to
   the release-test issue (or the PR). The number never moves, so feedback can name the build.
 - The pre-release **`beta`** always carries the newest numbered one (now v1.0.0-beta.4), and
