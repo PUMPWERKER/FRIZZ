@@ -20,6 +20,11 @@
  *  and the other slots never run with it. The IWDG can't tell the next start anything, so
  *  FRIZZ clears RCC_RSR at boot once read (Boot): its watchdog flag at the next boot means a
  *  watchdog reset since this FRIZZ started, recorded then, with when MainLoop last ran.
+ *
+ *  The IWDG runs on in Stop (the option bytes' FZ_IWDG_STOP, as CHOMPI's are): the low-battery
+ *  sleep on a weak charger (hardware.h's LowBatteryLockoutCheck) gets one watchdog reset, then
+ *  sleeps for good, in the launcher (which has its own) or in FRIZZ's boot-time checks, which
+ *  come before the watchdog starts. That reset is recorded as the watchdog's.
  */
 #pragma once
 #include <stdint.h>
@@ -29,7 +34,9 @@ namespace chompi
 {
 namespace crash
 {
-/** Why: 1 the watchdog, else the fault's exception number, as IPSR has it */
+/** Why: 1 the watchdog, else the fault's exception number, as IPSR has it. MemManage,
+ *  BusFault and UsageFault aren't enabled (SHCSR), so every fault comes as a HardFault, and
+ *  CFSR says which it was */
 enum Kind : uint8_t
 {
     NONE = 0,

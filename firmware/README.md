@@ -302,7 +302,7 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | `08` RESEED | SEED(5) or — | the seed, then the states (5 each) of chaos's, the slicer's, the delay's and wow & flutter's random numbers, each from its power-on seed xor SEED: 0 is power-on's. Without SEED it only reads |
 | `09` BATTERY | — | the level (0 full, on the cable; 1 above 3.3 V; 2 3-3.3 V; 3 below 3 V), the level the check last read, the check's step (0 resting, 1-2 reading at 3.3 V), 1 if the last read failed, the last 8 reads (2 each, the newest lowest) of the cable (VIN_GD), the battery below the threshold, a legacy cable and the input current limited, then the MP2722's status registers 0x11-0x16 (2 each) |
 | `0A` RESET | `52 53 54` ("RST") | no answer: the chip resets at once, into the launcher (without it, FRIZZ starts again). Taken in the audio callback as it comes, so it works with MainLoop hung; it doesn't wait for the card, as `10`'s restart does. Sent once: a FRIZZ that started again meanwhile would take a second one |
-| `0B` CRASH | `00` | flags (1: a crash recorded), its kind (1 the watchdog, 3 HardFault, 4 MemManage, 5 BusFault, 6 UsageFault), how many since cleared (3), uptime ms at the fault (5; the watchdog's: MainLoop's last pass), the CRC-32 (5) and length (3) of the build that crashed, `RCC_RSR` at that start (5), SP (5), and `FLASH_OPTSR_CUR` (5), the option bytes, whether or not one is recorded; zeros for none |
+| `0B` CRASH | `00` | flags (1: a crash recorded), its kind (1 the watchdog, else the exception: 3 HardFault, as every fault is, since MemManage, BusFault and UsageFault aren't enabled and escalate; CFSR tells which), how many since cleared (3), uptime ms at the fault (5; the watchdog's: MainLoop's last pass), the CRC-32 (5) and length (3) of the build that crashed, `RCC_RSR` at that start (5), SP (5), and `FLASH_OPTSR_CUR` (5), the option bytes, whether or not one is recorded; zeros for none |
 | | `01` | PC, LR, xPSR, CFSR, HFSR, MMFAR, BFAR (5 each) |
 | | `02` | clears it -> flags |
 | `0C` TEST | WHAT | the bench only (FRIZZ.bin answers status 2): 1 MainLoop hangs (after answering), 2 a bus fault in MainLoop (a read where nothing is), 3 the audio callback hangs, 4 an undefined instruction in it (3 and 4 unanswered, as they come) |
@@ -654,6 +654,8 @@ LedSignal.h            the play page's short LED signals: 3 red or white blinks,
 ui.h                   page plumbing: events, page switching
 EventLog.h             the bug report: every key, knob and MIDI event since power-on, written as
                        a twin script to /FRIZZ/bug-N.txt on SHIFT + VOLUME held (settings page)
+Crash.h                the crash record in the backup SRAM and the watchdog fed by the audio
+                       callback (#105; the fault handler is in chompi_main.cpp)
 Bench.h, BenchProfile.h
                        the CPU bench (only in FRIZZ-bench.bin, `make BENCH=1`) and its cycle marks
 limiter.h, EnvFollower.h

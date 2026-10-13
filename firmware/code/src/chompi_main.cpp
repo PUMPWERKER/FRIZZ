@@ -470,6 +470,9 @@ int main(void)
 #endif
 
     hw.StartAudio(AudioCallback);
+    // after the battery checks above, so their low-battery sleep (STOP, hardware.h), which
+    // stops the clocks, never starts with the watchdog on: else every start would reset into
+    // the same sleep again (Crash.h). Keep it after them
     StartWatchdog();
 
     // safe while audio runs: the engine (looper, delay) doesn't run until booting is done
