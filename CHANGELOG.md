@@ -20,29 +20,30 @@ what FRIZZ does.
 - **The built-in microphone as an input** (#113), as on TAPE and TEMPO: with no cable in AUX,
   FRIZZ hears CHOMPI's mic, and records it into the looper like AUX. Plugging a cable into AUX
   switches to AUX, pulling it out back to the mic; at power-on the jack decides. The mic starts
-  not live on the master (#152, #177): a speaker would feed it back. Record it and play the
-  loop, hear it on the headphones' input-only feed (VOLUME's page 3), or switch it live on the
-  settings page (below). It's mono, 5 times the
-  input gain and through a highpass at about 150 Hz, as on TAPE (without TAPE's narrow
-  notches, #127), and the mono setting doesn't touch it. See [Input: AUX or the
-  mic](MANUAL.md#input-aux-or-the-mic).
+  with its monitoring off (#152, #177): a speaker would feed it back. Record it and play the
+  loop, hear it on the headphones' input-only feed (VOLUME's page 3), or switch on its
+  monitoring on the settings page (below). It's mono, 5 times the input gain and through a
+  highpass at about 150 Hz, as on TAPE (without TAPE's narrow notches, #127), and the mono
+  setting doesn't touch it. See [Input: AUX or the mic](MANUAL.md#input-aux-or-the-mic).
 - **AUX dry** (#152): AUX can go past the effects and the master compressor, straight to
   VOLUME and the safety limiter, so a drum machine or a finished song plays as it is while you
   play the loop through the effects. The mix knob still sets the balance (its input share is
   the dry AUX), and the mix's automatism stays: a recording finishes on the loop alone, an
   erase goes back to the input alone. See [Input: AUX or the mic](MANUAL.md#input-aux-or-the-mic).
-- **The input's three keys: source, live, effects** (#177, #243). On the settings page's upper
-  octave, left to right the source, whether you hear it, then how (changed since
-  v1.0.0-beta.3: G# is live, A# the effects): F# picks the source, AUX (green) or the mic
-  (magenta), until the next cable goes in or out of AUX; G# puts it live on the outputs (lit) or
-  not (dim); A# sends it through the effects (green) or dry past them (white).
+- **The input's three keys: source, monitoring, effects** (#177, #243). On the settings page's
+  upper octave, left to right the source, whether you hear it, then how (changed since
+  v1.0.0-beta.3: G# is the monitoring, A# the effects; the betas called monitoring "live"): F#
+  picks the source, AUX (green) or the mic (magenta), until the next cable goes in or out of
+  AUX; G# switches its monitoring, on the outputs (lit) or not (dim), as in a DAW: the looper
+  records the source either way; A# sends it through the effects (green) or dry past them
+  (white).
   G# and A# are each source's own and saved: the jack or F# brings up the other's. So **the mic
-  can go live**, through the effects or dry (mind the feedback near a speaker), and **AUX can be
-  not live**, recorded without being heard on the master. Out of the box AUX is live through
-  the effects, the mic through the effects but not live. A# is dark while the source isn't
-  live; pressed then, it blinks red 3 times and changes nothing. The looper always records the
-  source as it is. Over MIDI, CC 84 picks the source (0-63 AUX, 64-127 the mic), CC 116 sets its
-  effects (64 and up dry), CC 117 it live (64 and up on), without saving them, and MIDI
+  can be monitored**, through the effects or dry (mind the feedback near a speaker), and **AUX
+  can be unmonitored**, recorded without being heard on the master. Out of the box AUX is
+  monitored through the effects, the mic through the effects but not monitored. A# is dark
+  while the source isn't monitored; pressed then, it blinks red 3 times and changes nothing.
+  The looper always records the source as it is. Over MIDI, CC 84 picks the source (0-63 AUX, 64-127 the mic), CC 116 sets its
+  effects (64 and up dry), CC 117 its monitoring (64 and up on), without saving them, and MIDI
   feedback sends all three. A beta.1 card's AUX dry is AUX's A#. See [Input: AUX or
   the mic](MANUAL.md#input-aux-or-the-mic).
 - **The LEDs' brightness on knob 1, 25-100 %** (#176): on the settings page knob 1 sets it, 5 %
@@ -291,7 +292,7 @@ what FRIZZ does.
   C# every channel (as before), D# the effect channels over TRS (new), F# transport following
   (was D#), G# the clock factor (as before), A# the clock source (was the upper G#); the upper
   octave C# MIDI out (was the upper D#), F# the input's source and SHIFT + F# mono (was the
-  lower F#), G# and A# the input's live and effects (#177, #243), and the upper D# MIDI feedback
+  lower F#), G# and A# the input's monitoring and effects (#177, #243), and the upper D# MIDI feedback
   (new). The LEDs' brightness (was the lower A#) is on knob 1 now (#176). See [Settings page](MANUAL.md#settings-page).
 
 - **The resonator, slicer, wow & flutter and tape stop are one key to the right** (#68): the

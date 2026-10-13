@@ -226,10 +226,10 @@ def input_diagram():
             'have their own input gain; AUX is then amplified 3× and its DC taken out, the mic '
             '5×, DC blocked, highpassed at about 150 Hz and the same on both sides. Switch A '
             '(upper F#, or the AUX jack) picks the source, with a 5 ms crossfade. The source goes '
-            'as it is to the looper and to the headphone feed. Switch B (upper G#) has it live on '
-            'the outputs or not, switch C (upper A#) sends it through the effects or past them. '
-            'The input/loop mix sets the input\'s share against the loop\'s; the share past '
-            'the effects joins after the compressor, before VOLUME.')
+            'as it is to the looper and to the headphone feed. Switch B (upper G#), its '
+            'monitoring, has it on the outputs or not, switch C (upper A#) sends it through the '
+            'effects or past them. The input/loop mix sets the input\'s share against the '
+            'loop\'s; the share past the effects joins after the compressor, before VOLUME.')
     # AUX
     s.jack(28, 90)
     s.text(20, 72, 'AUX IN', 13, anchor='start', bold=True)
@@ -259,7 +259,7 @@ def input_diagram():
     s.line([(602, 140), (705, 140), (705, 262), (40, 262), (40, 330)], 'a', arrow=False)
     s.line([(40, 330), (40, 490)], arrow=False)
     s.dot(40, 330, 'a')
-    # B: live, whether you hear it; C: then how, through the effects or past them
+    # B: the monitoring, whether you hear it; C: then how, through the effects or past them
     s.line([(40, 330), (75, 330)], 'a', arrow=False)
     s.switch(75, 330, 'B')
     s.line([(105, 330), (157, 330)], 'a', arrow=False)
@@ -288,7 +288,7 @@ def input_diagram():
     s.text(512, 406, 'joins after the compressor', 12, anchor='start', cls='m')
     s.legend(28, 540, [
         ('A', 'upper F#: the source, AUX or the mic. The AUX jack picks it; F# the other one'),
-        ('B', 'upper G#: live, on the outputs, or not'),
+        ('B', 'upper G#: monitoring, on the outputs or not'),
         ('C', 'upper A#: through the effects, or past them and the compressor'),
         ('M', 'SHIFT + upper F#: AUX mono, its left channel to both sides'),
     ])
