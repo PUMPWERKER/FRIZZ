@@ -56,9 +56,10 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
 `play` presses the keys and turns the knobs of a script over FRIZZ's SysEx, at the script's
 times, sends its `midi` and `clock` to the device, and checks its `expect led` lines against the
 LEDs the device shows, dimmed as the card's led_brightness (the settings page) has them: at
-100, 75 or 50 %, the one level that fits every line, said when it isn't 100 %; its
-`toggle 0|1` sets the mode switch (down, up) over SysEx, back to the real one when the script
-ends; its `set GROUP INDEX VALUE` goes as SET, as `set` sends it (a line FRIZZ refuses fails);
+100, 75 or 50 %, the one level that fits every line, said when it isn't 100 %; it starts
+with the mode switch down over SysEx, as the twin starts, whatever the hand left it at (#253),
+its `toggle 0|1` sets it (down, up), and the real one is back when the script ends; its
+`set GROUP INDEX VALUE` goes as SET, as `set` sends it (a line FRIZZ refuses fails);
 its `input sine HZ AMP` as SIGNAL (signal above), the test signal in AUX's place where the
 twin's sine goes in, at the same full scale (and in the mic's place too, which the twin leaves
 silent), `input off` and the script's end, however it ends, the input again (#219). What only
@@ -928,9 +929,10 @@ def card_use(path, up, comp, mode, page=0):
 
 
 def play(f, path, cpu):
-    """A twin script on the device; returns how many expectations failed. Whatever ends it
-    (an error, Ctrl-C, no answer), the keys it holds are let go, the mode switch it set is
-    given back to the hand and the test signal it turned on is turned off"""
+    """A twin script on the device; returns how many expectations failed. It starts with the
+    mode switch down (#253). Whatever ends it (an error, Ctrl-C, no answer), the keys it holds
+    are let go, the mode switch is given back to the hand and the test signal it turned on is
+    turned off"""
     start = time.monotonic()
     clock = {"bpm": 0.0}
     stop = threading.Event()
@@ -997,7 +999,9 @@ def play(f, path, cpu):
 
     skipped = set()
     at_base = 0.0
-    toggled = False
+    # the switch down, as the twin starts every script, whatever the hand left it at (#253);
+    # a script's toggle moves it from there, and the end gives it back to the hand
+    f.send(SWITCH, [1])
     signalled = False  # SIGNAL on: off again whatever ends the script
     levels = list(LED_PERCENTS)  # the brightnesses that fit every expect led so far
     try:
@@ -1063,7 +1067,6 @@ def play(f, path, cpu):
             elif cmd == "clock":
                 clock["bpm"] = float(args[0])
             elif cmd == "toggle":
-                toggled = True
                 f.send(SWITCH, [2 if int(args[0]) else 1])
             elif cmd == "leds":
                 print("%7d %s" % (now_ms, led_line(*f.leds())))
@@ -1092,8 +1095,7 @@ def play(f, path, cpu):
             t.join(1)
         try:
             f.release()
-            if toggled:
-                f.send(SWITCH, [0])  # the real switch again
+            f.send(SWITCH, [0])  # the real switch again
             if signalled:
                 f.dev(chompi.SIGNAL, [0])  # the input again
         except OSError:
@@ -1310,10 +1312,10 @@ def command(a):
         elif not a.save:
             print("a FRIZZ from before PERSIST: the card is guarded by refusing", file=sys.stderr)
         if not a.force and not ram:
-            # where the device stands: the page it shows (STATE's flags, bit 6), where the
-            # script's keys land until it toggles; what the knobs edit; the scene mode
+            # where the device stands: the play page (play puts the switch down, #253) until
+            # the script toggles; what the knobs edit; the scene mode
             d = f.state()
-            used = card_use(a.script, bool(d[6] & 64), d[4] == len(FX_NAMES), d[7], d[12])
+            used = card_use(a.script, False, d[4] == len(FX_NAMES), d[7], d[12])
             if used:
                 line_no, what, (name, bak) = used
                 sys.exit("line %d: %s. FRIZZ would save it to /FRIZZ/%s, on the card the FRIZZ on "
