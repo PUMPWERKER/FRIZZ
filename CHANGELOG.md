@@ -9,8 +9,10 @@ what FRIZZ does.
 
 ### Changed
 
-- The quick start shows how the sound flows as a diagram that reads on a phone, and the
-  input diagram's last label ("to the phones feed") is no longer cut off at its right edge.
+- The quick start shows how the sound flows as a diagram that reads on a phone.
+- The manual's diagrams show their names at the size they were drawn for (browsers set them
+  larger), so the input diagram's last label ("to the phones feed") is no longer cut off at
+  its right edge.
 
 ## v1.0.0 (2026-10-13)
 

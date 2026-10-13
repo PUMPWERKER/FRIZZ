@@ -74,8 +74,7 @@ class Svg:
         if rotate is not None:
             attrs += ' transform="rotate(%s %s %s)"' % (num(rotate), num(x), num(y))
         else:
-            # 13 sets no font-size, so a browser shows it at its default, 16 px
-            w = width(s, 16 if size == 13 else size, bold)
+            w = width(s, size, bold)
             left = x - {'start': 0, 'middle': .5, 'end': 1}[anchor] * w
             if left < 0 or left + w > self.w:
                 print('  past the edge: %r' % s)
@@ -154,7 +153,9 @@ class Svg:
             '<path d="M0,0L10,5L0,10z" fill="%s"/></marker>' % (k, c)
             for k, c in (('a', ACC), ('s', FG), ('c', MUTED)))
         style = (
-            'text{font-family:%s;fill:%s;text-anchor:middle}'
+            # 13 px on the picture, inherited: a text's own font-size wins over it, where a
+            # text{} rule's would win over the attribute
+            'svg{font-size:13px}text{font-family:%s;fill:%s;text-anchor:middle}'
             '.as{text-anchor:start}.ae{text-anchor:end}.m{fill:%s}.gt{fill:%s}'
             '.b{fill:none;stroke:%s;stroke-width:1.5}'
             '.ba{fill:none;stroke:%s;stroke-width:2}'
@@ -286,8 +287,7 @@ def input_diagram():
     s.text(315, 413, 'loop', 12, cls='m')
     s.line([(40, 490), (470, 490)])
     s.text(250, 483, 'the source alone, whatever B and C say', 12, cls='m')
-    s.text(478, 494.5, 'to the phones feed', 13, anchor='start')
-    s.text(478, 511, 'VOLUME page 3', 12, anchor='start', cls='m')
+    s.text(478, 494.5, 'to the phones feed (VOLUME p. 3)', 13, anchor='start')
     s.box(330, 285, 140, 157, ['MIX', ('SHIFT + VOLUME', 'm'), ('', 'm'), ('the input\'s share', 'm'),
                                ('against the loop\'s,', 'm'), ('on both inputs', 'm')], check=False)
     s.line([(470, 315), (505, 315)], 'a')

@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 650" width="720" height="650" role="img" aria-labelledby="title desc">
 <title id="title">FRIZZ input</title>
 <desc id="desc">The input. AUX (stereo, or mono: its left to both sides) and the built-in mic each have their own input gain; AUX is then amplified 3× and its DC taken out, the mic 5×, DC blocked, highpassed at about 150 Hz and the same on both sides. Switch A (upper F#, or the AUX jack) picks the source, with a 5 ms crossfade. The source goes as it is to the looper and to the headphone feed. Switch B (upper G#), its monitoring, has it on the outputs or not, switch C (upper A#) sends it through the effects or past them. The input/loop mix sets the input's share against the loop's; the share past the effects joins after the compressor, before VOLUME.</desc>
-<style>text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
+<style>svg{font-size:13px}text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
 <defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
 <rect width="720" height="650" fill="#131314"/>
 <circle cx="28" cy="90" r="5" class="b"/>
@@ -75,8 +75,7 @@
 <text x="315" y="413" class="m" font-size="12">loop</text>
 <polyline points="40,490 470,490" class="ls" marker-end="url(#ms)"/>
 <text x="250" y="483" class="m" font-size="12">the source alone, whatever B and C say</text>
-<text x="478" y="494.5" class="t as">to the phones feed</text>
-<text x="478" y="511" class="m as" font-size="12">VOLUME page 3</text>
+<text x="478" y="494.5" class="t as">to the phones feed (VOLUME p. 3)</text>
 <rect x="330" y="285" width="140" height="157" class="b"/>
 <text x="400" y="328" class="t" font-weight="bold">MIX</text>
 <text x="400" y="344" class="m" font-size="12">SHIFT + VOLUME</text>
