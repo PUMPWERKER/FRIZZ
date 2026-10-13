@@ -65,7 +65,9 @@ against this before it merges:
 5. **No version history in the user docs:** "until v0.11 …" belongs in `CHANGELOG.md`, not in
    `MANUAL.md`, `QUICKSTART.md` or `INSTALL.md`.
 6. **To see it:** in frizz-web, `FRIZZ_REF=<tag or branch> npm run build` builds the site from
-   that ref and fails on a broken link.
+   that ref and fails on a broken link (`FRIZZ_DIR=<worktree>` builds it from a local
+   checkout instead). Without the site, `firmware/tools/doclinks.py` checks the links, anchors,
+   headings and the QUICKSTART key row.
 
 ## Git workflow: branches first, checked by the sessions, merged by the user
 

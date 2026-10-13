@@ -14,7 +14,7 @@
     ./measure.py fx KEY [--cc CC=VALUE ...] [--seconds 30] [--material FILE] --out NAME
         an effect latched alone (KEY: its key, KEY_1 .. KEY_13, or its name, e.g. delay; none:
         nothing latched, the dry line), CCs on its own MIDI channel (its key's number,
-        MANUAL.md "MIDI": 14-17 page 1's knobs, 18-21 page 2's; 21 is Level, the sends' too
+        MANUAL.md "Appendix: MIDI": 14-17 page 1's knobs, 18-21 page 2's; 21 is Level, the sends' too
         since #172, at 0dB at first), material into AUX, the line out recorded to NAME.f32;
         the latches and the effect's knobs put back afterwards
     ./measure.py compare A.f32 B.f32
