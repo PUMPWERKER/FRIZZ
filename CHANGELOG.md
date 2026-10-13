@@ -337,6 +337,12 @@ what FRIZZ does.
 
 ### Fixed
 
+- **MIDI out: a new loop's Start goes with its first tick** (#198), so the gear behind plays
+  beat 1 with the loop. When the clock going out had just ticked as the loop started, that
+  tick was taken for the loop's first, and the next came a tick (about 20 ms at 120 BPM)
+  later, and the gear's beat 1 with it: now and then for a loop on FRIZZ's own clock, every
+  time for a quantized loop on a clock passed on to gear that wasn't playing yet. Over USB the
+  same.
 - **Tap tempo and LOOP's erase lock go by when you pressed LOOP** (#169), not by when FRIZZ got
   round to it: a tap was up to 2 ms off, and while the card was being written (a scene saved)
   tens of ms, so the tapped tempo came out a little off. MIDI taps already were.
