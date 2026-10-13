@@ -193,22 +193,28 @@ def read_wav(path):
 
 def find(y, x, at, search):
     """Where x is in y within +-search samples of at: (its start in y, to a fraction of a
-    sample, the correlation there normalized: 1 for x itself at any level), or None where y
-    hasn't the room. By FFT, so a bar against seconds is quick"""
+    sample, the correlation there normalized: 1 for x itself at any level, -1 for it upside
+    down), or None where y hasn't the room. By FFT, so a bar against seconds is quick"""
     lo, hi = max(0, int(at - search)), min(len(y), int(at + search) + len(x))
     seg = y[lo:hi]
     if len(seg) < len(x) + 2:
         return None
     n = 1 << int(np.ceil(np.log2(len(seg) + len(x))))
-    c = np.fft.irfft(np.fft.rfft(seg, n) * np.conj(np.fft.rfft(x, n)), n)[:len(seg) - len(x) + 1]
+    cross = np.fft.rfft(seg, n) * np.conj(np.fft.rfft(x, n))
+    c = np.fft.irfft(cross, n)[:len(seg) - len(x) + 1]
     e = np.concatenate([[0.], np.cumsum(seg ** 2)])
     energy = e[len(x):] - e[:-len(x)]
     norm = c / np.sqrt(np.maximum(energy, 1e-3 * energy.max() + 1e-20) * np.sum(x ** 2) + 1e-20)
-    i = int(np.argmax(norm))
+    # the peak by the cross spectrum's phase alone (GCC-PHAT): one sharp peak where plain
+    # correlation of tonal music has a ridge of them a period apart, of which another can win
+    # once the line out has coloured it; and either way up (a line out may invert)
+    ph = np.fft.irfft(cross / (np.abs(cross) + 1e-12 * np.abs(cross).max()), n)[:len(c)]
+    i = int(np.argmax(np.abs(ph)))
+    ph = ph * np.sign(ph[i])
     p = 0.
     if 0 < i < len(c) - 1:  # to a fraction of a sample, by a parabola
-        d = c[i - 1] - 2 * c[i] + c[i + 1]
-        p = .5 * (c[i - 1] - c[i + 1]) / d if d else 0.
+        d = ph[i - 1] - 2 * ph[i] + ph[i + 1]
+        p = .5 * (ph[i - 1] - ph[i + 1]) / d if d else 0.
     return lo + i + p, float(norm[i])
 
 

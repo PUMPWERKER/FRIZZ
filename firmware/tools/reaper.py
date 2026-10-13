@@ -24,6 +24,11 @@ node to itself (remote.py, flash.py and the other tools can't reach FRIZZ then).
 The cases marked synced (daw-follows) run in one more REAPER after those, in the first audio
 mode, started only when one is: REAPER synchronized to what comes in (SYNC_PROJECT) and
 sending no clock of its own (midiouts_clock=0), only the commands' bytes.
+The cases marked sound (daw-loop-audio, daw-loop-restart, daw-follows-audio) run in a REAPER
+of their own after the first, JACK only, its audio linked by this tool to AUX's sink (outputs
+3/4) and from the line out (input 1), nothing else: REAPER plays a song (--material) into AUX
+and records the line out, and each bar of its takes is found in the song (measure.find()).
+They need numpy (measure.py's venv: ~/.venvs/frizz/bin/python reaper.py ...), else a SKIP.
 What FRIZZ sends shows on the TRS jack (wiring A: the CHOMPI's TRS out into the interface's
 MIDI in, FRIZZ's MIDI out on TRS: a clock coming in is passed on, a tick within its block) and
 over USB, through REAPER's input.
@@ -34,7 +39,7 @@ is never written, and a run that finds a file there newer than its start fails. 
 jack (REAPER's JACK through pipewire-jack, a desktop DAW on this computer: the default) or
 dummy (no audio device); its MIDI goes to ALSA's raw node either way (hw:FrizZ). The project
 is silent, the master muted and REAPER's ports linked to nothing (jack_options=2; a run
-finding a link fails): nothing reaches Line 1/2. An evaluation copy shows its notice for a
+finding a link fails), but for the sound cases' links above: nothing reaches Line 1/2. An evaluation copy shows its notice for a
 few seconds at each start, which doesn't hold up the script. REAPER is this tool's own
 process: one that runs no script within 20 s, or doesn't quit when asked, has a dialog in
 the way, is killed and said so, never tried again.
@@ -1328,9 +1333,21 @@ def wait_beat(d, beat, timeout=60.):
 
 def recorded(d):
     """The takes REAPER recorded since the last call: [(the time line's s at the first sample,
-    the samples)]"""
+    the samples)]; with --keep, their files and the material copied there too, for a look
+    afterwards (takes.txt: a line a take, as reaper.lua logs it)"""
     files, got = {}, []
-    for pos, offs, length, path in sorted(d.takes()):
+    takes = sorted(d.takes())
+    keep = getattr(d, "keep", None)
+    if keep:
+        os.makedirs(keep, exist_ok=True)
+        for f in [t[3] for t in takes] + [os.path.join(d.dir, "material.wav")]:
+            if os.path.exists(f) and not os.path.exists(os.path.join(keep, os.path.basename(f))):
+                shutil.copy(f, keep)
+        with open(os.path.join(keep, "takes.txt"), "a") as f:
+            for t in takes:
+                f.write("%.6f %.6f %.6f %s\n" % (t[0], t[1], t[2], os.path.basename(t[3])))
+            f.write("--\n")
+    for pos, offs, length, path in takes:
         if path not in files:
             files[path] = measure.read_wav(path)[:, 0]
         a = int(round(offs * SR))
@@ -1340,8 +1357,8 @@ def recorded(d):
 
 def bar_offsets(m, takes, content, bars, center, search):
     """Each project bar k of bars whose WAV bar content(k) (its first 0.8) a take holds: where
-    it is, against where the time line puts it plus center (samples), within +-search samples:
-    [(k, ms, correlation)]"""
+    it is against where the time line puts it, looked for within +-search samples of center
+    samples after that: [(k, ms, correlation)]"""
     w = int(.8 * m.bar)
     got = []
     for k in bars:
@@ -1349,16 +1366,20 @@ def bar_offsets(m, takes, content, bars, center, search):
         x = m.mono[int(round(b * m.bar)):][:w]
         for pos, y in takes:
             at = k * m.bar - pos * SR + center
-            if at - search < 0 or at + w + search > len(y):
+            if at < 0 or at + w > len(y):  # (the search may be cut short at a take's ends)
                 continue
             f = measure.find(y, x, at, search)
             if f:
-                got.append((k, (f[0] - at) / SR * 1000., f[1]))
+                # from the time line's; the correlation either way up (polarity() says which)
+                got.append((k, (f[0] - at + center) / SR * 1000., abs(f[1])))
                 break
     return got
 
 
-CLEAR = .5  # the correlation a bar of the material needs to count as found
+# the correlation a bar of the material needs to count as found, near where it should be: the
+# line out isn't AUX (FRIZZ's compressor and limiter, the codec, the interface's noise), seen
+# from 0.4 up on the device
+CLEAR = .3
 
 
 def dry_offset(m, takes, bars):
@@ -1377,6 +1398,19 @@ def dry_offset(m, takes, bars):
            if g[2] >= CLEAR]
     ms = sorted(g[1] for g in got)
     return ms[len(ms) // 2], len(ms), ms[-1] - ms[0], min(g[2] for g in got)
+
+
+def polarity(m, takes, k, dry):
+    """The line out against AUX at the project's bar k: "the same way up" or "inverted" (its
+    correlation's sign), as the dry signal has it"""
+    x = m.mono[int(round((k % m.bars) * m.bar)):][:int(.8 * m.bar)]
+    for pos, y in takes:
+        at = k * m.bar - pos * SR + dry * SR / 1000.
+        if at >= 0 and at + len(x) <= len(y):
+            f = measure.find(y, x, at, int(.002 * SR))
+            if f:
+                return "inverted" if f[1] < 0 else "the same way up"
+    return "?"
 
 
 def loop_content(a, n):
@@ -1475,6 +1509,10 @@ def record_song_loop(r, d, m, n, a, factor=1., until=None):
     r.check("REAPER's take before the loop: the material through FRIZZ, live", dry is not None,
             "%+.2f ms against the time line (%d bars, spread %.2f ms, correlation %.2f at least)" % dry if dry else "not found",
             "found")
+    if dry:
+        r.note("the dry signal %+.2f ms after the time line: REAPER's latency compensation (JACK's latencies "
+               "as pipewire-jack reports them) and the CHOMPI's own (the codec, FRIZZ's blocks); the line out "
+               "%s against AUX" % (dry[0], polarity(m, takes, 1, dry[0])))
     if dry is None:
         raise AssertionError("the material isn't in REAPER's take: is AUX on %s, the line out on %s?" % (
             d.links[0][1], d.links[2][0]))
@@ -1492,9 +1530,12 @@ def daw_loop_audio(r, d):
     until = a + n + passes * n
     takes, dry, length = record_song_loop(r, d, m, n, a, until=until)
     content = loop_content(a, n)
-    first = what_plays(m, takes, a + n, dry)
+    # (a song can repeat its bars: the one wanted near where it should be, not the best of all)
+    first = bar_offsets(m, takes, lambda _: a, [a + n], dry * SR / 1000., int(.1 * SR))
     r.check("the loop holds the song's bars %d-%d (recorded from its bar %d)" % (a, a + n - 1, a),
-            first.startswith("WAV bar %d " % a), "at the song's bar %d: %s" % (a + n, first), "WAV bar %d" % a)
+            first and first[0][2] >= CLEAR,
+            "at the song's bar %d: WAV bar %d at %+.1f ms (%.2f)" % (a + n, a, first[0][1] - dry, first[0][2]) if first
+            else "not found", "WAV bar %d, correlation %g at least" % (a, CLEAR))
     want = list(range(a + n, until))
     got = judged(r, "the loop against the dry signal, bar by bar over %.1f minutes" % ((until - a - n) * m.bar / SR / 60.),
                  loop_offsets(m, takes, content, want, dry), want, TOL, m, takes, dry)
@@ -1515,6 +1556,15 @@ def daw_loop_audio(r, d):
 
 
 START_TOL = 20.  # ms: a loop's start against the song's bar its LOOP note was on (REAPER's MIDI against its audio)
+
+
+def audio_block(d):
+    """REAPER's audio block in ms, as it says (its audio line: MODE SRATE BSIZE)"""
+    try:
+        _, rate, size = d.audio_info.split()[:3]
+        return float(size) / float(rate) * 1000.
+    except ValueError:
+        return 0.
 
 
 def restarts(r, d, factor):
@@ -1553,7 +1603,22 @@ def restarts(r, d, factor):
             want = [k for k in range(int(np.ceil(rng[0])), int(rng[1]))]
         else:
             want = list(range(int(np.ceil(at)) + 1, int(at) + span))
-        # each turn of a loop range a take of its own: every one judged
+        if rng:
+            # each turn a take of its own: steady within it, and where the turn put it within
+            # one of REAPER's blocks (its MIDI at a turn goes out on a block's edge, not on the
+            # turn's sample: seen on the device, about 0-16 ms late at 1024 samples)
+            block = audio_block(d)
+            turns = [[(k, x - start, c) for k, x, c in loop_offsets(m, [t], content, want, dry) if c >= CLEAR]
+                     for t in takes]
+            turns = [t for t in turns if t]
+            means = [sum(x for _, x, _ in t) / len(t) for t in turns]
+            spread = max((max(x for _, x, _ in t) - min(x for _, x, _ in t)) for t in turns) if turns else 0.
+            r.tcheck("%s%s: each turn steady, where it starts within one of REAPER's blocks (%.1f ms) after "
+                     "where Start put it" % (what, tag, block),
+                     len(turns) >= 2 and spread <= 1. * r.slack and all(-TOL * r.slack <= x <= block + TOL * r.slack for x in means),
+                     "%d turns at %s ms, each within %.2f ms" % (len(turns), ", ".join("%+.1f" % x for x in means), spread),
+                     "2 turns at least, within 0..%.1f +-%g ms" % (block, TOL * r.slack))
+            continue
         got = [g for t in takes for g in loop_offsets(m, [t], content, want, dry)]
         if start is None:
             clear = [g for g in got if g[2] >= CLEAR]
@@ -1828,6 +1893,8 @@ def main():
     ap.add_argument("--material", default=default_material(),
                     help="the music for the audio cases: a WAV of whole bars at 87 BPM, or 'generated' "
                     "(FRIZZ_DAW_MATERIAL; the longest WAV in card/audio)")
+    ap.add_argument("--keep", metavar="DIR", help="the audio cases' takes and material kept in DIR (in card/: "
+                    "git ignores it; the material may not be yours to share)")
     ap.add_argument("--minutes", type=float, help="daw-loop-audio's loop played on, recorded (2; --quick 0.1)")
     ap.add_argument("--quick", action="store_true", help="short (the host check)")
     ap.add_argument("--out", help="the summary into FILE too")
@@ -1924,6 +1991,7 @@ def main():
             try:
                 r = midisuite.Rig(frizz_through(d), trs_fd, a, usb=d.tap, trs=trs, patience=2.)
                 r.wiring, r.jitter, r.snap = wiring, [], snap
+                d.keep = a.keep and os.path.join(a.keep, "%s-%d" % (label.replace(", ", "-"), int(time.time())))
                 for c in todo:
                     status, detail = run_case(r, d, c, snap)
                     results.append((c, status, detail, r.checks, label))
