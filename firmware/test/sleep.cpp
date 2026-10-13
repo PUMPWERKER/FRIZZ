@@ -325,10 +325,11 @@ static void TestReverb()
 }
 
 /** Every knob the effects slew per sample (Smoothed::Process) arrives exactly, through the
- *  chain as the audio callback runs it (FxChain::Land, once per block): turned to 1, to 0
- *  and back to between, every key on. Process alone stalls a hair short: the shifter's dry
- *  at 1 - 3e-5, a knob turned down in the denormals, the resonator's delay a tenth of a frame
- *  off (#190) */
+ *  chain as the audio callback runs it (FxChain::Land, once per block for 2 s after a knob
+ *  or a key): turned to 1, to 0 and back to between, every key on, and set while the keys
+ *  are off, the sends asleep, their keys on 3 s later. Process alone stalls a hair short: the
+ *  shifter's dry at 1 - 3e-5, a knob turned down in the denormals, the resonator's delay a
+ *  tenth of a frame off (#190) */
 static void TestLanding()
 {
     static const size_t kFreezerFrames = 48000, kTapeFrames = 1u << 16; // a power of 2
@@ -381,13 +382,8 @@ static void TestLanding()
         {"reverb diffusion", &chain.reverb_.diffusion_},
     };
     long n = 0;
-    bool all = true;
-    for (float to : {1.f, 0.f, .37f})
-    {
-        for (size_t fx = 0; fx < kNumSoundFx; fx++)
-            for (size_t p = 0; p < kNumFxParams; p++)
-                chain.SetParam(fx, p, to);
-        for (long end = n + 3 * 48000; n < end; n += kFxMaxBlock)
+    auto run = [&](long seconds) {
+        for (long end = n + seconds * 48000; n < end; n += kFxMaxBlock)
         {
             float jump;
             chain.Block(&jump);
@@ -396,6 +392,35 @@ static void TestLanding()
                 l[i] = r[i] = Sine(n + i);
             chain.Process(l, r, kFxMaxBlock);
         }
+    };
+    auto set = [&](float to) {
+        for (size_t fx = 0; fx < kNumSoundFx; fx++)
+            for (size_t p = 0; p < kNumFxParams; p++)
+                chain.SetParam(fx, p, to);
+    };
+    auto keys = [&](bool on) {
+        for (size_t fx = 0; fx < kNumSoundFx; fx++)
+            chain.SetOn(fx, on);
+    };
+    bool all = true;
+    // to 1, 0 and between, every key on; then set while every key is off and the sends'
+    // tails asleep, which don't slew until their keys come on again, long after
+    for (float to : {1.f, 0.f, .37f, .8f})
+    {
+        if (to == .8f)
+        {
+            set(0.f); // the freezes off, so the tails ring out
+            keys(false);
+            run(15);
+            Check(chain.delay_.Sleeping() && chain.reverb_.Sleeping(),
+                  "Smoothed: the sends' tails asleep, their keys off");
+            set(to);
+            run(3);
+            keys(true);
+        }
+        else
+            set(to);
+        run(3);
         const Knob* worst = nullptr;
         size_t off = 0;
         for (const Knob& k : knobs)

@@ -86,21 +86,19 @@ struct Smoothed
         fonepole(value, target, coeff);
         return value;
     }
-    /** Once per block, not per sample: onto the target by Settle's rule, once a step at coeff
-     *  (the slew its Process runs at) no longer moves it or it's within 1e-5. Only the check
-     *  inline: off the target is rare */
-    inline void Land(float coeff = FxSlew::coeff)
+    /** Once per block, not per sample (FxChain::Land): onto the target by Settle's rule, once
+     *  a step at coeff (the slew its Process runs at) no longer moves it or it's within 1e-5 */
+    inline void Land(float coeff)
     {
-        if (__builtin_expect(value != target, 0))
-            LandStep(coeff);
-    }
-    __attribute__((noinline)) void LandStep(float coeff)
-    {
+        if (value == target)
+            return;
         float next = value;
         fonepole(next, target, coeff);
         if (next == value || fabsf(next - target) < 1e-5f)
             Snap();
     }
+    /** At the knobs' slew (FxSlew); out of line, as it's called for every one of them */
+    __attribute__((noinline)) void Land() { Land(FxSlew::coeff); }
     /** For a value that's costly to apply: slews while it isn't at the target, and lands on
      *  it once within 1e-5, or once a step no longer moves it: near 1 the slew's step falls
      *  below a float's resolution and it would stall short of the target for good, a knob

@@ -98,6 +98,11 @@ static_assert(sizeof(kFxNames) / sizeof(kFxNames[0]) == kNumFx, "one per FxId");
 // (FxCommon.h), well past where it has settled
 static const uint32_t kFxRecallSlewSamples = 2400;
 
+// How long the chain lands the effects' knobs (FxChain::Land) after one was set or a key came
+// on, in blocks: 2 s, several times the longest a knob takes to arrive (~0.3 s, the
+// resonator's delay over its whole range)
+static const uint32_t kFxLandBlocks = 2 * 48000 / kFxMaxBlock;
+
 // Into the meters' EnvFollowers, which add 5x: full brightness at about 1 (L+R)/2
 static const float kFxMeterScale = .1f;
 
@@ -151,6 +156,8 @@ public:
         keys_.store(0);
         applied_ = pool_ = dropped_ = 0;
         fast_slew_left_ = 0;
+        land_kick_.store(false);
+        land_left_ = 0;
     }
 
     /** Once per block: the tempo and the pulses' real spacing in samples (TempoClock), then
@@ -205,7 +212,17 @@ public:
                     fx_[fx]->SetOn(on);
                 }
         }
-        Land();
+        // a knob set since the last block (SetParam), or a key on (KeyOn): land them a while
+        if (land_kick_.load(std::memory_order_acquire))
+        {
+            land_kick_.store(false, std::memory_order_relaxed);
+            land_left_ = kFxLandBlocks;
+        }
+        if (__builtin_expect(land_left_ > 0, 0))
+        {
+            land_left_--;
+            Land();
+        }
         return step;
     }
     /** The chaos key's pool, from the UI: the effects it may drop (FxControls::Pool) */
@@ -345,6 +362,8 @@ public:
             return;
         }
         fx_[fx]->SetParam(param, val);
+        // after the target is set, so the block that sees it lands from there (Block)
+        land_kick_.store(true, std::memory_order_release);
     }
     /** Before a scene recall's SetParams: the knobs slew at kFxRecallCoeff for
      *  kFxRecallSlewSamples, so the new scene lands at once */
@@ -440,10 +459,13 @@ private:
     }
     static_assert(kFxMaxBlock <= 32, "Run's res_idle, a bit per sample");
 
-    /** Once per block, from Block: every effect's knobs onto their targets once their slews
-     *  have all but arrived (Smoothed::Land), so the shifter's dry reaches 1 and a knob turned
-     *  down reaches 0. Here and not per sample, which cost a morph 2-4 points (#190); out of
-     *  line and outside the samples' code, which the audio callback's I-cache holds (#51) */
+    /** Once per block, from Block, for kFxLandBlocks after a knob was set or a key came on:
+     *  every effect's knobs onto their targets once their slews have all but arrived
+     *  (Smoothed::Land), so the shifter's dry reaches 1 and a knob turned down reaches 0. Not
+     *  per sample, which cost a morph 2-4 points (#190), nor while nothing moves; out of line
+     *  and outside the samples' code, which the audio callback's I-cache holds (#51). A key
+     *  on counts, as an effect asleep doesn't slew: the inserts snap their knobs then, but a
+     *  send's tail asleep leaves them where they were */
     __attribute__((noinline)) void Land()
     {
         shifter_.Land();
@@ -484,6 +506,7 @@ private:
             meter_[fx].Init();
         if (out_[fx].Busy())
             out_busy_.fetch_or(static_cast<uint16_t>(1u << fx), std::memory_order_relaxed);
+        land_left_ = kFxLandBlocks;
     }
 
     Filter filter_;
@@ -514,6 +537,10 @@ private:
     uint32_t applied_ = 0;          // and as the effects have it, less what chaos drops
     volatile uint32_t pool_ = 0;    // the chaos key's pool (SetPool)
     volatile uint32_t dropped_ = 0; // what it drops of it now
+    // a knob set (SetParam, from MainLoop or the morph), for Block: atomic, so the target's
+    // store comes before it
+    std::atomic<bool> land_kick_{false};
+    uint32_t land_left_ = 0; // blocks to go of Land
 };
 
 } // namespace chompi
