@@ -334,6 +334,29 @@ chompi.forget()
     if (rc != 0 || !Has(out, "fix-name 15"))
         printf("%s\n", out.c_str());
 
+    // RUN sent, and the launcher gone from USB before its reply is read (it started the slot,
+    // reset and enumerated again): said, not a traceback, the caller waits as usual; another
+    // error still stops it (#203)
+    rc = Python(R"(
+import contextlib, errno, chompi
+class Gone:
+    def __init__(self, no): self.no = no
+    def call(self, *rest, **kw): raise OSError(self.no, "gone")
+for no in (errno.ENODEV, errno.EACCES):
+    chompi.link = contextlib.contextmanager(lambda node, no=no: (yield Gone(no)))
+    try:
+        chompi.send_run("n", 12)
+        print("run %d: carried on" % no, flush=True)
+    except OSError as e:
+        print("run %d: raised %d" % (no, e.errno), flush=True)
+)", out);
+    Check(rc == 0 && Has(out, "the launcher left USB before it answered RUN: it is starting slot 12 (#203)")
+              && Has(out, "starting slot 12 ...") && Has(out, "run 19: carried on\n")
+              && Has(out, "run 13: raised 13\n"),
+          "tools: a launcher gone from USB before RUN's reply is taken as starting the slot (#203)");
+    if (rc != 0 || !Has(out, "run 19: carried on"))
+        printf("%s\n", out.c_str());
+
     // card.py: a mount that fails still ejects the card and starts FRIZZ; mount alone needs a
     // hold, as the card stays mounted after it
     rc = Python(R"(
