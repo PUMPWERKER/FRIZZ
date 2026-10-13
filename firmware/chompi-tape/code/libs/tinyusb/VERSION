@@ -1,0 +1,8 @@
+TinyUSB 0.21.0 (dae3f9a366bfcddbf9dcf1b48d7500286a849539), https://github.com/hathach/tinyusb
+Vendored: src/ (with the Synopsys DWC2 port as the only portable driver), LICENSE and README.rst.
+Modified, each marked CHOMPI:
+- src/class/audio/audio_device.c: CFG_TUD_AUDIO20_FS_FEEDBACK_10_14 (UAC2 full speed feedback as 3 byte 10.14),
+  defaults to 0 when not configured.
+- src/portable/synopsys/dwc2/dcd_dwc2.c: dcd_edpt_iso_activate() disables an IN endpoint with the USB interrupt
+  masked; edpt_disable() re-checks an IN endpoint is still enabled before setting EPDIS.
+- src/portable/synopsys/dwc2/dwc2_stm32.h: dwc2_int_set() also raises BASEPRI while the USB interrupt is masked.

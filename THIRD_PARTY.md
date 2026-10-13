@@ -25,6 +25,7 @@ in the source files, must be preserved in any redistribution.
 | **libDaisy** | © Electrosmith | MIT | `code/libs/libDaisy/` in each firmware folder, and `firmware/chompi-bootloader-v6.4-beta/libs/libDaisy/` — each with its `LICENSE` |
 | **DaisySP** | © Electrosmith, Corp. | MIT | `code/libs/DaisySP/` in each firmware folder, with its `LICENSE` |
 | **coreJSON** | FreeRTOS / Amazon | MIT | `code/libs/coreJSON/` in each firmware folder, with its `LICENSE` |
+| **TinyUSB** | © Ha Thach (tinyusb.org) and contributors | MIT | `firmware/chompi-tape/code/libs/tinyusb/`, with its `LICENSE`; v0.21.0, `src/` plus `README.rst`, five changes marked `CHOMPI`: two in `audio_device.c`, two in `dcd_dwc2.c`, one in `dwc2_stm32.h` (see its `VERSION`) |
 | **Daisy Bootloader** | © Electrosmith | MIT | `firmware/chompi-bootloader-v6.4-beta/shared/`, and the v6.2 bootloader in each firmware folder's `code/Chompi_Bootloader/` |
 | **CMSIS** | © ARM Limited | Apache-2.0 | `cube_dfu/Drivers/CMSIS/` (with its `LICENSE.txt`) in `firmware/chompi-bootloader-v6.4-beta/` and in each firmware folder's `code/Chompi_Bootloader/` |
 | **STM32 HAL, USB Device/Host middleware, FatFs** | © STMicroelectronics | ST Ultimate Liberty / BSD-3-Clause, per file headers | the same `cube_dfu/` folders |
