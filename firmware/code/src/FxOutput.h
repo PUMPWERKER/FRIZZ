@@ -165,7 +165,7 @@ public:
             return 0.f;
         if (val == kLevelDefault)
             return 1.f;
-        return pow10f(48.f * (val - kLevelDefault) * .05f);
+        return daisysp::pow10f(48.f * (val - kLevelDefault) * .05f);
     }
 
 private:

@@ -277,6 +277,21 @@ static void Save(int slot)
 }
 static bool Same(const Rgb& a, const Rgb& b) { return a.r == b.r && a.g == b.g && a.b == b.b; }
 
+/** Runs to just past the tempo's next bar line (TempoClock.h, 12 pulses a beat, 4 a bar), so a
+ *  morph started then lands a whole bar on, whatever the grid's phase since power-on */
+static void ToBarLine()
+{
+    uint32_t was = Probe().position;
+    for (int ms = 0; ms < 4000; ms++)
+    {
+        RunMs(1);
+        const uint32_t now = Probe().position;
+        if (now != was && now % 48 == 0)
+            return;
+        was = now;
+    }
+}
+
 // MIDI (MidiControl.h): bytes into the jack, or over USB; FRIZZ listens on channel 16 at first
 static void Trs(std::initializer_list<int> bytes)
 {
@@ -396,21 +411,42 @@ static int Knob7(float k) { return k <= .5f ? static_cast<int>(k * 128.f + .5f) 
 
 int main()
 {
+    // power-on to playable in about a second (#195): on the twin main() reads the keys from
+    // ~0.4 s to ~0.9 s, the ripple runs meanwhile, then the play page and the sound
     cases.push_back({"boot", [] {
-        const float booting = RunMs(1000);
-        Check(booting == 0.f, "boot: the outputs stay muted while the boot animation runs");
-        RunMs(kReadyMs - 1000);
-        Check(RunMs(200) > .05f, "boot: then the input reaches the master out");
+        const float booting = RunMs(850);
+        Check(booting == 0.f, "boot: the outputs stay muted while the boot ripple runs");
+        RunMs(150);
+        Check(RunMs(200) > .05f, "boot: then the input reaches the master out, after 1 s");
+        Tap("ENC_6_SW");
+        RunMs(100);
+        Check(Ask({0x20}).size() > 12 && Ask({0x20})[12] == 1,
+              "boot: and the play page takes keys: VOLUME's press steps to the input gain's page");
+        RunMs(kReadyMs);
         bool all_dim = true;
         for (int led : {24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 13, 12})
             all_dim &= Max(SmtLedFull(led)) > 0 && Max(SmtLedFull(led)) < 80;
         Check(all_dim, "boot: every FX key glows dimly in its colour");
     }});
 
-    // VOLUME pressed during the boot animation and let go on the play page: no page change,
-    // as the boot page had the press
+    // the boot ripple (#195): light blue, from SHIFT outwards by where the LEDs sit, gone
+    // when the play page opens. On the twin the audio starts at ~0.4 s, the ripple with it
+    cases.push_back({"boot-ripple", [] {
+        auto light_blue = [](const Rgb& c) { return c.b > 100 && c.g > c.r && c.b >= c.g; };
+        RunMs(450);
+        // the CHOMPI key's LED and the dark key beside SHIFT, ~24 mm from it; VOLUME's 259 mm
+        const bool near = light_blue(PthLedFull(0)) && light_blue(SmtLedFull(1));
+        Check(near && Max(PthLedFull(kVolumeLed)) == 0,
+              "boot-ripple: first the LEDs next to SHIFT light up light blue, the far ones dark");
+        RunMs(300);
+        Check(light_blue(PthLedFull(8)) && Max(PthLedFull(0)) == 0 && Max(SmtLedFull(1)) == 0,
+              "boot-ripple: then the ring has reached the far side, the middle dark again");
+    }});
+
+    // VOLUME pressed during the boot ripple and let go on the play page: no page change, as
+    // the boot page had the press
     cases.push_back({"boot-volume", [] {
-        RunMs(1000);
+        RunMs(600);
         Press("ENC_6_SW", true);
         RunMs(kReadyMs);
         Press("ENC_6_SW", false);
@@ -422,6 +458,24 @@ int main()
         RunMs(300);
         Check(Ask({0x20}).size() > 12 && Ask({0x20})[12] == 1,
               "boot-volume: then a press steps to the input gain's page");
+    }});
+
+    // keys held from power-on, through main()'s read for shipping mode and the ripple, let go
+    // on the play page: neither the press nor the release does anything there
+    cases.push_back({"boot-held", [] {
+        Press("KEY_28", true);
+        Press("KEY_1", true);
+        RunMs(1500);
+        const bool dark = Max(PthLedFull(kLoopLed)) == 0;
+        Press("KEY_28", false);
+        Press("KEY_1", false);
+        RunMs(300);
+        Check(dark && Max(PthLedFull(kLoopLed)) == 0, "boot-held: LOOP held from power-on records nothing");
+        Check(LatchedFx(Ask({0x20})) == 0, "boot-held: an FX key held from power-on latches nothing");
+        Tap("KEY_28");
+        RunMs(100);
+        const Rgb rec = PthLedFull(kLoopLed);
+        Check(rec.r > 100 && rec.g == 0 && rec.b == 0, "boot-held: the next LOOP records");
     }});
 
     cases.push_back({"hold", [] {
@@ -490,6 +544,9 @@ int main()
             const char* what;
             bool latched_before, latched_after;
             std::vector<const char*> keys;
+            // the bounce's press 15 ms after the release, kShiftGraceMs itself: taken back in
+            // half the ms phases (#202)
+            bool at_limit = false;
         };
         const std::vector<Seq> seqs = {
             {"SHIFT let go 1 ms after the key's contact", true, true,
@@ -520,12 +577,18 @@ int main()
               "1", "+KEY_5", "150", "-KEY_5"}},
             {"select, SHIFT up, the key's release touching again 7 ms on", true, true,
              {"+KEY_26", "50", "+KEY_5", "100", "-KEY_26", "100", "-KEY_5", "7", "+KEY_5", "1",
+              "-KEY_5"}, true},
+            {"select, SHIFT up, the key's release touching again 6 ms on", true, true,
+             {"+KEY_26", "50", "+KEY_5", "100", "-KEY_26", "100", "-KEY_5", "6", "+KEY_5", "1",
               "-KEY_5"}},
             {"select, the key's release touching again 7 ms on, SHIFT held", true, true,
              {"+KEY_26", "50", "+KEY_5", "100", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5", "100",
               "-KEY_26"}},
             {"the latch gesture, its release touching again 7 ms on", false, true,
              {"+KEY_5", "100", "+KEY_26", "100", "-KEY_26", "100", "-KEY_5", "7", "+KEY_5", "1",
+              "-KEY_5"}, true},
+            {"the latch gesture, its release touching again 6 ms on", false, true,
+             {"+KEY_5", "100", "+KEY_26", "100", "-KEY_26", "100", "-KEY_5", "6", "+KEY_5", "1",
               "-KEY_5"}},
             {"a plain tap", true, false, {"+KEY_5", "60", "-KEY_5"}},
             {"a plain tap, its release touching again 7 ms on", true, false,
@@ -538,19 +601,28 @@ int main()
         };
         for (const Seq& s : seqs)
         {
-            if (((LatchedFx(Ask({0x20})) & filter) != 0) != s.latched_before)
-                Latch("KEY_5");
-            Tap("KEY_2"); // the shifter on the knobs
-            RunMs(300);
-            const unsigned before = LatchedFx(Ask({0x20}));
-            Keys(s.keys);
-            RunMs(400);
-            const std::string st = Ask({0x20});
             const bool comp = strstr(s.what, "compressor") != nullptr;
-            Check(((before & filter) != 0) == s.latched_before && ((LatchedFx(st) & filter) != 0) == s.latched_after
-                      && st.size() > 4 && st[4] == (comp ? 14 : 4),
-                  (std::string("select-grace: ") + s.what + (s.latched_after ? ": latched" : ": unlatched")
-                   + (comp ? ", the compressor selected" : ", the filter selected")).c_str());
+            // one at the limit twice, a ms apart: once in each phase of MainLoop's 2 ms tick
+            bool ok = true;
+            for (int pad = 0; pad < (s.at_limit ? 2 : 1); pad++)
+            {
+                if (((LatchedFx(Ask({0x20})) & filter) != 0) != s.latched_before)
+                    Latch("KEY_5");
+                Tap("KEY_2"); // the shifter on the knobs
+                RunMs(300 + pad);
+                const unsigned before = LatchedFx(Ask({0x20}));
+                Keys(s.keys);
+                RunMs(400);
+                const std::string st = Ask({0x20});
+                ok = ok && ((before & filter) != 0) == s.latched_before
+                     && ((LatchedFx(st) & filter) != 0) == s.latched_after && st.size() > 4
+                     && st[4] == (comp ? 14 : 4);
+            }
+            (s.at_limit ? Known : Check)(
+                ok, (std::string("select-grace: ") + s.what + (s.latched_after ? ": latched" : ": unlatched")
+                     + (comp ? ", the compressor selected" : ", the filter selected")
+                     + (s.at_limit ? " (#202: in either ms phase)" : ""))
+                        .c_str());
         }
     }});
 
@@ -3270,6 +3342,7 @@ int main()
             once = once && c.second == 1;
         Check(latch_off && once, "midi-feedback-scenes: a recall sends what changed, each once");
         // a morph to scene 1: nothing of the filter's while it glides, where it lands after
+        ToBarLine();
         Press("KEY_26", true);
         RunMs(60);
         Tap(kSceneKeys[1]);
@@ -3815,6 +3888,7 @@ int main()
         Trs({kPC, 0});
         RunMs(500);
         Check(fabsf(RunMs(300) - dry) < dry * .05f, "midi scenes: program change 0, the blank scene");
+        ToBarLine();
         Trs({kCC, 3, 1}); // morph to it: over a bar at 120 BPM, 2 s
         RunMs(200);
         const float midway = RunMs(100);

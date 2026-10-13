@@ -172,6 +172,13 @@ what FRIZZ does.
 
 ### Changed
 
+- **FRIZZ's own start-up, and a faster one** (#195): instead of the glow and the rainbow, a
+  light-blue ripple spreads from the CHOMPI key across the panel, like a stone dropped into
+  water, and runs out in half a second; then the play page, sound and keys at once. FRIZZ is
+  ready to play about a second after it starts, where the sound came after about 1.75 s and
+  the keys after about 6 s, and it answers a computer over USB 0.75 s sooner. Keys pressed or
+  held while it starts still do nothing.
+
 - **The scene gestures are one gesture** (#175), changed since v1.0.0-beta.1: SHIFT + a scene
   key, tapped once per bar, then with SHIFT still held: nothing (let go) is a morph, a **press
   of the transport knob** a drop, a turn the crossfader, a second scene key a build-up + drop.

@@ -25,9 +25,6 @@
 using namespace daisy;
 using namespace chompi;
 
-// How long the boot animation runs (and the outputs stay muted) before audio starts
-static const uint32_t kBootScreenMs = 1250;
-
 Hardware hw;
 UserInterface ui;
 
@@ -94,10 +91,10 @@ volatile bool main_loop_running = false;
 // the audio callback leaves them alone: both bit-banging the same chain garbles it
 volatile bool main_reads_keys = false;
 
-// both read by the audio callback, which keeps the outputs muted until they are done
+// read by the audio callback, which keeps the outputs muted and the engine still until main()
+// has read the keys and MainLoop's first pass has checked the battery
 volatile bool booting = true;
-bool rainbow_done = false;
-volatile bool loading_screen = true;
+bool boot_done = false; // the boot ripple closed: the play page from here
 
 /** AUX's jack, as TAPE and TEMPO read it (Hardware's jack_detect, high with a cable in): a
  *  cable plugged in makes AUX the input, pulled out the built-in mic. At power-on it decides;
@@ -125,6 +122,9 @@ struct InputJack
     }
 };
 InputJack input_jack;
+
+// how long main() reads the keys at boot, for shipping mode, while the boot ripple runs
+static const uint32_t kKeyReadMs = 500;
 
 // a restart over MIDI waits this long at most for the card (MainLoop)
 static const uint32_t kRestartWaitMs = 1000;
@@ -203,7 +203,7 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
         BENCH_MARK(EVENTS);
     }
 
-    if(booting || loading_screen)
+    if(booting)
     {
         if(!main_loop_running)
             ui.DoEvents(false);
@@ -243,7 +243,7 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
 #endif
 }
 
-uint32_t uit, now, boot_start;
+uint32_t uit, now;
 
 uint32_t batt;
 
@@ -255,11 +255,10 @@ void MainLoop(void* data)
         hw.LowBatteryLockoutCheck();
         booting = false;
     }
-    else if(!rainbow_done && !loading_screen)
+    else if(!boot_done && ui.BootDone())
     {
         ui.StopBootAnimation();
-        ui.RainbowWave();
-        rainbow_done = true;
+        boot_done = true;
     }
 
     now = daisy::System::GetNow();
@@ -296,14 +295,7 @@ void MainLoop(void* data)
     bench.DrawLeds(now);
 #endif
 
-    if (loading_screen && now - boot_start > kBootScreenMs)
-        loading_screen = false;
-
-    if(ui.InRainbows())
-    {
-        batt = now;
-    }
-    else if(now - batt > 20)
+    if(now - batt > 20)
     {
         hw.LowBatteryLockoutCheck();
         batt = now;
@@ -351,6 +343,14 @@ int main(void)
         System::Delay(10);
     }
 
+    // USB's lines from the charger to the Daisy: the host meets FRIZZ from here, and has it
+    // enumerated long before the audio callback runs the engine (#195)
+    hw.usb_sw.Write(false);     // give USB control
+    daisy::System::Delay(1); // Wait a sec
+    hw.MpWrite(0x0a, 0B00100100); // AutoDPDM
+    daisy::System::Delay(1); // Wait a sec
+    hw.usb_sw.Write(true);     // take USB control
+
     /** SDMMC Init */
     System::Delay(100);
     SdmmcHandler::Config sd_cfg;
@@ -388,34 +388,37 @@ int main(void)
 
     now = daisy::System::GetNow();
     uit = now;
-    boot_start = now;
 
     batt = now;
 
-    // get any junk out of the SRs, takes .5s; CHOMPI, PLAY and LOOP held throughout: shipping mode
-    uint32_t sleep_state = 0;
+    // get any junk out of the SRs for kKeyReadMs, timed: 5000 reads 0.1 ms apart took longer
+    // on the device, the reads' own time on top; CHOMPI, PLAY and LOOP held throughout (4 of
+    // 5 reads): shipping mode
+    uint32_t sleep_state = 0, reads = 0;
+    const uint32_t read_start = System::GetNow();
 
     main_reads_keys = true;
-    for(int i = 0; i < 5000; i++)
+    for(; System::GetNow() - read_start < kKeyReadMs; reads++)
     {
         hw.ProcessAllControls();
         sleep_state += hw.button_sr.State(int(Hardware::SwId::KEY_26))
                         && hw.button_sr.State(int(Hardware::SwId::KEY_27))
                         && hw.button_sr.State(int(Hardware::SwId::KEY_28));
+        // a key pressed or held meanwhile is taken here, so ui.h's GenerateEvents never
+        // sees it go down: its press reaches no page, and its release lets go of nothing
+        for(int k = 0; k < static_cast<int>(Hardware::SwId::SR_LAST); k++)
+        {
+            hw.button_sr.RisingEdge(k);
+            hw.button_sr.FallingEdge(k);
+        }
 
         System::DelayUs(100);
     }
 
     main_reads_keys = false;
 
-    if(sleep_state > 4000)
+    if(sleep_state > reads / 5 * 4)
         hw.MpWrite(0x08, 0B10111111); // SHIPPING MODE
-
-    hw.usb_sw.Write(false);     // give USB control
-    daisy::System::Delay(1); // Wait a sec
-    hw.MpWrite(0x0a, 0B00100100); // AutoDPDM
-    daisy::System::Delay(1); // Wait a sec
-    hw.usb_sw.Write(true);     // take USB control
 
     // the event log starts here, the card read
     event_log.Start(daisy::System::GetNow(), hw.GetToggleState(), input_jack.plugged);
