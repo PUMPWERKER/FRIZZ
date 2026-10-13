@@ -4687,6 +4687,59 @@ int main()
             }});
     }
 
+    // the shifter at stereo 0 on a mono source (a sine and noise) whose two channels differ by
+    // a hair, as AUX's analog paths on the device (#223): noise 60 dB below full scale on the
+    // right only. The headphones' L and R stay the same signal, correlated as the inputs are,
+    // through +7, −7, +12 and −12 (CC 14 on its channel), 1.5 s each after a second to settle.
+    // Each channel searching its splices on its own, the hair picked other lags, and the two
+    // read from other places from there on
+    cases.push_back({"shifter-stereo-0", [] {
+        RunMs(kReadyMs);
+        freq = 311.f;
+        Latch("KEY_2");
+        uint32_t noise = 223, hair = 221;
+        // ms of the sine and noise into AUX, the hair on the right; the headphones' L/R
+        // correlation
+        auto run = [&noise, &hair](uint32_t ms) {
+            float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
+            double ll = 0., rr = 0., lr = 0.;
+            for (uint32_t b = 0; b < ms * 2; b++)
+            {
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    noise = noise * 1664525u + 1013904223u;
+                    hair = hair * 1664525u + 1013904223u;
+                    const float s = amp * sinf(phase)
+                                    + .05f * (static_cast<float>(noise >> 8) / 8388608.f - 1.f);
+                    phase = fmodf(phase + 2.f * float(M_PI) * freq / kSampleRate, 2.f * float(M_PI));
+                    in[i * kChannels + 2] = s;
+                    in[i * kChannels + 3] = s + 1e-3f * (static_cast<float>(hair >> 8) / 8388608.f - 1.f);
+                }
+                Run(1, in, out);
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    const double l = out[i * kChannels], r = out[i * kChannels + 1];
+                    ll += l * l;
+                    rr += r * r;
+                    lr += l * r;
+                }
+            }
+            return static_cast<float>(lr / sqrt(ll * rr + 1e-30));
+        };
+        run(500);
+        float worst = 1.f;
+        for (int cc : {101, 26, 127, 0})
+        {
+            Trs({0xB1, 14, cc});
+            run(1000);
+            const float r = run(1500);
+            printf("      shift %+d: L/R correlation %.6f\n", cc == 101 ? 7 : cc == 26 ? -7 : cc ? 12 : -12, r);
+            worst = std::min(worst, r);
+        }
+        Check(worst > .9999f, "shifter-stereo-0: L and R the same signal at every shift, a hair apart at the input (#223)");
+        freq = 220.f;
+    }});
+
     // ---- the built-in mic (#113): AUX's jack picks the source at power-on and on each change,
     // the settings page's upper F# the other until the next (#177); TAPE's gain and filter ----
     static const int kInputKeyLed = kInSourceKeyLed; // the settings page's upper F#: the source

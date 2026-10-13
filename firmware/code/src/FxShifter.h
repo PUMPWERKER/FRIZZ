@@ -278,15 +278,26 @@ private:
      *  window going up, the near end going down) moved by up to kSearch to where its next
      *  samples best match the other tap's, by normalised correlation (SpliceSearch). The
      *  first kFirstGroups of the search's groups now, the rest in FinishSplice. Once per
-     *  window, so out of line: inlined twice, the search made Process three times the size */
+     *  window, so out of line: inlined twice, the search made Process three times the size.
+     *
+     *  At stereo 0 the two channels' taps are the same, from Init on, as long as nothing
+     *  turns them apart: there the right channel takes the left's search, begun this sample
+     *  for the same taps, instead of its own (#223). Searched on their own, a hair of
+     *  difference between the inputs (the device's analog paths) picked other lags, and from
+     *  there on the channels read from other places: summed to mono, a moving comb filter */
     __attribute__((noinline)) void StartSplice(size_t c, int t, float ratio, bool up)
     {
         const float other = delay_[c][1 - t];
         window_frames_[c] = NextWindow(other, ratio, up);
         nominal_[c] = (up ? window_frames_[c] + 2.f * kSpliceHold * (ratio - 1.f) : 0.f) + kGuard
                       + kSearch;
-        search_[c].Begin(ring_.buf[c], ring_.Last(), nominal_[c], other, ratio);
-        search_[c].Run(kFirstGroups);
+        follows_ = c == 1 && waiting_[0] == 1 + t && held_[0] == 0 && ratio_[0] == ratio
+                   && other_at_[0] == other && nominal_[0] == nominal_[1];
+        if (!follows_)
+        {
+            search_[c].Begin(ring_.buf[c], ring_.Last(), nominal_[c], other, ratio);
+            search_[c].Run(kFirstGroups);
+        }
         other_at_[c] = other;
         waiting_[c] = static_cast<uint8_t>(1 + t);
         held_[c] = 0;
@@ -319,13 +330,17 @@ private:
     /** The rest of channel c's search, and the waiting tap starts where it found, as far on
      *  as the other tap has moved since: the two in the relation it chose. The search's reads
      *  are all behind where the write head was when it began, so the block written since
-     *  changes none of them: it finds what it would have found all at once */
+     *  changes none of them: it finds what it would have found all at once. The right channel
+     *  following the left finishes the same sample, after it, with what the left's found */
     __attribute__((noinline)) void FinishSplice(size_t c)
     {
         const int t = waiting_[c] - 1;
         float* const d = delay_[c];
-        search_[c].Run(SpliceSearch::kGroups);
-        d[t] = nominal_[c] + static_cast<float>(search_[c].best.lag) + (d[1 - t] - other_at_[c]);
+        const bool follows = c == 1 && follows_;
+        if (!follows)
+            search_[c].Run(SpliceSearch::kGroups);
+        const int lag = search_[follows ? 0 : c].best.lag;
+        d[t] = nominal_[c] + static_cast<float>(lag) + (d[1 - t] - other_at_[c]);
         waiting_[c] = 0;
     }
 
@@ -501,6 +516,7 @@ private:
     SpliceSearch search_[2];
     float nominal_[2], other_at_[2];
     uint8_t waiting_[2], held_[2];
+    bool follows_ = false; // the right channel's splice takes the left's search (StartSplice)
     bool still_[2]; // a channel's taps stood still (off, or at ratio 1) since they last moved
     float window_[2];   // through the taps' lives, 0..1; tap 0 starts over at 0, tap 1 at .5
     float delay_[2][2]; // per channel, per tap, frames behind the last write
