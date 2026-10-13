@@ -356,7 +356,7 @@ static void TestLoad()
           "load: in more fragments than the link map holds: refused as FRAGMENTED, nothing read");
 
     // a remount between runs (a bug report's, a save's): FatFs's files are invalid after one,
-    // the loader keeps none open
+    // the loader keeps none open between its runs; its map's file is opened again where it was
     NewCard();
     PutLoop("/FRIZZ/LOOPS/A/01.wav", Stereo(big));
     LoopLoader& r = Fresh();
@@ -370,6 +370,67 @@ static void TestLoad()
     }
     Check(Run(r) && Loaded(r, big), "load: remounts between its runs don't touch it");
     Check(card.raw_clash == 0, "load: and none of them came in during a run");
+}
+
+/** Process until it rests, as Run; the most FAT sectors a pass read, and how many passes */
+static int FatPerPass(LoopLoader& l, int& passes, int remount_at = -1)
+{
+    int worst = 0;
+    for (passes = 0; passes < 100000 && l.Busy(); passes++)
+    {
+        const int before = card.fat_reads;
+        l.Process(false);
+        clock_us += 1000;
+        worst = std::max(worst, card.fat_reads - before);
+        if (passes == remount_at)
+            f_mount(&fs, "", 1);
+    }
+    return worst;
+}
+
+/** The link map over passes (#212): FatFs reads the FAT a sector at a time, which in one pass
+ *  held MainLoop 12-35 ms on the device */
+static void TestMap()
+{
+    NewCard();
+    const std::string big = Pattern(kMaxFrames * 4, 5);
+    PutLoop("/FRIZZ/LOOPS/A/01.wav", Stereo(big));
+    LoopLoader& l = Fresh();
+    const int clusters = static_cast<int>((44 + big.size() + 4095) / 4096);
+    int passes = 0, reads = card.fat_reads;
+    l.Request(LoopLoader::LOADING, 0, 0, 0);
+    int worst = FatPerPass(l, passes);
+    const int contiguous = card.fat_reads - reads, contiguous_passes = passes;
+    Check(Loaded(l, big) && worst <= 3 && contiguous == (clusters + 127) / 128,
+          "map: 16 bars, every byte; no pass reads more than 3 FAT sectors, each read once (#212)");
+    if (worst > 3)
+        printf("      %d FAT sectors in a pass, %d in all\n", worst, contiguous);
+
+    // the clusters spread wider: 16 a fragment, one free between
+    NewCard();
+    card.frag_clusters = 16;
+    PutLoop("/FRIZZ/LOOPS/A/01.wav", Stereo(big));
+    LoopLoader& f = Fresh();
+    f.Request(LoopLoader::LOADING, 0, 0, 0);
+    worst = FatPerPass(f, passes);
+    Check(Loaded(f, big) && worst <= 4, "map: in 16-cluster fragments, every byte; no pass reads more than 4 FAT sectors");
+    uint8_t d[40];
+    const uint8_t part0[] = {0};
+    f.Dev(part0, 1, d);
+    Check((d[33] << 7 | d[34]) == (clusters + 15) / 16, "map: LOOPS 0 counts its fragments as FatFs's link map does");
+
+    // a remount in the middle of the map: the file opened again where it was, no FAT sector
+    // read twice but the one in the window then
+    NewCard();
+    PutLoop("/FRIZZ/LOOPS/A/01.wav", Stereo(big));
+    LoopLoader& r = Fresh();
+    reads = card.fat_reads;
+    r.Request(LoopLoader::LOADING, 0, 0, 0);
+    int again = 0;
+    worst = FatPerPass(r, again, 4);
+    Check(Loaded(r, big) && worst <= 3 && card.fat_reads - reads <= contiguous + 1 && again == contiguous_passes,
+          "map: a remount in its middle: opened again where it was, every byte, nothing walked again");
+    Check(card.open == 0, "map: no file left open");
 }
 
 static void TestFaults()
@@ -518,6 +579,7 @@ int main()
     TestNames();
     TestScan();
     TestLoad();
+    TestMap();
     TestFaults();
     TestShared();
     TestWrite();
