@@ -453,7 +453,7 @@ clock 9 s before it): a refused scene key's blinks just before it end and don't 
 loop recorded across it is as long as it was recorded, the compressor's knob turned before it
 is saved after it, a scene saves and CHOMPI's pending blink keeps its pace after it. And every
 scenario of `../twin/scenarios/` played from power-on, with its `expect` lines, and again on a
-card as a player's may be, no setting and no compressor knob as the factory has them: the
+card as a player's may be, the compressor's page 1 and most settings not as the factory has them: the
 device's scenarios start from that (#214). A script's `set` too: its answer kept from
 `expect usb`, a value refused failing its line, and comp.txt without its sets failing there.
 

@@ -265,7 +265,8 @@ page (`twin/scenarios/settings.txt`, most bug reports, #58; its upper G# and A# 
 each source's effects and live are saved, `mic.txt`, #152, #177), VOLUME turned on its page
 2, the input gain
 (`volume.txt`, #152), and the compressor's knobs (`comp.txt`: its key, then knobs 1-4, or with
-it in focus by CC 23; its CCs themselves never reach the card, #97) go to
+it in focus by CC 23; its CCs themselves never reach the card, #97), and a script's `set` of
+a setting, the compressor or the input gain (most scenarios' first lines, #214) go to
 `/FRIZZ/frizz_master.txt`, with no `.bak`; SAVE / COPY / DELETE confirmed (`scenes.txt`) or a
 scene put over SysEx to `/FRIZZ/frizz_scenes.txt`, whose `.bak` keeps only the one before
 (#78).

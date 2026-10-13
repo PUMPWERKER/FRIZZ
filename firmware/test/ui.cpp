@@ -6245,8 +6245,8 @@ int main()
               "a value, setting or group that isn't fails its line");
     }});
 
-    // a card as a player's may be: no setting and no compressor knob as the factory has them,
-    // but the LEDs at full (the twin's expect led doesn't dim). The device's scenarios start
+    // a card as a player's may be: the compressor's page 1 and most settings not as the factory
+    // has them, the LEDs at full though (the twin's expect led doesn't dim). The device's scenarios start
     // from the player's card (#214): each sets what it depends on first
     static const std::string kPlayersCard = "card file /FRIZZ/frizz_master.txt\n|FRIZZ master 1\n"
                                             "|compressor2 300000 900000 100000 750000 1000000 0 0 0\n"

@@ -108,7 +108,8 @@ comparing: they don't make it fail.
 On the device (`remote.py play`) a scenario starts from the player's card, not a fresh one: so
 it first `set`s, to what a fresh card has, every setting and compressor knob its `expect` lines
 depend on (before `at 6000`, so the times stay as they were), and `unit.sh ui` plays each one
-again on a card that has none of them as the factory does (`card:NAME`, #214).
+again on a card with the compressor's page 1 and most settings not as the factory has them
+(`card:NAME`, #214).
 A new one is just another `scenarios/NAME.txt`. Both versions run with the working tree's twin,
 so a firmware from before the twin compares too (back to the move from `firmware/frizz/`).
 
