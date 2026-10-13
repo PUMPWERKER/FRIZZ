@@ -14,7 +14,7 @@
     ./measure.py fx KEY [--cc CC=VALUE ...] [--seconds 30] [--material FILE] --out NAME
         an effect latched alone (KEY: its key, KEY_1 .. KEY_13, or its name, e.g. delay; none:
         nothing latched, the dry line), CCs on its own MIDI channel (its key's number,
-        MANUAL.md "MIDI": 14-17 page 1's knobs, 18-21 page 2's; 21 is Level, the sends' too
+        MANUAL.md "Appendix: MIDI": 14-17 page 1's knobs, 18-21 page 2's; 21 is Level, the sends' too
         since #172, at 0dB at first), material into AUX, the line out recorded to NAME.f32;
         the latches and the effect's knobs put back afterwards
     ./measure.py compare A.f32 B.f32
@@ -189,6 +189,33 @@ def read_wav(path):
         t = np.arange(int(len(x) * SR / rate)) * rate / SR
         x = np.stack([np.interp(t, np.arange(len(x)), x[:, c]) for c in range(2)], 1)
     return x
+
+
+def find(y, x, at, search):
+    """Where x is in y within +-search samples of at: (its start in y, to a fraction of a
+    sample, the correlation there normalized: 1 for x itself at any level, -1 for it upside
+    down), or None where y hasn't the room. By FFT, so a bar against seconds is quick"""
+    lo, hi = max(0, int(at - search)), min(len(y), int(at + search) + len(x))
+    seg = y[lo:hi]
+    if len(seg) < len(x) + 2:
+        return None
+    n = 1 << int(np.ceil(np.log2(len(seg) + len(x))))
+    cross = np.fft.rfft(seg, n) * np.conj(np.fft.rfft(x, n))
+    c = np.fft.irfft(cross, n)[:len(seg) - len(x) + 1]
+    e = np.concatenate([[0.], np.cumsum(seg ** 2)])
+    energy = e[len(x):] - e[:-len(x)]
+    norm = c / np.sqrt(np.maximum(energy, 1e-3 * energy.max() + 1e-20) * np.sum(x ** 2) + 1e-20)
+    # the peak by the cross spectrum's phase alone (GCC-PHAT): one sharp peak where plain
+    # correlation of tonal music has a ridge of them a period apart, of which another can win
+    # once the line out has coloured it; and either way up (a line out may invert)
+    ph = np.fft.irfft(cross / (np.abs(cross) + 1e-12 * np.abs(cross).max()), n)[:len(c)]
+    i = int(np.argmax(np.abs(ph)))
+    ph = ph * np.sign(ph[i])
+    p = 0.
+    if 0 < i < len(c) - 1:  # to a fraction of a sample, by a parabola
+        d = ph[i - 1] - 2 * ph[i] + ph[i + 1]
+        p = .5 * (ph[i - 1] - ph[i + 1]) / d if d else 0.
+    return lo + i + p, float(norm[i])
 
 
 def generated(seconds=60, seed=7):

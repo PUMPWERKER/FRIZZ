@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 410" width="720" height="410" role="img" aria-labelledby="title desc">
+<title id="title">FRIZZ panel</title>
+<desc id="desc">A schematic of the panel, not its artwork. Front row: 15 white keys, the effects freezer, shifter, folder, crusher, filter, flanger, phaser, resonator, slicer, wow &amp; flutter, tape stop, delay, reverb, the chaos key and the master compressor. Above them 10 dark keys: the blank scene, scenes 1-4, save, copy and delete. Behind them the mode switch, the CHOMPI key (SHIFT), knobs 1-4, the transport wheel, PLAY, LOOP and VOLUME. Jacks: MIDI in and out on the left, AUX in and the headphones on the right, USB-C, the microSD card and the line out at the back.</desc>
+<style>svg{font-size:13px}text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
+<defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
+<rect width="720" height="410" fill="#131314"/>
+<rect x="72" y="46" width="576" height="187.2" rx="10" class="b"/>
+<rect x="97.5" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="113.2" y="208.4" class="gt" font-size="12" font-weight="bold">1</text>
+<text x="110.2" y="247.2" class="t as" font-size="12" transform="rotate(40 110.2 247.2)">Freezer</text>
+<rect x="133.7" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="149.4" y="208.4" class="gt" font-size="12" font-weight="bold">2</text>
+<text x="146.4" y="247.2" class="t as" font-size="12" transform="rotate(40 146.4 247.2)">Shifter</text>
+<rect x="169.9" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="185.6" y="208.4" class="gt" font-size="12" font-weight="bold">3</text>
+<text x="182.6" y="247.2" class="t as" font-size="12" transform="rotate(40 182.6 247.2)">Folder</text>
+<rect x="206.1" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="221.8" y="208.4" class="gt" font-size="12" font-weight="bold">4</text>
+<text x="218.8" y="247.2" class="t as" font-size="12" transform="rotate(40 218.8 247.2)">Crusher</text>
+<rect x="242.3" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="258" y="208.4" class="gt" font-size="12" font-weight="bold">5</text>
+<text x="255" y="247.2" class="t as" font-size="12" transform="rotate(40 255 247.2)">Filter</text>
+<rect x="278.5" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="294.2" y="208.4" class="gt" font-size="12" font-weight="bold">6</text>
+<text x="291.2" y="247.2" class="t as" font-size="12" transform="rotate(40 291.2 247.2)">Flanger</text>
+<rect x="314.7" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="330.4" y="208.4" class="gt" font-size="12" font-weight="bold">7</text>
+<text x="327.4" y="247.2" class="t as" font-size="12" transform="rotate(40 327.4 247.2)">Phaser</text>
+<rect x="350.9" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="366.6" y="208.4" class="gt" font-size="12" font-weight="bold">8</text>
+<text x="363.6" y="247.2" class="t as" font-size="12" transform="rotate(40 363.6 247.2)">Resonator</text>
+<rect x="387.1" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="402.8" y="208.4" class="gt" font-size="12" font-weight="bold">9</text>
+<text x="399.8" y="247.2" class="t as" font-size="12" transform="rotate(40 399.8 247.2)">Slicer</text>
+<rect x="423.3" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="439" y="208.4" class="gt" font-size="12" font-weight="bold">10</text>
+<text x="436" y="247.2" class="t as" font-size="12" transform="rotate(40 436 247.2)">Wow &amp; flutter</text>
+<rect x="459.5" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="475.2" y="208.4" class="gt" font-size="12" font-weight="bold">11</text>
+<text x="472.2" y="247.2" class="t as" font-size="12" transform="rotate(40 472.2 247.2)">Tape stop</text>
+<rect x="495.7" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="511.4" y="208.4" class="gt" font-size="12" font-weight="bold">12</text>
+<text x="508.4" y="247.2" class="t as" font-size="12" transform="rotate(40 508.4 247.2)">Delay</text>
+<rect x="531.9" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="547.6" y="208.4" class="gt" font-size="12" font-weight="bold">13</text>
+<text x="544.6" y="247.2" class="t as" font-size="12" transform="rotate(40 544.6 247.2)">Reverb</text>
+<rect x="568.1" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="583.8" y="208.4" class="gt" font-size="12" font-weight="bold">14</text>
+<text x="580.8" y="247.2" class="t as" font-size="12" transform="rotate(40 580.8 247.2)">Chaos</text>
+<rect x="604.3" y="188.1" width="31.5" height="30.6" rx="3" class="wk"/>
+<text x="620" y="208.4" class="gt" font-size="12" font-weight="bold">15</text>
+<text x="617" y="247.2" class="t as" font-size="12" transform="rotate(40 617 247.2)">Compressor</text>
+<rect x="115.6" y="153.9" width="31.5" height="27" rx="3" class="dk"/>
+<rect x="151.8" y="153.9" width="31.5" height="27" rx="3" class="dk"/>
+<rect x="224.2" y="153.9" width="31.5" height="27" rx="3" class="sk"/>
+<text x="239.9" y="147.9" class="t" font-size="12">blank</text>
+<rect x="260.4" y="153.9" width="31.5" height="27" rx="3" class="sk"/>
+<text x="276.1" y="147.9" class="t" font-size="12">1</text>
+<rect x="296.6" y="153.9" width="31.5" height="27" rx="3" class="sk"/>
+<text x="312.3" y="147.9" class="t" font-size="12">2</text>
+<rect x="369" y="153.9" width="31.5" height="27" rx="3" class="sk"/>
+<text x="384.7" y="147.9" class="t" font-size="12">3</text>
+<rect x="405.2" y="153.9" width="31.5" height="27" rx="3" class="sk"/>
+<text x="420.9" y="147.9" class="t" font-size="12">4</text>
+<rect x="477.6" y="153.9" width="31.5" height="27" rx="3" class="dk"/>
+<text x="493.3" y="147.9" class="t" font-size="12">save</text>
+<rect x="513.8" y="153.9" width="31.5" height="27" rx="3" class="dk"/>
+<text x="529.5" y="147.9" class="t" font-size="12">copy</text>
+<rect x="550" y="153.9" width="31.5" height="27" rx="3" class="dk"/>
+<text x="565.7" y="147.9" class="t" font-size="12">delete</text>
+<rect x="136.9" y="101.9" width="25.2" height="25.2" rx="3" class="ba"/>
+<text x="149.5" y="142.1" class="t" font-size="12" font-weight="bold">CHOMPI = SHIFT</text>
+<rect x="498.9" y="101.9" width="25.2" height="25.2" rx="3" class="ba"/>
+<text x="511.5" y="95.9" class="t" font-size="12" font-weight="bold">PLAY</text>
+<rect x="535.1" y="101.9" width="25.2" height="25.2" rx="3" class="ba"/>
+<text x="547.7" y="95.9" class="t" font-size="12" font-weight="bold">LOOP</text>
+<circle cx="257.2" cy="110" r="12.6" class="b"/>
+<text x="257.2" y="114.5" class="t" font-size="12" font-weight="bold">2</text>
+<circle cx="317.6" cy="110" r="12.6" class="b"/>
+<text x="317.6" y="114.5" class="t" font-size="12" font-weight="bold">3</text>
+<circle cx="377.9" cy="110" r="12.6" class="b"/>
+<text x="377.9" y="114.5" class="t" font-size="12" font-weight="bold">4</text>
+<circle cx="196.9" cy="110" r="12.6" class="b"/>
+<text x="196.9" y="114.5" class="t" font-size="12" font-weight="bold">1</text>
+<circle cx="450.2" cy="110" r="27.9" class="ba"/>
+<text x="450.2" y="114.5" class="t" font-size="12" font-weight="bold">transport</text>
+<circle cx="613.2" cy="110" r="12.6" class="b"/>
+<text x="613.2" y="114.5" class="t" font-size="12" font-weight="bold"></text>
+<text x="287.5" y="91.4" class="m" font-size="12">knobs 1–4</text>
+<text x="613.2" y="91.4" class="t" font-size="12" font-weight="bold">VOLUME</text>
+<circle cx="142.6" cy="72" r="3" class="led"/>
+<circle cx="196.9" cy="72" r="3" class="led"/>
+<circle cx="257.2" cy="72" r="3" class="led"/>
+<circle cx="317.6" cy="72" r="3" class="led"/>
+<circle cx="377.9" cy="72" r="3" class="led"/>
+<circle cx="432.2" cy="67.9" r="3" class="led"/>
+<circle cx="468.4" cy="67.9" r="3" class="led"/>
+<circle cx="504.6" cy="67.9" r="3" class="led"/>
+<circle cx="540.8" cy="67.9" r="3" class="led"/>
+<circle cx="613.2" cy="72" r="3" class="led"/>
+<rect x="100.1" y="98" width="10" height="24" rx="5" class="b"/>
+<circle cx="105.1" cy="116" r="3.5" class="g"/>
+<text x="105.1" y="92" class="m" font-size="12">mode</text>
+<rect x="66" y="117.8" width="6" height="14" class="g"/>
+<text x="60" y="129.3" class="t ae" font-size="12" font-weight="bold">MIDI OUT</text>
+<rect x="66" y="156.5" width="6" height="14" class="g"/>
+<text x="60" y="168" class="t ae" font-size="12" font-weight="bold">MIDI IN</text>
+<rect x="648" y="117.8" width="6" height="14" class="g"/>
+<text x="660" y="129.3" class="t as" font-size="12" font-weight="bold">AUX IN</text>
+<rect x="648" y="156.5" width="6" height="14" class="g"/>
+<text x="660" y="168" class="t as" font-size="12" font-weight="bold">PHONES</text>
+<rect x="105.3" y="40" width="14" height="6" class="g"/>
+<text x="112.3" y="32" class="t" font-size="12" font-weight="bold">USB-C</text>
+<rect x="515.7" y="40" width="14" height="6" class="g"/>
+<text x="522.7" y="32" class="t" font-size="12">microSD</text>
+<rect x="599.2" y="40" width="14" height="6" class="g"/>
+<text x="606.2" y="32" class="t" font-size="12" font-weight="bold">LINE OUT</text>
+<text x="60" y="50" class="m ae" font-size="12">back</text>
+<text x="60" y="235.2" class="m ae" font-size="12">front</text>
+<text x="20" y="352" class="m as" font-size="12">The play page (mode switch down; up is the settings page). Dark keys: the blank</text>
+<text x="20" y="370" class="m as" font-size="12">scene, scenes 1–4 (rose), save, copy, delete; the lower C# and D# do nothing here.</text>
+<text x="20" y="388" class="m as" font-size="12">A schematic to scale, from the board files: not the panel's artwork.</text>
+</svg>

@@ -1272,18 +1272,18 @@ def input_cc(r):
     back = {(m[1], m[2]) for t, m in log if t >= t0 and len(m) == 3 and m[0] == 0xBF and m[1] in (84, 116, 117)}
     sent_back = sorted(k for k in back if k[0] == 84)
     r.check("what came isn't sent back: no CC 84", not sent_back, sent_back or "none", "none")
-    # the hand: the settings page's G# and A# go out as CC 116 and 117
+    # the hand: the settings page's G# and A# go out as CC 117 and 116 (#243)
     t1 = time.perf_counter()
     r.f.send(remote.SWITCH, [2])
     time.sleep(.3)
-    r.tap("KEY_25")  # AUX live again
+    r.tap("KEY_24")  # AUX live again
     time.sleep(.2)
-    r.tap("KEY_24")  # dry
+    r.tap("KEY_25")  # dry
     time.sleep(.3)
     r.f.send(remote.SWITCH, [0])
     time.sleep(.3)
     out = {(m[1], m[2]) for t, m in log if t >= t1 and len(m) == 3 and m[0] == 0xBF}
-    r.check("the settings page's A# and G#: CC 117 at 127 and CC 116 at 127 out", (117, 127) in out and (116, 127) in out,
+    r.check("the settings page's G# and A#: CC 117 at 127 and CC 116 at 127 out", (117, 127) in out and (116, 127) in out,
             sorted(k for k in out if k[0] in (84, 116, 117)) or "none", "(116, 127), (117, 127)")
     r.check("... and AUX live and dry", input_bits(r) == 6, input_bits(r), 6)
 

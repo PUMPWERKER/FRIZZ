@@ -20,10 +20,12 @@ The stock firmwares, bootloader and hardware files under `reference/`:
 
 | Path | What | Audience |
 |---|---|---|
-| `README.md`, `INSTALL.md`, `QUICKSTART.md`, `MANUAL.md`, `CHANGELOG.md` | what FRIZZ is, install, quick guide, full controls, what changed since the last release | users |
+| `README.md`, `INSTALL.md`, `QUICKSTART.md`, `MANUAL.md`, `CHANGELOG.md` | what FRIZZ is, install, quick start, full controls, what changed since the last release | users |
 | `firmware/` | FRIZZ source (`code/`, `bin/`, `test/`, `twin/`, `flash.py`, `card.py`, `remote.py`, `tools/`) | developers |
 | `docs/` | design notes: `LOOPER.md`, `FX_OVERVIEW.md`, `CAPACITY.md`, `STOCK_FIRMWARES.md` | developers |
 | `reference/` | the original CHOMPI release, unchanged except for links | reference only |
+| `images/` | the manual's diagrams (SVG, drawn by `firmware/tools/diagrams/`) | users |
+| `site/` | the website's front-page text (`landing.md`, read by the site at the tag) | users |
 | `LICENSE`, `THIRD_PARTY.md`, `TRADEMARKS.md`, `CLAUDE.md` | legal, this file | — |
 
 Keep the root user-facing: anything that only helps development goes in `docs/` or
@@ -36,6 +38,71 @@ Hand-written source is `firmware/code/src/` (~60 files). Everything under `libs/
 `cube_dfu/`, `Drivers/`, `Middlewares/` and any `build/` directory is vendored or generated:
 exclude it from greps. `reference/` holds three more independent copies of a similar tree, so
 scope searches to `firmware/`.
+
+## Docs that feed the website
+
+https://frizz.friedrichwagner.eu is built from `MANUAL.md`, `QUICKSTART.md`, `INSTALL.md`,
+`images/`, `site/landing.md` and the key colours in `LedColors.h`/`FxSlots.h` (repo
+`friedrich/frizz-web` on the user's Gitea), fetched at the **latest stable release** tag (and
+`/beta/` at the newest pre-release), so a docs change on `main` goes live with the next tag.
+FrizZ holds every fact the site shows; frizz-web only renders it (design, layout, the trademark
+note). `README.md` is for GitHub only, not a site source. Its build fails on any internal link
+or anchor that doesn't resolve, and on any format below it can't read. Every PR that touches
+these files is checked against this before it merges:
+
+1. **Headings are URLs.** Each `##` of `MANUAL.md` becomes its own page (`/manual/<slug>/`),
+   each `###` an anchor on it (GitHub's slugs: "Wow & flutter" → `wow--flutter`). Renaming a
+   heading breaks links to it from outside: keep headings stable, unique within the manual,
+   and plain text (no links, code or emphasis in them).
+2. **Cross-references are Markdown links**, `[Settings page](MANUAL.md#settings-page)`, not
+   prose ("MANUAL.md, *Settings page*"). Links between the four files and to their anchors
+   become site URLs, links to other repo paths go to GitHub at the release tag; an anchor
+   must match an existing heading.
+3. **A `##` chapter is one web page:** keep it readable as one; split a chapter that grows very
+   long (Punch-in FX) into several `##` chapters, e.g. one per effect.
+4. **Formats the site parses:**
+   - `QUICKSTART.md`: the white keys' table keeps its row starting `| Effect |`, then exactly
+     15 cells, one per white key (`–` for an unused one); the landing page builds its key row
+     from it and links each name to the manual heading `Name`, `Name key` or `Master Name`.
+   - `MANUAL.md`, `QUICKSTART.md` and `INSTALL.md` keep exactly one H1 each (the page title).
+   - `MANUAL.md`'s parts: a line `<!-- part: Name -->` on its own (a blank line before and
+     after, not in a code block) right before a `##` starts a part, a folding group in the
+     site's sidebar; chapters before the first marker go to "Getting started". Invisible on
+     GitHub, headings and anchors unchanged. A new chapter goes into the part it belongs to.
+   - `MANUAL.md`'s summaries: a line `<!-- summary: ... -->` right under a `##` is that
+     chapter's one-line description on the site's Contents page and its meta description (a
+     sentence, under ~12 words; optional, a chapter without one gets none). A white key's
+     chapter must have one, and it is its card on the landing page: 1 to 2 sentences, at most
+     160 characters, written for players. `INSTALL.md` and `QUICKSTART.md` each have one
+     under their H1, their description on the site.
+   - Each chapter of a white key's effect (the chaos key and the master compressor too) keeps
+     its knob table, `| Knob | Page 1 | …`, rows 1 to 4: the landing page's knob labels are
+     each Page 1 cell's text up to the first ":", "," or " (", so that start names the knob.
+   - `site/landing.md` is the landing page's text (hero, the moves, the steps, the section
+     hints, credits) in frizz-web's fixed format: its sections in order, `- Name: value` fields
+     with length limits, one paragraph each, links only to the docs, `images/` or `https://`.
+     The format is spelled out in the file's head comment and checked by `doclinks.py`.
+   - The key colours: the site parses `LedColors.h` (`static const float name[3] = {r, g, b};`)
+     and `FxSlots.h` (`kFxSlots` entries `{Hardware::SwId::KEY_<n>, <colour>, …`, `kCompKey`);
+     keep those shapes when touching them.
+5. **No version history in the user docs:** "until v0.11 …" belongs in `CHANGELOG.md`, not in
+   `MANUAL.md`, `QUICKSTART.md` or `INSTALL.md`.
+6. **To see it:** in a frizz-web worktree of your own (not the user's checkout),
+   `FRIZZ_DIR=/abs/path/to/FrizZ-worktree npm run build` builds the site from that checkout and
+   fails on a broken link, anchor or missing image (`FRIZZ_REF=<release tag>` builds a
+   release). Images live in `images/`, linked relatively (`![…](images/name.svg)`) with real alt
+   text. Without the site, `firmware/tools/doclinks.py` checks every rule above (links,
+   anchors, headings, summaries, parts, knob tables, the key row, the key colours,
+   `site/landing.md`); it runs in `all.sh` as the check `doclinks`, and `--selftest` shows each
+   rule firing. What the manual's tables say (knobs used, steps, coarse grids, CCs, colours) is
+   checked against the code by the unit check `docs`: a change to a control fails `all.sh`
+   until `MANUAL.md` follows.
+7. **The site updates itself:** frizz-web checks every 20 minutes for a new release and rebuilds
+   when there is one, so it is live within about 20 minutes; nothing to trigger. New means a
+   published GitHub release (not a draft) with its `.bin` attached; a bare tag isn't picked up.
+   The rolling `beta` pre-release is ignored: the newest numbered pre-release after the latest
+   stable one becomes `/beta/`. `curl https://frizz.friedrichwagner.eu/build.json` shows which
+   tags the site has (`{"stable": …, "prerelease": …}`): check it after cutting a release.
 
 ## Git workflow: branches first, checked by the sessions, merged by the user
 
@@ -142,11 +209,10 @@ working on a branch:
 
 ### Releases and the release test
 
-**Feature freeze for 1.0** (decided 2026-10-12): until `v1.0.0` is tagged, `main` takes fixes,
-refactors (bit-identical) and documentation only. A feature branch may be built and tested,
-but merges after the tag, for 1.1. With 1.0 the controls, the MIDI map and the scene files
-stay as they are: a feature goes into 1.x, a fix into 1.0.x, and only a break of the controls
-would be 2.0.
+**1.0 is out** (`v1.0.0`, 2026-10-13; the feature freeze before it, decided 2026-10-12, is
+over). From 1.0 on the controls, the MIDI map and the scene files stay as they are: a feature
+goes into 1.x, a fix into 1.0.x, and only a break of the controls would be 2.0. A change to
+how a control behaves goes to the user as a `decision` issue first, even within 1.x.
 
 The open **release-test issue** (label `release test`, one at a time, titled for the next
 version) collects every merged PR's *For the release test* items, under the PR's number, plus
@@ -160,12 +226,12 @@ through with why, and the issue is closed with it; the next one opens.
 A build handed out for testing goes on GitHub as a **pre-release**, never as Latest:
 
 - Each release candidate (or other test round the user asks for) gets a numbered one,
-  `v<next>-beta.N` (next: `v1.0.0-beta.2`), tagged on the pushed commit, with that commit's
-  build attached: `make` in a clean worktree at the tag (`git worktree add ../FrizZ-<tag>
-  <tag>`, GCC 10.3), and its `firmware/code/src/build/FRIZZ.bin` uploaded under that name. The
+  `v<next>-beta.N` (next: `v1.1.0-beta.1`, or `v1.0.1-beta.1` for a fix release), tagged on
+  the pushed commit, with that commit's build attached: `make` in a clean worktree at the tag
+  (`git worktree add ../FrizZ-<tag> <tag>`, GCC 10.3), and its `firmware/code/src/build/FRIZZ.bin` uploaded under that name. The
   notes name its md5 and are taken from `CHANGELOG.md`'s Unreleased section, plus a link to
   the release-test issue (or the PR). The number never moves, so feedback can name the build.
-- The pre-release **`beta`** always carries the newest numbered one (now v1.0.0-beta.1), and
+- The pre-release **`beta`** always carries the newest numbered one (now v1.0.0-beta.4), and
   moves only with a new one, at a fixed link
   (`https://github.com/ZUHcYa/FrizZ/releases/download/beta/FRIZZ.bin`): `git tag -f beta
   <commit> && git push -f origin beta`, `gh release upload beta <the numbered one's FRIZZ.bin>
@@ -173,11 +239,15 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   its md5.
 - Cut one only when the user asks for a test build; a release for everyone is a normal
   release on `main`, its `FRIZZ.bin` built the same way at its tag, its md5 in the notes.
+  Its notes start from `CHANGELOG.md` but are written for a CHOMPI owner new to FRIZZ, as
+  v1.0.0's are: what FRIZZ is, trying it beside the stock firmwares, what you can do with it,
+  then what moved for those updating, and a link to the CHANGELOG for every entry.
 - On the CHOMPI (decided 2026-10-13, #171): a beta goes to **key 13** (`FRIZZ-BETA`), a release
   to **key 10** (`FRIZZ`), each on the user's word once it's cut, from the clean worktree of
   its tag: `./flash.py --slot 13` (or `--slot 10`) there. `flash.py` sends to 10 or 13 nothing
-  else: only when the key is named, and only the build of a clean `v*` tag's checkout. Until
-  `v1.0.0`, key 10 keeps v1.0.0-beta.1.
+  else: only when the key is named, and only the build of a clean `v*` tag's checkout. Since
+  `v1.0.0`, 10 carries the release and 13 the beta (before 1.0, key 10 carried the newest beta
+  too).
 
 ## The CHOMPI is shared: the lock and the slots
 
@@ -212,10 +282,16 @@ scenarios that change what key 10 shares, the settings page (`settings.txt`, #58
 compressor's knobs (`comp.txt`), the scenes (`scenes.txt`, #78) and the input (`mic.txt`, `volume.txt`, #152), play in stage 2 too. Never `--save` or `--force` on the device: a
 FRIZZ without PERSIST (key 10's from before it) is still refused, as before. The card holds
 the user's own settings, which a session never changes; `expect led` lines are judged at the
-card's LED brightness, so on the device `settings.txt` fails the lines its brightness key
-changes from there, and the battery's (VOLUME white on USB, green on the twin). The user takes
+card's LED brightness, and on the device `settings.txt` fails the battery's line (VOLUME white
+on USB, green on the twin). The user takes
 the CHOMPI for playing with `tools/chompi.py hold` (until Ctrl-C),
 or by telling a session, which then runs it for them.
+A scenario that depends on what the card keeps sets it first (`set GROUP INDEX VALUE`, #218):
+`ui.cpp` also plays every scenario on a player's card. `input sine` goes to the device as the
+test signal (SIGNAL, #225), so `play --cpu` with it reads ~1 point above runs before that. A
+turn in the same instant as a key's edge lands differently on the twin and the device: leave
+`wait 100` between them (#227). The DAW cases' music lives in `firmware/card/audio/`
+(git-ignored, the user's own samples: never commit or name it).
 Within that, stage 2 needs no asking. Ask the user first only for what needs their hands or
 changes what they play: sending to key 10 or 13, `flash.py --list` (it restarts FRIZZ into
 the launcher: a loop in RAM is lost), anything when the lock's holder is the user, a cable to
@@ -260,7 +336,7 @@ checks need only `g++` and `python3`; the browser twin needs Emscripten in `~/op
 `firmware/test/all.sh` runs everything, side by side (about a minute; the first run ~80 s): `check.sh` (the engine against HEAD;
 a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
 `pitch`, `tape`, `block`, `crusher`, `freezer`, `scenes`, `store`, `clicks`, `delay`, `controls`, `keys`, `looper`, `tempo`,
-`comp`, `level`, `sleep`, `inserts`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `splice`, `usbmidi`, `routing`, `measure`. A new check is just a new
+`comp`, `level`, `sleep`, `inserts`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `splice`, `usbmidi`, `routing`, `measure`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
 `NAME.cpp`; [`firmware/test/README.md`](firmware/test/README.md) says what each covers.
 `check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail.
 
@@ -274,12 +350,13 @@ anything else about the chip ([`firmware/twin/README.md`](firmware/twin/README.m
 
 ## The audio callback is CPU-bound
 
-The callback has 0.5 ms per 24-sample block. Idle it uses ~45 %, a loop with ~11 effects
-reaches 100 % and crackles (a known limit, parked by the user). Effects that are off must stay
+The callback has 0.5 ms per 24-sample block. Idle it uses ~34 %, a loop with every effect
+~72 % on average and ~82 % at worst; only the bench's page-2 extreme (all 13 effects, page 2
+off its defaults) goes past 100 % and crackles (#21, settled by the user for 1.0). Effects that are off must stay
 cheap (`FxGate::Asleep`). A change that only shifts the memory layout has made it crackle on
 the device (b5c658c) while the host stayed bit-identical, so suspect the CPU when crackles
 appear that the twin can't reproduce. The host can't measure the load; the device can:
-`make BENCH=1` builds `FRIZZ-bench.bin` (`Bench.h`, compiled in only then), which runs 23
+`make BENCH=1` builds `FRIZZ-bench.bin` (`Bench.h`, compiled in only then), which runs 27
 segments by itself and writes `/FRIZZ/cpu.txt`; `firmware/remote.py load` and `remote.py play
 SCRIPT --cpu` read `FRIZZ.bin`'s own load. Every firmware branch runs the bench in stage 2,
 on its final build, and its PR compares it with `main`'s `firmware/bin/cpu.txt`; a segment
@@ -290,7 +367,9 @@ own build, files it with `tools/builds.py cpu` (which heads it with the md5 of t
 measured) and opens a PR changing only `bin/cpu.txt` (tooling, it merges any time). So `main`
 has its own load, measured after the merges, and layout effects between merged branches show
 there. Details:
-`firmware/README.md`, *Measure the CPU load*.
+`firmware/README.md`, *Measure the CPU load*. The bench build checksums its source, so a
+comment changed under `firmware/code/` changes its md5 too: a docs-only branch leaves code
+comments alone (or benches again).
 
 ## Firmware architecture
 

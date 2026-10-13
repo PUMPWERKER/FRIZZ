@@ -1,6 +1,9 @@
 # MIDI control (MidiControl.h, #97): notes as keys and the global CCs on channel 16, an
 # effect's CCs on its own channel, a program change, a morph
 input sine 220 0.3
+# what the card keeps, as a fresh card has it: the device's card holds the player's own (#214)
+set settings midi_channel 16
+set settings midi_block_trs 1
 at 6000
 # the global channel 16, whatever the device's card says (in RAM while remote.py plays)
 usb F0 7D 43 48 13 00 10 F7

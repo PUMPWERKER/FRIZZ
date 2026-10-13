@@ -506,6 +506,59 @@ remote.play(Starting(), "wait.txt", True)
         printf("%s\n", out.c_str());
     unlink((tmp_dir + "/wait.txt").c_str());
 
+    // input sine as SIGNAL (#219): on at its line, input off and input wav turn it off, the
+    // script's end, an error or Ctrl-C turn it off; a FRIZZ without SIGNAL skips the lines
+    const char* const kSignal = R"(
+import remote
+class Stub(remote.Frizz):
+    def __init__(self, answer=0, stop_at=None):
+        self.held, self.sent, self.answer, self.stop_at = set(), [], answer, stop_at
+    def send(self, cmd, payload=b""):
+        pass
+    def raw(self, data):
+        if self.stop_at:
+            raise self.stop_at()
+    def dev(self, sub, args=(), retries=3):
+        self.sent.append((sub, list(args)))
+        return None if self.answer is None else (self.answer, b"")
+def run(name, text, **kw):
+    open("signal.txt", "w").write(text)
+    f = Stub(**kw)
+    try:
+        got = remote.play(f, "signal.txt", False)
+    except BaseException as e:
+        got = type(e).__name__
+    print(name, got, [a for sub, a in f.sent if sub == remote.chompi.SIGNAL], flush=True)
+run("on", "input sine 220 0.3\nwait 10\n")
+run("off", "input sine 330 0.8\nwait 10\ninput off\nwait 10\n")
+run("wav", "input sine 110 1\ninput wav loop.wav\nwait 10\n")
+run("only-wav", "input wav loop.wav\ninput off\n")
+run("none", "wait 10\n")
+run("interrupted", "input sine 220 0.02\nmidi 90 3C 64\n", stop_at=KeyboardInterrupt)
+run("broken", "input sine 220 0.3\nwait x\n")
+run("zero", "input sine 0 0.3\n")
+run("old", "input sine 220 0.3\ninput sine 220 0.3\n", answer=None)
+)";
+    rc = Python(kSignal, out);
+    Check(rc == 0 && Has(out, "on 0 [[1, 1, 92, 38, 51], [0]]\n")
+              && Has(out, "off 0 [[1, 2, 74, 102, 50], [0]]\n")
+              && Has(out, "input: the test signal (SIGNAL) in AUX's place, and the mic's"),
+          "remote: play sends input sine as SIGNAL, and SIGNAL off at input off or the script's end (#219)");
+    Check(Has(out, "wav 0 [[1, 0, 110, 127, 127], [0]]\n")
+              && Has(out, "skipped (twin only): input wav (the device's test signal plays a sine): the signal off")
+              && Has(out, "only-wav 0 []\n") && Has(out, "none 0 []\n"),
+          "remote: input wav turns the signal off, skipped; a script without input sends no SIGNAL");
+    Check(Has(out, "interrupted KeyboardInterrupt [[1, 1, 92, 2, 72], [0]]\n")
+              && Has(out, "broken ValueError [[1, 1, 92, 38, 51], [0]]\n"),
+          "remote: a script interrupted (Ctrl-C) or broken off turns its signal off");
+    Check(Has(out, "zero 1 []\n") && Has(out, "line 1: input sine 0 0.3: 1-16383 Hz")
+              && Has(out, "old 0 [[1, 1, 92, 38, 51]]\n")
+              && Has(out, "skipped (twin only): input, a FRIZZ without SIGNAL"),
+          "remote: a frequency out of range fails its line; a FRIZZ without SIGNAL skips input, asked once");
+    if (rc != 0 || !Has(out, "on 0 "))
+        printf("%s\n", out.c_str());
+    unlink((tmp_dir + "/signal.txt").c_str());
+
     // expect led at the brightness that fits every line so far: one that fits only 100 %
     // after one that fits only 50 % fails, saying at which it looked (#94)
     const char* const kLevels = R"(
@@ -706,12 +759,19 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Press("KEY_5", false);
     RunMs(300);
     const std::string script = tmp_dir + "/script.txt";
-    Write(script, "input sine 220 0.3\nbooted\nat 100\ndown KEY_5\nwait 300\nexpect led smt 20 " + on +
-                      "\nup KEY_5\nwait 300\nexpect led smt 20 " + off + "\n");
+    // (the filter key's LED shows the input's level, here none: the test signal only after, #219)
+    Write(script, "booted\nat 100\ndown KEY_5\nwait 300\nexpect led smt 20 " + on +
+                      "\nup KEY_5\nwait 300\nexpect led smt 20 " + off + "\ninput sine 220 0.3\nwait 300\n");
     rc = Remote({"play", script, "--cpu"}, out);
-    Check(rc == 0 && on != off && Has(out, "skipped (twin only): input") && Has(out, "load: worst max"),
+    Check(rc == 0 && on != off && Has(out, "input: the test signal (SIGNAL) in AUX's place")
+              && !Has(out, "skipped (twin only): input") && Has(out, "load: worst max"),
           "remote: play holds a key over SysEx, its LED as expected, and reports the load");
     if (rc != 0)
+        printf("%s\n", out.c_str());
+    rc = Remote({"levels"}, out);
+    Check(rc == 0 && Has(out, "AUX L         0.0000     silent"),
+          "remote: play's input sine went as the test signal, off again at the script's end (#219)");
+    if (rc != 0 || !Has(out, "AUX L         0.0000"))
         printf("%s\n", out.c_str());
     Write(script, "booted\ndown KEY_5\nwait 300\nexpect led smt 20 " + off + "\nup KEY_5\n");
     rc = Remote({"play", script}, out);
@@ -761,7 +821,8 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     if (after_error != off || !Has(out, "page       play"))
         printf("%s\n%s\n", broke.c_str(), out.c_str());
     // (stderr's "skipped" says when it's there, in the wait)
-    Write(script, "booted\ndown KEY_5\nwait 100\ntoggle 1\nbattery 3.0\nwait 5000\nup KEY_5\n");
+    Write(script, "booted\ninput sine 1000 0.5\ndown KEY_5\nwait 100\ntoggle 1\nbattery 3.0\n"
+                  "wait 5000\nup KEY_5\n");
     rc = Remote({"play", script, "--cpu"}, out, "skipped (twin only): battery");
     const std::string interrupted = out;
     RunMs(100);
@@ -771,6 +832,11 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
               && Has(out, "page       play; the mode switch stands down\n"),
           "remote: and so does one interrupted (Ctrl-C)");
     if (after_interrupt != off || !Has(out, "page       play"))
+        printf("%s\n%s\n", interrupted.c_str(), out.c_str());
+    rc = Remote({"levels"}, out);
+    Check(rc == 0 && Has(interrupted, "input: the test signal") && Has(out, "AUX L         0.0000     silent"),
+          "remote: and turns its test signal off (#219)");
+    if (rc != 0 || !Has(out, "AUX L         0.0000"))
         printf("%s\n%s\n", interrupted.c_str(), out.c_str());
 
     // the mode switch over SysEx (kCmdSwitch): up shows the settings page, and SysEx keys
@@ -813,11 +879,11 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc == 0, "remote: a script that toggles up and down again, no key there, plays");
     if (rc != 0)
         printf("%s\n", out.c_str());
-    // the input's key up there (the upper A#) saves AUX's variant now (#152): refused too
-    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_25\nwait 100\ntap KEY_25\nwait 100\ntoggle 0\nwait 100\n");
+    // the input's key up there (the upper G#, live, #243) saves AUX's variant now (#152): refused too
+    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_24\nwait 100\ntap KEY_24\nwait 100\ntoggle 0\nwait 100\n");
     rc = Remote({"play", script, "--save"}, out);
-    Check(rc != 0 && Has(out, "line 4: tap KEY_25 on the settings page"),
-          "remote: and one that taps A# (live) there is refused: each source's is saved (#177)");
+    Check(rc != 0 && Has(out, "line 4: tap KEY_24 on the settings page"),
+          "remote: and one that taps G# (live) there is refused: each source's is saved (#177)");
     // VOLUME's page 2 on the play page, the input gain, is saved too (#152); page 1 isn't
     Write(script, "booted\nturn 6 -2\nwait 100\ntap ENC_6_SW\nwait 100\nturn 6 2\nwait 100\n");
     rc = Remote({"play", script, "--save"}, out);
@@ -880,6 +946,34 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
           "remote: play refuses a scene saved with SAVE, a slot and CHOMPI, naming the scenes file (#78)");
     if (rc == 0 || !Has(refused_save, "frizz_scenes"))
         printf("%s\n", refused_save.c_str());
+
+    // a script's set (twin/README.md) goes as the developers' SET, in RAM as the rest (#214);
+    // one FRIZZ refuses, or that can't be sent, fails its line. The old guard (--save) refuses
+    // a set FRIZZ would save: the compressor's knobs, a setting, the input gain; not an effect's
+    Write(script, "booted\nset comp 0 0.3\nset settings led_brightness 100\nwait 100\n");
+    rc = Remote({"play", script}, out);
+    const std::string set_played = out;
+    Remote({"get", "comp"}, out);
+    Check(rc == 0 && Has(out, "page 1  0.3000  0.5000"),
+          "remote: play's set sets the compressor's knob 1 to 0.3 (#214)");
+    if (rc != 0 || !Has(out, "0.3000"))
+        printf("%s\n%s\n", set_played.c_str(), out.c_str());
+    Write(script, "booted\nset comp 0 0\nset comp 0 2\nset settings 99 1\nset nothing 0 0\nwait 100\n");
+    rc = Remote({"play", script}, out);
+    const std::string set_failed = out;
+    Remote({"get", "comp"}, out);
+    Check(rc == 1 && Has(set_failed, "line 3: set comp 0 2: a knob's value is 0-1")
+              && Has(set_failed, "line 4: set settings 99 1: refused") && Has(set_failed, "line 5: set nothing 0 0: no group")
+              && Has(out, "page 1  0.0000  0.5000"),
+          "remote: a set out of range, refused or of no group fails its line; the others are set");
+    if (rc != 1)
+        printf("%s\n", set_failed.c_str());
+    Write(script, "booted\nset filter 0 0.5\nset comp 1 0.5\nwait 100\n");
+    rc = Remote({"play", script, "--save"}, out);
+    Check(rc != 0 && Has(out, "line 3: set comp 1 0.5") && Has(out, "/FRIZZ/frizz_master.txt"),
+          "remote: and with --save a set of the compressor is refused, naming the master file; an effect's isn't");
+    if (rc == 0)
+        printf("%s\n", out.c_str());
 
     // a setter FRIZZ saves keeps the card out of it the same way, unless --save (#171): the
     // channel changes in RAM, the master file stays as it was; --save after that can't write

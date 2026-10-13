@@ -1,0 +1,1 @@
+The manual's diagrams, drawn by [`firmware/tools/diagrams/diagrams.py`](../firmware/tools/diagrams/diagrams.py): to change one, edit that script and run it (Python 3, no packages), which rewrites every SVG here.
