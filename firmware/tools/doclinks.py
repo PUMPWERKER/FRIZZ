@@ -476,6 +476,9 @@ def landing(root, anchors, errors):
             moves += 1
             if len(plain(title)) > 40:
                 err(n0, f'the move "{title}" is {len(plain(title))} characters, at most 40')
+            if '`' in title:
+                err(n0, f'`code` in the move "{title}": only in Controls')
+            links += inline(path, n0, title, anchors, root, errors)
             fields, para = MOVE
             where = f'Session, move "{title}"'
         # the field list: right under the heading, then a blank line, then the paragraph
@@ -511,6 +514,8 @@ def landing(root, anchors, errors):
                 continue
             if '`' in v:
                 err(n, f'`code` in the field "{f}" of {where}: only in Controls')
+            if section == 'Meta' and re.search(r'[*\[<`]', v):
+                err(n, f'the field "{f}" of Meta is plain text: no **bold**, *emphasis*, links or HTML')
             if len(plain(v)) > fields[f]:
                 err(n, f'the field "{f}" of {where} is {len(plain(v))} characters, at most {fields[f]}')
             if (section, f) in EMPHASIS_ONCE and level == 2 and len(re.findall(r'(?<!\*)\*[^*]+\*(?!\*)', v)) > 1:
@@ -522,8 +527,8 @@ def landing(root, anchors, errors):
             if not t.strip():
                 cur = None
                 continue
-            if re.match(r'^\s*([-*+]|\d+[.)])\s', t):
-                err(n, f'a list in {where}: only the field list right under the heading')
+            if re.match(r'^\s*([-*+>|]|\d+[.)])\s', t):
+                err(n, f'a list, quote or table in {where}: only the field list right under the heading')
             if cur is None:
                 cur = [n, t]
                 paras.append(cur)
@@ -553,6 +558,8 @@ def inline(path, n, s, anchors, root, errors):
         errors.append(f'{path}:{n}: raw HTML ("<"): only **bold**, *emphasis* and [links](...)')
     if '![' in s:
         errors.append(f'{path}:{n}: an image: not on the landing page\'s text')
+    if re.search(r'[\[\]]', plain(s)):
+        errors.append(f'{path}:{n}: a [ or ] that isn\'t a [link](target)')
     count = 0
     for m in re.finditer(r'\[[^\]]*\]\(([^)\s]+)\)', s):
         target = m.group(1)
@@ -739,7 +746,13 @@ def selftest(root, quiet=False):
         ('2 moves', sub(S, r'^### Two\n(?:.*\n)+?(?=## Get)', ''), 'expected 3 to 6'),
         ('raw HTML in landing.md', sub(S, r'^\*\*FRIZZ\*\*', '<b>FRIZZ</b>'), 'raw HTML'),
         ('an image in landing.md', sub(S, r'^Move one\.', '![A key](images/key.svg)'), 'an image'),
-        ('a list in landing.md', sub(S, r'^Move one\.', '- Move one.'), 'a list in'),
+        ('a list in landing.md', sub(S, r'^Move one\.', '- Move one.'), 'a list, quote or table'),
+        ('a quote in landing.md', sub(S, r'^Move one\.', '> Move one.'), 'a list, quote or table'),
+        ('a table in landing.md', sub(S, r'^Move one\.', '| Move | one |'), 'a list, quote or table'),
+        ('a link without its target', sub(S, r'^Move one\.', 'See [the manual].'), "isn't a [link](target)"),
+        ('emphasis in Meta', sub(S, r'^- Title: A title$', '- Title: A *title*'), 'plain text'),
+        ('HTML in a move title', sub(S, r'^### One$', '### One <br>'), 'raw HTML'),
+        ('code in a move title', sub(S, r'^### One$', '### `One`'), 'only in Controls'),
         ('code in a paragraph', sub(S, r'^Move one\.', 'Press `LOOP`.'), 'only in Controls'),
         ('code in a field', sub(S, r'^- Install: .*$', '- Install: Swap `FRIZZ.bin`.'), 'only in Controls'),
         ('a landing link to no heading', sub(S, r'MANUAL\.md#looper', 'MANUAL.md#no-such-heading'),

@@ -1,8 +1,18 @@
 # FRIZZ website: front page
 
-<!-- The text of frizz.friedrichwagner.eu's front page, read by frizz-web's fetch-docs at the
-release tag. Its format is fixed: firmware/tools/doclinks.py checks it. The design, the key row's
-kicker, the download step and the trademark note stay in frizz-web. -->
+<!--
+The copy of the front page of the FRIZZ website (frizz.friedrichwagner.eu) for this release.
+The website's scripts/fetch-docs.mjs reads it at the release's tag; the rest of the page (the
+keys, their knobs and colours, the download) comes from the manual and the firmware.
+
+The format is fixed, and a file that breaks it fails the website's build:
+- the sections below, all of them, in this order; in each, its fields as "- Name: value" lines
+  right under the heading, then (where there is one) one paragraph after a blank line;
+- Session: 3 to 6 moves (###), each with "- Controls:" (1 to 4 `control`s) and one paragraph;
+- inline only **bold**, *emphasis* and [links](MANUAL.md#anchor), from the repo's root;
+  *emphasis* in the hero's and the session's title marks the word drawn over;
+- no HTML, and no more text than the page has room for (the website's fetch-docs has the limits).
+-->
 
 ## Meta
 
@@ -51,25 +61,25 @@ scrubs. Press it for plain speed, forwards.
 
 - Controls: `White keys` `Knobs 1 to 4`
 
-Hold a key for as long as you want the effect. Most effects start silent, so one turn brings
-them in, and the knobs do the same job on each: 1 is the main control, 2 the feedback where an
-effect has one.
+Hold a key for as long as you want the effect. Most effects start silent, so one turn brings them
+in, and the knobs do the same job on each: 1 is the main control, 2 the feedback where an effect
+has one.
 
 ### Save the build-up, recall the drop
 
 - Controls: `Dark keys` `SHIFT + dark key`
 
-Four dark keys hold scenes on the SD card: every effect's knobs, and which ones are latched.
-Press one and it all lands at once. Hold SHIFT and it morphs there instead, arriving at the end
-of the bar. The dark key left of them is the blank scene: everything off.
+Four dark keys hold scenes on the SD card: every effect’s knobs, and which ones are latched.
+Press one and it all lands at once. Hold SHIFT and it morphs there instead, arriving at the end of
+the bar. The dark key left of them is the blank scene: everything off.
 
 ### Lock it to the rest of your setup
 
 - Controls: `MIDI TRS` `USB` `PLAY + LOOP` `SHIFT + LOOP`
 
 MIDI clock over TRS or USB sets the tempo for the tempo-synced effects; hold PLAY as you press
-LOOP and the loop locks to whole bars of it. No clock? Tap the tempo in. Notes play the keys,
-CCs reach every parameter, program changes recall scenes.
+LOOP and the loop locks to whole bars of it. No clock? Tap the tempo in. Notes play the keys, CCs
+reach every parameter, program changes recall scenes.
 
 ## Get started
 
@@ -84,6 +94,6 @@ it doesn't matter which firmware the CHOMPI runs now.
 
 ## Credits
 
-FRIZZ builds on the [CHOMPI open-source release](https://github.com/CHOMPI-Club/CHOMPI) by CHOMPI
-Club and runs on Electrosmith's Daisy platform. Several effects are ported from Bastl
+FRIZZ builds on the [CHOMPI open-source release](https://github.com/CHOMPI-Club/CHOMPI) by
+CHOMPI Club and runs on Electrosmith's Daisy platform. Several effects are ported from Bastl
 Instruments' Kastle 2 FX Wizard.
