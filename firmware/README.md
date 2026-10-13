@@ -246,8 +246,10 @@ twin has (the card, the battery, power-on) are skipped, saying so.
 With `--cpu` it reports the worst load FRIZZ.bin itself had, measured in the audio callback as
 the bench does, and how many blocks took longer than a block, so a scenario can be tried for
 crackles on the build that plays, not the bench's (it says how many readings went unanswered,
-if any). Whatever ends a script (an error, Ctrl-C), it lets go of the keys it holds, gives
-the mode switch back to the hand and turns the test signal off.
+if any). It starts with the mode switch down over SysEx, as the twin starts, whatever the
+hand left it at, so the script's keys reach the play page until its own `toggle` (#253).
+Whatever ends a script (an error, Ctrl-C), it lets go of the keys it holds, gives the mode
+switch back to the hand and turns the test signal off.
 
 A script plays on FRIZZ as it stands: a twin script starts from power-on, but on the device the
 scripts played before it since FRIZZ started have left the effect selected, its knobs, the

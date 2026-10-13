@@ -903,26 +903,47 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
         printf("%s\n%s\n", interrupted.c_str(), out.c_str());
 
     // the mode switch over SysEx (kCmdSwitch): up shows the settings page, and SysEx keys
-    // reach it as the hand's do; `switch hand` gives the real switch back. The guard of a FRIZZ
-    // from before PERSIST (card_use), as --save keeps it
+    // reach it as the hand's do; `switch hand` gives the real switch back
     Remote({"switch", "up"}, out);
     rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, "page       settings; the mode switch stands down, SysEx holds it up"),
           "remote: switch up shows the settings page, and state says so");
-    Write(script, "booted\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n"); // SHIFT + the upper F#: mono
+    // play starts with the switch down, as the twin starts, whatever the device shows (#253):
+    // the script's keys reach the play page, and the switch is the hand's again after
+    Write(script, "booted\ndown KEY_5\nwait 300\nexpect led smt 20 " + on + "\nup KEY_5\n");
+    rc = Remote({"play", script}, out);
+    const std::string held_up = out;
+    Remote({"state"}, out);
+    Check(rc == 0 && Has(out, "page       play; the mode switch stands down\n"),
+          "remote: play puts a switch SysEx holds up down, as the twin starts, then the hand's (#253)");
+    if (rc != 0 || !Has(out, "page       play"))
+        printf("%s\n%s\n", held_up.c_str(), out.c_str());
+    SetToggle(true);
+    RunMs(300);
+    rc = Remote({"play", script}, out);
+    const std::string hand_up = out;
+    Remote({"state"}, out);
+    Check(rc == 0 && Has(out, "page       settings; the mode switch stands up"),
+          "remote: and the hand's switch up: the keys still reach the play page, the hand's after (#253)");
+    if (rc != 0 || !Has(out, "page       settings"))
+        printf("%s\n%s\n", hand_up.c_str(), out.c_str());
+    SetToggle(false);
+    RunMs(300);
+    // the guard of a FRIZZ from before PERSIST (card_use), as --save keeps it: a key on the
+    // settings page the script toggles up to
+    Write(script, "booted\ntoggle 1\nwait 100\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n"); // SHIFT + the upper F#: mono
     rc = Remote({"play", script, "--save"}, out);
     const std::string refused = out;
     Remote({"state"}, out);
-    Check(rc != 0 && Has(refused, "line 2: down KEY_26 on the settings page") && Has(refused, "--force")
+    Check(rc != 0 && Has(refused, "line 4: down KEY_26 on the settings page") && Has(refused, "--force")
               && !Has(out, ", mono"),
-          "remote: play refuses a key on the settings page the device shows, saying why, and sends none (#58)");
+          "remote: play refuses a key on the settings page, saying why, and sends none (#58)");
     if (rc == 0 || !Has(refused, "--force"))
         printf("%s\n", refused.c_str());
     Remote({"play", script, "--save", "--force"}, out);
-    Remote({"switch", "hand"}, out);
     rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, ", mono") && Has(out, "page       play; the mode switch stands down\n"),
-          "remote: a SysEx key there sets mono; switch hand, the play page again");
+          "remote: a SysEx key there sets mono; the play page again after the script");
     // a script's toggle: up and down over SysEx, the real switch again at its end
     Write(script, "booted\ntoggle 1\nwait 100\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n"
                   "toggle 0\nwait 100\n");
@@ -1098,7 +1119,8 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc = Remote({"load"}, out);
     Check(rc == 0 && Has(out, "over 100 %: 0 blocks"), "remote: load counts the blocks over 100 %");
 
-    // a FRIZZ from before PERSIST (no answer): the old guard, refusing
+    // a FRIZZ from before PERSIST (no answer): the old guard, refusing. The page the device
+    // shows doesn't count (play puts the switch down, #253): the script's toggle does
     rc = Python(R"(
 import sys, remote
 class Old:
@@ -1107,14 +1129,14 @@ class Old:
     def state(self):
         return bytes([0, 0, 0, 0, 0, 0, 64, 0]) + bytes(20)
 remote.Frizz = lambda device: Old()
-open("s.txt", "w").write("booted\ntap KEY_18\n")
+open("s.txt", "w").write("booted\ntoggle 1\ntap KEY_18\n")
 sys.argv = ["remote.py", "--device", "x", "play", "s.txt"]
 try:
     remote.main()
 except SystemExit as e:
     print("exit:", e)
 )", out);
-    Check(Has(out, "a FRIZZ from before PERSIST") && Has(out, "exit: line 2: tap KEY_18 on the settings page"),
+    Check(Has(out, "a FRIZZ from before PERSIST") && Has(out, "exit: line 3: tap KEY_18 on the settings page"),
           "remote: a FRIZZ from before PERSIST is guarded as before (#58)");
     if (!Has(out, "exit: line 2"))
         printf("%s\n", out.c_str());
@@ -1379,6 +1401,42 @@ kept[0] = True
               "tools: a FRIZZ that restarted during play or a setter (IDENT: no longer RAM only) fails, saying so (#171)");
     }
     if (rc != 0 || !Has(out, "start 10") || failures)
+        printf("%s\n", out.c_str());
+
+    // play --fresh: the slot started again first, then the switch down (a restart drops what
+    // SysEx held, #253), the hand's again at the end
+    rc = Python(R"(
+import argparse, sys, chompi, remote
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr = sys.stdout
+def to_frizz(slot=None, timeout=120, device=None, again=False):
+    chompi.frizz_slot = 12
+    print("to_frizz again", again)
+    return "node"
+chompi.to_frizz = to_frizz
+class F:
+    class link:
+        fd = None
+    def __init__(self, device):
+        pass
+    def ram_only(self):
+        return True
+    def dev(self, sub, args=()):
+        return 0, bytes(25) + bytes([1])
+    def send(self, cmd, payload=b""):
+        print("sent 0x%02X %s" % (cmd, list(payload)))
+    def release(self):
+        print("released")
+remote.Frizz = F
+remote.os.close = lambda fd: None
+open("x.txt", "w").write("booted\nwait 10\n")
+remote.run(argparse.Namespace(cmd="play", script="x.txt", cpu=False, fresh=True, save=False,
+                              force=False, slot=None, device=None, no_start=False))
+)", out);
+    Check(rc == 0 && Has(out, "to_frizz again True\n") && Has(out, "sent 0x14 [1]\nreleased\nsent 0x14 [0]\n")
+              && out.find("to_frizz again True") < out.find("sent 0x14 [1]"),
+          "tools: play --fresh starts the slot again first, then puts the switch down; the hand's at the end (#253)");
+    if (rc != 0 || !Has(out, "sent 0x14 [1]"))
         printf("%s\n", out.c_str());
 
     // keys 10 and 13 are the user's (#171): flash.py sends there only when the key is named, and
