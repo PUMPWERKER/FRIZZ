@@ -340,6 +340,14 @@ int main(void)
         System::Delay(10);
     }
 
+    // USB's lines from the charger to the Daisy: the host meets FRIZZ from here, and has it
+    // enumerated long before the audio callback runs the engine (#195)
+    hw.usb_sw.Write(false);     // give USB control
+    daisy::System::Delay(1); // Wait a sec
+    hw.MpWrite(0x0a, 0B00100100); // AutoDPDM
+    daisy::System::Delay(1); // Wait a sec
+    hw.usb_sw.Write(true);     // take USB control
+
     /** SDMMC Init */
     System::Delay(100);
     SdmmcHandler::Config sd_cfg;
@@ -390,6 +398,13 @@ int main(void)
         sleep_state += hw.button_sr.State(int(Hardware::SwId::KEY_26))
                         && hw.button_sr.State(int(Hardware::SwId::KEY_27))
                         && hw.button_sr.State(int(Hardware::SwId::KEY_28));
+        // a key pressed or held meanwhile is taken here, so ui.h's GenerateEvents never
+        // sees it go down: its press reaches no page, and its release lets go of nothing
+        for(int k = 0; k < static_cast<int>(Hardware::SwId::SR_LAST); k++)
+        {
+            hw.button_sr.RisingEdge(k);
+            hw.button_sr.FallingEdge(k);
+        }
 
         System::DelayUs(100);
     }
@@ -398,12 +413,6 @@ int main(void)
 
     if(sleep_state > 4000)
         hw.MpWrite(0x08, 0B10111111); // SHIPPING MODE
-
-    hw.usb_sw.Write(false);     // give USB control
-    daisy::System::Delay(1); // Wait a sec
-    hw.MpWrite(0x0a, 0B00100100); // AutoDPDM
-    daisy::System::Delay(1); // Wait a sec
-    hw.usb_sw.Write(true);     // take USB control
 
     // the event log starts here, the card read
     event_log.Start(daisy::System::GetNow(), hw.GetToggleState(), input_jack.plugged);
