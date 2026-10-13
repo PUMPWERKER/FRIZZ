@@ -26,9 +26,10 @@ sits on the outputs, and MIDI over TRS and USB reaches every control.
 
 ## Panel
 
-![The panel as FRIZZ uses it: the fifteen white keys with the effects, the chaos key and the
-compressor; the dark keys with the scenes and save, copy and delete; knobs 1-4, the transport
-knob, VOLUME, CHOMPI, PLAY, LOOP, the mode switch and the jacks](images/panel.svg)
+![A schematic of the panel: the 15 white keys with the effects, the chaos key and the master
+compressor; above them the 10 dark keys with the blank scene, scenes 1-4, save, copy and
+delete; behind them the mode switch, CHOMPI, knobs 1-4, the transport knob, PLAY, LOOP and
+VOLUME; and the jacks](images/panel.svg)
 
 On the play page (the mode switch down), the controls are:
 
@@ -60,9 +61,10 @@ from.
 
 ### Signal flow
 
-![The whole signal path: the input through its gain to the looper and the input/loop mix, the
-effects, the master compressor, VOLUME, the safety limiter, the master out and the
-headphones](images/signal-flow.svg)
+![The signal flow: the input after its gain to the looper and the input/loop mix, the mix
+through the effects and the master compressor, a dry source joining after them, then VOLUME
+and a safety limiter on the line out and on the headphones, whose feed can blend in the input
+alone](images/signal-flow.svg)
 
 The stereo AUX input, or the built-in microphone while no cable is in AUX (see
 [below](#input-aux-or-the-mic)), goes to the headphone and master outputs
@@ -78,10 +80,9 @@ headphones carry the same, or the input on its own (see [VOLUME knob](#volume-kn
 
 ### Input: AUX or the mic
 
-![The input: AUX or the mic, picked by AUX's jack or the settings page's upper F#, each with
-its own input gain; the upper G# sends it through the effects or dry past them, the upper A#
-puts it live on the outputs; the looper records it either way, and VOLUME's page 3 puts it on
-the headphones alone](images/input.svg)
+![The input: AUX or the mic, each with its own gain, picked by the upper F# or AUX's jack; the
+source as it is to the looper and the headphone feed; the upper G# through the effects or dry,
+the upper A# live on the outputs or not; the dry share joining after the compressor](images/input.svg)
 
 FRIZZ hears CHOMPI's built-in microphone too, as TAPE and TEMPO do. The upper
 octave's F#, G# and A# on the [settings page](#settings-page) set the input left to right, as
@@ -151,9 +152,10 @@ Over MIDI, CC 84 picks the source, CC 116 sets its effects and CC 117 it live (s
 
 ### Effect chain
 
-![The effects in the order they run: the inserts in a row, the resonator's loop around part of
-them, the tape effects, the delay and reverb as sends, each effect's Mix, Band and Level, then
-the master compressor, VOLUME, the safety limiter and the outputs](images/fx-chain.svg)
+![The effects in the order FRIZZ computes them: the freezer, the shifter to the phaser inside
+the resonator's feedback loop, the slicer, wow & flutter and the tape stop, the delay and
+reverb as sends; then a dry input, the master compressor, VOLUME and the safety limiters; below
+them every insert's page 2](images/fx-chain.svg)
 
 The keys run in signal order, left to right:
 
@@ -189,10 +191,9 @@ others, and the 15th, the last, is the [master compressor](#master-compressor)'s
 
 ### Tempo and MIDI
 
-![The tempo's sources: the loop, a MIDI clock over TRS or USB as the clock source picks it, or
-the last tempo, tapped or held; the clock factor; the tempo going to the quantized recording,
-the effects and MIDI out; MIDI's Start, Stop and Song Position to the looper; MIDI out and MIDI
-feedback](images/clock-midi.svg)
+![Clock and MIDI: the clock source and the clock factor, the quantized recording, transport
+following, the tempo from the loop, the MIDI clock or the tapped tempo driving the effects,
+the morphs' bar lines, the beat LEDs and MIDI out, and MIDI feedback](images/clock-midi.svg)
 
 The effects that follow a tempo, a quantized recording and MIDI out share one tempo: the
 loop's while there is one, otherwise a MIDI clock from the [clock source](#clock-source),
