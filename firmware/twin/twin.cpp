@@ -446,6 +446,8 @@ std::map<std::string, std::string>& CardFiles() { return FakeCard::Get().files; 
 void SetCardPresent(bool present) { FakeCard::Get().present = present; }
 void SetCardSpace(size_t bytes) { FakeCard::Get().space = bytes; }
 int CardOpenFiles() { return FakeCard::Get().open; }
+void SetCardRawPolls(int polls) { FakeCard::Get().raw_polls = polls; }
+int CardRawClash() { return FakeCard::Get().raw_clash; }
 static uint64_t card_write_ns = 0;
 static void CardWriteTime(size_t) { DelayNs(card_write_ns); }
 void SetCardWriteMs(uint32_t ms)

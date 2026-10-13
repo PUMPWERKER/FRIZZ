@@ -52,6 +52,15 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
     ./remote.py crash-test hang-main|fault-main|hang-audio|fault-audio
                                       the bench (FRIZZ-bench.bin) hangs or faults on purpose,
                                       for RESET, the crash record and the watchdog
+    ./remote.py loops [--scan]        the loop slots on the card (/FRIZZ/LOOPS/A-H/01-15.wav)
+                                      as FRIZZ's scan found them; --scan scans again first
+    ./remote.py loops load BANK SLOT [--fault no-flow|past-end|cut-short|reinit] [--check WAV]
+                                      loads one (A 1 ... H 15) into the loop buffer, following
+                                      it: its time, the audio callback's load meanwhile,
+                                      MainLoop's longest step; --check: the CRC-32 of what
+                                      landed against WAV's data. A fault provokes an error
+    ./remote.py loops write KB CHUNK  the write test: KB written to /FRIZZ/LOOPS/T in CHUNK-
+                                      byte writes, renamed, read back, deleted with its folder
 
 `play` presses the keys and turns the knobs of a script over FRIZZ's SysEx, at the script's
 times, sends its `midi` and `clock` to the device, and checks its `expect led` lines against the
@@ -729,6 +738,146 @@ def crash_test(f, what):
     print({1: "MainLoop hangs (RESET brings it back)", 2: "faulted: read where nothing is",
            3: "the audio callback hangs (the watchdog resets in 1 s)",
            4: "faulted: an undefined instruction in the audio callback"}[n])
+# the loop loader (LoopLoader.h): its states, a slot's result or why a load stopped, faults
+LOOP_STATES = ["idle", "scanning", "loading", "loaded", "failed", "checking", "writing", "written"]
+LOOP_RESULTS = ["empty", "mono", "stereo", "not RIFF/WAVE", "no fmt chunk before the data",
+                "not PCM", "not 16-bit", "not 48 kHz", "not mono or stereo",
+                "no data chunk near the start", "goes past the file's end",
+                "longer than 16 bars at 50 BPM", "unreadable", "in too many fragments",
+                "card error", "timeout", "card lost", "its clusters end before its data",
+                "a write failed", "read back other than written"]
+LOOP_FAULTS = {"no-flow": 1, "past-end": 2, "cut-short": 4,
+               "reinit": 4 | 8}  # cut short, the card then set up from scratch
+BANKS = "ABCDEFGH"
+
+
+def loop_result(r):
+    return LOOP_RESULTS[r] if r < len(LOOP_RESULTS) else "result %d" % r
+
+
+def loops_status(f):
+    d = dev_data(f, chompi.LOOPS, [0], "LOOPS")
+    g = chompi.get7
+    return dict(state=d[0], bank=d[1], slot=d[2], error=d[3], sd=g(d[4:9]), done=g(d[9:13]),
+                total=g(d[13:17]), ms=g(d[17:20]), runs=g(d[20:23]), worst_us=g(d[23:26]),
+                clkcr=g(d[26:31]) & 0xFFFFFFFF, recoveries=d[31], reinits=d[32],
+                frags=g(d[33:35]) if len(d) >= 35 else None)
+
+
+def loops_wait(f, busy, timeout, progress=False):
+    """Status every 20 ms until its state isn't in BUSY: (status, seconds, MainLoop's longest
+    step meanwhile in us)"""
+    t0 = time.time()
+    worst = 0
+    flow_off = False
+    while True:
+        s = loops_status(f)
+        worst = max(worst, s["worst_us"])
+        flow_off = flow_off or s["state"] in busy and not s["clkcr"] & 0x20000
+        s["flow_off"] = flow_off
+        if s["state"] not in busy:
+            if progress:
+                print()
+            return s, time.time() - t0, worst
+        if time.time() - t0 > timeout:
+            sys.exit("loops: still %s after %d s" % (LOOP_STATES[s["state"]], timeout))
+        if progress and s["total"]:
+            print("\r  %5.1f of %.1f MB" % (s["done"] / 1e6, s["total"] / 1e6), end="", flush=True)
+        time.sleep(0.02)
+
+
+def loops_show(f, scan):
+    if scan and not f.dev(chompi.LOOPS, [3]) or not f.dev(chompi.LOOPS, [0]):
+        sys.exit("no answer to LOOPS: a FRIZZ from before it")
+    s, secs, worst = loops_wait(f, [1], 30)
+    if scan:
+        print("scanned in %.2f s, MainLoop's longest step %.1f ms" % (secs, worst / 1000))
+    filled = 0
+    for b, name in enumerate(BANKS):
+        d = dev_data(f, chompi.LOOPS, [1, b], "LOOPS")
+        for slot, r in enumerate(d[1:16]):
+            if not r:
+                continue
+            filled += 1
+            line = "%s/%02d  %s" % (name, slot + 1, loop_result(r))
+            if r in (1, 2):
+                i = dev_data(f, chompi.LOOPS, [2, b, slot], "LOOPS")
+                frames = chompi.get7(i[1:5])
+                line += ", %d frames (%.2f s), its data at %d" % (frames, frames / 48000,
+                                                                 chompi.get7(i[5:10]))
+            print(line)
+    print("%d slots filled" % filled)
+
+
+def wav_data(path):
+    """A WAV file's data chunk, as FRIZZ loads it: its frames' bytes (whole frames)"""
+    with open(path, "rb") as w:
+        b = w.read()
+    at, channels = 12, 2
+    while at + 8 <= len(b):
+        cid, n = b[at:at + 4], int.from_bytes(b[at + 4:at + 8], "little")
+        if cid == b"fmt ":
+            channels = int.from_bytes(b[at + 10:at + 12], "little")
+        if cid == b"data":
+            n -= n % (2 * channels)
+            return b[at + 8:at + 8 + n]
+        at += 8 + n + (n & 1)
+    sys.exit("%s: no data chunk" % path)
+
+
+def loops_load(f, bank, slot, fault, check):
+    import zlib
+    load(f)  # the meter from here
+    loops_status(f)  # and MainLoop's longest step
+    got = f.dev(chompi.LOOPS, [4, bank, slot - 1, LOOP_FAULTS.get(fault, 0)])
+    if not got:
+        sys.exit("no answer to LOOPS: a FRIZZ from before it")
+    if got[0] != chompi.OK:
+        sys.exit("loops: refused, %s" % LOOP_STATES[loops_status(f)["state"]])
+    s, secs, worst = loops_wait(f, [2], 120, progress=True)
+    mx, mean, over = load(f)
+    ok = s["state"] == 3
+    mb = s["done"] / 1e6
+    print("%s/%02d %s: %.2f of %.2f MB in %d ms (%.1f MB/s), %d runs%s%s" % (
+        BANKS[bank], slot, "loaded" if ok else "failed, " + loop_result(s["error"]), mb,
+        s["total"] / 1e6, s["ms"], mb * 1000 / s["ms"] if s["ms"] else 0, s["runs"],
+        ", the file in %d fragment%s" % (s["frags"], "" if s["frags"] == 1 else "s") if s["frags"] else "",
+        ", SD error 0x%x" % s["sd"] if s["sd"] else ""))
+    print("  the audio callback meanwhile: max %.1f %%, mean %.1f %%%s; MainLoop's longest "
+          "step %.1f ms" % (mx, mean, "" if over is None else ", %d blocks over 100 %%" % over,
+                            worst / 1000))
+    print("  SDMMC CLKCR 0x%08x (flow control %s, divider %d%s); card recovered %d times, %d set "
+          "up again" % (s["clkcr"], "on" if s["clkcr"] & 0x20000 else "off", s["clkcr"] & 0x3FF,
+                        ", off while it loaded" if s["flow_off"] else "", s["recoveries"], s["reinits"]))
+    if ok and check:
+        want = zlib.crc32(wav_data(check)) & 0xFFFFFFFF
+        dev_data(f, chompi.LOOPS, [5, 1], "LOOPS")
+        t0 = time.time()
+        while True:
+            d = dev_data(f, chompi.LOOPS, [5], "LOOPS")
+            if d[0] != 5 or time.time() - t0 > 30:
+                break
+            time.sleep(0.05)
+        crc = chompi.get7(d[1:6]) & 0xFFFFFFFF
+        print("  CRC-32 0x%08x, %s's data 0x%08x: %s" % (crc, os.path.basename(check), want,
+                                                        "the same" if crc == want else "DIFFERENT"))
+        ok = crc == want
+    return ok
+
+
+def loops_write(f, kb, chunk):
+    load(f)
+    loops_status(f)
+    got = f.dev(chompi.LOOPS, [6, kb >> 7, kb & 0x7F, chunk >> 7, chunk & 0x7F])
+    if not got or got[0] != chompi.OK:
+        sys.exit("loops write: refused")
+    s, secs, worst = loops_wait(f, [6], 120)
+    mx, mean, over = load(f)
+    print("write test, %d KB in %d-byte writes: %s in %.2f s; the audio callback max %.1f %%, "
+          "mean %.1f %%%s; MainLoop's longest step %.1f ms" % (
+              kb, chunk, "passed" if not s["error"] else loop_result(s["error"]), secs, mx, mean,
+              "" if over is None else ", %d over" % over, worst / 1000))
+    return not s["error"]
 
 
 def scene_get(f, slot):
@@ -1197,6 +1346,12 @@ def main():
     p.add_argument("--clear", action="store_true", help="and clear it")
     p = sub.add_parser("crash-test", parents=[common])
     p.add_argument("what", choices=CRASH_TESTS)
+    p = sub.add_parser("loops", parents=[common])
+    p.add_argument("action", nargs="?", choices=["load", "write"])
+    p.add_argument("args", nargs="*")
+    p.add_argument("--scan", action="store_true", help="scan the card again first")
+    p.add_argument("--fault", choices=sorted(LOOP_FAULTS))
+    p.add_argument("--check", metavar="WAV", help="the CRC of what loaded against WAV's data")
     a = ap.parse_args()
 
     try:
@@ -1304,6 +1459,19 @@ def command(a):
         crash(f, a.clear)
     elif a.cmd == "crash-test":
         crash_test(f, a.what)
+    elif a.cmd == "loops" and a.action == "load":
+        if len(a.args) != 2 or a.args[0].upper() not in BANKS or not a.args[1].isdigit() \
+                or not 1 <= int(a.args[1]) <= 15:
+            sys.exit("loops load BANK SLOT: A-H, 1-15")
+        sys.exit(0 if loops_load(f, BANKS.index(a.args[0].upper()), int(a.args[1]), a.fault,
+                                 a.check) else 1)
+    elif a.cmd == "loops" and a.action == "write":
+        if len(a.args) != 2 or not all(x.isdigit() for x in a.args) or not 1 <= int(a.args[0]) <= 1024 \
+                or not 1 <= int(a.args[1]) < 1 << 14:
+            sys.exit("loops write KB CHUNK: 1-1024 KB, CHUNK bytes")
+        sys.exit(0 if loops_write(f, int(a.args[0]), int(a.args[1])) else 1)
+    elif a.cmd == "loops":
+        loops_show(f, a.scan)
     elif a.cmd == "play":
         ram = None if a.save else f.ram_only()
         if ram:
