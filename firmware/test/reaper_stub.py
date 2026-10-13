@@ -19,8 +19,14 @@ comes in on its MIDI device, which here is the twin's USB pseudo-terminal (the d
     24 a beat in its own beats whatever its tempo; Stop pauses it, Song Position puts it there,
     Continue plays on from there. (REAPER holds still for a second first, seeking ahead, and
     varies its speed to keep up only within about half to twice its tempo: not here.)
+  - with FRIZZ_TWIN_AUDIO (ptytwin.h's Audio), audio as REAPER's on the device: a media track
+    plays its WAV into the twin's AUX as the transport moves (the song's timeline, and where
+    it plays from when), and a recording takes the twin's line out from then on, a take a
+    file in its record directory, one per turn of a loop range, as REAPER's are.
 It checks reaper.py's logic, not REAPER.
 """
+import array
+import struct
 import os
 import re
 import select
@@ -33,6 +39,33 @@ sys.path.insert(0, os.path.join(HERE, "..", "tools"))
 import midiport  # noqa: E402
 
 TICK, START, CONTINUE, STOP = 0xF8, 0xFA, 0xFB, 0xFC
+AUDIO = os.environ.get("FRIZZ_TWIN_AUDIO")
+SR = 48000
+
+
+def wav_left(path):
+    """A float WAV's (measure.py's write_wav) left channel: array of floats"""
+    with open(path, "rb") as f:
+        d = f.read()
+    pos, ch, data = 12, 2, b""
+    while pos + 8 <= len(d):
+        cid, size = d[pos:pos + 4], struct.unpack("<I", d[pos + 4:pos + 8])[0]
+        if cid == b"fmt ":
+            ch = struct.unpack("<H", d[pos + 10:pos + 12])[0]
+        elif cid == b"data":
+            data = d[pos + 8:pos + 8 + size]
+        pos += 8 + size + (size & 1)
+    x = array.array("f")
+    x.frombytes(data[:len(data) // 4 * 4])
+    return x[0::ch]
+
+
+def write_wav(path, x):
+    """Mono float samples as a 48 kHz float WAV"""
+    data = x.tobytes()
+    with open(path, "wb") as w:
+        w.write(b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVEfmt "
+                + struct.pack("<IHHIIHH", 16, 3, 1, SR, SR * 4, 4, 32) + b"data" + struct.pack("<I", len(data)) + data)
 
 
 def plan_of(path):
@@ -66,10 +99,14 @@ class Stub:
         self.sync = None  # SMPTESYNC's flags and input, synchronized
         self.ticks = 0  # synchronized: the play position in ticks, as they came in
         self.paused = False  # synchronized: stopped by a Stop (REAPER's play state 2)
+        self.tick_at = 0.  # synchronized: when the last tick (or Start, Continue) came
         if plan.get("sync"):
             with open(plan["sync"]) as f:
                 m = re.search(r"SMPTESYNC (\d+) \S+ \S+ \S+ \S+ \S+ (\d+)", f.read())
             self.sync = (int(m.group(1)), int(m.group(2))) if m and int(m.group(1)) & 1 else None
+        self.recording = None  # a take being recorded: (its start's time, the song's s then)
+        self.rec_pending = False  # synchronized, record pressed while stopped: when it plays
+        self.takes = []  # (position, offset, length, file), as reaper.lua logs them
         self.stop = False
         self.tap = midiport.Tap.__new__(midiport.Tap)
         self.tap.log, self.tap.status, self.tap.msg = [], None, []
@@ -96,26 +133,83 @@ class Stub:
         if self.monitor and msg[0] < 0xF8:
             self.write(msg)
         if self.sync:
+            if msg[0] in (START, CONTINUE, TICK):
+                self.tick_at = time.perf_counter()
             if msg[0] == START:
                 self.ticks, self.playing, self.paused = 0, True, False
             elif msg[0] == CONTINUE:
                 self.playing, self.paused = True, False
             elif msg[0] == STOP:
+                self.rec_end()
                 self.playing, self.paused = False, True
             elif msg[0] == TICK and self.playing:
                 self.ticks += 1
             elif msg[0] == 0xF2 and len(msg) == 3:
                 self.ticks = (msg[1] | msg[2] << 7) * 6
+            if msg[0] in (START, CONTINUE, STOP, 0xF2):
+                self.moved()
+                if self.playing and self.rec_pending:
+                    self.rec_pending = False
+                    self.rec_start()
 
     def state(self):
-        """REAPER's play state: 1 playing, 2 paused, 0 stopped"""
-        return 1 if self.playing else 2 if self.paused else 0
+        """REAPER's play state: 1 playing, 2 paused, 0 stopped; 4 recording"""
+        return (1 if self.playing else 2 if self.paused else 0) | (4 if self.recording else 0)
+
+    # ---- audio (ptytwin.h's Audio) ----
+    def moved(self, now=None):
+        """Where the song plays from now, for the twin's AUX"""
+        if AUDIO:
+            now = time.perf_counter() if now is None else now
+            with open(os.path.join(AUDIO, "aux.txt"), "a") as f:
+                f.write("%.6f %.6f %d\n" % (now, self.pos(now) * 60. / self.bpm, 1 if self.playing else 0))
+
+    def media(self, path, beats):
+        """The song: the WAV looped over beats from 0, its left as the twin's AUX gets it"""
+        if not AUDIO:
+            return
+        x = wav_left(path)
+        n = int(beats * 60. / self.bpm * SR)
+        song = (x * (n // len(x) + 1))[:n]
+        tmp = os.path.join(AUDIO, "timeline.tmp")
+        with open(tmp, "wb") as f:
+            song.tofile(f)
+        os.rename(tmp, os.path.join(AUDIO, "timeline.f32"))
+
+    def rec_start(self, now=None):
+        if AUDIO and self.playing:
+            now = time.perf_counter() if now is None else now
+            self.recording = (now, self.pos(now) * 60. / self.bpm)
+
+    def rec_end(self, now=None):
+        """The take recorded so far: the twin's line out from its start until now"""
+        if not self.recording:
+            return
+        now = time.perf_counter() if now is None else now
+        t0, song = self.recording
+        self.recording = None
+        with open(os.path.join(AUDIO, "start")) as f:
+            start = float(f.read())
+        n0, n1 = int(round((t0 - start) * SR)), int(round((now - start) * SR))
+        path = os.path.join(AUDIO, "out.f32")
+        end = time.perf_counter() + 3.
+        while os.path.getsize(path) < n1 * 4 and time.perf_counter() < end:
+            time.sleep(.01)  # the twin a little behind
+        x = array.array("f")
+        with open(path, "rb") as f:
+            f.seek(n0 * 4)
+            x.frombytes(f.read((n1 - n0) * 4))
+        take = os.path.join(self.plan["recdir"], "take-%d.wav" % len(self.takes))
+        write_wav(take, x)
+        self.takes.append((song, 0., len(x) / float(SR), take))
 
     # ---- the transport ----
     def pos(self, now=None):
         """The play position in beats"""
-        if self.sync:
-            return self.ticks / 24.
+        if self.sync:  # the ticks that came, and the time since the last, up to a tick's
+            now = time.perf_counter() if now is None else now
+            since = min((now - self.tick_at) * self.bpm / 60., 1 / 24.) if self.playing else 0.
+            return self.ticks / 24. + since
         if not self.playing:
             return self.cursor
         now = time.perf_counter() if now is None else now
@@ -130,24 +224,32 @@ class Stub:
             return
         self.at_beat, self.at_time = self.cursor, time.perf_counter()
         self.playing = True
+        self.moved(self.at_time)
         self.clock_out([START] if self.cursor == 0 else [CONTINUE])
 
     def halt(self):
-        if not self.playing or self.sync:
+        if self.sync:  # stopped by hand: it follows again on the next Start or Continue
+            self.rec_end()
+            self.playing = self.paused = False
             return
+        if not self.playing:
+            return
+        self.rec_end()
         self.playing = False
+        self.moved()
         self.clock_out(bytes([STOP]) + self.spp(self.cursor))
         self.reset()
 
     def reset(self):
         if self.resets:
-            for cc in sorted({(m[0], m[1]) for _, m in self.lanes}):
+            for cc in sorted({(m[0], m[1]) for _, m in self.lanes if m[0] & 0xF0 == 0xB0}):
                 self.write([cc[0], cc[1], 0])
 
     def locate(self, beat):
         self.cursor = beat
         if self.playing:
             self.at_beat, self.at_time = beat, time.perf_counter()
+            self.moved(self.at_time)
             self.clock_out(bytes([STOP]) + self.spp(beat) + bytes([CONTINUE]))
         else:
             self.clock_out(self.spp(beat))
@@ -167,7 +269,12 @@ class Stub:
             now = time.perf_counter()
             beat = self.pos(now)
             if self.loop and beat >= self.loop[1]:
+                turn = self.recording is not None
+                self.rec_end(now)  # a take a turn
                 self.at_beat, self.at_time = self.loop[0], now
+                self.moved(now)
+                if turn:
+                    self.rec_start(now)
                 self.write(bytes([STOP]) + self.spp(self.loop[0]) + bytes([CONTINUE]))
                 self.reset()
                 last = None
@@ -204,6 +311,24 @@ class Stub:
             beat = self.pos()
             self.bpm = float(w[2])
             self.at_beat, self.at_time = beat, time.perf_counter()
+            self.moved(self.at_time)
+        elif name == "media":
+            self.media(w[2], float(w[3]))
+        elif name == "rec":
+            pass  # armed: what the line out carries is recorded
+        elif name == "record":
+            if self.sync:
+                if self.playing:
+                    self.rec_start()
+                else:
+                    self.rec_pending = True
+            else:
+                self.play()
+                self.rec_start()
+        elif name == "takes":
+            for t in self.takes:
+                self.log("take %.6f %.6f %.6f %s", *t)
+            self.takes = []
         elif name == "loop":
             self.loop = None if w[2] == "off" else (float(w[2]), float(w[3]))
         elif name == "lane":
@@ -222,6 +347,7 @@ class Stub:
         return None if name == "quit" else True
 
     def main(self):
+        self.moved()  # stopped (a REAPER before may have left it playing)
         self.log("ready")
         if self.fd is not None:
             self.log("dev out 0 %s", self.plan["out_name"])

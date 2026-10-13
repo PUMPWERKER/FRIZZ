@@ -191,6 +191,27 @@ def read_wav(path):
     return x
 
 
+def find(y, x, at, search):
+    """Where x is in y within +-search samples of at: (its start in y, to a fraction of a
+    sample, the correlation there normalized: 1 for x itself at any level), or None where y
+    hasn't the room. By FFT, so a bar against seconds is quick"""
+    lo, hi = max(0, int(at - search)), min(len(y), int(at + search) + len(x))
+    seg = y[lo:hi]
+    if len(seg) < len(x) + 2:
+        return None
+    n = 1 << int(np.ceil(np.log2(len(seg) + len(x))))
+    c = np.fft.irfft(np.fft.rfft(seg, n) * np.conj(np.fft.rfft(x, n)), n)[:len(seg) - len(x) + 1]
+    e = np.concatenate([[0.], np.cumsum(seg ** 2)])
+    energy = e[len(x):] - e[:-len(x)]
+    norm = c / np.sqrt(np.maximum(energy, 1e-3 * energy.max() + 1e-20) * np.sum(x ** 2) + 1e-20)
+    i = int(np.argmax(norm))
+    p = 0.
+    if 0 < i < len(c) - 1:  # to a fraction of a sample, by a parabola
+        d = c[i - 1] - 2 * c[i] + c[i + 1]
+        p = .5 * (c[i - 1] - c[i + 1]) / d if d else 0.
+    return lo + i + p, float(norm[i])
+
+
 def generated(seconds=60, seed=7):
     """Never repeating notes and noise bursts, mono, peaks about -6 dBFS"""
     rng = np.random.default_rng(seed)
