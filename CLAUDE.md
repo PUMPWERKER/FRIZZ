@@ -209,11 +209,10 @@ working on a branch:
 
 ### Releases and the release test
 
-**Feature freeze for 1.0** (decided 2026-10-12): until `v1.0.0` is tagged, `main` takes fixes,
-refactors (bit-identical) and documentation only. A feature branch may be built and tested,
-but merges after the tag, for 1.1. With 1.0 the controls, the MIDI map and the scene files
-stay as they are: a feature goes into 1.x, a fix into 1.0.x, and only a break of the controls
-would be 2.0.
+**1.0 is out** (`v1.0.0`, 2026-10-13; the feature freeze before it, decided 2026-10-12, is
+over). From 1.0 on the controls, the MIDI map and the scene files stay as they are: a feature
+goes into 1.x, a fix into 1.0.x, and only a break of the controls would be 2.0. A change to
+how a control behaves goes to the user as a `decision` issue first, even within 1.x.
 
 The open **release-test issue** (label `release test`, one at a time, titled for the next
 version) collects every merged PR's *For the release test* items, under the PR's number, plus
@@ -227,12 +226,12 @@ through with why, and the issue is closed with it; the next one opens.
 A build handed out for testing goes on GitHub as a **pre-release**, never as Latest:
 
 - Each release candidate (or other test round the user asks for) gets a numbered one,
-  `v<next>-beta.N` (next: `v1.0.0-beta.4`), tagged on the pushed commit, with that commit's
-  build attached: `make` in a clean worktree at the tag (`git worktree add ../FrizZ-<tag>
+  `v<next>-beta.N` (next: `v1.1.0-beta.1`, or `v1.0.1-beta.1` for a fix release), tagged on
+  the pushed commit, with that commit's build attached: `make` in a clean worktree at the tag (`git worktree add ../FrizZ-<tag>
   <tag>`, GCC 10.3), and its `firmware/code/src/build/FRIZZ.bin` uploaded under that name. The
   notes name its md5 and are taken from `CHANGELOG.md`'s Unreleased section, plus a link to
   the release-test issue (or the PR). The number never moves, so feedback can name the build.
-- The pre-release **`beta`** always carries the newest numbered one (now v1.0.0-beta.3), and
+- The pre-release **`beta`** always carries the newest numbered one (now v1.0.0-beta.4), and
   moves only with a new one, at a fixed link
   (`https://github.com/ZUHcYa/FrizZ/releases/download/beta/FRIZZ.bin`): `git tag -f beta
   <commit> && git push -f origin beta`, `gh release upload beta <the numbered one's FRIZZ.bin>
@@ -240,12 +239,15 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   its md5.
 - Cut one only when the user asks for a test build; a release for everyone is a normal
   release on `main`, its `FRIZZ.bin` built the same way at its tag, its md5 in the notes.
+  Its notes start from `CHANGELOG.md` but are written for a CHOMPI owner new to FRIZZ, as
+  v1.0.0's are: what FRIZZ is, trying it beside the stock firmwares, what you can do with it,
+  then what moved for those updating, and a link to the CHANGELOG for every entry.
 - On the CHOMPI (decided 2026-10-13, #171): a beta goes to **key 13** (`FRIZZ-BETA`), a release
   to **key 10** (`FRIZZ`), each on the user's word once it's cut, from the clean worktree of
   its tag: `./flash.py --slot 13` (or `--slot 10`) there. `flash.py` sends to 10 or 13 nothing
-  else: only when the key is named, and only the build of a clean `v*` tag's checkout. Until
-  `v1.0.0`, key 10 carries the newest beta too (the user's call, 2026-10-13: beta.1 read the
-  newer betas' scene layout wrong); from 1.0 on, 10 the release and 13 the beta again.
+  else: only when the key is named, and only the build of a clean `v*` tag's checkout. Since
+  `v1.0.0`, 10 carries the release and 13 the beta (before 1.0, key 10 carried the newest beta
+  too).
 
 ## The CHOMPI is shared: the lock and the slots
 
