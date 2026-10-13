@@ -17,6 +17,12 @@ build; the numbers below come from it and from `build/FRIZZ.map`.
 | `RAM_D3` | 64 KB | 0 | 64 KB | nothing |
 | `SDRAM` | 64 MB | 43.9 MB | **~23 MB** | the loop (31.7 MB), the tape stop (4.2 MB), the delay (3.8 MB), the event log (2.1 MB), the freezer (1.9 MB), the reverb's pre-delay (0.1 MB); measured on `FRIZZ.bin` md5 `1eb11808` |
 
+**The loop loader (#70, for 1.1)** adds a second loop buffer, 16 bars at 50 BPM (14.75 MB,
+`.sdram_noinit.later`, linked after the loop and the event log so they keep their addresses),
+and its 3.9 KB beside it: SDRAM 58.6 MB (87.4 %), **~8.5 MB** free. In FRIZZ.bin ~5 KB of code
+(~2.2 KB of it FatFs's fast seek and folder reading, linked for the first time) and 124 B of
+data; the bench build hasn't the loader.
+
 **The bench build hits the walls first.** `FRIZZ-bench.bin` carries the bench as well: its
 code is at 255,636 B (92 %, ~22 KB free) and its data at 233,540 B (95 %, **~12 KB free**).
 So a feature of more than ~22 KB of code, or ~12 KB of data in internal RAM, needs room made
