@@ -162,6 +162,7 @@ namespace chompi
             button_sr_cfg.data[0] = seed::D9;
             button_sr_cfg.dbc_size = 7;
             button_sr.Init(button_sr_cfg);
+            key_lag_ = button_sr_cfg.dbc_size + 1;
 
             ShiftRegister4021<1, 1>::Config encoder_sr_cfg;
             encoder_sr_cfg.clk = seed::D22;
@@ -383,6 +384,10 @@ namespace chompi
         }
 
         uint32_t tog_state = 0;
+        // the CHOMPI key as the last scan saw it, and the scans a press takes to show through the debounce
+        bool ChompiKeyDown() const { return button_sr.State(static_cast<int>(SwId::KEY_26)); }
+        size_t KeyLag() const { return key_lag_; }
+
         void ProcessAllControls() __attribute__((optimize("-O0")))
         {
             button_sr.Update();
@@ -545,6 +550,7 @@ namespace chompi
 
         ChompiEncoder enc[6];
         ShiftRegister4021<5, 1> button_sr;
+        size_t key_lag_;
         ShiftRegister4021<1, 1> encoder_sr;
         SaiHandle external_sai_handle;
         MidiHandler<MidiTinyUsbTransport> usb_midi;

@@ -72,7 +72,7 @@ UndoMemory DSY_DTCMRAM_BSS loop_undo;
 
 RamBufferMemory chompi_buff;
 // the pre-roll lives behind the buffer, 8K keeps the next one aligned
-int16_t DSY_SDRAM_BSS chompi_mem[kMaxRamBuffSize + 4096]; 
+int16_t DSY_SDRAM_BSS chompi_mem[kMaxRamBuffSize + kRecRing];
 
 daisysp::Oscillator osc;
 
@@ -123,6 +123,12 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
     hw.ProcessAllControls();
     ui.GenerateEvents();
     engine.Prepare();
+
+    // a recording held from this press starts at it
+    static bool chompi_key = false;
+    if(hw.ChompiKeyDown() && !chompi_key)
+        engine.MarkRecordPress(hw.KeyLag() * size);
+    chompi_key = hw.ChompiKeyDown();
 
     // does this have to happen in the audio callback?
     if(hw.jack_detect.Read() != line_in_state)
@@ -454,7 +460,7 @@ int main(void)
     grains.Init(grain_mem);
     engine.Init(hw.seed.AudioSampleRate(), &reverb, &del_mem[0], 
                 &loop_buff, &chompi_buff, 
-                options.record_latch, options.tape_slew_on,
+                options.tape_slew_on,
                 MonitorMode(options.monitor_position));
 
     osc.Init(hw.seed.AudioSampleRate());

@@ -171,6 +171,7 @@ namespace chompi
             quantized_pitch_ = !ps_quant;
             split_delay_ = split_delay;
             transport_hold.Init();
+            rec_hold.Init();
             magic_hold.Init();
 
             for (int knob = 0; knob < 6; knob++)
@@ -225,7 +226,7 @@ namespace chompi
 
         uint32_t last_record_blink;
         bool record_blink = false;
-        bool arm_on_release = false; // the CHOMPI key arms the threshold when it comes up
+        Hold rec_hold;
 
         void ResetSmtLeds()
         {
@@ -258,6 +259,11 @@ namespace chompi
                 arp_knob.Update(now);
             if(knob_page[3] == 0 && magic_hold.Held(now)) // the reverb page, where it shows
                 grains.ToggleFreeze();
+
+            if(rec_hold.Held(now))
+                StartChompiRecording(0.f);
+            if(fx_->TakeRecordingDone())
+                RecordingDone();
 
             if(transport_hold.Held(now))
             {
@@ -916,31 +922,26 @@ namespace chompi
                     midi_channel = rising;
                 }
 
-                // chompi mode
+                // chompi mode: held, it records while held; a tap arms the threshold, or starts without one;
+                // a tap while armed or recording stops
                 if(!switch_state)
                 {
-                    // with a threshold, tap to arm and tap again to stop
-                    const float t = enc_values[2][0];
-                    bool latch = fx_->GetRecordLatch() || t > 0.f;
-                    bool rec = fx_->Recording();
-
-                    if (rising && !rec)
+                    if(rising && fx_->Recording())
                     {
-                        // the mic would hear the key coming up, so the threshold waits for it
-                        arm_on_release = t > 0.f && fx_->GetInputSource() == InputSource::MIC;
-                        if(!arm_on_release)
-                            StartChompiRecording(t);
+                        fx_->StopRecording();
+                        rec_hold.Cancel();
                     }
-                    else if(!rising && arm_on_release)
+                    else if(rising)
+                        rec_hold.Press(System::GetNow());
+                    else if(rec_hold.Release())
                     {
-                        arm_on_release = false;
-                        if(!rec && t > 0.f)
-                            StartChompiRecording(t);
+                        if(fx_->IsRecordWaiting())
+                            fx_->StopRecording();
+                        else
+                            StartChompiRecording(enc_values[2][0]);
                     }
-                    else if(!rising && !latch && rec)
-                        StopVoiceRecording();
-                    else if(rising && rec && latch)
-                        StopVoiceRecording();
+                    else if(fx_->Recording())
+                        fx_->StopRecording();
                 }
  
                 break;
@@ -1214,32 +1215,32 @@ namespace chompi
 
         void SetSwitchState(bool state)
         {
-            if(state && !switch_state && fx_->Recording() && !copier_->IsCopying())
-            {
-                StopVoiceRecording();
-            }
+            if(state && !switch_state && (fx_->Recording() || fx_->IsRecordWaiting()) && !copier_->IsCopying())
+                fx_->StopRecording();
 
             switch_state = state; 
         }
 
         void StartChompiRecording(float threshold)
         {
-            fx_->StartNewRecording(0, threshold * threshold * threshold);
+            fx_->StartNewRecording(threshold * threshold * threshold);
             last_record_blink = System::GetNow();
             record_blink = false;
         }
 
-        void StopVoiceRecording()
+        // the points on the recording itself, its pre- and post-roll outside
+        void RecordingDone()
         {
-            if(!fx_->StopRecording())
-                return;
-
             enc_values[0][0] = enc_defaults[0][0];
-            enc_values[0][1] = enc_defaults[0][1];
-            enc_values[0][2] = enc_defaults[0][2];
             enc_values[1][0] = enc_defaults[1][0];
             enc_values[1][1] = enc_defaults[1][1];
             enc_values[1][2] = enc_defaults[1][2];
+            const float frames = fx_->RecordFrames();
+            enc_values[0][1] = frames ? (fx_->RecordStart() + .5f) / frames : 0.f;
+            enc_values[0][2] = frames ? std::min(1.f, (frames - fx_->RecordPost() + .5f) / frames) : 1.f;
+            fx_->SetStartPointForce(enc_values[0][1]);
+            fx_->SetEndPointForce(enc_values[0][2]);
+            DumpValuePresets();
         }
 
         inline void SetInitIgnore(bool ignore) { init_ignore = ignore; }

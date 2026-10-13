@@ -5,6 +5,7 @@
 #include "daisy.h"
 #include "FileStreamingManager.h"
 #include "Voice.h"
+#include <atomic>
 #include "Streamer.h"
 #include "LooperEngine.h"
 #include "daisysp.h"
@@ -177,7 +178,6 @@ namespace daisy
             chompi::InterpolatedDelayLine::AudioSample* del,
             RamBufferMemory* loop_buff,
             RamBufferMemory* chompi_buff,
-            bool latch,
             bool tape_slew,
             MonitorMode mon_mode)
         {
@@ -239,8 +239,6 @@ namespace daisy
                 chompi_voice[i].Init(&voice_streams[i], samplerate, chompi_buff);
             }
             chompi_writer.Init(chompi_buff);
-            record = false;
-            record_latch = latch;
             was_first_ = was_dub_ = false;
 
             SetVoiceMode(VoiceMode::JAMMI);
@@ -526,10 +524,6 @@ namespace daisy
 
             StepArp(size);
 
-            /** TODO: debug why this is happening */
-            if(record != true && record != false)
-                record = false;
-
             for (size_t voice = 0; voice < kMaxPoly; voice++)
                 chompi_voice[voice].Prepare();
 
@@ -653,34 +647,58 @@ namespace daisy
             }
 
 
-            /** voice write */
-            if (record)
+            /** voice write: idle, the input goes round the ring, so a recording keeps kRecRoll before its start */
+            RecState rec = rec_state_;
+            if(rec != RecState::kDone) // done, it waits for the UI; requests keep
             {
-                // the input level meter crossing the threshold starts a waiting recording
-                if(rec_wait_ > 0.f && rec_wraps_ >= kRecIgnoreWraps && GetVUSample(VUTarget::VU_INPUT) >= rec_wait_)
+                const RecRequest req = rec_request_.exchange(RecRequest::kNone);
+                if(req == RecRequest::kStop && rec == RecState::kArmed)
+                    rec = RecState::kIdle;
+                else if(req == RecRequest::kStop && rec == RecState::kRecording)
+                {
+                    rec = RecState::kEnding;
+                    rec_tail_ = kRecRoll;
+                }
+                else if(req == RecRequest::kArm && rec == RecState::kIdle)
+                {
+                    rec = RecState::kArmed;
+                    rec_settle_ = 0;
+                }
+                const bool crossed = rec == RecState::kArmed && (rec_settle_ += size) >= kRecSettle
+                                     && GetVUSample(VUTarget::VU_INPUT) >= rec_threshold_;
+                if(crossed || (req == RecRequest::kStart && (rec == RecState::kIdle || rec == RecState::kArmed)))
                 {
                     StopLooperRecording();
-                    chompi_writer.EndPreRoll();
-                    rec_wait_ = 0.f;
-                }
-
-                for (size_t i = 0; i < size; i++)
-                {
-                    const int16_t inl = f2s16(monitor[0][i]);
-                    const int16_t inr = f2s16(monitor[1][i]);
-
-                    if(rec_wait_ > 0.f)
-                        rec_wraps_ += chompi_writer.PreRollWrite(inl, inr) && rec_wraps_ < 255;
-                    else
-                        chompi_writer.StereoWrite(inl, inr, false, true);
+                    // the start point: the onset before a crossing, else the press; kRecRoll before it comes along
+                    const size_t have = chompi_writer.RollSize();
+                    const size_t lead = std::min(have, crossed ? 2 * kRecOnset : chompi_writer.RollWritten() - rec_mark_);
+                    rec_pre_ = std::min(have, lead + kRecRoll);
+                    rec_start_ = (rec_pre_ - lead) / 2;
+                    chompi_writer.FillFrom(kRecRing); // the ring goes in front once it's done
+                    rec = RecState::kRecording;
                 }
             }
-
+            const bool record = rec == RecState::kRecording || rec == RecState::kEnding;
+            for (size_t i = 0; i < size; i++)
+            {
+                const int16_t inl = f2s16(monitor[0][i]), inr = f2s16(monitor[1][i]);
+                if(record)
+                    chompi_writer.StereoWrite(inl, inr, false, true);
+                else if(rec != RecState::kDone) // the ring waits as it was until the UI took the recording
+                    chompi_writer.RollWrite(inl, inr);
+            }
             if(record)
+            {
                 chompi::slot_loader.Reserve(chompi_writer.GetWriteHead());
-
-            if(record && chompi_writer.WriteFullLength())
-                StopRecording();
+                if(rec == RecState::kEnding)
+                    rec_tail_ -= std::min<int32_t>(rec_tail_, 2 * size);
+                if((rec == RecState::kEnding && !rec_tail_) || chompi_writer.WriteFullLength())
+                {
+                    rec_post_ = rec == RecState::kEnding ? kRecRoll - rec_tail_ : 0;
+                    rec = RecState::kDone;
+                }
+            }
+            rec_state_ = rec;
 
             // for USB, before the main gain
             std::copy(out[2], out[2] + size, mix_[0]);
@@ -738,11 +756,6 @@ namespace daisy
             return 0.f;
         }
 
-        /** @brief Opens a new file and enables recording for a file
-         *  @param slot position in the bank to record the sample (ignored for now)
-         *
-         *  @todo add delay/preprocessing for declicking
-         */
         // a waiting recording leaves the looper alone until the threshold
         void StopLooperRecording() __attribute__((noinline))
         {
@@ -755,57 +768,48 @@ namespace daisy
                 looper.ToggleRecord();
         }
 
-        void StartNewRecording(int slot, float threshold)
+        // audio thread, as the key scan sees the press go down, lag frames late
+        void MarkRecordPress(size_t lag)
         {
-            if(threshold <= 0.f)
-                StopLooperRecording();
-
-            /** Send open file request and toggle record flag */
-            char name_buffer[32];
-            strcpy(name_buffer, "temp_rec.wav");
-
-            /** For now we only need to record to the first-voices file..
-             *  since all voices will be using the same file for playback
-             */
-            if(threshold > 0.f)
-                chompi_writer.SetWriteHead(0);
-            else
-                chompi_writer.Reset();
-            rec_wait_ = threshold;
-            rec_wraps_ = 0;
-            __DMB(); // the audio thread must not see record before the write head
-            record = true;
+            const size_t written = chompi_writer.RollWritten();
+            rec_mark_ = written - std::min(written, 2 * lag);
         }
 
-        inline bool IsRecordWaiting() const { return record && rec_wait_ > 0.f; }
-
-        /** @brief stops recording, and syncs file
-         *  @todo add delay/preprocessing for declicking (fade, etc.)
-         */
-        bool StopRecording()
+        // a threshold above 0 arms: the recording starts when the input crosses it
+        void StartNewRecording(float threshold)
         {
-            record = false;
-            __DMB(); // the audio thread is done with rec_wait_
-            // stopped before the threshold: the old sample stays
-            if(rec_wait_ > 0.f)
-            {
-                rec_wait_ = 0.f;
-                return false;
-            }
+            rec_threshold_ = threshold;
+            rec_request_ = threshold > 0.f ? RecRequest::kArm : RecRequest::kStart;
+        }
 
+        inline bool IsRecordWaiting() const { return rec_state_ == RecState::kArmed; }
+
+        // armed: the old sample stays. Recording: kRecRoll more, then TakeRecordingDone()
+        void StopRecording() { rec_request_ = RecRequest::kStop; }
+
+        // once per recording: the voices play it
+        bool TakeRecordingDone()
+        {
+            if(rec_state_ != RecState::kDone)
+                return false;
+            chompi_writer.RollIn(rec_pre_);
             for(size_t i = 0; i < kMaxPoly; i++)
             {
                 chompi_voice[i].RestoreDefaults();
                 chompi_voice[i].StopPlaying();
                 chompi_voice[i].CloseFile();
-
-                SetVoiceMode(VoiceMode::JAMMI);
-                SetVoiceSlot(15, false);
             }
-
+            SetVoiceMode(VoiceMode::JAMMI);
+            SetVoiceSlot(15, false);
+            rec_state_ = RecState::kIdle;
             return true;
         }
-        inline bool Recording() const { return record; }
+
+        // the last recording's frames before its start point and after its end point
+        size_t RecordStart() const { return rec_start_; }
+        size_t RecordPost() const { return rec_post_ / 2; }
+        size_t RecordFrames() { return chompi_writer.GetSize() / 2; }
+        inline bool Recording() const { return rec_state_ == RecState::kRecording || rec_state_ == RecState::kEnding; }
 
         /**
          * @brief Resets the assignment of keyboard keys to voices used in voice stealing algorithm.
@@ -1668,7 +1672,6 @@ namespace daisy
         inline bool IsLooperFirstRecording() { return looper.IsFirstRecording(); };
         inline bool IsLooperRecordArmed() { return looper.GetRecordArm(); };
 
-        inline bool GetRecordLatch() { return record_latch; }
 
         inline void IncrementLooperDubGain(float gain) { looper.IncrementDubGain(gain); }
         inline float GetLooperDubGain() { return looper.GetDubGain(); }
@@ -2098,11 +2101,18 @@ namespace daisy
 
 
 
-        bool record, record_latch;
         bool was_first_, was_dub_; // looper state in the last block
         bool input_monitor;
-        uint8_t rec_wraps_ = 0;
-        float rec_wait_ = 0.f; // threshold, 0 once recording
+        // the recording: the UI requests, the audio thread runs the state and hands a done one back
+        enum class RecRequest : uint8_t { kNone, kArm, kStart, kStop };
+        enum class RecState : uint8_t { kIdle, kArmed, kRecording, kEnding, kDone };
+        std::atomic<RecRequest> rec_request_{RecRequest::kNone};
+        std::atomic<RecState> rec_state_{RecState::kIdle};
+        float rec_threshold_ = 0.f;
+        size_t rec_settle_ = 0;
+        int32_t rec_tail_ = 0; // samples still to record after the stop
+        size_t rec_mark_ = 0;                            // ring samples at the press
+        size_t rec_pre_ = 0, rec_start_ = 0, rec_post_ = 0;
         int playing_key[kMaxPoly];
 
         VoiceMode voice_mode;

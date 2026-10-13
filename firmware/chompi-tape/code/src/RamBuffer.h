@@ -11,11 +11,16 @@ namespace daisy
     static const size_t kLoopFadeSize = 480;
     static constexpr float kLoopFadeStep = .00464f;
     static const size_t kCopyStepSize = 512;
-    // a recording waiting for its threshold keeps ~6ms before it, and ignores ~100ms of key noise
-    static const size_t kRecPreRoll = 576;
+    // a recording keeps this much before and after, the start and end points sit inside. The ring past the
+    // buffer holds that and the half second a held key takes before it records
+    static const size_t kRecRoll = 48000;
+    static const size_t kRecRing = 2 * kRecRoll;
+    // a sound's onset before the level crosses the threshold, kept inside the start point
+    static const size_t kRecOnset = 288;
+    // a recording waits this long after arming before the threshold counts, the key is still noisy
+    static const size_t kRecSettle = 4800;
     // the fills before a snapped start walk up the buffer, keeping the loop's lead-in below it
     static const size_t kMaxSyncFill = 48000 * 2 * 8;
-    static const uint8_t kRecIgnoreWraps = 17;
     // undo audio is kept at the end of the buffer
     static const size_t kUndoChunk = kCopyStepSize;
     static const size_t kUndoMaxChunks = kMaxRamBuffSize / 2 / kUndoChunk + 1;
@@ -416,22 +421,29 @@ namespace daisy
             *r = buff->mem[pos + 1] * keep;
         }
 
-        // the pre-roll loops behind the buffer, so the old sample stays until the threshold
-        bool PreRollWrite(int16_t l, int16_t r)
+        // idle, the input goes round the ring past the buffer
+        void RollWrite(int16_t l, int16_t r)
         {
-            buff->mem[kMaxRamBuffSize + write_head] = l;
-            buff->mem[kMaxRamBuffSize + write_head + 1] = r;
-            write_head = (write_head + 2) % kRecPreRoll;
-            return !write_head;
+            const size_t head = roll_written % kRecRing;
+            buff->mem[kMaxRamBuffSize + head] = l;
+            buff->mem[kMaxRamBuffSize + head + 1] = r;
+            roll_written += 2;
         }
 
-        void EndPreRoll()
+        size_t RollWritten() const { return roll_written; } // samples, since the last RollIn
+        size_t RollSize() const { return std::min(roll_written, kRecRing); }
+
+        // the ring's last n samples go in front of the recording, which started at kRecRing
+        void RollIn(size_t n)
         {
-            const int16_t* const ring = &buff->mem[kMaxRamBuffSize];
-            const size_t head = write_head;
-            Reset();
-            std::rotate_copy(ring, ring + head, ring + kRecPreRoll, &buff->mem[0]);
-            write_head = buff->length = kRecPreRoll;
+            const int16_t* ring = &buff->mem[kMaxRamBuffSize];
+            int16_t* dst = &buff->mem[kRecRing - n];
+            const size_t head = roll_written % kRecRing, tail = std::min(n, head); // the newest, below the head
+            std::copy(ring + kRecRing - (n - tail), ring + kRecRing, dst);
+            std::copy(ring + head - tail, ring + head, dst + n - tail);
+            buff->start = buff->base = kRecRing - n;
+            buff->length += n;
+            roll_written = 0;
         }
 
         void ShiftWriteHead(int32_t offset)
@@ -592,6 +604,7 @@ namespace daisy
         }
 
         RamBufferMemory* buff;
+        size_t roll_written = 0;
         size_t read_head, write_head;
     };
 } // namespace daisy

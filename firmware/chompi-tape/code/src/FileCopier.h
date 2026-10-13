@@ -139,8 +139,9 @@ class FileCopier
             req = req_fifo.PopFront();
             is_chompi_ram = req.is_chompi;
             is_looper_ram = req.is_looper;
-            chompi_ram.SetReadHead(0);
-            chompi_ram.SetWriteHead(0);
+            chompi_ram.SetReadHead(chompi_ram.GetStart());
+            if(is_chompi_ram == CopyRequest::RamDir::TO)
+                chompi_ram.Reset();
             looper_ram.SetReadHead(looper_ram.LoopStart()); // a save stores what the loop plays
             card_ = false;
             target_[0] = '\0';
