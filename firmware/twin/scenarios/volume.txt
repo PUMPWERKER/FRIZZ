@@ -18,8 +18,11 @@ wait 400
 tap ENC_6_SW
 wait 400
 down KEY_26
+# SHIFT seen before the turn, as on the device, where play's key counts at once: the twin
+# debounces it (~7 ms), and the first detent would turn the output gain (#227)
+wait 100
 turn 6 -10
-wait 400
+wait 300
 # SHIFT held: CHOMPI lit white
 expect led pth 0 fdfdfd
 tap ENC_6_SW
