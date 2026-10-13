@@ -45,7 +45,7 @@ for the headphones.
 A mono cable (TS) in AUX? Flip the mode switch **up** to the settings page, hold CHOMPI
 (SHIFT) and press F# of the upper octave: while you hold SHIFT it shows mono, lit fully. Flip
 back down to play. The settings page also sets the MIDI channel, the LEDs' brightness (knob
-1) and shows the battery on VOLUME's LED (MANUAL.md, "Settings page").
+1) and shows the battery on VOLUME's LED (see [Settings page](MANUAL.md#settings-page)).
 
 ## 2. Record a loop
 
@@ -138,7 +138,7 @@ The freezer, slicer, filter LFO, tape stop, delay, the phaser (its rate turned r
 centre) and the chaos key's grid follow a tempo: the loop's while there is one, so
 they lock to it; otherwise MIDI clock, or the last tempo (120 BPM at power-on). Hold SHIFT
 and tap LOOP three times or more to tap a tempo, or to tell FRIZZ how many beats a loop has.
-See [Tempo](MANUAL.md#tempo).
+See [Tempo and transport](MANUAL.md#tempo-and-transport).
 
 ## 4. Save scenes
 

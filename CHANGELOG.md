@@ -16,7 +16,7 @@ what FRIZZ does.
   by then. More taps of the scene key put it a bar later. SHIFT + scene key A, then scene key
   B: a build-up, the morph to A, and B dropping on the line where it ends. Its key blinks red
   on the beat while it waits. Over MIDI, CC 83 drops to scene 0-4 (CC 9 sets the bars). See
-  MANUAL.md, "Timed scene changes".
+  [Timed scene changes](MANUAL.md#timed-scene-changes).
 - **The built-in microphone as an input** (#113), as on TAPE and TEMPO: with no cable in AUX,
   FRIZZ hears CHOMPI's mic, and records it into the looper like AUX. Plugging a cable into AUX
   switches to AUX, pulling it out back to the mic; at power-on the jack decides. The mic starts
@@ -24,13 +24,13 @@ what FRIZZ does.
   loop, hear it on the headphones' input-only feed (VOLUME's page 3), or switch it live on the
   settings page (below). It's mono, 5 times the
   input gain and through a highpass at about 150 Hz, as on TAPE (without TAPE's narrow
-  notches, #127), and the mono setting doesn't touch it. See MANUAL.md, "Input: AUX or the
-  mic".
+  notches, #127), and the mono setting doesn't touch it. See [Input: AUX or the
+  mic](MANUAL.md#input-aux-or-the-mic).
 - **AUX dry** (#152): AUX can go past the effects and the master compressor, straight to
   VOLUME and the safety limiter, so a drum machine or a finished song plays as it is while you
   play the loop through the effects. The mix knob still sets the balance (its input share is
   the dry AUX), and the mix's automatism stays: a recording finishes on the loop alone, an
-  erase goes back to the input alone. See MANUAL.md, "Input: AUX or the mic".
+  erase goes back to the input alone. See [Input: AUX or the mic](MANUAL.md#input-aux-or-the-mic).
 - **The input's three keys: source, effects, live** (#177). On the settings page's upper
   octave, left to right as the signal goes: F# picks the source, AUX (green) or the mic
   (magenta), until the next cable goes in or out of AUX; G# sends the source through the
@@ -42,12 +42,12 @@ what FRIZZ does.
   live; pressed then, it blinks red 3 times and changes nothing. The looper always records the
   source as it is. Over MIDI, CC 84 picks the source (0-63 AUX, 64-127 the mic), CC 116 sets its
   effects (64 and up dry), CC 117 it live (64 and up on), without saving them, and MIDI
-  feedback sends all three. A beta.1 card's AUX dry is AUX's G#. See MANUAL.md, "Input: AUX or
-  the mic".
+  feedback sends all three. A beta.1 card's AUX dry is AUX's G#. See [Input: AUX or
+  the mic](MANUAL.md#input-aux-or-the-mic).
 - **The LEDs' brightness on knob 1, 25-100 %** (#176): on the settings page knob 1 sets it, 5 %
   a detent; SHIFT + turn steps 25, 50, 75, 100 %; SHIFT + press is 100 %. Its LED is white and
-  dims with the others. A card's 50, 75 or 100 % stays as it was. See MANUAL.md, "LED
-  brightness".
+  dims with the others. A card's 50, 75 or 100 % stays as it was. See [LED
+  brightness](MANUAL.md#led-brightness).
 - **An input gain for each input, saved** (#152): AUX and the mic each have their own input
   gain (VOLUME's page 2), kept on the card; switching the input picks its gain. VOLUME works on
   the settings page too: page 1 the output, page 2 the input gain, a press the other page; its
@@ -62,7 +62,7 @@ what FRIZZ does.
   you're in the new scene; all the way left and you're back where you were; in between it
   stays there, as stopping a morph leaves it. The two scene keys light in their mix, the
   transport LEDs show where it is. Over MIDI, CC 80 does the same for any running morph.
-  See MANUAL.md, "Crossfading by hand".
+  See [Crossfading by hand](MANUAL.md#crossfading-by-hand).
 - **A phaser** on the 7th white key, next to the flanger (#68), after the SP-404MK2's and the
   Elektron Tonverk's: six allpass stages in a row with feedback, sweeping three notches
   through the sound, inside the resonator's loop, so with the resonator on the sweep moves
@@ -76,7 +76,7 @@ what FRIZZ does.
   800 Hz in the middle). Page 2: Mix, stereo (the right channel's sweep up to half a cycle
   behind), Band and Level. Its key is violet. Over MIDI it's channel 7, its latch CC 108 on
   the global channel. Scene files from before it load with the phaser off, on its defaults.
-  See MANUAL.md, "Phaser".
+  See [Phaser](MANUAL.md#phaser).
 - **The chaos key** on the 14th white key (#65), after the Red Panda Tensor's RAND and the
   Chase Bliss Blooper's Scrambler: an effect slot like any other (hold, latch, scenes) that
   makes no sound of its own. Knob 1 lets the effects you've latched drop out and come back on
@@ -84,7 +84,7 @@ what FRIZZ does.
   elsewhere in it, while the loop itself runs on; knob 3 sets the grid, 1/16 to a bar, on the
   effects' tempo; knob 4 turns it from every step rolled anew to one bar repeating as a
   pattern. Chance decides only when your effects act, never how they sound. Over MIDI it's
-  channel 14, its latch CC 115 on the global channel. See MANUAL.md, "Chaos key".
+  channel 14, its latch CC 115 on the global channel. See [Chaos key](MANUAL.md#chaos-key).
 - **A second page for the FX knobs:** press any of knobs 1-4 and all four turn over to the
   selected effect's page 2, and its number blinks on their LEDs, twice (#117); press again for
   page 1, which blinks once, as VOLUME's pages do. On page 2, knob 4's LED is a VU meter of the
@@ -93,14 +93,14 @@ what FRIZZ does.
   key has one. Pressing or selecting another effect, or the compressor, brings page 1 back;
   pressing the key of the one already on the knobs (an effect's or the compressor's) keeps page
   2. Scenes, recalls and morphs carry page 2 along; scene files from v0.11 load with page 2 on
-  its defaults. Over MIDI, page 2 is CC 18-21 on the effect's channel. See MANUAL.md, "Page 2".
+  its defaults. Over MIDI, page 2 is CC 18-21 on the effect's channel. See [Page 2](MANUAL.md#page-2).
 - **Mix, Band and Level on every effect's page 2,** on the same knobs everywhere (#40):
   knob 1 Mix (the dry sound against the effect's: parallel distortion, harmonies under the
   shifter), knob 3 Band (the effect only on the lows or only on the highs, the rest passing
   dry; on the delay and reverb a low or high cut on what goes in) and knob 4 Level (the
   effect's output, off to +12 dB). The flanger has Band and Level; on the delay and reverb,
   knob 1 is Freeze. At the defaults every effect sounds as before. See
-  MANUAL.md, "Page 2".
+  [Page 2](MANUAL.md#page-2).
 - **Each effect's own setting on knob 4, stereo on page 2's knob 2** (#40, #117), after the
   SP-404MK2 and the Elektron Tonverk: knob 4 is what you play, the freezer's gate (a
   stutter), the shifter's grain, the flanger's polarity, the resonator's env mod, the slicer's
@@ -130,7 +130,7 @@ what FRIZZ does.
   before: whichever input ticks first), TRS, USB, or internal (no MIDI clock: the loop, taps
   or the last tempo, and tap tempo works while a clock runs). On TRS or USB, MIDI Start, Stop,
   Continue and Song Position count only from that input too. Saved on the card; `firmware/remote.py source` sets it.
-  See MANUAL.md, "Clock source".
+  See [Clock source](MANUAL.md#clock-source).
 - **The beat on the settings page:** the clock factor's key (G# of the lower octave) is lit
   for the first half of every beat of the tempo the effects follow, with the factor applied,
   and dim for the second.
@@ -139,15 +139,14 @@ what FRIZZ does.
   loop's, a MIDI clock coming in (passed on with the clock factor), or the last tempo. A new
   loop sends Start, a pause Stop, PLAY Song Position and Continue, so a drum machine follows
   the loop; without a loop, a DAW's Start and Stop are passed on. Nothing goes back where a
-  clock comes from. Saved on the card; `firmware/remote.py out` sets it. See MANUAL.md, "MIDI
-  out" (#60).
+  clock comes from. Saved on the card; `firmware/remote.py out` sets it. See [MIDI
+  out](MANUAL.md#midi-out) (#60).
 
 - **MIDI channels per effect** (#97): channels 1-15 are the white keys 1-15 (14 the chaos
   key, 15 the master compressor), the same CCs on each: 14-17 page 1's knobs, 18-21 page 2's,
   22 the latch. In a DAW, one MIDI track per effect with the same automation lanes. They count
   over USB always, and over TRS unless the settings page's new D# (lower octave) switches them
-  off for a shared TRS chain. The global channel (16 at first) has the rest. See MANUAL.md,
-  "Channels" and "Controllers".
+  off for a shared TRS chain. The global channel (16 at first) has the rest. See [Channels](MANUAL.md#channels) and "Controllers".
 - **On the global channel** (#97): CC 14-22 reach the effect in focus, the one the knobs edit,
   and CC 23 picks it (1-15, by key); CC 82 taps the tempo; CC 90 sets the loop's speed
   outright, in semitones (64 as recorded); CC 102-115 latch the effects by key.
@@ -155,20 +154,20 @@ what FRIZZ does.
   the settings page's G# does: dim white for the first half of each beat without a loop or
   while recording, a short flash on each beat while a loop plays (stronger on each bar's 1),
   and pulsing over the dim position while it's paused. LOOP's red blinks stay as they were.
-  See MANUAL.md, "Looper".
+  See [Looper](MANUAL.md#looper).
 - **MIDI feedback** (#104): with the settings page's new upper D# on, what you change on the
   panel goes out as the CCs that would set it, wherever MIDI out goes. An effect's knobs and
   latch go on its channel, and for the effect in focus on the global channel too. The latches
   by key, the focus, the compressor, the gains and the loop's speed go out, and the crossfader
   while you hold it. A recalled scene sends what it changed, a morph where it lands. Nothing
   that came in by MIDI goes back, a value goes at most every 10 ms, and the clock keeps its
-  timing. Off at first. See MANUAL.md, "MIDI feedback".
+  timing. Off at first. See [MIDI feedback](MANUAL.md#midi-feedback).
 - **The loop follows a DAW's Start and Song Position** (#97), with transport following on: a
   loop recorded to the clock goes back to its start on Start and plays from the next tick, and
   Song Position while stopped moves it there (by its length in 16ths), so it stays lined up
   with the song; Continue plays on from the next tick. A free loop plays on as before. With
   MIDI out on, the jump back sends Start, so the gear behind starts over with it. See
-  MANUAL.md, "Start and Stop".
+  [Start and Stop](MANUAL.md#start-and-stop).
 
 ### Changed
 
@@ -190,7 +189,7 @@ what FRIZZ does.
   the scene gestures:** SHIFT + PLAY plays and pauses. MIDI follows: CC 3 or CC 83 during a
   sequence stops it and starts the new one (CC 83 no longer joins a CC 3 morph as its drop),
   CC 81 stops it. A control change the user let in before 1.0 as an exception to the feature
-  freeze. See MANUAL.md, "Timed scene changes".
+  freeze. See [Timed scene changes](MANUAL.md#timed-scene-changes).
 - **The transport knob turns on through a standstill into reverse** (#174), as TAPE's does:
   below 1/16× a hold zone of about 4 detents, where the tape glides to a stop (0×) and the
   loop fades out with it; turned on, it plays in reverse from −1/16× up to −2×, and the same
@@ -199,12 +198,12 @@ what FRIZZ does.
   scene morph still lands on its bar line; turned out of it, the beat snaps back onto the
   loop. Both transport LEDs are red there. MIDI out treats it as a pause: Stop going in, Song
   Position and Continue coming out. A control change the user let in before 1.0 as an
-  exception to the feature freeze. See MANUAL.md, "Looper".
+  exception to the feature freeze. See [Looper](MANUAL.md#looper).
 - **The delay's echoes stay on the beat** (#167): its stereo spread (the left echoes 20 ms
   late, the right 10 ms, from TEMPO) went round the feedback too, so every repeat came that
   much later than the one before: at 1/4 and 120 BPM the 5th left echo was 100 ms off the beat.
-  Now every echo is just the spread late, and the repeats stay on the beats as MANUAL.md
-  always said. The delay sounds tighter, its long tails no longer smear.
+  Now every echo is just the spread late, and the repeats stay on the beats as the
+  [manual](MANUAL.md#delay) always said. The delay sounds tighter, its long tails no longer smear.
 - **The scene keys moved two dark keys to the right** (#67): the blank scene is now on F# of
   the lower octave, scenes 1-4 on the lower G# and A# and the upper C# and D#. The lower C#
   and D# do nothing on the play page for now; they're kept free for pages to come. Your
@@ -213,7 +212,7 @@ what FRIZZ does.
   copies (blue), A# deletes (red), where A# saved (blue), G# copied (green) and F# deleted
   (amber), as on TAPE and TEMPO. Notes follow the keys: a controller or DAW mapped to the
   scene keys' notes now finds them on 54 (the blank scene), 56, 58, 61 and 63, save on 66 and
-  delete on 70 (copy stays on 68). See MANUAL.md, "FX scenes".
+  delete on 70 (copy stays on 68). See [FX scenes](MANUAL.md#fx-scenes).
 - **Heavy effect combinations take less of the CPU** (#136): the effects and the master
   compressor work through each block of 24 samples one effect at a time instead of all of
   them sample by sample. They sound the same as before, but many effects at once leave more
@@ -234,7 +233,7 @@ what FRIZZ does.
   The crossfader does the same by hand: the shifter and slicer fade in from the left end,
   the three fade out up to the right end, the freezer coming on switches in the middle as
   before. Stepped knobs of an effect on in both scenes (delay division, slicer pattern,
-  shift …) still switch. See MANUAL.md, "Morphing to a scene".
+  shift …) still switch. See [Morphing to a scene](MANUAL.md#morphing-to-a-scene).
 - **Stereo moved from knob 4 to page 2's knob 2** (#117) on the freezer, shifter, flanger,
   resonator, slicer and wow & flutter, where the phaser and the folder's, crusher's and
   filter's new stereo are too: knob 4 is the effect's own setting now, the one you play (see
@@ -250,7 +249,7 @@ what FRIZZ does.
   on G# and PLAY and the clock MIDI out sends follow it, and the 50-300 BPM limit applies
   after it. At half, a loop of an odd number of beats holds a beat and a half a pass: the
   effects' beats run on evenly, and beat 1 lands on the loop's start every other pass. See
-  MANUAL.md, "Clock factor".
+  [Clock factor](MANUAL.md#clock-factor).
 - **The MIDI map is new** (#97): everything a DAW automates is a plain CC (DAWs automate NRPN
   poorly, Ableton Live not at all), effects have channels of their own, and nothing collides
   with what hosts and keyboards send by themselves. A setup made for v0.11 needs its numbers
@@ -287,8 +286,7 @@ what FRIZZ does.
   (was D#), G# the clock factor (as before), A# the clock source (was the upper G#); the upper
   octave C# MIDI out (was the upper D#), F# the input's source and SHIFT + F# mono (was the
   lower F#), G# and A# the input's effects and live (#177), and the upper D# MIDI feedback
-  (new). The LEDs' brightness (was the lower A#) is on knob 1 now (#176). See MANUAL.md,
-  "Settings page".
+  (new). The LEDs' brightness (was the lower A#) is on knob 1 now (#176). See [Settings page](MANUAL.md#settings-page).
 
 - **The resonator, slicer, wow & flutter and tape stop are one key to the right** (#68): the
   8th, 9th, 10th and 11th white keys, making room for the phaser on the 7th, next to the
@@ -316,11 +314,10 @@ what FRIZZ does.
   semitone every 2 detents, from 2× down to 1/16×, then on through a standstill into reverse
   up to −2× (#174, above), and stops at both ends. SHIFT + turn jumps in fifths and octaves as
   turning did before (from between two of them, to the next one in the turn's direction).
-  Over MIDI, CC 90 sets it outright, in semitones. See MANUAL.md, "Looper".
+  Over MIDI, CC 90 sets it outright, in semitones. See [Looper](MANUAL.md#looper).
 - **Bug reports** moved to the settings page: with the mode switch up, hold SHIFT (CHOMPI)
   and the VOLUME knob pressed for 2 seconds. SHIFT + press the transport knob on the play page
-  does nothing now, so a report can't be written by accident while playing. See MANUAL.md,
-  "Bug reports".
+  does nothing now, so a report can't be written by accident while playing. See [Bug reports](MANUAL.md#bug-reports).
 - **FRIZZ starts up a quarter of a second faster:** it no longer clears the loop's 32 MB of
   memory at power-on, which a loop never plays before it has recorded it.
 - **The delay's and reverb's Level is on page 2's knob 4, as every effect's** (#172), on the
@@ -409,7 +406,7 @@ what FRIZZ does.
 
 - **The low-battery countdown shows VOLUME red** (#43): in the 15 s before the CHOMPI
   switches itself off on an empty battery, VOLUME's LED flashes red while the others flash
-  yellow, so the battery's red (MANUAL.md, Settings page) is seen exactly when it matters.
+  yellow, so the battery's red ([Settings page](MANUAL.md#settings-page)) is seen exactly when it matters.
   Before, VOLUME flashed yellow with the rest and its red was never shown.
 - **No click when a scene recall takes the flanger's stereo back to 0** (#130): depending on
   how far its two sweeps had drifted apart, the right channel's sweep raced back onto the
@@ -495,7 +492,7 @@ what FRIZZ does.
   LOOP and the knob presses below; CCs latch the effects (20-31), set every effect's knobs
   (70-117, in 14 bits over NRPN), the compressor, the gains, the mix and mono (52-60), turn
   the knobs relatively (14-19) and morph to a scene (61-63); program changes 0-4 are the scene
-  keys. MIDI Start and Stop can play and pause the loop (off at first). See MANUAL.md, "MIDI".
+  keys. MIDI Start and Stop can play and pause the loop (off at first). See [MIDI](MANUAL.md#appendix-midi).
 - **Remote control over USB:** FRIZZ's SysEx presses keys, turns knobs, and answers the
   state, the LEDs, the processing load and the scenes; `firmware/remote.py` uses it, and plays
   the virtual CHOMPI's scenarios on the device.
@@ -503,7 +500,7 @@ what FRIZZ does.
   the last one switching between 15 and 16, or every channel), MIDI transport following, the mono input, a clock factor (follow a
   MIDI clock at half, as sent, or double its tempo) and the LEDs' brightness (100, 75 or
   50 %), each saved on the card; VOLUME's LED shows the battery's level throughout. The loop,
-  the effects and MIDI play on while it's up; switch down to play. See MANUAL.md, "Settings page".
+  the effects and MIDI play on while it's up; switch down to play. See [Settings page](MANUAL.md#settings-page).
 - **Bug reports:** SHIFT + press the transport knob writes what you did since switching on
   (every key, knob, the mode switch, MIDI clock and the MIDI it acted on, with the card's scenes as they were at
   power-on) to `/FRIZZ/bug-1.txt` (then `bug-2.txt`, ...). Send it with a bug report: the
