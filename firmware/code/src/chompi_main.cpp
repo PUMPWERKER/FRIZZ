@@ -25,7 +25,7 @@
 using namespace daisy;
 using namespace chompi;
 
-// How long the boot animation runs (and the outputs stay muted) before audio starts
+// How long the outputs stay muted at boot, from the audio's start
 static const uint32_t kBootScreenMs = 1250;
 
 Hardware hw;
@@ -96,7 +96,7 @@ volatile bool main_reads_keys = false;
 
 // both read by the audio callback, which keeps the outputs muted until they are done
 volatile bool booting = true;
-bool rainbow_done = false;
+bool boot_done = false; // the boot ripple closed: the play page from here
 volatile bool loading_screen = true;
 
 /** AUX's jack, as TAPE and TEMPO read it (Hardware's jack_detect, high with a cable in): a
@@ -255,11 +255,10 @@ void MainLoop(void* data)
         hw.LowBatteryLockoutCheck();
         booting = false;
     }
-    else if(!rainbow_done && !loading_screen)
+    else if(!boot_done && ui.BootDone())
     {
         ui.StopBootAnimation();
-        ui.RainbowWave();
-        rainbow_done = true;
+        boot_done = true;
     }
 
     now = daisy::System::GetNow();
@@ -299,11 +298,7 @@ void MainLoop(void* data)
     if (loading_screen && now - boot_start > kBootScreenMs)
         loading_screen = false;
 
-    if(ui.InRainbows())
-    {
-        batt = now;
-    }
-    else if(now - batt > 20)
+    if(now - batt > 20)
     {
         hw.LowBatteryLockoutCheck();
         batt = now;

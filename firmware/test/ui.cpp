@@ -407,10 +407,24 @@ int main()
         Check(all_dim, "boot: every FX key glows dimly in its colour");
     }});
 
-    // VOLUME pressed during the boot animation and let go on the play page: no page change,
-    // as the boot page had the press
+    // the boot ripple (#195): light blue, from SHIFT outwards by where the LEDs sit, gone
+    // when the play page opens. On the twin the audio starts at ~0.4 s, the ripple with it
+    cases.push_back({"boot-ripple", [] {
+        auto light_blue = [](const Rgb& c) { return c.b > 100 && c.g > c.r && c.b >= c.g; };
+        RunMs(450);
+        // the CHOMPI key's LED and the dark key beside SHIFT, ~24 mm from it; VOLUME's 259 mm
+        const bool near = light_blue(PthLedFull(0)) && light_blue(SmtLedFull(1));
+        Check(near && Max(PthLedFull(kVolumeLed)) == 0,
+              "boot-ripple: first the LEDs next to SHIFT light up light blue, the far ones dark");
+        RunMs(300);
+        Check(light_blue(PthLedFull(8)) && Max(PthLedFull(0)) == 0 && Max(SmtLedFull(1)) == 0,
+              "boot-ripple: then the ring has reached the far side, the middle dark again");
+    }});
+
+    // VOLUME pressed during the boot ripple and let go on the play page: no page change, as
+    // the boot page had the press
     cases.push_back({"boot-volume", [] {
-        RunMs(1000);
+        RunMs(600);
         Press("ENC_6_SW", true);
         RunMs(kReadyMs);
         Press("ENC_6_SW", false);
