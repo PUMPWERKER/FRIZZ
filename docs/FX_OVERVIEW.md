@@ -49,9 +49,12 @@ drive the VU LEDs.
   (fed the delay's echoes too) → master compressor (`MasterComp.h`: threshold, ratio, attack,
   release, and mix and makeup on page 2, on its own key) → output gain → safety limiter
   (`limiter.h` at its lowest setting), the only thing that sets a level by itself. Every
-  insert but the resonator and tape stop sits inside page 2's Mix, Band and Level
-  (`FxOutput.h`); the sends get its Band on their input. The
-  resonator's comb loops from after the phaser back to after the freezer.
+  insert, the tape stop too, sits inside page 2's Mix, Band and Level (`FxOutput.h`); the
+  sends get its Band on their input, the resonator its Band on what goes into the loop and its
+  Level on the return. The resonator's comb loops from after the phaser back to after the
+  freezer. The input and output gains and the safety limiter are TAPE's (its Volume Engine in
+  `DSPEngine.h`), so the levels match the hardware as TAPE tuned them; the limiter is TAPE's
+  master compressor at its lowest setting, which is what FRIZZ's own knob for it started at.
   Each effect is a punch-in key, and the keys run in this order left to right, the chaos key
   (`FxChaos.h`, no sound of its own: it gates the latched effects and scrambles the loop)
   after the sends and before the compressor. (A randomizer that played the inserts on gate
@@ -95,6 +98,37 @@ their keys' order left to right (see the FRIZZ chain above). Their controls are 
 | 13th white | Reverb (send, also fed the delay's echoes) | TEMPO's `reverb.h` + `fx_engine.h` |
 | 14th white | Chaos key (no sound: gates the latched effects, scrambles the loop) | FRIZZ's own (#65), after the Red Panda Tensor's RAND and the Chase Bliss Blooper's Scrambler |
 | 15th white | Master compressor (always on, after the chain) | FRIZZ's own (`MasterComp.h`) |
+
+### Where FRIZZ's effects differ from their origins
+
+The manual describes what each effect does; this is where it came from and what changed on
+the way (Kastle is Bastl Instruments' Kastle 2 FX Wizard).
+
+- **Freezer:** Kastle's freezer, as a beat repeat. The roll (a halving of the repeat per step)
+  and the 5 ms crossfade at the seam are FRIZZ's; Kastle has neither.
+- **Shifter:** Kastle's shifter was a single tap that faded out and in at every wrap: its
+  pitch knob slid from a slight detune to a buzzing, ring-mod-like tone, too coarse to set an
+  interval. FRIZZ's has two taps, crossfaded so the level stays even, and searches within
+  7.5 ms where a tap starts over, so it lines up with the other one. It keeps Kastle's swoop,
+  feedback and stereo, not the buzz. The swoop is Kastle's trigger envelope (0.1 s up, 1 s
+  back); Kastle tied its depth to TIME, FRIZZ gives it a knob. Kastle's feedback is its comb
+  around every mode; FRIZZ's sends the shifted output back into the shifter.
+- **Folder:** DaisySP's `Wavefolder` is the triangle fold alone, unfiltered, and aliases more
+  than FRIZZ's antialiased one.
+- **Crusher:** the XOR flips Kastle's constants (up to 4000) of each sample as 16-bit; the
+  dive (the rate down up to 10× over 0.1 s, back over 0.4 s) is Kastle's trigger dive.
+- **Filter:** WAVE's copy of the DJ filter; its LFO is WAVE's filter LFO, synced to the tempo.
+- **Flanger:** as on Kastle, Amount sets the depth and the mix together, and a press of the
+  key (Kastle's trigger input) restarts the sweep. Kastle's FEEDBACK is a short comb around
+  every mode, at most 8% on the flanger; FRIZZ's goes through the swept delay, up to 85%.
+- **Resonator:** the comb Kastle runs around every mode, as a loop of its own key. Kastle's
+  is fixed per mode, 22-440 Hz with about 40% feedback at most; FRIZZ's is tunable, 22-880 Hz,
+  up to 98%. As on Kastle, the loop holds a soft clipper, a lowpass and a 50 Hz highpass, and
+  turns the input down as the feedback goes up.
+- **Wow & flutter:** the wow is TAPE's warble, from its SHIFT menu; the flutter, tone, age and
+  stereo are FRIZZ's.
+- **Delay:** TEMPO rolled its random events on its arpeggiator's step; FRIZZ rolls them on
+  every 8th note of the tempo.
 
 ## Page 2 candidates (#40)
 
