@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 640" width="720" height="640" role="img" aria-labelledby="title desc">
+<title id="title">FRIZZ clock and MIDI</title>
+<desc id="desc">Where the tempo comes from and where MIDI goes. MIDI comes in over TRS and USB. The clock source (A) picks whose clock counts, the clock factor (B) follows it at half or double. That clock quantizes recordings in the looper. Start, Stop, Continue and Song Position from the chosen input move the loop when transport following (C) is on. The tempo clock takes the first of: the loop, the MIDI clock, the tapped or last tempo; it drives the effects that follow a tempo, the scene morphs' bar lines, the beat LEDs and MIDI out. MIDI out (D) sends the clock, generated or passed on, the loop's transport and, with feedback (E), the panel's changes as CCs, over TRS or TRS and USB.</desc>
+<style>svg{font-size:13px}text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
+<defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
+<rect width="720" height="640" fill="#131314"/>
+<circle cx="28" cy="140" r="5" class="b"/>
+<text x="20" y="122" class="t as" font-weight="bold">TRS MIDI IN</text>
+<circle cx="28" cy="190" r="5" class="b"/>
+<text x="20" y="172" class="t as" font-weight="bold">USB MIDI</text>
+<polyline points="33,140 110,140" class="ls" marker-end="url(#ms)"/>
+<polyline points="33,190 80,190 80,170 110,170" class="ls" marker-end="url(#ms)"/>
+<rect x="110" y="120" width="150" height="70" class="b"/>
+<text x="185" y="143.5" class="t" font-weight="bold">MIDI IN</text>
+<text x="185" y="159.5" class="m" font-size="12">clock source</text>
+<text x="185" y="175.5" class="m" font-size="12">clock factor</text>
+<circle cx="110" cy="120" r="9" class="g"/>
+<text x="110" y="124.5" class="gt" font-size="12" font-weight="bold">A</text>
+<circle cx="260" cy="120" r="9" class="g"/>
+<text x="260" y="124.5" class="gt" font-size="12" font-weight="bold">B</text>
+<polyline points="170,120 170,68 215,68" class="ls"/>
+<circle cx="217.5" cy="68" r="2.5" class="b"/>
+<circle cx="242.5" cy="68" r="2.5" class="b"/>
+<path d="M219,67L241,57" class="sw"/>
+<circle cx="230" cy="44" r="9" class="g"/>
+<text x="230" y="48.5" class="gt" font-size="12" font-weight="bold">C</text>
+<polyline points="245,68 300,68" class="ls" marker-end="url(#ms)"/>
+<text x="272" y="60" class="m" font-size="12">transport</text>
+<rect x="300" y="40" width="120" height="56" class="b"/>
+<text x="360" y="56.5" class="t" font-weight="bold">LOOPER</text>
+<text x="360" y="72.5" class="m" font-size="12">quantized: whole</text>
+<text x="360" y="88.5" class="m" font-size="12">bars of the clock</text>
+<polyline points="260,155 470,155" class="la" marker-end="url(#ma)"/>
+<circle cx="385" cy="155" r="3" class="da"/>
+<polyline points="385,155 385,96" class="la" marker-end="url(#ma)"/>
+<text x="325" y="148" class="m" font-size="12">24 PPQN</text>
+<rect x="300" y="185" width="120" height="44" class="b"/>
+<text x="360" y="203.5" class="t" font-weight="bold">TAP TEMPO</text>
+<text x="360" y="219.5" class="m" font-size="12">SHIFT + LOOP</text>
+<polyline points="420,68 445,68 445,120 470,120" class="la" marker-end="url(#ma)"/>
+<polyline points="420,207 470,207" class="ls" marker-end="url(#ms)"/>
+<rect x="470" y="80" width="140" height="160" class="ba"/>
+<text x="540" y="99" class="t" font-weight="bold">TEMPO CLOCK</text>
+<text x="478" y="124.5" class="t as" font-size="12">1  the loop</text>
+<text x="478" y="159.5" class="t as" font-size="12">2  MIDI clock</text>
+<text x="478" y="203" class="t as" font-size="12">3  tapped, or the</text>
+<text x="493" y="218" class="m as" font-size="12">last (120 at first)</text>
+<text x="540" y="182" class="m" font-size="12">the first that applies</text>
+<text x="552" y="260" class="m as" font-size="12">× factor, 50–300 BPM</text>
+<polyline points="540,240 540,248" class="la"/>
+<polyline points="290,275 690,275" class="la"/>
+<polyline points="540,248 540,275" class="la"/>
+<circle cx="540" cy="275" r="3" class="da"/>
+<polyline points="395,275 395,295" class="la" marker-end="url(#ma)"/>
+<rect x="300" y="295" width="190" height="80" class="b"/>
+<text x="395" y="315.5" class="t" font-weight="bold">EFFECTS' TEMPO</text>
+<text x="395" y="331.5" class="m" font-size="12">delay, filter LFO, phaser,</text>
+<text x="395" y="347.5" class="m" font-size="12">freezer, slicer, tape stop,</text>
+<text x="395" y="363.5" class="m" font-size="12">chaos grid</text>
+<polyline points="552.5,275 552.5,295" class="la" marker-end="url(#ma)"/>
+<rect x="505" y="295" width="95" height="80" class="b"/>
+<text x="552.5" y="323.5" class="t" font-weight="bold">SCENE</text>
+<text x="552.5" y="339.5" class="t" font-weight="bold">MORPHS</text>
+<text x="552.5" y="355.5" class="m" font-size="12">bar lines</text>
+<polyline points="662.5,275 662.5,295" class="la" marker-end="url(#ma)"/>
+<rect x="615" y="295" width="95" height="80" class="b"/>
+<text x="662.5" y="323.5" class="t" font-weight="bold">BEAT</text>
+<text x="662.5" y="339.5" class="m" font-size="12">PLAY,</text>
+<text x="662.5" y="355.5" class="m" font-size="12">lower G#</text>
+<polyline points="290,275 290,425 300,425" class="la" marker-end="url(#ma)"/>
+<text x="282" y="402" class="m ae" font-size="12">generated: a loop,</text>
+<text x="282" y="417" class="m ae" font-size="12">or no clock coming in</text>
+<polyline points="130,190 130,450 300,450" class="ls" marker-end="url(#ms)"/>
+<text x="122" y="300" class="m ae" font-size="12">passed on:</text>
+<text x="122" y="315" class="m ae" font-size="12">no loop, a clock</text>
+<text x="122" y="330" class="m ae" font-size="12">coming in</text>
+<text x="20" y="479.5" class="m as" font-size="12">panel changes</text>
+<polyline points="110,475 200,475" class="ls"/>
+<circle cx="202.5" cy="475" r="2.5" class="b"/>
+<circle cx="227.5" cy="475" r="2.5" class="b"/>
+<path d="M204,474L226,464" class="sw"/>
+<circle cx="215" cy="451" r="9" class="g"/>
+<text x="215" y="455.5" class="gt" font-size="12" font-weight="bold">E</text>
+<polyline points="230,475 300,475" class="ls" marker-end="url(#ms)"/>
+<text x="262" y="468" class="m" font-size="12">CCs</text>
+<rect x="300" y="405" width="190" height="90" class="b"/>
+<text x="395" y="430.5" class="t" font-weight="bold">MIDI OUT</text>
+<text x="395" y="446.5" class="m" font-size="12">clock 24 PPQN; the loop's</text>
+<text x="395" y="462.5" class="m" font-size="12">Start, Stop, Song</text>
+<text x="395" y="478.5" class="m" font-size="12">Position, Continue</text>
+<polyline points="490,430 530,430" class="ls"/>
+<circle cx="532.5" cy="430" r="2.5" class="b"/>
+<circle cx="557.5" cy="430" r="2.5" class="b"/>
+<path d="M534,429L556,419" class="sw"/>
+<circle cx="545" cy="406" r="9" class="g"/>
+<text x="545" y="410.5" class="gt" font-size="12" font-weight="bold">D</text>
+<polyline points="560,430 635,430" class="ls" marker-end="url(#ms)"/>
+<circle cx="642" cy="430" r="5" class="b"/>
+<text x="654" y="434.5" class="t as" font-weight="bold">TRS</text>
+<text x="654" y="450" class="m as" font-size="12">MIDI OUT</text>
+<polyline points="490,470 530,470" class="ls"/>
+<circle cx="532.5" cy="470" r="2.5" class="b"/>
+<circle cx="557.5" cy="470" r="2.5" class="b"/>
+<path d="M534,469L556,459" class="sw"/>
+<circle cx="545" cy="446" r="9" class="g"/>
+<text x="545" y="450.5" class="gt" font-size="12" font-weight="bold">D</text>
+<polyline points="560,470 635,470" class="ls" marker-end="url(#ms)"/>
+<circle cx="642" cy="470" r="5" class="b"/>
+<text x="654" y="474.5" class="t as" font-weight="bold">USB</text>
+<text x="654" y="490" class="m as" font-size="12">MIDI</text>
+<text x="300" y="518" class="m as" font-size="12">Never back out of the port a passed-on clock comes in on.</text>
+<circle cx="37" cy="552" r="9" class="g"/>
+<text x="37" y="556.5" class="gt" font-size="12" font-weight="bold">A</text>
+<text x="60" y="556" class="t as" font-size="12">lower A#: the clock source, Auto, TRS, USB or internal</text>
+<circle cx="37" cy="574" r="9" class="g"/>
+<text x="37" y="578.5" class="gt" font-size="12" font-weight="bold">B</text>
+<text x="60" y="578" class="t as" font-size="12">lower G#: the clock factor, as sent, double or half</text>
+<circle cx="37" cy="596" r="9" class="g"/>
+<text x="37" y="600.5" class="gt" font-size="12" font-weight="bold">C</text>
+<text x="60" y="600" class="t as" font-size="12">lower F#: transport following</text>
+<circle cx="409" cy="552" r="9" class="g"/>
+<text x="409" y="556.5" class="gt" font-size="12" font-weight="bold">D</text>
+<text x="432" y="556" class="t as" font-size="12">upper C#: MIDI out, off, TRS, TRS and USB</text>
+<circle cx="409" cy="574" r="9" class="g"/>
+<text x="409" y="578.5" class="gt" font-size="12" font-weight="bold">E</text>
+<text x="432" y="578" class="t as" font-size="12">upper D#: MIDI feedback</text>
+<text x="432" y="600" class="m as" font-size="12">All on the settings page.</text>
+</svg>

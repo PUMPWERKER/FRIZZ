@@ -4,8 +4,11 @@
 // REAPER does on the device. It checks the tool's logic: the three parts (on the node, through
 // "REAPER" once per audio mode, on the node again), the commands, FRIZZ's answers through
 // REAPER's input, the cases on the firmware as it is, REAPER synchronized to FRIZZ's clock (in a
-// REAPER of its own), and the summary with the jitter's table;
-// not REAPER, nor the firmware's timing (--quick widens the tolerances, as midisuite.cpp's).
+// REAPER of its own), and the summary with the jitter's table; and the cases with music: the
+// stand-in plays a generated song into the twin's AUX and records its line out (ptytwin.h's
+// Audio), so the tool's analysis runs on the firmware's own loop. Those need numpy, as the tool
+// does: with ~/.venvs/frizz (measure.py's), else they're a SKIP, said so.
+// Not REAPER, nor the firmware's timing (--quick widens the tolerances, as midisuite.cpp's).
 //
 // REAPERCHECK="ARGS" runs the tool once with those arguments and prints what it printed, e.g.
 //     REAPERCHECK="--cases daw-transport -v" ./unit.sh reaper
@@ -18,17 +21,23 @@ namespace
 {
 bool Has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
 
-int Reaper(const std::string& args, std::string& out, int limit)
+// measure.py's venv, with numpy: the audio cases' python
+const std::string kVenv = std::string(getenv("HOME") ? getenv("HOME") : "") + "/.venvs/frizz/bin";
+
+bool HasVenv() { return access((kVenv + "/python3").c_str(), X_OK) == 0; }
+
+int Reaper(const std::string& args, std::string& out, int limit,
+           std::vector<std::pair<std::string, std::string>> env = {})
 {
-    return Tool("reaper.py", "--quick " + args, out, limit,
-                {{"FRIZZ_REAPER", firmware_dir + "/test/reaper_stub.py"}});
+    env.push_back({"FRIZZ_REAPER", firmware_dir + "/test/reaper_stub.py"});
+    return Tool("reaper.py", "--quick " + args, out, limit, env);
 }
 
 /** The tool on ids with the jack wired out (A) or not at all: each case's line, the summary's.
  *  A case that failed on timing alone with the twin behind isn't judged (ptytwin.h's
  *  Unjudged()), said so; a run that failed so behind runs once more (Twice()) */
 void Run(const std::string& name, bool out_wired, const std::string& ids, const std::vector<std::string>& lines,
-         int exit_code)
+         int exit_code, const std::vector<std::pair<std::string, std::string>>& env = {}, int limit = 170)
 {
     trs_in = false;
     trs_out = out_wired;
@@ -62,7 +71,7 @@ void Run(const std::string& name, bool out_wired, const std::string& ids, const 
     };
     Twice(name, [&] {
         const auto t0 = std::chrono::steady_clock::now();
-        rc = Reaper("-v --cases " + ids, out, 170);
+        rc = Reaper("-v --cases " + ids, out, limit, env);
         printf("%s: %ld s, the twin up to %ld ms behind\n", name.c_str(),
                long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()), lag);
         unjudged = Unjudged(out);
@@ -77,6 +86,31 @@ void Run(const std::string& name, bool out_wired, const std::string& ids, const 
     if (!exited() || !says() || failures)
         printf("%s\n", out.c_str());
 }
+/** A case with music (sound=True) on the twin's audio, a generated song: with the venv the
+ *  lines wanted, else its SKIP for numpy */
+void RunAudio(const std::string& name, const std::string& id, const std::vector<std::string>& lines)
+{
+    char dir[] = "/tmp/frizz-twin-audio-XXXXXX";
+    if (!mkdtemp(dir))
+    {
+        Check(false, (name + ": a temporary directory").c_str());
+        return;
+    }
+    audio_dir = dir;
+    std::vector<std::pair<std::string, std::string>> env = {{"FRIZZ_TWIN_AUDIO", audio_dir}};
+    if (HasVenv())
+    {
+        env.push_back({"PATH", kVenv + ":" + std::string(getenv("PATH") ? getenv("PATH") : "")});
+        Run(name, true, id + " --material generated", lines, 0, env, 300);
+    }
+    else
+    {
+        printf("%s: no %s (numpy): the SKIP checked instead\n", name.c_str(), kVenv.c_str());
+        Run(name, true, id + " --material generated", {"SKIP " + id, "needs numpy"}, 0, env);
+    }
+    if (system(("rm -rf '" + audio_dir + "'").c_str()) != 0)
+        printf("%s: %s left behind\n", name.c_str(), dir);
+}
 } // namespace
 
 int main()
@@ -89,8 +123,20 @@ int main()
         std::string out;
         trs_in = false;
         trs_out = true;
-        const int rc = Reaper(args, out, 3600);
+        // the twin's audio too, and numpy where the venv is, for the cases with music
+        char dir[] = "/tmp/frizz-twin-audio-XXXXXX";
+        std::vector<std::pair<std::string, std::string>> env;
+        if (mkdtemp(dir))
+        {
+            audio_dir = dir;
+            env.push_back({"FRIZZ_TWIN_AUDIO", audio_dir});
+        }
+        if (HasVenv())
+            env.push_back({"PATH", kVenv + ":" + std::string(getenv("PATH") ? getenv("PATH") : "")});
+        const int rc = Reaper(args, out, 3600, env);
         printf("%s\nexit %d\n", out.c_str(), rc);
+        if (!audio_dir.empty() && system(("rm -rf '" + audio_dir + "'").c_str()) != 0)
+            printf("%s left behind\n", dir);
         return rc;
     }
     // wiring A, as on the device: every case, the jitter in both audio modes, REAPER's CC reset
@@ -129,6 +175,23 @@ int main()
             {"PASS daw-follows", "REAPER jack (Stub 48000 512", "synchronized to its MIDI input: projsmptesync 5, "
              "projsmpteinput 4223; midiouts_clock=0", "| jack, synced | PASS |", "on its beat 1"},
             0);
+    }});
+    // music from "REAPER" into the twin's AUX, its line out recorded (ptytwin.h's Audio): a loop
+    // recorded from the song, against it bar by bar; restarted by Start, Song Position and a loop
+    // range, at x1 and x1/2; REAPER synchronized to it through a standstill (#174)
+    cases.push_back({"loop-audio", [] {
+        RunAudio("loop-audio", "daw-loop-audio",
+                 {"PASS daw-loop-audio", "REAPER jack (Stub 48000 512", "its audio out 3/4 into AUX",
+                  "the loop holds the song's bars 2-3 (recorded from its bar 2): at the song's bar 4: WAV bar 2 at",
+                  "| `daw-loop-audio` |"});
+    }});
+    cases.push_back({"loop-restart", [] {
+        RunAudio("loop-restart", "daw-loop-restart",
+                 {"PASS daw-loop-restart", "a loop range of bars 1-3, three turns (clock factor x1/2): each turn steady"});
+    }});
+    cases.push_back({"follows-audio", [] {
+        RunAudio("follows-audio", "daw-follows-audio",
+                 {"PASS daw-follows-audio", "after the standstill where it was before"});
     }});
     // stopped from outside (SIGTERM) while REAPER runs a case: not taken for the case's FAIL,
     // REAPER closed, things put back, exit 143 (#171)
