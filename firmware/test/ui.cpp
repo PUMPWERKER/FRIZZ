@@ -4609,6 +4609,84 @@ int main()
         Check(param(3) == 0.f && param(5) == 1.f, "cc-stereo: CC 17 turns the grain");
     }});
 
+    // the shifter latched alone, CC 14 on its channel from down to up while it plays (#221):
+    // −7 → +7, −12 → +7, +12 → −12 → +7. In beta.2 it could stop shifting at the jump and play
+    // its input unshifted until it went off, depending on the moment: the time between the CCs
+    // scanned, 37 ms a step (53 before the −12), the shifter off and on between the moments.
+    // Each jump then heard on the headphones for 200 ms, L and R: a 311 Hz sine shifted a
+    // fifth up is 466 Hz
+    {
+        // the power at f0 and f1 of the headphones' L and R over ms, Goertzel
+        static auto power = [](uint32_t ms, float f0, float f1, float (*p)[2]) {
+            float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
+            const float k[2] = {2.f * cosf(2.f * float(M_PI) * f0 / kSampleRate),
+                                2.f * cosf(2.f * float(M_PI) * f1 / kSampleRate)};
+            float s[2][2][2] = {}; // per channel, per frequency: the last two states
+            for (uint32_t b = 0; b < ms * 2; b++)
+            {
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    in[i * kChannels + 2] = in[i * kChannels + 3] = amp * sinf(phase);
+                    phase = fmodf(phase + 2.f * float(M_PI) * freq / kSampleRate, 2.f * float(M_PI));
+                }
+                Run(1, in, out);
+                for (size_t i = 0; i < kBlockSize; i++)
+                    for (int c = 0; c < 2; c++)
+                        for (int f = 0; f < 2; f++)
+                        {
+                            const float v = out[i * kChannels + c] + k[f] * s[c][f][0] - s[c][f][1];
+                            s[c][f][1] = s[c][f][0];
+                            s[c][f][0] = v;
+                        }
+            }
+            for (int c = 0; c < 2; c++)
+                for (int f = 0; f < 2; f++)
+                    p[c][f] = s[c][f][0] * s[c][f][0] + s[c][f][1] * s[c][f][1]
+                              - k[f] * s[c][f][0] * s[c][f][1];
+        };
+        struct Jump
+        {
+            const char *id, *name;
+            std::vector<int> from; // the CCs before +7, each held for the scanned time
+        };
+        static const Jump jumps[] = {{"7", "-7 to +7", {26}},
+                                     {"12", "-12 to +7", {0}},
+                                     {"12-12", "+12 to -12 to +7", {127, 0}}};
+        for (const Jump& j : jumps)
+            cases.push_back({std::string("shifter-down-up-") + j.id, [&j] {
+                RunMs(kReadyMs);
+                freq = 311.f;
+                Latch("KEY_2");
+                RunMs(420);
+                int stuck[2] = {0, 0}, tries = 0, unlatched = 0;
+                for (uint32_t k = 0; k < 16; k++)
+                {
+                    for (size_t i = 0; i < j.from.size(); i++)
+                    {
+                        Trs({0xB1, 14, j.from[i]});
+                        RunMs(400 + k * (i + 1 < j.from.size() ? 53 : 37));
+                    }
+                    Trs({0xB1, 14, 101}); // +7
+                    RunMs(300);
+                    float p[2][2];
+                    power(200, 311.f, 466.f, p);
+                    tries++;
+                    for (int c = 0; c < 2; c++)
+                        stuck[c] += p[c][0] > p[c][1];
+                    // off and on again, which ends a stuck shifter: each moment on its own
+                    Latch("KEY_2");
+                    RunMs(300);
+                    unlatched += !(LatchedFx(Ask({0x20})) & 2);
+                    Latch("KEY_2");
+                    RunMs(420);
+                }
+                printf("      unshifted after the jump in %d (L) and %d (R) of %d\n", stuck[0], stuck[1], tries);
+                Check(unlatched == tries, "shifter-down-up: off between the moments");
+                Check(stuck[0] == 0 && stuck[1] == 0,
+                      (std::string("shifter-down-up: ") + j.name + ", at every moment: both channels shift after the jump (#221)").c_str());
+            }});
+    }
+
     // ---- the built-in mic (#113): AUX's jack picks the source at power-on and on each change,
     // the settings page's upper F# the other until the next (#177); TAPE's gain and filter ----
     static const int kInputKeyLed = kInSourceKeyLed; // the settings page's upper F#: the source

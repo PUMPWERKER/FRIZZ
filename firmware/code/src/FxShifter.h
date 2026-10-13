@@ -222,7 +222,8 @@ private:
     // the closest a tap starts to the write head, so the comparison's reads exist yet: the
     // candidates read up to 120 samples on, times the speed, which is below 1 going down
     static constexpr float kGuard = 130.f;
-    static constexpr float kMaxWindowFrames = kWindowFrames * 5.f / 3.f; // grain at the top
+    static constexpr float kMinWindowFrames = kWindowFrames / 3.f;      // grain at the bottom
+    static constexpr float kMaxWindowFrames = kWindowFrames * 5.f / 3.f; // and at the top
     static const uint8_t kSpliceHold = 24; // samples a tap waits for its splice: a block
     // a tap lives through two waits for a splice, at its start and halfway, moving on by
     // 1 - ratio a sample through them: going up, it starts that much further back
@@ -298,7 +299,12 @@ private:
      *  window and the wait, from where it is, which a shorter window may already have left
      *  behind; going down it grows by them. Where a turn of the grain would run it into either
      *  end, where it plays unshifted, a click (#167), the window goes as far as it fits, and
-     *  the rest of the way at the next splices; the window it had always fits */
+     *  the rest of the way at the next splices; the window it had always fits. Not so where the
+     *  shift turned the other way while it plays: the other tap was placed for the other
+     *  direction and runs into its end anyway, as before #167, and no window fits it: going up,
+     *  it came out at or below 0, and the taps stopped moving through their lives, stuck at
+     *  delay 1, unshifted (#221); going down, up to the whole buffer, the taps' reach past it.
+     *  So the window stays within the grain knob's reach */
     float NextWindow(float other, float ratio, bool up) const
     {
         const float wait = kSpliceHold * fabsf(1.f - ratio);
@@ -306,7 +312,8 @@ private:
         const float lowest = up ? other + 1.f - kDelayPast
                                 : 2.f * (other + wait + 1.f - kDelayPast);
         const float highest = up ? 2.f * (other - wait - kTapFloor) : kBufSize;
-        return fminf(fmaxf(grain_frames_, lowest), highest);
+        return fclamp(fminf(fmaxf(grain_frames_, lowest), highest), kMinWindowFrames,
+                      kMaxWindowFrames);
     }
 
     /** The rest of channel c's search, and the waiting tap starts where it found, as far on
