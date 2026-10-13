@@ -1331,8 +1331,9 @@ effects next to the device. **AUX unmonitored** records AUX without hearing it o
 the headphones' feed, turned left, you still do).
 
 **The mic** is mono, the same on both sides. It also hears CHOMPI's own keys and knobs: with
-the mic monitored, a delay or a reverb rings out their clicks, so for clean takes use AUX, or
-record the mic with its monitoring off. FRIZZ treats it as TAPE does: 5× the input gain
+the mic monitored through the effects, a delay or a reverb rings out their clicks. For clean
+takes use AUX; with the mic, record the loop first, then switch its monitoring off before you
+play the effects over it. FRIZZ treats it as TAPE does: 5× the input gain
 (AUX gets 3×), its DC taken out, and a highpass at about 150 Hz. VOLUME's page 2 sets the
 input gain of the source heard: the mic's is its own, kept apart from AUX's and saved. A
 switch of the source, of the upper G# or of the upper A# fades over 5 ms, so it doesn't
