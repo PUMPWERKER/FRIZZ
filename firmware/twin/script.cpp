@@ -180,8 +180,10 @@ static bool ReadWav(const char* path, std::vector<float>& to)
     return false;
 }
 
-std::string LoopWav(uint32_t frames, int channels, float freq, uint32_t beats)
+std::string SineWav(uint32_t frames, int channels, float freq, uint32_t beats)
 {
+    if (channels != 1 && channels != 2)
+        return "";
     std::string w = "RIFF";
     auto u32 = [&](std::string& to, uint32_t v) {
         for (int i = 0; i < 4; i++)
@@ -388,7 +390,7 @@ int PlayScript(std::istream& src_in, FILE* leds, std::vector<float>* out)
                 in >> seconds >> channels >> hz >> beats;
                 if (seconds <= 0.f || (channels != 1 && channels != 2))
                     Fail(line_no, "card wav PATH SECONDS CHANNELS HZ [BEATS]");
-                CardFiles()[path] = LoopWav(static_cast<uint32_t>(seconds * 48000.f + .5f), channels, hz, beats);
+                CardFiles()[path] = SineWav(static_cast<uint32_t>(seconds * 48000.f + .5f), channels, hz, beats);
             }
             else if (what == "remove")
                 SetCardPresent(false);

@@ -2956,11 +2956,11 @@ int main()
     // goes home; its LEDs, the banks
     cases.push_back({"loops-page", [] {
         RunMs(kReadyMs);
-        std::string w44 = LoopWav(4800, 2, 220.f);
+        std::string w44 = SineWav(4800, 2, 220.f);
         const uint32_t rate = 44100;
         memcpy(&w44[24], &rate, 4);
-        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/02", LoopWav(72000, 2, 330.f)},
-                  {"A/04", w44}, {"C/01", LoopWav(48000, 1, 440.f)}});
+        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/02", SineWav(72000, 2, 330.f)},
+                  {"A/04", w44}, {"C/01", SineWav(48000, 1, 440.f)}});
         const bool dark = Max(SmtLedFull(kBankDownLed)) == 0 && Max(PthLedFull(kChompiKeyLed)) == 0;
         Tap(kSaveKey); // a scene mode, which opening the page ends
         RunMs(100);
@@ -3046,7 +3046,7 @@ int main()
     cases.push_back({"loops-passes", [] {
         RunMs(kReadyMs);
         amp = 0.f;
-        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/02", LoopWav(72000, 2, 330.f)}});
+        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/02", SineWav(72000, 2, 330.f)}});
         LoopsPage();
         Tap(kLoopKeys[0]);
         UntilLength(96000, 500);
@@ -3093,8 +3093,8 @@ int main()
         Save(1);
         Tap(kSceneKeys[0]);
         RunMs(200);
-        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/02", LoopWav(72000, 2, 330.f)},
-                  {"A/03", LoopWav(192000, 2, 220.f)}});
+        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/02", SineWav(72000, 2, 330.f)},
+                  {"A/03", SineWav(192000, 2, 220.f)}});
         LoopsPage();
         auto start = [](float at) { // A/03 playing, at its position at
             Tap(kLoopKeys[2]);
@@ -3152,7 +3152,7 @@ int main()
         Save(1);
         Tap(kSceneKeys[0]);
         RunMs(200);
-        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/03", LoopWav(192000, 2, 220.f)}});
+        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/03", SineWav(192000, 2, 220.f)}});
         LoopsPage();
         Tap(kLoopKeys[2]);
         UntilLength(192000, 1000);
@@ -3180,9 +3180,9 @@ int main()
     cases.push_back({"loops-looper", [] {
         RunMs(kReadyMs);
         amp = 0.f;
-        std::string w24 = LoopWav(4800, 2, 220.f);
+        std::string w24 = SineWav(4800, 2, 220.f);
         w24[34] = 24; // bits per sample
-        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/02", LoopWav(72000, 2, 330.f)}, {"A/04", w24}});
+        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/02", SineWav(72000, 2, 330.f)}, {"A/04", w24}});
         LoopsPage();
         Tap(kLoopKeys[0]);
         UntilLength(96000, 500);
@@ -3235,8 +3235,8 @@ int main()
         Save(1);
         Tap(kSceneKeys[0]);
         RunMs(200);
-        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/03", LoopWav(192000, 2, 220.f)},
-                  {"A/05", LoopWav(2880000, 1, 440.f)}, {"A/06", LoopWav(480000, 2, 330.f)}});
+        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/03", SineWav(192000, 2, 220.f)},
+                  {"A/05", SineWav(2880000, 1, 440.f)}, {"A/06", SineWav(480000, 2, 330.f)}});
         LoopsPage();
         Tap(kLoopKeys[0]);
         UntilLength(96000, 500);
@@ -3281,7 +3281,7 @@ int main()
     // on the play page lets go there
     cases.push_back({"loops-midi", [] {
         RunMs(kReadyMs);
-        PutLoops({{"A/05", LoopWav(96000, 2, 220.f)}});
+        PutLoops({{"A/05", SineWav(96000, 2, 220.f)}});
         LoopsPage();
         Trs({kNoteOn, kFilterNote, 100});
         RunMs(100);
@@ -3307,8 +3307,8 @@ int main()
     cases.push_back({"loops-now", [] {
         RunMs(kReadyMs);
         amp = 0.f;
-        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/02", LoopWav(72000, 2, 330.f)},
-                  {"A/03", LoopWav(345600, 2, 220.f, 12)}}); // 3 bars at 100 BPM
+        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/02", SineWav(72000, 2, 330.f)},
+                  {"A/03", SineWav(345600, 2, 220.f, 12)}}); // 3 bars at 100 BPM
         LoopsPage();
         Tap(kLoopKeys[0]);
         const int first = UntilLength(96000, 1000);

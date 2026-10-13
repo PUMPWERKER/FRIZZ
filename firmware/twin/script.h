@@ -22,5 +22,5 @@ std::string LedLine();
 /** A loop for the loop loader's card (#70, `card wav`): a WAV of 16-bit PCM at 48 kHz, frames
  *  of a sine at freq, amplitude .3, mono or stereo (the right a quarter period on), with an
  *  acid chunk of beats before its data if beats > 0 */
-std::string LoopWav(uint32_t frames, int channels, float freq, uint32_t beats = 0);
+std::string SineWav(uint32_t frames, int channels, float freq, uint32_t beats = 0);
 } // namespace twin
