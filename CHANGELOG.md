@@ -14,6 +14,13 @@ what FRIZZ does.
   into the launcher's picker if you use it, or else FRIZZ starts again. A loop in RAM is lost,
   as with the power switch.
 
+### Fixed
+
+- **The shifter is mono again right after its stereo returns to 0** (#226): turned up and
+  back to 0 while the shifter plays, its left and right channel stayed apart (hollow when
+  summed to mono) until it was punched in again or the shift passed the centre. Now the right
+  channel glides onto the left's within a grain (about 30 ms), without a click.
+
 ## v1.0.1 (2026-10-13)
 
 ### Changed
