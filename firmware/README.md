@@ -232,10 +232,10 @@ longer than a block, which crackle), `settings`, `channel N`, `transport on|off`
 `source auto|trs|usb|internal`, `out off|trs|all`, `scene get|put SLOT FILE`, the developers'
 `ident`, `ram-only`, `get GROUP`, `set GROUP INDEX VALUE`, `bench [--wait] [--out FILE]`,
 `probe`, `levels`, `signal sine|saw|noise HZ LEVEL` / `signal off`, `reseed [SEED]`,
-`battery` and `loops [--scan]` / `loops load BANK SLOT [--fault no-flow|past-end|cut-short|reinit]
-[--check WAV]` / `loops write KB CHUNK` (the loop loader, #70: a load's time, the audio
-callback's load meanwhile, MainLoop's longest step, its CRC against WAV's data) (below), and
-`play SCRIPT [--cpu] [--fresh]`, which plays a twin
+`battery`, `reset`, `crash [--clear]`, `crash-test` and `loops [--scan]` / `loops load BANK SLOT
+[--fault no-flow|past-end|cut-short|reinit] [--check WAV]` / `loops write KB CHUNK` (the loop
+loader, #70: a load's time, the audio callback's load meanwhile, MainLoop's longest step, its CRC
+against WAV's data) (below), and `play SCRIPT [--cpu] [--fresh]`, which plays a twin
 script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over SysEx at the
 script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs, at the
 brightness the card's `led_brightness` sets (25-100 % by 5: the levels that fit every line,
@@ -302,7 +302,7 @@ first; a knob's value in 14 bits, as `0x21` has them.
 
 | SUB | Asks | Answers |
 |---|---|---|
-| `00` IDENT | — | version (1), kind (0 FRIZZ, 1 the bench), the image's CRC-32 (5 groups) and length (3) as the bootloader loaded it (`zlib.crc32` of the `.bin`; 0 on the twin), uptime ms (5), MainLoop's passes (5), `RCC_RSR` at boot (5, as the bootloader left it, not cleared), flags (1: RAM only) |
+| `00` IDENT | — | version (1), kind (0 FRIZZ, 1 the bench), the image's CRC-32 (5 groups) and length (3) as the bootloader loaded it (`zlib.crc32` of the `.bin`; 0 on the twin), uptime ms (5), MainLoop's passes (5), `RCC_RSR` at boot (5: the resets since FRIZZ last started, which clears it once read, so a watchdog reset can be told, below), flags (1: RAM only) |
 | `01` PERSIST | `00` | flags. From now until a restart nothing is written to the card: a scene saved, copied or deleted, the master settings, as if written (the page shows them saved). One way: a restart (`flash.py --run N`) writes again, reading the card as it was. Nor a bug report (`bug-N.txt`): SHIFT + VOLUME's hold then counts as failed (#171) |
 | `02` GET | GROUP | GROUP, COUNT, then COUNT values in 14 bits |
 | `03` SET | GROUP INDEX VALUE(2) | GROUP INDEX; applied in MainLoop through the setters the knobs and keys use, and saved as theirs are (unless RAM only) |
@@ -315,6 +315,11 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | `07` SIGNAL | WAVE FREQ(2) LEVEL(2) | WAVE. 1 sine, 2 saw, 3 noise at FREQ Hz (1-16383) and LEVEL (16383 full scale) in place of the mic and AUX, from where the engine takes them; `00` alone the input again |
 | `08` RESEED | SEED(5) or — | the seed, then the states (5 each) of chaos's, the slicer's, the delay's and wow & flutter's random numbers, each from its power-on seed xor SEED: 0 is power-on's. Without SEED it only reads |
 | `09` BATTERY | — | the level (0 full, on the cable; 1 above 3.3 V; 2 3-3.3 V; 3 below 3 V), the level the check last read, the check's step (0 resting, 1-2 reading at 3.3 V), 1 if the last read failed, the last 8 reads (2 each, the newest lowest) of the cable (VIN_GD), the battery below the threshold, a legacy cable and the input current limited, then the MP2722's status registers 0x11-0x16 (2 each) |
+| `0A` RESET | `52 53 54` ("RST") | no answer: the chip resets at once, into the launcher (without it, FRIZZ starts again). Taken in the audio callback as it comes, so it works with MainLoop hung; it doesn't wait for the card, as `10`'s restart does. Sent once: a FRIZZ that started again meanwhile would take a second one |
+| `0B` CRASH | `00` | flags (1: a crash recorded), its kind (1 the watchdog, else the exception: 3 HardFault, as every fault is, since MemManage, BusFault and UsageFault aren't enabled and escalate; CFSR tells which), how many since cleared (3), uptime ms at the fault (5; the watchdog's: MainLoop's last pass), the CRC-32 (5) and length (3) of the build that crashed, `RCC_RSR` at that start (5), SP (5), and `FLASH_OPTSR_CUR` (5), the option bytes, whether or not one is recorded; zeros for none |
+| | `01` | PC, LR, xPSR, CFSR, HFSR, MMFAR, BFAR (5 each) |
+| | `02` | clears it -> flags |
+| `0C` TEST | WHAT | the bench only (FRIZZ.bin answers status 2): 1 MainLoop hangs (after answering), 2 a bus fault in MainLoop (a read where nothing is), 3 the audio callback hangs, 4 an undefined instruction in it (3 and 4 unanswered, as they come) |
 | `0D` LOOPS | `00` | the loop loader (`LoopLoader.h`, #70; FRIZZ.bin only, status 2 in the bench): its state (0 idle, 1 scanning, 2 loading, 3 loaded, 4 failed, 5 checking, 6 writing, 7 written), the bank and slot loading, the result (`loops::Result`: why a load or the write test stopped, 0 if it didn't), the SD error (5, `HAL_SD_ERROR_*`), bytes read (4) of (4), ms (3), runs (3), MainLoop's longest step since the last `00` in µs (3), the SDMMC's CLKCR (5), the card recovered (1) and set up again (1), the file's fragments (2) |
 | | `01` BANK | 1 while the scan runs, then the bank's 15 slots' results (0 empty, 1 mono, 2 stereo, more: refused, why) |
 | | `02` BANK SLOT | the slot's result, frames (4), its data's offset in the file (5) |
@@ -348,6 +353,25 @@ count how many numbers each has drawn since the seed (`remote.py reseed`): two r
 same seed draw the same numbers. The reverb's modulation (DaisySP's ReverbSc, vendored) has
 random numbers of its own, which RESEED leaves running on from power-on. Neither is in the
 event log.
+
+**A hung or crashed FRIZZ** (#105, `Crash.h`). RESET brings back a FRIZZ whose MainLoop hangs
+without the power switch: `remote.py reset`, and `tools/chompi.py` sends it itself when FRIZZ
+doesn't get to the launcher (a restart taken but not done within 15 s, or FRIZZ by its USB
+names silent for 20 s), before it asks for the switch. A fault (HardFault, MemManage,
+BusFault, UsageFault) writes a record of its registers to the backup SRAM, through a vector
+table of FRIZZ's own in the DTCM (libDaisy's `HardFault_Handler` stops at a breakpoint, which
+locks the core up without a debugger), and resets the chip; nothing goes to the card. The
+watchdog (IWDG1) is fed only at the top of the audio callback and resets the chip once it
+hasn't run for 1 s: a MainLoop that hangs or blocks (a card failing for 30 s, a bug report)
+doesn't set it off. It starts once audio runs, after the boot's card reads and battery checks,
+and a reset stops it (the option bytes' `IWDG1_SW`: started by software; CRASH says), so the
+launcher and the other slots never run with it. The next FRIZZ start records a watchdog reset
+(`RCC_RSR`, which FRIZZ clears once read), with when MainLoop last ran.
+`remote.py crash` reads the record, whatever slot runs (the backup SRAM keeps it through the
+launcher and other builds, until a power-off or `--clear`): the kind, the build that crashed
+(by its CRC-32, as IDENT names builds) and the `addr2line` line for its PC and LR, with the
+`.elf` if that build is the one in `code/src/build/` or `build-bench/`. `remote.py crash-test`
+(the bench only) hangs or faults on purpose, to check all three on the device.
 
 **From the card:** copy `build/FRIZZ.bin` to the SD card and power on, as described in
 [`INSTALL.md`](../INSTALL.md). FRIZZ is a `BOOT_SRAM` app: CHOMPI's bootloader copies it from
@@ -702,6 +726,8 @@ LedSignal.h            the play page's short LED signals: 3 red or white blinks,
 ui.h                   page plumbing: events, page switching
 EventLog.h             the bug report: every key, knob and MIDI event since power-on, written as
                        a twin script to /FRIZZ/bug-N.txt on SHIFT + VOLUME held (settings page)
+Crash.h                the crash record in the backup SRAM and the watchdog fed by the audio
+                       callback (#105; the fault handler is in chompi_main.cpp)
 Bench.h, BenchProfile.h
                        the CPU bench (only in FRIZZ-bench.bin, `make BENCH=1`) and its cycle marks
 limiter.h, EnvFollower.h

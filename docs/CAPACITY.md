@@ -10,11 +10,12 @@ build; the numbers below come from it and from `build/FRIZZ.map`.
 |---|---|---|---|---|
 | `SRAM_EXEC` (AXI SRAM) | 272 KB | 247,920 B (89 %) | **~30 KB** | all the code, and the initial values of `.data` |
 | `SRAM` (AXI SRAM) | 240 KB | 226,160 B (92 %) | ~19 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
-| `DTCMRAM` | 128 KB | 71,728 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185); the stack grows down from its top |
+| `DTCMRAM` | 128 KB | 71,728 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 23,808 B | ~8 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
 | `ITCMRAM` | 64 KB | 0 (~40 KB with `make ITCM=1`) | 64 KB | the per-sample code with `make ITCM=1` (`FRIZZ_HOT`, `FrizzHot.h`, #51), copied there at boot; off by default |
 | `RAM_D3` | 64 KB | 0 | 64 KB | nothing |
+| `BACKUP_SRAM` | 4 KB | 92 B | ~4 KB | libDaisy's `boot_info` (12 B, first: the bootloader and the launcher hand over through it), then the crash record and the build running (80 B, `Crash.h`, #105); a reset leaves it, a power-off doesn't |
 | `SDRAM` | 64 MB | 43.9 MB | **~23 MB** | the loop (31.7 MB), the tape stop (4.2 MB), the delay (3.8 MB), the event log (2.1 MB), the freezer (1.9 MB), the reverb's pre-delay (0.1 MB); measured on `FRIZZ.bin` md5 `1eb11808` |
 
 **The loop loader (#70, for 1.1)** adds a second loop buffer, 16 bars at 50 BPM (14.75 MB,

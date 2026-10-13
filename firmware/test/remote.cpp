@@ -18,11 +18,15 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "../code/src/Crash.h"
 #include "check.h"
 #include "script.h"
 #include "twin.h"
 
 using namespace twin;
+
+// the firmware's crash record (chompi_main.cpp), an ordinary static on the twin
+extern chompi::crash::Backup crash_mem;
 
 static const int kFilterKeyLed = 20;
 static const int kPlayLed = 7; // PanelLeds.h
@@ -817,6 +821,64 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
             printf("%s\n", out.c_str());
         unlink(wav.c_str());
     }
+    // the crash record (#105): none on the twin; one as the fault handler writes it, read back
+    // and cleared; a watchdog's, as the next start records it
+    rc = Remote({"crash"}, out);
+    Check(rc == 0 && Has(out, "crash      none recorded") && Has(out, "no option bytes (the twin)"),
+          "remote: crash says none is recorded");
+    {
+        using namespace chompi;
+        const uint32_t frame[8] = {0, 0, 0, 0, 0, 0x24001235, 0x24004214, 0x01000003};
+        const uint32_t fault[4] = {0x8200, 0x40000000, 0, 0x2FFF0000};
+        crash::Write(crash_mem.record, crash::HARD_FAULT, crash_mem.running, 12345, 0x00A00000, frame, fault);
+    }
+    rc = Remote({"crash"}, out);
+    Check(rc == 0 && Has(out, "crash      HardFault, 1 since cleared\nbuild      FRIZZ, crc32 00000000, 0 B")
+              && Has(out, "when       12.345 s up (that start's RCC_RSR 00a00000: brown-out, power-on)")
+              && Has(out, "PC         24004214\nLR         24001235\nxPSR       01000003 (exception 3)")
+              && Has(out, "CFSR       00008200 PRECISERR BFARVALID\nHFSR       40000000 FORCED\nBFAR       2fff0000")
+              && !Has(out, "MMFAR") && Has(out, " -f -C -i -e FRIZZ.elf (make in a checkout") && Has(out, "24004214 24001234"),
+          "remote: crash reads a fault's record: the build, when, the registers, the faults' bits, addr2line");
+    if (rc != 0 || !Has(out, "24004214 24001234"))
+        printf("%s\n", out.c_str());
+    rc = Remote({"crash", "--clear"}, out);
+    std::string after;
+    rc |= Remote({"crash"}, after);
+    Check(rc == 0 && Has(out, "HardFault") && Has(out, "\ncleared") && Has(after, "none recorded"),
+          "remote: crash --clear clears it");
+    {
+        using namespace chompi;
+        const crash::Running running = crash_mem.running;
+        const uint32_t alive = running.alive_ms;
+        crash::Boot(crash_mem, crash::kIwdgResetFlag | 1u << 24, 0x1234, 99);
+        rc = Remote({"crash"}, out);
+        char when[96];
+        snprintf(when, sizeof(when), "MainLoop last ran at %.3f s up; RCC_RSR 05000000 (software, watchdog)",
+                 alive / 1000.);
+        Check(rc == 0 && Has(out, "crash      the watchdog: the audio callback stopped for 1 s, 1 since cleared")
+                  && Has(out, when) && !Has(out, "PC ") && crash_mem.running.crc == 0x1234,
+              "remote: a watchdog reset is recorded at the next start, with when MainLoop last ran");
+        if (rc != 0 || !Has(out, when))
+            printf("%s\n%s\n", out.c_str(), when);
+        crash::Boot(crash_mem, 1u << 24, 0, 0);
+        Check(crash::Valid(crash_mem.record) && crash_mem.record.kind == crash::WATCHDOG,
+              "crash: a start without the watchdog's flag keeps the record");
+        crash_mem.running = running;
+        crash::Clear(crash_mem.record);
+    }
+    rc = Remote({"crash-test", "fault-main"}, out);
+    Check(rc != 0 && Has(out, "TEST: not in this build"), "remote: crash-test, on FRIZZ: not in this build");
+
+    // RESET, taken in the audio callback as it comes: with the wrong key nothing, with
+    // remote.py's the chip's reset (the twin notes it)
+    for (uint8_t b : {0xF0, 0x7D, 0x43, 0x48, 0x3E, 0x0A, 0x01, 0x52, 0x53, 0x53, 0xF7})
+        UsbMidi(b);
+    RunMs(20);
+    const bool kept_running = !Restarted();
+    rc = Remote({"reset", "--no-wait"}, out);
+    RunMs(20);
+    Check(rc == 0 && kept_running && Restarted() && Has(out, "RESET sent"),
+          "remote: reset resets the chip from the audio callback; not without its key");
 
     // a script played on the device: the filter's key held, its LED expected as the twin
     // shows it held and let go, with the load
@@ -1218,6 +1280,7 @@ log = []
 seq = [("other", "x"), ("other", "x"), ("frizz", "node")]
 chompi.state = lambda device=None: seq.pop(0) if len(seq) > 1 else seq[0]
 chompi.restart = lambda node: log.append("restart " + node)
+chompi.reached = lambda *rest: True
 chompi.wait_for = lambda wanted, *rest, **kw: log.append("wait " + wanted) or "l"
 print(chompi.to_launcher(), log)
 )", out);
@@ -1227,6 +1290,47 @@ print(chompi.to_launcher(), log)
     Check(Has(out, "l ['restart node', 'wait launcher']"),
           "tools: a FRIZZ silent for a while is restarted once it answers, not taken for another firmware");
     if (rc != 0 || !Has(out, "same") || !Has(out, "waiting\n"))
+        printf("%s\n", out.c_str());
+
+    // the rescue (#105): a FRIZZ that took the restart but doesn't get to the launcher, or
+    // one silent for BUSY s by its names, is RESET from its audio callback before the power
+    // switch is asked for; another firmware never is. FRIZZ is told by its USB names
+    rc = Python(R"(
+import os, time, chompi
+time.sleep = lambda s: None
+chompi.BUSY = 0
+log = []
+def case(name, states, names, reaches=False):
+    seq = list(states)
+    chompi.state = lambda device=None: seq.pop(0) if len(seq) > 1 else seq[0]
+    chompi.restart = lambda node, hard=False: log.append(("RESET " if hard else "restart ") + node)
+    chompi.frizz_node = lambda node: names
+    chompi.reached = lambda wanted, *rest: log.append("reached? " + wanted) or reaches
+    chompi.wait_for = lambda wanted, timeout, device=None, hint=None, **kw: log.append("wait %s: %s" % (wanted, hint)) or "l"
+    log.clear()
+    chompi.to_launcher()
+    print("%s: %s" % (name, log), flush=True)
+case("restarts", [("frizz", "node")], True, True)
+case("restart hangs", [("frizz", "node")], True)
+case("silent", [("other", "node")], True)
+case("another", [("other", "node")], False)
+os.makedirs("asound", exist_ok=True)
+open("asound/cards", "w").write(" 3 [FrizZ          ]: USB-Audio - FrizZ\n                      Electrosmith FrizZ at usb-0000:00:14.0-2, full speed\n"
+                                " 4 [Seed           ]: USB-Audio - Daisy Seed Built In\n                      Electrosmith Daisy Seed Built In at usb-0000:00:14.0-3\n")
+chompi.ASOUND = "asound"
+import importlib
+frizz_node = importlib.reload(chompi).frizz_node
+chompi.ASOUND = "asound"
+print("names:", frizz_node("/dev/snd/midiC3D0"), frizz_node("/dev/snd/midiC4D0"), frizz_node(None))
+)", out);
+    Check(rc == 0 && Has(out, "restarts: ['restart node', 'reached? launcher', 'wait launcher: no launcher yet")
+              && Has(out, "restart hangs: ['restart node', 'reached? launcher', 'RESET node', 'wait launcher: no launcher yet")
+              && Has(out, "FRIZZ hasn't restarted: resetting it from its audio callback (RESET)"),
+          "tools: a FRIZZ that doesn't get to the launcher after its restart is RESET from its audio callback (#105)");
+    Check(Has(out, "silent: ['RESET node', \"wait launcher: still no launcher: FRIZZ's audio callback hangs too")
+              && Has(out, "another: ['wait launcher: None']") && Has(out, "names: True False False"),
+          "tools: a silent FRIZZ, by its USB names, is RESET before the power switch is asked for; another firmware isn't");
+    if (rc != 0 || !Has(out, "names: True False"))
         printf("%s\n", out.c_str());
 
     // after a script played RAM only, a FRIZZ slot other than the test slot is started again

@@ -44,6 +44,14 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
                                       without, how many each has drawn since the last
     ./remote.py battery               the battery's level and the charger's status, as FRIZZ
                                       last read them
+    ./remote.py reset [--no-wait]     resets the chip from FRIZZ's audio callback, even with
+                                      MainLoop hung, and waits for the launcher (sent once,
+                                      to whatever runs: a hung FRIZZ doesn't answer)
+    ./remote.py crash [--clear]       the crash record: the last fault's registers, or the
+                                      watchdog's reset, and the build's .elf for addr2line
+    ./remote.py crash-test hang-main|fault-main|hang-audio|fault-audio
+                                      the bench (FRIZZ-bench.bin) hangs or faults on purpose,
+                                      for RESET, the crash record and the watchdog
     ./remote.py loops [--scan]        the loop slots on the card (/FRIZZ/LOOPS/A-H/01-15.wav)
                                       as FRIZZ's scan found them; --scan scans again first
     ./remote.py loops load BANK SLOT [--fault no-flow|past-end|cut-short|reinit] [--check WAV]
@@ -637,6 +645,98 @@ def battery(f):
     print("MP2722     status 0x11-0x16: %s" % " ".join("%02x" % b for b in raw))
 
 
+CRASH_KINDS = {1: "the watchdog: the audio callback stopped for 1 s", 3: "HardFault",
+               4: "MemManage fault", 5: "BusFault", 6: "UsageFault"}
+CFSR_BITS = {0: "IACCVIOL", 1: "DACCVIOL", 3: "MUNSTKERR", 4: "MSTKERR", 5: "MLSPERR",
+             7: "MMARVALID", 8: "IBUSERR", 9: "PRECISERR", 10: "IMPRECISERR", 11: "UNSTKERR",
+             12: "STKERR", 13: "LSPERR", 15: "BFARVALID", 16: "UNDEFINSTR", 17: "INVSTATE",
+             18: "INVPC", 19: "NOCP", 24: "UNALIGNED", 25: "DIVBYZERO"}
+HFSR_BITS = {1: "VECTTBL", 30: "FORCED", 31: "DEBUGEVT"}
+CRASH_TESTS = {"hang-main": 1, "fault-main": 2, "hang-audio": 3, "fault-audio": 4}
+ADDR2LINE = "arm-none-eabi-addr2line"
+
+
+def bits(v, names):
+    return " ".join(n for b, n in sorted(names.items()) if v >> b & 1) or "-"
+
+
+def crash_elf(crc, length):
+    """The .elf of the build that crashed, if it's one built here"""
+    for path in ("code/src/build/FRIZZ.bin", "code/src/build-bench/FRIZZ-bench.bin"):
+        path = os.path.join(HERE, path)
+        if os.path.isfile(path) and chompi.image_id(path) == (crc, length):
+            return os.path.relpath(path[:-4] + ".elf")
+    return None
+
+
+def crash(f, clear):
+    g = chompi.get7
+    d = dev_data(f, chompi.CRASH, [0], "CRASH")
+    if not d[0] & 1:
+        print("crash      none recorded since it was cleared (or since power-on)")
+    else:
+        r = dev_data(f, chompi.CRASH, [1], "CRASH")
+        pc, lr, xpsr, cfsr, hfsr, mmfar, bfar = (g(r[5 * i:5 * i + 5]) & 0xFFFFFFFF for i in range(7))
+        count, ms, crc, length = g(d[2:5]), g(d[5:10]), g(d[10:15]) & 0xFFFFFFFF, g(d[15:18])
+        rsr, sp = g(d[18:23]) & 0xFFFFFFFF, g(d[23:28]) & 0xFFFFFFFF
+        kind = CRASH_KINDS.get(d[1], "exception %d" % d[1])
+        print("crash      %s, %d since cleared" % (kind, count))
+        print("build      %s" % chompi.describe_ident(dict(kind="frizz", crc=crc, length=length)))
+        if d[1] == 1:
+            print("when       MainLoop last ran at %.3f s up; RCC_RSR %08x (%s) at the start "
+                  "after it" % (ms / 1000, rsr, chompi.reset_cause(rsr)))
+        else:
+            print("when       %.3f s up (that start's RCC_RSR %08x: %s)" % (
+                ms / 1000, rsr, chompi.reset_cause(rsr)))
+            print("PC         %08x\nLR         %08x\nxPSR       %08x (exception %d)\nSP         %08x"
+                  % (pc, lr, xpsr, xpsr & 0x1FF, sp))
+            print("CFSR       %08x %s" % (cfsr, bits(cfsr, CFSR_BITS)))
+            print("HFSR       %08x %s" % (hfsr, bits(hfsr, HFSR_BITS)))
+            if cfsr >> 7 & 1:
+                print("MMFAR      %08x" % mmfar)
+            if cfsr >> 15 & 1:
+                print("BFAR       %08x" % bfar)
+            elf = crash_elf(crc, length)
+            print("addr2line  %s -f -C -i -e %s %08x %08x" % (
+                ADDR2LINE, elf or "FRIZZ.elf (make in a checkout of that build; "
+                "tools/builds.py md5 names it)", pc, lr & ~1))
+    optsr = g(d[28:33]) & 0xFFFFFFFF
+    if not optsr:
+        print("watchdog   no option bytes (the twin)")
+    else:
+        print("watchdog   option bytes %08x: %s, %s in Stop" % (
+            optsr, "started by software (a reset stops it)" if optsr >> 4 & 1
+            else "HARDWARE (always on)", "running" if optsr >> 17 & 1 else "frozen"))
+    if clear:
+        dev_data(f, chompi.CRASH, [2], "CRASH")
+        print("cleared")
+
+
+def reset(device, wait):
+    """RESET, once, to whatever runs there, then the launcher waited for"""
+    chompi.restart(device, hard=True)
+    if not wait:
+        print("RESET sent")
+        return
+    print("RESET sent; waiting for the launcher")
+    chompi.wait_for("launcher", 30, hint="no launcher: FRIZZ's audio callback hangs too, or "
+                    "it isn't FRIZZ; switch the CHOMPI off and on", hint_after=10)
+    print("in the launcher")
+
+
+def crash_test(f, what):
+    n = CRASH_TESTS[what]
+    if n in (1, 2):
+        got = f.dev(chompi.TEST, [n], retries=1)
+        if got and got[0] != chompi.OK:
+            sys.exit("TEST: %s" % chompi.DEV_STATUS.get(got[0], got[0]))
+    else:
+        # taken in the audio callback, as it comes: no answer
+        chompi._seq[0] = chompi._seq[0] % 127 + 1
+        f.send(chompi.DEV, [chompi.TEST, chompi._seq[0], n])
+    print({1: "MainLoop hangs (RESET brings it back)", 2: "faulted: read where nothing is",
+           3: "the audio callback hangs (the watchdog resets in 1 s)",
+           4: "faulted: an undefined instruction in the audio callback"}[n])
 # the loop loader (LoopLoader.h): its states, a slot's result or why a load stopped, faults
 LOOP_STATES = ["idle", "scanning", "loading", "loaded", "failed", "checking", "writing", "written"]
 LOOP_RESULTS = ["empty", "mono", "stereo", "not RIFF/WAVE", "no fmt chunk before the data",
@@ -1238,6 +1338,12 @@ def main():
     p = sub.add_parser("reseed", parents=[common])
     p.add_argument("seed", type=int, nargs="?")
     sub.add_parser("battery", parents=[common])
+    p = sub.add_parser("reset", parents=[common])
+    p.add_argument("--no-wait", action="store_true", help="don't wait for the launcher")
+    p = sub.add_parser("crash", parents=[common])
+    p.add_argument("--clear", action="store_true", help="and clear it")
+    p = sub.add_parser("crash-test", parents=[common])
+    p.add_argument("what", choices=CRASH_TESTS)
     p = sub.add_parser("loops", parents=[common])
     p.add_argument("action", nargs="?", choices=["load", "write"])
     p.add_argument("args", nargs="*")
@@ -1261,7 +1367,11 @@ def run(a):
 
 
 def command(a):
-    if a.cmd in ("bench", "ident") and not a.device and not a.slot:
+    if a.cmd == "reset":
+        # whatever runs: a hung FRIZZ doesn't answer, so isn't asked
+        return reset(a.device or chompi.find_device() or sys.exit("no CHOMPI on USB MIDI"),
+                     not a.no_wait)
+    if a.cmd in ("bench", "ident", "crash", "crash-test") and not a.device and not a.slot:
         # whatever runs, the bench too, which answers as FRIZZ does
         a.device = chompi.wait_for("frizz", 30)
     # FRIZZ found or started by the tools, which can start it again (play --fresh, restore);
@@ -1343,6 +1453,10 @@ def command(a):
         reseed(f, a.seed)
     elif a.cmd == "battery":
         battery(f)
+    elif a.cmd == "crash":
+        crash(f, a.clear)
+    elif a.cmd == "crash-test":
+        crash_test(f, a.what)
     elif a.cmd == "loops" and a.action == "load":
         if len(a.args) != 2 or a.args[0].upper() not in BANKS or not a.args[1].isdigit() \
                 or not 1 <= int(a.args[1]) <= 15:

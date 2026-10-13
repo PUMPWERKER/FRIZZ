@@ -918,7 +918,7 @@ namespace chompi
             case IDENT:
                 if (!info.crc_done)
                 {
-                    info.crc = Crc32(info.image, info.image_len);
+                    info.crc = crash::Crc32(info.image, info.image_len);
                     info.crc_done = true;
                 }
                 d[n++] = kVersion;
@@ -1021,6 +1021,47 @@ namespace chompi
                     n = Put7s(d, n, hw_->mp_buff_[i], 2);
                 break;
             }
+            case CRASH:
+            {
+                // after a power-off the backup SRAM holds noise: zeros for that
+                const bool valid = crash::Valid(info.crash->record);
+                const crash::Record r = valid ? info.crash->record : crash::Record{};
+                if (group == 2)
+                    crash::Clear(info.crash->record);
+                if (group > 2)
+                    status = BAD;
+                else if (group == 2)
+                    d[n++] = 0;
+                else if (group == 0)
+                {
+                    // the option bytes whether or not a crash is recorded
+                    d[n++] = valid ? kCrashValid : 0;
+                    d[n++] = static_cast<uint8_t>(r.kind);
+                    const uint32_t words[] = {r.count, r.ms, r.crc, r.len, r.rsr, r.sp, info.option_bytes};
+                    const uint8_t groups[] = {3, 5, 5, 3, 5, 5, 5};
+                    for (size_t i = 0; i < sizeof(groups); i++)
+                        n = Put7s(d, n, words[i], groups[i]);
+                }
+                else
+                    for (uint32_t w : {r.pc, r.lr, r.xpsr, r.cfsr, r.hfsr, r.mmfar, r.bfar})
+                        n = Put7s(d, n, w, 5);
+                break;
+            }
+#if FRIZZ_BENCH
+            case TEST:
+                // the audio callback's take theirs as they come (MidiControl::SysEx)
+                if (group == kHangMain)
+                    info.hang = true;
+                else if (group == kFaultMain)
+                    d[n++] = static_cast<uint8_t>(*reinterpret_cast<volatile uint32_t*>(0x2FFF0000u) & 0x7F);
+                else
+                    status = BAD;
+                break;
+#else
+            case TEST:
+                status = NOT_HERE;
+                break;
+#endif
             case LOOPS:
             {
                 const int got = info.loops ? info.loops(q.arg, q.len, d + n) : 0;
@@ -1207,24 +1248,6 @@ namespace chompi
             else
                 return false;
             return true;
-        }
-
-        /** zlib's CRC-32 of the image as loaded, which the host works out from the .bin
-         *  (tools/builds.py): a nibble at a time, from a table of 16 */
-        static uint32_t Crc32(const uint8_t* p, size_t len)
-        {
-            static const uint32_t kNibble[16] = {
-                0x00000000, 0x1DB71064, 0x3B6E20C8, 0x26D930AC, 0x76DC4190, 0x6B6B51F4,
-                0x4DB26158, 0x5005713C, 0xEDB88320, 0xF00F9344, 0xD6D6A3E8, 0xCB61B38C,
-                0x9B64C2B0, 0x86D3D2D4, 0xA00AE278, 0xBDBDF21C};
-            uint32_t crc = 0xFFFFFFFFu;
-            for (size_t i = 0; i < len; i++)
-            {
-                crc ^= p[i];
-                crc = (crc >> 4) ^ kNibble[crc & 15];
-                crc = (crc >> 4) ^ kNibble[crc & 15];
-            }
-            return ~crc;
         }
 
         /** A scene's part for kCmdSceneGet: kFxPerPart effects' knobs on one page, 14 bits

@@ -41,13 +41,17 @@
  *  USB only, answered F0 7D 43 48 7E SUB SEQ STATUS DATA F7, SEQ the request's, so a tool
  *  matches its answer. It has a queue of its own (kDevQueue), apart from the other queries'
  *  one slot, and every request taken is answered, with a status if nothing else: a tool that
- *  gets no answer asks again, which every request can take (they set, never step).
+ *  gets no answer asks again, which every request can take (they set, never step). All but
+ *  RESET, which resets the chip here in the audio callback as it comes, so a tool can bring
+ *  back a FRIZZ whose MainLoop hangs, and which a tool sends once (a FRIZZ started again
+ *  meanwhile would take a second).
  */
 #pragma once
 #include <stdint.h>
 #include <string.h>
 #include "daisy.h"
 #include "hardware.h"
+#include "Crash.h"
 #include "EventLog.h"
 #include "MidiClock.h"
 #include "MidiFeedback.h"
@@ -180,6 +184,14 @@ enum Sub : uint8_t
                  //    the seed, then chaos's, the slicer's, the delay's and wow & flutter's
                  //    states (5 each)
     BATTERY = 9, // -> the level, the charger's debounced bits, the last read, its raw status
+    RESET = 10,  // 'R' 'S' 'T': the chip reset in the audio callback as the SysEx comes, not
+                 //    waiting for MainLoop (a hung one) nor for the card; no answer
+    CRASH = 11,  // 0 -> the crash record (Crash.h): flags (kCrashValid), kind, count (3), ms,
+                 //    CRC-32 (5 each), length (3), RCC_RSR, SP, the option bytes (5 each);
+                 //    1 -> PC, LR, xPSR, CFSR, HFSR, MMFAR, BFAR (5 each); 2 clears it -> flags
+    TEST = 12,   // WHAT: the bench's (FRIZZ-bench.bin) faults on purpose, for the tools to
+                 //    check RESET, the crash record and the watchdog: kHangMain, kFaultMain,
+                 //    kHangAudio, kFaultAudio
     LOOPS = 0x0D, // PART ...: the loop loader's (LoopLoader::Dev). FRIZZ.bin only
 };
 enum Status : uint8_t
@@ -199,6 +211,11 @@ static const uint8_t kGroupSettings = 0x23; // the card's settings, as masterfil
 static const uint8_t kRamOnly = 1;          // IDENT's flags: PERSIST 0 is on
 static const size_t kBenchChunk = 32;
 static const uint8_t kArmed = 1;            // LEVELS 1's flags: the peak meters just started
+static const uint8_t kResetKey[] = {'R', 'S', 'T'};
+static const uint8_t kCrashValid = 1;       // CRASH's flags: a crash recorded
+// TEST's: MainLoop hangs; reads where nothing is (a bus fault); the audio callback hangs;
+// runs an undefined instruction in it
+static const uint8_t kHangMain = 1, kFaultMain = 2, kHangAudio = 3, kFaultAudio = 4;
 
 /** SIGNAL's test signal in place of the input, and LEVELS' peak meters: off at power-on, in
  *  RAM only, until a restart. The audio callback reads `on` once a block, and off it costs
@@ -285,7 +302,10 @@ struct Info
     uint32_t crc = 0;                 // its CRC-32, once worked out (on the first IDENT)
     bool crc_done = false;
     volatile uint32_t passes = 0;     // MainLoop's
-    uint32_t reset_cause = 0;         // RCC_RSR at boot
+    uint32_t reset_cause = 0;         // RCC_RSR at boot, which FRIZZ then clears (Crash.h)
+    uint32_t option_bytes = 0;        // FLASH_OPTSR_CUR: IWDG1_SW, its freeze in Stop
+    crash::Backup* crash = nullptr;   // the crash record, in the backup SRAM
+    volatile bool hang = false;       // TEST's kHangMain: MainLoop stops
     uint32_t seed = 0;                // RESEED's last
     // the bench's answer to BENCH (Bench::Report) into d: its length, or -1 for NOT_YET
     int (*bench)(uint8_t part, uint32_t offset, uint8_t* d) = nullptr;
@@ -865,8 +885,24 @@ private:
             switch_ = arg[0];
             break;
         case kCmdDev:
+            if (!usb || n < 2)
+                return;
+            // here in the audio callback, as it comes: MainLoop may be what hangs
+            if (arg[0] == dev::RESET)
+            {
+                if (n == 2 + sizeof(dev::kResetKey) && memcmp(arg + 2, dev::kResetKey, sizeof(dev::kResetKey)) == 0)
+                    NVIC_SystemReset();
+                return;
+            }
+#if FRIZZ_BENCH
+            if (arg[0] == dev::TEST && n > 2 && arg[2] == dev::kHangAudio)
+                for (;;)
+                    __asm__ volatile("");
+            if (arg[0] == dev::TEST && n > 2 && arg[2] == dev::kFaultAudio)
+                __builtin_trap();
+#endif
             // over USB, where the answer goes; a full queue drops it, unanswered
-            if (!usb || n < 2 || static_cast<uint8_t>(dev_write_ - dev_read_) >= kDevQueue)
+            if (static_cast<uint8_t>(dev_write_ - dev_read_) >= kDevQueue)
                 return;
             {
                 DevQuery& q = dev_queue_[dev_write_ % kDevQueue];
