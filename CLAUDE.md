@@ -24,6 +24,7 @@ The stock firmwares, bootloader and hardware files under `reference/`:
 | `firmware/` | FRIZZ source (`code/`, `bin/`, `test/`, `twin/`, `flash.py`, `card.py`, `remote.py`, `tools/`) | developers |
 | `docs/` | design notes: `LOOPER.md`, `FX_OVERVIEW.md`, `CAPACITY.md`, `STOCK_FIRMWARES.md` | developers |
 | `reference/` | the original CHOMPI release, unchanged except for links | reference only |
+| `images/` | the manual's diagrams (SVG, drawn by `firmware/tools/diagrams/`) | users |
 | `LICENSE`, `THIRD_PARTY.md`, `TRADEMARKS.md`, `CLAUDE.md` | legal, this file | — |
 
 Keep the root user-facing: anything that only helps development goes in `docs/` or
@@ -64,9 +65,11 @@ against this before it merges:
    - `MANUAL.md`, `QUICKSTART.md` and `INSTALL.md` keep exactly one H1 each (the page title).
 5. **No version history in the user docs:** "until v0.11 …" belongs in `CHANGELOG.md`, not in
    `MANUAL.md`, `QUICKSTART.md` or `INSTALL.md`.
-6. **To see it:** in frizz-web, `FRIZZ_REF=<tag or branch> npm run build` builds the site from
-   that ref and fails on a broken link (`FRIZZ_DIR=<worktree>` builds it from a local
-   checkout instead). Without the site, `firmware/tools/doclinks.py` checks the links, anchors,
+6. **To see it:** in a frizz-web worktree of your own (not the user's checkout),
+   `FRIZZ_DIR=/abs/path/to/FrizZ-worktree npm run build` builds the site from that checkout and
+   fails on a broken link, anchor or missing image (`FRIZZ_REF=<release tag>` builds a
+   release). Images live in `images/`, linked relatively (`![…](images/name.svg)`) with real alt
+   text. Without the site, `firmware/tools/doclinks.py` checks the links, anchors,
    headings and the QUICKSTART key row.
 
 ## Git workflow: branches first, checked by the sessions, merged by the user
@@ -192,12 +195,12 @@ through with why, and the issue is closed with it; the next one opens.
 A build handed out for testing goes on GitHub as a **pre-release**, never as Latest:
 
 - Each release candidate (or other test round the user asks for) gets a numbered one,
-  `v<next>-beta.N` (next: `v1.0.0-beta.2`), tagged on the pushed commit, with that commit's
+  `v<next>-beta.N` (next: `v1.0.0-beta.3`), tagged on the pushed commit, with that commit's
   build attached: `make` in a clean worktree at the tag (`git worktree add ../FrizZ-<tag>
   <tag>`, GCC 10.3), and its `firmware/code/src/build/FRIZZ.bin` uploaded under that name. The
   notes name its md5 and are taken from `CHANGELOG.md`'s Unreleased section, plus a link to
   the release-test issue (or the PR). The number never moves, so feedback can name the build.
-- The pre-release **`beta`** always carries the newest numbered one (now v1.0.0-beta.1), and
+- The pre-release **`beta`** always carries the newest numbered one (now v1.0.0-beta.2), and
   moves only with a new one, at a fixed link
   (`https://github.com/ZUHcYa/FrizZ/releases/download/beta/FRIZZ.bin`): `git tag -f beta
   <commit> && git push -f origin beta`, `gh release upload beta <the numbered one's FRIZZ.bin>
@@ -209,7 +212,8 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   to **key 10** (`FRIZZ`), each on the user's word once it's cut, from the clean worktree of
   its tag: `./flash.py --slot 13` (or `--slot 10`) there. `flash.py` sends to 10 or 13 nothing
   else: only when the key is named, and only the build of a clean `v*` tag's checkout. Until
-  `v1.0.0`, key 10 keeps v1.0.0-beta.1.
+  `v1.0.0`, key 10 keeps v1.0.0-beta.1, which reads the scene layout of beta.2 and later wrong
+  (the sends' Level and Ducking swapped): no scene saves on key 10 once a newer beta has run.
 
 ## The CHOMPI is shared: the lock and the slots
 
@@ -248,6 +252,12 @@ card's LED brightness, and on the device `settings.txt` fails the battery's line
 on USB, green on the twin). The user takes
 the CHOMPI for playing with `tools/chompi.py hold` (until Ctrl-C),
 or by telling a session, which then runs it for them.
+A scenario that depends on what the card keeps sets it first (`set GROUP INDEX VALUE`, #218):
+`ui.cpp` also plays every scenario on a player's card. `input sine` goes to the device as the
+test signal (SIGNAL, #225), so `play --cpu` with it reads ~1 point above runs before that. A
+turn in the same instant as a key's edge lands differently on the twin and the device: leave
+`wait 100` between them (#227). The DAW cases' music lives in `firmware/card/audio/`
+(git-ignored, the user's own samples: never commit or name it).
 Within that, stage 2 needs no asking. Ask the user first only for what needs their hands or
 changes what they play: sending to key 10 or 13, `flash.py --list` (it restarts FRIZZ into
 the launcher: a loop in RAM is lost), anything when the lock's holder is the user, a cable to
@@ -306,12 +316,13 @@ anything else about the chip ([`firmware/twin/README.md`](firmware/twin/README.m
 
 ## The audio callback is CPU-bound
 
-The callback has 0.5 ms per 24-sample block. Idle it uses ~45 %, a loop with ~11 effects
-reaches 100 % and crackles (a known limit, parked by the user). Effects that are off must stay
+The callback has 0.5 ms per 24-sample block. Idle it uses ~34 %, a loop with every effect
+~72 % on average and ~82 % at worst; only the bench's page-2 extreme (all 13 effects, page 2
+off its defaults) goes past 100 % and crackles (#21, settled by the user for 1.0). Effects that are off must stay
 cheap (`FxGate::Asleep`). A change that only shifts the memory layout has made it crackle on
 the device (b5c658c) while the host stayed bit-identical, so suspect the CPU when crackles
 appear that the twin can't reproduce. The host can't measure the load; the device can:
-`make BENCH=1` builds `FRIZZ-bench.bin` (`Bench.h`, compiled in only then), which runs 23
+`make BENCH=1` builds `FRIZZ-bench.bin` (`Bench.h`, compiled in only then), which runs 27
 segments by itself and writes `/FRIZZ/cpu.txt`; `firmware/remote.py load` and `remote.py play
 SCRIPT --cpu` read `FRIZZ.bin`'s own load. Every firmware branch runs the bench in stage 2,
 on its final build, and its PR compares it with `main`'s `firmware/bin/cpu.txt`; a segment
@@ -322,7 +333,9 @@ own build, files it with `tools/builds.py cpu` (which heads it with the md5 of t
 measured) and opens a PR changing only `bin/cpu.txt` (tooling, it merges any time). So `main`
 has its own load, measured after the merges, and layout effects between merged branches show
 there. Details:
-`firmware/README.md`, *Measure the CPU load*.
+`firmware/README.md`, *Measure the CPU load*. The bench build checksums its source, so a
+comment changed under `firmware/code/` changes its md5 too: a docs-only branch leaves code
+comments alone (or benches again).
 
 ## Firmware architecture
 
