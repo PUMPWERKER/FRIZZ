@@ -378,6 +378,17 @@ what FRIZZ does.
   Grain while the shifter plays could let one of its two voices play unshifted for up to
   20 ms, a click (worst with a long grain after a short one, shifting up). The new grain now
   comes in as the voices start over, within a few of their lives (a split second).
+- **The shifter keeps shifting when its shift jumps from down to up** (#221), since
+  v1.0.0-beta.2: a jump while it plays (−7 to +7, by MIDI, a scene or a fast turn) could leave
+  it playing its input at its own pitch, one channel or both, until it went off. It depended
+  on the moment, so it came now and then. Going the other way, from up to down, its voices
+  now also stay within the Grain's longest window.
+- **The shifter at stereo 0 is mono on a mono source** (#223): its left and right channel
+  chose where to splice each on their own, and the slightest difference between CHOMPI's two
+  input channels set them apart, so they read from different places. Summed to mono, that
+  was a moving comb filter, a hollow sound. Now the right channel follows the left's choice
+  while stereo is at 0, and both play the same; after stereo was turned up and back to 0, from
+  the shifter's next punch-in, or once the shift has been at the centre.
 - **The crusher's dive after a quick tap** (#167): a tap shorter than the dive's 0.1 s fall,
   then a pause, and the next press started the dive from too high a rate, as if the first
   fall had been cut off where the tap ended. It now picks up where it would have got to.

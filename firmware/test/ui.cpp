@@ -4609,6 +4609,181 @@ int main()
         Check(param(3) == 0.f && param(5) == 1.f, "cc-stereo: CC 17 turns the grain");
     }});
 
+    // the shifter latched alone, CC 14 on its channel from down to up while it plays (#221):
+    // −7 → +7, −12 → +7, +12 → −12 → +7. In beta.2 it could stop shifting at the jump and play
+    // its input unshifted until it went off, depending on the moment: the time between the CCs
+    // scanned, 37 ms a step (53 before the −12), the shifter off and on between the moments.
+    // Each jump then heard on the headphones for 200 ms, L and R: a 311 Hz sine shifted a
+    // fifth up is 466 Hz
+    {
+        // the power at f0 and f1 of the headphones' L and R over ms, Goertzel
+        static auto power = [](uint32_t ms, float f0, float f1, float (*p)[2]) {
+            float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
+            const float k[2] = {2.f * cosf(2.f * float(M_PI) * f0 / kSampleRate),
+                                2.f * cosf(2.f * float(M_PI) * f1 / kSampleRate)};
+            float s[2][2][2] = {}; // per channel, per frequency: the last two states
+            for (uint32_t b = 0; b < ms * 2; b++)
+            {
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    in[i * kChannels + 2] = in[i * kChannels + 3] = amp * sinf(phase);
+                    phase = fmodf(phase + 2.f * float(M_PI) * freq / kSampleRate, 2.f * float(M_PI));
+                }
+                Run(1, in, out);
+                for (size_t i = 0; i < kBlockSize; i++)
+                    for (int c = 0; c < 2; c++)
+                        for (int f = 0; f < 2; f++)
+                        {
+                            const float v = out[i * kChannels + c] + k[f] * s[c][f][0] - s[c][f][1];
+                            s[c][f][1] = s[c][f][0];
+                            s[c][f][0] = v;
+                        }
+            }
+            for (int c = 0; c < 2; c++)
+                for (int f = 0; f < 2; f++)
+                    p[c][f] = s[c][f][0] * s[c][f][0] + s[c][f][1] * s[c][f][1]
+                              - k[f] * s[c][f][0] * s[c][f][1];
+        };
+        struct Jump
+        {
+            const char *id, *name;
+            std::vector<int> from; // the CCs before +7, each held for the scanned time
+        };
+        static const Jump jumps[] = {{"7", "-7 to +7", {26}},
+                                     {"12", "-12 to +7", {0}},
+                                     {"12-12", "+12 to -12 to +7", {127, 0}}};
+        for (const Jump& j : jumps)
+            cases.push_back({std::string("shifter-down-up-") + j.id, [&j] {
+                RunMs(kReadyMs);
+                freq = 311.f;
+                Latch("KEY_2");
+                RunMs(420);
+                int stuck[2] = {0, 0}, tries = 0, unlatched = 0;
+                for (uint32_t k = 0; k < 16; k++)
+                {
+                    for (size_t i = 0; i < j.from.size(); i++)
+                    {
+                        Trs({0xB1, 14, j.from[i]});
+                        RunMs(400 + k * (i + 1 < j.from.size() ? 53 : 37));
+                    }
+                    Trs({0xB1, 14, 101}); // +7
+                    RunMs(300);
+                    float p[2][2];
+                    power(200, 311.f, 466.f, p);
+                    tries++;
+                    for (int c = 0; c < 2; c++)
+                        stuck[c] += p[c][0] > p[c][1];
+                    // off and on again, which ends a stuck shifter: each moment on its own
+                    Latch("KEY_2");
+                    RunMs(300);
+                    unlatched += !(LatchedFx(Ask({0x20})) & 2);
+                    Latch("KEY_2");
+                    RunMs(420);
+                }
+                printf("      unshifted after the jump in %d (L) and %d (R) of %d\n", stuck[0], stuck[1], tries);
+                Check(unlatched == tries, "shifter-down-up: off between the moments");
+                Check(stuck[0] == 0 && stuck[1] == 0,
+                      (std::string("shifter-down-up: ") + j.name + ", at every moment: both channels shift after the jump (#221)").c_str());
+            }});
+    }
+
+    // the shifter at stereo 0 on a mono source (a sine and noise) whose two channels differ by
+    // a hair, as AUX's analog paths on the device (#223): noise 60 dB below full scale on the
+    // right only. The headphones' L and R stay the same signal, correlated as the inputs are,
+    // through +7, −7, +12 and −12 (CC 14 on its channel), 1.5 s each after a second to settle.
+    // Each channel searching its splices on its own, the hair picked other lags, and the two
+    // read from other places from there on
+    {
+        // ms of the sine and noise into AUX, the hair on the right; the headphones' L/R
+        // correlation over them
+        static auto run = [](uint32_t ms) {
+            static uint32_t noise = 223, hair = 221;
+            float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
+            double ll = 0., rr = 0., lr = 0.;
+            for (uint32_t b = 0; b < ms * 2; b++)
+            {
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    noise = noise * 1664525u + 1013904223u;
+                    hair = hair * 1664525u + 1013904223u;
+                    const float s = amp * sinf(phase)
+                                    + .05f * (static_cast<float>(noise >> 8) / 8388608.f - 1.f);
+                    phase = fmodf(phase + 2.f * float(M_PI) * freq / kSampleRate, 2.f * float(M_PI));
+                    in[i * kChannels + 2] = s;
+                    in[i * kChannels + 3] = s + 1e-3f * (static_cast<float>(hair >> 8) / 8388608.f - 1.f);
+                }
+                Run(1, in, out);
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    const double l = out[i * kChannels], r = out[i * kChannels + 1];
+                    ll += l * l;
+                    rr += r * r;
+                    lr += l * r;
+                }
+            }
+            return static_cast<float>(lr / sqrt(ll * rr + 1e-30));
+        };
+        cases.push_back({"shifter-stereo-0", [] {
+            RunMs(kReadyMs);
+            freq = 311.f;
+            Latch("KEY_2");
+            run(500);
+            float worst = 1.f;
+            for (int cc : {101, 26, 127, 0})
+            {
+                Trs({0xB1, 14, cc});
+                run(1000);
+                const float r = run(1500);
+                printf("      shift %+d: L/R correlation %.6f\n", cc == 101 ? 7 : cc == 26 ? -7 : cc ? 12 : -12, r);
+                worst = std::min(worst, r);
+            }
+            Check(worst > .9999f, "shifter-stereo-0: L and R the same signal at every shift, a hair apart at the input (#223)");
+            freq = 220.f;
+        }});
+        // and set apart by a stereo offset (CC 19, page 2's knob 2, at .25) and back to 0:
+        // apart as they were, until the next punch-in, where the right channel takes the
+        // left's taps, unheard, before its fade-in, or the shift leaving the centre, where the
+        // output was dry (Move)
+        cases.push_back({"shifter-stereo-relock", [] {
+            RunMs(kReadyMs);
+            freq = 311.f;
+            Latch("KEY_2");
+            Trs({0xB1, 14, 101}); // +7
+            run(1000);
+            Trs({0xB1, 19, 32});
+            run(1500);
+            Trs({0xB1, 19, 0});
+            run(1000);
+            const float apart = run(1500);
+            Latch("KEY_2");
+            run(300);
+            const bool off = !(LatchedFx(Ask({0x20})) & 2);
+            Latch("KEY_2");
+            run(1000);
+            const float together = run(1500);
+            printf("      stereo .25 then 0: L/R correlation %.6f; punched out and in: %.6f\n", apart,
+                   together);
+            Check(off && together > .9999f,
+                  "shifter-stereo-relock: back at stereo 0, punched out and in: L and R the same again (#223)");
+            // apart again, then the shift to the centre for a second (the output dry) and up:
+            // the same again as it leaves the centre
+            Trs({0xB1, 19, 32});
+            run(1500);
+            Trs({0xB1, 19, 0});
+            run(1000);
+            const float again = run(1500);
+            Trs({0xB1, 14, 64});
+            run(1000);
+            Trs({0xB1, 14, 101});
+            run(1000);
+            const float centre = run(1500);
+            printf("      apart again %.6f; through the centre to +7: %.6f\n", again, centre);
+            Check(again < .999f && centre > .9999f,
+                  "shifter-stereo-relock: apart again, then through the centre (dry): L and R the same again (#223)");
+            freq = 220.f;
+        }});
+    }
+
     // ---- the built-in mic (#113): AUX's jack picks the source at power-on and on each change,
     // the settings page's upper F# the other until the next (#177); TAPE's gain and filter ----
     static const int kInputKeyLed = kInSourceKeyLed; // the settings page's upper F#: the source
