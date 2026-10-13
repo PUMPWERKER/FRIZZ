@@ -94,6 +94,25 @@ inline uint32_t FitBeats(size_t length, float sample_rate, float bpm)
     return beats < 1.5f ? 1 : static_cast<uint32_t>(beats + .5f);
 }
 
+/** The beats to give a loop from the card (#70), which knows none: a power of two, the one
+ *  nearest bpm by ratio within kMinBpm-kMaxBpm; a guess (GuessBeats) if none is in it */
+inline uint32_t NearestBeats(size_t length, float sample_rate, float bpm)
+{
+    uint32_t best = 0;
+    float best_d = 0.f;
+    for (uint32_t beats = 1; beats <= 1024; beats *= 2)
+    {
+        const float b = LoopBpm(length, sample_rate, beats);
+        const float d = fmaxf(b / bpm, bpm / b); // the ratio's distance, either way
+        if (b >= kMinBpm && b <= kMaxBpm && (!best || d < best_d))
+        {
+            best = beats;
+            best_d = d;
+        }
+    }
+    return best ? best : GuessBeats(length, sample_rate);
+}
+
 class TempoClock
 {
 public:
@@ -150,6 +169,9 @@ public:
     /** The tempo without a loop and before the factor: the clock's as sent or the free one,
      *  for fitting a new loop to */
     inline float GetBpm() const { return bpm_; }
+    /** The loop's tempo at 1x before the factor, or without one GetBpm: what a loop from the
+     *  card is fitted to (NearestBeats) */
+    inline float FitBpm() const { return HasLoop() ? loop_bpm_ : bpm_; }
     /** Whether a tap would be taken: with a loop always, otherwise only without MIDI clock */
     inline bool CanTap() const { return HasLoop() || !midi_clock_->HasClock(); }
 

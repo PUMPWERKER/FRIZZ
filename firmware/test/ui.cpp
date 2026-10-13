@@ -409,6 +409,144 @@ static int LastCc(const std::vector<std::array<int, 3>>& v, int status, int cc)
 /** A knob's 0-1 as MIDI feedback's 7 bits (MidiFeedback.h's KnobTo7) */
 static int Knob7(float k) { return k <= .5f ? static_cast<int>(k * 128.f + .5f) : static_cast<int>(64.f + (k - .5f) * 126.f + .5f); }
 
+// ---- the Loops page (#70, LoopControls.h): loops from the card ----
+// the white keys left to right, the bank keys (the lower C#, D#), their LEDs (PanelKeys.h)
+static const char* const kLoopKeys[15] = {"KEY_1", "KEY_2",  "KEY_3",  "KEY_4",  "KEY_5",
+                                          "KEY_6", "KEY_7",  "KEY_8",  "KEY_9",  "KEY_10",
+                                          "KEY_11", "KEY_12", "KEY_13", "KEY_14", "KEY_15"};
+static int LoopLed(int slot) { return 24 - slot; }
+static const int kBankDownLed = 0, kBankUpLed = 1;
+// a slot's LED in its bank's colour: lit (full scale 252), dim (kFxOffLevel, 36), dark
+static const int kLoopLit = 252, kLoopDim = 36;
+/** An LED in colour (0..1) at level (full scale), within a few steps */
+static bool Shows(const Rgb& c, const float* color, int level, int within = 6)
+{
+    auto near = [&](int got, float want) { return std::abs(got - static_cast<int>(want * level + .5f)) <= within; };
+    return near(c.r, color[0]) && near(c.g, color[1]) && near(c.b, color[2]);
+}
+static const float kOrange[3] = {1.f, .6f, .24f}, kGreen[3] = {0.f, 1.f, 0.f}, kRed[3] = {1.f, 0.f, 0.f},
+                   kWhite[3] = {1.f, 1.f, 1.f};
+
+/** A WAV, 16-bit at 48 kHz: frames of a sine at freq and amp, mono or stereo (the right a
+ *  quarter period on), with an acid chunk of beats before its data if beats > 0 */
+static std::string LoopWav(uint32_t frames, int channels, float freq, float amp = .3f,
+                           uint32_t beats = 0)
+{
+    std::string w = "RIFF";
+    auto u32 = [&](std::string& to, uint32_t v) {
+        for (int i = 0; i < 4; i++)
+            to.push_back(static_cast<char>(v >> (8 * i)));
+    };
+    const uint32_t bytes = frames * 2u * static_cast<uint32_t>(channels);
+    u32(w, 36 + bytes + (beats ? 32 : 0));
+    w += "WAVEfmt ";
+    for (uint32_t v : {16u, 1u | static_cast<uint32_t>(channels) << 16, 48000u,
+                       48000u * 2u * static_cast<uint32_t>(channels),
+                       2u * static_cast<uint32_t>(channels) | 16u << 16})
+        u32(w, v);
+    if (beats)
+    {
+        w += "acid";
+        for (uint32_t v : {24u, 0u, 60u, 0u, beats, 4u | 4u << 16, 0x42f00000u}) // 120.0f
+            u32(w, v);
+    }
+    w += "data";
+    u32(w, bytes);
+    for (uint32_t i = 0; i < frames; i++)
+        for (int c = 0; c < channels; c++)
+        {
+            const float ph = 6.2831853f * freq * static_cast<float>(i) / 48000.f + c * 1.5707963f;
+            const int16_t v = static_cast<int16_t>(lrintf(amp * 32767.f * sinf(ph)));
+            w.push_back(static_cast<char>(v & 0xFF));
+            w.push_back(static_cast<char>((v >> 8) & 0xFF));
+        }
+    return w;
+}
+/** Loops on the card ("A/01" and the file), then scanned again (LoopLoader's SysEx) */
+static void PutLoops(const std::vector<std::pair<std::string, std::string>>& files)
+{
+    for (const auto& f : files)
+        CardFiles()["/FRIZZ/LOOPS/" + f.first + ".wav"] = f.second;
+    Ask({0x3E, 0x0D, 1, 3});
+    RunMs(300);
+}
+/** SHIFT + the lower C#: the Loops page opened, or from it home */
+static void LoopsPage()
+{
+    Keys({"+KEY_26", "60", "+KEY_16", "60", "-KEY_16", "60", "-KEY_26", "200"});
+}
+/** Two clean taps of SHIFT, gap ms between them */
+static void DoubleTap(uint32_t gap = 100)
+{
+    Tap("KEY_26", 60);
+    RunMs(gap);
+    Tap("KEY_26", 60);
+    RunMs(200);
+}
+/** SHIFT held, keys tapped (each 60 ms, 60 ms apart; "ENC_5_SW" the transport's press, "T3" the
+ *  transport turned 3 detents, a number waits), SHIFT let go */
+static void ShiftWith(const std::vector<const char*>& keys)
+{
+    Press("KEY_26", true);
+    RunMs(60);
+    for (const char* k : keys)
+    {
+        if (k[0] == 'T')
+            Turn(5, atoi(k + 1));
+        else if (isdigit(static_cast<unsigned char>(k[0])))
+            RunMs(static_cast<uint32_t>(atoi(k)));
+        else
+            Tap(k);
+        RunMs(60);
+    }
+    Press("KEY_26", false);
+}
+/** On the Loops page: whether the Loops page shows (the lower C# lit in a bank's colour) */
+static bool LoopsShown() { return Max(SmtLedFull(kBankDownLed)) > 200; }
+/** Runs ms by ms until the loop's length is frames (Probe), at most max ms: the ms it took,
+ *  -1 if it never was; pos_before: where the loop that played was the ms before */
+static int UntilLength(size_t frames, int max, float* pos_before = nullptr)
+{
+    float pos = Probe().loop_pos;
+    for (int ms = 0; ms < max; ms++)
+    {
+        RunMs(1);
+        const ClockState st = Probe();
+        if (st.loop_length == frames && st.loop_state >= 2)
+        {
+            if (pos_before)
+                *pos_before = pos;
+            return ms;
+        }
+        pos = st.loop_pos;
+    }
+    return -1;
+}
+/** The master out over ms with no input: its left and right, and how often the left changes
+ *  sign */
+static void MasterOut(uint32_t ms, std::vector<float>& l, std::vector<float>& r)
+{
+    float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
+    l.clear();
+    r.clear();
+    for (uint32_t b = 0; b < ms * 2; b++)
+    {
+        Run(1, in, out);
+        for (size_t i = 0; i < kBlockSize; i++)
+        {
+            l.push_back(out[i * kChannels + 2]);
+            r.push_back(out[i * kChannels + 3]);
+        }
+    }
+}
+static int SignChanges(const std::vector<float>& v)
+{
+    int n = 0;
+    for (size_t i = 1; i < v.size(); i++)
+        n += (v[i] >= 0.f) != (v[i - 1] >= 0.f);
+    return n;
+}
+
 int main()
 {
     // power-on to playable in about a second (#195): on the twin main() reads the keys from
@@ -1221,15 +1359,16 @@ int main()
         RunMs(1000);
         Check(Card("/FRIZZ/frizz_scenes.txt") == scenes && Max(SmtLedFull(0)) == 0,
               "scene-keys: in SAVE they pick no slot: CHOMPI saves nothing");
-        // a slot picked, CHOMPI held and one of them tapped: a key without a function is no
-        // SHIFT combo (NormalPage::OnButton), so CHOMPI let go confirms, as the upper C# and D#
-        // did before
+        // a slot picked, CHOMPI held and the lower C# tapped: the Loops page since #70, which
+        // ends the mode, so CHOMPI let go confirms nothing; SHIFT + it again goes home
         Tap(kSceneKeys[2]);
         RunMs(300);
         Keys({"+KEY_26", "100", "+KEY_16", "60", "-KEY_16", "100", "-KEY_26", "1000"});
         const std::string combo = Ask({0x20});
-        Check(Card("/FRIZZ/frizz_scenes.txt") != scenes && combo.size() > 7 && combo[7] == 0,
-              "scene-keys: SAVE, a slot picked, CHOMPI + the lower C#: no combo, CHOMPI confirms");
+        Keys({"+KEY_26", "100", "+KEY_16", "60", "-KEY_16", "100", "-KEY_26", "300"});
+        Check(Card("/FRIZZ/frizz_scenes.txt") == scenes && combo.size() > 7 && combo[7] == 0,
+              "scene-keys: SAVE, a slot picked, CHOMPI + the lower C#: the Loops page, the mode "
+              "ended, nothing saved");
         // the settings page lights them (every channel, the block over the jack): back on the
         // play page they're dark again
         SetToggle(true);
@@ -2846,6 +2985,404 @@ int main()
               "loops-shared: the scene saved and the bug report written meanwhile");
         Check(CardRawClash() == 0 && CardOpenFiles() == 0,
               "loops-shared: no FatFs call while a run had the card, nothing left open");
+    }});
+
+    // the Loops page (#70): SHIFT + the lower C# opens it, SHIFT + it or a double tap of SHIFT
+    // goes home; its LEDs, the banks
+    cases.push_back({"loops-page", [] {
+        RunMs(kReadyMs);
+        std::string w44 = LoopWav(4800, 2, 220.f);
+        const uint32_t rate = 44100;
+        memcpy(&w44[24], &rate, 4);
+        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/02", LoopWav(72000, 2, 330.f)},
+                  {"A/04", w44}, {"C/01", LoopWav(48000, 1, 440.f)}});
+        const bool dark = Max(SmtLedFull(kBankDownLed)) == 0 && Max(PthLedFull(kChompiKeyLed)) == 0;
+        Tap(kSaveKey); // a scene mode, which opening the page ends
+        RunMs(100);
+        LoopsPage();
+        const Rgb shift = PthLedFull(kChompiKeyLed), down = SmtLedFull(kBankDownLed),
+                  up = SmtLedFull(kBankUpLed), s1 = SmtLedFull(LoopLed(0)),
+                  s3 = SmtLedFull(LoopLed(2)), s4 = SmtLedFull(LoopLed(3));
+        int knobs = 0;
+        for (int k = 1; k <= 4; k++)
+            knobs = std::max(knobs, Max(PthLedFull(k)));
+        printf("      SHIFT %s, C# %s, D# %s, slots %s %s %s, knobs %d, SAVE %s\n", Hex(shift).c_str(),
+               Hex(down).c_str(), Hex(up).c_str(), Hex(s1).c_str(), Hex(s3).c_str(),
+               Hex(s4).c_str(), knobs, Hex(SmtLedFull(kSaveKeyLed)).c_str());
+        Check(dark && Shows(down, kOrange, kLoopLit) && Shows(up, kOrange, kLoopLit)
+                  && Shows(shift, kOrange, kLoopDim, 12), // a PTH LED: in steps of 11
+              "loops-page: SHIFT + the lower C# opens it: the bank keys in A's orange, SHIFT's LED "
+              "dim in it");
+        Check(Shows(s1, kOrange, kLoopDim) && Max(s3) == 0 && Shows(s4, kRed, kLoopDim) && knobs == 0
+                  && Max(SmtLedFull(kSaveKeyLed)) == 0 && Ask({0x20})[7] == 0,
+              "loops-page: A's loops dim, an empty slot dark, a refused file dim red; knobs 1-4 "
+              "and the scene modes dark, SAVE ended");
+        Press("KEY_26", true);
+        RunMs(60);
+        const Rgb held = PthLedFull(kChompiKeyLed);
+        Press("KEY_26", false);
+        RunMs(100);
+        Check(Shows(held, kWhite, kLoopLit), "loops-page: SHIFT held: its LED white");
+
+        // the banks: B is empty, so D# goes to C, then no further: 3 red blinks; C# back to A,
+        // and none before it
+        Tap("KEY_17");
+        RunMs(100);
+        const Rgb c = SmtLedFull(kBankDownLed), c1 = SmtLedFull(LoopLed(0));
+        const int past_h = RedBlinks("KEY_17", kBankUpLed);
+        Tap("KEY_16");
+        RunMs(100);
+        const bool back = Shows(SmtLedFull(kBankUpLed), kOrange, kLoopLit);
+        const int past_a = RedBlinks("KEY_16", kBankDownLed);
+        printf("      bank C %s, its slot 1 %s; blinks past the last %d, the first %d\n",
+               Hex(c).c_str(), Hex(c1).c_str(), past_h, past_a);
+        Check(Shows(c, kGreen, kLoopLit) && Shows(c1, kGreen, kLoopDim) && past_h == 3 && back
+                  && past_a == 3,
+              "loops-page: D# skips the empty bank B to C (green), C# back to A; 3 red blinks "
+              "past either end");
+
+        // SHIFT + D# (kept for a later page) does nothing; SHIFT + C# goes home
+        Keys({"+KEY_26", "60", "+KEY_17", "60", "-KEY_17", "60", "-KEY_26", "200"});
+        const bool still = LoopsShown();
+        LoopsPage();
+        const bool home = !LoopsShown() && Max(PthLedFull(kChompiKeyLed)) == 0;
+        Check(still && home, "loops-page: SHIFT + D# does nothing there, SHIFT + C# goes home");
+
+        // a double tap of SHIFT goes home; on the play page it does nothing
+        LoopsPage();
+        DoubleTap();
+        const bool tapped = !LoopsShown();
+        DoubleTap();
+        Check(tapped && !LoopsShown() && Max(PthLedFull(kChompiKeyLed)) == 0,
+              "loops-page: a double tap of SHIFT goes home; on the play page it does nothing");
+        // not a double tap: the taps too far apart, a tap held too long, a key between them
+        LoopsPage();
+        RunMs(500);
+        DoubleTap(500);
+        const bool slow = LoopsShown();
+        RunMs(500);
+        Keys({"+KEY_26", "500", "-KEY_26", "100", "+KEY_26", "60", "-KEY_26", "500"});
+        const bool held_long = LoopsShown();
+        Keys({"+KEY_26", "60", "-KEY_26", "40", "+KEY_25", "40", "-KEY_25", "40", "+KEY_26", "60",
+              "-KEY_26", "500"});
+        const bool keyed = LoopsShown();
+        Keys({"+KEY_26", "60", "-KEY_26", "40"});
+        Turn(1, 1);
+        Keys({"20", "+KEY_26", "60", "-KEY_26", "200"});
+        const bool turned = LoopsShown();
+        printf("      still on the page: %d %d %d %d\n", slow, held_long, keyed, turned);
+        Check(slow && held_long && keyed && turned,
+              "loops-page: no double tap 500 ms apart, with a tap held 500 ms, nor with a key or a "
+              "knob's turn between the taps");
+    }});
+
+    // SHIFT + a white key, tapped twice: at the end of the second pass after SHIFT's release,
+    // gapless, its key blinking on the beat meanwhile
+    cases.push_back({"loops-passes", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/02", LoopWav(72000, 2, 330.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 500);
+        RunMs(600);
+        ShiftWith({kLoopKeys[1], kLoopKeys[1]});
+        std::vector<int> wraps, led;
+        int switched = -1;
+        float pos = Probe().loop_pos, before = 0.f;
+        max_step = 0.f;
+        for (int ms = 0; ms < 6000 && switched < 0; ms++)
+        {
+            RunMs(1);
+            const ClockState st = Probe();
+            if (st.loop_length == 72000)
+            {
+                switched = ms;
+                before = pos;
+            }
+            else if (st.loop_pos < pos - .5f)
+                wraps.push_back(ms);
+            pos = st.loop_pos;
+            led.push_back(Max(SmtLedFull(LoopLed(1))));
+        }
+        RunMs(50);
+        // loaded long before: the beat's halves, 250 ms each at 120 BPM
+        const std::vector<int> runs = Runs(std::vector<int>(led.begin() + 500, led.end()), 100);
+        const bool on_beat = runs.size() >= 4 && std::all_of(runs.begin(), runs.end(),
+                                                             [](int r) { return r >= 230 && r <= 270; }); // the LEDs' frames: ~16 ms
+        printf("      wraps after the release at %d ms, the switch at %d ms (from %.4f), step %.4f, "
+               "blinks of %d ms\n", wraps.empty() ? -1 : wraps[0], switched, before, max_step,
+               runs.empty() ? 0 : runs[0]);
+        Check(wraps.size() == 1 && switched >= wraps[0] + 1990 && switched <= wraps[0] + 2010 && before > .99f,
+              "loops-passes: SHIFT + a white key x2: at the end of the 2nd pass after SHIFT let go");
+        Check(max_step < .01f && on_beat, "loops-passes: gapless, its key blinking on the beat while it waits");
+    }});
+
+    // a loop joins a scene sequence in one SHIFT hold: lands where the morph lands, with a drop
+    // or a build-up's drop, also tapped before the scene key; with the crossfader, at once.
+    // A/03, 2 bars at 120 BPM, has a bar line halfway
+    cases.push_back({"loops-scene", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        Latch("KEY_5"); // the filter, saved in scene 1, then the blank scene again
+        Save(1);
+        Tap(kSceneKeys[0]);
+        RunMs(200);
+        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/02", LoopWav(72000, 2, 330.f)},
+                  {"A/03", LoopWav(192000, 2, 220.f)}});
+        LoopsPage();
+        auto start = [](float at) { // A/03 playing, at its position at
+            Tap(kLoopKeys[2]);
+            UntilLength(192000, 1000);
+            while (Probe().loop_pos < at)
+                RunMs(1);
+        };
+        auto on_line = [](float pos) { return std::fabs(pos * 2.f - std::round(pos * 2.f)) < .01f; };
+        start(.05f);
+        ShiftWith({kSceneKeys[1], kLoopKeys[0]});
+        float before = 0.f;
+        const int morph = UntilLength(96000, 3000, &before);
+        RunMs(20);
+        const bool landed = (LatchedFx(Ask({0x20})) >> 4 & 1) == 1;
+        printf("      the morph: switched from %.4f\n", before);
+        Check(morph >= 0 && before > .49f && before < .51f && landed,
+              "loops-scene: SHIFT + scene + white key: the loop lands with the morph, on its bar line");
+        start(.05f);
+        ShiftWith({kSceneKeys[0], "ENC_5_SW", kLoopKeys[1]});
+        const int drop = UntilLength(72000, 3000, &before);
+        printf("      the drop: from %.4f\n", before);
+        Check(drop >= 0 && on_line(before) && (LatchedFx(Ask({0x20})) >> 4 & 1) == 0,
+              "loops-scene: with a drop: on the drop's bar line");
+        start(.05f);
+        ShiftWith({kSceneKeys[1], kSceneKeys[0], kLoopKeys[0]});
+        const int build = UntilLength(96000, 3000, &before);
+        printf("      the build-up: from %.4f\n", before);
+        Check(build >= 0 && before > .49f && before < .51f, "loops-scene: with a build-up's drop: on its line");
+        start(.05f);
+        ShiftWith({kLoopKeys[1], kSceneKeys[1]});
+        const int first = UntilLength(72000, 3000, &before);
+        printf("      the white key first: from %.4f\n", before);
+        Check(first >= 0 && before > .49f && before < .51f,
+              "loops-scene: the white key before the scene key: with the morph too");
+        start(.05f);
+        Press("KEY_26", true);
+        RunMs(60);
+        Tap(kSceneKeys[0]);
+        RunMs(60);
+        Turn(5, 4);
+        RunMs(250);
+        Tap(kLoopKeys[0]);
+        const int fader = UntilLength(96000, 100);
+        Press("KEY_26", false);
+        RunMs(100);
+        Check(fader >= 0, "loops-scene: with the crossfader in the hand: at once");
+    }});
+
+    // SHIFT + any blinking key cancels the plan: the loop's (a later hold), its scene stopping
+    // where it is; a loop alone's; the scene key's, taking the loop with it
+    cases.push_back({"loops-cancel", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        Latch("KEY_5");
+        Save(1);
+        Tap(kSceneKeys[0]);
+        RunMs(200);
+        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/03", LoopWav(192000, 2, 220.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[2]);
+        UntilLength(192000, 1000);
+        RunMs(100);
+        ShiftWith({kSceneKeys[1], kSceneKeys[1], kLoopKeys[0]});
+        RunMs(300);
+        ShiftWith({kLoopKeys[0]});
+        const int kept = UntilLength(96000, 5000);
+        const std::string st = Ask({0x20});
+        Check(kept < 0 && st.size() > 6 && (st[6] & 2) == 0 && Shows(SmtLedFull(LoopLed(0)), kOrange, kLoopDim),
+              "loops-cancel: SHIFT + the planned loop's key: no switch, the morph stopped, the key dim");
+        ShiftWith({kLoopKeys[0], kLoopKeys[0], kLoopKeys[0]});
+        RunMs(300);
+        ShiftWith({kLoopKeys[0]});
+        Check(UntilLength(96000, 9000) < 0, "loops-cancel: a loop alone's too");
+        ShiftWith({kSceneKeys[1], kLoopKeys[0]});
+        RunMs(300);
+        ShiftWith({kSceneKeys[1]});
+        Check(UntilLength(96000, 5000) < 0, "loops-cancel: SHIFT + the blinking scene key takes the loop with it");
+    }});
+
+    // a plan runs on when the page is left; the looper's keys act on a loaded loop as on a
+    // recorded one, and LOOP's erase takes a plan with it; a white key while it records, a
+    // refused file and an empty slot blink red 3 times
+    cases.push_back({"loops-looper", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        std::string w24 = LoopWav(4800, 2, 220.f);
+        w24[34] = 24; // bits per sample
+        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/02", LoopWav(72000, 2, 330.f)}, {"A/04", w24}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 500);
+        ShiftWith({kLoopKeys[1]});
+        RunMs(450);
+        DoubleTap();
+        const bool home = !LoopsShown();
+        const int left = UntilLength(72000, 2500);
+        printf("      home %d, switched after %d ms\n", home, left);
+        Check(home && left >= 0, "loops-looper: a plan lands with the page left");
+        Tap("KEY_27"); // PLAY: paused
+        RunMs(100);
+        const int paused = Probe().loop_state;
+        Tap("KEY_27");
+        RunMs(100);
+        Turn(5, 2); // a semitone up
+        RunMs(400);
+        const float speed = Probe().loop_speed;
+        Check(paused == 3 && Probe().loop_state == 2 && speed > 1.05f && speed < 1.07f,
+              "loops-looper: PLAY pauses and plays the loaded loop, the transport turns its speed");
+        LoopsPage();
+        ShiftWith({kLoopKeys[0]});
+        Tap("KEY_28"); // LOOP: erased, and the plan with it
+        RunMs(300);
+        const int erased = Probe().loop_state;
+        RunMs(2500);
+        Check(erased == 0 && Probe().loop_state == 0, "loops-looper: LOOP erases it, and the plan with it");
+        Tap("KEY_28");
+        RunMs(200);
+        const int recording = Probe().loop_state;
+        const int while_rec = RedBlinks(kLoopKeys[0], LoopLed(0));
+        printf("      recording %d, blinks %d\n", recording, while_rec);
+        Tap("KEY_28");
+        RunMs(200);
+        const ClockState rec = Probe();
+        Check(while_rec == 3 && rec.loop_state == 2 && rec.loop_length != 96000
+                  && Shows(SmtLedFull(LoopLed(0)), kOrange, kLoopDim),
+              "loops-looper: a white key while LOOP records blinks red 3 times; the recording plays");
+        Check(RedBlinks(kLoopKeys[3], LoopLed(3)) == 3 && RedBlinks(kLoopKeys[5], LoopLed(5)) == 3
+                  && Probe().loop_length == rec.loop_length,
+              "loops-looper: a refused file's key and an empty slot's blink red 3 times");
+    }});
+
+    // a mono loop is spread to stereo where it landed before it may play; one not loaded by its
+    // drop lets the scene land and follows at the next bar line it's ready for
+    cases.push_back({"loops-load", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        Latch("KEY_5");
+        Save(1);
+        Tap(kSceneKeys[0]);
+        RunMs(200);
+        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/03", LoopWav(192000, 2, 220.f)},
+                  {"A/05", LoopWav(2880000, 1, 440.f)}, {"A/06", LoopWav(480000, 2, 330.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 500);
+        ShiftWith({kLoopKeys[4]}); // 60 s mono, at the end of this pass
+        const bool loading = Max(SmtLedFull(LoopLed(4))) > 0 || Max(Peak(LoopLed(4), 150)) > 0;
+        const int mono = UntilLength(2880000, 3000);
+        RunMs(20); // past the crossfade from A/01
+        std::vector<float> l, r;
+        MasterOut(50, l, r);
+        float apart = 0.f;
+        for (size_t i = 0; i < l.size(); i++)
+            apart = std::max(apart, std::fabs(l[i] - r[i]));
+        const int changes = SignChanges(l);
+        printf("      mono after %d ms: L-R %.5f, sign changes in 50 ms %d\n", mono, apart, changes);
+        Check(loading && mono >= 0 && apart < 1e-4f && changes >= 43 && changes <= 45,
+              "loops-load: a mono loop: both sides the same 440 Hz from the first block it plays");
+        Tap(kLoopKeys[2]);
+        UntilLength(192000, 1000);
+        while (Probe().loop_pos < .3f)
+            RunMs(1);
+        SetCardRawPolls(4000); // ~40 ms a run: 1.9 MB in ~0.6 s
+        ShiftWith({kSceneKeys[1], "ENC_5_SW", kLoopKeys[5]});
+        bool drop_first = false;
+        float before = 0.f;
+        int late = -1;
+        for (int ms = 0; ms < 4000 && late < 0; ms++)
+        {
+            float pos = Probe().loop_pos;
+            if (UntilLength(480000, 1, &pos) >= 0)
+            {
+                late = ms;
+                before = pos;
+            }
+            drop_first = drop_first || (LatchedFx(Ask({0x20})) >> 4 & 1);
+        }
+        printf("      the drop landed first: %d; the loop after %d ms, from %.4f\n", drop_first, late, before);
+        Check(drop_first && late > 0 && before > .99f,
+              "loops-load: the scene drops on its line; the loop, still loading, at the next one");
+    }});
+
+    // MIDI's notes still play the effects on the Loops page, and pick no loops; an effect held
+    // on the play page lets go there
+    cases.push_back({"loops-midi", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"A/05", LoopWav(96000, 2, 220.f)}});
+        LoopsPage();
+        Trs({kNoteOn, kFilterNote, 100});
+        RunMs(100);
+        const std::string held = Ask({0x20});
+        Trs({kNoteOff, kFilterNote, 0});
+        RunMs(100);
+        Check(held.size() > 11 && (held[11] >> 4 & 1) && Probe().loop_state == 0,
+              "loops-midi: the filter's note punches it in there, and plays no loop");
+        LoopsPage();
+        Press("KEY_5", true);
+        RunMs(100);
+        LoopsPage();
+        const bool shown = LoopsShown();
+        Press("KEY_5", false);
+        RunMs(100);
+        const std::string after = Ask({0x20});
+        Check(shown && after.size() > 11 && (after[11] >> 4 & 1) == 0 && Probe().loop_state == 0,
+              "loops-midi: the filter held by hand on the play page lets go on the Loops page");
+    }});
+
+    // a white key alone: at once. From an empty looper it plays, wet; from a loop, with a 10 ms
+    // crossfade; back to the last loop without a load; the loop sets the tempo
+    cases.push_back({"loops-now", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/02", LoopWav(72000, 2, 330.f)},
+                  {"A/03", LoopWav(345600, 2, 220.f, .3f, 12)}}); // 3 bars at 100 BPM
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        const int first = UntilLength(96000, 1000);
+        RunMs(300);
+        const float wet = RunMs(200);
+        const ClockState a = Probe();
+        const Rgb lit = SmtLedFull(LoopLed(0));
+        printf("      A/01 after %d ms, out %.3f, %d BPM, key %s\n", first, wet, a.tempo, Hex(lit).c_str());
+        Check(first >= 0 && a.loop_state == 2 && wet > .02f && a.tempo == 120 && Shows(lit, kOrange, kLoopLit),
+              "loops-now: a white key on an empty looper: its loop plays at once, wet, 120 BPM "
+              "(2 s, 4 beats guessed), its key bright");
+        max_step = 0.f;
+        Tap(kLoopKeys[1]);
+        const int second = UntilLength(72000, 1000);
+        RunMs(100);
+        const float step = max_step;
+        const ClockState b = Probe();
+        printf("      A/02 after %d ms, largest step %.4f, %d BPM\n", second, step, b.tempo);
+        Check(second >= 0 && b.tempo == 160 && step < .01f && Shows(SmtLedFull(LoopLed(0)), kOrange, kLoopDim),
+              "loops-now: another: at once, crossfaded (no step), 160 BPM (1.5 s: the power of two "
+              "nearest 120 BPM, 4 beats)");
+        Tap(kLoopKeys[0]);
+        const int again = UntilLength(96000, 1000);
+        Check(again >= 0 && again <= 2, "loops-now: the one before again: no load, within a block");
+        RunMs(700);
+        const float was = Probe().loop_pos;
+        Press(kLoopKeys[0], true);
+        RunMs(30); // the key's debouncing, then a block
+        const float pos = Probe().loop_pos;
+        Press(kLoopKeys[0], false);
+        printf("      started again: from %.4f at %.4f\n", was, pos);
+        Check(was > .2f && pos < .015f, "loops-now: the loop's own key again starts it again");
+        Tap(kLoopKeys[2]);
+        const int acid = UntilLength(345600, 2000);
+        RunMs(100);
+        const ClockState c = Probe();
+        printf("      A/03 after %d ms: %.2f BPM\n", acid, c.fx_bpm);
+        Check(acid >= 0 && std::fabs(c.fx_bpm - 100.f) < .1f,
+              "loops-now: an acid chunk's 12 beats set 100 BPM for 3 bars of 7.2 s");
     }});
 
     // the event log (EventLog.h): a session, SHIFT + VOLUME held on the settings page, its
