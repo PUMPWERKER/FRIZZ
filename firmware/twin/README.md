@@ -105,6 +105,10 @@ checks too: `unit.sh ui` plays every scenario and fails on one that doesn't hold
 that means to alter what a scenario shows updates its `expect` lines with it. Against an older
 version, `compare.sh` prints the `expect` lines that don't hold there (`line N: ...`) and goes on
 comparing: they don't make it fail.
+On the device (`remote.py play`) a scenario starts from the player's card, not a fresh one: so
+it first `set`s, to what a fresh card has, every setting and compressor knob its `expect` lines
+depend on (before `at 6000`, so the times stay as they were), and `unit.sh ui` plays each one
+again on a card that has none of them as the factory does (`card:NAME`, #214).
 A new one is just another `scenarios/NAME.txt`. Both versions run with the working tree's twin,
 so a firmware from before the twin compares too (back to the move from `firmware/frizz/`).
 
@@ -130,6 +134,7 @@ it with SHIFT held: leave the gaps a hand would.
 | `usb HEX...` | raw bytes into USB MIDI, as a computer sends them (FRIZZ's queries are answered only there) |
 | `clock BPM [jitter MS] [drift PPM] [usb] [ramp BPM MS] [seed N]` | a running MIDI clock into the jack, or with `usb` over USB (one of each can run): each tick up to MS early or late, the sender's clock PPM slow, USB's 1 ms frames, a ramp to another tempo over MS (`clockgen.h`). `clock 0 [usb]` stops it |
 | `replies` / `expect usb HEX...` | print what FRIZZ sent over USB since the last look / fail unless it's exactly that |
+| `set GROUP INDEX VALUE` | a value set outright, as `remote.py set` does it (the developers' `SET` over USB, its answer kept from `replies`): GROUP an effect by name (its knobs 0-7, page 1 then page 2), `comp` (its knobs), `latch` (INDEX an effect), `volume` (`out`, `in`, `mix`, `headphones`) or `settings` (INDEX a line of `frizz_master.txt`); VALUE a knob's 0-1, or a latch's or setting's number (`on`, `off`). It waits for FRIZZ's main loop and its answer (a few ms); one FRIZZ refuses fails |
 | `battery V [plugged] [full]` | the battery's voltage and the charger |
 | `card put PATH FILE` / `card remove` / `card insert` / `card dump` | the SD card: put a file on it before power-on (`/FRIZZ/frizz_scenes.txt`), take it out, print it |
 | `card file PATH`, then lines starting with `\|` | a file on the card before power-on, its text in the script: each line after its `\|` |

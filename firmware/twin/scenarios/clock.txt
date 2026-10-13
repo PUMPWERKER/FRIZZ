@@ -1,6 +1,8 @@
 # MIDI clock at 120 BPM: a quantized loop, the delay and the filter's LFO on its beat, a morph
 input sine 220 0.3
 clock 120
+# what the card keeps, as a fresh card has it: the device's card holds the player's own (#214)
+set settings clock_source 0
 at 6000
 down KEY_27
 tap KEY_28

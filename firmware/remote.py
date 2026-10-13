@@ -50,7 +50,7 @@ times, sends its `midi` and `clock` to the device, and checks its `expect led` l
 LEDs the device shows, dimmed as the card's led_brightness (the settings page) has them: at
 100, 75 or 50 %, the one level that fits every line, said when it isn't 100 %; its
 `toggle 0|1` sets the mode switch (down, up) over SysEx, back to the real one when the script
-ends. What only the twin has (the card, the input, the mic, AUX's jack, the battery, power-on)
+ends; its `set GROUP INDEX VALUE` goes as SET, as `set` sends it (a line FRIZZ refuses fails). What only the twin has (the card, the input, the mic, AUX's jack, the battery, power-on)
 is skipped, and `booted` is when the script starts. With --cpu it asks for the load every 250 ms
 and prints the worst, the way to try a scenario for crackles on FRIZZ.bin itself rather than on
 the bench's build; right after a start it waits (3 s at most) until FRIZZ counts its load, so the
@@ -391,21 +391,46 @@ def show_get(f, name):
                                               for p in (0, 4)))
 
 
-def dev_set(f, name, index, value):
-    group = group_of(name)
+def try_set(f, name, index, value):
+    """SET GROUP INDEX VALUE, by names as `set` and a script's `set` have them: None once
+    FRIZZ took it, else why not"""
+    if name not in GROUPS:
+        return "no group %s: %s" % (name, ", ".join(GROUPS))
+    group = GROUPS[name]
     names = {GROUP_SETTINGS: SETTING_NAMES, GROUP_VOLUME: VOLUME_NAMES,
              GROUP_LATCH: FX_NAMES}.get(group, [])
-    i = names.index(index) if index in names else int(index)
-    if group in (GROUP_SETTINGS, GROUP_LATCH):
-        v = {"on": 1, "off": 0}.get(value)
-        v = int(value) if v is None else v
-    else:
-        v = to14(float(value))
+    try:
+        i = names.index(index) if index in names else int(index)
+        if group in (GROUP_SETTINGS, GROUP_LATCH):
+            v = {"on": 1, "off": 0}.get(value)
+            v = int(value) if v is None else v
+        elif 0 <= float(value) <= 1:
+            v = to14(float(value))
+        else:
+            return "a knob's value is 0-1"
+    except ValueError as e:
+        return str(e)
+    if not 0 <= i < 128 or not 0 <= v < 1 << 14:
+        return "out of range"
     got = f.dev(chompi.SET, [group, i, v >> 7 & 0x7F, v & 0x7F])
     if not got:
-        sys.exit("no answer to SET: a FRIZZ from before it")
+        return "no answer to SET: a FRIZZ from before it"
     if got[0] != chompi.OK:
-        sys.exit("SET %s %s %s: %s" % (name, index, value, chompi.DEV_STATUS.get(got[0], got[0])))
+        return chompi.DEV_STATUS.get(got[0], got[0])
+    return None
+
+
+def dev_set(f, name, index, value):
+    group_of(name)
+    why = try_set(f, name, index, value)
+    if why:
+        sys.exit("SET %s %s %s: %s" % (name, index, value, why))
+
+
+def set_saves(group, index):
+    """Whether a SET of GROUP INDEX (as named) is what FRIZZ saves to the card: a setting, the
+    compressor's knobs, VOLUME's input gain (#171)"""
+    return group in ("settings", "comp") or group == "volume" and index in ("in", "1")
 
 
 def bench_state(f, missing_ok=False):
@@ -741,6 +766,8 @@ def card_use(path, up, comp, mode, page=0):
             used = "turn %s on VOLUME's page 2, the input gain" % args[0], MASTER
         elif cmd == "turn" and comp and 1 <= int(args[0]) <= 4:
             used = "turn %s with the compressor selected" % args[0], MASTER
+        elif cmd == "set" and len(args) >= 2 and set_saves(args[0], args[1]):
+            used = "set %s" % " ".join(args), MASTER
         elif cmd in ("midi", "usb"):
             for m in midi_messages([int(b, 16) for b in args]):
                 kind = m[0] & 0xF0
@@ -880,6 +907,11 @@ def play(f, path, cpu):
                     detents -= step
             elif cmd in ("midi", "usb"):
                 f.raw(int(b, 16) for b in args)
+            elif cmd == "set":
+                why = try_set(f, *args) if len(args) == 3 else "set GROUP INDEX VALUE"
+                if why:
+                    print("line %d: set %s: %s" % (line_no, " ".join(args), why), file=sys.stderr)
+                    failed += 1
             elif cmd == "clock":
                 clock["bpm"] = float(args[0])
             elif cmd == "toggle":
@@ -1150,7 +1182,7 @@ def writes_card(a):
     if a.cmd == "scene":
         return a.action == "put"
     if a.cmd == "set":
-        return a.group in ("settings", "comp") or a.group == "volume" and a.index in ("in", "1")
+        return set_saves(a.group, a.index)
     return a.cmd in CARD_SETTERS
 
 

@@ -245,7 +245,11 @@ the mode switch back to the hand.
 
 A script plays on FRIZZ as it stands: a twin script starts from power-on, but on the device the
 scripts played before it since FRIZZ started have left the effect selected, its knobs, the
-page or a loop in RAM, so its `expect led` lines can fail after another one (#123).
+page or a loop in RAM, so its `expect led` lines can fail after another one (#123). And it
+starts from the player's card, not a fresh one: a script's `set GROUP INDEX VALUE` goes as
+the developers' `SET` (below), as `./remote.py set` sends it, so the scenarios set what they
+depend on first, the compressor's knobs or a setting, to what a fresh card has (#214); a `set`
+FRIZZ refuses fails its line.
 `play --fresh` first starts the slot again through the launcher, as `flash.py --run N` does:
 FRIZZ boots from the card, which a start doesn't write, with nothing left from before. Every
 `play` after the first since `flash.py` started the slot wants it (about 10 s each); a failed

@@ -242,8 +242,8 @@ scenarios that change what key 10 shares, the settings page (`settings.txt`, #58
 compressor's knobs (`comp.txt`), the scenes (`scenes.txt`, #78) and the input (`mic.txt`, `volume.txt`, #152), play in stage 2 too. Never `--save` or `--force` on the device: a
 FRIZZ without PERSIST (key 10's from before it) is still refused, as before. The card holds
 the user's own settings, which a session never changes; `expect led` lines are judged at the
-card's LED brightness, so on the device `settings.txt` fails the lines its brightness key
-changes from there, and the battery's (VOLUME white on USB, green on the twin). The user takes
+card's LED brightness, and on the device `settings.txt` fails the battery's line (VOLUME white
+on USB, green on the twin). The user takes
 the CHOMPI for playing with `tools/chompi.py hold` (until Ctrl-C),
 or by telling a session, which then runs it for them.
 Within that, stage 2 needs no asking. Ask the user first only for what needs their hands or

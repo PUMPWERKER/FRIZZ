@@ -3,6 +3,11 @@
 # it live; each source has its own, saved (on the device play keeps them in RAM), the source
 # isn't. On the device AUX has its cable in, as the twin has at first
 input sine 220 0.3
+# what the card keeps, as a fresh card has it: the device's card holds the player's own (#214)
+set settings aux_dry 0
+set settings aux_live 1
+set settings mic_dry 0
+set settings mic_live 0
 at 6000
 toggle 1
 wait 300

@@ -4,6 +4,8 @@
 # out. Over MIDI, CC 21 on the delay's channel (12) sets its Level, CC 17 its Ducking. Nothing
 # is saved. (turn: 4 is knob 1, 1-3 knobs 2-4)
 input sine 220 0.3
+# what the card keeps, as a fresh card has it: the device's card holds the player's own (#214)
+set settings midi_channel 16
 at 6000
 # the delay latched at its defaults
 down KEY_12

@@ -6222,6 +6222,55 @@ int main()
         }});
     }
 
+    // a script's set (twin/README.md): the developers' SET over USB, its answer kept from
+    // replies and expect usb, which still get what came before and after it; one FRIZZ refuses
+    // or the script can't send fails its line
+    cases.push_back({"script-set", [] {
+        std::istringstream script(
+            "booted\n"
+            "usb F0 7D 43 48 3E 02 01 20 F7\n" // GET comp, before the set
+            "set comp 0 0.25\n"
+            "set comp 3 1\n"
+            "expect usb F0 7D 43 48 7E 02 01 00 20 08 00 00 40 00 40 00 40 00 7F 7F 00 00 00 00 00 00 F7\n"
+            "usb F0 7D 43 48 3E 02 02 20 F7\n"
+            "wait 20\n"
+            "expect usb F0 7D 43 48 7E 02 02 00 20 08 20 00 40 00 40 00 7F 7F 7F 7F 00 00 00 00 00 00 F7\n"
+            "set settings led_brightness 50\n"
+            "set latch filter on\n"
+            "set comp 0 2\n"        // not a knob's 0-1
+            "set settings 99 1\n"   // no such setting: FRIZZ refuses
+            "set nothing 0 0\n");
+        Check(PlayScript(script, nullptr, nullptr) == 3,
+              "script-set: set sets the compressor's knobs, a setting, a latch; its answers stay out of expect usb; "
+              "a value, setting or group that isn't fails its line");
+    }});
+
+    // a card as a player's may be: no setting and no compressor knob as the factory has them,
+    // but the LEDs at full (the twin's expect led doesn't dim). The device's scenarios start
+    // from the player's card (#214): each sets what it depends on first
+    static const std::string kPlayersCard = "card file /FRIZZ/frizz_master.txt\n|FRIZZ master 1\n"
+                                            "|compressor2 300000 900000 100000 750000 1000000 0 0 0\n"
+                                            "|mono 1\n|midi_channel 0\n|midi_transport 1\n|clock_factor 50\n"
+                                            "|clock_source 1\n|midi_out 0\n|led_brightness 100\n"
+                                            "|midi_block_trs 0\n|midi_feedback 0\n|aux_dry 1\n|gain_aux 40\n"
+                                            "|gain_mic 40\n|mic_dry 1\n|aux_live 0\n|mic_live 1\n";
+    // comp.txt without its sets: the turns start from the card's knobs, its four LEDs another
+    // colour, as on the device before (#214)
+    cases.push_back({"script-comp-turns", [] {
+        std::ifstream comp(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/') + 1)
+                           + "../twin/scenarios/comp.txt");
+        std::string text = kPlayersCard, line;
+        int sets = 0;
+        while (std::getline(comp, line))
+            if (line.rfind("set comp ", 0) == 0)
+                sets++;
+            else
+                text += line + "\n";
+        std::istringstream script(text);
+        Check(sets == 4 && PlayScript(script, nullptr, nullptr) == 4,
+              "script-comp-turns: comp.txt without its four sets, on a player's card: its four LEDs fail (#214)");
+    }});
+
     // every scenario of ../twin/scenarios played from power-on, its expect lines holding
     static std::vector<std::string> scenarios;
     {
@@ -6246,6 +6295,12 @@ int main()
             const int failed = PlayScript(script, nullptr, nullptr);
             Check(failed == 0, (path.substr(path.rfind('/') + 1) + ": played from power-on, every expect holds").c_str());
         }});
+        cases.push_back({"card:" + file.substr(0, file.size() - 4), [path] {
+            std::ifstream file(path);
+            std::istringstream script(kPlayersCard + std::string(std::istreambuf_iterator<char>(file), {}));
+            Check(PlayScript(script, nullptr, nullptr) == 0,
+                  (path.substr(path.rfind('/') + 1) + ": and on a player's card (#214)").c_str());
+        }});
     }
 
     // the cases that take the card one before them kept (KeepCard, TakeCard)
@@ -6253,9 +6308,10 @@ int main()
     Chain({"card-1", "card-2", "card-3", "bug-log", "bug-full", "bug-replay"});
     Chain({"midi-transport", "midi-kept"});
     Chain({"mic-bug-log", "bug-replay-mic"});
-    // a replay boots by its script
+    // a replay, a scenario and a script- case boot by their script
     RunAllCases([](const Case& c) {
-        return c.name.compare(0, 10, "bug-replay") != 0 && c.name.compare(0, 9, "scenario:") != 0;
+        return c.name.compare(0, 10, "bug-replay") != 0 && c.name.compare(0, 9, "scenario:") != 0
+               && c.name.compare(0, 5, "card:") != 0 && c.name.compare(0, 7, "script-") != 0;
     });
     return Finish();
 }
