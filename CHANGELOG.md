@@ -18,8 +18,9 @@ what FRIZZ does.
 
 - **An SD card error no longer freezes the panel for half a minute** (#213): if the card fails
   while FRIZZ saves a scene or the settings, writes a bug report or reads at power-on, the
-  LEDs and keys come back within about a second (the sound never stopped), and the save
-  reports that it failed. FRIZZ waited up to 30 s, or 60, before.
+  LEDs and keys come back within seconds, not after 30 or 60 (the sound never stopped), and
+  the save flashes red as when the card can't be written. A card that stops answering
+  altogether can take a few seconds longer.
 
 ## v1.0.1 (2026-10-13)
 

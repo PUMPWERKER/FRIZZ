@@ -49,6 +49,7 @@ struct Card
     std::vector<std::pair<uint32_t, int32_t>> cache; // lines cleaned (size > 0), invalidated (< 0)
     // faults: the next transfer never ends (hang) or fails (fail), the card busy after it
     bool hang = false, fail = false, busy_after = false, dead = false, reinit = false;
+    bool stuck = false; // and a recovery doesn't bring it back
     int polls = 2; // a transfer is done on its polls-th poll (the new driver's)
     int left = 0;
     uint32_t error = 0;
@@ -139,6 +140,8 @@ struct TestPort
     static bool Recover(bool& reinit)
     {
         card.recoveries++;
+        if (card.stuck)
+            return false;
         card.hang = card.fail = card.busy_after = false;
         reinit = card.reinit;
         return !card.dead;
@@ -391,6 +394,19 @@ static void TestErrors()
     store = SceneStore();
     store.Init(&fs, path);
     Check(store.scenes[2].used && store.scenes[2].params[0][0] == 0.5f, "FatFs: and it's there at the next boot");
+
+    // a card that stays gone: every transfer waits its second, and FatFs gives up at the first
+    card.hang = card.stuck = true;
+    SaveInRam(store, 4, 0.5f);
+    t = now_ms;
+    store.RequestSave();
+    store.Process(false);
+    const uint32_t gone = now_ms - t;
+    card.hang = card.stuck = false;
+    Check(store.GetSaveState() == SceneStore::SaveState::FAILED && gone < 3 * sddisk::kTimeoutMs,
+          "FatFs: a save on a card that stays gone fails within seconds");
+    if (gone >= 3 * sddisk::kTimeoutMs)
+        printf("      %u ms\n", gone);
 }
 
 static void TestFaults()
