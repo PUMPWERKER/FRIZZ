@@ -336,10 +336,18 @@ static void TestLoad()
     LoopLoader& f = Fresh();
     f.Request(LoopLoader::LOADING, 1, 4, 0);
     Check(Run(f) && Loaded(f, frag), "load: a file in 11 fragments, a gap between each: every byte");
-    // more than the map holds: refused, the card untouched
+    // 200 fragments of a cluster each: within the map
     NewCard();
     card.frag_clusters = 1;
-    PutLoop("/FRIZZ/LOOPS/B/05.wav", Stereo(frag));
+    const std::string many = Pattern(200 * 4096 - 44, 13);
+    PutLoop("/FRIZZ/LOOPS/B/06.wav", Stereo(many));
+    LoopLoader& g = Fresh();
+    g.Request(LoopLoader::LOADING, 1, 5, 0);
+    Check(Run(g) && Loaded(g, many) && card.raw_reads == 200, "load: a file in 200 fragments, a run each: every byte");
+    // more than the map holds (255): refused, the card untouched
+    NewCard();
+    card.frag_clusters = 1;
+    PutLoop("/FRIZZ/LOOPS/B/05.wav", Stereo(Pattern(300 * 4096, 12)));
     LoopLoader& m = Fresh();
     m.Request(LoopLoader::LOADING, 1, 4, 0);
     Check(Run(m) && m.GetState() == LoopLoader::FAILED && m.Dev(part0, 1, d) && d[3] == FRAGMENTED

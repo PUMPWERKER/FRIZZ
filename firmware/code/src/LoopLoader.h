@@ -49,7 +49,7 @@ static const uint32_t kSector = 512;
 static const size_t kBufBytes = (kSector + kMaxFrames * 4 + kPostRoll * 4 + kSector - 1) / kSector * kSector;
 static const uint32_t kRunSectors = 256; // 128 KB a run: ~6 ms at the card's ~21 MB/s
 static const uint32_t kRunTimeoutUs = 250000;
-static const size_t kMapSize = 128; // the link map: 63 fragments
+static const size_t kMapSize = 512; // the link map (2 KB, in SDRAM): 255 fragments
 static const size_t kWindow = 1024; // bytes of a file a header step reads
 static const size_t kWindows = 8;   // a header's chunks in those first windows
 

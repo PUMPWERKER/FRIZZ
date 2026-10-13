@@ -5,9 +5,9 @@ device. Nothing here is for players: the files are patterns, not music.
     tools/loopfiles.py make DIR         the set into DIR (DIR/A/01.wav ...), checked by
                                         remote.py loops load --check
     tools/loopfiles.py card DIR ROOT    onto the card mounted at ROOT (card.py mount, in a hold):
-                                        ROOT/FRIZZ/LOOPS made, DIR's files copied there, and A/02
-                                        and A/12 written in pieces between a filler's, which is
-                                        then deleted, so they lie in fragments
+                                        ROOT/FRIZZ/LOOPS made, DIR's files copied there, and A/02,
+                                        A/12 and A/13 written in pieces between a filler's, which
+                                        is then deleted, so they lie in fragments
     tools/loopfiles.py clean ROOT       ROOT/FRIZZ/LOOPS deleted, all of it
 
 The set, by slot, and what FRIZZ's scan says (LoopLoader's Result):
@@ -22,7 +22,8 @@ The set, by slot, and what FRIZZ's scan says (LoopLoader's Result):
     A/09  WAVE_FORMAT_EXTENSIBLE with PCM as its subformat (the data at 68)     stereo
     A/10  its header says 10 s, the file holds 1 s                              past the end
     A/11  16 bars at 50 BPM with its data at 504                                stereo
-    A/12  A/01's data in 113 fragments (128 KB pieces)  stereo at the scan; its load refused
+    A/12  A/01's data in ~450 fragments (32 KB pieces)   stereo at the scan; its load refused
+    A/13  A/01's data in ~113 fragments (128 KB pieces)                         stereo
     B/01-15  0.5 s each                                                         stereo
     C     an empty folder; D-H none
 
@@ -35,6 +36,8 @@ import struct
 import sys
 
 FRAMES_16_BARS = 3686400  # 16 bars at 50 BPM, 48 kHz
+# the files written in pieces on the card, and the pieces' size
+PIECES = {"02.wav": 256 * 1024, "12.wav": 32 * 1024, "13.wav": 128 * 1024}
 
 
 def pattern(nbytes):
@@ -90,7 +93,7 @@ def the_set():
     for s in range(1, 16):
         files["B/%02d.wav" % s] = wav(pattern(sec // 2))
     # written in pieces on the card (card): their bytes here are what FRIZZ must load
-    files["A/02.wav"] = files["A/12.wav"] = files["A/01.wav"]
+    files["A/02.wav"] = files["A/12.wav"] = files["A/13.wav"] = files["A/01.wav"]
     return files
 
 
@@ -125,16 +128,15 @@ def card(src, root):
         os.makedirs(os.path.join(loops, bank))
     for bank in "AB":
         for name in sorted(os.listdir(os.path.join(src, bank))):
-            if (bank, name) in (("A", "02.wav"), ("A", "12.wav")):
+            if bank == "A" and name in PIECES:
                 continue
             shutil.copyfile(os.path.join(src, bank, name), os.path.join(loops, bank, name))
     with open(os.path.join(src, "A", "01.wav"), "rb") as f:
         data = f.read()
     filler = os.path.join(loops, "filler.bin")
-    fragmented(os.path.join(loops, "A", "02.wav"), data, 256 * 1024, filler)
-    os.remove(filler)
-    fragmented(os.path.join(loops, "A", "12.wav"), data, 128 * 1024, filler)
-    os.remove(filler)
+    for name, piece in PIECES.items():
+        fragmented(os.path.join(loops, "A", name), data, piece, filler)
+        os.remove(filler)
     os.sync()
     print("put on the card under %s" % loops)
 
