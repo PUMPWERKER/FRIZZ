@@ -15,9 +15,9 @@
  *   - At boot it scans: a pass reads a bank's folder (one f_readdir), then a pass a file found
  *     there, checking its header (WavWalk) from its first sectors.
  *   - A load opens the file, checks its header again, takes the file's clusters into a link
- *     map as FatFs's fast seek does (CREATE_LINKMAP), kMapClusters a pass (MapStep), and closes
- *     it; then it reads whole runs of the file's sectors, up to 128 KB each, straight into the buffer with the SDMMC's DMA
- *     (SdCard.h), from the data's first sector on. A run goes on while MainLoop does its other
+ *     map as FatFs's fast seek does (CREATE_LINKMAP), kMapClusters a pass (MapStep), and
+ *     closes it; then it reads whole runs of the file's sectors, up to 128 KB each, straight
+ *     into the buffer with the SDMMC's DMA (SdCard.h), from the data's first sector on. A run goes on while MainLoop does its other
  *     work, and its end or its error shows at the next pass: an error stops the load at once
  *     and sets the card up again (SdRawRecover), instead of FatFs's 30 s wait (sd_diskio.c).
  *     A run's DMA must have the card to itself: while a save or a bug report wants it
