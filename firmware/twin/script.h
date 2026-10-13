@@ -3,6 +3,7 @@
  *  report with: README.md's commands, played into the virtual CHOMPI from power-on.
  */
 #pragma once
+#include <cstdint>
 #include <cstdio>
 #include <istream>
 #include <string>
@@ -17,4 +18,9 @@ int PlayScript(std::istream& src, FILE* leds, std::vector<float>* out);
 
 /** Every LED now, as a line of the LED log: "pth RRGGBB x10 | smt RRGGBB x25" */
 std::string LedLine();
+
+/** A loop for the loop loader's card (#70, `card wav`): a WAV of 16-bit PCM at 48 kHz, frames
+ *  of a sine at freq, amplitude .3, mono or stereo (the right a quarter period on), with an
+ *  acid chunk of beats before its data if beats > 0 */
+std::string LoopWav(uint32_t frames, int channels, float freq, uint32_t beats = 0);
 } // namespace twin

@@ -427,41 +427,6 @@ static bool Shows(const Rgb& c, const float* color, int level, int within = 6)
 static const float kOrange[3] = {1.f, .6f, .24f}, kGreen[3] = {0.f, 1.f, 0.f}, kRed[3] = {1.f, 0.f, 0.f},
                    kWhite[3] = {1.f, 1.f, 1.f};
 
-/** A WAV, 16-bit at 48 kHz: frames of a sine at freq and amp, mono or stereo (the right a
- *  quarter period on), with an acid chunk of beats before its data if beats > 0 */
-static std::string LoopWav(uint32_t frames, int channels, float freq, float amp = .3f,
-                           uint32_t beats = 0)
-{
-    std::string w = "RIFF";
-    auto u32 = [&](std::string& to, uint32_t v) {
-        for (int i = 0; i < 4; i++)
-            to.push_back(static_cast<char>(v >> (8 * i)));
-    };
-    const uint32_t bytes = frames * 2u * static_cast<uint32_t>(channels);
-    u32(w, 36 + bytes + (beats ? 32 : 0));
-    w += "WAVEfmt ";
-    for (uint32_t v : {16u, 1u | static_cast<uint32_t>(channels) << 16, 48000u,
-                       48000u * 2u * static_cast<uint32_t>(channels),
-                       2u * static_cast<uint32_t>(channels) | 16u << 16})
-        u32(w, v);
-    if (beats)
-    {
-        w += "acid";
-        for (uint32_t v : {24u, 0u, 60u, 0u, beats, 4u | 4u << 16, 0x42f00000u}) // 120.0f
-            u32(w, v);
-    }
-    w += "data";
-    u32(w, bytes);
-    for (uint32_t i = 0; i < frames; i++)
-        for (int c = 0; c < channels; c++)
-        {
-            const float ph = 6.2831853f * freq * static_cast<float>(i) / 48000.f + c * 1.5707963f;
-            const int16_t v = static_cast<int16_t>(lrintf(amp * 32767.f * sinf(ph)));
-            w.push_back(static_cast<char>(v & 0xFF));
-            w.push_back(static_cast<char>((v >> 8) & 0xFF));
-        }
-    return w;
-}
 /** Loops on the card ("A/01" and the file), then scanned again (LoopLoader's SysEx) */
 static void PutLoops(const std::vector<std::pair<std::string, std::string>>& files)
 {
@@ -3343,7 +3308,7 @@ int main()
         RunMs(kReadyMs);
         amp = 0.f;
         PutLoops({{"A/01", LoopWav(96000, 2, 220.f)}, {"A/02", LoopWav(72000, 2, 330.f)},
-                  {"A/03", LoopWav(345600, 2, 220.f, .3f, 12)}}); // 3 bars at 100 BPM
+                  {"A/03", LoopWav(345600, 2, 220.f, 12)}}); // 3 bars at 100 BPM
         LoopsPage();
         Tap(kLoopKeys[0]);
         const int first = UntilLength(96000, 1000);

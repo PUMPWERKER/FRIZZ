@@ -1,0 +1,70 @@
+# The Loops page (#70, LoopControls.h): loops from the card's /FRIZZ/LOOPS (on the device the
+# same files, tools/loopfiles.py page). SHIFT + the lower C# opens it, bank A's orange on the
+# lower C# and D#; a white key switches to its loop at once, SHIFT + one at the end of the
+# loop's pass, one in a SHIFT hold with a scene drop on the drop's bar line; the lower D# the
+# next bank, B's yellow; a double tap of SHIFT goes home. Nothing is saved.
+card wav /FRIZZ/LOOPS/A/01.wav 2 2 220
+card wav /FRIZZ/LOOPS/A/02.wav 1.5 2 330
+card wav /FRIZZ/LOOPS/A/03.wav 4 2 220
+card wav /FRIZZ/LOOPS/A/04.wav 2 1 440
+card wav /FRIZZ/LOOPS/A/05.wav 7.2 2 165 12
+card wav /FRIZZ/LOOPS/B/01.wav 2 2 275
+input sine 220 0.3
+at 6000
+down KEY_26
+wait 60
+tap KEY_16
+wait 60
+up KEY_26
+wait 300
+# the banks' keys bright, A/01-05 dim, the slots after them dark, knob 1 dark
+expect led smt 0 fc983c
+expect led smt 1 fc983c
+expect led smt 24 241408
+expect led smt 19 000000
+expect led pth 1 000000
+# A/01 at once: its key bright
+tap KEY_1
+wait 400
+expect led smt 24 fc983c
+# SHIFT + A/02: at the end of A/01's pass (2 s)
+down KEY_26
+wait 60
+tap KEY_2
+wait 60
+up KEY_26
+wait 2300
+expect led smt 23 fc983c
+expect led smt 24 241408
+# a drop to the blank scene with A/03, in one SHIFT hold: on the drop's bar line
+down KEY_26
+wait 60
+tap KEY_18
+wait 60
+tap ENC_5_SW
+wait 60
+tap KEY_3
+wait 60
+up KEY_26
+wait 2500
+expect led smt 22 fc983c
+expect led smt 23 241408
+# A/04, mono, and A/05 with its acid chunk's 12 beats: at once each
+tap KEY_4
+wait 1000
+expect led smt 21 fc983c
+tap KEY_5
+wait 1500
+expect led smt 20 fc983c
+# the next bank: B, yellow, its slot 1 dim
+tap KEY_17
+wait 300
+expect led smt 0 fcf00c
+expect led smt 24 242400
+# home: a double tap of SHIFT; the bank keys dark again, the loop plays on
+tap KEY_26
+wait 100
+tap KEY_26
+wait 300
+expect led smt 0 000000
+expect led smt 1 000000
