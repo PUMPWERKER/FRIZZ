@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 440" width="720" height="440" role="img" aria-labelledby="title desc">
+<title id="title">FRIZZ signal flow</title>
+<desc id="desc">The whole way of the sound. The input, AUX or the built-in mic after its input gain, goes to the looper and to the input/loop mix; the looper's playback is the mix's other side. The mix goes through the effects of the white keys and the master compressor. A source set to dry skips the effects and the compressor and joins after them. Then VOLUME, the output gain, and a safety limiter on each output: the line out, and the headphones, whose feed can blend in the input alone.</desc>
+<style>text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
+<defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
+<rect width="720" height="440" fill="#131314"/>
+<rect x="20" y="42" width="110" height="56" class="ba"/>
+<text x="75" y="58.5" class="t" font-weight="bold">INPUT</text>
+<text x="75" y="74.5" class="m" font-size="12">AUX or mic</text>
+<text x="75" y="90.5" class="m" font-size="12">input gain</text>
+<polyline points="130,70 295,70" class="la" marker-end="url(#ma)"/>
+<circle cx="150" cy="70" r="3" class="da"/>
+<text x="225" y="62" class="m" font-size="12">input</text>
+<polyline points="150,70 150,150 175,150" class="ls" marker-end="url(#ms)"/>
+<circle cx="150" cy="150" r="3" class="ds"/>
+<rect x="175" y="126" width="100" height="48" class="b"/>
+<text x="225" y="146.5" class="t" font-weight="bold">LOOPER</text>
+<text x="225" y="162.5" class="m" font-size="12">records the input</text>
+<polyline points="275,150 347,150 347,98" class="ls" marker-end="url(#ms)"/>
+<text x="310" y="143" class="m" font-size="12">loop</text>
+<rect x="295" y="42" width="105" height="56" class="b"/>
+<text x="347.5" y="58.5" class="t" font-weight="bold">MIX</text>
+<text x="347.5" y="74.5" class="m" font-size="12">input ↔ loop</text>
+<text x="347.5" y="90.5" class="m" font-size="12">SHIFT + VOLUME</text>
+<polyline points="400,70 420,70" class="la" marker-end="url(#ma)"/>
+<rect x="420" y="42" width="120" height="56" class="ba"/>
+<text x="480" y="66.5" class="t" font-weight="bold">EFFECTS</text>
+<text x="480" y="82.5" class="m" font-size="12">white keys 1–14</text>
+<polyline points="540,70 560,70" class="la" marker-end="url(#ma)"/>
+<rect x="560" y="42" width="110" height="56" class="ba"/>
+<text x="615" y="66.5" class="t" font-weight="bold">COMPRESSOR</text>
+<text x="615" y="82.5" class="m" font-size="12">white key 15</text>
+<polyline points="670,70 679,70" class="la" marker-end="url(#ma)"/>
+<circle cx="688" cy="70" r="9" class="b"/>
+<path d="M683,70h10M688,65v10" class="ls"/>
+<polyline points="150,150 150,205 688,205 688,79" class="ls" marker-end="url(#ms)"/>
+<text x="420" y="198" class="m" font-size="12">dry (a setting of the input): past the effects and the compressor</text>
+<polyline points="697,70 708,70 708,240 75,240 75,268" class="la" marker-end="url(#ma)"/>
+<rect x="20" y="268" width="110" height="56" class="ba"/>
+<text x="75" y="292.5" class="t" font-weight="bold">VOLUME</text>
+<text x="75" y="308.5" class="m" font-size="12">output gain</text>
+<polyline points="130,296 150,296 150,280 330,280" class="la" marker-end="url(#ma)"/>
+<circle cx="150" cy="296" r="3" class="da"/>
+<polyline points="150,296 150,340 175,340" class="ls" marker-end="url(#ms)"/>
+<rect x="175" y="316" width="120" height="48" class="b"/>
+<text x="235" y="336.5" class="t" font-weight="bold">PHONES FEED</text>
+<text x="235" y="352.5" class="m" font-size="12">VOLUME page 3</text>
+<polyline points="295,340 330,340" class="ls" marker-end="url(#ms)"/>
+<polyline points="235,400 235,364" class="ls" marker-end="url(#ms)"/>
+<text x="235" y="416" class="m" font-size="12">the input alone, at VOLUME</text>
+<rect x="330" y="258" width="100" height="44" class="ba"/>
+<text x="380" y="276.5" class="t" font-weight="bold">LIMITER</text>
+<text x="380" y="292.5" class="m" font-size="12">safety</text>
+<polyline points="430,280 465,280" class="la" marker-end="url(#ma)"/>
+<circle cx="472" cy="280" r="5" class="b"/>
+<text x="484" y="284.5" class="t as" font-weight="bold">LINE OUT</text>
+<rect x="330" y="318" width="100" height="44" class="b"/>
+<text x="380" y="336.5" class="t" font-weight="bold">LIMITER</text>
+<text x="380" y="352.5" class="m" font-size="12">safety</text>
+<polyline points="430,340 465,340" class="ls" marker-end="url(#ms)"/>
+<circle cx="472" cy="340" r="5" class="b"/>
+<text x="484" y="344.5" class="t as" font-weight="bold">PHONES</text>
+<polyline points="556,286 582,286" class="la"/>
+<text x="592" y="290" class="t as" font-size="12">the usual way</text>
+<polyline points="556,308 582,308" class="ls"/>
+<text x="592" y="312" class="t as" font-size="12">other ways</text>
+</svg>
