@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 410" width="720" height="410" role="img" aria-labelledby="title desc">
 <title id="title">FRIZZ panel</title>
-<desc id="desc">A schematic of the panel, not its artwork. Front row: 15 white keys, the effects freezer, shifter, folder, crusher, filter, flanger, phaser, resonator, slicer, wow &amp; flutter, tape stop, delay, reverb, the chaos key and the master compressor. Above them 10 dark keys: the blank scene, scenes 1-4, save, copy and delete. Behind them the mode switch, the CHOMPI key (SHIFT), knobs 1-4, the transport wheel, PLAY, LOOP and VOLUME. Jacks: MIDI in and out on the left, AUX in and the headphones on the right, USB-C, the power switch, the microSD card and the line out at the back.</desc>
+<desc id="desc">A schematic of the panel, not its artwork. Front row: 15 white keys, the effects freezer, shifter, folder, crusher, filter, flanger, phaser, resonator, slicer, wow &amp; flutter, tape stop, delay, reverb, the chaos key and the master compressor. Above them 10 dark keys: the blank scene, scenes 1-4, save, copy and delete. Behind them the mode switch, the CHOMPI key (SHIFT), knobs 1-4, the transport wheel, PLAY, LOOP and VOLUME. Jacks: MIDI in and out on the left, AUX in and the headphones on the right, USB-C, the microSD card and the line out at the back.</desc>
 <style>text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
 <defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
 <rect width="720" height="410" fill="#131314"/>
@@ -101,18 +101,16 @@
 <rect x="100.1" y="98" width="10" height="24" rx="5" class="b"/>
 <circle cx="105.1" cy="116" r="3.5" class="g"/>
 <text x="105.1" y="92" class="m" font-size="12">mode</text>
-<rect x="66" y="94.3" width="6" height="14" class="g"/>
-<text x="60" y="105.8" class="t ae" font-size="12" font-weight="bold">MIDI OUT</text>
-<rect x="66" y="133" width="6" height="14" class="g"/>
-<text x="60" y="144.5" class="t ae" font-size="12" font-weight="bold">MIDI IN</text>
-<rect x="648" y="94.3" width="6" height="14" class="g"/>
-<text x="660" y="105.8" class="t as" font-size="12" font-weight="bold">AUX IN</text>
-<rect x="648" y="133" width="6" height="14" class="g"/>
-<text x="660" y="144.5" class="t as" font-size="12" font-weight="bold">PHONES</text>
+<rect x="66" y="117.8" width="6" height="14" class="g"/>
+<text x="60" y="129.3" class="t ae" font-size="12" font-weight="bold">MIDI OUT</text>
+<rect x="66" y="156.5" width="6" height="14" class="g"/>
+<text x="60" y="168" class="t ae" font-size="12" font-weight="bold">MIDI IN</text>
+<rect x="648" y="117.8" width="6" height="14" class="g"/>
+<text x="660" y="129.3" class="t as" font-size="12" font-weight="bold">AUX IN</text>
+<rect x="648" y="156.5" width="6" height="14" class="g"/>
+<text x="660" y="168" class="t as" font-size="12" font-weight="bold">PHONES</text>
 <rect x="105.3" y="40" width="14" height="6" class="g"/>
 <text x="112.3" y="32" class="t" font-size="12" font-weight="bold">USB-C</text>
-<rect x="191" y="40" width="14" height="6" class="g"/>
-<text x="198" y="32" class="t" font-size="12">power</text>
 <rect x="515.7" y="40" width="14" height="6" class="g"/>
 <text x="522.7" y="32" class="t" font-size="12">microSD</text>
 <rect x="599.2" y="40" width="14" height="6" class="g"/>

@@ -179,8 +179,8 @@ def signal_flow():
             'The whole way of the sound. The input, AUX or the built-in mic after its input gain, '
             'goes to the looper and to the input/loop mix; the looper\'s playback is the mix\'s '
             'other side. The mix goes through the effects of the white keys and the master '
-            'compressor. A source set to dry skips the effects and the compressor and joins after '
-            'them. Then VOLUME, the output gain, and a safety limiter on each output: the line '
+            'compressor. A source set to dry: the mix\'s input share skips the effects and the '
+            'compressor and joins after them. Then VOLUME, the output gain, and a safety limiter on each output: the line '
             'out, and the headphones, whose feed can blend in the input alone.')
     # row 1: input, looper, mix, effects, compressor, the dry branch joining
     s.box(20, 42, 110, 56, ['INPUT', ('AUX or mic', 'm'), ('input gain', 'm')], accent=True)
@@ -188,7 +188,6 @@ def signal_flow():
     s.dot(150, 70, 'a')
     s.text(225, 62, 'input', 12, cls='m')
     s.line([(150, 70), (150, 150), (175, 150)])
-    s.dot(150, 150)
     s.box(175, 126, 100, 48, ['LOOPER', ('records the input', 'm')])
     s.line([(275, 150), (347, 150), (347, 98)])
     s.text(310, 143, 'loop', 12, cls='m')
@@ -199,8 +198,8 @@ def signal_flow():
     s.box(560, 42, 110, 56, ['COMPRESSOR', ('white key 15', 'm')], accent=True)
     s.line([(670, 70), (679, 70)], 'a')
     s.sum(688, 70)
-    s.line([(150, 150), (150, 205), (688, 205), (688, 79)])
-    s.text(420, 198, 'dry (a setting of the input): past the effects and the compressor', 12, cls='m')
+    s.line([(385, 98), (385, 205), (688, 205), (688, 79)])
+    s.text(537, 223, 'dry: the input\'s share, past the effects and the compressor', 12, cls='m')
     # on to row 2
     s.line([(697, 70), (708, 70), (708, 240), (75, 240), (75, 268)], 'a')
     s.box(20, 268, 110, 56, ['VOLUME', ('output gain', 'm')], accent=True)
@@ -311,8 +310,8 @@ def fx_chain():
             'goes in, page 2\'s Band filters it, Level sets the return, which is added to the '
             'signal; the reverb gets the delay\'s echoes too. The keys and knobs come from the '
             'panel, MIDI and scene morphs; the chaos key (14) drops latched effects and scrambles '
-            'the loop. After the effects, a dry input joins, then the master compressor (key 15), '
-            'VOLUME, and a safety limiter on the line out and on the headphones, whose feed blends '
+            'the loop. After the effects the master compressor (key 15); then a dry input joins, '
+            'then VOLUME and a safety limiter on the line out and on the headphones, whose feed blends '
             'towards the input alone. Below: every insert\'s page 2, Band, Level and Mix.')
     # what plays the effects
     for x, w, lines in ((20, 170, ['PANEL · MIDI', ('keys and knobs', 'm')]),
@@ -367,18 +366,18 @@ def fx_chain():
     s.text(414, 283, 'sends', 12, cls='m')
     s.text(568, 283, 'echoes into the reverb', 12, cls='m')
     # row 3: the dry input, the compressor, VOLUME, the outputs
-    s.line([(661, y), (708, y), (708, 440), (24, 440), (24, 480), (51, 480)], 'a')
+    s.line([(661, y), (708, y), (708, 440), (24, 440), (24, 480), (40, 480)], 'a')
     y = 480
-    s.sum(60, y)
-    s.line([(60, 535), (60, y + 9)])
-    s.text(20, 552, 'dry input', 12, anchor='start', cls='m')
-    s.line([(69, y), (90, y)], 'a')
-    s.box(90, y - 24, 120, 48, ['COMPRESSOR', ('15, always on', 'm')], accent=True)
-    s.line([(210, y), (240, y)], 'a')
-    s.box(240, y - 24, 100, 48, ['VOLUME', ('output gain', 'm')], accent=True)
-    s.line([(340, y), (360, y), (360, 460), (520, 460)], 'a')
-    s.dot(360, y, 'a')
-    s.line([(360, y), (360, 525), (390, 525)])
+    s.box(40, y - 24, 120, 48, ['COMPRESSOR', ('15, always on', 'm')], accent=True)
+    s.line([(160, y), (176, y)], 'a')
+    s.sum(185, y)
+    s.line([(185, 535), (185, y + 9)])
+    s.text(185, 552, 'dry input', 12, cls='m')
+    s.line([(194, y), (220, y)], 'a')
+    s.box(220, y - 24, 100, 48, ['VOLUME', ('output gain', 'm')], accent=True)
+    s.line([(320, y), (340, y), (340, 460), (520, 460)], 'a')
+    s.dot(340, y, 'a')
+    s.line([(340, y), (340, 525), (390, 525)])
     s.box(390, 503, 110, 44, ['PHONES FEED', ('VOLUME page 3', 'm')])
     s.line([(500, 525), (520, 525)])
     s.line([(445, 580), (445, 547)])
@@ -529,7 +528,7 @@ def panel():
             'Above them 10 dark keys: the blank scene, scenes 1-4, save, copy and delete. Behind '
             'them the mode switch, the CHOMPI key (SHIFT), knobs 1-4, the transport wheel, PLAY, '
             'LOOP and VOLUME. Jacks: MIDI in and out on the left, AUX in and the headphones on '
-            'the right, USB-C, the power switch, the microSD card and the line out at the back.')
+            'the right, USB-C, the microSD card and the line out at the back.')
     s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="10" class="b"/>'
           % (num(X(0)), num(Y(depth)), num(320 * sc), num(depth * sc)))
     keys = {k['name']: k for k in layout['keys']}
@@ -585,15 +584,16 @@ def panel():
     s.add('<rect x="%s" y="%s" width="10" height="24" rx="5" class="b"/>' % (num(x - 5), num(y - 12)))
     s.add('<circle cx="%s" cy="%s" r="3.5" class="g"/>' % (num(x), num(y + 6)))
     s.text(x, y - 18, 'mode', 12, cls='m')
-    # jacks: the sides and the back of the lower board, in the top board's coordinates (the
-    # lower board's y + 112.38); the back's from the enclosure's back panel
-    for y, name in ((73.3, 'MIDI OUT'), (51.8, 'MIDI IN')):
+    # jacks: the sides and the back of the lower board, in the top board's coordinates: the
+    # lower board's y + 99.29, which puts SW5 under its hole (y 68.46) and the side jacks
+    # where the side panels' holes are; the back's x from the enclosure's back panel
+    for y, name in ((60.2, 'MIDI OUT'), (38.7, 'MIDI IN')):
         s.add('<rect x="%s" y="%s" width="6" height="14" class="g"/>' % (num(X(0) - 6), num(Y(y) - 7)))
         s.text(X(0) - 12, Y(y) + 4.5, name, 12, anchor='end', bold=True)
-    for y, name in ((73.3, 'AUX IN'), (51.8, 'PHONES')):
+    for y, name in ((60.2, 'AUX IN'), (38.7, 'PHONES')):
         s.add('<rect x="%s" y="%s" width="6" height="14" class="g"/>' % (num(X(320)), num(Y(y) - 7)))
         s.text(X(320) + 12, Y(y) + 4.5, name, 12, anchor='start', bold=True)
-    for x, name in ((22.4, 'USB-C'), (70, 'power'), (250.4, 'microSD'), (296.8, 'LINE OUT')):
+    for x, name in ((22.4, 'USB-C'), (250.4, 'microSD'), (296.8, 'LINE OUT')):
         s.add('<rect x="%s" y="%s" width="14" height="6" class="g"/>' % (num(X(x) - 7), num(Y(depth) - 6)))
         s.text(X(x), Y(depth) - 14, name, 12, bold=name.isupper() or name == 'USB-C')
     s.text(X(0) - 12, Y(depth) + 4, 'back', 12, anchor='end', cls='m')
