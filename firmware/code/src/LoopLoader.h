@@ -14,9 +14,9 @@
  *  them (a bug report's, a save's) never pulls a file from under it.
  *   - At boot it scans: a pass reads a bank's folder (one f_readdir), then a pass a file found
  *     there, checking its header (WavWalk) from its first sectors.
- *   - A load opens the file, checks its header again, takes the file's clusters from FatFs's
- *     fast seek (its link map, CREATE_LINKMAP) and closes it; then it reads whole runs of the
- *     file's sectors, up to 128 KB each, straight into the buffer with the SDMMC's DMA
+ *   - A load opens the file, checks its header again, takes the file's clusters into a link
+ *     map as FatFs's fast seek does (CREATE_LINKMAP), kMapClusters a pass (MapStep), and closes
+ *     it; then it reads whole runs of the file's sectors, up to 128 KB each, straight into the buffer with the SDMMC's DMA
  *     (SdCard.h), from the data's first sector on. A run goes on while MainLoop does its other
  *     work, and its end or its error shows at the next pass: an error stops the load at once
  *     and sets the card up again (SdRawRecover), instead of FatFs's 30 s wait (sd_diskio.c).
@@ -50,6 +50,9 @@ static const size_t kBufBytes = (kSector + kMaxFrames * 4 + kPostRoll * 4 + kSec
 static const uint32_t kRunSectors = 256; // 128 KB a run: ~6 ms at the card's ~21 MB/s
 static const uint32_t kRunTimeoutUs = 250000;
 static const size_t kMapSize = 512; // the link map (2 KB, in SDRAM): 255 fragments
+// the file's clusters a pass follows into the map: FatFs reads the FAT a sector at a time
+// (~0.35-0.7 ms each; 128 clusters a sector on FAT32), so a pass reads 2-5 of them (#212)
+static const uint32_t kMapClusters = 256;
 static const size_t kWindow = 1024; // bytes of a file a header step reads
 static const size_t kWindows = 8;   // a header's chunks in those first windows
 
@@ -380,7 +383,7 @@ private:
         if (state_ == SCANNING)
             ScanStep();
         else if (state_ == LOADING)
-            opened_ ? RunStep() : OpenStep();
+            opened_ ? RunStep() : (mapping_ ? MapStep() : OpenStep());
         else if (state_ == CHECKING)
             CrcStep();
         else if (state_ == WRITING)
@@ -402,7 +405,7 @@ private:
             bank_ = bank;
             slot_ = slot;
             faults_ = static_cast<uint8_t>(arg);
-            opened_ = false;
+            opened_ = mapping_ = false;
             done_ = total_ = runs_ = ms_ = frags_ = 0;
             start_ms_ = ms_clock_();
         }
@@ -481,9 +484,9 @@ private:
         s.result = Open(bank_, slot, s.frames, s.data, false);
     }
 
-    /** Opens the slot's file and checks its header; with map, also takes its clusters' link
-     *  map. The file is closed again either way */
-    LOOP_LOADER_ONCE uint8_t Open(size_t bank, size_t slot, uint32_t& frames, uint32_t& data, bool map)
+    /** Opens the slot's file and checks its header. The file is closed again, unless keep and
+     *  it's a loop */
+    LOOP_LOADER_ONCE uint8_t Open(size_t bank, size_t slot, uint32_t& frames, uint32_t& data, bool keep)
     {
         char path[24];
         SlotPath(path, bank, slot);
@@ -504,39 +507,114 @@ private:
         }
         if (r == loops::WavWalk::MORE)
             r = loops::NO_DATA;
-        if (map && (r == loops::MONO || r == loops::STEREO))
-        {
-            mem_->map[0] = loops::kMapSize;
-            file.cltbl = mem_->map;
-            const FRESULT m = f_lseek(&file, CREATE_LINKMAP);
-            // the map's size it took, or would have: also when it's too small
-            frags_ = (mem_->map[0] - 2) / 2;
-            if (m != FR_OK)
-                r = m == FR_NOT_ENOUGH_CORE ? loops::FRAGMENTED : loops::UNREADABLE;
-        }
-        f_close(&file);
+        if (!keep || (r != loops::MONO && r != loops::STEREO))
+            f_close(&file);
         return static_cast<uint8_t>(r);
     }
 
     // ---- the load ----
+    /** The load's first pass: the file opened, its header checked again, the map begun */
     LOOP_LOADER_ONCE void OpenStep()
     {
-        uint32_t data = 0;
-        result_ = Open(bank_, slot_, frames_, data, true);
+        result_ = Open(bank_, slot_, frames_, data_, true);
         if (result_ != loops::MONO && result_ != loops::STEREO)
         {
             End(FAILED, result_);
             return;
         }
+        const uint32_t bcs = fs_->csize * loops::kSector;
+        clusters_ = (f_size(&mem_->file) + bcs - 1) / bcs;
+        cluster_ = 0;
+        frags_ = 0;
+        mapping_ = true;
+    }
+
+    /** A pass of the map: the file's next kMapClusters clusters followed, as FatFs's
+     *  CREATE_LINKMAP does all in one: the map's size, then each fragment's length and first
+     *  cluster, then 0. A seek to a cluster's end leaves FatFs in it (its fp->clust), reading
+     *  only the FAT (the file's last, past its end, also a sector of it). The file stays open
+     *  from pass to pass; a remount meanwhile (a save's, a bug report's) makes it invalid, and
+     *  it's opened again where it was (Reopen) */
+    LOOP_LOADER_ONCE void MapStep()
+    {
+        FIL& file = mem_->file;
+        DWORD* map = mem_->map;
+        const uint32_t bcs = fs_->csize * loops::kSector, size = f_size(&file);
+        for (uint32_t n = 0; n < loops::kMapClusters && cluster_ < clusters_; n++, cluster_++)
+        {
+            const uint32_t end = (cluster_ + 1) * bcs;
+            FRESULT r = f_lseek(&file, end < size ? end : size);
+            if (r == FR_INVALID_OBJECT && (r = Reopen()) == FR_OK)
+                r = f_lseek(&file, end < size ? end : size);
+            if (r != FR_OK)
+            {
+                f_close(&file);
+                mapping_ = false;
+                End(FAILED, r == FR_INT_ERR ? loops::SHORT
+                            : (r == FR_NOT_ENOUGH_CORE ? loops::FRAGMENTED : loops::UNREADABLE));
+                return;
+            }
+            const DWORD c = file.clust;
+            // the map: 2 items, then 2 a fragment, stored while they fit
+            if (frags_ && c == last_ + 1)
+            {
+                if (2 + 2 * frags_ <= loops::kMapSize)
+                    map[2 * frags_ - 1]++;
+            }
+            else if (2 + 2 * ++frags_ <= loops::kMapSize)
+            {
+                map[2 * frags_ - 1] = 1;
+                map[2 * frags_] = c;
+            }
+            last_ = c;
+        }
+        if (cluster_ < clusters_)
+            return;
+        f_close(&file);
+        mapping_ = false;
+        map[0] = 2 + 2 * frags_;
+        if (map[0] > loops::kMapSize)
+        {
+            End(FAILED, loops::FRAGMENTED);
+            return;
+        }
+        map[map[0] - 1] = 0;
+        Mapped();
+    }
+
+    /** The file opened again after a remount, FatFs put back in the map's last cluster by the
+     *  map so far (fast seek: no FAT read) */
+    FRESULT Reopen()
+    {
+        FIL& file = mem_->file;
+        f_close(&file);
+        char path[24];
+        SlotPath(path, bank_, slot_);
+        FRESULT r = f_open(&file, path, FA_READ);
+        if (r != FR_OK || !cluster_)
+            return r;
+        if (2 + 2 * frags_ > loops::kMapSize)
+            return FR_NOT_ENOUGH_CORE; // too many fragments already
+        mem_->map[0] = loops::kMapSize;
+        mem_->map[2 * frags_ + 1] = 0;
+        file.cltbl = mem_->map;
+        r = f_lseek(&file, cluster_ * fs_->csize * loops::kSector);
+        file.cltbl = nullptr;
+        return r;
+    }
+
+    /** The map done: where the runs start */
+    void Mapped()
+    {
         // the volume's, kept: a remount (a save's, a bug report's) leaves the card as it is
         csize_ = fs_->csize;
         database_ = fs_->database;
-        skip_ = data % loops::kSector;
+        skip_ = data_ % loops::kSector;
         const uint32_t bytes = frames_ * (result_ == loops::MONO ? 2u : 4u);
         total_ = (skip_ + bytes + loops::kSector - 1) & ~(loops::kSector - 1);
         // the run from the data's first sector: past the fragments before it
         frag_ = 1;
-        frag_at_ = data / loops::kSector;
+        frag_at_ = data_ / loops::kSector;
         while (mem_->map[frag_] && frag_at_ >= mem_->map[frag_] * csize_)
         {
             frag_at_ -= mem_->map[frag_] * csize_;
@@ -731,9 +809,11 @@ private:
     bool listed_ = false;
     uint16_t found_ = 0;
     // the load
-    bool opened_ = false, inflight_ = false;
+    bool opened_ = false, mapping_ = false, inflight_ = false;
     uint8_t result_ = loops::EMPTY;
-    uint32_t frames_ = 0, skip_ = 0;
+    uint32_t frames_ = 0, data_ = 0, skip_ = 0;
+    uint32_t clusters_ = 0, cluster_ = 0; // the map's: the file's clusters, the next one
+    DWORD last_ = 0;
     uint16_t csize_ = 0;
     DWORD database_ = 0;
     size_t frag_ = 1;

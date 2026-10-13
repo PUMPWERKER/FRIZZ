@@ -5,7 +5,8 @@
 // (f_mount, also of the volume already mounted) makes the files open before it invalid: their
 // reads, writes and close fail with FR_INVALID_OBJECT. For the loop loader (LoopLoader.h) it has
 // folders to list (f_opendir, f_readdir), FatFs's fast seek's link map (f_lseek with
-// CREATE_LINKMAP) over clusters it hands each file on the first, and the raw sector reads
+// CREATE_LINKMAP) over clusters it hands each file on the first, a seek's cluster (ff.c's
+// fp->clust) and the FAT sectors following the chain reads (fat_reads), and the raw sector reads
 // SdCard.h makes past FatFs; it counts the FatFs calls made while one of those runs (raw_clash),
 // which on the device would put a command on the bus in the middle of its transfer.
 #pragma once
@@ -57,6 +58,7 @@ struct FIL
     bool write = false;
     uint32_t mount = 0;     // the mount it was opened on (ff.c's obj.id)
     DWORD* cltbl = nullptr; // fast seek's link map
+    DWORD clust = 0;        // the cluster the pointer is in, after a seek (ff.c's)
 };
 struct DIR
 {
@@ -93,6 +95,10 @@ struct FakeCard
     };
     std::vector<Frag> frags;
     std::map<std::string, std::vector<size_t>> chains; // the file's frags, in order
+    // ff.c reads the FAT a sector at a time into its window (FAT32: 128 clusters a sector);
+    // the sectors read so, counted
+    DWORD fat_win = ~0u;
+    int fat_reads = 0;
     // a raw read: done on the raw_polls-th poll; raw_fail fails it (raw_error), raw_dead keeps
     // the card from coming back after it
     int raw_busy = 0;
@@ -148,6 +154,25 @@ struct FakeCard
             }
         }
         return chains[path];
+    }
+
+    /** The chain's i-th cluster, 0 past its end */
+    DWORD Cluster(const std::vector<size_t>& chain, size_t i) const
+    {
+        for (size_t f : chain)
+        {
+            if (i < frags[f].count)
+                return frags[f].first + static_cast<DWORD>(i);
+            i -= frags[f].count;
+        }
+        return 0;
+    }
+    /** get_fat's read of the cluster's entry: a sector into the window, unless it's there */
+    void FatRead(DWORD cluster)
+    {
+        if (cluster / 128 != fat_win)
+            fat_reads++;
+        fat_win = cluster / 128;
     }
 
     /** As SdRawStart: 1 started, 0 busy, -1 refused (past the card's end, as the HAL does) */
@@ -208,6 +233,7 @@ inline FRESULT f_mount(FATFS* fs, const char*, BYTE)
     fs->database = c.database;
     c.cwd = "";
     c.mount++;
+    c.fat_win = ~0u;
     return c.present ? FR_OK : FR_NOT_READY;
 }
 inline FRESULT f_chdir(const char* path)
@@ -364,7 +390,9 @@ inline FRESULT f_close(FIL* f)
 
 /** CREATE_LINKMAP fills cltbl as ff.c does: its size, then each fragment's length and first
  *  cluster, then 0; FR_NOT_ENOUGH_CORE, with the size it needs, when it's too small. Any other
- *  offset moves the file's pointer */
+ *  offset moves the file's pointer and sets clust to the cluster it's in: by cltbl if set (fast
+ *  seek), else following the chain, from the cluster it was in if that's not after it, as ff.c
+ *  does: FR_INT_ERR past the chain's end */
 inline FRESULT f_lseek(FIL* f, DWORD ofs)
 {
     FakeCard& c = FakeCard::Get();
@@ -373,7 +401,31 @@ inline FRESULT f_lseek(FIL* f, DWORD ofs)
         return FR_INVALID_OBJECT;
     if (ofs != CREATE_LINKMAP)
     {
-        f->fptr = std::min<size_t>(ofs, c.files[f->path].size());
+        const size_t to = std::min<size_t>(ofs, c.files[f->path].size()), bcs = c.csize * size_t(512);
+        if (to && f->cltbl)
+        {
+            DWORD cl = static_cast<DWORD>((to - 1) / bcs);
+            const DWORD* t = f->cltbl + 1;
+            for (; t[0] && cl >= t[0]; t += 2)
+                cl -= t[0];
+            if (!t[0])
+                return FR_INT_ERR;
+            f->clust = t[1] + cl;
+        }
+        else if (to)
+        {
+            const std::vector<size_t>& chain = c.Chain(f->path);
+            const size_t k = (to - 1) / bcs;
+            size_t i = f->fptr && k >= (f->fptr - 1) / bcs ? (f->fptr - 1) / bcs : 0;
+            for (; i < k; i++)
+            {
+                c.FatRead(c.Cluster(chain, i));
+                if (!c.Cluster(chain, i + 1))
+                    return FR_INT_ERR;
+            }
+            f->clust = c.Cluster(chain, k);
+        }
+        f->fptr = to;
         return FR_OK;
     }
     if (!f->cltbl)
@@ -383,6 +435,8 @@ inline FRESULT f_lseek(FIL* f, DWORD ofs)
     DWORD ulen = 2;
     for (size_t i : c.Chain(f->path))
     {
+        for (DWORD k = 0; k < c.frags[i].count; k++)
+            c.FatRead(c.frags[i].first + k);
         ulen += 2;
         if (ulen <= tlen)
         {
