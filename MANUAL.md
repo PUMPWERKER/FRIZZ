@@ -1320,8 +1320,8 @@ save, copy and delete 66, 68 and 70. Below them:
   settings page's G# and A# left them, the input gains as you last turned them,
   and the output gain and the mix at their power-on levels. Scenes you save keep what the CCs set, as ever.
 - **Left free on purpose**, so what hosts and keyboards send by themselves reaches nothing:
-  bank select (0, 32), mod wheel (1), breath (2), foot (4), volume (7), pan (10), expression (11), the pedals
-  (64-69), keyboards' sound controllers (70-79), NRPN and RPN with their data entry (6, 38,
+  bank select (0, 32), mod wheel (1), breath (2), foot (4), volume (7), pan (10), expression
+  (11), the pedals (64-69), keyboards' sound controllers (70-79), NRPN and RPN with their data entry (6, 38,
   96-101: a DAW's pitch-bend range doesn't turn a knob), 88, effects depths (91-95: a
   keyboard sends reverb depth, 91, at power-on), Reset All
   Controllers (121). CC 46-53 stay free for a 14-bit mode later.
