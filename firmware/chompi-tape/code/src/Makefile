@@ -37,7 +37,7 @@ CPP_SOURCES = chompi_main.cpp \
 USE_FATFS = 1
 
 # SD transfers that end run the SD timer at once, see __wrap_HAL_SD_IRQHandler
-LDFLAGS = -Wl,--wrap=HAL_SD_IRQHandler
+LDFLAGS = -Wl,--wrap=HAL_SD_IRQHandler -u _printf_float
 
 # Libs
 LIBDAISY_DIR = ../libs/libDaisy

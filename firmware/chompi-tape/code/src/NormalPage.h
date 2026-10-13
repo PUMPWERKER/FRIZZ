@@ -1235,9 +1235,9 @@ namespace chompi
             enc_values[1][0] = enc_defaults[1][0];
             enc_values[1][1] = enc_defaults[1][1];
             enc_values[1][2] = enc_defaults[1][2];
-            const float frames = fx_->RecordFrames();
-            enc_values[0][1] = frames ? (fx_->RecordStart() + .5f) / frames : 0.f;
-            enc_values[0][2] = frames ? std::min(1.f, (frames - fx_->RecordPost() + .5f) / frames) : 1.f;
+            const double frames = fx_->RecordFrames();
+            enc_values[0][1] = frames ? (fx_->RecordStart() + .5) / frames : 0.f;
+            enc_values[0][2] = frames ? std::min(1., (frames - fx_->RecordPost() + .5) / frames) : 1.f;
             fx_->SetStartPointForce(enc_values[0][1]);
             fx_->SetEndPointForce(enc_values[0][2]);
             DumpValuePresets();

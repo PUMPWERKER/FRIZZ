@@ -343,8 +343,8 @@ namespace chompi
         FileStreamingManager* manager;
         FIL fptr_pre;
         char fname[32];
-        static const size_t kPreFileSize = 8192;
-        char presets_file[kPreFileSize]; // too big? not big enough?
+        static const size_t kPreFileSize = 16384;
+        char presets_file[kPreFileSize];
 
         // pitch, start, end, att, decay, autoloop, sustainactive, gain, pan
         const float defaults[9] = {   enc_defaults[0][0], enc_defaults[0][1], enc_defaults[0][2],

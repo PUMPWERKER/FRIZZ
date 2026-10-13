@@ -90,7 +90,7 @@ class PresetManager
 
                     for(int ctrl = 0; ctrl < kMaxControls; ctrl++)
                     {
-                        sprintf(append,"%d,", int(values[mode][bank][slot][ctrl] * 1000));
+                        sprintf(append, "%.5f,", double(values[mode][bank][slot][ctrl]) * 1000); // as fine as the float
                         StrAppend(buffer, append);
                     }
 
@@ -178,7 +178,7 @@ class PresetManager
 
                                 if(json_res == JSONSuccess)
                                 {
-                                    values[mode][bank][slot][ctrl] = .001f * atof(value);
+                                    values[mode][bank][slot][ctrl] = atof(value) / 1000.;
                                 }
                             }
                             values_valid[mode][bank][slot] = true;

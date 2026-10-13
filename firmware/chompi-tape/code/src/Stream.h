@@ -14,8 +14,8 @@ namespace chompi
         static Span Of(float start, float end, uint32_t frames, bool reverse, bool loop)
         {
             Span s;
-            s.begin = static_cast<uint32_t>(start * frames);
-            s.end = static_cast<uint32_t>(end * frames);
+            s.begin = static_cast<uint32_t>(double(start) * frames); // in double, a point stays on its frame
+            s.end = static_cast<uint32_t>(double(end) * frames);
             if(s.end > frames)
                 s.end = frames;
             if(s.begin >= s.end)
