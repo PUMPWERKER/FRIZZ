@@ -417,6 +417,7 @@ private:
             phase_ = 0;
             at_ = 0;
             done_ = 0;
+            bad_ = 0;
             if (!total_ || !chunk_ || total_ > kWriteMax)
                 End(WRITTEN, loops::WRITE_FAILED);
         }
@@ -654,9 +655,6 @@ private:
         bool ok = true;
         if (phase_ == 0)
         {
-            // the bytes to write, made up front, in the buffer (a loaded loop goes)
-            for (uint32_t i = 0; i < total_; i++)
-                buf_[i] = Pattern(i);
             made_loops_ = f_mkdir("/FRIZZ/LOOPS") == FR_OK;
             const FRESULT d = f_mkdir(kDir);
             ok = (d == FR_OK || d == FR_EXIST) && f_open(&file, kTmp, FA_CREATE_ALWAYS | FA_WRITE) == FR_OK;
@@ -664,9 +662,20 @@ private:
         }
         else if (phase_ == 1 || phase_ == 3)
         {
+            // a chunk's bytes made, written; or read back and compared (a loaded loop goes)
             const uint32_t n = total_ - at_ < chunk_ ? total_ - at_ : chunk_;
-            ok = phase_ == 1 ? f_write(&file, buf_ + at_, n, &got) == FR_OK
-                             : f_read(&file, back + at_, n, &got) == FR_OK;
+            if (phase_ == 1)
+            {
+                for (uint32_t i = at_; i < at_ + n; i++)
+                    buf_[i] = Pattern(i);
+                ok = f_write(&file, buf_ + at_, n, &got) == FR_OK;
+            }
+            else
+            {
+                ok = f_read(&file, back + at_, n, &got) == FR_OK;
+                for (uint32_t i = at_; i < at_ + n; i++)
+                    bad_ += back[i] != Pattern(i);
+            }
             ok = ok && got == n;
             at_ += n;
             done_ = phase_ == 1 ? at_ : total_ + at_;
@@ -686,10 +695,7 @@ private:
         }
         else
         {
-            uint32_t bad = 0;
-            for (uint32_t i = 0; i < total_; i++)
-                bad += back[i] != Pattern(i);
-            WriteEnd(bad ? loops::WRITE_BAD : 0);
+            WriteEnd(bad_ ? loops::WRITE_BAD : 0);
             return;
         }
         if (!ok)
@@ -735,7 +741,7 @@ private:
     uint8_t recoveries_ = 0, reinits_ = 0;
     uint32_t frags_ = 0;
     // the CRC, the write test
-    uint32_t crc_ = 0, at_ = 0, chunk_ = 0;
+    uint32_t crc_ = 0, at_ = 0, chunk_ = 0, bad_ = 0;
     uint8_t phase_ = 0;
     bool made_loops_ = false;
 };

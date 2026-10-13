@@ -493,6 +493,13 @@ static void TestWrite()
     const uint8_t mb[] = {6, 8, 0, 32, 0}; // 1024 KB: KB's high group 8, past the banks
     Check(l.Dev(mb, 5, d) == 0 && Run(l) && l.Dev(part0, 1, d) && d[3] == 0,
           "write test: 1024 KB in 4096-byte writes, the most it takes");
+    // a byte the card gives back otherwise: caught
+    l.Dev(write, 5, d);
+    for (int i = 0; i < 10000 && !card.files.count("/FRIZZ/LOOPS/T/w.bin"); i++)
+        l.Process(false);
+    card.files["/FRIZZ/LOOPS/T/w.bin"][12345] ^= 1;
+    Check(Run(l) && l.Dev(part0, 1, d) && d[3] == WRITE_BAD && !card.dirs.count("/FRIZZ/LOOPS/T"),
+          "write test: a byte read back otherwise: WRITE_BAD, and still cleaned up");
     card.read_only = true;
     l.Dev(write, 5, d);
     Check(Run(l) && l.Dev(part0, 1, d) && d[3] == WRITE_FAILED && card.open == 0,
