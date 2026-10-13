@@ -177,13 +177,15 @@ static void DevInfo(dev::Info& info)
 
 #ifdef __arm__
 /** A fault's registers into the crash record (Crash.h), then the chip's reset, as the launcher
- *  hands over: the bootloader starts the launcher. FrizzFaultEntry passes the stacked frame */
+ *  hands over: the bootloader starts the launcher. FrizzFaultEntry passes the stacked frame.
+ *  The MPU is off in a HardFault (no HFNMIENA), so the backup SRAM is cached here as the
+ *  default map has it: the record is cleaned out of the D-cache, or the reset loses it */
 extern "C" __attribute__((used, noinline)) void FrizzFault(const uint32_t* frame, uint32_t ipsr)
 {
     const uint32_t fault[] = {SCB->CFSR, SCB->HFSR, SCB->MMFAR, SCB->BFAR};
     crash::Write(crash_mem.record, ipsr & 0x1FF, crash_mem.running, System::GetNow(),
                  midi_control.dev.reset_cause, frame, fault);
-    __DSB();
+    SCB_CleanDCache();
     NVIC_SystemReset();
 }
 
