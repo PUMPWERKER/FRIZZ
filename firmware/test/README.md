@@ -54,8 +54,9 @@ The checks on the twin with many cases (`ui`, `midi`, `sync`, `midiout`) run the
 cores (`CASE_JOBS=N` sets how many), their output in the order the cases were declared. A case
 that takes the card another one kept (`KeepCard()`, `TakeCard()`) runs after it, on the same
 card: `Chain()` in `ui.cpp` names those cases, and a `TakeCard()` with no card kept before it
-fails. A case still running after `CASE_TIMEOUT` seconds (60) is stopped and fails by its name,
-with what it printed. `CASES="a b" ./unit.sh ui` (or `midi`, `sync`, `midiout`) runs only those
+fails. A case that has used `CASE_TIMEOUT` seconds (60) of the CPU, or run ten times that long
+by the wall clock, is stopped and fails by its name, with what it printed: the CPU's time, so a
+loaded machine (several `all.sh` side by side) doesn't stop a case that is only slower (#183). `CASES="a b" ./unit.sh ui` (or `midi`, `sync`, `midiout`) runs only those
 cases, and the ones before them in their chains; a name that no case has fails the run.
 `twintest.h` has the helpers these checks and `remote.cpp` share: `kReadyMs`, `Card()`, `Hex()`
 and `Tap()`.

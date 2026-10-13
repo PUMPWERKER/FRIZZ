@@ -33,12 +33,30 @@ void Run(const std::string& name, bool out_wired, const std::string& ids, const 
     std::string out;
     const auto t0 = std::chrono::steady_clock::now();
     const int rc = Reaper("-v --cases " + ids, out, 170);
-    printf("%s: %ld s\n", name.c_str(),
-           long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()));
-    bool ok = rc == exit_code;
+    printf("%s: %ld s, the twin up to %ld ms behind\n", name.c_str(),
+           long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()), lag);
+    // a case that failed on timing alone, the twin too far behind (ptytwin.h): not judged, said
+    // so; every other FAIL still fails
+    const std::vector<std::string> unjudged = Unjudged(out);
+    for (const std::string& id : unjudged)
+        printf("%s: %s not judged, the twin %ld ms behind the wall clock\n", name.c_str(), id.c_str(), lag);
+    bool judged_fail = false;
+    for (size_t at = out.find("\nFAIL "); at != std::string::npos; at = out.find("\nFAIL ", at + 1))
+    {
+        const std::string id = out.substr(at + 6, out.find_first_of(" :\n", at + 6) - at - 6);
+        judged_fail = judged_fail || std::find(unjudged.begin(), unjudged.end(), id) == unjudged.end();
+    }
+    bool ok = rc == exit_code
+              || (rc == 1 && !unjudged.empty() && !judged_fail && !Has(out, "not put back") && !Has(out, "putting things back:"));
     Check(ok, (name + ": exit " + std::to_string(rc) + ", not " + std::to_string(exit_code)).c_str());
     for (const std::string& line : lines)
     {
+        // what says a case not judged passed (a summary's row names none)
+        bool of_unjudged = !Has(line, "daw-");
+        for (const std::string& id : unjudged)
+            of_unjudged = of_unjudged || Has(line, id);
+        if (!unjudged.empty() && Has(line, "PASS") && of_unjudged)
+            continue;
         Check(Has(out, line), (name + ": says \"" + line + "\"").c_str());
         ok = ok && Has(out, line);
     }

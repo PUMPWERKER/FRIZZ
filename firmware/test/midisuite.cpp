@@ -12,7 +12,6 @@
 // MIDISUITE="ARGS" runs the suite once with those arguments (--wiring both if none is given)
 // and prints what it printed: the live twin to work on midisuite.py with, e.g.
 //     MIDISUITE="--cases out-loop -v" ./unit.sh midisuite
-#include <sstream>
 #include "cases.h"
 #include "check.h"
 #include "twin.h"
@@ -27,21 +26,6 @@ int Suite(const std::string& args, std::string& out, int limit, const std::strin
 }
 
 bool Has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
-
-/** The cases that failed on timing alone, if the twin fell too far behind to judge timing */
-std::vector<std::string> Unjudged(const std::string& out)
-{
-    std::vector<std::string> ids;
-    const std::string tag = "failed on timing alone: ";
-    const size_t at = out.find(tag);
-    if (lag <= kLagMs || at == std::string::npos)
-        return ids;
-    std::istringstream list(out.substr(at + tag.size(), out.find('\n', at) - at - tag.size()));
-    std::string id;
-    while (std::getline(list, id, ','))
-        ids.push_back(id);
-    return ids;
-}
 
 /** A case's line in out: "PASS out-loop (7 s)", "SKIP clock-trs: ..." */
 bool Line(const std::string& out, const std::string& result, const std::string& id)
@@ -79,8 +63,8 @@ void Run(const std::string& name, bool in, bool out_wired, const std::vector<std
     const auto card = CardFiles();
     const auto t0 = std::chrono::steady_clock::now();
     const int rc = Suite("--quick -v --cases " + list, out, 55);
-    printf("%s: %ld s\n", name.c_str(),
-           long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()));
+    printf("%s: %ld s, the twin up to %ld ms behind\n", name.c_str(),
+           long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()), lag);
     const std::vector<std::string> unjudged = Unjudged(out);
     for (const std::string& id : unjudged)
         printf("%s: %s not judged, the twin %ld ms behind the wall clock\n", name.c_str(), id.c_str(), lag);
