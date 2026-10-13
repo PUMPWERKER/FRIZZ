@@ -5,6 +5,15 @@ a release renames that section to its version, and its notes on GitHub's Release
 from it. Developer-only changes (refactoring, tests, docs) aren't listed unless they change
 what FRIZZ does.
 
+## Unreleased
+
+### Added
+
+- **A hung FRIZZ restarts by itself** (#105): if its sound stops for a second (a crash, or
+  something stuck), the CHOMPI restarts instead of staying frozen until you switch it off:
+  into the launcher's picker if you use it, or else FRIZZ starts again. A loop in RAM is lost,
+  as with the power switch.
+
 ## v1.0.1 (2026-10-13)
 
 ### Changed
