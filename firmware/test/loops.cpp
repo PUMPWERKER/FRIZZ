@@ -17,8 +17,12 @@ using namespace loops;
 
 static FakeCard& card = FakeCard::Get();
 static FATFS fs;
+// the firmware's clocks: ms, and ticks at 10 MHz from just below their wrap, as System::GetTick
+// wraps every ~18 s on the device
 static uint32_t clock_us = 0;
-static uint32_t Us() { return clock_us; }
+static uint32_t tick_base = 0xFFFFFFFFu - 5000000u;
+static uint32_t Ms() { return clock_us / 1000; }
+static uint32_t Ticks() { return tick_base + clock_us * 10u; }
 
 static void NewCard()
 {
@@ -248,7 +252,7 @@ static void TestScan()
 {
     NewCard();
     LoopLoader l;
-    l.Init(Buf(), &mem, &fs, Us);
+    l.Init(Buf(), &mem, &fs, Ms, Ticks, 10000000);
     Check(Run(l) && l.GetState() == LoopLoader::IDLE, "scan: a card without /FRIZZ/LOOPS: done, nothing found");
     Check(card.open == 0, "scan: no file left open");
 
@@ -259,7 +263,7 @@ static void TestScan()
     PutLoop("/FRIZZ/LOOPS/A/notes.txt", "hello");
     PutLoop("/FRIZZ/LOOPS/C/15.wav", Stereo(Pattern(400, 4)));
     card.dirs["/FRIZZ/LOOPS/B"] = true;
-    l.Init(Buf(), &mem, &fs, Us);
+    l.Init(Buf(), &mem, &fs, Ms, Ticks, 10000000);
     Check(Run(l) && l.GetState() == LoopLoader::IDLE, "scan: done");
     Check(l.GetSlot(0, 0).result == STEREO && l.GetSlot(0, 0).frames == 1000 && l.GetSlot(0, 0).data == 44,
           "scan: A/01 stereo, its frames, its data at 44");
@@ -272,7 +276,7 @@ static void TestScan()
     Check(card.raw_reads == 0, "scan: headers through FatFs, no raw reads");
     // the passes it took: one a folder (8) and one a bank's end (8), one a file (4), one to end
     LoopLoader again;
-    again.Init(Buf(), &mem, &fs, Us);
+    again.Init(Buf(), &mem, &fs, Ms, Ticks, 10000000);
     int passes = 0;
     while (again.Busy() && passes < 100)
     {
@@ -286,7 +290,7 @@ static LoopLoader& Fresh()
 {
     static LoopLoader l;
     l = LoopLoader();
-    l.Init(Buf(), &mem, &fs, Us);
+    l.Init(Buf(), &mem, &fs, Ms, Ticks, 10000000);
     Run(l);
     return l;
 }
@@ -381,6 +385,16 @@ static void TestFaults()
     Check(Run(l, 20) && l.GetState() == LoopLoader::FAILED && l.Dev(part0, 1, d) && d[3] == CARD_ERROR
               && d[21] == 0 && d[22] == 2,
           "fault: a read past the card's end (the third run) refused at once, after 2 runs");
+
+    // the tick clock wrapping in the middle of a load (every ~18 s on the device): no TIMEOUT
+    // out of it, the ms it took as they were
+    tick_base = 0u - 5000u * 10u - clock_us * 10u; // wraps 5 ms from now
+    const uint32_t from = clock_us;
+    l.Request(LoopLoader::LOADING, 0, 0, 0);
+    Check(Run(l) && Loaded(l, big) && l.Dev(part0, 1, d) && d[3] == 0 && d[17] == 0 && d[18] == 0
+              && d[19] + 1u >= (clock_us - from) / 1000 && d[19] > 5,
+          "fault: the tick clock wrapping mid-load: loaded, no TIMEOUT, its ms right");
+    tick_base = 0u - 100000u * 10u - clock_us * 10u; // and 100 ms into a run that never ends
 
     // a run that doesn't end: waited for kRunTimeoutUs, not 30 s
     card.raw_polls = 1000000;

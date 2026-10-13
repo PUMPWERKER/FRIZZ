@@ -388,7 +388,8 @@ int main(void)
     scene_store.Init(&fsi.GetSDFileSystem(), fsi.GetSDPath());
 #if !FRIZZ_BENCH
     // the loop slots' scan starts, a step a MainLoop pass
-    loop_loader.Init(loop_load_mem, &loop_loader_mem, &fsi.GetSDFileSystem(), [] { return System::GetUs(); });
+    loop_loader.Init(loop_load_mem, &loop_loader_mem, &fsi.GetSDFileSystem(), [] { return System::GetNow(); },
+                     [] { return System::GetTick(); }, System::GetTickFreq());
 #endif
 
     engine.Init(hw.seed.AudioSampleRate(), loop_mem, &midi_clock,

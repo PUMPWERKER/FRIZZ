@@ -234,13 +234,18 @@ public:
     static const uint8_t kFaultPastEnd = 2;       // its third run reads past the card's end
     static const uint8_t kFaultCutShort = 4;      // its third run is given no time
 
-    /** buf: kBufBytes, 32-byte aligned; us: a clock in microseconds. Starts the scan */
-    void Init(uint8_t* buf, loops::Mem* mem, FATFS* fs, uint32_t (*us)())
+    /** buf: kBufBytes, 32-byte aligned; ms: a clock in ms; ticks: a finer one, tick_freq a
+     *  second (System::GetTick's, which wraps every ~18 s: only differences are taken).
+     *  Starts the scan */
+    void Init(uint8_t* buf, loops::Mem* mem, FATFS* fs, uint32_t (*ms)(), uint32_t (*ticks)(),
+              uint32_t tick_freq)
     {
         buf_ = buf;
         mem_ = mem;
         fs_ = fs;
-        us_ = us;
+        ms_clock_ = ms;
+        ticks_ = ticks;
+        ticks_us_ = tick_freq / 1000000u;
         Request(SCANNING);
     }
 
@@ -260,22 +265,22 @@ public:
      *  for, and nothing new starts */
     LOOP_LOADER_ONCE void Process(bool card_wanted)
     {
-        const uint32_t t0 = us_();
+        const uint32_t t0 = ticks_();
         if (inflight_)
         {
             SdRaw r = SdRawPoll(buf_ + done_, run_);
-            while (r == SdRaw::BUSY && card_wanted && us_() - run_us_ < timeout_)
+            while (r == SdRaw::BUSY && card_wanted && ticks_() - run_t_ < timeout_)
                 r = SdRawPoll(buf_ + done_, run_);
             if (r == SdRaw::DONE)
                 RunDone();
             else if (r == SdRaw::FAILED)
                 Fail(loops::CARD_ERROR);
-            else if (us_() - run_us_ >= timeout_)
+            else if (ticks_() - run_t_ >= timeout_)
                 Fail(loops::TIMEOUT);
         }
         if (!inflight_ && !card_wanted)
             Step();
-        const uint32_t dt = us_() - t0;
+        const uint32_t dt = (ticks_() - t0) / ticks_us_;
         worst_us_ = dt > worst_us_ ? dt : worst_us_;
     }
 
@@ -395,7 +400,7 @@ private:
             faults_ = static_cast<uint8_t>(arg);
             opened_ = false;
             done_ = total_ = runs_ = ms_ = 0;
-            start_us_ = us_();
+            start_ms_ = ms_clock_();
         }
         else if (what == CHECKING)
         {
@@ -533,7 +538,7 @@ private:
         if (faults_ & kFaultNoFlowControl)
             SdRawFlowControl(false);
         opened_ = true;
-        run_us_ = us_(); // the first run's wait for the card starts here
+        run_t_ = ticks_(); // the first run's wait for the card starts here
     }
 
     /** Starts the next run, or ends the load */
@@ -541,7 +546,7 @@ private:
     {
         if (done_ == total_)
         {
-            ms_ = (us_() - start_us_) / 1000;
+            ms_ = ms_clock_() - start_ms_;
             SdRawFlowControl(true);
             End(LOADED, 0);
             return;
@@ -558,20 +563,20 @@ private:
         uint32_t sector = database_ + (mem_->map[frag_ + 1] - 2) * csize_ + frag_at_;
         const bool third = runs_ == 2;
         if (third && (faults_ & kFaultPastEnd))
-            sector = 0xFFFFFF00u;
+            sector = 0xF0000000u; // the HAL refuses it, beyond any card's last sector
         const int started = SdRawStart(buf_ + done_, sector, n);
         if (started <= 0)
         {
             // refused, or the card still busy with the last run for too long
             if (started < 0)
                 Fail(loops::CARD_ERROR);
-            else if (us_() - run_us_ >= loops::kRunTimeoutUs)
+            else if (ticks_() - run_t_ >= loops::kRunTimeoutUs * ticks_us_)
                 Fail(loops::TIMEOUT);
             return;
         }
         run_ = n;
-        run_us_ = us_();
-        timeout_ = third && (faults_ & kFaultCutShort) ? 0 : loops::kRunTimeoutUs;
+        run_t_ = ticks_();
+        timeout_ = third && (faults_ & kFaultCutShort) ? 0 : loops::kRunTimeoutUs * ticks_us_;
         inflight_ = true;
     }
 
@@ -581,7 +586,7 @@ private:
         done_ += run_ * loops::kSector;
         frag_at_ += run_;
         runs_++;
-        run_us_ = us_(); // the next run's wait for the card starts here
+        run_t_ = ticks_(); // the next run's wait for the card starts here
         if (frag_at_ == mem_->map[frag_] * csize_)
         {
             frag_ += 2;
@@ -604,7 +609,7 @@ private:
             reinits_ += reinit;
         }
         SdRawFlowControl(true);
-        ms_ = (us_() - start_us_) / 1000;
+        ms_ = ms_clock_() - start_ms_;
         End(FAILED, why);
     }
 
@@ -703,7 +708,9 @@ private:
     uint8_t* buf_ = nullptr;
     loops::Mem* mem_ = nullptr;
     FATFS* fs_ = nullptr;
-    uint32_t (*us_)() = nullptr;
+    uint32_t (*ms_clock_)() = nullptr;
+    uint32_t (*ticks_)() = nullptr;
+    uint32_t ticks_us_ = 1;
 
     State state_ = IDLE;
     uint8_t bank_ = 0, slot_ = 0, error_ = 0, faults_ = 0;
@@ -719,7 +726,7 @@ private:
     DWORD database_ = 0;
     size_t frag_ = 1;
     uint32_t frag_at_ = 0, run_ = 0, done_ = 0, total_ = 0, runs_ = 0;
-    uint32_t run_us_ = 0, start_us_ = 0, timeout_ = 0, ms_ = 0, worst_us_ = 0;
+    uint32_t run_t_ = 0, timeout_ = 0, start_ms_ = 0, ms_ = 0, worst_us_ = 0; // ticks, ms, us
     uint8_t recoveries_ = 0, reinits_ = 0;
     // the CRC, the write test
     uint32_t crc_ = 0, at_ = 0, chunk_ = 0;

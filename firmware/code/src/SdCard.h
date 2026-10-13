@@ -72,7 +72,23 @@ inline uint32_t SdRawError() { return hsd1.ErrorCode; }
  *  command wait the HAL's 5 s. True once the card is ready again */
 inline bool SdRawRecover(bool& reinit)
 {
-    HAL_SD_Abort(&hsd1);
+    // as the HAL's interrupt does on a data error: the FIFO emptied (with flow control a full
+    // one holds the card's clock), the data path aborted with CMD12, the DMA off. HAL_SD_Abort
+    // stops neither the data path nor the FIFO
+    HAL_NVIC_DisableIRQ(SDMMC1_IRQn);
+    __HAL_SD_DISABLE_IT(&hsd1, SDMMC_IT_DATAEND | SDMMC_IT_DCRCFAIL | SDMMC_IT_DTIMEOUT
+                                   | SDMMC_IT_TXUNDERR | SDMMC_IT_RXOVERR);
+    __SDMMC_CMDTRANS_DISABLE(SDMMC1);
+    SDMMC1->DCTRL |= SDMMC_DCTRL_FIFORST;
+    SDMMC1->CMD |= SDMMC_CMD_CMDSTOP;
+    SDMMC_CmdStopTransfer(SDMMC1); // the card refuses it when it isn't sending: no matter
+    SDMMC1->CMD &= ~SDMMC_CMD_CMDSTOP;
+    SDMMC1->IDMACTRL = SDMMC_DISABLE_IDMA;
+    __HAL_SD_CLEAR_FLAG(&hsd1, SDMMC_STATIC_FLAGS | SDMMC_FLAG_DABORT);
+    hsd1.Context = SD_CONTEXT_NONE;
+    hsd1.State = HAL_SD_STATE_READY;
+    NVIC_ClearPendingIRQ(SDMMC1_IRQn);
+    HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
     reinit = false;
     for (int i = 0; i < 3; i++)
         if (HAL_SD_GetCardState(&hsd1) == HAL_SD_CARD_TRANSFER)
