@@ -180,6 +180,7 @@ enum Sub : uint8_t
                  //    the seed, then chaos's, the slicer's, the delay's and wow & flutter's
                  //    states (5 each)
     BATTERY = 9, // -> the level, the charger's debounced bits, the last read, its raw status
+    LOOPS = 0x0D, // PART ...: the loop loader's (LoopLoader::Dev). FRIZZ.bin only
 };
 enum Status : uint8_t
 {
@@ -288,6 +289,8 @@ struct Info
     uint32_t seed = 0;                // RESEED's last
     // the bench's answer to BENCH (Bench::Report) into d: its length, or -1 for NOT_YET
     int (*bench)(uint8_t part, uint32_t offset, uint8_t* d) = nullptr;
+    // the loop loader's to LOOPS (LoopLoader::Dev): its length, or -1 for BAD
+    int (*loops)(const uint8_t* arg, size_t len, uint8_t* d) = nullptr;
 };
 } // namespace dev
 static const uint8_t kMidiHeader[] = {0x7D, 0x43, 0x48};
