@@ -98,6 +98,10 @@ FileCopier copier;
  *  Channel 4 - Master R
  */
 bool line_in_state;
+
+static_assert(Hardware::kAudioBlock <= usb::kMaxBlock && Hardware::kAudioBlock <= Engine::kMaxBlock,
+              "USB and the engine hold one audio block");
+
 void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
 {
     // meter.OnBlockStart();
@@ -125,23 +129,33 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
     {
         if(hw.jack_detect.Read())
         {
-            engine.SetInputSource(InputSource::LINE_IN);
+            engine.PickInputSource(InputSource::LINE_IN);
             engine.ResetLineMono();
         }
         else
-            engine.SetInputSource(InputSource::MIC);
+            engine.PickInputSource(InputSource::MIC);
     }
     line_in_state = hw.jack_detect.Read();
 
+    engine.UpdateUsbInputSource(usb::Connected(), usb::RxStreaming(), line_in_state);
+    engine.SetUsbInput(usb::Receive(size));
+
+    // to the host: the mix before the volume, the input as recorded
+    const float *to_host[usb::kTxChannels] = {out[2], out[3], nullptr, nullptr};
     if(ui.InTestMode() && ui.GetToggleState())
     {
         for(size_t i = 0; i < size; i++)
-        {
             out[0][i] = out[1][i] = out[2][i] = out[3][i] = osc.Process();
-        }
     }
     else
+    {
         engine.Process(in, out, size);
+        to_host[0] = engine.MainMix()[0];
+        to_host[1] = engine.MainMix()[1];
+        to_host[2] = engine.RecordInput()[0];
+        to_host[3] = engine.RecordInput()[1];
+    }
+    usb::Send(to_host, size);
 
     // meter.OnBlockEnd();
 }
@@ -368,7 +382,12 @@ void MainLoop(void* data)
     System::DelayUs(10);
 }
 
-void daisy::MidiRxByte(uint8_t byte, const void* source) { beat_clock.Byte(byte, source); }
+// MIDI comes in below the audio callback's priority
+void daisy::MidiRxByte(uint8_t byte, const void* source)
+{
+    ScopedIrqBlocker block;
+    beat_clock.Byte(byte, source);
+}
 
 int main(void)
 {

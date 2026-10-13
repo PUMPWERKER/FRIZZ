@@ -2,6 +2,7 @@
 #include "daisy_seed.h"
 #include "encoder.h"
 #include "temp_led_stuff.h"
+#include "UsbDevice.h"
 
 #define ENC_5_SW 4 // this one weird switch isn't on the SR
 
@@ -16,6 +17,8 @@ namespace chompi
     class Hardware
     {
     public:
+        static constexpr size_t kAudioBlock = 24;
+
         /* Indices for encoder access based on hardware reference name */
         enum class EncoderId : int
         {
@@ -120,7 +123,7 @@ namespace chompi
             external_sai_handle.Init(external_sai_cfg);
 
             AudioHandle::Config audio_cfg;
-            audio_cfg.blocksize = 24;
+            audio_cfg.blocksize = kAudioBlock;
             audio_cfg.samplerate = SaiHandle::Config::SampleRate::SAI_48KHZ;
             audio_cfg.postgain = 1.0f; /*< TODO: we may want to fine tune this */
 
@@ -175,8 +178,8 @@ namespace chompi
             uart_midi.Init(uart_midi_cfg);
             uart_midi.StartReceive(); // shoukld we do this repeatedly to catch crashes?
 
-            MidiUsbHandler::Config usb_midi_cfg;
-            usb_midi_cfg.transport_config.periph = MidiUsbTransport::Config::EXTERNAL;
+            usb::Init();
+            MidiHandler<MidiTinyUsbTransport>::Config usb_midi_cfg;
             usb_midi.Init(usb_midi_cfg);
             usb_midi.Listen();
 
@@ -544,7 +547,7 @@ namespace chompi
         ShiftRegister4021<5, 1> button_sr;
         ShiftRegister4021<1, 1> encoder_sr;
         SaiHandle external_sai_handle;
-        MidiUsbHandler usb_midi;
+        MidiHandler<MidiTinyUsbTransport> usb_midi;
         MidiUartHandler uart_midi;
         I2CHandle i2c; // comms w/ MP2722
         GPIO usb_sw, mpc_int, jack_detect;

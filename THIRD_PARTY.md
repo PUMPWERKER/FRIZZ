@@ -46,6 +46,14 @@ In TAPE:
   that the firmware calls. The build fails without them.
 - `src/per/tim.h` / `src/per/tim.cpp` — timer init and start compiled at `-O0`, and the
   auto-reload preload disabled. This changes behavior, not compilation; keep the vendored files.
+- `src/sys/system.cpp` — the OTG_HS interrupt handlers are removed. TAPE runs the external USB
+  port (USB audio and MIDI) on TinyUSB and defines `OTG_HS_IRQHandler` itself (`src/UsbDevice.cpp`);
+  with libDaisy's in place the link fails on the duplicate, and they would pull ST's USB host and
+  device stack into the image. libDaisy's own USB on that port (`UsbHandle::FS_EXTERNAL`, `MidiUsbTransport`
+  `EXTERNAL`, the USB host) no longer works in this copy.
+- `src/sys/fatfs.cpp` — no USB host media: `FatFSInterface` fails `MEDIA_USB`. TAPE only mounts the
+  SD card, and the USB host driver linked ST's USB host and device middleware into the image. With
+  this and the change above, TAPE's binary contains none of ST's USB middleware.
 
 In TEMPO and WAVE:
 - `src/per/tim.h` / `src/per/tim.cpp` — adds TIM16 as a fifth available timer (clock enable,

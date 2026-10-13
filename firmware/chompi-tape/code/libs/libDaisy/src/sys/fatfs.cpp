@@ -1,7 +1,8 @@
 #include "sys/fatfs.h"
 #include "ff_gen_drv.h"
 #include "util/sd_diskio.h"
-#include "util/usbh_diskio.h"
+
+// CHOMPI: no USB host media, its driver pulled ST's USB stack into the image
 
 
 using namespace daisy;
@@ -15,9 +16,7 @@ FatFSInterface::Result FatFSInterface::Init(const FatFSInterface::Config& cfg)
                   ? Result::OK
                   : Result::ERR_TOO_MANY_VOLUMES;
     if(cfg_.media & Config::MEDIA_USB)
-        ret = FATFS_LinkDriver(&USBH_Driver, path_[1]) == FR_OK
-                  ? Result::OK
-                  : Result::ERR_TOO_MANY_VOLUMES;
+        ret = Result::ERR_NO_MEDIA_SELECTED;
     if(ret == Result::OK)
         initialized_ = true;
     return ret;

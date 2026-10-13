@@ -93,33 +93,9 @@ extern "C"
         HAL_SYSTICK_IRQHandler();
     }
 
-    /** USB IRQ Handlers since they are shared resources for multiple classes */
-    extern HCD_HandleTypeDef hhcd_USB_OTG_HS;
-    extern PCD_HandleTypeDef hpcd_USB_OTG_HS;
-
-    void OTG_HS_EP1_OUT_IRQHandler(void)
-    {
-        if(hhcd_USB_OTG_HS.Instance)
-            HAL_HCD_IRQHandler(&hhcd_USB_OTG_HS);
-        if(hpcd_USB_OTG_HS.Instance)
-            HAL_PCD_IRQHandler(&hpcd_USB_OTG_HS);
-    }
-
-    void OTG_HS_EP1_IN_IRQHandler(void)
-    {
-        if(hhcd_USB_OTG_HS.Instance)
-            HAL_HCD_IRQHandler(&hhcd_USB_OTG_HS);
-        if(hpcd_USB_OTG_HS.Instance)
-            HAL_PCD_IRQHandler(&hpcd_USB_OTG_HS);
-    }
-
-    void OTG_HS_IRQHandler(void)
-    {
-        if(hhcd_USB_OTG_HS.Instance)
-            HAL_HCD_IRQHandler(&hhcd_USB_OTG_HS);
-        if(hpcd_USB_OTG_HS.Instance)
-            HAL_PCD_IRQHandler(&hpcd_USB_OTG_HS);
-    }
+    /** CHOMPI: no OTG_HS handlers, TinyUSB defines OTG_HS_IRQHandler (src/UsbDevice.cpp). libDaisy's own USB on
+     *  that port doesn't work without them.
+     */
 
     // TODO: Add some real handling to the HardFaultHandler
     void HardFault_Handler()

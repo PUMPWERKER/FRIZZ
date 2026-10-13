@@ -76,6 +76,9 @@ namespace chompi
             {
                 if(long_press_key == static_cast<uint16_t>(Hardware::SwId::KEY_19))
                     fx_->CycleLineMode();
+                else if(long_press_key == static_cast<uint16_t>(Hardware::SwId::KEY_18))
+                    // mic held: USB in and back
+                    fx_->PickInputSource(was_usb ? InputSource::MIC : InputSource::USB);
                 else if(long_press_key == static_cast<uint16_t>(Hardware::SwId::KEY_27))
                 {
                     undo_ok = !copier_->IsCopying() && fx_->LooperUndo();
@@ -332,14 +335,16 @@ namespace chompi
             SetSmtLedFloat(led_sel, yellow[0], yellow[1], yellow[2]);
             SetSmtLedFloat(led_off, 0.f, 0.f, 0.f);
         
-            // Input select
-            led_sel = 2;
-            led_sel += static_cast<int>(fx_->GetInputSource());
+            // Input select, USB blue on the mic LED
+            const InputSource source = fx_->GetInputSource();
+            led_sel = source == InputSource::USB ? 2 : 2 + static_cast<int>(source);
             SetSmtLedFloat(2, 0.f, 0.f, 0.f);
             SetSmtLedFloat(3, 0.f, 0.f, 0.f);
             SetSmtLedFloat(4, 0.f, 0.f, 0.f);
-            const LineMode line = fx_->GetInputSource() == InputSource::LINE_IN ? fx_->GetLineMode() : LineMode::STEREO;
-            if(line == LineMode::MONO)
+            const LineMode line = source == InputSource::LINE_IN ? fx_->GetLineMode() : LineMode::STEREO;
+            if(source == InputSource::USB)
+                SetSmtLedFloat(led_sel, blue[0], blue[1], blue[2]);
+            else if(line == LineMode::MONO)
                 SetSmtLedFloat(led_sel, red[0], red[1], red[2]);
             else if(line == LineMode::MONO_RIGHT)
                 SetSmtLedFloat(led_sel, green[0], green[1], green[2]);
@@ -853,6 +858,7 @@ namespace chompi
                 if(rising)
                 {
                     InputSource source;
+                    was_usb = fx_->GetInputSource() == InputSource::USB;
                     if(buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_18))
                         source = InputSource::MIC;
                     else if(buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_19))
@@ -860,8 +866,8 @@ namespace chompi
                     else
                         source = InputSource::RESAMPLE;
 
-                    fx_->SetInputSource(source);
-                    if(source == InputSource::LINE_IN)
+                    fx_->PickInputSource(source);
+                    if(source == InputSource::LINE_IN || source == InputSource::MIC)
                         StartLongPress(buttonID);
                 }
                 else
@@ -1187,6 +1193,7 @@ namespace chompi
         static const uint16_t kNoKey = 0xffff;
         static const uint32_t kLongPress = 500; // ms
         uint16_t long_press_key = kNoKey;
+        bool was_usb = false; // before the key went down
         uint32_t long_press_down = 0;
         uint32_t bake_refused = 0;
         uint32_t undo_flash = 0;

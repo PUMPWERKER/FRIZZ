@@ -54,6 +54,7 @@ namespace daisy
         MIC = 0,
         LINE_IN,
         RESAMPLE,
+        USB, // the host's audio
         LAST,
     };
 
@@ -160,6 +161,8 @@ namespace daisy
     class Engine
     {
     public:
+        static constexpr size_t kMaxBlock = 48; // monitor_ and mix_ hold one
+
         Engine() {}
         ~Engine() {}
 
@@ -383,24 +386,24 @@ namespace daisy
         }
 
         /** Apply the total monitor signal to the input envelope follower */
-        void ApplyEnvelopeFollower(size_t size, float* monitor)
+        void ApplyEnvelopeFollower(size_t size, float monitor[2][kMaxBlock])
         {
             for (size_t i = 0; i < size; i++)
-                input_env_follower.Process((monitor[i] + monitor[size + i]) * .8f);
+                input_env_follower.Process((monitor[0][i] + monitor[1][i]) * .8f);
         }
 
         /** add the mic monitor into both outputs, 
             also add it to the monitor buffer, which will be used to feed the env follower at the end
         */
-        void ApplyMicMonitor(const float* const* in, float **out, size_t size, float* monitor)
+        void ApplyMicMonitor(const float* const* in, float **out, size_t size, float monitor[2][kMaxBlock])
         {
             for (size_t i = 0; i < size; i++)
             {
                 float sig = dcblock_mic_in_.Process(in[0][i] * ingain_ * kMicGain);
                 sig = mic_filter_.Process(sig);
 
-                monitor[i] += sig;
-                monitor[size + i] += sig;
+                monitor[0][i] += sig;
+                monitor[1][i] += sig;
 
                 out[0][i] += sig;
                 out[1][i] += sig;
@@ -410,7 +413,7 @@ namespace daisy
         /** add the line in monitor into both outputs, 
             also add it to the monitor buffer, which will be used to feed the env follower at the end
         */
-        void ApplyLineMonitor(const float* line_l, const float* line_r, float **out, size_t size, float* monitor) __attribute__((noinline))
+        void ApplyLineMonitor(const float* line_l, const float* line_r, float **out, size_t size, float monitor[2][kMaxBlock]) __attribute__((noinline))
         {
             const float mono_target = line_mode_ == LineMode::MONO         ? 1.f
                                       : line_mode_ == LineMode::MONO_RIGHT ? -1.f
@@ -422,8 +425,26 @@ namespace daisy
                 const float sigl = (line_l[i] + (line_r[i] - line_l[i]) * to_left) * ingain_ * kLineInGain;
                 const float sigr = (line_r[i] + (line_l[i] - line_r[i]) * to_right) * ingain_ * kLineInGain;
 
-                monitor[i] += sigl;
-                monitor[size + i] += sigr;
+                monitor[0][i] += sigl;
+                monitor[1][i] += sigr;
+
+                out[0][i] += sigl;
+                out[1][i] += sigr;
+            }
+        }
+
+        // like the line in
+        void ApplyUsbMonitor(float **out, size_t size, float monitor[2][kMaxBlock])
+        {
+            if(!usb_in_)
+                return;
+            for (size_t i = 0; i < size; i++)
+            {
+                const float sigl = usb_in_[0][i] * ingain_ * kLineInGain;
+                const float sigr = usb_in_[1][i] * ingain_ * kLineInGain;
+
+                monitor[0][i] += sigl;
+                monitor[1][i] += sigr;
 
                 out[0][i] += sigl;
                 out[1][i] += sigr;
@@ -486,6 +507,15 @@ namespace daisy
             return false;
         }
 
+        // host audio for the next Process()
+        void SetUsbInput(const float *const *usb) { usb_in_ = usb; }
+
+        // the input as recorded, from the last Process()
+        const float *const *RecordInput() const { return monitor_ptr_; }
+
+        // the line out before the main volume, from the last Process()
+        const float *const *MainMix() const { return mix_ptr_; }
+
         float old_fx_outl, old_fx_outr;
         void Process(const float *const *in, float **out, size_t size)
         {            
@@ -518,21 +548,24 @@ namespace daisy
             }
 
             // add the monitor to the working space pre-FX
-            float monitor[2][size];
-            std::fill(&monitor[0][0], &monitor[1][size], 0.f);
+            float (&monitor)[2][kMaxBlock] = monitor_;
+            std::fill(monitor[0], monitor[0] + size, 0.f);
+            std::fill(monitor[1], monitor[1] + size, 0.f);
             float line[2][size];
             ReadLineIn(in, line[0], line[1], size);
 
             if(monitor_mode == MonitorMode::BOTH)
             {
                 if(in_source == InputSource::MIC)
-                    ApplyMicMonitor(in, out, size, &monitor[0][0]);
+                    ApplyMicMonitor(in, out, size, monitor);
                 else if(in_source == InputSource::LINE_IN)
-                    ApplyLineMonitor(line[0], line[1], out, size, &monitor[0][0]);
+                    ApplyLineMonitor(line[0], line[1], out, size, monitor);
+                else if(in_source == InputSource::USB)
+                    ApplyUsbMonitor(out, size, monitor);
             }
             else if (monitor_mode == MonitorMode::SEND_RET && input_monitor && in_source == InputSource::MIC)
             {
-                ApplyMicMonitor(in, out, size, &monitor[0][0]);
+                ApplyMicMonitor(in, out, size, monitor);
             }
 
 
@@ -581,13 +614,18 @@ namespace daisy
             if (monitor_mode == MonitorMode::HP && input_monitor)
             {
                 if (in_source == InputSource::MIC)
-                    ApplyMicMonitor(in, out, size, &monitor[0][0]);
+                    ApplyMicMonitor(in, out, size, monitor);
                 if (in_source == InputSource::LINE_IN)
-                    ApplyLineMonitor(line[0], line[1], out, size, &monitor[0][0]);
+                    ApplyLineMonitor(line[0], line[1], out, size, monitor);
+                if (in_source == InputSource::USB)
+                    ApplyUsbMonitor(out, size, monitor);
             }
             else if (monitor_mode == MonitorMode::SEND_RET)
             {
-                ApplyLineMonitor(line[0], line[1], out, size, &monitor[0][0]);
+                if (in_source == InputSource::USB)
+                    ApplyUsbMonitor(out, size, monitor);
+                else
+                    ApplyLineMonitor(line[0], line[1], out, size, monitor);
             }
 
             // apply resample gain as appropriate (and envelope in/out of that situation)
@@ -611,7 +649,7 @@ namespace daisy
             }
             else
             {
-                ApplyEnvelopeFollower(size, &monitor[0][0]);
+                ApplyEnvelopeFollower(size, monitor);
             }
 
 
@@ -643,6 +681,10 @@ namespace daisy
 
             if(record && chompi_writer.WriteFullLength())
                 StopRecording();
+
+            // for USB, before the main gain
+            std::copy(out[2], out[2] + size, mix_[0]);
+            std::copy(out[3], out[3] + size, mix_[1]);
 
             /** main gain control */
             for(size_t i = 0; i < size; i++)
@@ -1992,6 +2034,29 @@ namespace daisy
             in_source = source;
         }
 
+        // a key or the jack: USB doesn't take over from it until the host connects anew
+        void PickInputSource(InputSource source)
+        {
+            in_source = source;
+            source_picked_ = true;
+        }
+
+        // the host playing makes USB the input unless a source was picked since it connected, until it goes away
+        void UpdateUsbInputSource(bool connected, bool streaming, bool line_in)
+        {
+            if(connected != usb_connected_)
+            {
+                source_picked_ = false;
+                if(!connected && in_source == InputSource::USB)
+                    in_source = line_in ? InputSource::LINE_IN : InputSource::MIC;
+            }
+            usb_connected_ = connected;
+
+            if(streaming && !usb_streaming_ && !source_picked_)
+                in_source = InputSource::USB;
+            usb_streaming_ = streaming;
+        }
+
         inline void IncrementMonitorMode() { monitor_mode = MonitorMode( (int(monitor_mode) + 1) % int(MonitorMode::LAST) ); }
         inline MonitorMode GetMonitorMode() { return monitor_mode; }
 
@@ -2097,6 +2162,13 @@ namespace daisy
         int bank[int(VoiceMode::LAST)];
 
         InputSource in_source;
+        volatile bool source_picked_ = false;
+        bool usb_connected_ = false, usb_streaming_ = false;
+        const float *const *usb_in_ = nullptr;
+        float monitor_[2][kMaxBlock];
+        const float *monitor_ptr_[2] = {monitor_[0], monitor_[1]};
+        float mix_[2][kMaxBlock];
+        const float *mix_ptr_[2] = {mix_[0], mix_[1]};
         MonitorMode monitor_mode;
 
         /** No copy, no assign */
