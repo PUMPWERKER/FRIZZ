@@ -60,7 +60,7 @@ what FRIZZ does.
   you're in on the left, the one you picked on the right, back and forth as often as you
   like (24 detents from end to end), with or without a loop. Let go all the way right and
   you're in the new scene; all the way left and you're back where you were; in between it
-  stays there, as SHIFT + PLAY leaves a morph. The two scene keys light in their mix, the
+  stays there, as stopping a morph leaves it. The two scene keys light in their mix, the
   transport LEDs show where it is. Over MIDI, CC 80 does the same for any running morph.
   See MANUAL.md, "Crossfading by hand".
 - **A phaser** on the 7th white key, next to the flanger (#68), after the SP-404MK2's and the
@@ -86,21 +86,20 @@ what FRIZZ does.
   pattern. Chance decides only when your effects act, never how they sound. Over MIDI it's
   channel 14, its latch CC 115 on the global channel. See MANUAL.md, "Chaos key".
 - **A second page for the FX knobs:** press any of knobs 1-4 and all four turn over to the
-  selected effect's page 2, and its number blinks on their LEDs, twice (#117); press again
-  for page 1, which blinks once, as VOLUME's pages do. On page 2, knob 4's LED is a VU meter
-  of the effect's output, in VOLUME's colours and as bright as its Level, so you see the page
-  whenever the effect sounds; on the delay and reverb (knob 4 their ducking) it shows their
-  return. Every effect but the chaos key has one. Pressing or
-  selecting another effect, or the compressor, brings page 1 back; pressing the key of the
-  one already on the knobs (an effect's or the compressor's) keeps page 2. Scenes, recalls and morphs
-  carry page 2 along; scene files from v0.11 load with page 2 on its defaults. Over MIDI,
-  page 2 is CC 18-21 on the effect's channel. See MANUAL.md, "Page 2".
+  selected effect's page 2, and its number blinks on their LEDs, twice (#117); press again for
+  page 1, which blinks once, as VOLUME's pages do. On page 2, knob 4's LED is a VU meter of the
+  effect's output, in VOLUME's colours and as bright as its Level, so you see the page whenever
+  the effect sounds; on the delay and reverb it shows their return. Every effect but the chaos
+  key has one. Pressing or selecting another effect, or the compressor, brings page 1 back;
+  pressing the key of the one already on the knobs (an effect's or the compressor's) keeps page
+  2. Scenes, recalls and morphs carry page 2 along; scene files from v0.11 load with page 2 on
+  its defaults. Over MIDI, page 2 is CC 18-21 on the effect's channel. See MANUAL.md, "Page 2".
 - **Mix, Band and Level on every effect's page 2,** on the same knobs everywhere (#40):
   knob 1 Mix (the dry sound against the effect's: parallel distortion, harmonies under the
   shifter), knob 3 Band (the effect only on the lows or only on the highs, the rest passing
   dry; on the delay and reverb a low or high cut on what goes in) and knob 4 Level (the
   effect's output, off to +12 dB). The flanger has Band and Level; on the delay and reverb,
-  knob 1 is Freeze and knob 4 Ducking. At the defaults every effect sounds as before. See
+  knob 1 is Freeze. At the defaults every effect sounds as before. See
   MANUAL.md, "Page 2".
 - **Each effect's own setting on knob 4, stereo on page 2's knob 2** (#40, #117), after the
   SP-404MK2 and the Elektron Tonverk: knob 4 is what you play, the freezer's gate (a
@@ -113,18 +112,18 @@ what FRIZZ does.
   up to 250 ms) have their own setting on page 2's knob 2; the resonator its own Band and
   Level too. Saved scenes are moved along, and so is MIDI: CC 17 is knob 4, CC 19 page 2's
   knob 2.
-- **Freeze and ducking on the delay and reverb** (page 2's knobs 1 and 4): freeze holds the
-  echoes or the room, by degrees; ducking turns them down while you play.
+- **Freeze and ducking on the delay and reverb** (page 2's knob 1, page 1's knob 4): freeze
+  holds the echoes or the room, by degrees; ducking turns them down while you play.
 - **Depth on the tape stop's knob 4:** from a full stop (as before) to slowing down to half
   speed.
 - **A page 2 for the master compressor:** Mix, a sidechain highpass (off, or 20 to 500 Hz,
   so the bass doesn't pump the rest) and Makeup (0 to +24 dB), on the knobs an effect has
   its Mix, Band and Level on (#38).
 - **A setting the card can't take shows on the settings page** (#81): when a change there
-  (channel, transport following, mono, clock factor, clock source, MIDI out, brightness)
-  can't be written, because there's no card or a full one, the key you changed blinks red 3
-  times, and again with each of the 3 retries. Before, only the compressor's key on the play
-  page blinked.
+  (channel, transport following, mono, clock factor, clock source, MIDI out, brightness, the
+  input's) can't be written, because there's no card or a full one, the key you changed blinks
+  red 3 times, and again with each of the 3 retries. Before, only the compressor's key on the
+  play page blinked.
 - **The safety limiter shows:** the compressor's key turns red while it limits the outputs,
   so you know when to turn something down.
 - **Clock source** on the settings page (A# of the lower octave): Auto (the default, as
@@ -225,12 +224,10 @@ what FRIZZ does.
   before. Stepped knobs of an effect on in both scenes (delay division, slicer pattern,
   shift …) still switch. See MANUAL.md, "Morphing to a scene".
 - **Stereo moved from knob 4 to page 2's knob 2** (#117) on the freezer, shifter, flanger,
-  resonator, slicer and wow & flutter (and the phaser and, since v0.12-beta.1, the folder,
-  crusher and filter): knob 4 is the effect's own setting now, the one you play (see Added).
-  Scenes saved before load with every value where its knob went; over MIDI, CC 17 on an
+  resonator, slicer and wow & flutter, where the phaser and the folder's, crusher's and
+  filter's new stereo are too: knob 4 is the effect's own setting now, the one you play (see
+  Added). Scenes saved before load with every value where its knob went; over MIDI, CC 17 on an
   effect's channel is that setting, CC 19 stereo.
-- **Page 2's knob LEDs no longer pulse** (since v0.12-beta.1, #117): turning the page blinks
-  its number instead, and on page 2 knob 4's LED is the effect's output VU (see Added).
 - **The clock factor works on every tempo** (#116), not only on MIDI clock: the settings
   page's lower G# (as sent, double, half) now also doubles or halves the effects' tempo from
   a loop, from your taps and from the last tempo. Tap the tempo of a song on AUX (SHIFT +
@@ -262,8 +259,10 @@ what FRIZZ does.
   | Mono input | CC 60 | the settings page, FRIZZ's SysEx |
   | 14 bits | NRPN, the CC's number as LSB | none (CC 46-53 kept free for later) |
 
-  Notes, program changes, All Notes Off and FRIZZ's SysEx stay as they were. A bug report
-  from v0.11 replays its CCs by the new map.
+  Program changes, All Notes Off and FRIZZ's SysEx stay as they were, and the notes still
+  press the keys from 48 up, so what moved to another key has another note now: the scene
+  keys, save and delete, and the resonator to the tape stop (above). A bug report from v0.11
+  replays its CCs by the new map.
 - **Switches act as they change** (#97): a latch acts as its CC crosses 64, a morph (CC 3) as
   its value changes, stop and tap as they cross 64 upward. An automation lane sending the same
   value again no longer fires them again, nor takes back a latch you switched by hand.
@@ -282,7 +281,7 @@ what FRIZZ does.
 - **The resonator, slicer, wow & flutter and tape stop are one key to the right** (#68): the
   8th, 9th, 10th and 11th white keys, making room for the phaser on the 7th, next to the
   flanger. MIDI notes press the keys, so the notes for them move with the keys, as do their
-  MIDI channels (the new MIDI map, below).
+  MIDI channels (the new MIDI map, above).
 - **`remote.py` and FRIZZ's SysEx** count the phaser as effect 12 and the chaos key as 13,
   so the compressor's knobs are asked for as 14, and a scene travels with 4 effects to a part
   instead of 3. A
@@ -300,12 +299,12 @@ what FRIZZ does.
   up to +14 dB, to everything) but a knob on page 2, at 0 dB at first. Speed is split into
   Attack (knob 3) and Release (knob 4), and Mix moves to page 2's knob 1. Saved settings
   come back with Speed as both and Makeup at 0 dB, so a compressor you had turned up is
-  quieter until you set its makeup. Over MIDI: CC 24-31 (the new MIDI map, below).
+  quieter until you set its makeup. Over MIDI: CC 24-31 (the new MIDI map, above).
 - **Transport knob in semitones:** while a loop plays, turning it changes the speed a
-  semitone every 2 detents, from 2× down to 1/16×, and stops at both ends. SHIFT + turn
-  jumps in fifths and octaves as turning did before (from between two of them, to the next
-  one in the turn's direction), and is now the only way on past 1/16× into reverse. Over
-  MIDI, CC 90 sets it outright, in semitones. See MANUAL.md, "Looper".
+  semitone every 2 detents, from 2× down to 1/16×, then on through a standstill into reverse
+  up to −2× (#174, above), and stops at both ends. SHIFT + turn jumps in fifths and octaves as
+  turning did before (from between two of them, to the next one in the turn's direction).
+  Over MIDI, CC 90 sets it outright, in semitones. See MANUAL.md, "Looper".
 - **Bug reports** moved to the settings page: with the mode switch up, hold SHIFT (CHOMPI)
   and the VOLUME knob pressed for 2 seconds. SHIFT + press the transport knob on the play page
   does nothing now, so a report can't be written by accident while playing. See MANUAL.md,
@@ -439,10 +438,6 @@ what FRIZZ does.
   when it last went off, which the delay then repeated. The filter now starts afresh.
 - **An effect's key LED when it comes on again** no longer flashes up for a moment at the
   level it showed when the effect last went off.
-- **The crossfader over MIDI after a morph got another bar:** when CC 62 asked again for
-  the scene a morph was already gliding to (another bar) and CC 118 then took it, the
-  fader's far end was where the morph had got to at that moment, not the scene you came
-  from, so arriving there jumped. It's now always where the morph started.
 - **A long-held tape stop with Depth below the top:** held for more than about 12 s (Depth
   at 0.8) to 22 s (at 0), the slowed tape suddenly played sound from 11 s before at full
   speed. It now jumps back to the live sound in a short crossfade and plays on slowed.

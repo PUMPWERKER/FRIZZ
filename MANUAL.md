@@ -4,8 +4,8 @@ Every control in FRIZZ. For a first session, start with the [quick guide](QUICKS
 
 **SHIFT** means holding the CHOMPI key. The CHOMPI key lights white while it acts as SHIFT.
 The mode switch picks the page: **down** is the play page, everything below; **up** is the
-[settings page](#settings-page), for what you set once rather than play. Before v0.11 the switch
-did nothing, so if the keys don't play after updating, flip it down.
+[settings page](#settings-page), for what you set once rather than play. If the keys don't
+play, flip it down.
 
 ## Overview
 
@@ -52,13 +52,12 @@ effects, no mix, no compressor. It's where you hear the mic while it isn't live 
 headphones are your monitor; with headphones alone, leave it at the master. It's back on the
 master at every power-on.
 
-(Page 3 used to be the master compressor, which has its own key now, see
-[Master compressor](#master-compressor). The headphone feed used to be on the mode switch,
-then on page 4. Mono and the battery check moved to the [settings page](#settings-page).)
+Mono and the battery check are on the [settings page](#settings-page), the master compressor
+on its own key (see [Master compressor](#master-compressor)).
 
 ## Settings page
 
-From v0.11. With the mode switch **up**, the keys set what you'd set once for a setup rather
+With the mode switch **up**, the keys set what you'd set once for a setup rather
 than play: the MIDI channel, MIDI transport following, where FRIZZ takes a MIDI clock from
 and how it follows it, whether it sends one, how bright its LEDs are, and the input: its
 source (AUX or the built-in mic), whether it goes through the effects, whether it's live, AUX
@@ -86,7 +85,7 @@ and knob 1 set the rest:
 | Knob 1 | [LED brightness](#led-brightness): turned, 5 % a detent from 25 % to 100 % (default); SHIFT + turn the next of 25, 50, 75, 100 %; SHIFT + press 100 % | its LED white, as bright as the LEDs are |
 
 The dark keys are grouped by topic: the lower octave's are MIDI in, the upper octave's MIDI out
-and the rest. (Before v0.12 they sat elsewhere: see the CHANGELOG.)
+and the rest.
 
 - **The beat on G#** is the tempo the effects follow right now (see [Tempo](#tempo)): with a
   loop, the loop's at its speed; otherwise the MIDI clock's; otherwise the last tempo, each
@@ -134,7 +133,7 @@ mic is mono anyway, and plays on both sides either way.
 
 ### Input: AUX or the mic
 
-From v0.12 FRIZZ hears CHOMPI's built-in microphone too, as TAPE and TEMPO do. The upper
+From v1.0 FRIZZ hears CHOMPI's built-in microphone too, as TAPE and TEMPO do. The upper
 octave's F#, G# and A# set the input left to right, as the signal goes: **the source** (F#),
 whether it goes **through the effects** (G#), and whether it's **live** on the outputs at all
 (A#).
@@ -250,7 +249,7 @@ Transport knob (the big purple one), once a loop exists:
 | Turn while paused | Scrub |
 | SHIFT + turn while paused | Nothing (while you hold a scene morph, the [crossfader](#crossfading-by-hand)) |
 | Press | Back to 1× forward |
-| SHIFT + press | With a scene morph held: a [drop](#dropping-to-a-scene). Otherwise nothing (in v0.11 it wrote a [bug report](#bug-reports), now on the settings page) |
+| SHIFT + press | With a scene morph held: a [drop](#dropping-to-a-scene). Otherwise nothing (the [bug report](#bug-reports) is on the settings page) |
 
 LEDs: LOOP is red while recording and blinks while a quantized recording finishes its bar or
 an erase waits for the loop's end, at the slow blink everything waiting uses (a picked scene
@@ -263,7 +262,7 @@ While a loop plays, PLAY and LOOP crossfade in white to show the position (dimme
 paused). The transport LEDs show speed and direction while it plays (both red at a
 standstill), the scrub speed in white while it's paused, and nothing without a loop.
 
-From v0.12 PLAY also shows the beat the effects follow (see [Tempo](#tempo)), as the settings
+From v1.0 PLAY also shows the beat the effects follow (see [Tempo](#tempo)), as the settings
 page's G# does:
 
 | Looper | PLAY |
@@ -365,11 +364,7 @@ freezer -> shifter -> folder -> crusher -> filter -> flanger -> phaser -> slicer
 The inserts fill the first 11 white keys, the [phaser](#phaser) the 7th, next to the
 flanger, and the resonator's loop the 8th; the delay and reverb are the 12th and 13th, the
 14th is the [chaos key](#chaos-key), which makes no sound of its own but plays with the
-others, and the 15th, the last, is the [master compressor](#master-compressor)'s. (The
-phaser moved the resonator, slicer, wow & flutter and tape stop one key to the right: in
-v0.11 they were on the 7th to 10th keys. The delay and reverb used to sit on the 11th and
-12th keys, the compressor on the 14th, and the last key was the randomizer's, which is gone;
-the chaos key takes up its idea.)
+others, and the 15th, the last, is the [master compressor](#master-compressor)'s.
 
 - **Inserts** (freezer, shifter, folder, crusher, filter, flanger, phaser, slicer): replace
   the signal while on and stop the moment they're off. The freezer comes first, so it
@@ -394,7 +389,7 @@ the chaos key takes up its idea.)
 |---|---|
 | Hold an FX key | Effect on while held |
 | Hold an FX key, then SHIFT | Latch on / off; a latched effect stays on after release. The key goes down first, then SHIFT, a moment later (SHIFT within about 15 ms of the key counts as SHIFT first: a select). The latch is settled when you let go of the key: holding an FX key and using SHIFT for something else (a coarse turn, tap tempo, the mix, selecting another effect) doesn't latch it. Hold several FX keys, then SHIFT, to latch them all |
-| SHIFT, then an FX key | **Select:** the knobs now edit that effect, without hearing it. It stays off (or latched, if it was), and letting go of the key does nothing, also after letting go of SHIFT first, even just before the key goes all the way down (up to about 15 ms). The key flashes (white, or dark while it's already nearly white). (Before, SHIFT first latched too: now only the key first does) |
+| SHIFT, then an FX key | **Select:** the knobs now edit that effect, without hearing it. It stays off (or latched, if it was), and letting go of the key does nothing, also after letting go of SHIFT first, even just before the key goes all the way down (up to about 15 ms). The key flashes (white, or dark while it's already nearly white). Only the key first, then SHIFT, latches |
 | FX key on a latched effect | Clears the latch; the effect stays on until the key is released |
 | Knobs 1-4 | The parameters of the most recently pressed or selected FX key, 1% per detent; stepped ones (shifter shift, filter LFO and delay divisions, freezer length and roll, slicer pattern and stereo, tape stop and spin-up times, the flanger's polarity, the chaos key's grid, the phaser's rate right of its centre) move one step per 3 detents |
 | SHIFT + knobs 1-4 | Coarse: jumps to the next point of the parameter's grid per detent (see below) |
@@ -475,7 +470,7 @@ whenever the effect sounds, and you see what Level does. It's measured after Lev
 so at less than full Mix it shows some of the dry sound too. An effect that's off shows only
 the dim floor. On the delay and reverb it shows their return (the echoes, the room, their
 tails too, after the key is let go). The compressor's page 2 shows its
-Makeup's value, as before: its key already shows how hard it works.
+Makeup's value instead, as its other knobs show theirs: its key already shows how hard it works.
 
 - **Nothing evens out levels by itself.** An effect that adds level, like the folder driven
   or the crusher's XOR on a quiet sound, comes out louder, and Level is how you set it.
@@ -648,7 +643,7 @@ The 6th white key: Kastle 2 FX Wizard's flanger.
 | Knob | Page 1 | Page 2 |
 |---|---|---|
 | 1 | Rate, 0.02 Hz to 50 Hz (default 0.55 Hz) | — (its Amount is its mix) |
-| 2 | Feedback, up to 85% (default 50%) | Stereo: the right LFO runs free and detuned (default off) |
+| 2 | Feedback, up to 85% (default 42.5%, the knob at half) | Stereo: the right LFO runs free and detuned (default off) |
 | 3 | Amount: sweep depth and mix together, the top is pure vibrato (default 0, dry) | Band |
 | 4 | Polarity: the feedback positive (metallic, the default) or negative (hollow), two steps | Level |
 
@@ -671,7 +666,7 @@ two above; a triangle LFO sweeps them up and down in octaves around the centre (
 | Knob | Page 1 | Page 2 |
 |---|---|---|
 | 1 | Rate, in two halves: left of the centre free, 0.02 Hz to 50 Hz; from the centre right on the tempo, 1/16, 1/8, 1/4, 1/2, 1 bar, 2 bars, 4 bars (default 0.7 Hz, free) | Mix |
-| 2 | Feedback: the resonance between the notches, up to 85% (default 40%) | Stereo: the right channel's sweep up to half a cycle behind (default off) |
+| 2 | Feedback: the resonance between the notches, up to 85% (default 34%, the knob at 40%) | Stereo: the right channel's sweep up to half a cycle behind (default off) |
 | 3 | Depth: brings the notches in and widens the sweep, up to 2.5 octaves either way of the centre (default 0, dry) | Band |
 | 4 | Centre: the frequency the sweep moves around, 100 Hz to 6.4 kHz in octaves (default 800 Hz, in the middle) | Level |
 
@@ -751,8 +746,10 @@ The 9th white key: Kastle 2 FX Wizard's rhythmic gate.
 | 4 | Shuffle: the even steps late, up to two thirds of a 16th, a triplet swing (default straight) | Level |
 
 - **Steps** are 16ths, counted from the [tempo](#tempo) like the filter LFO, so a pattern is half a
-  bar. Each step that's on retriggers a 10 ms attack and the decay. Pressing the key also
-  triggers it, so the signal doesn't drop out until the next step.
+  bar. Each step that's on starts the envelope again: a 10 ms attack, then the decay (knob 2).
+- **Pressing the key** starts the envelope again too, at once, the same 10 ms attack and
+  decay, whatever step the pattern is on: the sound comes in on the press, and doesn't drop out
+  before the next step that's on.
 - LEDs: the key is yellow; the knobs go yellow to green.
 
 ### Wow & flutter
@@ -935,8 +932,7 @@ middle are scene keys: F#, G# and A# of the lower octave, C# and D# of the upper
   default. It's always there, a one-press way back to no effects. You can't save over it or
   delete it, but you can copy it into a slot to start a scene from scratch.
 - **The other four (lower G#, lower A#, upper C#, upper D#) hold your scenes 1-4.** They're
-  saved to the SD card and come back at power-on. (Earlier versions had the scene keys two
-  dark keys further left, from the lower C#; the slots on the card are the same.)
+  saved to the SD card and come back at power-on.
 
 The lower octave's C# and D# do nothing on the play page; they're kept free for pages to come.
 
@@ -949,7 +945,7 @@ save again.
 | Scene key of the active scene | Back to the scene as saved, dropping your changes |
 | Scene key of an empty slot | Nothing (the key blinks red) |
 | Blank scene key | Every effect off, every knob back on its default |
-| SHIFT + scene key, let go | **Morph** to the scene, landing at the end of the bar (see [below](#timed-scene-changes)) |
+| SHIFT + scene key, let go | **Morph** to the scene, landing at the end of the bar you let go of SHIFT in (see [below](#timed-scene-changes)) |
 | SHIFT + the same scene key again (SHIFT still held) | One bar more, up to 8 (past that, the key blinks red) |
 | SHIFT + scene key, then press the transport knob (SHIFT still held) | **Drop** to the scene hard on the bar line |
 | SHIFT + scene key, then turn the transport knob (SHIFT still held) | **Crossfade** to the scene by hand |
@@ -1073,19 +1069,34 @@ with the music.
 - **An effect on in both scenes:** its knobs glide from their value to the scene's. Stepped
   ones (delay division, slicer pattern, shifter shift, freezer length, filter LFO division …)
   switch on the bar line.
-- **An effect the scene turns on fades in:** it comes on when the glide starts with the knob
-  that brings it in at off, and that knob glides up to the scene's value. Its other knobs take the scene's
-  values at once. The folder, crusher and filter colour the sound with their other knobs
-  too, so all of theirs (but the filter's LFO division) start on their defaults and glide.
-- **An effect the scene turns off fades out:** the same knobs glide back to their defaults,
-  and on the bar line the effect goes off. It stays faded out (a delay or reverb tail rings
-  out at that level) and takes the scene's settings when its key next comes on.
-- **The freezer, shifter and slicer** have no knob that brings them in, so they fade with
-  their page 2 **Mix** instead: one the scene turns off glides to dry and goes off on the bar
-  line; the shifter or slicer the scene turns on comes on when the glide starts, dry, and its
-  Mix glides up to the scene's. The freezer coming on still switches on the bar line, so it
-  grabs on the downbeat: a grab in the middle of a bar sounds worse than a hard one on the
-  beat.
+- **An effect the scene turns on fades in:** it comes on when the glide starts with the knobs
+  that fade it at their defaults (below), and they glide up to the scene's values. Its other
+  knobs take the scene's values at once.
+- **An effect the scene turns off fades out:** the same knobs glide back to their defaults (the
+  delay's and reverb's Level to off, so their tails fade with it), and on the bar line the
+  effect goes off. It stays faded out and takes the scene's settings when its key next comes
+  on.
+- **The knobs that fade an effect** are the one that brings it in, and on most also page 2's
+  Level (from and to 0 dB):
+  - the folder and the crusher: all four of page 1 (they colour the sound with every one),
+    page 2's stereo and Level;
+  - the filter: cutoff, resonance and LFO depth (not the LFO division), and Level;
+  - the flanger: amount and Level; the phaser: depth and Level; wow & flutter: wow, flutter,
+    age and Level;
+  - the resonator: its feedback alone;
+  - the delay and reverb: their Level alone, up from off and back down to off, so what comes
+    back fades, the echoes or the room;
+  - the chaos key: its two chances.
+
+  Mix and Band take the scene's values at once on these.
+- **The freezer, shifter and slicer** have no knob that can glide them in (the shifter's
+  shift is stepped), so they fade with their page 2 **Mix** instead: one the scene turns off
+  glides to dry and goes off on the bar line; the shifter or slicer the scene turns on comes
+  on when the glide starts, dry, and its Mix glides up to the scene's. The freezer coming on
+  still switches on the bar line, so it grabs on the downbeat: a grab in the middle of a bar
+  sounds worse than a hard one on the beat.
+- **The tape stop** has nothing to fade with: it switches on the bar line, both ways. Coming
+  on, it starts its stop there; going off, it spins up from there.
 - **SHIFT + the blank scene** fades every effect out onto the bar line.
 
 The bar lines are the effects' (see [Tempo](#tempo)): the loop's bars, counted from its start,
@@ -1150,8 +1161,8 @@ and the bar lines don't count while you hold it.
   an effect only the new scene has fades in as soon as you're off the left end, one only the
   old scene has fades out and goes off at the right end. The freezer, shifter and slicer fade
   with their Mix, as in a morph. What can't fade switches in the middle, either way: stepped
-  knobs (delay division, slicer pattern, shifter shift …) and the freezer coming on, which
-  grabs there.
+  knobs (delay division, slicer pattern, shifter shift …), the tape stop, and the freezer
+  coming on, which grabs there.
 - **Let go of SHIFT** to leave it:
   - **all the way right:** you're in the new scene, as after a recall;
   - **all the way left:** you're back where you started, the scene you were in as it was
@@ -1161,14 +1172,14 @@ and the bar lines don't count while you hold it.
 - **LEDs:** the two scene keys light in their mix, one brighter as the other dims, and the
   transport LEDs show the position in white instead of the speed: the left one for the old
   scene, the right one for the new.
-- Letting go without turning is a morph as before: it glides to the bar line. While you
+- Letting go without turning is a plain morph: it glides to the bar line. While you
   hold a morph, SHIFT + turn crossfades instead of stepping the speed in 5ths and octaves;
   once you've let go, the transport knob is back to speed and scrub at once.
 - Over MIDI, CC 80 is the crossfader (see [Controllers](#controllers)).
 
 ## MIDI
 
-From v0.11 (v0.10 takes MIDI clock only). FRIZZ takes MIDI from the TRS MIDI input and over USB (CHOMPI is a USB device, so USB MIDI
+FRIZZ takes MIDI from the TRS MIDI input and over USB (CHOMPI is a USB device, so USB MIDI
 comes from a computer or a host), both alike. With [MIDI out](#midi-out) on, it sends its
 clock and the loop's Start, Stop and Continue out of the TRS MIDI output, and over USB if you
 ask; otherwise it sends nothing over TRS, and over USB it only answers FRIZZ's own queries
@@ -1209,7 +1220,7 @@ quantized recording ends that recording where it is, as a lost clock does.
 
 ### Channels
 
-From v0.12 FRIZZ listens on 16 channels, with two kinds of map:
+From v1.0 FRIZZ listens on 16 channels, with two kinds of map:
 
 - **The global channel**, **16** at first: notes (the keys), program changes (scenes), the
   looper, the scenes, the gains, every effect's latch, the compressor, and the knobs of the
@@ -1268,8 +1279,8 @@ save, copy and delete 66, 68 and 70. Below them:
 | CC | Function |
 |---|---|
 | 14, 15, 16, 17 | Page 1's knobs 1-4, set outright |
-| 18, 19, 20, 21 | [Page 2](#page-2)'s knobs 1-4 (mix, stereo or its own, band, level), set outright |
-| 22 | Latch: 64 and above on, below off, acting as the value crosses 64. The compressor (channel 15) has none |
+| 18, 19, 20, 21 | [Page 2](#page-2)'s knobs 1-4 (mix or the sends' freeze, stereo or its own, band, level), set outright |
+| 22 | Latch: 64 and above on, below off, acting as the value crosses 64. The compressor (channel 15) has none, nor a page 2 knob 2: its CC 19 does nothing |
 
 **On the global channel:**
 
@@ -1277,7 +1288,7 @@ save, copy and delete 66, 68 and 70. Below them:
 |---|---|
 | 14-22 | The effect in focus, as on its own channel |
 | 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the compressor). It's the effect the knobs edit, as SHIFT + its key picks it, and it follows when you pick one by hand |
-| 24-31 | The master compressor's knobs: 24-27 page 1 (threshold, ratio, attack, release), 28-31 page 2 (as channel 15's 14-21) |
+| 24-31 | The master compressor's knobs, as channel 15's 14-21: 24-27 page 1 (threshold, ratio, attack, release), 28, 30 and 31 page 2 (mix, sidechain highpass, makeup); 29 does nothing |
 | 84 | [The input's source](#input-aux-or-the-mic): 0-63 AUX, 64-127 the mic, as the settings page's upper F# picks it |
 | 85 | Output gain |
 | 86 | Input gain, of the input heard (AUX or the mic) |
@@ -1309,7 +1320,7 @@ save, copy and delete 66, 68 and 70. Below them:
   settings page's G# and A# left them, the input gains as you last turned them,
   and the output gain and the mix at their power-on levels. Scenes you save keep what the CCs set, as ever.
 - **Left free on purpose**, so what hosts and keyboards send by themselves reaches nothing:
-  bank select (0, 32), mod wheel (1), volume (7), pan (10), expression (11), the pedals
+  bank select (0, 32), mod wheel (1), breath (2), foot (4), volume (7), pan (10), expression (11), the pedals
   (64-69), keyboards' sound controllers (70-79), NRPN and RPN with their data entry (6, 38,
   96-101: a DAW's pitch-bend range doesn't turn a knob), 88, effects depths (91-95: a
   keyboard sends reverb depth, 91, at power-on), Reset All
@@ -1347,7 +1358,7 @@ count only from that input; on Auto or internal, from both.
 
 ### MIDI out
 
-From v0.12. FRIZZ sends its clock, so a drum machine, a sequencer or a synth's arpeggio plays
+From v1.0. FRIZZ sends its clock, so a drum machine, a sequencer or a synth's arpeggio plays
 in time with it, and with the loop. The upper octave's C# on the [settings
 page](#settings-page) switches it, each press the next: **off** (the default, dim), **TRS**
 (the TRS MIDI output, orange), **TRS and USB** (white). It's kept as `midi_out` in
@@ -1411,7 +1422,7 @@ feedback](#midi-feedback) on.
 
 ### MIDI feedback
 
-From v0.12. What you change on the panel goes out as the CCs that would set it (see
+From v1.0. What you change on the panel goes out as the CCs that would set it (see
 [Controllers](#controllers)), so a controller with LED rings or motor faders, or a DAW
 picking up a knob, follows the panel. Off at first; the upper octave's D# on the [settings
 page](#settings-page) switches it (`midi_feedback 1` in `FRIZZ/frizz_master.txt`). It goes
@@ -1459,7 +1470,7 @@ until FRIZZ restarts, and start the random numbers from a seed.
 
 ## Bug reports
 
-From v0.11 (this hold from v0.12). On the [settings page](#settings-page) (mode switch up), hold SHIFT (CHOMPI) and
+On the [settings page](#settings-page) (mode switch up), hold SHIFT (CHOMPI) and
 press and hold the VOLUME knob for 2 seconds: FRIZZ writes everything you did since switching
 on to the card, as `/FRIZZ/bug-1.txt` (the next one `bug-2.txt`, and so on): every key, knob detent and
 mode-switch flip with its time, the MIDI clock's tempo, every MIDI message FRIZZ acted on, and
@@ -1468,8 +1479,7 @@ the scenes and compressor the card held at power-on. Do it right after something
 FRIZZ's developers play it on a virtual CHOMPI on their computer, which then does what yours
 did, key for key.
 
-- In v0.11 it was SHIFT + press the transport knob on the play page; that now does
-  nothing, so it can't be pressed by accident while playing.
+- It's on the settings page so it can't be written by accident while playing.
 - While it's written, both transport LEDs blink white; then they blink 3 times, white when
   it's on the card, red when it isn't (no card, or a full one). A long session takes a moment,
   and the keys answer late until it's done; the sound plays on.

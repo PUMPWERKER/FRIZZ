@@ -1,7 +1,7 @@
 # FRIZZ
 
 **FRIZZ** is an alternative firmware for the CHOMPI. It turns the CHOMPI into a stereo effects
-box and looper for whatever you plug into its AUX input.
+box and looper for whatever you plug into its AUX input, or for its built-in microphone.
 
 - **A looper:** free-length loops, or loops locked to whole bars of an incoming MIDI clock.
   Varispeed in semitones (fifths and octaves with SHIFT), reverse and scrub on the big
@@ -15,11 +15,15 @@ box and looper for whatever you plug into its AUX input.
   by hand on the transport knob, copy and delete them. Kept on the SD card. A fifth key clears every effect at once.
 - **An input/loop mix** between the live input and the loop, plus input gain, output gain and a
   headphone feed that can carry the dry input alone, all on the VOLUME knob.
+- **Two inputs:** AUX, or the built-in microphone while no cable is in AUX, each with its own
+  input gain. Either can go through the effects or **dry** past them (a drum machine or a
+  finished song next to your loop), and be live on the outputs or only recorded.
 - **A master compressor** on its own key, and a safety limiter on every output.
-- **MIDI** over TRS or USB: clock for quantized loops and the tempo-synced effects; from
-  v0.11 also notes playing the keys, CCs setting every parameter, program changes recalling scenes;
-  from v0.12 a MIDI channel per effect for DAW automation, the loop lined up with a DAW's Start
-  and Song Position, and FRIZZ can send its clock and the loop's Start and Stop too.
+- **MIDI** over TRS or USB: clock for quantized loops and the tempo-synced effects, notes
+  playing the keys, CCs setting every parameter, program changes recalling scenes, a MIDI
+  channel per effect for DAW automation, and the loop lined up with a DAW's Start and Song
+  Position. FRIZZ can send its clock, the loop's Start and Stop, and what you change on the
+  panel as CCs too.
 
 FRIZZ is installed from the SD card like any CHOMPI firmware. It doesn't touch the bootloader,
 and you can go back to the stock firmware the same way.

@@ -257,8 +257,9 @@ key 10's FRIZZ shares. On a slot other than the test slot (12) it starts that sl
 the end, from the card, so it saves again. `--save` leaves the card written as FRIZZ writes
 it. A FRIZZ from before PERSIST, or `--save`, gets the old guard: `play` refuses a script that
 would change what FRIZZ keeps on the card, saying which line and which file: the settings
-page (`twin/scenarios/settings.txt`, most bug reports, #58; its upper A# too, as AUX's
-variant is saved, `mic.txt`, #152), VOLUME turned on its page 2, the input gain
+page (`twin/scenarios/settings.txt`, most bug reports, #58; its upper G# and A# too, as
+each source's effects and live are saved, `mic.txt`, #152, #177), VOLUME turned on its page
+2, the input gain
 (`volume.txt`, #152), and the compressor's knobs (`comp.txt`: its key, then knobs 1-4, or with
 it in focus by CC 23; its CCs themselves never reach the card, #97) go to
 `/FRIZZ/frizz_master.txt`, with no `.bak`; SAVE / COPY / DELETE confirmed (`scenes.txt`) or a
@@ -305,7 +306,9 @@ The groups of GET and SET: `00`-`1F` an effect's knobs by its FxId (`FxParams.h`
 4-7 page 2), `20` the compressor's, `21` the latches (index by FxId, 0 or 1), `22` VOLUME's
 (0 output gain, 1 input gain, 2 mix, 3 headphone feed), `23` the card's settings as
 `masterfile::kLines` lists them (`MasterSettings.h`: mono, MIDI channel, transport, clock
-factor, clock source, MIDI out, LED brightness), their values as `frizz_master.txt` has them.
+factor, clock source, MIDI out, LED brightness, the effect channels over TRS, MIDI feedback,
+AUX dry, the input gains of AUX and the mic, the mic dry, AUX live, the mic live), their values
+as `frizz_master.txt` has them.
 The groups don't follow the MIDI map (CCs), so a tool keeps working when it changes. SETs
 aren't in the event log: a bug report taken after them won't replay them.
 
