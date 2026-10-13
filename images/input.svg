@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 650" width="720" height="650" role="img" aria-labelledby="title desc">
 <title id="title">FRIZZ input</title>
-<desc id="desc">The input. AUX (stereo, or mono: its left to both sides) and the built-in mic each have their own input gain; AUX is then amplified 3× and its DC taken out, the mic 5×, DC blocked, highpassed at about 150 Hz and the same on both sides. Switch A (upper F#, or the AUX jack) picks the source, with a 5 ms crossfade. The source goes as it is to the looper and to the headphone feed. Switch B (upper G#) sends it through the effects or past them, switch C (upper A#) has it live on the outputs or not. The input/loop mix sets the input's share against the loop's; the share past the effects joins after the compressor, before VOLUME.</desc>
+<desc id="desc">The input. AUX (stereo, or mono: its left to both sides) and the built-in mic each have their own input gain; AUX is then amplified 3× and its DC taken out, the mic 5×, DC blocked, highpassed at about 150 Hz and the same on both sides. Switch A (upper F#, or the AUX jack) picks the source, with a 5 ms crossfade. The source goes as it is to the looper and to the headphone feed. Switch B (upper G#), its monitoring, has it on the outputs or not, switch C (upper A#) sends it through the effects or past them. The input/loop mix sets the input's share against the loop's; the share past the effects joins after the compressor, before VOLUME.</desc>
 <style>text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
 <defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
 <rect width="720" height="650" fill="#131314"/>
@@ -48,29 +48,23 @@
 <polyline points="602,140 705,140 705,262 40,262 40,330" class="la"/>
 <polyline points="40,330 40,490" class="ls"/>
 <circle cx="40" cy="330" r="3" class="da"/>
-<polyline points="40,330 87,330" class="la"/>
-<circle cx="90" cy="330" r="2.5" class="b"/>
-<circle cx="125" cy="305" r="2.5" class="b"/>
-<circle cx="125" cy="355" r="2.5" class="b"/>
-<path d="M90,330L120.1,312.5" class="sw"/>
-<circle cx="100" cy="298" r="9" class="g"/>
-<text x="100" y="302.5" class="gt" font-size="12" font-weight="bold">B</text>
-<polyline points="127,305 160,305" class="la"/>
-<circle cx="162.5" cy="305" r="2.5" class="b"/>
-<circle cx="187.5" cy="305" r="2.5" class="b"/>
-<path d="M164,304L186,294" class="sw"/>
-<circle cx="175" cy="281" r="9" class="g"/>
-<text x="175" y="285.5" class="gt" font-size="12" font-weight="bold">C</text>
-<polyline points="190,305 330,305" class="la" marker-end="url(#ma)"/>
-<text x="260" y="298" class="m" font-size="12">through the effects</text>
-<polyline points="127,355 160,355" class="ls"/>
-<circle cx="162.5" cy="355" r="2.5" class="b"/>
-<circle cx="187.5" cy="355" r="2.5" class="b"/>
-<path d="M164,354L186,344" class="sw"/>
-<circle cx="175" cy="331" r="9" class="g"/>
-<text x="175" y="335.5" class="gt" font-size="12" font-weight="bold">C</text>
-<polyline points="190,355 330,355" class="ls" marker-end="url(#ms)"/>
-<text x="260" y="348" class="m" font-size="12">past the effects</text>
+<polyline points="40,330 75,330" class="la"/>
+<circle cx="77.5" cy="330" r="2.5" class="b"/>
+<circle cx="102.5" cy="330" r="2.5" class="b"/>
+<path d="M79,329L101,319" class="sw"/>
+<circle cx="90" cy="306" r="9" class="g"/>
+<text x="90" y="310.5" class="gt" font-size="12" font-weight="bold">B</text>
+<polyline points="105,330 157,330" class="la"/>
+<circle cx="160" cy="330" r="2.5" class="b"/>
+<circle cx="195" cy="305" r="2.5" class="b"/>
+<circle cx="195" cy="355" r="2.5" class="b"/>
+<path d="M160,330L190.1,312.5" class="sw"/>
+<circle cx="170" cy="298" r="9" class="g"/>
+<text x="170" y="302.5" class="gt" font-size="12" font-weight="bold">C</text>
+<polyline points="197,305 330,305" class="la" marker-end="url(#ma)"/>
+<text x="263" y="298" class="m" font-size="12">through the effects</text>
+<polyline points="197,355 330,355" class="ls" marker-end="url(#ms)"/>
+<text x="263" y="348" class="m" font-size="12">past the effects</text>
 <polyline points="40,420 200,420" class="ls" marker-end="url(#ms)"/>
 <circle cx="40" cy="420" r="3" class="ds"/>
 <text x="120" y="412" class="m" font-size="12">meter: VOLUME page 2</text>
@@ -100,10 +94,10 @@
 <text x="60" y="540" class="t as" font-size="12">upper F#: the source, AUX or the mic. The AUX jack picks it; F# the other one</text>
 <circle cx="37" cy="558" r="9" class="g"/>
 <text x="37" y="562.5" class="gt" font-size="12" font-weight="bold">B</text>
-<text x="60" y="562" class="t as" font-size="12">upper G#: through the effects, or past them and the compressor</text>
+<text x="60" y="562" class="t as" font-size="12">upper G#: monitoring, on the outputs or not</text>
 <circle cx="37" cy="580" r="9" class="g"/>
 <text x="37" y="584.5" class="gt" font-size="12" font-weight="bold">C</text>
-<text x="60" y="584" class="t as" font-size="12">upper A#: live, on the outputs, or not (both switches together)</text>
+<text x="60" y="584" class="t as" font-size="12">upper A#: through the effects, or past them and the compressor</text>
 <circle cx="37" cy="602" r="9" class="g"/>
 <text x="37" y="606.5" class="gt" font-size="12" font-weight="bold">M</text>
 <text x="60" y="606" class="t as" font-size="12">SHIFT + upper F#: AUX mono, its left channel to both sides</text>

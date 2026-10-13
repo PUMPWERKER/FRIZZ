@@ -332,10 +332,10 @@ def show_state(f):
             "settings" if flags & 64 else "play", "up" if d[23] & 1 else "down",
             {0: "", 2: ", SysEx holds it down", 4: ", SysEx holds it up"}.get(d[23] & 6, "")))
     if len(d) > 25:
-        # the source, its effects and live (#177)
+        # the source, its effects and monitoring (#177; "live" in the code)
         print("input      %s, %s, %s" % ("the mic" if d[25] & 1 else "AUX",
                                          "dry" if d[25] & 2 else "through the effects",
-                                         "live" if d[25] & 4 else "not live"))
+                                         "monitored" if d[25] & 4 else "not monitored"))
 
 
 def load(f, required=True):

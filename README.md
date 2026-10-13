@@ -17,7 +17,7 @@ box and looper for whatever you plug into its AUX input, or for its built-in mic
   headphone feed that can carry the input alone, all on the VOLUME knob.
 - **Two inputs:** AUX, or the built-in microphone while no cable is in AUX, each with its own
   input gain. Either can go through the effects or **past them** (a drum machine or a
-  finished song next to your loop), and be live on the outputs or only recorded.
+  finished song next to your loop), and be monitored on the outputs or only recorded.
 - **A master compressor** on its own key, and a safety limiter on every output.
 - **MIDI** over TRS or USB: clock for quantized loops and the tempo-synced effects, notes
   playing the keys, CCs setting every parameter, program changes recalling scenes, a MIDI

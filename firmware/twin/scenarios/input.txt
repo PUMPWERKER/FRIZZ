@@ -17,8 +17,8 @@ wait 300
 toggle 1
 wait 300
 expect led smt 7 00fc00
-expect led smt 8 00fc00
-expect led smt 9 fcfcfc
+expect led smt 8 fcfcfc
+expect led smt 9 00fc00
 toggle 0
 # AUX dry, then off
 midi BF 74 7F
@@ -27,8 +27,8 @@ midi BF 75 00
 wait 300
 toggle 1
 wait 300
-expect led smt 8 000000
-expect led smt 9 242424
+expect led smt 8 242424
+expect led smt 9 000000
 toggle 0
 # the mic, its own: not live; then live and dry
 midi BF 54 7F
@@ -36,8 +36,8 @@ wait 300
 toggle 1
 wait 300
 expect led smt 7 fc00fc
-expect led smt 8 000000
-expect led smt 9 242424
+expect led smt 8 242424
+expect led smt 9 000000
 toggle 0
 midi BF 75 7F BF 74 7F
 wait 1000
@@ -55,14 +55,14 @@ wait 300
 toggle 1
 wait 300
 expect led smt 7 00fc00
-expect led smt 8 000000
-expect led smt 9 242424
+expect led smt 8 242424
+expect led smt 9 000000
 toggle 0
 midi BF 75 7F BF 74 00
 wait 300
 toggle 1
 wait 300
-expect led smt 8 00fc00
-expect led smt 9 fcfcfc
+expect led smt 8 fcfcfc
+expect led smt 9 00fc00
 toggle 0
 wait 300

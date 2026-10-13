@@ -1130,7 +1130,7 @@ static void CheckMidi()
         {Midi("kDropCC"), 1, "drop"},
         {key_latch, Midi("kBlockChannels") - 1, "latch"},
         {Midi("kDryCC"), 1, "effects"},
-        {Midi("kLiveCC"), 1, "live"},
+        {Midi("kLiveCC"), 1, "monitoring"},
         {Midi("kAllSoundOffCC"), 1, "all sound off"},
         {Midi("kAllNotesOffCC"), 1, "all notes off"},
     };

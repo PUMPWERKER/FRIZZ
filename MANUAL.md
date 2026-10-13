@@ -111,9 +111,9 @@ CHOMPI first doesn't also change the page.
   to red.
 - **Headphone feed (page 3):** the master out always carries the full signal. Turned left, the
   headphones carry the input alone instead (AUX or the mic, after input gain and VOLUME): no
-  loop, no effects, no compressor. It's where you hear the mic while it isn't live (see
+  loop, no effects, no compressor. It's where you hear the mic while it isn't monitored (see
   [Input: AUX or the mic](#input-aux-or-the-mic)). Use it when the master goes to a PA, mixer
-  or recorder and the headphones are your monitor; with headphones alone, leave it at the
+  or recorder and you listen on the headphones; with headphones alone, leave it at the
   master. It's back on the master at every power-on.
 
 ### LED colours
@@ -1211,8 +1211,8 @@ and knob 1 set the rest:
 | Upper D# | [MIDI feedback](#midi-feedback): on (lit) / off (dim, default) | light blue |
 | Upper F# | [The input's source](#input-aux-or-the-mic), each press the other: AUX / the built-in mic. Not saved: AUX's jack picks again when a cable goes in or out | green (AUX), magenta (mic) |
 | SHIFT + upper F# | [Mono input](#mono-input), AUX only: mono / stereo (default). While you hold SHIFT, the upper F# shows it: lit when mono, dim when stereo | white |
-| Upper G# | [The source's effects](#input-aux-or-the-mic): through them (default) / past them and the compressor. Dark while the source isn't live: pressed then, it blinks red 3 times and changes nothing | green (through), white (past) |
-| Upper A# | [The source live](#input-aux-or-the-mic), on the outputs: on (lit) / off (dim). AUX on, the mic off at first | white |
+| Upper G# | [The source's monitoring](#input-aux-or-the-mic), on the outputs: on (lit) / off (dim). AUX on, the mic off at first | white |
+| Upper A# | [The source's effects](#input-aux-or-the-mic): through them (default) / past them and the compressor. Dark while the source isn't monitored: pressed then, it blinks red 3 times and changes nothing | green (through), white (past) |
 | Knob 1 | [LED brightness](#led-brightness): turned, 5% a detent from 25% to 100% (default); SHIFT + turn the next of 25, 50, 75, 100%; SHIFT + press 100% | its LED white, as bright as the LEDs are |
 
 The dark keys are grouped by topic: the lower ones are MIDI in, the upper ones MIDI out and
@@ -1248,8 +1248,8 @@ the input.
   saved, copied or deleted, and you're out of the function when you flip back down.
 - The low-battery warning dims with the LEDs too.
 - Every setting but the source itself (AUX or the mic) is saved on the card with the master
-  compressor, 2 s after the last change, so it comes back at power-on: each source's effects
-  and live, and both input gains too. None is part of a scene. Without a card, or when the
+  compressor, 2 s after the last change, so it comes back at power-on: each source's
+  monitoring and effects, and both input gains too. None is part of a scene. Without a card, or when the
   card can't be written, the key you changed last (or knob 1's LED, for the brightness) blinks
   red 3 times, and FRIZZ tries again 2 s later, up to 3 times; the setting then lasts until
   power-off.
@@ -1269,64 +1269,65 @@ would. Saved 2 s after the last turn.
 With a cable in AUX, you hear AUX through the effects. With no cable, the input is CHOMPI's
 built-in microphone, as on TAPE and TEMPO: the looper can record it, but it stays off the
 outputs, so a loudspeaker near CHOMPI can't feed it back. Three keys on the [settings
-page](#settings-page) change this, left to right as the signal goes: the upper F# picks **the
-source**, the upper G# sends it **through the effects** or past them, and the upper A# puts it
-**live** on the outputs or not.
+page](#settings-page) change this, left to right the source, whether you hear it, then how:
+the upper F# picks **the source**, the upper G# switches its **monitoring**, on the outputs or
+not, and the upper A# sends it **through the effects** or past them.
 
 ![The input: AUX or the mic, each with its own gain, picked by the upper F# or AUX's jack; the
-source as it is to the looper and the headphone feed; the upper G# through the effects or past
-them, the upper A# live on the outputs or not; the share past the effects joining after the
+source as it is to the looper and the headphone feed; the upper G# its monitoring, on the
+outputs or not, the upper A# through the effects or past them; the share past the effects joining after the
 compressor](images/input.svg)
 
 - **Upper F#, the source:** AUX or the mic. AUX's jack picks: with a cable plugged in, it's AUX;
   pull it out and it's the mic; plug one in and it's AUX again. At power-on the jack decides
   the same way. The upper F# picks the other by hand, until a cable next goes in or out of
   AUX. A jack change while recording just switches. The source isn't saved.
-- **Upper G#, the effects:** through them, through the input/loop mix, the effects and the
+- **Upper G#, monitoring:** the source on the outputs or not, lit when it is, as monitoring in
+  a DAW: the looper records the source either way. Unmonitored, you can still record it and
+  hear it alone on the headphones' feed, without it on the master.
+- **Upper A#, the effects:** through them, through the input/loop mix, the effects and the
   master compressor; or **past them**, past the effects and the compressor, at the input/loop
   mix's input share, straight to VOLUME and the safety limiter. Lit green for through, white
-  for past; dark while the source isn't live, when it doesn't matter (pressed then, it blinks
-  red 3 times and changes nothing; its setting is kept for when the source is live again).
-- **Upper A#, live:** the source on the outputs or not, lit when it is. Not live, you can
-  still record it and hear it alone on the headphones' feed, without it on the master.
+  for past; dark while the source isn't monitored, when it doesn't matter (pressed then, it
+  blinks red 3 times and changes nothing; its setting is kept for when it's monitored again).
 
 The upper G# and A# are **each source's own**: they show and set the source heard now, and
 switching the source (the upper F# or the jack) brings up the other's. Both sources' are
-saved. Out of the box AUX is live through the effects, and the mic is through the effects but
-**not live**.
+saved. Out of the box AUX is monitored through the effects, and the mic is through the effects
+but **not monitored**.
 
 **The looper always records the source as it is**, whatever the upper G# and A# say; the loop
 always goes through the effects. The input/loop mix (SHIFT + VOLUME) moves by itself for
 either source: to the loop alone when a recording finishes and back to the input alone when
-the loop is erased, so a loop isn't heard twice; with the source not live, its input share is
+the loop is erased, so a loop isn't heard twice; with the source not monitored, its input share is
 silent. The headphone feed (VOLUME's page 3) too: turned left, the input alone.
 
 What you hear, by the input/loop mix's position (SHIFT + VOLUME), as a reference. The
 headphones carry the same as the line out with the feed at the master, the input alone with
 it turned left, a blend between:
 
-| Upper F# source | Upper G# effects | Upper A# live | Line, mix at "input" (no loop, or after an erase) | Line, mix in the middle | Line, mix at "loop" (after a recording) | Headphones, feed left |
+| Upper F# source | Upper G# monitoring | Upper A# effects | Line, mix at "input" (no loop, or after an erase) | Line, mix in the middle | Line, mix at "loop" (after a recording) | Headphones, feed left |
 |---|---|---|---|---|---|---|
-| AUX | through | on | AUX through the effects + compressor | AUX and the loop together through the effects + compressor | the loop through the effects + compressor | AUX pure |
-| AUX | past | on | AUX pure (VOLUME and the limiter only) | AUX pure + the loop through the effects | the loop through the effects | AUX pure |
-| AUX | – | off | silence (delay/reverb tails at most) | the loop alone through the effects, at its share | the loop through the effects | AUX pure |
-| mic | through | on ⚠ | the mic through the effects + compressor | the mic and the loop together through the effects | the loop through the effects | mic pure |
-| mic | past | on ⚠ | the mic pure | the mic pure + the loop through the effects | the loop through the effects | mic pure |
-| mic | – | off | silence | the loop alone through the effects, at its share | the loop through the effects | mic pure |
+| AUX | on | through | AUX through the effects + compressor | AUX and the loop together through the effects + compressor | the loop through the effects + compressor | AUX pure |
+| AUX | on | past | AUX pure (VOLUME and the limiter only) | AUX pure + the loop through the effects | the loop through the effects | AUX pure |
+| AUX | off | – | silence (delay/reverb tails at most) | the loop alone through the effects, at its share | the loop through the effects | AUX pure |
+| mic | on ⚠ | through | the mic through the effects + compressor | the mic and the loop together through the effects | the loop through the effects | mic pure |
+| mic | on ⚠ | past | the mic pure | the mic pure + the loop through the effects | the loop through the effects | mic pure |
+| mic | off | – | silence | the loop alone through the effects, at its share | the loop through the effects | mic pure |
 
 - In the column heads, "mix" is the input/loop mix.
-- "–": the upper G# doesn't matter while the source isn't live (its key dark, its value kept).
+- "–": the upper A# doesn't matter while the source isn't monitored (its key dark, its value kept).
 - The looper records the source as it is in every row.
 
-**⚠ The mic live feeds back** through a loudspeaker near CHOMPI, through the effects more so
-(a delay or a reverb repeats it). Switch it live with headphones, or with the speakers well
+**⚠ Monitoring the mic feeds back** through a loudspeaker near CHOMPI, through the effects more
+so (a delay or a reverb repeats it). Switch its monitoring on with headphones, or with the speakers well
 away and down. Mind the headphones' volume too: turned up near CHOMPI, they can feed back
 into the mic as well.
 
 **AUX past the effects** is for a source that should stay as it is while you play the loop
 through the effects: a drum machine, a mastered song. Record it, and the input/loop mix goes
 to the loop alone as always; turn it to the middle to play an existing loop through the
-effects next to the device. **AUX not live** records AUX without hearing it on the master (on
+effects next to the device. **AUX unmonitored** records AUX without hearing it on the master (on
 the headphones' feed, turned left, you still do).
 
 **The mic** is mono, the same on both sides. FRIZZ treats it as TAPE does: 5× the input gain
@@ -1334,9 +1335,9 @@ the headphones' feed, turned left, you still do).
 input gain of the source heard: the mic's is its own, kept apart from AUX's and saved. A
 switch of the source, of the upper G# or of the upper A# fades over 5 ms, so it doesn't
 click; the source going out fades out of the outputs while the one coming in fades in, so a
-source that isn't live is never heard, not even during a switch.
+source that isn't monitored is never heard, not even during a switch.
 
-Over MIDI, CC 84 picks the source, CC 116 sets its effects and CC 117 it live (see
+Over MIDI, CC 84 picks the source, CC 116 sets its effects and CC 117 its monitoring (see
 [Controllers](#controllers)), without saving them.
 
 ### Mono input
@@ -1356,7 +1357,7 @@ FRIZZ keeps what it saves on the SD card, in a folder `FRIZZ`, as text files. Le
 | File | Holds | Written |
 |---|---|---|
 | `FRIZZ/frizz_scenes.txt` | The 4 [FX scenes](#fx-scenes) | When you save, copy or delete a scene |
-| `FRIZZ/frizz_master.txt` | The [master compressor](#master-compressor) and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, and for AUX and the mic each their input gain, effects and live | 2 s after the last change |
+| `FRIZZ/frizz_master.txt` | The [master compressor](#master-compressor) and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, and for AUX and the mic each their input gain, monitoring and effects | 2 s after the last change |
 | `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | The versions before | With each write of the file |
 | `FRIZZ/bug-1.txt`, `bug-2.txt` … | [Bug reports](#bug-reports) | When you ask for one |
 
@@ -1386,7 +1387,7 @@ on again, so the scenes on the card aren't replaced by the session's.
 | `mono` | [Mono input](#mono-input) | 1 mono, 0 stereo |
 | `gain_aux`, `gain_mic` | Each source's input gain ([VOLUME knob](#volume-knob)) | 0-100 |
 | `aux_dry`, `mic_dry` | Each source's effects ([Input: AUX or the mic](#input-aux-or-the-mic)) | 0 through them, 1 past them |
-| `aux_live`, `mic_live` | Each source live | 1 on, 0 off |
+| `aux_live`, `mic_live` | Each source's monitoring | 1 on, 0 off |
 | `compressor2` | The master compressor's knobs | |
 
 A line FRIZZ doesn't know is skipped, and a setting left out keeps its default.
@@ -1464,8 +1465,8 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | Upper D# | MIDI feedback | [MIDI feedback](#midi-feedback) |
 | Upper F# | The input's source: AUX or the mic | [Input: AUX or the mic](#input-aux-or-the-mic) |
 | SHIFT + upper F# | AUX mono | [Mono input](#mono-input) |
-| Upper G# | The source through the effects, or past them | [Input: AUX or the mic](#input-aux-or-the-mic) |
-| Upper A# | The source live on the outputs | [Input: AUX or the mic](#input-aux-or-the-mic) |
+| Upper G# | The source's monitoring, on the outputs | [Input: AUX or the mic](#input-aux-or-the-mic) |
+| Upper A# | The source through the effects, or past them | [Input: AUX or the mic](#input-aux-or-the-mic) |
 | Turn knob 1; SHIFT + turn; SHIFT + press | LED brightness; in steps of 25%; back to 100% | [LED brightness](#led-brightness) |
 | Turn VOLUME; press | Output gain, input gain | [Settings page](#settings-page) |
 | SHIFT + VOLUME held 2 s | A bug report | [Bug reports](#bug-reports) |
@@ -1635,8 +1636,8 @@ save, copy and delete 66, 68 and 70. Below them:
 | 82 | A [tempo tap](#tap-tempo), as the value crosses 64 upward: a button sending 127 and 0 |
 | 83 | [Drop](#dropping-to-a-scene) to scene 0-4 (0 the blank one) hard on the next bar line, or CC 9's, counted from the CC, as SHIFT + its key and a press of the transport knob. Like CC 3, it stops a sequence running and acts as the value changes: to drop to the same scene again, send another value first (127, no scene) |
 | 102-115 | The latch of white key 1-14 (102 the freezer … 108 the phaser … 114 the reverb, 115 the chaos key), as CC 22 |
-| 116 | [The source's effects](#input-aux-or-the-mic), the source heard now: 0-63 through them, 64-127 past them, as the settings page's upper G#. Set also while the source isn't live |
-| 117 | [The source live](#input-aux-or-the-mic), the source heard now: 0-63 off, 64-127 on, as the settings page's upper A# |
+| 116 | [The source's effects](#input-aux-or-the-mic), the source heard now: 0-63 through them, 64-127 past them, as the settings page's upper A#. Set also while the source isn't monitored |
+| 117 | [The source's monitoring](#input-aux-or-the-mic), the source heard now: 0-63 off, 64-127 on, as the settings page's upper G# |
 | 120, 123 | All Sound Off, All Notes Off: let go of every key MIDI holds |
 
 - **Set outright**, a value does what the knob or key would: the LEDs follow, the scene key
@@ -1649,7 +1650,7 @@ save, copy and delete 66, 68 and 70. Below them:
   lane crosses 64 again. Use 0 and 127.
 - **Automation isn't saved:** nothing that comes in by CC goes to the card. After a restart the
   compressor is as you left it by hand (its knobs, the settings page, or FRIZZ's SysEx), the
-  source (CC 84) as the jack picks it, each source's effects and live (CC 116, 117) as the
+  source (CC 84) as the jack picks it, each source's effects and monitoring (CC 116, 117) as the
   settings page's upper G# and A# left them, the input gains as you last turned them,
   and the output gain and the input/loop mix at their power-on levels. Scenes you save keep what the CCs set, as ever.
 - **Left free on purpose**, so what hosts and keyboards send by themselves reaches nothing:
@@ -1765,7 +1766,7 @@ where [MIDI out](#midi-out) goes, so MIDI out has to be on too.
   for the effect in focus also on the global channel (CC 14-22); the latches by key (CC
   102-115), the focus (CC 23) as you pick an effect, the compressor (CC 24-31), the gains and
   the input/loop mix (CC 85-87), the headphone feed (CC 89), the input (CC 84: 0 AUX, 127 the mic, also
-  when the jack switches it; CC 116 and 117, 0 or 127, the source's effects and live, also
+  when the jack switches it; CC 116 and 117, 0 or 127, the source's effects and monitoring, also
   when a switch of the source brings up the other's), the loop's speed (CC 90), and the crossfader
   (CC 80) while you hold it by hand.
 - **A scene** recalled sends what it changed, once. A morph sends only where it lands, once

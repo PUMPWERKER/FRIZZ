@@ -32,11 +32,11 @@ static const int kTransportRevLed = 5, kTransportFwdLed = 6, kVolumeLed = 9;
 static const int kSlot1Led = 3, kCompKeyLed = 10, kTapeStopKeyLed = 14;
 // the settings page's (SettingsPage.h): white keys 1, 3, 11, 14, 15 (channels; the 15th is 15
 // and 16), the lower octave's D#, F#, G#, A#, the upper octave's C#, F#, G# and A#: the input's
-// source (SHIFT: mono), effects and live (#177)
+// source (SHIFT: mono), live and effects (#177, #243)
 static const int kChannel1Led = 24, kChannel3Led = 22, kChannel11Led = 14, kChannel14Led = 11,
                  kChannel1516Led = 10, kBlockTrsKeyLed = 1, kTransportKeyLed = 2, kFactorKeyLed = 3,
                  kSourceKeyLed = 4, kMidiOutKeyLed = 5, kMonoKeyLed = 7, kInSourceKeyLed = 7,
-                 kInFxKeyLed = 8, kLiveKeyLed = 9;
+                 kLiveKeyLed = 8, kInFxKeyLed = 9;
 static const int kNumFxProbe = 15; // kCmdParams' effects and the compressor
 static const int kFeedbackKeyLed = 6; // the settings page's upper D#: MIDI feedback
 static const int kSaveKeyLed = 7; // KEY_23, the play page's SAVE
@@ -2056,7 +2056,7 @@ int main()
         const Rgb dim = SmtLed(kFilterKeyLed);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_24"); // the upper G#: the source's effects now
+        Tap("KEY_24"); // the upper G#: the source live now
         RunMs(3000);
         Check(brightness_saved(75), "settings-brightness-old: a file's 75 % loads, and the upper G# leaves it");
         TurnBrightness(5);
@@ -5171,11 +5171,11 @@ int main()
         const bool aux_through_keys = green_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed)
                                       && green_led(SmtLedFull(kInSourceKeyLed));
         const Heard aux_through = heard_on_master();
-        Tap("KEY_24"); // dry
+        Tap("KEY_25"); // dry
         RunMs(100);
         const bool aux_dry_keys = white_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
         const Heard aux_dry = heard_on_master();
-        Tap("KEY_25"); // off
+        Tap("KEY_24"); // off
         RunMs(100);
         const bool aux_off_keys = key_dark(kInFxKeyLed) && key_dim(kLiveKeyLed);
         const Heard aux_off = heard_on_master();
@@ -5185,12 +5185,12 @@ int main()
                aux_off.phones);
         Check(aux_through_keys && aux_through.master > .01f && aux_through.stopped < aux_through.master * .01f
                   && aux_through.phones > .01f,
-              "input-combos: AUX through the effects, live (F# green, G# green, A# lit): through the effects");
+              "input-combos: AUX through the effects, live (F# green, G# lit, A# green): through the effects");
         Check(aux_dry_keys && fabsf(aux_dry.stopped - aux_dry.master) < aux_dry.master * .001f
                   && aux_dry.master > .01f && aux_dry.phones > .01f,
-              "input-combos: AUX dry, live (G# white): past the effects");
+              "input-combos: AUX dry, live (A# white): past the effects");
         Check(aux_off_keys && aux_off.master < 1e-5f && aux_off.stopped < 1e-5f && aux_off.phones > .01f,
-              "input-combos: AUX not live (G# dark, A# dim): silent on the master, on the headphones' input feed");
+              "input-combos: AUX not live (G# dim, A# dark): silent on the master, on the headphones' input feed");
 
         amp = 0.f;
         mic_amp = .05f;
@@ -5199,11 +5199,11 @@ int main()
         const bool mic_off_keys = magenta_led(SmtLedFull(kInSourceKeyLed)) && key_dark(kInFxKeyLed)
                                   && key_dim(kLiveKeyLed);
         const Heard mic_off = heard_on_master();
-        Tap("KEY_25"); // live
+        Tap("KEY_24"); // live
         RunMs(100);
         const bool mic_through_keys = green_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
         const Heard mic_through = heard_on_master();
-        Tap("KEY_24"); // dry
+        Tap("KEY_25"); // dry
         RunMs(100);
         const bool mic_dry_keys = white_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
         const Heard mic_dry = heard_on_master();
@@ -5211,7 +5211,7 @@ int main()
                mic_off.master, mic_off.stopped, mic_off.phones, mic_through.master, mic_through.stopped,
                mic_through.phones, mic_dry.master, mic_dry.stopped, mic_dry.phones);
         Check(mic_off_keys && mic_off.master < 1e-5f && mic_off.phones > .01f,
-              "input-combos: the mic as it starts, not live (F# magenta, G# dark, A# dim): on the headphones' input feed only");
+              "input-combos: the mic as it starts, not live (F# magenta, G# dim, A# dark): on the headphones' input feed only");
         Check(mic_through_keys && mic_through.master > .01f && mic_through.stopped < mic_through.master * .01f,
               "input-combos: the mic live, through the effects: the tape stop has it");
         Check(mic_dry_keys && mic_dry.master > .01f && fabsf(mic_dry.stopped - mic_dry.master) < mic_dry.master * .001f,
@@ -5224,22 +5224,22 @@ int main()
         RunMs(kReadyMs);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_24"); // AUX dry
+        Tap("KEY_25"); // AUX dry
         RunMs(100);
-        Tap("KEY_25"); // AUX off
+        Tap("KEY_24"); // AUX off
         RunMs(100);
         SetJack(false); // the mic: its own, through and off
         RunMs(100);
         const bool mic_own = magenta_led(SmtLedFull(kInSourceKeyLed)) && key_dark(kInFxKeyLed)
                              && key_dim(kLiveKeyLed);
-        Tap("KEY_25"); // the mic live
+        Tap("KEY_24"); // the mic live
         RunMs(100);
         const bool mic_live = green_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
         SetJack(true); // AUX: dry and off, as left
         RunMs(100);
         const bool aux_kept = green_led(SmtLedFull(kInSourceKeyLed)) && key_dark(kInFxKeyLed)
                               && key_dim(kLiveKeyLed);
-        Tap("KEY_25"); // AUX live again: dry, as left
+        Tap("KEY_24"); // AUX live again: dry, as left
         RunMs(100);
         const bool aux_dry = white_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
         Tap("KEY_23"); // F#: the mic, live through the effects, as left
@@ -5249,8 +5249,8 @@ int main()
         RunMs(3000);
         const std::string card = Card("/FRIZZ/frizz_master.txt");
         Check(mic_own, "input-per-source: AUX dry and off, the jack pulled: the mic's own, through the effects, not live");
-        Check(mic_live, "input-per-source: the mic's A#: live, its G# lit green");
-        Check(aux_kept, "input-per-source: the cable back: AUX's as it was left, off, G# dark");
+        Check(mic_live, "input-per-source: the mic's G#: live, its A# lit green");
+        Check(aux_kept, "input-per-source: the cable back: AUX's as it was left, off, A# dark");
         Check(aux_dry, "input-per-source: AUX live again: dry, as it was left");
         Check(mic_kept, "input-per-source: F# to the mic: live through the effects, as it was left");
         Check(card.find("\naux_dry 1\n") != std::string::npos && card.find("\nmic_dry 0\n") != std::string::npos
@@ -5274,15 +5274,15 @@ int main()
         Check(mic && aux, "input-per-source-boot: from the card: the mic dry and live, AUX off");
     }});
 
-    // the upper G# while dark (not live): it changes nothing and blinks red 3 times
+    // the upper A# while dark (not live): it changes nothing and blinks red 3 times
     cases.push_back({"input-dark-fx", [] {
         RunMs(kReadyMs);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_25"); // AUX off: G# dark
+        Tap("KEY_24"); // AUX off: A# dark
         RunMs(3000);
         const std::string card = Card("/FRIZZ/frizz_master.txt");
-        Tap("KEY_24");
+        Tap("KEY_25");
         int blinks = 0;
         bool was_red = false;
         for (int t = 0; t < 2000; t++)
@@ -5295,11 +5295,35 @@ int main()
         }
         const bool dark = key_dark(kInFxKeyLed);
         RunMs(2000);
-        Tap("KEY_25"); // live again: through, as it was
+        Tap("KEY_24"); // live again: through, as it was
         RunMs(100);
-        Check(blinks == 3 && dark, "input-dark-fx: G# dark pressed: 3 red blinks, then dark again");
+        Check(blinks == 3 && dark, "input-dark-fx: A# dark pressed: 3 red blinks, then dark again");
         Check(Card("/FRIZZ/frizz_master.txt") == card && green_led(SmtLedFull(kInFxKeyLed)),
               "input-dark-fx: and it changed nothing: through the effects when live again, the card as it was");
+    }});
+
+    // the input's keys left to right (#243): the source, whether you hear it, then how. The mic
+    // picked on F#, G# puts it live, and only then A# wakes up and picks through or past
+    cases.push_back({"input-key-order", [] {
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23"); // F#: the mic, not live
+        RunMs(100);
+        const bool mic_off = magenta_led(SmtLedFull(kInSourceKeyLed)) && key_dim(kLiveKeyLed)
+                             && key_dark(kInFxKeyLed);
+        Tap("KEY_24"); // G#: live
+        RunMs(100);
+        const bool mic_live = key_lit(kLiveKeyLed) && green_led(SmtLedFull(kInFxKeyLed));
+        Tap("KEY_25"); // A#: past the effects
+        RunMs(100);
+        const bool mic_dry = key_lit(kLiveKeyLed) && white_led(SmtLedFull(kInFxKeyLed));
+        Tap("KEY_25"); // A#: through them again
+        RunMs(100);
+        const bool mic_through = key_lit(kLiveKeyLed) && green_led(SmtLedFull(kInFxKeyLed));
+        Check(mic_off, "input-key-order: F# to the mic: G# dim (not live), A# dark");
+        Check(mic_live, "input-key-order: G# puts the mic live: G# lit, A# green (through the effects)");
+        Check(mic_dry && mic_through, "input-key-order: A# then picks past the effects (white) and through (green)");
     }});
 
     // #168: the mic not live leaks nothing onto the master while the jack switches the source
@@ -5428,7 +5452,7 @@ int main()
         Check(turned.b > 40 && Max(after) < 40, "input-vu: a turn shows the gain for a second, then the meter");
     }});
 
-    // MIDI feedback (#109): the upper F#, G# and A# send CC 84, 116 and 117 (#177); what came
+    // MIDI feedback (#109): the upper F#, G# and A# send CC 84, 117 and 116 (#177, #243); what came
     // isn't sent back
     cases.push_back({"source-feedback", [] {
         RunMs(kReadyMs);
@@ -5439,13 +5463,13 @@ int main()
         RunMs(300);
         TrsCcs();
         UsbCcs();
-        Tap("KEY_24"); // AUX dry
+        Tap("KEY_25"); // AUX dry
         RunMs(300);
         Check(HasCc(TrsCcs(), 0xBF, kDryCC, 127) && HasCc(UsbCcs(), 0xBF, kDryCC, 127),
-              "source-feedback: the upper G# to AUX dry sends CC 116 at 127");
-        Tap("KEY_25"); // AUX not live
+              "source-feedback: the upper A# to AUX dry sends CC 116 at 127");
+        Tap("KEY_24"); // AUX not live
         RunMs(300);
-        Check(HasCc(UsbCcs(), 0xBF, kLiveCC, 0), "source-feedback: the upper A# AUX off sends CC 117 at 0");
+        Check(HasCc(UsbCcs(), 0xBF, kLiveCC, 0), "source-feedback: the upper G# AUX off sends CC 117 at 0");
         Tap("KEY_23"); // the mic: its own, through and not live
         RunMs(300);
         const auto ccs = UsbCcs();
