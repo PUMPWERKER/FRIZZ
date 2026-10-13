@@ -65,6 +65,12 @@ against this before it merges:
      after, not in a code block) right before a `##` starts a part, a folding group in the
      site's sidebar; chapters before the first marker go to "Getting started". Invisible on
      GitHub, headings and anchors unchanged. A new chapter goes into the part it belongs to.
+   - `MANUAL.md`'s summaries: a line `<!-- summary: ... -->` right under a `##` is that
+     chapter's one-line description on the site's Contents page and its meta description (a
+     sentence, under ~12 words; optional, a chapter without one gets none).
+   - Each chapter of a white key's effect (the chaos key and the master compressor too) keeps
+     its knob table, `| Knob | Page 1 | …`, rows 1 to 4: the landing page's knob labels are
+     each Page 1 cell's text up to the first ":", "," or " (", so that start names the knob.
 5. **No version history in the user docs:** "until v0.11 …" belongs in `CHANGELOG.md`, not in
    `MANUAL.md`, `QUICKSTART.md` or `INSTALL.md`.
 6. **To see it:** in a frizz-web worktree of your own (not the user's checkout),
