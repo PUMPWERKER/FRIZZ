@@ -93,14 +93,15 @@ def knob7(v):
 
 def fit(times, timed=None):
     """A line through times (index -> time): (period, worst distance from it in s), of those
-    timed says (all if None)"""
+    timed says (all if None; None if it says none)"""
     n = len(times)
     if n < 3:
         return None, None
     mx, my = (n - 1) / 2., sum(times) / n
     sxx = sum((i - mx) ** 2 for i in range(n))
     slope = sum((i - mx) * (t - my) for i, t in enumerate(times)) / sxx
-    worst = max([abs(t - (my + slope * (i - mx))) for i, t in enumerate(times) if timed is None or timed[i]] or [0.])
+    worst = max((abs(t - (my + slope * (i - mx))) for i, t in enumerate(times) if timed is None or timed[i]),
+                default=None)
     return slope, worst
 
 
@@ -832,7 +833,8 @@ def out_knobs(r):
     t0 = time.perf_counter()
     time.sleep(3.)
     t1 = time.perf_counter()
-    p0, w0 = fit(*ticks_timed(log, t0, t1))
+    before = ticks_timed(log, t0, t1)
+    p0, w0 = fit(*before)
     ccs = sum(1 for t, m in log if t >= t1 and m[0] & 0xF0 == 0xB0)
     end = time.monotonic() + 4.
     i = 0
@@ -843,14 +845,18 @@ def out_knobs(r):
         time.sleep(.02)
     t2 = time.perf_counter()
     time.sleep(.3)
-    p1, w1 = fit(*ticks_timed(log, t1 + .05, t2))  # the ticks timed alone in their reads
+    during = ticks_timed(log, t1 + .05, t2)
+    p1, w1 = fit(*during)  # the ticks timed alone in their reads
     ccs = sum(1 for t, m in log if t >= t1 and m[0] & 0xF0 == 0xB0) - ccs
     r.check("knobs turned fast for 4 s: feedback out of %s" % port.upper(), ccs >= 20, "%d CCs" % ccs, ">= 20")
     r.tcheck("the clock's rate meanwhile", p0 and p1 and abs(p1 / p0 - 1.) <= .001 * r.loose,
             "%.2f -> %.2f BPM" % (bpm_of(p0), bpm_of(p1)) if p0 and p1 else "-", "the same +-%g %%" % (.1 * r.loose))
-    r.tcheck("its ticks' timing", w0 is not None and w1 is not None and w1 <= w0 + .001 * r.slack,
-            "worst %.2f ms, before %.2f" % (w1 * 1000, w0 * 1000) if w0 is not None and w1 is not None else "-",
-            "within %g ms of without" % r.slack)
+    timed = [(sum(ts), len(ts)) for _, ts in (before, during)]
+    r.tcheck("its ticks' timing", w0 is not None and w1 is not None and w1 <= w0 + .001 * r.slack
+             and all(n >= 24 for n, _ in timed),
+             ("worst %.2f ms, before %.2f" % (w1 * 1000, w0 * 1000) if w0 is not None and w1 is not None else "-")
+             + " (%d of %d ticks timed, before %d of %d)" % (timed[1] + timed[0]),
+             "within %g ms of without, a beat's ticks at least alone in their reads" % r.slack)
 
 
 # ---- 8. MIDI control ----
