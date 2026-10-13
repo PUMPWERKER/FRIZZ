@@ -76,11 +76,12 @@ page offers releases only: a test build (a pre-release on the Releases page) goe
 
 The launcher's white key 15 is a USB storage mode: connect the CHOMPI to a computer over USB
 and the card shows up there as a drive named `CHOMPI-SD`, so you can copy files (bug reports,
-scenes) without taking the card out. While the CHOMPI is a drive, the LOOP key glows red.
-To leave, eject the drive on the computer, then press LOOP and tap the CHOMPI key (lit red) to
-confirm: the CHOMPI restarts into the launcher's picker. Press the blinking LOOP again instead to stay.
-[USB storage v1.6](https://github.com/lnetzel/CHOMPI-lnetzel/releases/tag/usb-storage-v1.6)
-also restarts by itself when you eject the drive.
+scenes) without taking the card out. To leave, eject the drive on the computer first. With
+[USB storage v1.6](https://github.com/lnetzel/CHOMPI-lnetzel/releases/tag/usb-storage-v1.6),
+the CHOMPI then restarts into the launcher's picker by itself. With an older one (a card set
+up from the launcher's v1.5 release has v1.5), press the LOOP key, which glows red: it blinks
+and the CHOMPI key turns red; tap the CHOMPI key to confirm, and the CHOMPI restarts into the
+picker. Pressing the blinking LOOP again cancels.
 
 ## Going back to stock firmware
 
