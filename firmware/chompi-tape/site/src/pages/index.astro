@@ -78,9 +78,9 @@ const kb = fs.existsSync(`public/${file}`) ? Math.round(fs.statSync(`public/${fi
         <div>
           <h3>USB</h3>
           <ul>
-            <li><a href="#usb-audio">Audio interface: the mix and the input to the computer, stereo back</a></li>
-            <li><a href="#usb-input">The computer's audio as the input</a></li>
+            <li><a href="#usb-audio">Audio interface, 4 out, 2 in</a></li>
             <li><a href="#usb-midi">MIDI in and out</a></li>
+            <li><a href="#usb-card">Card reader</a></li>
           </ul>
         </div>
       </div>
@@ -119,8 +119,7 @@ const kb = fs.existsSync(`public/${file}`) ? Math.round(fs.statSync(`public/${fi
     <section class="usage" aria-labelledby="usb-head">
       <h2 id="usb-head">USB</h2>
       <div class="lead" style="--c: var(--blue)">
-        <figure class="fig"><Diagram type="flow" steps={[['COMPUTER'], ['CHOMPI', LED.blue], ['COMPUTER']]} /></figure>
-        <p>Plug CHOMPI into a computer and it is an audio interface and a MIDI device.<br>Record what CHOMPI plays, and play into CHOMPI.</p>
+        <p>Connect CHOMPI to a computer with a USB cable. It appears as an audio interface and a MIDI device, and can hand over its SD card as a drive.</p>
       </div>
       <div class="feats">
         {usb.map((card) => <UsageCard {...card} />)}

@@ -105,25 +105,32 @@ export const groups = [
 // USB, a section of its own
 export const usb = [
   {
-    id: 'usb-audio', title: 'Audio interface', colour: 'blue', keys: ['USB', '_to a computer'],
-    diagram: { type: 'legend', rows: [['Main L / R', 'blue', 'the mix, as the speakers get it'], ['Input L / R', 'red', 'the input, as CHOMPI records it'],
-      ['Stereo in', 'pink', 'what the computer plays']] },
-    items: ['48 kHz, 24 bit, in and out at once',
-      'Shows up as <b>CHOMPI</b>, no driver needed'],
+    id: 'usb-audio', title: 'Audio', colour: 'blue', keys: ['USB'],
+    diagram: { type: 'legend', rows: [
+      ['1  Mix L', 'blue', 'CHOMPI \u2192 computer'], ['2  Mix R', 'blue', 'CHOMPI \u2192 computer'],
+      ['3  Input L', 'red', 'CHOMPI \u2192 computer'], ['4  Input R', 'red', 'CHOMPI \u2192 computer'],
+      ['Out L', 'pink', 'computer \u2192 CHOMPI'], ['Out R', 'pink', 'computer \u2192 CHOMPI']] },
+    text: 'Select CHOMPI as the audio device on the computer. 48 kHz, 24 bit. Mix is CHOMPI\u2019s main output; '
+      + 'Input is whatever CHOMPI is sampling; Out is the computer\u2019s playback into CHOMPI.',
   },
   {
-    id: 'usb-input', title: 'USB as input', colour: 'blue', keys: ['MIC', '_hold'],
+    id: 'usb-input', title: 'USB as the input', colour: 'blue', keys: ['MIC', '_hold'],
     panel: { hl: ['mic'], leds: { mic: LED.blue }, labels: { mic: ['hold', 0, 80] } },
-    items: ['Audio from the computer becomes the input as soon as it plays, mic LED <b>blue</b>',
-      'Same level as line in: sample it, loop it, monitor it',
-      'Picking mic, line in or resample overrides it until the computer reconnects',
-      '<b>Hold MIC</b>: mic ↔ USB',
-      'Unplugged: back to line in or mic'],
+    items: ['Start playback on the computer. CHOMPI switches its input to USB and the <b>MIC</b> LED turns blue.',
+      'Sample it and loop it as you would the line input. The input gain applies.',
+      'Hold <b>MIC</b> to switch between the microphone and USB by hand.'],
   },
   {
     id: 'usb-midi', title: 'MIDI', colour: 'blue', keys: ['USB'],
-    items: ['MIDI in and out, same as the TRS jack',
-      'Clock in syncs the tempo and the delay'],
+    items: ['CHOMPI sends and receives MIDI over USB, alongside the TRS jacks.',
+      'MIDI clock from the computer sets the tempo.'],
+  },
+  {
+    id: 'usb-card', title: 'Card reader', colour: 'blue', keys: ['COPY', '_hold'],
+    panel: { hl: ['copy'], labels: { copy: ['hold', 0, 80] } },
+    items: ['With the computer connected, hold <b>COPY</b>. The SD card mounts on the computer as a drive and the keys light blue.',
+      'While the card is mounted, CHOMPI is paused: it cannot play, record or load.',
+      'Hold <b>COPY</b> again to take the card back.'],
   },
 ];
 
