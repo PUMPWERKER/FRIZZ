@@ -7,7 +7,7 @@ Your first ten minutes with FRIZZ. Every detail is in the [manual](MANUAL.md).
 ## How the sound flows
 
 ```
-AUX in or mic -> input gain -+-> if live ------+
+AUX in or mic -> input gain -+-> if monitored -+
                              |                 +-> input/loop mix -> effects (white keys) -> compressor -> output volume -> out
                              +-> looper -------+
 ```

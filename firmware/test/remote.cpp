@@ -879,11 +879,11 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc == 0, "remote: a script that toggles up and down again, no key there, plays");
     if (rc != 0)
         printf("%s\n", out.c_str());
-    // the input's key up there (the upper A#) saves AUX's variant now (#152): refused too
-    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_25\nwait 100\ntap KEY_25\nwait 100\ntoggle 0\nwait 100\n");
+    // the input's key up there (the upper G#, live, #243) saves AUX's variant now (#152): refused too
+    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_24\nwait 100\ntap KEY_24\nwait 100\ntoggle 0\nwait 100\n");
     rc = Remote({"play", script, "--save"}, out);
-    Check(rc != 0 && Has(out, "line 4: tap KEY_25 on the settings page"),
-          "remote: and one that taps A# (live) there is refused: each source's is saved (#177)");
+    Check(rc != 0 && Has(out, "line 4: tap KEY_24 on the settings page"),
+          "remote: and one that taps G# (live) there is refused: each source's is saved (#177)");
     // VOLUME's page 2 on the play page, the input gain, is saved too (#152); page 1 isn't
     Write(script, "booted\nturn 6 -2\nwait 100\ntap ENC_6_SW\nwait 100\nturn 6 2\nwait 100\n");
     rc = Remote({"play", script, "--save"}, out);

@@ -102,5 +102,5 @@ picker. Pressing the blinking LOOP again cancels.
 | No rainbow, the old firmware starts | Check that `FRIZZ.bin` is in the top folder, that it's the only `.bin` there, and that the card is FAT32 |
 | Rainbow, but then nothing works | Copy `FRIZZ.bin` to the card again (the copy may be damaged) and switch on again |
 | The keys don't play | The mode switch is up, on the settings page: flip it down |
-| Silence | Check the input gain (press VOLUME, then turn) and the input/loop mix (SHIFT + turn VOLUME, turn towards green). Is the cable in AUX all the way? Without one, the input is the mic, which isn't live at first. On the settings page (mode switch up), the upper A# puts the input you hear live (lit) |
+| Silence | Check the input gain (press VOLUME, then turn) and the input/loop mix (SHIFT + turn VOLUME, turn towards green). Is the cable in AUX all the way? Without one, the input is the mic, which isn't monitored at first. On the settings page (mode switch up), the upper G# switches monitoring on for the input you hear (lit) |
 | The CHOMPI doesn't respond at all | The bootloader may be damaged. Reinstall CHOMPI's own bootloader (`firmware/bin/CHOMPI_Bootloader_V6_2_0.bin`) as described in [`firmware/README.md`](firmware/README.md#4-put-it-on-the-chompi), then install FRIZZ again. Don't install the generic Daisy bootloader instead |
