@@ -177,12 +177,12 @@ class Svg:
 def signal_flow():
     s = Svg(440, 'FRIZZ signal flow',
             'The whole way of the sound. The input, AUX or the built-in mic after its input gain, '
-            'goes to the looper and to the input/loop mix; the looper\'s playback is the mix\'s '
-            'other side. The mix goes through the effects of the white keys and the master '
-            'compressor. A source set to dry: the mix\'s input share skips the effects and the '
-            'compressor and joins after them. Then VOLUME, the output gain, and a safety limiter on each output: the line '
+            'goes to the looper and to the input/loop mix; the looper\'s playback is the input/loop '
+            'mix\'s other side. The input/loop mix goes through the effects of the white keys and '
+            'the master compressor. A source set past the effects: the input/loop mix\'s input '
+            'share skips the effects and the compressor and joins after them. Then VOLUME, the output gain, and a safety limiter on each output: the line '
             'out, and the headphones, whose feed can blend in the input alone.')
-    # row 1: input, looper, mix, effects, compressor, the dry branch joining
+    # row 1: input, looper, mix, effects, compressor, the branch past them joining
     s.box(20, 42, 110, 56, ['INPUT', ('AUX or mic', 'm'), ('input gain', 'm')], accent=True)
     s.line([(130, 70), (295, 70)], 'a')
     s.dot(150, 70, 'a')
@@ -199,7 +199,7 @@ def signal_flow():
     s.line([(670, 70), (679, 70)], 'a')
     s.sum(688, 70)
     s.line([(385, 98), (385, 205), (688, 205), (688, 79)])
-    s.text(537, 223, 'dry: the input\'s share, past the effects and the compressor', 12, cls='m')
+    s.text(537, 223, 'the input\'s share, past the effects and the compressor', 12, cls='m')
     # on to row 2
     s.line([(697, 70), (708, 70), (708, 240), (75, 240), (75, 268)], 'a')
     s.box(20, 268, 110, 56, ['VOLUME', ('output gain', 'm')], accent=True)
@@ -223,13 +223,13 @@ def signal_flow():
 def input_diagram():
     s = Svg(650, 'FRIZZ input',
             'The input. AUX (stereo, or mono: its left to both sides) and the built-in mic each '
-            'have their own input gain; AUX is then amplified 3 times and its DC taken out, the mic '
-            '5 times, DC blocked, highpassed at about 150 Hz and the same on both sides. Switch A '
+            'have their own input gain; AUX is then amplified 3× and its DC taken out, the mic '
+            '5×, DC blocked, highpassed at about 150 Hz and the same on both sides. Switch A '
             '(upper F#, or the AUX jack) picks the source, with a 5 ms crossfade. The source goes '
             'as it is to the looper and to the headphone feed. Switch B (upper G#) sends it '
-            'through the effects or dry, switch C (upper A#) has it live on the outputs or not. '
-            'The mix sets the input\'s share against the loop\'s; the dry share joins after the '
-            'compressor, before VOLUME.')
+            'through the effects or past them, switch C (upper A#) has it live on the outputs or '
+            'not. The input/loop mix sets the input\'s share against the loop\'s; the share past '
+            'the effects joins after the compressor, before VOLUME.')
     # AUX
     s.jack(28, 90)
     s.text(20, 72, 'AUX IN', 13, anchor='start', bold=True)
@@ -259,7 +259,7 @@ def input_diagram():
     s.line([(602, 140), (705, 140), (705, 262), (40, 262), (40, 330)], 'a', arrow=False)
     s.line([(40, 330), (40, 490)], arrow=False)
     s.dot(40, 330, 'a')
-    # B: through the effects or dry; C: live, on both
+    # B: through the effects or past them; C: live, on both
     s.line([(40, 330), (87, 330)], 'a', arrow=False)
     s.selector(90, 330, [(125, 305), (125, 355)], 0, 'B', (100, 298))
     s.line([(127, 305), (160, 305)], 'a', arrow=False)
@@ -269,7 +269,7 @@ def input_diagram():
     s.line([(127, 355), (160, 355)], arrow=False)
     s.switch(160, 355, 'C')
     s.line([(190, 355), (330, 355)])
-    s.text(260, 348, 'dry', 12, cls='m')
+    s.text(260, 348, 'past the effects', 12, cls='m')
     # the looper and the phones take the source as it is
     s.line([(40, 420), (200, 420)])
     s.dot(40, 420)
@@ -286,11 +286,11 @@ def input_diagram():
     s.text(512, 319.5, 'to the effects', 13, anchor='start', bold=True)
     s.text(512, 336, 'and the compressor', 12, anchor='start', cls='m')
     s.line([(470, 385), (505, 385)])
-    s.text(512, 389.5, 'dry: joins after the', 13, anchor='start')
-    s.text(512, 406, 'compressor, before VOLUME', 12, anchor='start', cls='m')
+    s.text(512, 389.5, 'past the effects:', 13, anchor='start')
+    s.text(512, 406, 'joins after the compressor', 12, anchor='start', cls='m')
     s.legend(28, 540, [
         ('A', 'upper F#: the source, AUX or the mic. The AUX jack picks it; F# the other one'),
-        ('B', 'upper G#: through the effects, or dry: past them and the compressor'),
+        ('B', 'upper G#: through the effects, or past them and the compressor'),
         ('C', 'upper A#: live, on the outputs, or not (both switches together)'),
         ('M', 'SHIFT + upper F#: AUX mono, its left channel to both sides'),
     ])
@@ -302,7 +302,7 @@ def input_diagram():
 # ---------- 3. the effects, the compressor and the outputs ----------
 def fx_chain():
     s = Svg(830, 'FRIZZ effects chain',
-            'The order FRIZZ computes the effects in. From the mix: the freezer (key 1), then the '
+            'The order FRIZZ computes the effects in. From the input/loop mix: the freezer (key 1), then the '
             'shifter, folder, crusher, filter, flanger and phaser (keys 2-7), which sit inside the '
             'resonator\'s feedback loop (key 8): it taps the signal after the phaser and feeds its '
             'ringing back in after the freezer. Then the slicer, wow & flutter and the tape stop '
@@ -310,7 +310,7 @@ def fx_chain():
             'goes in, page 2\'s Band filters it, Level sets the return, which is added to the '
             'signal; the reverb gets the delay\'s echoes too. The keys and knobs come from the '
             'panel, MIDI and scene morphs; the chaos key (14) drops latched effects and scrambles '
-            'the loop. After the effects the master compressor (key 15); then a dry input joins, '
+            'the loop. After the effects the master compressor (key 15); then the input past the effects joins, '
             'then VOLUME and a safety limiter on the line out and on the headphones, whose feed blends '
             'towards the input alone. Below: every insert\'s page 2, Band, Level and Mix.')
     # what plays the effects
@@ -365,14 +365,14 @@ def fx_chain():
         s.sum(sx, y)
     s.text(414, 283, 'sends', 12, cls='m')
     s.text(568, 283, 'echoes into the reverb', 12, cls='m')
-    # row 3: the dry input, the compressor, VOLUME, the outputs
+    # row 3: the compressor, the input past the effects, VOLUME, the outputs
     s.line([(661, y), (708, y), (708, 440), (24, 440), (24, 480), (40, 480)], 'a')
     y = 480
     s.box(40, y - 24, 120, 48, ['COMPRESSOR', ('15, always on', 'm')], accent=True)
     s.line([(160, y), (176, y)], 'a')
     s.sum(185, y)
     s.line([(185, 535), (185, y + 9)])
-    s.text(185, 552, 'dry input', 12, cls='m')
+    s.text(185, 552, 'the input past the effects', 12, cls='m')
     s.line([(194, y), (220, y)], 'a')
     s.box(220, y - 24, 100, 48, ['VOLUME', ('output gain', 'm')], accent=True)
     s.line([(320, y), (340, y), (340, 460), (520, 460)], 'a')
