@@ -75,7 +75,8 @@
 <text x="315" y="413" class="m" font-size="12">loop</text>
 <polyline points="40,490 470,490" class="ls" marker-end="url(#ms)"/>
 <text x="250" y="483" class="m" font-size="12">the source alone, whatever B and C say</text>
-<text x="478" y="494.5" class="t as">to the phones feed (VOLUME p. 3)</text>
+<text x="478" y="494.5" class="t as">to the phones feed</text>
+<text x="478" y="511" class="m as" font-size="12">VOLUME page 3</text>
 <rect x="330" y="285" width="140" height="157" class="b"/>
 <text x="400" y="328" class="t" font-weight="bold">MIX</text>
 <text x="400" y="344" class="m" font-size="12">SHIFT + VOLUME</text>
