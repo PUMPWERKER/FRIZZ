@@ -4001,6 +4001,66 @@ int main()
               "loops-now: an acid chunk's 12 beats set 100 BPM for 3 bars of 7.2 s");
     }});
 
+    // #302: a switch at once is crossfaded however MainLoop and the audio interrupt meet. The
+    // interrupt that switches may come between LoopControls reading the looper's switches
+    // and asking whether its switch still waits (twin::PreemptAt): that switch is counted
+    // once, not handed over again, which switched once more and dropped the fade-out. And a
+    // second switch within the first's 10 ms fade waits for it, rather than cutting it off
+    cases.push_back({"loops-switch-fade", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a3", SineWav(120000, 2, 275.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 1000);
+        RunMs(300);
+        // the interrupt between the two looks, each pass; by MIDI (CC 0 = 1, a program change,
+        // at once), with a load, then by hand without one
+        PreemptAt("loops-switched");
+        uint32_t was = Probe().loop_switches;
+        max_step = 0.f;
+        Trs({kCC, 0, 1});
+        Trs({kPC, 1});
+        const int midi = UntilLength(72000, 1000);
+        RunMs(100);
+        const float by_midi = max_step;
+        const uint32_t midi_switches = Probe().loop_switches - was;
+        was = Probe().loop_switches;
+        max_step = 0.f;
+        Tap(kLoopKeys[0]);
+        const int hand = UntilLength(96000, 1000);
+        RunMs(100);
+        const float by_hand = max_step;
+        const uint32_t hand_switches = Probe().loop_switches - was;
+        PreemptAt(nullptr);
+        printf("      interrupted: by MIDI after %d ms, %u switches, largest step %.4f; by hand after %d ms, "
+               "%u switches, largest step %.4f\n",
+               midi, midi_switches, by_midi, hand, hand_switches, by_hand);
+        Check(midi >= 0 && hand >= 0 && midi_switches == 1 && hand_switches == 1 && by_midi < .01f
+                  && by_hand < .01f,
+              "loops-switch-fade: the interrupt between LoopControls' looks: one switch, crossfaded "
+              "(no step), by MIDI and by hand");
+        // two at once 3 ms apart, both loaded (A/03 loaded beside A/01): back to A/01, then
+        // A/03 again while A/03 still fades out; the second waits for that fade
+        Tap(kLoopKeys[2]);
+        UntilLength(120000, 1000);
+        RunMs(300);
+        was = Probe().loop_switches;
+        max_step = 0.f;
+        Trs({kPC, 0});
+        RunMs(3);
+        Trs({kPC, 2});
+        RunMs(100);
+        const float twice = max_step;
+        const ClockState st = Probe();
+        printf("      A/01 then A/03 3 ms later: %u switches, A/03 playing %d, largest step %.4f\n",
+               st.loop_switches - was, st.loop_length == 120000, twice);
+        Check(st.loop_switches - was == 2 && st.loop_length == 120000 && twice < .01f,
+              "loops-switch-fade: a second switch within the first's fade waits for it: both "
+              "crossfaded (no step)");
+    }});
+
     // the tape runs on across loops (#70): a switch keeps the speed and the direction, at once
     // and planned, and a standstill; the new loop's tempo its own times the speed. A new
     // recording starts at 1x
