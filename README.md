@@ -44,6 +44,27 @@ and you can go back to the stock firmware the same way.
 | [`docs/`](docs/) | Design notes: the looper spec and an overview of the effects across the CHOMPI firmwares |
 | [`reference/`](reference/) | The original CHOMPI open-source release, kept unchanged: the stock TAPE, TEMPO and WAVE firmwares, the factory SD cards, the bootloader and the hardware files |
 
+## How FRIZZ is made
+
+FRIZZ is written with the help of AI coding agents (Anthropic's Claude Code), and most commits
+say so (`Co-Authored-By: Claude`). The design is mine: what FRIZZ does, its controls and
+gestures, how it should sound and feel, and what goes into a release. The agents write most of
+the code and the tests and propose details, which I accept or change. Nothing goes in on trust
+alone:
+
+- **On the computer:** a virtual CHOMPI ([`firmware/twin/`](firmware/twin/)) runs the whole
+  firmware, unchanged, and the host checks ([`firmware/test/`](firmware/test/)) hold it to
+  about 2,700 individual checks in 35 test programs (keys, LEDs, MIDI, timing, the card, the
+  audio), plus 31 scenarios played from power-on and a bit-for-bit comparison of the engine's
+  sound.
+- **On the CHOMPI:** every firmware change runs on the device before it's merged, with its
+  CPU load measured against the last one.
+- **By ear and hand:** every release is played with real gear first, from a public
+  release-test checklist (the issues labelled `release test`).
+
+The decisions behind each feature are in the [issues](https://github.com/ZUHcYa/FrizZ/issues)
+and pull requests.
+
 ## Credits and license
 
 FRIZZ builds on the [CHOMPI open-source release](https://github.com/CHOMPI-Club/CHOMPI) by
