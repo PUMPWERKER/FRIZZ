@@ -48,7 +48,13 @@ def main():
     if not any(f.startswith("chompi::FxChain::Run(") for f in funcs):
         sys.exit("fxchain_tu: %s doesn't define FxChain::Run" % obj)
     taken = definers(map_path)
-    wrong = [(f, taken[f]) for f in funcs if f in taken and taken[f] != obj]
+    # a name the table spells otherwise than nm would pass unchecked: none may be missing
+    missing = [f for f in funcs if f not in taken]
+    for f in missing:
+        print("fxchain_tu: %s isn't in %s's cross reference table" % (f, map_path))
+    if missing:
+        sys.exit(1)
+    wrong = [(f, taken[f]) for f in funcs if taken[f] != obj]
     for f, path in wrong:
         print("fxchain_tu: %s is %s's copy, not %s's (#286: FxChain.cpp first in CPP_SOURCES)"
               % (f, path, obj))
