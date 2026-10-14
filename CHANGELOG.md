@@ -103,6 +103,11 @@ what FRIZZ does.
   switch by a white key or a program change cut over hard, with a click, instead of fading the
   old loop out over 10 ms. And a second switch within those 10 ms, say a program change right
   after a key, now waits for the first's fade to finish rather than cutting it off.
+- **The resonator rings on its note with the tone dark** (#303): the darker the tone and the
+  higher the note, the flatter it rang, 67 cents (two thirds of a semitone) at 440 Hz with the
+  tone at the bottom and still 20 cents with it a quarter up. Now its notes are within 5 cents
+  at any tone, so the coarse steps' notes at A440 hold, also on the right channel with the
+  stereo up. At the default tone it moves only by a few cents.
 - **A key of the Loops page is bright only while its slot holds the loop playing** (#295):
   deleting the playing loop's slot in the Companion left its key bright, though the slot was
   empty; replacing it did too. Now the key goes dark (deleted) or dim (replaced) while the
