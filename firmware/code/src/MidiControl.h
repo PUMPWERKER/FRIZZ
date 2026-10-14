@@ -585,10 +585,11 @@ public:
     dev::Info dev;
     /** SIGNAL's and LEVELS' place in the audio callback */
     dev::Audio audio;
-    /** The loop transfer's half in the audio callback (LoopTransfer.h), and what sends its
-     *  messages in the play page's one answer a pass: true if an answer went (LoopTransfer::Send,
-     *  or the bench's BenchAnswer) */
-    loopxfer::Intake xfer;
+    /** The loop transfer's half in the audio callback (LoopTransfer.h; chompi_main.cpp keeps it
+     *  out of the .bss beside this, whose layout the bench's heaviest segments feel), and what
+     *  sends its messages in the play page's one answer a pass: true if an answer went
+     *  (LoopTransfer::Send, or the bench's BenchAnswer) */
+    loopxfer::Intake* xfer = nullptr;
     bool (*xfer_send)() = nullptr;
     /** The clock, for PROBE */
     inline const MidiClock& Clock() const { return *clock_; }
@@ -919,8 +920,8 @@ private:
             break;
         case kCmdLoops:
             // over USB only (1.1), and not logged: a CHUNK a message
-            if (usb)
-                xfer.Take(arg, n);
+            if (usb && xfer)
+                xfer->Take(arg, n);
             return;
         case kCmdDev:
             if (!usb || n < 2)

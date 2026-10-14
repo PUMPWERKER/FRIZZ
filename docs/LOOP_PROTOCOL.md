@@ -849,7 +849,8 @@ supervisor's decision.
 As built (`LoopTransfer.h`):
 
 - `MidiControl::SysEx`: a `case kCmdLoops` (0x38), USB only, not logged. It hands the bytes to
-  `loopxfer::Intake`, the audio callback's half: a CHUNK into the ring (6.4, in SDRAM), any
+  `loopxfer::Intake`, the audio callback's half (a global of its own at the DTCM's end, not in
+  `MidiControl`, whose `.bss` neighbours the bench's heaviest segments feel): a CHUNK into the ring (6.4, in SDRAM), any
   other request into a one-request slot of its own, apart from the developers' queue and the
   queries' slot.
 - `LoopTransfer` in MainLoop after the loader, while the card is lent too (it refuses then):
@@ -866,7 +867,7 @@ As built (`LoopTransfer.h`):
 - `crash::Crc32More`: the CRC carried on between steps (the same table).
 - The protocol's version: `loopxfer::kLoopsProtocol` (major) and `kLoopsProtocolMinor`;
   FRIZZ's: `kFrizzVersion` in `Version.h` (7.1).
-- Code room: the header is built `-Os`. `FRIZZ.bin` took ~7 KB of `SRAM_EXEC` (~3.2 KB left
+- Code room: the header is built `-Os`. `FRIZZ.bin` took ~7 KB of `SRAM_EXEC` (~3.1 KB left
   after it, `docs/CAPACITY.md`) and 0.3 KB of `SRAM`; the ring, the staging block, the job's
   files and the names are in SDRAM.
 - `FRIZZ-bench.bin` answers `NOT_HERE` to every OP but HELLO (`loopxfer::BenchAnswer`).

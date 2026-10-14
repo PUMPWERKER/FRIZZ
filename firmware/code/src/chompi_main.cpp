@@ -264,7 +264,7 @@ static bool XferSend()
 {
 #if FRIZZ_BENCH
     loopxfer::Request q;
-    if (!midi_control.xfer.TakeRequest(q))
+    if (!midi_control.xfer->TakeRequest(q))
         return false;
     uint8_t d[MidiControl::kMaxReply];
     midi_control.Reply(kCmdLoops, d, loopxfer::BenchAnswer(q, d));
@@ -435,6 +435,12 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
 }
 
 uint32_t uit, now;
+
+// The loop transfer's half in the audio callback (LoopTransfer.h), at the DTCM's end: inside
+// MidiControl its 56 bytes moved the .bss after it (midi_out, scene_store, ui) by 64, and the
+// bench's heaviest segments went from ~80 to 130-160 % in their worst block (#278: measured,
+// the same build with it here is as main's). Not cleared at boot: Intake::Init clears it
+loopxfer::Intake __attribute__((section(".dtcmram_bss.xfer"))) loop_xfer_intake;
 
 // USB audio's switch waits this long, so MIDI's last answer reaches the computer (MainLoop)
 static const uint32_t kUsbSwitchMs = 100;
@@ -664,12 +670,16 @@ int main(void)
     LoopTransfer::Boot();
     loop_loader.Init(loop_load_mem, &loop_loader_mem, &fsi.GetSDFileSystem(), [] { return System::GetNow(); },
                      [] { return System::GetTick(); }, System::GetTickFreq());
-    loop_xfer.Init(&midi_control.xfer, &loop_loader, &loop_xfer_mem, &fsi.GetSDFileSystem(),
+    loop_xfer.Init(&loop_xfer_intake, &loop_loader, &loop_xfer_mem, &fsi.GetSDFileSystem(),
                    [] { return System::GetNow(); },
                    [](const uint8_t* d, size_t n) { midi_control.Reply(kCmdLoops, d, n); },
                    [](uint8_t what, uint16_t value) { event_log.Xfer(what, value); },
                    [](int id) { return ui.LoopFlags(id); });
 #endif
+#if FRIZZ_BENCH
+    loop_xfer_intake.Init(nullptr); // HELLO and NOT_HERE: no CHUNK is ever taken
+#endif
+    midi_control.xfer = &loop_xfer_intake;
     midi_control.xfer_send = XferSend;
 
     engine.Init(hw.seed.AudioSampleRate(), loop_mem, &midi_clock,

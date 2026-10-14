@@ -9,8 +9,8 @@ from `build/FRIZZ.map`.
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 275,244 B (99 %) | **~3.2 KB** | all the code, and the initial values of `.data` |
-| `SRAM` (AXI SRAM) | 240 KB | 220,500 B (90 %) | ~25 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 275,380 B (99 %) | **~3.1 KB** | all the code, and the initial values of `.data` |
+| `SRAM` (AXI SRAM) | 240 KB | 220,436 B (90 %) | ~25 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,752 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
@@ -21,9 +21,13 @@ from `build/FRIZZ.map`.
 
 **The loop transfer (#278, for 1.5).** FRIZZ's loop banks over USB MIDI, the Companion's
 (`LoopTransfer.h`, built `-Os` all of it; `LoopLoader.h`'s names and swap repair; the play
-page's forgetting): `FRIZZ.bin` 268,024 → 275,244 B of code (+7,220 B, **~3.2 KB free**) and
-220,172 → 220,500 B of data (+328 B: the job's state); the bench build, which answers HELLO and
-nothing else, 274,104 → 274,832 B (+728 B, **~3.6 KB free**), data +64 B. SDRAM +42 KB: the
+page's forgetting): `FRIZZ.bin` 268,024 → 275,380 B of code (+7,356 B, **~3.1 KB free**) and
+220,172 → 220,436 B of data (+264 B: the job's state); the bench build, which answers HELLO and
+nothing else, 274,104 → 274,952 B (+848 B, **~3.5 KB free**). The audio callback's half (the
+intake, 56 B) is at the DTCM's end, not in `MidiControl`: there it moved the `.bss` after it by
+64 B, and the bench's heaviest segments went from ~80 % to 130-160 % in their worst block
+(their means +1.3, `FRIZZ.bin`'s heavy scenarios unchanged); placed apart they measure as
+`main`'s, which shows how much the bench's worst blocks feel the data's layout. SDRAM +42 KB: the
 staging block (32 KB), the CHUNKs' ring (1.8 KB), the job's two FatFs files (1.1 KB), the
 slots' names and sizes beside the loader's (7 KB). Nothing of it needs a constructor at boot
 (the objects are constant-initialised, the FILs in SDRAM). The biggest piece is the requests'
@@ -58,9 +62,9 @@ counts it now: 226,760 → 226,568 B, the bench build's 234,856 → 234,664 B (f
 b608028).
 
 **Both builds are near the wall.** `FRIZZ-bench.bin` carries the bench as well: its code is at
-274,832 B (99 %, **~3.6 KB free**; 274,104 B before the loop transfer) and its data at
-228,268 B (93 %, **~17 KB free**). Since the loop transfer, `FRIZZ.bin` has less code room
-(~3.2 KB) than the bench build: it has the loader and the transfer, which the bench build
+274,952 B (99 %, **~3.5 KB free**; 274,104 B before the loop transfer) and its data at
+228,204 B (93 %, **~17 KB free**). Since the loop transfer, `FRIZZ.bin` has less code room
+(~3.1 KB) than the bench build: it has the loader and the transfer, which the bench build
 hasn't. So a feature of more than ~2 KB of code, or ~17 KB of data in internal RAM, needs room
 made first (below), or one of the builds stops linking. Data grows into SDRAM or DTCM where it
 can; for internal RAM, step 4 below frees 64 KB.

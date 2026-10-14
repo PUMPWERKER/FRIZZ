@@ -196,7 +196,12 @@ inline size_t Hello(uint8_t* d, size_t n)
 class Intake
 {
 public:
-    void Init(Mem* mem) { mem_ = mem; }
+    /** Its memory may not be cleared at boot (chompi_main.cpp: in the DTCM): all of it set here */
+    void Init(Mem* mem)
+    {
+        memset(static_cast<void*>(this), 0, sizeof(*this));
+        mem_ = mem;
+    }
 
     /** From the audio callback (MidiControl::SysEx): the bytes after 0x38 */
     void Take(const uint8_t* d, size_t n)
@@ -304,7 +309,7 @@ private:
         w_ = static_cast<uint8_t>(w_ + 1);
     }
 
-    // zero as a static's (MidiControl's), so no code sets them at boot
+    // set by Init, so no code sets them at boot
     Mem* mem_;
     Request req_;
     volatile bool pending_;
