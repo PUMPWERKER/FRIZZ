@@ -79,17 +79,23 @@ public:
     inline size_t Bank() const { return bank_[cubbi_]; }
     /** The Cubbi page shown, not the Loops page */
     inline bool Cubbi() const { return cubbi_; }
-    /** The next bank (dir 1) or the one before (-1) of the page with a file in it; false at
-     *  the end */
-    bool StepBank(int dir)
+    /** The next bank (dir 1) or the one before (-1) of the page with a file in it, kNone at
+     *  the end: where C# or D# leads, in its colour */
+    int Neighbour(int dir) const
     {
         for (int b = static_cast<int>(Bank()) + dir; b >= static_cast<int>(First()) && b < static_cast<int>(Last()); b += dir)
             if (BankUsed(static_cast<size_t>(b)))
-            {
-                bank_[cubbi_] = static_cast<size_t>(b);
-                return true;
-            }
-        return false;
+                return b;
+        return kNone;
+    }
+    /** To Neighbour(dir); false at the end */
+    bool StepBank(int dir)
+    {
+        const int b = Neighbour(dir);
+        if (b == kNone)
+            return false;
+        bank_[cubbi_] = static_cast<size_t>(b);
+        return true;
     }
     /** On a page opening: the first bank with a file, unless the one it showed has one. False
      *  if none has */

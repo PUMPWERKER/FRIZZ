@@ -48,7 +48,8 @@
  *  SHIFT + the page's own key or a double tap of SHIFT (two clean taps within kDoubleTapMs)
  *  goes home. The keys the hand presses there come as kLoopsKeyBase plus the key (ui.h),
  *  MIDI's notes as ever, so MIDI plays the effects there and picks no loops. Their white keys
- *  are the bank's loops, the lower C# and D# the banks; the scene keys, the transport, PLAY,
+ *  are the bank's loops, the lower C# and D# the banks (each lit in the colour of the bank it
+ *  leads to, dark at the end); the scene keys, the transport, PLAY,
  *  LOOP and VOLUME are the play page's; the scene modes and knobs 1-4 do nothing, dark.
  *  Opening one ends a scene mode, so a tap of SHIFT confirms nothing there; opening one
  *  without a loop blinks both bank keys red. SHIFT's LED shows the sub-page, dim in its
@@ -1582,8 +1583,8 @@ namespace chompi
                 ShowLoops(false);
         }
 
-        /** The Loops page's keys: the slots in the bank's colour, the banks' keys in it; knobs
-         *  1-4 dark (PthLedsOff) */
+        /** The Loops page's keys: the slots in the bank's colour, C# and D# in the colours of
+         *  the banks they lead to (dark at the end); knobs 1-4 dark (PthLedsOff) */
         void DrawLoopsLeds(uint32_t now)
         {
             // the limiting it sees meanwhile is old once the play page shows the key again
@@ -1624,13 +1625,16 @@ namespace chompi
                     }
                 SmtLed(KeyLedOf(kWhiteKeys[w]), c, level);
             }
+            // C# and D# in the colour of the bank they lead to, dark at the end
             for (Hardware::SwId key : {Hardware::SwId::KEY_16, Hardware::SwId::KEY_17})
             {
+                const int to = loops_.Neighbour(key == Hardware::SwId::KEY_16 ? -1 : 1);
                 if ((static_cast<uint16_t>(key) == bank_refused_key_ || bank_refused_key_ == kBothBankKeys)
                     && bank_refused_.Active(now))
                     SmtLed(KeyLedOf(key), red, bank_refused_.BlinkLit(now) ? 1.f : 0.f);
                 else
-                    SmtLed(KeyLedOf(key), color, 1.f);
+                    SmtLed(KeyLedOf(key), to == LoopControls::kNone ? color : BankColor(static_cast<size_t>(to)),
+                           to == LoopControls::kNone ? 0.f : 1.f);
             }
         }
 #endif

@@ -1,8 +1,9 @@
 # The Loops page (#70, LoopControls.h): loops from the card's /FRIZZ, a1.wav ... (on the device the
-# same files, tools/loopfiles.py page). SHIFT + the lower C# opens it, bank A's orange on the
-# lower C# and D#; a white key switches to its loop at once, SHIFT + one at the end of the
-# loop's pass, one in a SHIFT hold with a scene drop on the drop's bar line; the lower D# the
-# next bank, B's yellow; a double tap of SHIFT goes home. Nothing is saved.
+# same files, tools/loopfiles.py page). SHIFT + the lower C# opens it at bank a: SHIFT's LED dim
+# in a's orange, the lower D# in b's yellow (where it leads), the lower C# dark. A white key
+# switches to its loop at once, SHIFT + one at the end of the loop's pass, one in a SHIFT hold
+# with a scene drop on the drop's bar line; the lower D# the next bank, b (C# then a's orange,
+# D# dark); a double tap of SHIFT goes home. Nothing is saved.
 card wav /FRIZZ/a1.wav 2 2 220
 card wav /FRIZZ/a2.wav 1.5 2 330
 card wav /FRIZZ/a3.wav 4 2 220
@@ -18,9 +19,11 @@ tap KEY_16
 wait 60
 up KEY_26
 wait 300
-# the banks' keys bright, A/01-05 dim, the slots after them dark, knob 1 dark
-expect led smt 0 fc983c
-expect led smt 1 fc983c
+# SHIFT dim orange, C# dark (no bank before a), D# in b's yellow, A/01-05 dim, the slots
+# after them dark, knob 1 dark
+expect led pth 0 211600
+expect led smt 0 000000
+expect led smt 1 fcf00c
 expect led smt 24 241408
 expect led smt 19 000000
 expect led pth 1 000000
@@ -57,15 +60,17 @@ expect led smt 21 fc983c
 tap KEY_5
 wait 1500
 expect led smt 20 fc983c
-# the next bank: B, yellow, its slot 1 dim
+# the next bank: b, its slot 1 dim yellow; C# leads back to a, D# nowhere
 tap KEY_17
 wait 300
-expect led smt 0 fcf00c
+expect led smt 0 fc983c
+expect led smt 1 000000
 expect led smt 24 242400
-# home: a double tap of SHIFT; the bank keys dark again, the loop plays on
+# home: a double tap of SHIFT; SHIFT and the bank keys dark again, the loop plays on
 tap KEY_26
 wait 100
 tap KEY_26
 wait 300
+expect led pth 0 000000
 expect led smt 0 000000
 expect led smt 1 000000

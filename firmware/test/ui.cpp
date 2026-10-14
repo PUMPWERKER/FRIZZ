@@ -500,8 +500,11 @@ static void ShiftWith(const std::vector<const char*>& keys)
     }
     Press("KEY_26", false);
 }
-/** On the Loops page: whether the Loops page shows (the lower C# lit in a bank's colour) */
-static bool LoopsShown() { return Max(SmtLedFull(kBankDownLed)) > 200; }
+/** Whether the Loops page or the Cubbi page shows (SHIFT's LED, not held, dim in a bank's
+ *  colour; dark on the play page) */
+static bool LoopsShown() { return Max(PthLedFull(kChompiKeyLed)) > 0; }
+/** The bank shown, by its colour: SHIFT's LED, dim (a PTH LED: in steps of 11) */
+static bool BankShown(const float* color) { return Shows(PthLedFull(kChompiKeyLed), color, kLoopDim, 12); }
 /** Runs ms by ms until the loop's length is frames (Probe), at most max ms: the ms it took,
  *  -1 if it never was; pos_before: where the loop that played was the ms before */
 static int UntilLength(size_t frames, int max, float* pos_before = nullptr)
@@ -3008,10 +3011,10 @@ int main()
         printf("      SHIFT %s, C# %s, D# %s, slots %s %s %s, knobs %d, SAVE %s\n", Hex(shift).c_str(),
                Hex(down).c_str(), Hex(up).c_str(), Hex(s1).c_str(), Hex(s3).c_str(),
                Hex(s4).c_str(), knobs, Hex(SmtLedFull(kSaveKeyLed)).c_str());
-        Check(dark && Shows(down, kOrange, kLoopLit) && Shows(up, kOrange, kLoopLit)
+        Check(dark && Max(down) == 0 && Shows(up, kGreen, kLoopLit)
                   && Shows(shift, kOrange, kLoopDim, 12), // a PTH LED: in steps of 11
-              "loops-page: SHIFT + the lower C# opens it: the bank keys in A's orange, SHIFT's LED "
-              "dim in it");
+              "loops-page: SHIFT + the lower C# opens it at A: SHIFT's LED dim in A's orange, C# "
+              "dark (no bank before A), D# in C's green (B is empty), where it leads");
         Check(Shows(s1, kOrange, kLoopDim) && Max(s3) == 0 && Shows(s4, kRed, kLoopDim) && knobs == 0
                   && Max(SmtLedFull(kSaveKeyLed)) == 0 && Ask({0x20})[7] == 0,
               "loops-page: A's loops dim, an empty slot dark, a refused file dim red; knobs 1-4 "
@@ -3027,26 +3030,29 @@ int main()
         // and none before it
         Tap("KEY_17");
         RunMs(100);
-        const Rgb c = SmtLedFull(kBankDownLed), c1 = SmtLedFull(LoopLed(0));
+        const Rgb c = PthLedFull(kChompiKeyLed), c1 = SmtLedFull(LoopLed(0)),
+                  c_down = SmtLedFull(kBankDownLed), c_up = SmtLedFull(kBankUpLed);
         const int past_h = RedBlinks("KEY_17", kBankUpLed);
+        const bool c_dark = Max(SmtLedFull(kBankUpLed)) == 0;
         Tap("KEY_16");
         RunMs(100);
-        const bool back = Shows(SmtLedFull(kBankUpLed), kOrange, kLoopLit);
+        const bool back = BankShown(kOrange) && Shows(SmtLedFull(kBankUpLed), kGreen, kLoopLit);
         const int past_a = RedBlinks("KEY_16", kBankDownLed);
-        printf("      bank C %s, its slot 1 %s; blinks past the last %d, the first %d\n",
-               Hex(c).c_str(), Hex(c1).c_str(), past_h, past_a);
-        Check(Shows(c, kGreen, kLoopLit) && Shows(c1, kGreen, kLoopDim) && past_h == 3 && back
-                  && past_a == 3,
-              "loops-page: D# skips the empty bank B to C (green), C# back to A; 3 red blinks "
-              "past either end");
+        printf("      bank C %s, its slot 1 %s, C# %s, D# %s; blinks past the last %d, the first %d\n",
+               Hex(c).c_str(), Hex(c1).c_str(), Hex(c_down).c_str(), Hex(c_up).c_str(), past_h, past_a);
+        Check(Shows(c, kGreen, kLoopDim, 12) && Shows(c1, kGreen, kLoopDim) && Shows(c_down, kOrange, kLoopLit)
+                  && Max(c_up) == 0 && past_h == 3 && c_dark && back && past_a == 3,
+              "loops-page: D# skips the empty bank B to C (green), where C# shows A's orange and D# "
+              "is dark; C# back to A; 3 red blinks past either end, the key dark again after");
 
         // SHIFT + D# the Cubbi page (none on the card: its bank keys blink red), SHIFT + C#
         // back to the Loops page, SHIFT + C# home
         int empty_down = 0, empty = 0;
         OpenCounting("KEY_17", empty_down, empty);
-        const bool cubbi = Shows(SmtLedFull(kBankDownLed), kTapePurple, kLoopLit) && Max(SmtLedFull(LoopLed(0))) == 0;
+        const bool cubbi = BankShown(kTapePurple) && Max(SmtLedFull(LoopLed(0))) == 0
+                           && Max(SmtLedFull(kBankDownLed)) == 0 && Max(SmtLedFull(kBankUpLed)) == 0;
         LoopsPage();
-        const bool back_a = Shows(SmtLedFull(kBankDownLed), kOrange, kLoopLit);
+        const bool back_a = BankShown(kOrange);
         LoopsPage();
         const bool home = !LoopsShown() && Max(PthLedFull(kChompiKeyLed)) == 0;
         printf("      the Cubbi page: %d red blinks, then a's purple %d; back %d, home %d\n", empty, cubbi, back_a, home);
@@ -3101,33 +3107,37 @@ int main()
                   s4 = SmtLedFull(LoopLed(3));
         printf("      SHIFT %s, C# %s, D# %s, slots %s %s %s %s\n", Hex(shift).c_str(), Hex(down).c_str(),
                Hex(up).c_str(), Hex(s1).c_str(), Hex(s2).c_str(), Hex(s3).c_str(), Hex(s4).c_str());
-        Check(LoopsShown() && Shows(down, kTapePurple, kLoopLit) && Shows(up, kTapePurple, kLoopLit)
+        Check(LoopsShown() && Max(down) == 0 && Shows(up, kOrange, kLoopLit)
                   && Shows(shift, kTapePurple, kLoopDim, 12),
-              "cubbi-page: SHIFT + the lower D# opens it: the bank keys in TAPE's purple (bank a), "
-              "SHIFT's LED dim in it");
+              "cubbi-page: SHIFT + the lower D# opens it at bank a: SHIFT's LED dim in TAPE's "
+              "purple, C# dark, D# in b's orange");
         Check(Shows(s1, kTapePurple, kLoopDim) && Max(s2) == 0 && Shows(s3, kTapePurple, kLoopDim) && Max(s4) == 0,
               "cubbi-page: the root's cubbi_a1 and CUBBI_A3 dim; a _double's and a jammi's keys dark");
         Tap("KEY_17");
         RunMs(100);
-        const Rgb b = SmtLedFull(kBankDownLed), b15 = SmtLedFull(LoopLed(14));
+        const Rgb b = PthLedFull(kChompiKeyLed), b15 = SmtLedFull(LoopLed(14));
+        const bool b_keys = Shows(SmtLedFull(kBankDownLed), kTapePurple, kLoopLit)
+                            && Shows(SmtLedFull(kBankUpLed), kTapeTeal, kLoopLit);
         Tap("KEY_17");
         RunMs(100);
-        const Rgb c = SmtLedFull(kBankDownLed), c2 = SmtLedFull(LoopLed(1));
+        const Rgb c = PthLedFull(kChompiKeyLed), c2 = SmtLedFull(LoopLed(1));
+        const bool c_keys = Shows(SmtLedFull(kBankDownLed), kOrange, kLoopLit) && Max(SmtLedFull(kBankUpLed)) == 0;
         const int past_e = RedBlinks("KEY_17", kBankUpLed);
         printf("      bank b %s, its 15 %s; bank c %s, its 2 %s; past it %d\n", Hex(b).c_str(), Hex(b15).c_str(),
                Hex(c).c_str(), Hex(c2).c_str(), past_e);
-        Check(Shows(b, kOrange, kLoopLit) && Shows(b15, kRed, kLoopDim) && Shows(c, kTapeTeal, kLoopLit)
-                  && Shows(c2, kTapeTeal, kLoopDim) && past_e == 3,
-              "cubbi-page: D#: bank b orange (cubbi_b15 at 44.1 kHz dim red), c TAPE's teal (mono "
-              "cubbi_c2 dim); d and e empty: 3 red blinks");
+        Check(Shows(b, kOrange, kLoopDim, 12) && Shows(b15, kRed, kLoopDim) && b_keys
+                  && Shows(c, kTapeTeal, kLoopDim, 12) && Shows(c2, kTapeTeal, kLoopDim) && c_keys && past_e == 3,
+              "cubbi-page: D#: bank b orange (cubbi_b15 at 44.1 kHz dim red; C# a's purple, D# c's "
+              "teal), c TAPE's teal (mono cubbi_c2 dim; C# b's orange, D# dark); d and e empty: 3 "
+              "red blinks");
 
         // SHIFT + C#: the Loops page (FRIZZ's a, orange); SHIFT + D# back, at c still; SHIFT + D#
         // home; a double tap home from it too
         LoopsPage();
-        const bool loops = Shows(SmtLedFull(kBankDownLed), kOrange, kLoopLit) && Shows(SmtLedFull(LoopLed(0)), kOrange, kLoopDim)
+        const bool loops = BankShown(kOrange) && Shows(SmtLedFull(LoopLed(0)), kOrange, kLoopDim)
                            && Max(SmtLedFull(LoopLed(2))) == 0;
         CubbiPage();
-        const bool again_c = Shows(SmtLedFull(kBankDownLed), kTapeTeal, kLoopLit);
+        const bool again_c = BankShown(kTapeTeal);
         CubbiPage();
         const bool home = !LoopsShown() && Max(PthLedFull(kChompiKeyLed)) == 0;
         CubbiPage();
@@ -3172,7 +3182,7 @@ int main()
         const bool tape = Shows(SmtLedFull(LoopLed(4)), kTapePurple, kLoopDim) && Max(SmtLedFull(LoopLed(0))) == 0;
         Tap("KEY_17");
         RunMs(100);
-        const bool no_b = Shows(SmtLedFull(kBankDownLed), kTapePurple, kLoopLit); // b and c are the root's
+        const bool no_b = BankShown(kTapePurple) && Max(SmtLedFull(kBankUpLed)) == 0; // b and c are the root's
         CardFiles().erase("/TAPE/cubbi_a5.wav");
         CardFiles()["/TAPE/presets.json"] = "{}";
         PutLoops({});
@@ -3195,17 +3205,18 @@ int main()
         int lit_keys = 0;
         for (int k = 0; k < 15; k++)
             lit_keys += Max(SmtLedFull(LoopLed(k))) > 0;
-        const bool purple = Shows(SmtLedFull(kBankDownLed), kTapePurple, kLoopLit);
+        const bool purple = BankShown(kTapePurple) && Max(SmtLedFull(kBankDownLed)) == 0
+                            && Max(SmtLedFull(kBankUpLed)) == 0;
         const int more = RedBlinks("KEY_17", kBankUpLed);
         Tap(kLoopKeys[0]);
         RunMs(100);
         printf("      red blinks C# %d, D# %d, then purple %d, keys lit %d, D# again %d\n", down, up, purple, lit_keys, more);
         Check(LoopsShown() && down == 3 && up == 3 && purple && lit_keys == 0 && more == 3 && Probe().loop_state == 0,
               "cubbi-empty: no cubbi in /TAPE (the root's not read): the page opens, its keys dark, "
-              "C# and D# blink red 3 times together, then a's purple; D# blinks red, a key plays nothing");
+              "C# and D# blink red 3 times together, then SHIFT dim purple and both dark; D# blinks red, a key plays nothing");
         int loops_down = 0, loops_up = 0;
         OpenCounting("KEY_16", loops_down, loops_up);
-        Check(loops_down == 3 && loops_up == 3 && Shows(SmtLedFull(kBankDownLed), kOrange, kLoopLit),
+        Check(loops_down == 3 && loops_up == 3 && BankShown(kOrange),
               "cubbi-empty: the Loops page without FRIZZ loops the same: 3 red blinks, then a's orange");
     }});
 
