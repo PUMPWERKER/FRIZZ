@@ -213,7 +213,7 @@ public:
         }
         const float tap = tap_bpm_.exchange(0.f);
         if (tap > 0.f)
-            tempo_clock_.Tap(tap);
+            Tap(tap);
         const uint32_t pulses = tempo_clock_.Process(
             size, looper.GetPosition(), looper.GetActualSpeed(),
             looper.GetState() == chompi::Looper::State::PAUSED || looper.Standing());
@@ -700,12 +700,19 @@ private:
      *  factor); an unquantized one fits the tempo set before it, or is guessed. A loop from
      *  the card (Looper::Switch) takes over the clock as it comes in, where it starts, with its
      *  own beats or the power of two nearest the tempo (NearestBeats) */
-    void SyncLoopTempo()
+    inline void SyncLoopTempo()
     {
         const chompi::Looper::State state = looper.GetState();
         const bool loop = state == chompi::Looper::State::PLAYING
                           || state == chompi::Looper::State::PAUSED;
-        if (loop && (!tempo_clock_.HasLoop() || looper.Switches() != switches_))
+        if ((loop && (!tempo_clock_.HasLoop() || looper.Switches() != switches_))
+            || (!loop && tempo_clock_.HasLoop()))
+            LoopTempoChanged(loop);
+    }
+    /** SyncLoopTempo's change, out of Process: only as a loop closes, is erased or switched */
+    __attribute__((noinline, cold)) void LoopTempoChanged(bool loop)
+    {
+        if (loop)
         {
             const size_t length = looper.GetLength();
             uint32_t beats = looper.GetSenderBeats();
@@ -726,9 +733,11 @@ private:
                             : chompi::GuessBeats(length, sample_rate_);
             tempo_clock_.SetLoop(length, beats, from);
         }
-        else if (!loop && tempo_clock_.HasLoop())
+        else
             tempo_clock_.ClearLoop();
     }
+    /** A tap's tempo, out of Process: once per tap */
+    __attribute__((noinline, cold)) void Tap(float bpm) { tempo_clock_.Tap(bpm); }
 
     float sample_rate_;
     std::atomic<float> tap_bpm_{0.f};
