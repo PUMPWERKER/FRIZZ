@@ -873,6 +873,29 @@ def moved(r, fx, index, send):
     return b > a + .2, a, b
 
 
+def latch_follows(r, fx, send, wait):
+    """A latch by CC, 127 then 0, each read back WAIT s after it: "" if it followed both,
+    else the half that didn't and what reading on for up to 0.5 s more found, late or never,
+    to tell a slow answer from a CC not acted on (#276); it fails either way"""
+    index = remote.FX_NAMES.index(fx)
+    missed = ""
+    for value, want in ((127, 1), (0, 0)):
+        send(value)
+        sent = time.monotonic()
+        time.sleep(wait)
+        if r.get("latch")[index] == want or missed:
+            continue
+        missed = "not %s at %.0f ms" % ("on" if want else "off", wait * 1000)
+        while time.monotonic() - sent < wait + .5:
+            time.sleep(.02)
+            if r.get("latch")[index] == want:
+                missed += ", %s after %.0f ms" % ("on" if want else "off", (time.monotonic() - sent) * 1000)
+                break
+        else:
+            missed += ", still not after %.0f ms" % ((wait + .5) * 1000)
+    return missed
+
+
 @case("cc-channels", "8: DAW automation per effect channel: CC 14-21 on channels 1-15 move that "
       "effect's knobs, CC 22 latches it; re-sending the same latch value doesn't fight the hand (#108)")
 def cc_channels(r):
@@ -891,14 +914,9 @@ def cc_channels(r):
     latched = lambda fx: r.get("latch")[remote.FX_NAMES.index(fx)]  # noqa: E731
     bad = []
     for ch in range(1, 15):
-        fx = WHITE_FX[ch]
-        r.send_usb(cc(ch, 22, 127))
-        time.sleep(.08)
-        on = latched(fx)
-        r.send_usb(cc(ch, 22, 0))
-        time.sleep(.08)
-        if not on or latched(fx):
-            bad.append("ch %d: %s" % (ch, "not on" if not on else "not off"))
+        missed = latch_follows(r, WHITE_FX[ch], lambda v: r.send_usb(cc(ch, 22, v)), .08)
+        if missed:
+            bad.append("ch %d: %s" % (ch, missed))
     r.check("CC 22 127 / 0 on channels 1-14: the latch", not bad, "; ".join(bad) or "all 14", "on, then off")
     r.send_usb(cc(5, 22, 127))
     time.sleep(.08)
@@ -920,13 +938,9 @@ def global_map(r, port):
     r.check("then CC 14 on channel 16: the filter's knob 1", up, "%.2f -> %.2f" % (a, b), "moves up")
     bad = []
     for k in range(1, 15):
-        send(cc(GLOBAL, 101 + k, 127))
-        time.sleep(.06)
-        on = r.get("latch")[remote.FX_NAMES.index(WHITE_FX[k])]
-        send(cc(GLOBAL, 101 + k, 0))
-        time.sleep(.06)
-        if not on or r.get("latch")[remote.FX_NAMES.index(WHITE_FX[k])]:
-            bad.append("CC %d" % (101 + k))
+        missed = latch_follows(r, WHITE_FX[k], lambda v: send(cc(GLOBAL, 101 + k, v)), .06)
+        if missed:
+            bad.append("CC %d: %s" % (101 + k, missed))
     r.check("CC 102-115 127 / 0: the latches", not bad, ", ".join(bad) or "all 14", "on, then off")
     bad = []
     for number, index in ((85, 0), (86, 1), (87, 2)):
