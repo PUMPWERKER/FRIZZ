@@ -208,9 +208,11 @@ its own branch with a device test (the layout can change the timing: b5c658c).
    (-4,120 / -4,512 B) the bench's effects ran up to 0.5 points slower (page2, scene4)
    and page2's worst block 1.75 higher, against at most 0.2 without it, measured in one
    hold. None of its code runs in the callback; what moved is `FxChain::Run`, whose source
-   didn't change: GCC's inlining budget (`inline-unit-growth`) is a share of the whole
-   translation unit, so code that shrinks anywhere in `chompi_main.cpp` changes which of
-   `Shifter::Process` and `Warble::Process` `Run` keeps out of line (#286). Its scene file
+   didn't change: how GCC unrolls and splits its block loop (how many call sites of
+   `Shifter::Process` and `Warble::Process` it makes, both never inlined) and its registers
+   follow unrelated code elsewhere in `chompi_main.cpp` (#286). Even without `FxScenes.h`,
+   FRIZZ.bin's `gestures.txt` came out 0.8-2.6 points higher in its worst window, which the
+   bench didn't show; so this branch is parked until `Run` is layout-robust. Its scene file
    functions keep their own `noinline, optimize("Os")`. And its helpers that call an engine
    helper `-Os` code won't inline (`SendsTo5`/`SendsFrom5` call `FxOutput::LevelGain`) would
    have to stay out: the helper's copy left out of line changed how the engine's own
