@@ -9,7 +9,7 @@ from `build/FRIZZ.map`.
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 275,308 B (99 %) | **~3.2 KB** (the bench build ~2.1 KB) | all the code, and the initial values of `.data` |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 275,780 B (99 %) | **~2.7 KB** (the bench build ~2.1 KB) | all the code, and the initial values of `.data` |
 | `SRAM` (AXI SRAM) | 240 KB | 220,436 B (90 %) | ~25 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,752 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
@@ -47,13 +47,15 @@ code came out the same. A 2 KB function that never runs, added to `chompi_main.c
 change it (only an address word moved): what moves it is real code. Since the split, both
 patches and that function leave `FxChain.o`'s code identical (`objdump -dr`), and `Run` and
 the 20 functions beside it in the ELF identical apart from the addresses of their constants,
-which sit after all the code. `FxChain.o` depends on the effects' headers, `FxCommon.h`,
+which sit after all the code. #298 merged into it confirmed that: `FxChain.o` came out
+the same, and `Run` stayed at its address (0x2400e258 in `FRIZZ.bin`). `FxChain.o` depends on the effects' headers, `FxCommon.h`,
 `BenchProfile.h`, `FrizzHot.h` and, through `FxTempoLfo.h`'s `TempoClock.h`, `MidiClock.h` and
 `UsbDevice.h`: a change there can still move it.
 
 The split itself changed `Run` once (three call sites each for `Shifter::Process` and
 `Warble::Process`, as #298 had them), and left the rest of the audio path as it was. Room:
-`FRIZZ.bin` −72 B (**~3.2 KB free**); the bench build +1,408 B (274,952 → 276,360 B, **~2.1 KB
+`FRIZZ.bin` −72 B (~3.2 KB free; with #298's loop fixes since, +64 B against `main`'s
+275,716 B, **~2.7 KB free**: #298 had shrunk `main`'s `Run` by 126 B); the bench build +1,408 B (274,952 → 276,360 B, **~2.1 KB
 free**): in the small unit GCC leaves the filter's `Insert` out of line there
 (`max-inline-insns-single`; 3.5 KB beside a 1.8 KB smaller `Run`), where `FRIZZ.bin` inlines it
 as before. Data didn't move: `.data`, `.bss`, DTCM and SDRAM are at `main`'s addresses, symbol
