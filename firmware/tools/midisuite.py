@@ -1228,7 +1228,7 @@ def feedback(r):
 
 
 def input_bits(r):
-    """STATE's input byte (#177): the mic 1 (else AUX), its effects dry 2, it live 4"""
+    """STATE's input byte (#177): the mic 1 (else AUX), its effects dry 2, it live 4, USB 8 (#196)"""
     return r.f.state()[25]
 
 

@@ -359,7 +359,7 @@ def show_state(f):
             {0: "", 2: ", SysEx holds it down", 4: ", SysEx holds it up"}.get(d[23] & 6, "")))
     if len(d) > 25:
         # the source, its effects and monitoring (#177; "live" in the code)
-        print("input      %s, %s, %s" % ("the mic" if d[25] & 1 else "AUX",
+        print("input      %s, %s, %s" % ("the mic" if d[25] & 1 else "USB" if d[25] & 8 else "AUX",
                                          "dry" if d[25] & 2 else "through the effects",
                                          "monitored" if d[25] & 4 else "not monitored"))
 
