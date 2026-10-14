@@ -200,6 +200,7 @@ enum Sub : uint8_t
                  //    check RESET, the crash record and the watchdog: kHangMain, kFaultMain,
                  //    kHangAudio, kFaultAudio
     LOOPS = 0x0D, // PART ...: the loop loader's (LoopLoader::Dev). FRIZZ.bin only
+    USB = 0x0E,   // PART ...: usb-audio-poc's (chompi_main.cpp's UsbDev), on the device only
 };
 enum Status : uint8_t
 {
@@ -318,6 +319,8 @@ struct Info
     int (*bench)(uint8_t part, uint32_t offset, uint8_t* d) = nullptr;
     // the loop loader's to LOOPS (LoopLoader::Dev): its length, or -1 for BAD
     int (*loops)(const uint8_t* arg, size_t len, uint8_t* d) = nullptr;
+    // usb-audio-poc's to USB: its length, or -1 for BAD
+    int (*usb)(const uint8_t* arg, size_t len, uint8_t* d) = nullptr;
 };
 } // namespace dev
 static const uint8_t kMidiHeader[] = {0x7D, 0x43, 0x48};

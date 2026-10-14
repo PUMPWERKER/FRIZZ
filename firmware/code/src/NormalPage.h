@@ -305,6 +305,9 @@ namespace chompi
                 // SHIFT + VOLUME held there: a bug report, its blink over the transport LEDs
                 if (settings_.BugReportHeld(now))
                     log_->RequestWrite();
+                // SHIFT + LOOP held there: the card lent or taken back (usb-audio-poc, CardLend.h)
+                if (settings_.CardHeld(now))
+                    cardlend::Get().asked = true;
                 // the limiting it sees meanwhile is old once the play page shows the key again
                 engine_->TakeLimiterGain();
                 settings_.Draw(now, Shift());
@@ -1192,6 +1195,13 @@ namespace chompi
             {
                 const int got = info.loops ? info.loops(q.arg, q.len, d + n) : 0;
                 status = !info.loops ? NOT_HERE : (got < 0 ? BAD : OK);
+                n += got > 0 ? static_cast<size_t>(got) : 0;
+                break;
+            }
+            case USB:
+            {
+                const int got = info.usb ? info.usb(q.arg, q.len, d + n) : 0;
+                status = !info.usb ? NOT_HERE : (got < 0 ? BAD : OK);
                 n += got > 0 ? static_cast<size_t>(got) : 0;
                 break;
             }

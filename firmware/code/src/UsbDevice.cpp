@@ -12,6 +12,8 @@
 #include "util/scopedirqblocker.h"
 #include "tusb.h"
 #include "usb_descriptors.h"
+#include "sys/system.h"
+#include "dev/sdram.h"
 
 namespace chompi
 {
@@ -166,8 +168,23 @@ bool Host() { return tud_ready(); }
 static uint32_t watch_frame = 0, watch_since = 0;
 static bool watch_done = false;
 
+#if FRIZZ_USB_SAFETY
+static uint32_t mounted_since = 0; // configured, nothing heard
+#endif
+
 void Watch(uint32_t now_ms)
 {
+#if FRIZZ_USB_SAFETY
+    if(tud_mounted() && !MidiTinyUsbTransport::Heard())
+    {
+        if(!mounted_since)
+            mounted_since = now_ms | 1;
+        else if(now_ms - mounted_since > 60000)
+            NVIC_SystemReset(); // deaf to the tools: as a restart over MIDI, into the launcher
+    }
+    else
+        mounted_since = 0;
+#endif
     if(watch_done || !connected)
         return;
     if(tud_mounted())
@@ -291,73 +308,98 @@ void Send(const float* const* to_host, size_t size)
 #endif
 } // namespace usb
 
-static MidiTinyUsbTransport::MidiRxParseCallback midi_rx_cb = nullptr;
-static void* midi_rx_ctx = nullptr;
-
-// filled from MainLoop with interrupts off, drained in Process(); an answer to a query is
-// 45 bytes at most (MidiControl::Reply)
-static constexpr size_t kMidiTxSize = 256;
-static uint8_t midi_tx[kMidiTxSize];
-static volatile size_t midi_tx_head = 0, midi_tx_tail = 0;
-static volatile bool midi_tx_drop = false; // only Process() moves the tail
-
-void MidiTinyUsbTransport::Reset() { midi_tx_drop = true; }
-
-void MidiTinyUsbTransport::StartRx(MidiRxParseCallback callback, void* context)
+#if FRIZZ_USB_MSC
+namespace usb
 {
-    midi_rx_ctx = context;
-    midi_rx_cb = callback;
+// the card as a drive: TinyUSB asks in its task (an async transfer), MainLoop moves the
+// sectors, through a buffer of its own the SD's DMA reaches (SDRAM, 32-byte aligned; TinyUSB's
+// is aligned to 4)
+static uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) card_buf[CFG_TUD_MSC_EP_BUFSIZE];
+static bool (*card_io)(bool, uint8_t*, uint32_t, uint32_t) = nullptr;
+static uint32_t card_sectors = 0;
+static volatile bool card_on = false, card_gone = false;
+struct CardRequest
+{
+    volatile bool posted;
+    uint32_t lba;
+    uint8_t* buf; // TinyUSB's
+    uint32_t bytes;
+    bool write;
+};
+static CardRequest card_req = {};
+static CardStats card_stats = {};
+
+void SetCard(bool (*io)(bool, uint8_t*, uint32_t, uint32_t), uint32_t sectors)
+{
+    card_io = io;
+    card_sectors = sectors;
 }
 
-bool MidiTinyUsbTransport::RxActive() { return midi_rx_cb != nullptr; }
-
-size_t MidiTinyUsbTransport::Room() const { return kMidiTxSize - (midi_tx_head - midi_tx_tail); }
-
-bool MidiTinyUsbTransport::Tx(uint8_t* buffer, size_t size)
+void CardMode(bool on)
 {
-    daisy::ScopedIrqBlocker block;
-    const bool fits = (midi_tx_head - midi_tx_tail) + size <= kMidiTxSize;
-    if(fits)
-        for(size_t i = 0; i < size; i++)
-            midi_tx[midi_tx_head++ % kMidiTxSize] = buffer[i];
-    return fits;
+    card_on = on;
+    card_gone = false;
 }
 
-void MidiTinyUsbTransport::Process()
-{
-    uint8_t buf[64];
-    while(tud_midi_available())
-    {
-        const uint32_t n = tud_midi_stream_read(buf, sizeof(buf));
-        if(n == 0)
-            break;
-        // the parser fills MidiHandler's queue, which the audio callback empties: it waits
-        if(midi_rx_cb)
-        {
-            daisy::ScopedIrqBlocker block;
-            midi_rx_cb(buf, n, midi_rx_ctx);
-        }
-    }
+bool InCardMode() { return card_on; }
 
-    // reset, or nobody listening: drop the queue
-    if(midi_tx_drop || !tud_midi_mounted())
-    {
-        midi_tx_drop = false;
-        midi_tx_tail = midi_tx_head;
+bool TakeCardGone()
+{
+    const bool gone = card_gone;
+    card_gone = false;
+    return gone;
+}
+
+const CardStats& GetCardStats() { return card_stats; }
+
+void CardTask()
+{
+    if(!card_req.posted)
         return;
-    }
-
-    while(midi_tx_tail != midi_tx_head)
+    const uint32_t bytes = card_req.bytes;
+    bool ok = card_on && card_io;
+    if(ok)
     {
-        const size_t pos = midi_tx_tail % kMidiTxSize;
-        const size_t count = midi_tx_head - midi_tx_tail;
-        const size_t chunk = count < kMidiTxSize - pos ? count : kMidiTxSize - pos;
-        const uint32_t sent = tud_midi_stream_write(0, &midi_tx[pos], chunk);
-        midi_tx_tail += sent;
-        if(sent < chunk)
-            break; // the rest next time
+        const uint32_t t0 = daisy::System::GetUs();
+        if(card_req.write)
+            memcpy(card_buf, card_req.buf, bytes);
+        ok = card_io(card_req.write, card_buf, card_req.lba, bytes / 512);
+        if(ok && !card_req.write)
+            memcpy(card_req.buf, card_buf, bytes);
+        card_stats.io_us += daisy::System::GetUs() - t0;
     }
+    if(ok && card_req.write)
+    {
+        card_stats.writes++;
+        card_stats.kb_written += bytes / 1024;
+    }
+    else if(ok)
+    {
+        card_stats.reads++;
+        card_stats.kb_read += bytes / 1024;
+    }
+    else
+        card_stats.errors++;
+    card_req.posted = false;
+    tud_msc_async_io_done(ok ? int32_t(bytes) : TUD_MSC_RET_ERROR, false);
 }
+
+// TinyUSB's task: posts the transfer for MainLoop
+static int32_t CardPost(uint32_t lba, uint32_t offset, uint8_t* buffer, uint32_t bytes, bool write)
+{
+    if(!card_on || offset || !bytes || bytes % 512 || bytes > sizeof(card_buf) || card_req.posted
+       || lba + bytes / 512 > card_sectors)
+        return TUD_MSC_RET_ERROR;
+    card_req.lba = lba;
+    card_req.buf = buffer;
+    card_req.bytes = bytes;
+    card_req.write = write;
+    card_req.posted = true;
+    return TUD_MSC_RET_ASYNC;
+}
+} // namespace usb
+#endif
+
 } // namespace chompi
 
 // TinyUSB's callbacks
@@ -371,22 +413,97 @@ extern "C"
 
     void OTG_HS_IRQHandler(void) { tusb_int_handler(FRIZZ_USB_RHPORT, true); }
 
-#if FRIZZ_USB_AUDIO
+#if FRIZZ_USB_MSC
+    void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t product_id[16], uint8_t product_rev[4])
+    {
+        (void)lun;
+        memcpy(vendor_id, "FrizZ   ", 8);
+        memcpy(product_id, "CHOMPI card     ", 16);
+        memcpy(product_rev, "1.0 ", 4);
+    }
+
+    bool tud_msc_test_unit_ready_cb(uint8_t lun)
+    {
+        if(chompi::usb::card_on)
+            return true;
+        tud_msc_set_sense(lun, SCSI_SENSE_NOT_READY, 0x3a, 0x00); // medium not present
+        return false;
+    }
+
+    void tud_msc_capacity_cb(uint8_t lun, uint32_t* block_count, uint16_t* block_size)
+    {
+        (void)lun;
+        *block_count = chompi::usb::card_on ? chompi::usb::card_sectors : 0;
+        *block_size = 512;
+    }
+
+    bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool start, bool load_eject)
+    {
+        (void)lun;
+        (void)power_condition;
+        if(load_eject && !start && chompi::usb::card_on)
+            chompi::usb::card_gone = true;
+        return true;
+    }
+
+    int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset, void* buffer, uint32_t bufsize)
+    {
+        (void)lun;
+        return chompi::usb::CardPost(lba, offset, static_cast<uint8_t*>(buffer), bufsize, false);
+    }
+
+    int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset, uint8_t* buffer, uint32_t bufsize)
+    {
+        (void)lun;
+        return chompi::usb::CardPost(lba, offset, buffer, bufsize, true);
+    }
+
+    int32_t tud_msc_scsi_cb(uint8_t lun, uint8_t const scsi_cmd[16], void* buffer, uint16_t bufsize)
+    {
+        (void)scsi_cmd;
+        (void)buffer;
+        (void)bufsize;
+        tud_msc_set_sense(lun, SCSI_SENSE_ILLEGAL_REQUEST, 0x20, 0x00); // invalid command
+        return -1;
+    }
+#endif
+
+#if FRIZZ_USB_AUDIO || FRIZZ_USB_MSC
     // after SET_CONFIGURATION every interface is at alt 0
     void tud_mount_cb(void)
     {
+#if FRIZZ_USB_AUDIO
         chompi::usb::alt_rx = chompi::usb::alt_tx = false;
         chompi::usb::PostStop();
+#endif
     }
 
-    void tud_umount_cb(void) { chompi::usb::PostStop(); }
+    void tud_umount_cb(void)
+    {
+#if FRIZZ_USB_AUDIO
+        chompi::usb::PostStop();
+#endif
+#if FRIZZ_USB_MSC
+        if(chompi::usb::card_on)
+            chompi::usb::card_gone = true;
+#endif
+    }
 
+    // unplugged too, as far as FRIZZ can tell: there's no VBUS pin
     void tud_suspend_cb(bool remote_wakeup_en)
     {
         (void)remote_wakeup_en;
+#if FRIZZ_USB_AUDIO
         chompi::usb::PostStop();
+#endif
+#if FRIZZ_USB_MSC
+        if(chompi::usb::card_on)
+            chompi::usb::card_gone = true;
+#endif
     }
+#endif
 
+#if FRIZZ_USB_AUDIO
     void tud_resume_cb(void)
     {
         chompi::usb::Post(chompi::usb::req_rx, chompi::usb::alt_rx);

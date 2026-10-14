@@ -29,6 +29,14 @@ extern "C" {
 #ifndef FRIZZ_USB_AUDIO
 #define FRIZZ_USB_AUDIO            1
 #endif
+// the card as a USB drive, lent on the settings page (CardLend.h); make USB_MSC=0 leaves it out
+#ifndef FRIZZ_USB_MSC
+#define FRIZZ_USB_MSC              1
+#endif
+// UsbDevice.h's Watch: no MIDI from a host for 60 s restarts into the launcher (test builds)
+#ifndef FRIZZ_USB_SAFETY
+#define FRIZZ_USB_SAFETY           1
+#endif
 #ifndef FRIZZ_UAC1
 #define FRIZZ_UAC1                 0
 #endif
@@ -36,7 +44,7 @@ extern "C" {
 #define CFG_TUD_AUDIO              FRIZZ_USB_AUDIO
 #define CFG_TUD_MIDI               1
 #define CFG_TUD_CDC                0
-#define CFG_TUD_MSC                0
+#define CFG_TUD_MSC                FRIZZ_USB_MSC
 #define CFG_TUD_HID                0
 #define CFG_TUD_VENDOR             0
 
@@ -65,6 +73,8 @@ extern "C" {
 
 #define CFG_TUD_MIDI_RX_BUFSIZE    64
 #define CFG_TUD_MIDI_TX_BUFSIZE    64
+
+#define CFG_TUD_MSC_EP_BUFSIZE     4096 // 8 sectors a transfer
 
 #ifdef __cplusplus
 }

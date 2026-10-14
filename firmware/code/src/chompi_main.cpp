@@ -19,6 +19,7 @@
 #include "MidiControl.h"
 #include "MidiOut.h"
 #include "SdCard.h"
+#include "CardLend.h"
 #include "Crash.h"
 #if !FRIZZ_BENCH
 #include "LoopLoader.h"
@@ -170,6 +171,63 @@ extern "C" uint32_t _esdram_bss;
 #ifdef __arm__
 extern "C" uint32_t g_pfnVectors, _sidata, _sdata, _edata, _stext;
 #endif
+#if defined(__arm__)
+/** kCmdDev's USB (usb-audio-poc): 0 -> the audio's counts (UsbDevice.h's Stats); 1 -> the
+ *  card's (CardStats) and whether it's lent; 2 X -> the card lent (X 1) or taken back (0), as
+ *  the settings page's SHIFT + LOOP; its length, or -1 for BAD */
+static size_t UsbPut(uint8_t* d, size_t n, uint32_t v, size_t groups)
+{
+    for (size_t g = groups; g-- > 0;)
+        d[n++] = static_cast<uint8_t>(g * 7 < 32 ? (v >> (g * 7)) & 0x7F : 0);
+    return n;
+}
+
+static int UsbDev(const uint8_t* arg, size_t len, uint8_t* d)
+{
+    size_t n = 0;
+    const uint8_t part = len ? arg[0] : 0;
+    const uint8_t flags = (usb::Host() ? 1 : 0)
+#if FRIZZ_USB_AUDIO
+                          | (usb::RxStreaming() ? 2 : 0)
+#endif
+#if FRIZZ_USB_MSC
+                          | (cardlend::Get().lent ? 4 : 0)
+#endif
+        ;
+    if (part == 0)
+    {
+        d[n++] = flags;
+#if FRIZZ_USB_AUDIO
+        const usb::Stats& s = usb::GetStats();
+        for (uint32_t v : {s.rx_blocks, s.rx_dry, s.rx_starts, s.tx_blocks, s.tx_full})
+            n = UsbPut(d, n, v, 5);
+        n = UsbPut(d, n, s.rx_fill, 2);
+        n = UsbPut(d, n, s.tx_fill, 2);
+#endif
+        return static_cast<int>(n);
+    }
+#if FRIZZ_USB_MSC
+    if (part == 1)
+    {
+        d[n++] = flags;
+        const usb::CardStats& c = usb::GetCardStats();
+        for (uint32_t v : {c.reads, c.writes, c.kb_read, c.kb_written, c.errors, c.io_us / 1000})
+            n = UsbPut(d, n, v, 5);
+        return static_cast<int>(n);
+    }
+    if (part == 2 && len > 1)
+    {
+        cardlend::State& card = cardlend::Get();
+        if ((arg[1] != 0) != card.lent)
+            card.asked = true;
+        d[n++] = flags;
+        return static_cast<int>(n);
+    }
+#endif
+    return -1;
+}
+#endif
+
 static void DevInfo(dev::Info& info)
 {
 #ifdef __arm__
@@ -190,6 +248,11 @@ static void DevInfo(dev::Info& info)
     info.bench = [](uint8_t part, uint32_t offset, uint8_t* d) { return bench.Report(part, offset, d); };
 #else
     info.loops = [](const uint8_t* arg, size_t len, uint8_t* d) { return loop_loader.Dev(arg, len, d); };
+#endif
+#if defined(__arm__)
+    info.usb = UsbDev;
+#endif
+#if !FRIZZ_BENCH
 #endif
 }
 
@@ -377,6 +440,57 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
 
 uint32_t uit, now;
 
+/** usb-audio-poc part 2 (#196): the card lent to the computer as a USB drive, or taken back,
+ *  as the settings page or the developers' SysEx asked (CardLend.h); the computer's transfers.
+ *  True while it's lent */
+#if defined(__arm__) && FRIZZ_USB_MSC
+static void CardRemount()
+{
+    f_mount(&fsi.GetSDFileSystem(), fsi.GetSDPath(), 1);
+    EnterFrizzDir();
+}
+
+static bool CardLendProcess(uint32_t now)
+{
+    cardlend::State& card = cardlend::Get();
+    usb::CardTask();
+    const bool gone = usb::TakeCardGone();
+    const bool asked = card.asked;
+    card.asked = false;
+    if (card.lent && (gone || asked))
+    {
+        usb::CardMode(false);
+        usb::CardTask(); // one the computer still waited on fails
+        CardRemount();
+        card.lent = false;
+#if !FRIZZ_BENCH
+        loop_loader.Request(LoopLoader::SCANNING); // the computer may have changed them
+#endif
+    }
+    else if (!card.lent && asked)
+    {
+        const bool busy = engine.looper.GetState() == chompi::Looper::State::RECORDING || scene_store.Busy()
+                          || event_log.Writing()
+#if !FRIZZ_BENCH
+                          || loop_loader.Busy()
+#endif
+            ;
+        if (!usb::Host() || busy)
+            card.refused.Start(now);
+        else
+        {
+            // FatFs lets go of it: nothing of it cached that the computer would change under it
+            f_mount(nullptr, fsi.GetSDPath(), 0);
+            card.lent = true;
+            usb::CardMode(true);
+        }
+    }
+    return card.lent;
+}
+#else
+static bool CardLendProcess(uint32_t) { return false; }
+#endif
+
 uint32_t batt;
 
 void MainLoop(void* data)
@@ -415,18 +529,26 @@ void MainLoop(void* data)
     usb::Watch(now); // usb-audio-poc: an enumeration that hangs restarts into the launcher
 #endif
 
+    // usb-audio-poc part 2: the card lent to the computer (CardLend.h); meanwhile nothing
+    // here touches it, what waits for it waits
+    const bool card_lent = CardLendProcess(now);
+
 #if !FRIZZ_BENCH
     // loops from the card: a step, before the card's other users; it leaves them the card
     // when they want it (LoopLoader.h)
-    loop_loader.Process(scene_store.Busy() || event_log.Writing());
-    // the Loops page's: the loads it asks for, the switch (LoopControls.h)
-    ui.LoopsProcess();
+    if (!card_lent)
+    {
+        loop_loader.Process(scene_store.Busy() || event_log.Writing());
+        // the Loops page's: the loads it asks for, the switch (LoopControls.h)
+        ui.LoopsProcess();
+    }
 #endif
     // a scene saved, copied or deleted: the card is written here, never in the audio callback
-    scene_store.Process(event_log.Writing());
+    if (!card_lent)
+        scene_store.Process(event_log.Writing());
     // a bug report asked for: written a chunk per pass, also from MainLoop only; not with
-    // the card kept out of it (PERSIST 0)
-    event_log.Process(now, midi_clock, scene_store.InRam());
+    // the card kept out of it (PERSIST 0), nor lent
+    event_log.Process(now, midi_clock, scene_store.InRam() || card_lent);
 
     // a restart asked for over MIDI (MidiClock.h), once no report is being written and the
     // master settings that were waiting are on the card, or a second after it was asked for
@@ -515,6 +637,12 @@ int main(void)
     System::Delay(100);
     fsi.Init(FatFSInterface::Config::MEDIA_SD);
     SdDiskLink(fsi.GetSDPath());
+#if defined(__arm__) && FRIZZ_USB_MSC
+    // the card as a USB drive, while lent (CardLend.h): its sectors through SdDisk.h's transfers
+    usb::SetCard([](bool write, uint8_t* buf, uint32_t sector, uint32_t count) {
+        return sddisk::Transfer<SdHalPort>(write, buf, sector, count);
+    }, hsd1.SdCard.LogBlockNbr);
+#endif
     System::Delay(100);
     // FRIZZ's files live in /FRIZZ, created on first start (SceneStore.h)
     scene_store.Init(&fsi.GetSDFileSystem(), fsi.GetSDPath());

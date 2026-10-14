@@ -52,6 +52,9 @@
  *                        page 3, and SHIFT + turn does nothing here
  *    SHIFT + VOLUME press, both held 2 s     a bug report (EventLog.h), once per hold;
  *                                            the transport LEDs blink as on the play page
+ *    SHIFT + LOOP, both held 2 s             usb-audio-poc only (#196): the card lent to the
+ *                                            computer as a USB drive, or taken back
+ *                                            (CardLend.h); LOOP blue while it's lent
  *
  *  The CHOMPI key is lit white while SHIFT is held, as on the play page. Each key acts on its
  *  press. A setting the card can't take blinks the key changed last red 3 times (LedSignal.h),
@@ -69,6 +72,7 @@
 #include "hardware.h"
 #include "LedColors.h"
 #include "LedSignal.h"
+#include "CardLend.h"
 #include "MasterSettings.h"
 #include "MidiClock.h"
 #include "MidiControl.h"
@@ -275,6 +279,7 @@ public:
     {
         const uint8_t bit = key == static_cast<int>(Hardware::SwId::KEY_26)     ? 1
                             : key == static_cast<int>(Hardware::SwId::ENC_6_SW) ? 2
+                            : key == static_cast<int>(Hardware::SwId::KEY_28)   ? kLoopHeld
                                                                                 : 0;
         if (!bit)
             return;
@@ -284,6 +289,20 @@ public:
             held_since_ = now;
         else if (held_ != kBothHeld)
             reported_ = false;
+        if (held_ == kCardHeld && was != kCardHeld)
+            card_since_ = now;
+        else if (held_ != kCardHeld)
+            card_asked_ = false;
+    }
+
+    /** True once per hold, when SHIFT and LOOP have both been held kBugReportHoldMs: the card
+     *  lent or taken back (CardLend.h) */
+    bool CardHeld(uint32_t now)
+    {
+        if (held_ != kCardHeld || card_asked_ || now - card_since_ < kBugReportHoldMs)
+            return false;
+        card_asked_ = true;
+        return true;
     }
 
     /** True once per hold, when SHIFT and VOLUME's press have both been held kBugReportHoldMs */
@@ -420,6 +439,12 @@ public:
         PthLed(kVolumeLed, battery, 1.f);
         PthLed(kTransportLedRev, purple, 1.f);
         PthLed(kTransportLedFwd, purple, 1.f);
+        // LOOP: the card lent (blue), or refused (red, 3 blinks); else dark (CardLend.h)
+        cardlend::State& card = cardlend::Get();
+        if (card.refused.Active(now))
+            PthLed(kLoopLed, red, card.refused.BlinkLit(now) ? 1.f : 0.f);
+        else
+            PthLed(kLoopLed, blue, card.lent ? 1.f : 0.f);
         PthLed(kChompiKeyLed, white, shift || (held_ & kShiftHeld) ? 1.f : 0.f);
         if (refused_.Active(now))
         {
@@ -455,6 +480,7 @@ private:
     static const uint8_t kNumChannelKeys = 14; // white keys 1-14; the 15th is 15 and 16
     static const Hardware::SwId kChannel15Key = Hardware::SwId::KEY_15;
     static const uint8_t kShiftHeld = 1, kBothHeld = 3; // Held's bits: SHIFT 1, VOLUME 2
+    static const uint8_t kLoopHeld = 4, kCardHeld = 5;  // LOOP 4
     static const int kNoKey = -1;
     static const uint32_t kBugReportHoldMs = 2000;
 
@@ -496,6 +522,8 @@ private:
     uint8_t held_ = 0;          // SHIFT and VOLUME's press down on the page, by Held's bits
     uint32_t held_since_ = 0;   // since when both are
     bool reported_ = false;     // this hold has asked for its bug report
+    uint32_t card_since_ = 0;   // since when SHIFT and LOOP are
+    bool card_asked_ = false;   // this hold has asked for the card
     int unsaved_key_ = kNoKey;  // the key that changed a setting last, not yet on the card
     LedSignal refused_;         // its write failed: 3 red blinks on it
     LedSignal dark_fx_;         // A# pressed while dark: 3 red blinks on it

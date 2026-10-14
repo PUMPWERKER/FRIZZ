@@ -11,6 +11,9 @@ enum
     ITF_NUM_AUDIO_STREAMING_TX, // FRIZZ -> host
     ITF_NUM_MIDI,
     ITF_NUM_MIDI_STREAMING,
+#if FRIZZ_USB_MSC
+    ITF_NUM_MSC, // the card as a drive, while lent (CardLend.h)
+#endif
     ITF_NUM_TOTAL
 };
 #else
@@ -18,6 +21,9 @@ enum
 {
     ITF_NUM_MIDI = 0,
     ITF_NUM_MIDI_STREAMING,
+#if FRIZZ_USB_MSC
+    ITF_NUM_MSC,
+#endif
     ITF_NUM_TOTAL
 };
 #endif

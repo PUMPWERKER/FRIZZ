@@ -11,7 +11,7 @@
  *    FRIZZ's clock both ways: an OUT FIFO held half full by the feedback endpoint (FIFO count),
  *    IN packets of n-1, n or n+1 frames by the IN FIFO's fill. CRS trims the USB clock (HSI48)
  *    to the host's start of frame.
- *  - MIDI (MidiTinyUsbTransport): libDaisy's MidiHandler on TinyUSB. What comes in is read and
+ *  - MIDI (UsbMidiTransport.h): libDaisy's MidiHandler on TinyUSB. What comes in is read and
  *    parsed in TinyUSB's task, what goes out queued from MainLoop and sent from the task.
  *  - TinyUSB's task runs from TIM7 at 4 kHz, priority 2: below the USB interrupt and the
  *    audio callback (0, which never preempt each other), above MainLoop. Receive() and Send()
@@ -27,6 +27,7 @@
 #include <cstddef>
 #include <cstdint>
 #include "tusb_config.h"
+#include "UsbMidiTransport.h"
 
 namespace chompi
 {
@@ -69,38 +70,38 @@ struct Stats
 const Stats& GetStats();
 #endif
 
+#if FRIZZ_USB_MSC
+/** The card as a USB drive (CardLend.h): MainLoop moves its sectors, through io (SdDisk.h's
+ *  transfers), the card's sectors many */
+void SetCard(bool (*io)(bool write, uint8_t* buf, uint32_t sector, uint32_t count), uint32_t sectors);
+/** On: the computer sees the card (a medium in the drive), FRIZZ leaves it alone; off: no
+ *  medium. From MainLoop */
+void CardMode(bool on);
+bool InCardMode();
+/** True once when the computer ejected it, or USB went (unplugged, suspended) while it was on */
+bool TakeCardGone();
+/** From MainLoop, every pass: the computer's transfer, if one waits */
+void CardTask();
+struct CardStats
+{
+    uint32_t reads, writes;       // transfers
+    uint32_t kb_read, kb_written; // their KB
+    uint32_t errors;
+    uint32_t io_us;               // the card's time in them, us
+};
+const CardStats& GetCardStats();
+#endif
+
 /** A function TinyUSB's task calls every pass, before it sends MIDI: MIDI out's USB bytes
  *  (MidiOut::FlushUsb), so a MainLoop held up by the card doesn't hold them up (#265) */
 void SetTaskHook(void (*hook)());
 
-/** From MainLoop: an enumeration that never finishes (the host sends frames for 10 s but
- *  never configures FRIZZ) restarts into the launcher, whose USB the tools can reach. A PoC's
- *  way back without the power switch */
+/** From MainLoop, a PoC's ways back to the launcher, whose USB the tools reach, without the
+ *  power switch: an enumeration that never finishes (the host sends frames for 10 s but never
+ *  configures FRIZZ) restarts into it; so, in a build with FRIZZ_USB_SAFETY (make's default;
+ *  USB_SAFETY=0 leaves it out), does a host that configured FRIZZ but sent it no MIDI at all
+ *  for 60 s: the tools ask at once (flash.py, IDENT), so FRIZZ is deaf to them */
 void Watch(uint32_t now_ms);
 } // namespace usb
 
-/** libDaisy's MidiHandler transport on TinyUSB: Tx queues from MainLoop (or any context),
- *  Process() in the task sends and receives */
-class MidiTinyUsbTransport
-{
-public:
-    typedef void (*MidiRxParseCallback)(uint8_t* data, size_t size, void* context);
-
-    struct Config
-    {
-    };
-
-    void Init(Config) {}
-    void Reset();
-    void StartRx(MidiRxParseCallback callback, void* context);
-    /** Whether StartRx was called: MidiHandler::Listen() calls it only while this is false */
-    bool RxActive();
-    void FlushRx() {}
-    /** All of it queued, or nothing (false): the queue's full, or no host */
-    bool Tx(uint8_t* buffer, size_t size);
-    /** The queue's free bytes */
-    size_t Room() const;
-
-    static void Process();
-};
 } // namespace chompi

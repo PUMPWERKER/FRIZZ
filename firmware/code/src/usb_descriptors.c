@@ -1,7 +1,7 @@
 // FRIZZ's USB device: one audio function (48 kHz / 24 bit, 2 channels each way, asynchronous
 // with a feedback endpoint) and one MIDI function. From lost-tty/CHOMPI's TAPE (MIT,
-// github.com/lost-tty/CHOMPI, firmware/chompi-tape/code/src/usb_descriptors.c), without MSC,
-// with FRIZZ's names and a UAC1 variant. usb-audio-poc (#196), an experiment.
+// github.com/lost-tty/CHOMPI, firmware/chompi-tape/code/src/usb_descriptors.c), with FRIZZ's
+// names, a UAC1 variant and the card as a USB drive (MSC, CardLend.h). usb-audio-poc (#196), an experiment.
 //
 // The names stay libDaisy's (usbd_desc.c): maker "Chompi Club", product "FrizZ", the serial
 // in ST's format, the Daisy's VID:PID 0483:5740. The tools find FRIZZ by them (tools/chompi.py,
@@ -14,11 +14,11 @@
 #define USB_PID 0x5740
 // ST's stack had 0x0200; each layout of interfaces its own, so hosts that cache by it re-read them
 #if !FRIZZ_USB_AUDIO
-#define USB_BCD_DEVICE 0x0300
+#define USB_BCD_DEVICE (0x0300 + FRIZZ_USB_MSC)
 #elif FRIZZ_UAC1
-#define USB_BCD_DEVICE 0x0311
+#define USB_BCD_DEVICE (0x0310 + FRIZZ_USB_MSC)
 #else
-#define USB_BCD_DEVICE 0x0321
+#define USB_BCD_DEVICE (0x0320 + FRIZZ_USB_MSC)
 #endif
 
 #define EPNUM_AUDIO_RX 0x01
@@ -26,6 +26,16 @@
 #define EPNUM_AUDIO_TX 0x82
 #define EPNUM_MIDI_OUT 0x03
 #define EPNUM_MIDI_IN  0x83
+#define EPNUM_MSC_OUT  0x04
+#define EPNUM_MSC_IN   0x84
+
+#if FRIZZ_USB_MSC
+#define MSC_DESC_LEN TUD_MSC_DESC_LEN
+#define MSC_DESC TUD_MSC_DESCRIPTOR(ITF_NUM_MSC, STRID_MSC, EPNUM_MSC_OUT, EPNUM_MSC_IN, 64),
+#else
+#define MSC_DESC_LEN 0
+#define MSC_DESC
+#endif
 
 enum
 {
@@ -34,6 +44,7 @@ enum
     STRID_PRODUCT,
     STRID_SERIAL,
     STRID_AUDIO,
+    STRID_MSC,
     STRID_COUNT
 };
 
@@ -94,7 +105,7 @@ uint8_t const *tud_descriptor_device_cb(void)
      + TUD_AUDIO20_DESC_CS_AS_ISO_EP_LEN)
 
 #define MIDI_IAD_LEN 8
-#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + AUDIO_DESC_LEN + MIDI_IAD_LEN + TUD_MIDI_DESC_LEN)
+#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + AUDIO_DESC_LEN + MIDI_IAD_LEN + TUD_MIDI_DESC_LEN + MSC_DESC_LEN)
 
 #define STEREO (AUDIO20_CHANNEL_CONFIG_FRONT_LEFT | AUDIO20_CHANNEL_CONFIG_FRONT_RIGHT)
 
@@ -144,6 +155,7 @@ static uint8_t const desc_configuration[] = {
     MIDI_IAD_LEN, TUSB_DESC_INTERFACE_ASSOCIATION, ITF_NUM_MIDI, 2, TUSB_CLASS_AUDIO,
     AUDIO_FUNCTION_SUBCLASS_UNDEFINED, AUDIO_FUNC_PROTOCOL_CODE_UNDEF, 0x00,
     TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, 0x00, EPNUM_MIDI_OUT, EPNUM_MIDI_IN, 64),
+    MSC_DESC
 };
 
 #elif FRIZZ_USB_AUDIO
@@ -163,7 +175,7 @@ static uint8_t const desc_configuration[] = {
      + TUD_AUDIO10_DESC_TYPE_I_FORMAT_LEN(1) + TUD_AUDIO10_DESC_STD_AS_ISO_EP_LEN                \
      + TUD_AUDIO10_DESC_CS_AS_ISO_EP_LEN)
 
-#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + AUDIO_DESC_LEN + TUD_MIDI_DESC_LEN)
+#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + AUDIO_DESC_LEN + TUD_MIDI_DESC_LEN + MSC_DESC_LEN)
 
 #define STEREO (AUDIO10_CHANNEL_CONFIG_LEFT_FRONT | AUDIO10_CHANNEL_CONFIG_RIGHT_FRONT)
 
@@ -210,16 +222,18 @@ static uint8_t const desc_configuration[] = {
                                   AUDIO10_CS_AS_ISO_DATA_EP_LOCK_DELAY_UNIT_UNDEFINED, 0x0000),
 
     TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, 0x00, EPNUM_MIDI_OUT, EPNUM_MIDI_IN, 64),
+    MSC_DESC
 };
 
 #else
 // ---- MIDI alone ---------------------------------------------------------------------------
 
-#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_MIDI_DESC_LEN)
+#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_MIDI_DESC_LEN + MSC_DESC_LEN)
 
 static uint8_t const desc_configuration[] = {
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, 0x00, 100),
     TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, 0x00, EPNUM_MIDI_OUT, EPNUM_MIDI_IN, 64),
+    MSC_DESC
 };
 #endif
 
@@ -237,6 +251,7 @@ static char const *const string_desc[] = {
     [STRID_PRODUCT]      = "FrizZ",
     [STRID_SERIAL]       = NULL, // from the chip's unique ID
     [STRID_AUDIO]        = "FrizZ",
+    [STRID_MSC]          = "FrizZ card",
 };
 
 TU_VERIFY_STATIC(sizeof(string_desc) / sizeof(string_desc[0]) == STRID_COUNT, "a string per ID");

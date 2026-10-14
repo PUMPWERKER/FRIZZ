@@ -33,6 +33,14 @@ ifeq ($(USB_FLUSH),main)
 C_DEFS += -DFRIZZ_USB_FLUSH_MAIN=1
 override BUILD_DIR := $(or $(BUILD_DIR),build)-flushmain
 endif
+ifeq ($(USB_MSC),0)
+C_DEFS += -DFRIZZ_USB_MSC=0
+override BUILD_DIR := $(or $(BUILD_DIR),build)-nomsc
+endif
+ifeq ($(USB_SAFETY),0)
+C_DEFS += -DFRIZZ_USB_SAFETY=0
+override BUILD_DIR := $(or $(BUILD_DIR),build)-nosafety
+endif
 ifeq ($(UAC1),1)
 C_DEFS += -DFRIZZ_UAC1=1
 override BUILD_DIR := $(or $(BUILD_DIR),build)-uac1
@@ -52,6 +60,7 @@ TINYUSB_SOURCES = $(TINYUSB_DIR)/tusb.c \
 	$(TINYUSB_DIR)/device/usbd.c \
 	$(TINYUSB_DIR)/class/audio/audio_device.c \
 	$(TINYUSB_DIR)/class/midi/midi_device.c \
+	$(TINYUSB_DIR)/class/msc/msc_device.c \
 	$(TINYUSB_DIR)/portable/synopsys/dwc2/dcd_dwc2.c \
 	$(TINYUSB_DIR)/portable/synopsys/dwc2/dwc2_common.c
 C_SOURCES = $(TINYUSB_SOURCES) usb_descriptors.c
