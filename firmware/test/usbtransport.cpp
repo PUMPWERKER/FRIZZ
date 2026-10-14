@@ -3,7 +3,8 @@
 // MidiHandler::Listen() must start the receive (RxActive false until StartRx: lost-tty's port
 // said true from the start and was deaf to USB MIDI, so the PoC's first build on the device
 // answered nothing, #196); what the host sends reaches the parser, FRIZZ's answers reach the host whole,
-// a queue too full refuses a message whole, Reset() and an unmounted host drop the queue. The
+// a queue too full refuses a message whole, Reset() and an unmounted host drop the queue, and so
+// does a host that doesn't read for kStalePasses, keeping a message TinyUSB has begun. The
 // virtual CHOMPI can't show it: its USB is its own (twin/host/hid/usb_midi.h). Run by unit.sh
 // usbtransport.
 // unit includes: usbtransport ../code/libs/libDaisy/src ../code/libs/libDaisy/src/sys
@@ -145,5 +146,61 @@ int main()
     tusbstub::mounted = true;
     chompi::MidiTinyUsbTransport::Process();
     Check(tusbstub::to_host.empty(), "without a host the queue is dropped");
+
+    // a host that has FRIZZ but doesn't read (Linux, no app on the port): the clock fills the
+    // queue, which is dropped after kStalePasses, so an app opening the port later gets no
+    // backlog (on main ~270 ticks in a burst, measured on the device), and SendUsb doesn't wait
+    using T = chompi::MidiTinyUsbTransport;
+    tusbstub::room = 0;
+    uint8_t tick = 0xF8;
+    while (t.Tx(&tick, 1))
+        ;
+    Check(!t.Stuck(), "not stuck at once");
+    for (uint32_t pass = 0; pass < T::kStuckPasses; pass++)
+        T::Process();
+    Check(t.Stuck(), "stuck after kStuckPasses: SendUsb doesn't wait for room");
+    Check(t.Room() == 0, "kept until kStalePasses");
+    for (uint32_t pass = T::kStuckPasses; pass < T::kStalePasses; pass++)
+        T::Process();
+    Check(t.Room() == T::kTxSize, "dropped after kStalePasses: a reply fits again");
+    tusbstub::room = 64;
+    t.Tx(&tick, 1);
+    T::Process();
+    Same(std::to_string(tusbstub::to_host.size()), "1", "an app opening the port gets the new tick, no backlog");
+    Check(!t.Stuck(), "read again: not stuck");
+
+    // the host stops reading in the middle of an answer: TinyUSB has begun a SysEx and would
+    // pack whatever follows into it, so the drop keeps the answer through its F7
+    tusbstub::to_host.clear();
+    tusbstub::room = 10;
+    t.Tx(answer.data(), answer.size());
+    T::Process();
+    tusbstub::room = 0;
+    for (int i = 0; i < 3; i++)
+        t.Tx(&tick, 1);
+    for (uint32_t pass = 0; pass < T::kStalePasses; pass++)
+        T::Process();
+    tusbstub::room = 64;
+    t.Tx(&tick, 1);
+    T::Process();
+    std::vector<uint8_t> want = answer;
+    want.push_back(0xF8);
+    Check(tusbstub::to_host == want, "a SysEx cut by a stall ends with its F7, then the new tick");
+
+    // the same within a CC: its data bytes kept, the ticks after it dropped
+    tusbstub::to_host.clear();
+    uint8_t cc[3] = {0xB0, 0x10, 0x40};
+    tusbstub::room = 1;
+    t.Tx(cc, 3);
+    T::Process();
+    tusbstub::room = 0;
+    for (int i = 0; i < 3; i++)
+        t.Tx(&tick, 1);
+    for (uint32_t pass = 0; pass < T::kStalePasses; pass++)
+        T::Process();
+    tusbstub::room = 64;
+    t.Tx(&tick, 1);
+    T::Process();
+    Check(tusbstub::to_host == std::vector<uint8_t>({0xB0, 0x10, 0x40, 0xF8}), "a CC cut by a stall whole, then the new tick");
     return Finish();
 }

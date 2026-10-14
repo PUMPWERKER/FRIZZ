@@ -108,6 +108,11 @@ what FRIZZ does.
 
 ### Fixed
 
+- **No burst of old MIDI clock when an app opens FRIZZ's USB port late**: with MIDI out on
+  USB and no app on the computer reading FRIZZ's port yet, the clock piled up, and an app
+  opening the port later (a DAW, at any time after) got about 270 ticks at once, eleven beats,
+  and any Start or Stop among them. Now what nobody takes for a tenth of a second is dropped,
+  so the app gets the clock from about then on.
 - **The resonator rings on its note with the tone dark** (#303): the darker the tone and the
   higher the note, the flatter it rang, 67 cents (two thirds of a semitone) at 440 Hz with the
   tone at the bottom and still 20 cents with it a quarter up. Now its notes are within 5 cents
