@@ -108,6 +108,10 @@ what FRIZZ does.
 
 ### Fixed
 
+- **A loop switch at once always crossfades** (#302): now and then a switch by a white key or
+  a program change cut over hard, with a click, instead of fading the old loop out over 10 ms,
+  most often when two switches came within a few ms of each other (a program change right
+  after a key). Now every switch fades; one that comes during another's fade waits for it.
 - **The resonator rings on its note with the tone dark** (#303): the darker the tone and the
   higher the note, the flatter it rang, 67 cents (two thirds of a semitone) at 440 Hz with the
   tone at the bottom and still 20 cents with it a quarter up. Now its notes are within 5 cents

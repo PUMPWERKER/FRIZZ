@@ -119,6 +119,19 @@ static void MainEntry()
 
 bool InMain() { return in_main; }
 
+// the audio interrupt in the middle of main() (PreemptAt): main() gives up its block there
+int irq_blocked = 0;
+static const char* preempt_at = nullptr;
+void PreemptAt(const char* point) { preempt_at = point; }
+void Preempt(const char* point)
+{
+    if (in_main && !irq_blocked && preempt_at && !strcmp(preempt_at, point))
+    {
+        main_ns = window_end;
+        Yield();
+    }
+}
+
 uint64_t NowNs()
 {
     if (!in_main)
@@ -703,6 +716,7 @@ TWIN_READ(ReadLoopLength, o.GetLength())
 TWIN_READ(ReadLoopBeats, o.GetBeats())
 TWIN_READ(ReadLoopPos, o.GetPosition())
 TWIN_READ(ReadLoopSpeed, o.GetActualSpeed())
+TWIN_READ(ReadLoopSwitches, o.Switches())
 #undef TWIN_READ
 
 template <typename L>
@@ -713,6 +727,7 @@ static void ReadLoop(const L* looper, ClockState& c)
     c.loop_beats = ReadLoopBeats(*looper, 0);
     c.loop_pos = ReadLoopPos(*looper, 0);
     c.loop_speed = ReadLoopSpeed(*looper, 0);
+    c.loop_switches = ReadLoopSwitches(*looper, 0);
 }
 static void ReadLoop(int, ClockState&) {}
 

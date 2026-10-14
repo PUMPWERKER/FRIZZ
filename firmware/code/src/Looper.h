@@ -43,7 +43,7 @@
  *  A loop from the card (#70, LoopControls.h) takes over with Switch: the looper then reads
  *  another buffer, which holds the loop's frames and its head again after its end, so the
  *  post-roll's crossfade at the loop point is the loop's own. It switches at once (the next
- *  block), at the loop point once Wraps() has counted to a pass, or when the engine says
+ *  block, or once the fade-out of the switch before is over), at the loop point once Wraps() has counted to a pass, or when the engine says
  *  (ReleaseSwitch: a scene sequence's landing). The tape runs on across it: the new loop
  *  keeps the speed and the direction, standing if the tape stands. It starts at its start
  *  in the direction the tape runs (its end in reverse), or, by time (Switch's keep), as far
@@ -744,12 +744,16 @@ private:
             DoSwitch();
     }
 
-    /** A block's start with a switch waiting: at once, or the crossfader's other loop once
-     *  the voice is free (a switch's fade out over) */
+    /** A block's start with a switch waiting: at once, or the crossfader's other loop, once
+     *  the voice is free (a switch's fade out over, the crossfader let go and gone) */
     __attribute__((noinline, cold)) void Switched()
     {
         if (next_at_ == kSwitchNow)
-            DoSwitch();
+        {
+            // the one voice for a fade-out: a fade still running isn't cut off (#302)
+            if (!other_mem_ || (fader_ && !end_))
+                DoSwitch();
+        }
         else if (next_at_ == kSwitchFade && !other_mem_)
         {
             // nothing to fade from: at once
