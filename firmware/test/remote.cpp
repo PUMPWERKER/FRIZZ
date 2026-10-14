@@ -957,6 +957,23 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
         crash_mem.running = running;
         crash::Clear(crash_mem.record);
     }
+    {
+        // a stacking fault, or an SP where no stack is: the handler doesn't read the frame (a
+        // second fault there would lock the core up), it keeps the SP and the fault's bits
+        using namespace chompi;
+        Check(crash::FrameReadable(0x2001ff00u, 0x8200) && crash::FrameReadable(0x24070000u, 0)
+                  && !crash::FrameReadable(0x2001ff00u, 0x1000) && !crash::FrameReadable(0x2001ff00u, 0x10)
+                  && !crash::FrameReadable(0x2001fff0u, 0) && !crash::FrameReadable(0x60000000u, 0)
+                  && !crash::FrameReadable(0x2001ff02u, 0),
+              "crash: the stacked frame is read only if stacked, in DTCM or the AXI SRAM");
+        crash::Record r = {};
+        const uint32_t frame[8] = {0, 0, 0, 0, 0, 0x24001235, 0x24004214, 0x01000003};
+        const uint32_t fault[4] = {0x1000, 0x40000000, 0, 0};
+        crash::Write(r, crash::HARD_FAULT, crash_mem.running, 1, 0, frame, fault, false);
+        Check(crash::Valid(r) && r.pc == 0 && r.lr == 0 && r.xpsr == 0 && r.cfsr == 0x1000
+                  && r.sp == (reinterpret_cast<uintptr_t>(frame) & 0xFFFFFFFFu),
+              "crash: a frame not stacked isn't read, its SP and the fault's bits recorded");
+    }
     rc = Remote({"crash-test", "fault-main"}, out);
     Check(rc != 0 && Has(out, "TEST: not in this build"), "remote: crash-test, on FRIZZ: not in this build");
 
