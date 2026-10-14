@@ -881,7 +881,8 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
         drop_every = 0;
         Check(rc == 0 && chunks_dropped > 0 && !Has(out, ", 0 rewinds") && Card("/FRIZZ/h2.wav") == Read(other),
               "remote: loops put with every 7th CHUNK lost on the way: rewound, the file whole");
-        printf("      %d CHUNKs dropped: %s", chunks_dropped, out.substr(out.rfind("h2.wav ->")).c_str());
+        const size_t line = out.rfind("h2.wav ->");
+        printf("      %d CHUNKs dropped: %s", chunks_dropped, line == std::string::npos ? "\n" : out.substr(line).c_str());
         rc = Remote({"loops", "ls"}, out);
         Check(rc == 0 && Has(out, "h1  stereo, 10000 frames (0.21 s), " + std::to_string(named.size()) + " B, \"" + name + "\"\n")
                   && Has(out, "h2  mono, 7000 frames") && Has(out, "cubbi_c3  stereo")
@@ -1645,6 +1646,7 @@ builds.built = lambda bench: "tag.bin"
 builds.image = lambda bench: "tag.bin"
 builds.stale = lambda path: False
 builds.describe = lambda path: path
+builds.frizz_version = lambda: (1, 0, 0, 0)
 tag = [None]
 flash.tagged = lambda where=None: tag[0]
 def case(name, *argv):
@@ -1665,6 +1667,14 @@ case("10 tagged", "--no-build", "--slot", "10")
 case("its file to 10", "tag.bin", "--slot", "10")
 case("another file to 10", "other.bin", "--slot", "10")
 case("the bench to 13", "--bench", "--slot", "13")
+builds.frizz_version = lambda: (1, 5, 0, 1)
+case("10 tagged, another version", "--slot", "10")
+tag[0] = "v1.5.0-beta.1"
+case("13 its beta", "--no-build", "--slot", "13")
+tag[0] = "v1.5.0"
+case("10 not its release", "--no-build", "--slot", "10")
+print("versions:", builds.tag_version("v1.5.0"), builds.tag_version("v1.5.0-beta.12"), builds.tag_version("v1.0"),
+      builds.version_name((1, 5, 0, 1)))
 tag[0] = None
 case("test", "--test")
 case("file to 12", "other.bin", "--slot", "12")
@@ -1689,6 +1699,12 @@ case("file to 11", "other.bin", "--slot", "11")
               && Has(out, "exit: key 13 is the latest beta, the user's: never the bench")
               && Has(out, "the bench to 13: []\n"),
           "tools: another file isn't, nor the bench, on a tag too");
+    Check(Has(out, "exit: code/src/Version.h's kFrizzVersion is v1.5.0-beta.1, the tag v1.0.0")
+              && Has(out, "10 tagged, another version: []\n")
+              && Has(out, "13 its beta: ['launcher', 'tag.bin --slot 13 --name FRIZZ-BETA --device l']\n")
+              && Has(out, "10 not its release: []\n")
+              && Has(out, "versions: (1, 5, 0, 0) (1, 5, 0, 12) None v1.5.0-beta.1\n"),
+          "tools: 10 and 13 take a tag's build only where kFrizzVersion is the tag's (the loop transfer's HELLO)");
     Check(Has(out, "test: ['build', 'launcher', 'tag.bin --slot 12 --name FRIZZ-TEST --device l']\n")
               && Has(out, "file to 12: ['launcher', 'other.bin --slot 12 --name FRIZZ-TEST --device l']\n")
               && Has(out, "file to 11: ['launcher', 'other.bin --slot 11 --name FRIZZ-BENCH --device l']\n"),

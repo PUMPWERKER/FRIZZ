@@ -412,8 +412,8 @@ static void TestVectors()
     const std::string text = ss.str();
     Reader r{text};
     const J v = r.Value();
-    Check(v.Get("format") && v.Get("format")->num == 1 && v.Get("protocol")->arr[0].num == kMajor
-              && v.Get("protocol")->arr[1].num == kMinor,
+    Check(v.Get("format") && v.Get("format")->num == 1 && v.Get("protocol")->arr[0].num == kLoopsProtocol
+              && v.Get("protocol")->arr[1].num == kLoopsProtocolMinor,
           "vectors: format 1, the firmware's protocol version");
     for (const J& s : v.Get("sessions")->arr)
     {

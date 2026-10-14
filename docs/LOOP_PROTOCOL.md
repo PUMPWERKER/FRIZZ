@@ -1,25 +1,25 @@
 # Loop transfer: FRIZZ's loop banks over USB MIDI
 
-Status: **specification, version 1.0** (#278, 2026-10-14). Nothing of it is built yet. The
-firmware builds it after the USB audio switch (#196). The web app in frizz-web builds against
-a simulation of it. Both sides follow this document. Where the code and this document
-disagree, one of them has a bug. Where this document is unclear, settle it here first, then
-build.
+Status: **specification, version 1.0** (#278, 2026-10-14), built in the firmware for v1.5
+(`firmware/code/src/LoopTransfer.h`, PR for #278) and in frizz-web's Companion page. Both
+sides follow this document. Where the code and this document disagree, one of them has a bug.
+Where this document is unclear, settle it here first, then build.
 
-A web page (frizz-web, Web MIDI in Chrome- and Firefox-based browsers) manages FRIZZ's loop
+The Companion page (`/companion/` on the website: frizz-web, Web MIDI in Chrome- and
+Firefox-based browsers) manages FRIZZ's loop
 banks directly over USB. It lists what's on the card, uploads loops, moves, swaps and
 deletes them, and copies TAPE's cubbis into FRIZZ's slots. FRIZZ answers over a small SysEx
 protocol of its own, which this document defines. The protocol is for players, through the
-web app, so it is stable and versioned. It is separate from the developers' SysEx (`0x3E`,
+Companion, so it is stable and versioned. It is separate from the developers' SysEx (`0x3E`,
 `firmware/README.md`), which may change with any build.
 
-The web app is for arranging loops and for single loops. A 16-bar loop takes a minute or more
+The Companion is for arranging loops and for single loops. A 16-bar loop takes a minute or more
 over MIDI (section 6). For many loops at once, the card reader (SHIFT + LOOP, #196) is the
 faster way.
 
 Words used here:
 
-- **app**: the side that asks. The web app, `remote.py`, or the reference client
+- **app**: the side that asks. The Companion page, `remote.py`, or the reference client
   (section 8).
 - **slot**: a place for a loop, numbered as the loop loader numbers them (`LoopLoader.h`):
   bank 0-7 are FRIZZ's banks a-h (`/FRIZZ/a1.wav` … `/FRIZZ/h15.wav`), bank 8-12 are TAPE's
@@ -78,7 +78,7 @@ answer   F0 7D 43 48 78 OP SEQ STATUS DATA… F7
 | What | v1 limit | Why |
 |---|---|---|
 | a request, the bytes between `F0` and `F7` | **128** | libDaisy's parser keeps 128 SysEx bytes (`SYSEX_BUFFER_LEN`, `MidiEvent.h`). A longer message is cut off without notice and still delivered at `F7`. |
-| an answer, `F0` to `F7` | **45** | FRIZZ's `MidiControl::Reply`: one USB transfer (15 USB-MIDI packets). That leaves 39 bytes after the `78`: `OP SEQ STATUS` plus up to 36 bytes of data. |
+| an answer, `F0` to `F7` | **45** | one USB transfer (15 USB-MIDI packets). That leaves 39 bytes after the `78`: `OP SEQ STATUS` plus up to 36 bytes of data. (`MidiControl::Reply` itself sends up to 51 bytes, 17 packets, for FRIZZ's other answers; this protocol's stay within 45.) |
 | a CHUNK's data | **98 bytes** (HELLO's `maxChunk`) | 14 packed groups of 7 (112 bytes). The largest request is then 123 bytes: header 11 + 112. |
 | CHUNKs in flight | **16** (HELLO's `window`) | decided with the supervisor; section 6 |
 
@@ -188,7 +188,7 @@ one it tells the player which FRIZZ it needs, or that the page is older than the
 
 ### 2.2 `site/features.json`
 
-FrizZ tells frizz-web what the firmware at a tag can do, so the site shows the loop page only
+FrizZ tells frizz-web what the firmware at a tag can do, so the site shows the Companion page only
 where the release supports it. The file comes with the firmware, not before.
 
 ```json
@@ -206,11 +206,11 @@ where the release supports it. The file comes with the firmware, not before.
   stable release for `/` and the pre-release for `/beta/`, or `FRIZZ_DIR` for a local checkout.
   A 404 means `{}`, anything else that fails fails the build, as for the other files. It writes
   the result to `src/data/firmware.json` (not `features.json`: `src/data/features.md` is the
-  landing page's copy). The loop page and its link in the navigation are built only where
+  landing page's copy). The Companion page and its link in the navigation are built only where
   `loopTransfer` is a major version the app supports.
 - **Checked by:** `doclinks.py`, once the firmware's PR adds the file: valid JSON, an object
   of non-negative integers, and `loopTransfer` equal to the protocol major in the firmware
-  (`kLoopsProtocol`).
+  (`kLoopsProtocol`, `LoopTransfer.h`).
 - The site's page and the player's FRIZZ can still differ: the player may run an older build.
   The site's flag only says the release has the feature. HELLO says whether the CHOMPI on the
   cable has it.
@@ -383,22 +383,30 @@ that keeps to the window never overfills it. Otherwise:
 - OFFSET beyond it, a length that doesn't match, a full ring, a paused write: a **gap**. The
   CHUNK is dropped and `DROPS` counts it.
 - an unknown TID: ignored, with an ack of `NO_TRANSFER` at most every 250 ms, so a stale app
-  stops. The app then reads `STATUS` for how its job ended (it may have ended while an answer
-  was lost, e.g. `WRITE_BEGIN`'s) and acts on that result.
+  stops. That ack carries the CHUNK's TID, `NEXT` 0 and `DROPS` 0. The app then reads `STATUS`
+  for how its job ended (it may have ended while an answer was lost, e.g. `WRITE_BEGIN`'s) and
+  acts on that result.
+- a CHUNK too short to have its `LEN` (fewer than 6 bytes after `11`): ignored.
+
+FRIZZ doesn't check that every CHUNK but the last carries `maxChunk` bytes: a shorter one at the
+right `OFFSET` is taken. The app keeps to it, so its offsets stay `maxChunk` apart.
 
 **FRIZZ acks** (`SEQ` 0, `NEXT` and `DROPS` as they stand) once in every pass of its UI
-(~2 ms) in which `NEXT` or `DROPS` changed, every 250 ms while paused, and once in the pass in
-which a pause ends (an `OK` ack, so the app starts sending again without waiting for its
-`STATUS` poll; the app also takes `STATUS` phase 1 as the pause's end, in case that ack is
-lost). An ack takes
-precedence over FRIZZ's other answers and over MIDI feedback in that pass. `DROPS` (0-127,
+(~2 ms) in which `NEXT` or `DROPS` changed or a repeat came, every 250 ms while paused (the
+first as the pause begins), once in the pass in which a pause ends (an `OK` ack, so the app
+starts sending again without waiting for its `STATUS` poll; the app also takes `STATUS` phase 1
+as the pause's end, in case that ack is lost), and once when FRIZZ ends the write itself (its
+status, below). At most one ack goes in a pass. It doesn't take the place of FRIZZ's one
+answer a pass: the ack goes first, then the pass's answer (this protocol's, or another of
+FRIZZ's), both in the same pass, so a `STATUS` poll is answered while the acks stream. `DROPS` (0-127,
 wrapping, 0 at `WRITE_BEGIN`) goes up by one for every CHUNK dropped as a gap. Because it is a
 count and not a flag, a lost ack loses nothing: the next one still shows that it changed. An
 ack's `STATUS`:
 
 - `OK`: running.
 - `BUSY_RECORDING`, `BUSY_LOADING`, `BUSY_CARD`: paused (3.8). The app stops sending and
-  waits for an `OK` ack, polling `STATUS` meanwhile.
+  waits for an `OK` ack, polling `STATUS` meanwhile. While paused FRIZZ takes nothing out of
+  its ring either, so `NEXT` stands still.
 - anything else ends the write: `NO_TRANSFER`, `NO_SPACE`, `CARD_ERROR`, `CARD_LENT`,
   `TIMED_OUT`, `ABORTED`. FRIZZ has deleted the temp file, and `STATUS` keeps the result.
 
@@ -473,6 +481,9 @@ FRIZZ checks right away:
 5. renames `xfer.tmp` to the slot's name, `/FRIZZ/<bank><key>.wav` in lower case;
 6. updates the slot (result, frames, beats, size, name), forgets every copy of that slot in
    RAM (5.5), and the phase becomes done (4).
+
+Steps 1, 2 and 3 take a pass each (step 3 one per 256 clusters), steps 4 to 6 one pass
+together: once the old file is deleted, nothing (no `ABORT`) comes between it and the rename.
 
 A failure in steps 2-5 deletes `xfer.tmp`, leaves the slot as it was, and sets phase 5 with
 the status. The app polls `STATUS` until the phase is 4 or 5. A FatFs call that fails at any
@@ -792,7 +803,7 @@ reports `maxChunk`, `window` and `maxRequest` and the app follows them.
    Bigger CHUNKs only shrink the header's share (11 of 123 bytes today) and the number of
    acks, so this comes last.
 
-**The web app is for arranging loops and for single loops.** For many loops at once, the card
+**The Companion is for arranging loops and for single loops.** For many loops at once, the card
 reader (SHIFT + LOOP, #196) is the faster way: the computer writes `/FRIZZ` directly at
 ~700-790 KB/s, 5 to 20 times this protocol's rate. The app says so when a batch is large
 (over ~50 MB) and RESCANs once the card is back. The MANUAL will say the same when the feature
@@ -811,8 +822,8 @@ audio callback.
 - **MainLoop** unpacks the ring into a staging buffer in SDRAM, updates the CRC, and writes
   whole 32 KB blocks to `xfer.tmp` (the last one shorter), as the loader's and SceneStore's
   card work does, a step a pass, giving the card to the loader's DMA when it wants it.
-- **Acks** take one of the one-a-pass answers (`NormalPage::Remote`), before the other queries
-  and MIDI feedback.
+- **Acks** go in the one-a-pass answer's pass (`NormalPage::Remote`), before it, without taking
+  its place: one ack and one answer at most a pass.
 
 ---
 
@@ -835,20 +846,30 @@ supervisor's decision.
 
 ### 7.2 Where it plugs in
 
-- `MidiControl::SysEx`: a `case kCmdLoops` before `default:`, USB only. CHUNKs go to the ring
-  (6.4). Other requests go to a one-request slot of their own, apart from the developers'
-  queue (`DevQuery` has 5 bytes of arguments, too few) and the queries' slot.
-- A new `LoopTransfer` (or the like) in MainLoop beside `LoopLoader`: the job's state, the
-  temp file, the steps of 3.9 and 3.12, the boot cleanup (5.6). It reuses the loader's
-  `WavWalk`, `SlotPath`, `SlotOf` and `MapStep`, and is another card user that the loader
-  waits for, as SceneStore is.
-- `WavWalk` learns `LIST/INFO/INAM` (5.3). `loops::Slot` gets the name and its length.
-- `LoopControls` gets "forget slot X" (5.5).
-- `crash::Crc32` starts and ends the CRC in one call: the job needs an incremental one (the same
-  table, the state kept between steps).
-- Code room: `SRAM_EXEC` has ~17 KB (`docs/CAPACITY.md`). Build it `-Os`
-  (`LOOP_LOADER_ONCE`), as the loader is. The ring and the staging buffer stay out of `SRAM`.
-- `FRIZZ-bench.bin` answers `NOT_HERE` to every OP but HELLO.
+As built (`LoopTransfer.h`):
+
+- `MidiControl::SysEx`: a `case kCmdLoops` (0x38), USB only, not logged. It hands the bytes to
+  `loopxfer::Intake`, the audio callback's half: a CHUNK into the ring (6.4, in SDRAM), any
+  other request into a one-request slot of its own, apart from the developers' queue and the
+  queries' slot.
+- `LoopTransfer` in MainLoop after the loader, while the card is lent too (it refuses then):
+  the requests, the job's state, the temp file, the steps of 3.9 and 3.12, the free space's
+  count (5.4), the acks. It reuses the loader's `WavWalk` (`LoopLoader::Walk`) and `SlotPath`,
+  follows the clusters as `MapStep` does, and waits for the loader (a load pauses it). Its
+  messages go out from the play page's one answer a pass (`MidiControl::xfer_send`).
+  `LoopTransfer::Boot` deletes the temp file before the loader's scan; the scan puts a swap's
+  temp file right (`LoopLoader::Repair`). `CardLendProcess` calls `LoopTransfer::Lend` before
+  FatFs lets go of the card.
+- `WavWalk` learns `LIST/INFO/INAM` (5.3). `loops::Slot` gets the name, its length, the file's
+  size.
+- `LoopControls::Forget` (5.5), `LoopControls::Flags` for SLOT's flags 1 and 2.
+- `crash::Crc32More`: the CRC carried on between steps (the same table).
+- The protocol's version: `loopxfer::kLoopsProtocol` (major) and `kLoopsProtocolMinor`;
+  FRIZZ's: `kFrizzVersion` in `Version.h` (7.1).
+- Code room: the header is built `-Os`. `FRIZZ.bin` took ~8 KB of `SRAM_EXEC` (~2.5 KB left
+  after it, `docs/CAPACITY.md`), ~1.5 KB of `SRAM` (the job's state and its two files); the
+  ring, the staging block and the names are in SDRAM.
+- `FRIZZ-bench.bin` answers `NOT_HERE` to every OP but HELLO (`loopxfer::BenchAnswer`).
 
 ---
 
@@ -880,6 +901,70 @@ frizz-web's simulator (JavaScript) is built from this document and checked again
 `vectors.json` at the release tag it builds from, as it reads the docs. The firmware's unit
 check is checked against the same vectors. The vectors are the contract's test, and a change to
 the protocol changes them in the same commit.
+
+**The vectors' format** (`vectors.json`, `format` 1). One JSON object: `format` 1, `protocol`
+`[major, minor]`, `pass_ms` 2, `about`, and `sessions`, a list. A session has a `name`, an
+`about`, its `card` before, its `steps` and the card `after`; `"bench": true` for one of
+`FRIZZ-bench.bin` (HELLO answered in the pass after it came, `NOT_HERE` with `DETAIL` 0 to the
+rest).
+
+- **`card`**: `cluster`, its bytes (4096); `clusters`, the volume's; `fsinfo`, whether the
+  card's FSINFO has the free count at a mount (false: FRIZZ counts it, 5.4); `frag_clusters`,
+  the most clusters of a file in one piece (a new file's next piece starts after a free
+  cluster; a file of n clusters is in ceil(n / `frag_clusters`) fragments); `dirs`, the
+  folders; `files`, each path's bytes in hex. Names are found in any case, as FAT finds them. The
+  free clusters are `clusters` less each file's ceil(size / `cluster`).
+- **`steps`**, in order:
+  - `{"boot": true}`: FRIZZ starts on the card as it is: it mounts it, deletes
+    `/FRIZZ/xfer.tmp` and starts its scan. The job, the remembered request, the TID count (the
+    first is 1) and the states below start afresh.
+  - `{"app": "F0 … F7"}`: a message from the app, taken by the audio callback at once: the
+    bytes between `F0` and `F7`, the first 128 of them (1.3). A CHUNK goes into the ring, a
+    request into its slot; a request while another waits there is dropped. Without USB
+    (`usb` false) nothing arrives.
+  - `{"run": N, "frizz": […]}`: N passes. `frizz` is every message FRIZZ sent in them, in
+    order, in hex, `??` any byte; `null` isn't checked (after a power cut).
+  - `{"settle": true, "frizz": […]}`: passes until one sends nothing while FRIZZ has no card
+    work left: no scan, no count of the free space, no job step waiting (a finishing write, a
+    copy, a full staging block), no temp file to delete.
+  - `{"set": {"name": true|false, …}}`: FRIZZ's state: `card` (mounted; false: `NO_CARD`),
+    `lent` (true: a job ends with `CARD_LENT` and its temp file is deleted, then the card is
+    let go; false: the card mounted again and scanned), `recording`, `loading`, `card_busy` (a
+    save or a bug report writes the card), `usb` (false: nothing goes out, a job ends
+    `ABORTED`). After boot `card` and `usb` are true, the rest false.
+  - `{"remount": true}`: the card mounted again, as a save does after a failed one: open files
+    become invalid, what was written to one since its last sync is lost, FSINFO is read again.
+  - `{"put": {path: "hex"}}`: a file put on the card by hand.
+  - `{"cut": K}`: a power cut after the K-th name change from here (a file created, renamed or
+    deleted, a folder made), 0 at once: the card stays as it is then, a file open for writing
+    as at its last sync. FRIZZ's messages aren't checked until the next `boot`.
+- **`after`**: every file on the card at the end, path → `{"size": n, "crc32": "8 hex
+  digits"}` (zlib's).
+- **Masked**: in HELLO's `OK` answer, FRIZZ's version (the message's bytes 10-13) is `??`. It
+  changes with every release, the contract doesn't.
+
+**A pass** is one of MainLoop's, 2 ms of FRIZZ's clock (it moves after the pass). In it:
+
+1. the loader's scan step, unless the card is lent or `card_busy`: `/FRIZZ`'s listing 24
+   entries a pass (the end of the folder found in the pass that reads past its last), then the
+   swap repair (5.6) in that pass; a pass for each slot's file found there (lowest bank and key
+   first), its header walked; a pass to go on to TAPE's folder (`/TAPE` if it's there, else
+   the root), listed and walked the same way; a pass to end. The listing is a folder's files in
+   their names' byte order, then its folders. A slot's result is the walk's (section 5.1, the
+   walk of `LoopLoader.h`: 1 KB windows, 8 at most);
+2. the transfer's step, in this order: a job ends `ABORTED` without USB; a running or paused
+   job pauses or goes on (3.8: recording, then loading, then `card_busy`); a running write takes
+   CHUNKs out of its ring while its staging block holds 32 KB or less; the request waiting is
+   answered (unless the last answer hasn't gone yet); one card step if the card is free (no
+   `card`, `lent`, `loading` or `card_busy`): the temp file deleted, else a job's step (not while
+   recording: a 32 KB block written and synced, 32 KB of a copy, or one of 3.9's steps), else
+   one FAT sector (128 entries) of the free count while no job runs; then the 30 s timeout;
+   then the ack, if one is due (3.7: at most one, an end of the write's first, then a running
+   or paused write's, then a stale TID's `NO_TRANSFER`);
+3. what it sends: the ack, then the answer.
+
+`loopxfer.py`'s `Frizz`, `Loader` and `Transfer` are this, statement for statement where the
+bytes depend on it: where this summary leaves a doubt, they settle it.
 
 ### 8.2 Host checks (stage 1)
 

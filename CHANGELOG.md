@@ -9,6 +9,17 @@ what FRIZZ does.
 
 ### Added
 
+- **The Companion** (#278): a web page, [frizz.friedrichwagner.eu/companion](https://frizz.friedrichwagner.eu/companion/),
+  that manages your loop banks over the USB cable while FRIZZ plays, in Chrome, Edge and other
+  Chromium-based browsers and in Firefox. It lists what's on the card, FRIZZ's banks with each
+  loop's name and TAPE's cubbis, uploads audio files into FRIZZ's slots (converted to 16-bit
+  48 kHz in the browser, their name and beats written into the file), moves, swaps and deletes
+  them, and copies a cubbi into a FRIZZ slot, as one batch with a progress bar. A loop that
+  plays plays on, and an upload cut short leaves the slot as it was. Uploads go over MIDI: a
+  long loop takes minutes, so for many loops at once the card as a USB drive is faster. FRIZZ
+  now reads a loop's name from its WAV (`LIST/INFO/INAM`). See
+  [The Companion](MANUAL.md#the-companion).
+
 - **Loops from the SD card** (#70): put your own WAVs in the card's `FRIZZ` folder as `a1.wav`
   to `h15.wav` (bank a-h and the white key, 16-bit 48 kHz, up to 16 bars at 50 BPM) and play
   them from the new Loops page, SHIFT + the lower C#, one on each white key, the lower C# and D#

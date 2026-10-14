@@ -737,6 +737,11 @@ UsbDevice.h / .cpp     FRIZZ's USB-C port on TinyUSB (../libs/tinyusb): the soun
 usb_descriptors.c/.h   the USB descriptors, with and without the sound card; tusb_config.h TinyUSB's settings
 UsbMidiTransport.h     libDaisy's MIDI transport on TinyUSB (test/usbtransport.cpp)
 CardLend.h             the card lent to the computer: what the settings page shows and asks
+LoopLoader.h           loops from the card (#70): the slots' scan (a WAV's header and name), a load
+                       straight into SDRAM by the SDMMC's DMA
+LoopControls.h         the Loops page's and the Cubbi page's loops: the plan, the loads, the switch
+LoopTransfer.h         the loop transfer over USB MIDI (#278, ../../docs/LOOP_PROTOCOL.md), the
+                       Companion's: SysEx 0x38, the CHUNKs' ring, MainLoop's job; Version.h kFrizzVersion
 FxChain.h              the punch-in effects in their processing order, with a level meter each
 FxParams.h             each effect's knobs: how many, defaults, steps, coarse grids; the compressor's too
 FxSlots.h              each effect's key, LED and colours; the compressor's key

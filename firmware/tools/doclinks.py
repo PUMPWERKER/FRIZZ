@@ -40,10 +40,15 @@ Checked:
   fields (all of them, none other, none twice, each within its length), one paragraph where it
   has one, 3 to 6 moves (### under Session) with 1 to 4 `Controls`, no HTML, images or other
   lists, `code` only in Controls, links only to the docs (anchors resolving), images/ or https.
+- site/features.json (docs/LOOP_PROTOCOL.md 2.2), what the release's firmware can do: one JSON
+  object, its keys camelCase feature names, its values integers 0 and up; loopTransfer the loop
+  transfer's protocol major in the firmware (LoopTransfer.h's kLoopsProtocol), there as long as
+  the firmware has it.
 - An image that isn't in the repo (yet) is a warning, not an error.
 - Every picture under images/ is what firmware/tools/diagrams/diagrams.py draws now
   (`diagrams.py --check`): its figures read MANUAL.md's knob names and the firmware's colours.
 """
+import json
 import os
 import re
 import shutil
@@ -64,6 +69,7 @@ LINK = re.compile(r'(!?)\[(?:[^\[\]]|\[[^\]]*\])*\]\(([^)\s]+)\)')
 DASH = re.compile(r'^[—–-]?$')
 SRC = 'firmware/code/src'
 LANDING = 'site/landing.md'
+FEATURES = 'site/features.json'
 FLOAT = r'(\d+\.?\d*|\.\d+)[fF]?'
 EFFECT_SUMMARY = 160  # characters: an effect's summary is its key's card on the landing page
 
@@ -339,11 +345,38 @@ def check(root):
             errors.append(f'MANUAL.md: no heading "{fallback}", the site\'s fallback for a white key')
 
     key_colours(root, cells, row[0] if row else 0, errors)
+    features(root, errors)
     if os.path.exists(os.path.join(root, LANDING)):
         checked += landing(root, anchors, errors)
     else:
         errors.append(f'{LANDING}: missing (the landing page\'s text)')
     return errors, warnings, checked
+
+
+def features(root, errors):
+    """site/features.json, as fetch-docs reads it (docs/LOOP_PROTOCOL.md 2.2)"""
+    m = re.search(r'\bkLoopsProtocol = (\d+)', read(root, f'{SRC}/LoopTransfer.h') or '')
+    path = os.path.join(root, FEATURES)
+    if not os.path.exists(path):
+        if m:
+            errors.append(f'{FEATURES}: missing, and the firmware has the loop transfer (kLoopsProtocol)')
+        return
+    try:
+        v = json.load(open(path, encoding='utf-8'))
+    except ValueError as e:
+        errors.append(f'{FEATURES}: not JSON ({e})')
+        return
+    if not isinstance(v, dict):
+        errors.append(f'{FEATURES}: not one JSON object')
+        return
+    for k, x in v.items():
+        if not re.fullmatch(r'[a-z][A-Za-z0-9]*', k):
+            errors.append(f'{FEATURES}: "{k}" isn\'t a feature\'s name in camelCase')
+        if not isinstance(x, int) or isinstance(x, bool) or x < 0:
+            errors.append(f'{FEATURES}: "{k}" is {json.dumps(x)}, not an integer 0 or more')
+    if m and v.get('loopTransfer') != int(m.group(1)):
+        errors.append(f'{FEATURES}: loopTransfer is {json.dumps(v.get("loopTransfer"))}, the firmware\'s '
+                      f'protocol major (kLoopsProtocol) {m.group(1)}')
 
 
 def read(root, path):
@@ -763,8 +796,18 @@ def selftest(root, quiet=False):
          'a link goes to MANUAL.md'),
         ('two emphases in a title', sub(S, r'^- Title: Loop it, then \*mangle\* it$', '- Title: *Loop* it, *mangle*'),
          'one *emphasis*'),
+        # site/features.json
+        ('features.json not JSON', sub(FEATURES, r'\}\s*$', ',}'), 'not JSON'),
+        ('features.json a list', edit(FEATURES, lambda t: '[' + t + ']'), 'not one JSON object'),
+        ('a feature not a number', sub(FEATURES, r'"loopTransfer": 1', '"loopTransfer": 1, "other": "yes"'),
+         'not an integer'),
+        ('a feature not camelCase', sub(FEATURES, r'"loopTransfer": 1', '"loopTransfer": 1, "Loop-Pages": 1'),
+         'camelCase'),
+        ('loopTransfer not the firmware\'s', sub(FEATURES, r'"loopTransfer": \d+', '"loopTransfer": 7'),
+         'the firmware\'s protocol major'),
+        ('features.json gone', edit(FEATURES, lambda t: '{}'), 'loopTransfer is null'),
     ]
-    files = LINKED + ['firmware/README.md', LANDING] + [LED, FX, PK]
+    files = LINKED + ['firmware/README.md', LANDING, FEATURES] + [LED, FX, PK, f'{SRC}/LoopTransfer.h']
     failed = 0
     if check(root)[0]:
         print('FAIL selftest: the docs as they are already have errors; fix those first')

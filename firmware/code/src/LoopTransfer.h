@@ -35,7 +35,7 @@
 namespace loopxfer
 {
 // the protocol's version (HELLO; site/features.json's loopTransfer is the major)
-static const uint8_t kMajor = 1, kMinor = 0;
+static const uint8_t kLoopsProtocol = 1, kLoopsProtocolMinor = 0;
 
 enum Op : uint8_t
 {
@@ -173,8 +173,8 @@ inline void Unpack(const uint8_t* s, size_t n, uint8_t* d)
 /** HELLO's data (2.1) after d[n]: the length */
 inline size_t Hello(uint8_t* d, size_t n)
 {
-    d[n++] = kMajor;
-    d[n++] = kMinor;
+    d[n++] = kLoopsProtocol;
+    d[n++] = kLoopsProtocolMinor;
     for (uint8_t v : kFrizzVersion)
         d[n++] = v;
     n = Put7(d, n, loops::kMaxFrames, 4);
