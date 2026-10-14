@@ -101,6 +101,10 @@ what FRIZZ does.
   clock out over USB keeps its time while FRIZZ reads the card (it could come up to 8 ms late
   while a cubbi loaded, #265). FrizZ asks the computer for 100 mA, where it asked for 160. See
   [MIDI out](MANUAL.md#midi-out).
+- **The reverb's tail is smoother, less metallic:** its first allpass is modulated, as in
+  Mutable's Clouds and Elements, so the same hit rings a little differently each time instead of
+  through the same diffusion. Its knobs, decay, level and freeze are as they were. See
+  [Reverb](MANUAL.md#reverb).
 
 ### Fixed
 

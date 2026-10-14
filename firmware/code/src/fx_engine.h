@@ -276,12 +276,7 @@ class FxEngine
                                 float    scale)
         {
             STATIC_ASSERT(D::base + D::length <= size, delay_memory_full);
-            lfo_phase_[index] += lfo_freq_[index];
-            lfo_phase_[index] = lfo_phase_[index] >= 1.f
-                                    ? lfo_phase_[index] - 1.f
-                                    : lfo_phase_[index];
-
-            offset += amplitude * Cos2Pi(lfo_phase_[index]);
+            offset += amplitude * lfo_value_[index];
 
             int32_t offset_integral = static_cast<int32_t>(offset);
             float   offset_fractional
@@ -312,8 +307,7 @@ class FxEngine
         T*      buffer_;
         int32_t write_ptr_;
 
-        float* lfo_phase_;
-        float* lfo_freq_;
+        float lfo_value_[2];
     };
 
     inline void SetLFOFrequency(LFOIndex index, float frequency)
@@ -333,11 +327,16 @@ class FxEngine
         c->buffer_        = buffer_;
         c->write_ptr_     = write_ptr_;
 
-        c->lfo_phase_ = lfo_phase_;
-        c->lfo_freq_  = lfo_freq_;
-        // FRIZZ: no lfo_value_ (2 cosf a sample nothing read), and no advance every 32
-        // samples here: Interpolate advances the phases it reads itself, which made them run
-        // 1/32 fast
+        // FRIZZ: the LFOs advance here, once a sample (Mutable's engine steps them every 32;
+        // DaisySP's port advanced them here and in Interpolate, which made them run 1/32
+        // fast), and Interpolate only reads them: every read of one in a sample gets the same
+        // value, as in Mutable's engine, so the reverb's smear and its del1 share LFO_1
+        for(int i = 0; i < 2; i++)
+        {
+            lfo_phase_[i] += lfo_freq_[i];
+            lfo_phase_[i] = lfo_phase_[i] >= 1.f ? lfo_phase_[i] - 1.f : lfo_phase_[i];
+            c->lfo_value_[i] = Context::Cos2Pi(lfo_phase_[i]);
+        }
     }
 
   private:

@@ -128,7 +128,8 @@ the changes that bootloader needs, listed in its `LIBDAISY_PATCH.md`.
 Portions of the FX engine in TAPE, TEMPO, WAVE and FRIZZ derive from Émilie Gillet's open-source work
 (Mutable Instruments), released under the MIT license. In each firmware folder's `code/src/`:
 
-- `reverb.h` — carries the full original MIT notice. Do not remove it.
+- `reverb.h` — carries the full original MIT notice. Do not remove it. Rings' reverb; FRIZZ's has
+  the first allpass's smear on, as in Clouds, Elements and Beads (`pichenettes/eurorack`, MIT).
 - `fx_engine.h` — ported from `pichenettes/eurorack` (`plaits/dsp/fx/fx_engine.h`), original
   code by Émilie Gillet, 2014.
 - `limiter.h` — extracted from `pichenettes/stmlib`.
