@@ -981,8 +981,8 @@ def fig_scene_changes():
 
 def fig_loops_page():
     banks = bank_colours('kBankColors')
-    rows = [('A', 'SHIFT + lower C#: the Loops page; again, or two quick taps'),
-            ('', 'of SHIFT, back. SHIFT + lower D#: the Cubbi page.'),
+    rows = [('A', 'CHOMPI glows in the bank\'s colour; hold it as SHIFT for the'),
+            ('', 'gestures: SHIFT + lower C# opens and closes the page.'),
             ('B', 'Lower C#, lower D#: the bank before, after, in its colour.'),
             ('C', 'A white key: its loop, at once. SHIFT + the key: at the end'),
             ('', 'of the pass, tapped N times at the end of the N-th.')]

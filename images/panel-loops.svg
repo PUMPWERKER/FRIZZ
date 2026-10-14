@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 313" width="480" height="313" role="img" aria-labelledby="title desc">
 <title id="title">The Loops page</title>
-<desc id="desc">The panel on the Loops page, in bank B: the CHOMPI key glows yellow, bank B's colour; the lower C# is orange, leading to bank A, the lower D# green, leading to bank C; white keys 1 to 9 hold loops, dim yellow, key 3 bright, the loop playing. SHIFT + lower C#: the Loops page; again, or two quick taps of SHIFT, back. SHIFT + lower D#: the Cubbi page. Lower C#, lower D#: the bank before, after, in its colour. A white key: its loop, at once. SHIFT + the key: at the end of the pass, tapped N times at the end of the N-th.</desc>
+<desc id="desc">The panel on the Loops page, in bank B: the CHOMPI key glows yellow, bank B's colour; the lower C# is orange, leading to bank A, the lower D# green, leading to bank C; white keys 1 to 9 hold loops, dim yellow, key 3 bright, the loop playing. CHOMPI glows in the bank's colour; hold it as SHIFT for the gestures: SHIFT + lower C# opens and closes the page. Lower C#, lower D#: the bank before, after, in its colour. A white key: its loop, at once. SHIFT + the key: at the end of the pass, tapped N times at the end of the N-th.</desc>
 <style>svg{font-size:13px}text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
 <defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
 <rect width="480" height="313" fill="#131314"/>
@@ -51,8 +51,8 @@
 <text x="245.1" y="190" class="gt" font-size="12" font-weight="bold">C</text>
 <circle cx="29" cy="215.5" r="9" class="g"/>
 <text x="29" y="220" class="gt" font-size="12" font-weight="bold">A</text>
-<text x="46" y="219.5" class="t as" font-size="12">SHIFT + lower C#: the Loops page; again, or two quick taps</text>
-<text x="46" y="239.5" class="t as" font-size="12">of SHIFT, back. SHIFT + lower D#: the Cubbi page.</text>
+<text x="46" y="219.5" class="t as" font-size="12">CHOMPI glows in the bank's colour; hold it as SHIFT for the</text>
+<text x="46" y="239.5" class="t as" font-size="12">gestures: SHIFT + lower C# opens and closes the page.</text>
 <circle cx="29" cy="255.5" r="9" class="g"/>
 <text x="29" y="260" class="gt" font-size="12" font-weight="bold">B</text>
 <text x="46" y="259.5" class="t as" font-size="12">Lower C#, lower D#: the bank before, after, in its colour.</text>

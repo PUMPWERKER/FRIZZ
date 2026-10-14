@@ -339,7 +339,7 @@ While you're on the Loops page, the CHOMPI key glows dimly in the bank's colour 
 you hold it as SHIFT). The CHOMPI key's LED only ever shows SHIFT held, the page you're on,
 the confirm of a scene save, copy or delete and the start-up ripple.
 
-![The panel on the Loops page in bank B: the CHOMPI key glows yellow, the lower C# and D# lead to banks A and C in orange and green, white keys 1 to 9 hold loops in dim yellow, key 3 bright as the loop playing](images/panel-loops.svg)
+![The panel on the Loops page in bank B: the CHOMPI key glows yellow, held as SHIFT for the page's gestures; the lower C# and D# lead to banks A and C in orange and green, white keys 1 to 9 hold loops in dim yellow, key 3 bright as the loop playing](images/panel-loops.svg)
 
 | Control | Function | LED |
 |---|---|---|
@@ -1446,7 +1446,7 @@ without a loop, and the bar lines don't count while you hold it.
 With the mode switch **up**, the keys set up MIDI, the input and the LEDs. The loop, the
 effects and MIDI play on meanwhile; switch back down to play.
 
-![The panel on the settings page, the mode switch up: the white keys pick the MIDI channel in light blue, the ten dark keys set MIDI, the clock and the input, each in its colour, knob 1 the LED brightness](images/panel-settings.svg)
+![The panel on the settings page, the mode switch up: the white keys pick the MIDI channel in light blue, key 15 white for channel 16, the ten dark keys set MIDI, the clock and the input, each in its colour, knob 1 the LED brightness](images/panel-settings.svg)
 
 Each key sets one thing on its press. The white keys pick the MIDI channel; the dark keys
 and knob 1 set the rest:
