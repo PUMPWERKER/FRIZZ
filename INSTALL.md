@@ -26,8 +26,8 @@ tools or drivers, and the CHOMPI's bootloader is never touched.
    Don't switch it off while that runs. FRIZZ starts by itself when it's done: a light-blue
    ripple spreads from the CHOMPI key, then the FX keys glow in their colours.
 
-Leave the card in: FRIZZ keeps your scenes and settings on it, in a folder `FRIZZ`
-([Card and files](MANUAL.md#card-and-files)). Without a card FRIZZ runs, but nothing you save
+Leave the card in: FRIZZ keeps your scenes and settings on it, in a folder `FRIZZ`, and plays
+your loops from there ([Card and files](MANUAL.md#card-and-files)). Without a card FRIZZ runs, but nothing you save
 lasts past power-off.
 
 ## Check that it works
@@ -65,7 +65,7 @@ works as one of them, next to TAPE, TEMPO and WAVE.
 
    **Or by hand:** copy `FRIZZ.bin` into the card's `FIRMWARE` folder, named after the key you
    want it on, for example `FIRMWARE/04_FRIZZ.bin` for white key 4.
-3. Copy your `FRIZZ` folder over too, if you have scenes from another card. Otherwise FRIZZ
+3. Copy your `FRIZZ` folder over too, if you have scenes or loops from another card. Otherwise FRIZZ
    creates it on its first start and keeps its scenes there, apart from the other firmwares'
    files.
 
@@ -77,8 +77,9 @@ page offers releases only: a test build (a pre-release on the Releases page) goe
 ### USB storage mode
 
 The launcher's white key 15 is a USB storage mode: connect the CHOMPI to a computer over USB
-and the card shows up there as a drive named `CHOMPI-SD`, so you can copy files (bug reports,
-scenes) without taking the card out. To leave, eject the drive on the computer first. With
+and the card shows up there as a drive named `CHOMPI-SD`, so you can copy files (loops, bug
+reports, scenes) without taking the card out. FRIZZ can also lend the card to the computer
+while it plays: see [The card as a USB drive](MANUAL.md#the-card-as-a-usb-drive). To leave, eject the drive on the computer first. With
 [USB storage v1.6](https://github.com/lnetzel/CHOMPI-lnetzel/releases/tag/usb-storage-v1.6),
 the CHOMPI then restarts into the launcher's picker by itself. With an older one (a card set
 up from the launcher's v1.5 release has v1.5), press the LOOP key, which glows red: it blinks
@@ -104,6 +105,6 @@ picker. Pressing the blinking LOOP again cancels.
 | The keys don't play | The mode switch is up, on the settings page: flip it down |
 | Silence | Check the input gain (press VOLUME, then turn) and the input/loop mix (SHIFT + turn VOLUME, turn towards green). Is the cable in AUX all the way? Without one, the input is the mic, which isn't monitored at first. On the settings page (mode switch up), the upper G# switches monitoring on for the input you hear (lit), and the upper F# shows which it is: blue is USB, a computer's sound, silent unless it plays to FRIZZ |
 | It restarts by itself while you play (FRIZZ starts again, or the launcher's picker shows) | FRIZZ crashed or its sound stopped, and it restarted rather than stay frozen. A loop in RAM is gone. If it happens again, note what you were doing and [open an issue](https://github.com/ZUHcYa/FrizZ/issues) |
-| A computer has trouble with FRIZZ on USB (it won't take it, MIDI comes and goes, sound glitches), or you don't want FrizZ as a sound card | Switch [USB audio](MANUAL.md#usb-audio) off: on the settings page (mode switch up), pick USB with the upper F# (blue), then SHIFT + upper F#, until it's dim while you hold SHIFT. FRIZZ is then MIDI alone on USB, as before. It's saved |
+| A computer has trouble with FRIZZ on USB (it won't take it, MIDI comes and goes, sound glitches), or you don't want FrizZ as a sound card | Switch [USB audio](MANUAL.md#usb-audio) off: on the settings page (mode switch up), pick USB with the upper F# (blue), then SHIFT + upper F#, until it's dim while you hold SHIFT. FRIZZ is then MIDI and the card drive on USB. It's saved |
 | A recording from FRIZZ over USB sounds slightly dull or late | Set the computer or the DAW to 48 kHz, FRIZZ's own rate: at another rate the computer converts |
 | The CHOMPI doesn't respond at all | The bootloader may be damaged. Reinstall CHOMPI's own bootloader (`firmware/bin/CHOMPI_Bootloader_V6_2_0.bin`) as described in [`firmware/README.md`](firmware/README.md#4-put-it-on-the-chompi), then install FRIZZ again. Don't install the generic Daisy bootloader instead |

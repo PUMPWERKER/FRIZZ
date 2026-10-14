@@ -26,7 +26,8 @@ The format is fixed, and a file that breaks it fails the website's build:
 - Assure: Free and open source. Installs from the SD card without touching the bootloader; you go back to stock firmware the same way.
 
 **FRIZZ** turns your CHOMPI into a stereo looper and effects box for whatever you plug into its
-AUX input: a synth, a drum machine, anything with a line out, or the built-in mic. Catch a loop,
+AUX input: a synth, a drum machine, anything with a line out, the built-in mic or a computer on
+USB. Catch a loop,
 hold a white key to throw an effect over it, and let go to snap back.
 
 ## Keys
@@ -79,7 +80,7 @@ the bar. The dark key left of them is the blank scene: everything off.
 
 MIDI clock over TRS or USB sets the tempo for the tempo-synced effects; hold PLAY as you press
 LOOP and the loop locks to whole bars of it. No clock? Tap the tempo in. Notes play the keys, CCs
-reach every parameter, program changes recall scenes.
+reach every parameter, program changes recall scenes and loops.
 
 ## Get started
 
@@ -96,4 +97,5 @@ it doesn't matter which firmware the CHOMPI runs now.
 
 FRIZZ builds on the [CHOMPI open-source release](https://github.com/CHOMPI-Club/CHOMPI) by
 CHOMPI Club and runs on Electrosmith's Daisy platform. Several effects are ported from Bastl
-Instruments' Kastle 2 FX Wizard.
+Instruments' Kastle 2 FX Wizard. USB audio and the card drive build on lost-tty's
+[MIXTAPE](https://github.com/lost-tty/CHOMPI), USB audio for TAPE (MIT).
