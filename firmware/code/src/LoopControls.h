@@ -305,7 +305,7 @@ public:
      *  with its file */
     void Moved(int from, int to, bool swap)
     {
-        carried_ = playing_ == from ? to : swap && playing_ == to ? from : kNone;
+        carried_ = static_cast<int8_t>(playing_ == from ? to : swap && playing_ == to ? from : kNone);
         if (carried_ != kNone)
             playing_ = carried_;
     }
@@ -580,9 +580,9 @@ private:
     uint32_t landings_ = 0;  // the morph's landings when its sequence was released (WithScene)
     int posted_ = kNone;     // switch handed to the looper, for this loop
     bool midi_ = false, posted_midi_ = false; // the plan MIDI's, and the switch posted
+    int8_t carried_ = kNone; // playing_, moved there in this pass (Moved; FRIZZ's slots only)
     int switched_ = kNone;   // switched to by the hand's plan, for MIDI feedback (TakeSwitched)
     int playing_ = kNone;    // the slot whose file the looper plays
-    int carried_ = kNone;    // playing_, moved there in this pass (Moved)
     int load_ = kNone;       // loading, into bufs_[target_]
     bool forget_load_ = false; // and its slot changed since (Forget)
     int target_ = 1;

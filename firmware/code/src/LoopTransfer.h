@@ -473,12 +473,12 @@ public:
      *  to's now, and with swap to's from's; false for none */
     bool TakeMoved(int& from, int& to, bool& swap)
     {
-        if (moved_[0] < 0)
+        if (!moved_[0])
             return false;
-        from = moved_[0];
-        to = moved_[1];
+        from = moved_[0] - 1;
+        to = moved_[1] - 1;
         swap = moved_swap_;
-        moved_[0] = -1;
+        moved_[0] = 0;
         return true;
     }
 
@@ -830,8 +830,8 @@ private:
                 if (q.op == RENAME)
                     sa = loops::Slot{};
                 // the file moved: a loop playing from it goes with it (LoopControls::Moved)
-                moved_[0] = static_cast<int8_t>(from ? id : to_id);
-                moved_[1] = static_cast<int8_t>(from ? to_id : id);
+                moved_[0] = static_cast<uint8_t>((from ? id : to_id) + 1);
+                moved_[1] = static_cast<uint8_t>((from ? to_id : id) + 1);
                 moved_swap_ = q.op == SWAP && from && to;
             }
             Changed(to_bank, to_slot);
@@ -1150,6 +1150,10 @@ private:
     uint8_t job_ = loopxfer::NONE, phase_ = loopxfer::IDLE, tid_ = 0, tid_seq_ = 0;
     uint8_t bank_ = 0, slot_ = 0, src_bank_ = 0, src_slot_ = 0, result_ = 0, detail_ = 0;
     bool replace_ = false;
+    // TakeMoved's: the two slots' ids + 1 (0 none), in replace_'s padding, so the object stays
+    // as it was in .bss (#286)
+    uint8_t moved_[2] = {};
+    bool moved_swap_ = false;
     uint32_t total_ = 0, next_ = 0;  // a write's NEXT, a copy's bytes copied
     uint32_t staged_ = 0, written_ = 0, crc_ = 0;
     uint8_t step_ = 0;               // 3.9's
@@ -1165,8 +1169,6 @@ private:
     // the free space's count
     uint32_t count_sector_ = 0, count_free_ = 0;
     uint16_t changed_[loops::kFrizzBanks] = {};
-    int8_t moved_[2] = {-1, -1};     // TakeMoved's
-    bool moved_swap_ = false;
 };
 
 #pragma GCC pop_options
