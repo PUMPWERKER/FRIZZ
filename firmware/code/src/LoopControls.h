@@ -133,10 +133,8 @@ public:
      *  On the device with the audio interrupt blocked */
     Key Press(size_t slot, bool shift, bool sequence, bool fader, bool spent)
     {
-        const loops::Slot& s = loader_->GetSlot(Bank(), slot);
         const Looper& looper = engine_->looper;
-        if ((s.result != loops::MONO && s.result != loops::STEREO)
-            || looper.GetState() == Looper::State::RECORDING)
+        if (!Playable(Bank(), slot))
             return Key::REFUSED;
         const int id = static_cast<int>(Bank() * loops::kSlots + slot);
         if (shift && plan_ == id)
@@ -163,6 +161,31 @@ public:
         return Key::PLANNED;
     }
 
+    /** A loop's program change (#259, MidiControl.h): LoopLoader's bank, the key's slot, CC
+     *  54's timing (0 at once, 1-8 the n-th pass end, 127 with the scene sequence, at once if
+     *  none waits: sequence). Empty or paused, at once, as by hand; a slot without a loop, or
+     *  the looper recording, nothing. What it switches isn't fed back (TakeSwitched). With
+     *  the audio interrupt blocked */
+    void Remote(size_t bank, size_t slot, uint8_t timing, bool sequence)
+    {
+        if (!Playable(bank, slot))
+            return;
+        const bool now = timing == 0 || engine_->looper.GetState() != Looper::State::PLAYING
+                         || (timing > kMaxLoopPasses && !sequence);
+        Plan(static_cast<int>(bank * loops::kSlots + slot),
+             now ? Kind::NOW : timing > kMaxLoopPasses ? Kind::LANDING : Kind::PASSES, timing, false);
+        midi_ = true;
+    }
+
+    /** The loop the looper switched to since the last ask, for MIDI feedback (#259), kNone
+     *  if none or MIDI planned it */
+    int TakeSwitched()
+    {
+        const int id = switched_;
+        switched_ = kNone;
+        return id;
+    }
+
     /** Loop id (bank * 15 + slot) planned to switch as kind says, PASSES at the end of the
      *  passes-th pass; hold: in a SHIFT hold, its passes counted from ShiftUp. The hand's and
      *  MIDI's (#259). With the audio interrupt blocked */
@@ -170,6 +193,7 @@ public:
     {
         Cancel();
         plan_ = id;
+        midi_ = false;
         kind_ = kind;
         in_hold_ = hold;
         passes_ = passes;
@@ -310,6 +334,7 @@ public:
             switches_ = looper.Switches();
             started_ = started_ || was_empty_;
             playing_ = posted_;
+            switched_ = posted_midi_ ? kNone : posted_;
             if (plan_ == posted_)
                 plan_ = kNone;
             posted_ = kNone;
@@ -365,6 +390,7 @@ public:
         // start anyway (by time, the tape's direction and fraction kept)
         looper.Switch(buf.data, buf.frames, buf.beats, at, kind_ != Kind::LANDING && plan_ != playing_);
         posted_ = plan_;
+        posted_midi_ = midi_;
     }
 
 private:
@@ -376,6 +402,14 @@ private:
         const int16_t* data = nullptr;
         uint32_t frames = 0, beats = 0;
     };
+
+    /** A loop in bank's slot, and the looper not recording */
+    bool Playable(size_t bank, size_t slot) const
+    {
+        const uint8_t r = loader_->GetSlot(bank, slot).result;
+        return (r == loops::MONO || r == loops::STEREO)
+               && engine_->looper.GetState() != Looper::State::RECORDING;
+    }
 
     inline size_t First() const { return cubbi_ ? loops::kCubbiBank : 0; }
     inline size_t Last() const { return cubbi_ ? loops::kBanks : loops::kFrizzBanks; }
@@ -501,6 +535,8 @@ private:
     uint32_t at_ = 0;        // and the looper's Wraps() it switches at
     uint32_t landings_ = 0;  // the morph's landings when its sequence was released (WithScene)
     int posted_ = kNone;     // switch handed to the looper, for this loop
+    bool midi_ = false, posted_midi_ = false; // the plan MIDI's, and the switch posted
+    int switched_ = kNone;   // switched to by the hand's plan, for MIDI feedback (TakeSwitched)
     int playing_ = kNone;    // the loop from the card the looper plays
     int load_ = kNone;       // loading, into bufs_[target_]
     int target_ = 1;

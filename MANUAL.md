@@ -488,6 +488,15 @@ playing and its scene, on the right the new loop and the new scene, and both loo
   the tempo playing, between 50 and 300 BPM. If that lands at half or double the tempo, or the
   loop holds 3 or 6 bars, [tap the tempo](#tap-tempo) (SHIFT + LOOP) and the beats fit again.
 
+### Loops over MIDI
+
+A DAW or a controller picks loops with a bank select and a program change, on FRIZZ's global
+channel, from any page: CC 0 = 1-8 for FRIZZ's banks a-h, 9-13 for the cubbis' a-e, then
+program change 0-14 for the white key. CC 54 says when it switches (at once, at the end of a
+pass, or with a scene change), and CC 81 cancels. With [MIDI feedback](#midi-feedback) on, a
+switch you make by hand goes out the same way, so a DAW can record it. The details:
+[Program changes](#program-changes).
+
 <!-- part: Effects -->
 
 ## Sound architecture
@@ -1794,7 +1803,8 @@ quantized recording ends that recording where it is, as a lost clock does.
 
 FRIZZ listens on 16 channels, with two kinds of map:
 
-- **The global channel**, **16** at first: notes (the keys), program changes (scenes), the
+- **The global channel**, **16** at first: notes (the keys), program changes (scenes, and
+  loops from the card after a bank select), the
   looper, the scenes, the gains, every effect's latch, the compressor, and the knobs of the
   effect in focus. That alone covers FRIZZ from a hardware controller or a TRS chain.
 - **The effect channels 1-15**, one per white key, left to right: 1 freezer, 2 shifter,
@@ -1863,8 +1873,10 @@ save, copy and delete 66, 68 and 70. Below them:
 | 90 | The loop's speed in semitones, set outright: 64 as recorded (1×), 0 the slowest (1/16×), 127 double. Only with a loop; forward or in reverse as it runs |
 | 3 | Morph to scene 0-4 (0 the blank one), as SHIFT + its key, landing on the bar line (CC 9's), counted from the CC. During a morph, drop or build-up, it stops that where it is and starts the new one from there. It acts as the value changes: to morph to the same scene again, send another value first (127, no scene) |
 | 9 | How many bars a morph over CC 3, or a drop over CC 83, takes, 1-8 (1 at first) |
+| 0 | Bank select for the [program changes](#program-changes) that follow: 0 the scenes (at first), 1-8 FRIZZ's loop banks a-h, 9-13 TAPE's cubbi banks a-e. It stays until the next CC 0; CC 32 is ignored |
+| 54 | When a loop's program change switches: 0 at once (at first), 1-8 at the end of the 1st to 8th pass of the loop playing (more is 8), 127 with the scene change waiting to land (CC 3's or 83's, or one you hold), at once if none waits. It stays until the next CC 54 |
 | 80 | The [crossfader](#crossfading-by-hand): takes a running morph (CC 3's, or one you hold) to where it says, 0 the scene it started from, 127 the scene it goes to. Reaching 127 lands it; reaching 0 after being away from it goes back to where it started; in between it waits |
-| 81 | Stops a morph, drop or build-up where it is, as the value crosses 64 upward |
+| 81 | Stops a morph, drop or build-up where it is, and cancels a planned loop switch with it or alone, as the value crosses 64 upward |
 | 82 | A [tempo tap](#tap-tempo), as the value crosses 64 upward: a button sending 127 and 0 |
 | 83 | [Drop](#dropping-to-a-scene) to scene 0-4 (0 the blank one) hard on the next bar line, or CC 9's, counted from the CC, as SHIFT + its key and a press of the transport knob. Like CC 3, it stops a sequence running and acts as the value changes: to drop to the same scene again, send another value first (127, no scene) |
 | 102-115 | The latch of white key 1-14 (102 the freezer … 108 the phaser … 114 the reverb, 115 the chaos key), as CC 22 |
@@ -1886,7 +1898,7 @@ save, copy and delete 66, 68 and 70. Below them:
   settings page's upper G# and A# left them, the input gains as you last turned them,
   and the output gain and the input/loop mix at their power-on levels. Scenes you save keep what the CCs set, as ever.
 - **Left free on purpose**, so what hosts and keyboards send by themselves reaches nothing:
-  bank select (0, 32), mod wheel (1), breath (2), foot (4), volume (7), pan (10), expression
+  bank select's LSB (32), mod wheel (1), breath (2), foot (4), volume (7), pan (10), expression
   (11), the pedals (64-69), keyboards' sound controllers (70-79), NRPN and RPN with their data entry (6, 38,
   96-101: a DAW's pitch-bend range doesn't turn a knob), 88, effects depths (91-95: a
   keyboard sends reverb depth, 91, at power-on), Reset All
@@ -1897,8 +1909,25 @@ save, copy and delete 66, 68 and 70. Below them:
 
 ### Program changes
 
-Program change 0-4 presses scene key 0-4 (0 the blank scene): a recall, or in a save, copy or
-delete mode the slot. 5 and above are ignored.
+What a program change does depends on the bank, set by CC 0 (Bank Select) before it, as MIDI
+has it: the bank stays until the next CC 0. Without a CC 0 it's 0, the scenes.
+
+| CC 0 | Program change |
+|---|---|
+| 0 (at first) | 0-4 presses scene key 0-4 (0 the blank scene): a recall, or in a save, copy or delete mode the slot. 5 and above are ignored |
+| 1-8 | A [loop from the card](#loop-loader), bank a-h: program 0-14 is white key 1-15 |
+| 9-13 | A [cubbi](#the-cubbi-page), TAPE's bank a-e: program 0-14 is white key 1-15 |
+| 14-127 | Nothing |
+
+A loop's program change works from any page, as the white key on the Loops or Cubbi page
+would, and the same rules apply: it keeps time and the tape's speed (see
+[Switching loops](#switching-loops)). **When** it switches, CC 54 says: at once, at the end
+of the N-th pass (1-8), or with the scene change waiting to land (127). It stays until the
+next CC 54, so a DAW sets it once. A program change on a key without a loop, or while LOOP
+records, does nothing. CC 81 cancels a planned switch, with its scene change.
+
+A DAW that sends bank 0 and a program change when a project loads lands on the scenes, as
+before.
 
 ### Start and Stop
 
@@ -2003,6 +2032,12 @@ where [MIDI out](#midi-out) goes, so MIDI out has to be on too.
   (CC 80) while you hold it by hand.
 - **A scene** recalled sends what it changed, once. A morph sends only where it lands, once
   it has. The chaos key changes no setting, so it sends nothing.
+- **A loop switch** you make by hand (a white key on the Loops or Cubbi page, at once or
+  planned) goes out on the global channel at the moment it switches: CC 0 with its bank, the
+  program change, then CC 0 = 0 (see [Program changes](#program-changes)). So a DAW records
+  it, plays it back at the same moment, and leaves FRIZZ's program changes on the scenes
+  after. Gear behind FRIZZ on the same channel that listens to program changes switches its
+  sounds with it: switch its program changes off, or give FRIZZ another global channel.
 - **Never back:** what came in by MIDI, or by FRIZZ's SysEx, isn't sent back, so a DAW
   recording what it also sends doesn't loop.
 - **Paced:** a value goes at most once every 10 ms, and only when its 7-bit value changed.

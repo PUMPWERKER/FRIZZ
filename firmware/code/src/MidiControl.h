@@ -1,7 +1,7 @@
 /** @file MidiControl.h
  *  @brief FRIZZ played and inspected over MIDI (MANUAL.md, "MIDI"): notes press the keys,
- *  CCs set a knob or a latch outright, program changes recall scenes, the transport plays the
- *  loop, and FRIZZ's own SysEx presses keys, turns knobs and asks what the device shows, for a
+ *  CCs set a knob or a latch outright, program changes recall scenes (or, after a bank select,
+ *  pick a loop from the card, #259), the transport plays the loop, and FRIZZ's own SysEx presses keys, turns knobs and asks what the device shows, for a
  *  computer to test it (firmware/remote.py).
  *
  *  Channels (#97): the one set (MasterSettings::midi_channel, 16 at first) is the global
@@ -80,10 +80,12 @@ static const uint8_t kKeyParams = 8; // an effect's knobs, both pages (kNumFxPar
 static const uint8_t kKnobCC = 14;  // 14-17 page 1's knobs 1-4, 18-21 page 2's
 static const uint8_t kLatchCC = 22; // 64 and up on, below off: acts as it crosses 64
 // The global channel's
+static const uint8_t kBankCC = 0;       // Bank Select (MSB): the program changes' bank, below
 static const uint8_t kMorphCC = 3;      // morph to the scene 0-4, as the value changes
 static const uint8_t kMorphBarsCC = 9;  // over how many bars, 1-8 (kMaxMorphBars)
 static const uint8_t kFocusCC = 23;     // 1-15: the white key whose knobs 14-22 reach
 static const uint8_t kCompCC = 24;      // 24-31: the compressor's knobs, as channel 15's 14-21
+static const uint8_t kLoopTimingCC = 54; // when a loop's program change switches (kTimingNow ...)
 static const uint8_t kFaderCC = 80;     // the crossfader: a running morph from its start to its scene
 static const uint8_t kStopMorphCC = 81; // stops a morph where it is, crossing 64 upward
 static const uint8_t kTapCC = 82;       // a tempo tap, crossing 64 upward
@@ -97,7 +99,12 @@ static const uint8_t kDryCC = 116;      // the source's effects: 0-63 through, 6
 static const uint8_t kLiveCC = 117;     // the source live: 0-63 off, 64-127 on
 static const uint8_t kAllSoundOffCC = 120, kAllNotesOffCC = 123;
 static const uint8_t kMorphBarsMax = 8;
-// Free on purpose, so what hosts and keyboards send by themselves reaches nothing: 0/32, 1,
+// Program changes by the bank (CC 0, #259): 0 the scenes 0-4; 1-8 FRIZZ's loops a-h, 9-13
+// TAPE's cubbis a-e (LoopLoader's banks 0-12), 0-14 a white key's; others nothing
+static const uint8_t kLoopBanks = 13, kLoopPrograms = 15, kCubbiProgramBank = 9;
+// CC 54's values: at once, at the end of the 1st-8th pass, with the scene sequence waiting
+static const uint8_t kTimingNow = 0, kTimingPassesMax = 8, kTimingSequence = 127;
+// Free on purpose, so what hosts and keyboards send by themselves reaches nothing: 32, 1,
 // 2, 4, 7, 10, 11 and 64-79; 6/38 and 96-101, an (N)RPN's data and selects (a DAW's
 // pitch-bend range); 88; 91-95; 121 (Reset All Controllers) and the channel modes. 46-53, the
 // LSBs of 14-21, stay free for a 14-bit mode later
@@ -363,8 +370,9 @@ public:
             PROGRAM,    // arg: the scene 0-4
             DROP,       // arg: as MORPH's, a drop (CC 83)
             INPUT,      // arg: the source 0 (CC 84), its effects 1 (116), live 2 (117) | on << 2
+            LOOP,       // arg: the loop, LoopLoader's bank * 15 + its key; arg2: CC 54's then
         };
-        uint8_t kind, arg;
+        uint8_t kind, arg, arg2;
         uint16_t ms; // when it came, System::GetNow()'s lower 16 bits
     };
     /** The transport, for the looper (Looper::Follow) */
@@ -654,9 +662,14 @@ private:
                 return;
             break;
         case ProgramChange:
-            if (!global || d0 >= kNumSlots)
+            if (!global)
                 return;
-            Push(Event::PROGRAM, d0);
+            if (bank_ == 0 && d0 < kNumSlots)
+                Push(Event::PROGRAM, d0);
+            else if (bank_ && bank_ <= kLoopBanks && d0 < kLoopPrograms)
+                Push(Event::LOOP, static_cast<uint8_t>((bank_ - 1) * kLoopPrograms + d0), timing_);
+            else
+                return;
             break;
         default:
             return;
@@ -717,6 +730,12 @@ private:
         }
         case kMorphBarsCC:
             morph_bars_ = v < 1 ? 1 : (v > kMorphBarsMax ? kMorphBarsMax : v);
+            return true;
+        case kBankCC:
+            bank_ = v;
+            return true;
+        case kLoopTimingCC:
+            timing_ = v == kTimingSequence || v <= kTimingPassesMax ? v : kTimingPassesMax;
             return true;
         case kStopMorphCC:
         case kTapCC:
@@ -800,11 +819,11 @@ private:
     }
 
     /** Something that acts once, for MainLoop; false, dropped, if MainLoop is that far behind */
-    bool Push(uint8_t kind, uint8_t arg)
+    bool Push(uint8_t kind, uint8_t arg, uint8_t arg2 = 0)
     {
         if (static_cast<uint8_t>(event_write_ - event_read_) >= kEventQueue)
             return false;
-        events_[event_write_ % kEventQueue] = {kind, arg, static_cast<uint16_t>(daisy::System::GetNow())};
+        events_[event_write_ % kEventQueue] = {kind, arg, arg2, static_cast<uint16_t>(daisy::System::GetNow())};
         event_write_ = event_write_ + 1;
         return true;
     }
@@ -981,6 +1000,8 @@ private:
     volatile uint8_t switch_ = 0;
     volatile bool block_trs_ = true;
     volatile bool feedback_ = false;
+    uint8_t bank_ = 0;   // CC 0's: the program changes' bank
+    uint8_t timing_ = 0; // CC 54's: a loop's program change's timing
 
     // by midimap::Value
     static const size_t kValueWords = (midimap::kNumValues + 31) / 32;

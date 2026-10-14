@@ -3499,6 +3499,147 @@ int main()
               "loops-midi: the filter held by hand on the play page lets go on the Loops page");
     }});
 
+    // loops over MIDI (#259): CC 0 picks the program changes' bank (0 the scenes, 1-8 FRIZZ's
+    // a-h, 9-13 the cubbis a-e), a program change 0-14 the key; CC 54 when: 0 at once, 1-8 at
+    // the n-th pass end, 127 with the waiting scene sequence (at once if none); CC 81 cancels
+    // all of it. From the play page, no Loops page needed. MIDI feedback sends a switch the
+    // hand made as CC 0, the program change and CC 0 = 0, and none MIDI made
+    cases.push_back({"loops-pc", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        Latch("KEY_5"); // the filter, saved in scene 1, then the blank scene again
+        Save(1);
+        Tap(kSceneKeys[0]);
+        RunMs(200);
+        PutLoops({{"a1", SineWav(192000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a3", SineWav(96000, 2, 440.f)}, {"/cubbi_a1.wav", SineWav(120000, 2, 275.f)}});
+        // bank 1 (a), program 1: A/02 at once, on the play page
+        Trs({kCC, 0, 1});
+        Trs({kPC, 1});
+        const int a2 = UntilLength(72000, 1000);
+        // bank 9: the cubbis' a, program 0
+        Trs({kCC, 0, 9});
+        Trs({kPC, 0});
+        const int cubbi = UntilLength(120000, 1000);
+        // bank 0: program 1 recalls scene 1 again, no loop; bank 14 nothing; an empty slot nothing
+        Trs({kCC, 0, 0});
+        Trs({kPC, 1});
+        RunMs(100);
+        const bool scene = (LatchedFx(Ask({0x20})) >> 4 & 1) == 1 && Probe().loop_length == 120000;
+        Tap(kSceneKeys[0]);
+        RunMs(100);
+        Trs({kCC, 0, 14});
+        Trs({kPC, 0});
+        RunMs(100);
+        const bool none = (LatchedFx(Ask({0x20})) >> 4 & 1) == 0 && Probe().loop_length == 120000;
+        Trs({kCC, 0, 1});
+        Trs({kPC, 9});
+        RunMs(300);
+        printf("      A/02 after %d ms, cubbi_a1 after %d ms; bank 0's scene %d, bank 14 and an empty key nothing %d\n",
+               a2, cubbi, scene, none && Probe().loop_length == 120000);
+        Check(LoopsShown() == false && a2 >= 0 && cubbi >= 0 && scene && none && Probe().loop_length == 120000,
+              "loops-pc: CC 0 + a program change: a FRIZZ loop (bank 1), a cubbi (bank 9), at once "
+              "from the play page; bank 0 the scenes; bank 14 or an empty key nothing");
+        // CC 54 = 2: at the end of the second pass
+        Trs({kPC, 0}); // A/01, at once (CC 54 still 0)
+        UntilLength(192000, 1000);
+        for (int ms = 0; ms < 5000 && (Probe().loop_pos < .05f || Probe().loop_pos > .5f); ms++)
+            RunMs(1);
+        Trs({kCC, 54, 2});
+        Trs({kPC, 2});
+        int wraps = 0;
+        float pos = Probe().loop_pos, before = 0.f;
+        int at = -1;
+        for (int ms = 0; ms < 9000 && at < 0; ms++)
+        {
+            RunMs(1);
+            const ClockState st = Probe();
+            if (st.loop_length == 96000)
+            {
+                at = ms;
+                before = pos;
+            }
+            else
+                wraps += st.loop_pos < pos - .5f;
+            pos = st.loop_pos;
+        }
+        printf("      CC 54 = 2: %d wraps first, switched from %.4f\n", wraps, before);
+        Check(at >= 0 && wraps == 1 && before > .99f, "loops-pc: CC 54 = 2: at the end of the second pass, gapless");
+        // CC 81 cancels a loop planned alone
+        Trs({kCC, 54, 1});
+        Trs({kPC, 0});
+        RunMs(200);
+        Trs({kCC, 81, 127});
+        Trs({kCC, 81, 0});
+        Check(UntilLength(192000, 4000) < 0, "loops-pc: CC 81 cancels a loop planned at the pass end");
+        // CC 54 = 127: with the morph waiting (CC 9 = 1, CC 3 to scene 1), on its bar line
+        Trs({kCC, 54, 127});
+        Trs({kPC, 0});
+        const int none_waits = UntilLength(192000, 100);
+        for (int ms = 0; ms < 5000 && (Probe().loop_pos < .05f || Probe().loop_pos > .3f); ms++)
+            RunMs(1);
+        Trs({kCC, 9, 1});
+        Trs({kCC, 3, 1});
+        Trs({kPC, 1});
+        const int with = UntilLength(72000, 3000, &before);
+        RunMs(20);
+        printf("      CC 54 = 127: none waiting at once (%d ms); with the morph from %.4f\n", none_waits, before);
+        Check(none_waits >= 0 && with >= 0 && before > .49f && before < .51f
+                  && (LatchedFx(Ask({0x20})) >> 4 & 1) == 1,
+              "loops-pc: CC 54 = 127: at once with no sequence waiting; with CC 3's morph, where it "
+              "lands, on its bar line");
+        Trs({kCC, 54, 0});
+        // MIDI feedback on (MIDI out to the jack and USB, the settings page's upper D#)
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 3, 2, 0xF7});
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_22");
+        RunMs(100);
+        SetToggle(false);
+        RunMs(300);
+        auto out = [] { // the jack's bytes since the last look, but the clock's, in hex
+            std::string s;
+            char b[4];
+            for (const MidiOutByte& m : TakeMidiOut())
+                if (!m.usb && m.byte < 0xF8)
+                {
+                    snprintf(b, sizeof(b), " %02X", m.byte);
+                    s += b;
+                }
+            return s;
+        };
+        auto usb = [] {
+            std::string s;
+            char b[4];
+            for (unsigned char c : TakeUsbOut())
+                if (c < 0xF8)
+                {
+                    snprintf(b, sizeof(b), " %02X", c);
+                    s += b;
+                }
+            return s;
+        };
+        out();
+        usb();
+        Trs({kCC, 0, 1});
+        Trs({kPC, 2});
+        UntilLength(96000, 1000);
+        RunMs(200);
+        const std::string from_midi = out();
+        usb();
+        LoopsPage();
+        Tap(kLoopKeys[1]); // A/02 by hand
+        UntilLength(72000, 1000);
+        RunMs(200);
+        const std::string jack = out(), over_usb = usb();
+        printf("      by MIDI:%s\n      by hand: the jack%s, USB%s\n", from_midi.c_str(), jack.c_str(), over_usb.c_str());
+        Check(from_midi.find(" CF") == std::string::npos
+                  && jack.find(" BF 00 01 CF 01 BF 00 00") != std::string::npos
+                  && over_usb.find(" BF 00 01 CF 01 BF 00 00") != std::string::npos,
+              "loops-pc: MIDI feedback: a switch by hand goes out as CC 0 = 1, program 1, CC 0 = 0, "
+              "on the jack and USB; one by MIDI doesn't go back");
+    }});
+
     // a white key alone: at once. From an empty looper it plays, wet; from a loop, with a 10 ms
     // crossfade; back to the last loop without a load; the loop sets the tempo
     cases.push_back({"loops-now", [] {
