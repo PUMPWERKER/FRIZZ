@@ -240,7 +240,7 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   (`git worktree add ../FrizZ-<tag> <tag>`, GCC 10.3), and its `firmware/code/src/build/FRIZZ.bin` uploaded under that name. The
   notes name its md5 and are taken from `CHANGELOG.md`'s Unreleased section, plus a link to
   the release-test issue (or the PR). The number never moves, so feedback can name the build.
-- The pre-release **`beta`** always carries the newest numbered one (now v1.0.0-beta.4), and
+- The pre-release **`beta`** always carries the newest numbered one (now v1.5.0-beta.1), and
   moves only with a new one, at a fixed link
   (`https://github.com/ZUHcYa/FrizZ/releases/download/beta/FRIZZ.bin`): `git tag -f beta
   <commit> && git push -f origin beta`, `gh release upload beta <the numbered one's FRIZZ.bin>
