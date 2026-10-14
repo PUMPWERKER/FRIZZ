@@ -128,9 +128,10 @@ public:
     }
 
     /** A scene key, all of it: the recall, or with SHIFT what it does in the hold (file
-     *  comment), or the mode's pick. On the device, call it with the audio interrupt blocked,
-     *  so a recall lands within one block */
-    Slot Press(size_t slot, bool shift)
+     *  comment), or the mode's pick. passes: the hold began with a white key on the Loops page
+     *  (#70, LoopControls::HoldPasses), which counts, so A's taps add no bars. On the device,
+     *  call it with the audio interrupt blocked, so a recall lands within one block */
+    Slot Press(size_t slot, bool shift, bool passes = false)
     {
         if (mode_ != SceneMode::NONE || !shift)
         {
@@ -166,7 +167,7 @@ public:
         case Hold::DROP:
         case Hold::BUILD:
             if (s == morph_)
-                return MorphMore() ? Slot::MORPH_MORE : Slot::REFUSED;
+                return passes ? Slot::SELECTED : MorphMore() ? Slot::MORPH_MORE : Slot::REFUSED;
             if (hold_ != Hold::HELD)
                 return Slot::SELECTED;
             if (!scenes_[slot].used || !fx_->Drop(&scenes_[slot], true))

@@ -14,17 +14,27 @@
  *  mono file is spread to stereo where it landed, a step a pass, and a loop's first
  *  kXfadeFrames are copied after its end, the looper's post-roll; only then is it ready.
  *
- *  The plan, one at a time (the user's decisions in #70):
- *   - a white key alone: at once (NOW), with the looper's crossfade, as soon as it's loaded;
- *   - SHIFT + a white key, tapped n times: at the end of the n-th pass of the loop playing
- *     (PASSES), counted from SHIFT's release; not loaded by then, at the first loop point it
- *     is. Empty or paused: at once;
- *   - in a SHIFT hold with a scene sequence (before or after the scene key): where the morph
- *     lands, or with the drop (LANDING); not loaded by then, at the first bar line after it
- *     that it is. With the crossfader in the hand: at once;
+ *  The plan, one at a time (the user's decisions in #70), set by Plan, which MIDI will
+ *  share (#259). In a SHIFT hold the first key decides what's counted (#175's rule):
+ *   - a white key alone: at once (NOW), by time (Looper::Switch's keep: as far into its pass
+ *     as the loop playing is), with the looper's crossfade, as soon as it's loaded. The
+ *     playing loop's own key starts it again from the top;
+ *   - a white key first in a SHIFT hold, tapped n times: at the end of the n-th pass of the
+ *     loop playing (PASSES), counted from SHIFT's release; not loaded by then, at the first
+ *     loop point it is. Empty or paused: at once. Scene keys after it in the hold join it
+ *     (WithScene): A morphs over the n passes, A then B builds up to A and drops B, the
+ *     transport drops A, all landing at the n-th pass end with the loop (the engine's
+ *     ReleaseFxMorphAt); their taps count nothing more;
+ *   - a scene key first: the bars are counted on it, and a white key in the hold only says
+ *     which loop (LANDING): where the morph lands, or with the drop; not loaded by then, at
+ *     the first bar line after it that it is;
+ *   - the crossfader in the hand (FADER, a scene key in the hold and the transport turned):
+ *     the two loops mixed as the two scenes (Looper's kSwitchFade, Fade), the new one by
+ *     time; SHIFT let go, the nearer side wins (ShiftUp);
  *   - the last white key counts; SHIFT + the planned loop's key in a later hold cancels the
  *     plan, and with it the scene sequence (NormalPage). A sequence that ends without landing
  *     (a recall, its stop, another one) takes its loop with it, and an erase every plan.
+ *  Every switch keeps the tape's speed and direction (Looper.h).
  */
 #pragma once
 #include <string.h>
@@ -45,6 +55,14 @@ class LoopControls
 {
 public:
     static const int kNone = -1;
+    /** When a planned loop switches (file comment) */
+    enum class Kind : uint8_t
+    {
+        NOW,
+        PASSES,
+        LANDING,
+        FADER,
+    };
     /** What a white key did */
     enum class Key
     {
@@ -79,17 +97,23 @@ public:
     inline size_t Bank() const { return bank_[cubbi_]; }
     /** The Cubbi page shown, not the Loops page */
     inline bool Cubbi() const { return cubbi_; }
-    /** The next bank (dir 1) or the one before (-1) of the page with a file in it; false at
-     *  the end */
-    bool StepBank(int dir)
+    /** The next bank (dir 1) or the one before (-1) of the page with a file in it, kNone at
+     *  the end: where C# or D# leads, in its colour */
+    int Neighbour(int dir) const
     {
         for (int b = static_cast<int>(Bank()) + dir; b >= static_cast<int>(First()) && b < static_cast<int>(Last()); b += dir)
             if (BankUsed(static_cast<size_t>(b)))
-            {
-                bank_[cubbi_] = static_cast<size_t>(b);
-                return true;
-            }
-        return false;
+                return b;
+        return kNone;
+    }
+    /** To Neighbour(dir); false at the end */
+    bool StepBank(int dir)
+    {
+        const int b = Neighbour(dir);
+        if (b == kNone)
+            return false;
+        bank_[cubbi_] = static_cast<size_t>(b);
+        return true;
     }
     /** On a page opening: the first bank with a file, unless the one it showed has one. False
      *  if none has */
@@ -126,17 +150,33 @@ public:
                 passes_++;
             return Key::COUNTED;
         }
-        if (shift && spent)
+        // the old loop's own key on the crossfader: it's there already
+        if (shift && (spent || (fader && id == playing_)))
             return Key::NOTHING;
+        const bool playing = looper.GetState() == Looper::State::PLAYING;
+        // a white key first in the hold counts passes, its scene keys after it too
+        const bool passes = HoldPasses() || !sequence;
+        const bool scene = WithScene();
+        Plan(id, !shift || !playing ? Kind::NOW : fader ? Kind::FADER : passes ? Kind::PASSES : Kind::LANDING,
+             1, shift);
+        with_scene_ = scene && kind_ == Kind::PASSES;
+        return Key::PLANNED;
+    }
+
+    /** Loop id (bank * 15 + slot) planned to switch as kind says, PASSES at the end of the
+     *  passes-th pass; hold: in a SHIFT hold, its passes counted from ShiftUp. The hand's and
+     *  MIDI's (#259). With the audio interrupt blocked */
+    void Plan(int id, Kind kind, uint32_t passes, bool hold)
+    {
         Cancel();
         plan_ = id;
-        in_hold_ = shift;
-        passes_ = 1;
-        const bool playing = looper.GetState() == Looper::State::PLAYING;
-        kind_ = !shift || fader || !playing ? Kind::NOW : sequence ? Kind::LANDING : Kind::PASSES;
-        if (kind_ == Kind::LANDING)
+        kind_ = kind;
+        in_hold_ = hold;
+        passes_ = passes;
+        at_ = engine_->looper.Wraps() + passes;
+        with_scene_ = false;
+        if (kind == Kind::LANDING)
             engine_->LoopOnLanding(true);
-        return Key::PLANNED;
     }
 
     /** A scene key's result in a SHIFT hold or out of one (SceneControls::Slot): a sequence
@@ -146,39 +186,65 @@ public:
     template <class Slot>
     void Scene(Slot result)
     {
-        if (result == Slot::CANCEL)
+        // a sequence stopped in a hold that began with a white key isn't that key's
+        if (result == Slot::CANCEL && !HoldPasses())
             Cancel();
-        else if (result == Slot::MORPH && in_hold_ && plan_ != kNone && kind_ == Kind::PASSES)
-        {
-            kind_ = Kind::LANDING;
-            engine_->LoopOnLanding(true);
-        }
+        else if (result == Slot::MORPH && HoldPasses())
+            with_scene_ = true; // it lands with the loop, at the passes' end
         else if (result == Slot::RECALL || result == Slot::MORPH)
             SequenceEnded();
     }
-    /** The sequence ended without landing (CC 81, MIDI's morph): its loop goes too. With the
-     *  audio interrupt blocked */
+    /** The sequence ended without landing (CC 81, MIDI's morph): its loop goes too, and the
+     *  crossfader's new one. With the audio interrupt blocked */
     void SequenceEnded()
     {
-        if (plan_ != kNone && kind_ == Kind::LANDING && !in_hold_)
+        if (plan_ != kNone && (kind_ == Kind::FADER || (!in_hold_ && (kind_ == Kind::LANDING || with_scene_))))
             Cancel();
     }
-    /** The hand's crossfader took the hold's sequence: its loop at once */
+    /** The hand's crossfader took the hold's sequence: its loop beside the playing one, mixed
+     *  by it; the passes counted are void */
     void FaderTook()
     {
-        if (plan_ != kNone && in_hold_ && kind_ == Kind::LANDING)
+        if (plan_ == kNone || !in_hold_ || (kind_ != Kind::LANDING && kind_ != Kind::PASSES))
+            return;
+        if (plan_ == playing_)
         {
-            Unpost();
-            kind_ = Kind::NOW;
+            Cancel(); // on the crossfader it's there already
+            return;
         }
+        Unpost();
+        kind_ = Kind::FADER;
+        with_scene_ = false;
     }
-    /** SHIFT let go: the passes count from here */
-    void ShiftUp()
+    /** This SHIFT hold began with a white key: it counts passes, and its scene keys land with
+     *  the loop at their end (SceneControls::Press's passes) */
+    inline bool HoldPasses() const { return in_hold_ && plan_ != kNone && kind_ == Kind::PASSES; }
+    /** A scene sequence lands with the loop at the passes' end */
+    inline bool WithScene() const { return HoldPasses() && with_scene_; }
+    /** SHIFT let go: the passes count from here (At); the crossfader's loop to the nearer side
+     *  of fader (0-1): from the middle on it takes over, else it goes */
+    void ShiftUp(float fader)
     {
         if (in_hold_ && kind_ == Kind::PASSES)
+        {
             at_ = engine_->looper.Wraps() + passes_;
+            landings_ = engine_->FxLandings();
+        }
+        if (in_hold_ && kind_ == Kind::FADER)
+        {
+            // from the middle on: the fader's detents (1/24) add up to a hair under it
+            const bool take = fader > .49f;
+            if (posted_ != kNone)
+                engine_->looper.EndFade(take);
+            if (take)
+                kind_ = Kind::NOW; // not loaded yet: at once when it is, by time
+            else
+                Cancel();
+        }
         in_hold_ = false;
     }
+    /** The looper's Wraps() a PASSES plan switches at */
+    inline uint32_t At() const { return at_; }
     /** No plan. With the audio interrupt blocked */
     void Cancel()
     {
@@ -249,7 +315,7 @@ public:
             posted_ = kNone;
         }
         // not taken (the looper erasing then): handed over again
-        if (posted_ != kNone && !looper.SwitchWaiting())
+        if (posted_ != kNone && !looper.SwitchWaiting() && !looper.Fading())
             posted_ = kNone;
         // a recording: the recording's buffer holds no loop of the card's any more
         if (state == Looper::State::RECORDING)
@@ -273,6 +339,15 @@ public:
             ScopedIrqBlocker irq;
             Cancel();
         }
+        // one landing at the passes' end: once it's landed, the loop's alone; ended otherwise,
+        // the loop goes with it
+        if (with_scene_ && !in_hold_ && !engine_->FxMorphing())
+        {
+            ScopedIrqBlocker irq;
+            if (engine_->FxLandings() == landings_)
+                Cancel();
+            with_scene_ = false;
+        }
 
         Load();
         if (plan_ == kNone || posted_ != kNone || (kind_ == Kind::PASSES && in_hold_))
@@ -283,19 +358,16 @@ public:
         const Buf& buf = bufs_[b];
         const uint32_t at = kind_ == Kind::NOW       ? Looper::kSwitchNow
                             : kind_ == Kind::LANDING ? Looper::kSwitchHeld
+                            : kind_ == Kind::FADER   ? Looper::kSwitchFade
                                                      : at_;
         ScopedIrqBlocker irq;
-        looper.Switch(buf.data, buf.frames, buf.beats, at);
+        // by time, but the playing loop's own key starts it again; the passes' end is its
+        // start anyway (by time, the tape's direction and fraction kept)
+        looper.Switch(buf.data, buf.frames, buf.beats, at, kind_ != Kind::LANDING && plan_ != playing_);
         posted_ = plan_;
     }
 
 private:
-    enum class Kind : uint8_t
-    {
-        NOW,
-        PASSES,
-        LANDING,
-    };
     /** A buffer, and the loop it holds ready (id kNone: none) */
     struct Buf
     {
@@ -325,10 +397,14 @@ private:
         return -1;
     }
 
-    /** The switch posted for the plan taken back, and the engine's wait for the landing */
+    /** The switch posted for the plan taken back (the crossfader's loop fading out), and the
+     *  engine's wait for the landing */
     void Unpost()
     {
-        engine_->looper.CancelSwitch();
+        Looper& looper = engine_->looper;
+        looper.CancelSwitch();
+        if (looper.Fading())
+            looper.EndFade(false);
         engine_->LoopOnLanding(false);
         posted_ = kNone;
     }
@@ -420,8 +496,10 @@ private:
     int plan_ = kNone;       // the loop planned (bank * 15 + slot)
     Kind kind_ = Kind::NOW;  // and when it switches
     bool in_hold_ = false;   // planned in this SHIFT hold
+    bool with_scene_ = false; // PASSES: a scene sequence lands with it (WithScene)
     uint32_t passes_ = 1;    // PASSES: the taps
     uint32_t at_ = 0;        // and the looper's Wraps() it switches at
+    uint32_t landings_ = 0;  // the morph's landings when its sequence was released (WithScene)
     int posted_ = kNone;     // switch handed to the looper, for this loop
     int playing_ = kNone;    // the loop from the card the looper plays
     int load_ = kNone;       // loading, into bufs_[target_]

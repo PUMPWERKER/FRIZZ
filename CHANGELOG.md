@@ -14,11 +14,17 @@ what FRIZZ does.
   them from the new Loops page, SHIFT + the lower C#, one on each white key, the lower C# and D#
   for the banks. The recordings you made with TAPE (its cubbis, `cubbi_a1.wav` to
   `cubbi_e15.wav`, in `TAPE` or the card's root) play the same way from the Cubbi page, SHIFT +
-  the lower D#, in TAPE's bank colours; FRIZZ only reads them. A white key switches at once with
-  a short crossfade, SHIFT + a white key at the end of the loop's pass (tap it more for more
-  passes), and in one SHIFT hold with a scene morph or drop the loop lands with it. The loop
-  sets the tempo; LOOP, PLAY and the transport knob work on it as on a recording, which is gone
-  once you switch. Two quick taps of SHIFT take you back to the play page. See
+  the lower D#, in TAPE's bank colours; FRIZZ only reads them. The lower C# and D# light in the
+  colour of the bank they lead to. A white key switches at once with a short crossfade, in
+  time: the new loop starts as far into its pass as the old one, so loops at one tempo stay on
+  the beat. SHIFT + a white key switches at the end of the loop's pass (tap it more for more
+  passes). In one SHIFT hold with a scene change, the first key decides what's counted: a
+  scene key first counts bars and the loop lands with the morph or drop, a white key first
+  counts passes and the scene lands with the loop at their end. With the crossfader (SHIFT + a
+  scene key, the transport turned) a white key puts both loops under the fader, and letting go
+  keeps the nearer one. Switching keeps the tape's speed and direction. The loop sets the
+  tempo; LOOP, PLAY and the transport knob work on it as on a recording, which is gone once you
+  switch. Two quick taps of SHIFT take you back to the play page. See
   [Loop loader](MANUAL.md#loop-loader).
 
 - **A hung FRIZZ restarts by itself** (#105): if its sound stops for a second (a crash, or

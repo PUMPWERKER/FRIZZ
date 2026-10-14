@@ -44,10 +44,21 @@
  *  another buffer, which holds the loop's frames and its head again after its end, so the
  *  post-roll's crossfade at the loop point is the loop's own. It switches at once (the next
  *  block), at the loop point once Wraps() has counted to a pass, or when the engine says
- *  (ReleaseSwitch: a scene sequence's landing). Heard, the loop it leaves fades out over
- *  kSwitchFrames while the new one fades in from its start, so a switch at the loop point,
+ *  (ReleaseSwitch: a scene sequence's landing). The tape runs on across it: the new loop
+ *  keeps the speed and the direction, standing if the tape stands. It starts at its start
+ *  in the direction the tape runs (its end in reverse), or, by time (Switch's keep), as far
+ *  into its pass as the loop it leaves was into its own, modulo its length: two loops at one
+ *  tempo stay on the beat, whatever their lengths. Heard, the loop it leaves (the other
+ *  voice) fades out over kSwitchFrames from where it is, so a switch at the loop point,
  *  where the old loop's head is its natural continuation, is gapless. A recording always
  *  goes to the looper's own buffer (Init's), whichever it read before.
+ *
+ *  The crossfader (#70: SHIFT + a scene key, the transport turned, a white key) plays two
+ *  loops: Switch with kSwitchFade starts the new one as the other voice, by time, at the
+ *  tape's speed, and Fade sets the mix, 0 this loop to 1 the other, equal power, glided over
+ *  kSwitchFrames from end to end. The loop, its clock and Wraps() stay this one's until
+ *  EndFade: then the mix glides to the side that won, and the other loop takes over where
+ *  it is (a switch, Switches()) or goes.
  */
 #pragma once
 #include "FrizzHot.h"
@@ -209,17 +220,23 @@ public:
 
     static const uint32_t kSwitchNow = 0xFFFFFFFFu;  // Switch's at: the next block
     static const uint32_t kSwitchHeld = 0xFFFFFFFEu; // until ReleaseSwitch
+    static const uint32_t kSwitchFade = 0xFFFFFFFDu; // beside this one, on the crossfader
 
     /** The loop of length frames in mem (int16 stereo, its first kXfadeFrames again after its
      *  end) takes over at: kSwitchNow, kSwitchHeld, or the loop point the read head crosses
-     *  once Wraps() has reached it. beats: its own, 0 for none known (the engine guesses).
-     *  Replaces a switch waiting; none while recording or erasing */
-    void Switch(const int16_t* mem, size_t length, uint32_t beats, uint32_t at)
+     *  once Wraps() has reached it; or kSwitchFade, the crossfader's (file comment). beats: its
+     *  own, 0 for none known (the engine guesses). keep: by time, as far into its pass as this
+     *  one is (playing), else from its start. Replaces a switch waiting; none while recording
+     *  or erasing */
+    void Switch(const int16_t* mem, size_t length, uint32_t beats, uint32_t at, bool keep = false)
     {
+        if (length == 0)
+            return; // nothing to loop (the loader refuses it)
         next_mem_ = mem;
         next_length_ = length;
         next_beats_ = beats;
         next_at_ = at;
+        next_keep_ = keep;
     }
     inline void CancelSwitch() { next_mem_ = nullptr; }
     /** A held switch goes at the next block */
@@ -230,12 +247,48 @@ public:
     }
     inline bool SwitchHeld() const { return next_mem_ && next_at_ == kSwitchHeld; }
     inline bool SwitchWaiting() const { return next_mem_ != nullptr; }
-    /** Whether the buffer at buf is read now or will be: the loop's, the one fading out, the
-     *  one waiting, each starting within its first sector (a WAV's data after its header) */
+    /** The crossfader's mix, 0 this loop to 1 the other (kSwitchFade's), while it has one */
+    inline void Fade(float t)
+    {
+        if (fader_ && !end_)
+            mix_to_ = t < 0.f ? 0.f : (t > 1.f ? 1.f : t);
+    }
+    /** The crossfader let go: take, the other loop takes over (from the middle on); else it
+     *  goes. A kSwitchFade still waiting: at once, or not at all */
+    void EndFade(bool take)
+    {
+        if (next_mem_ && next_at_ == kSwitchFade)
+        {
+            next_at_ = kSwitchNow;
+            if (!take)
+                next_mem_ = nullptr;
+        }
+        if (!fader_ || end_)
+            return; // decided already
+        mix_to_ = take ? 1.f : 0.f;
+        end_ = true;
+    }
+#if FRIZZ_BENCH
+    /** The bench's crossfader (Bench.h's FADER): the loop playing beside itself, half a pass
+     *  on, mixed at the middle; off, gone at once. From the audio callback */
+    void BenchFade(bool on)
+    {
+        other_mem_ = on && state_ == State::PLAYING ? mem_ : nullptr;
+        other_length_ = length_;
+        other_pos_ = length_ ? (play_pos_ + length_ / 2) % length_ : 0;
+        other_frac_ = 0.f;
+        mix_ = mix_to_ = .5f;
+        fader_ = other_mem_ != nullptr;
+        end_ = false;
+    }
+#endif
+    /** Two loops on the crossfader (or one waiting to join it) */
+    inline bool Fading() const { return fader_ || (next_mem_ && next_at_ == kSwitchFade); }
+    /** Whether the buffer at buf is read now or will be: the loop's, the other one, the one
+     *  waiting, each starting within its first sector (a WAV's data after its header) */
     inline bool Reads(const void* buf) const
     {
-        return (state_ != State::EMPTY && In(mem_, buf)) || (xf_left_ && In(old_mem_, buf))
-               || In(next_mem_, buf);
+        return (state_ != State::EMPTY && In(mem_, buf)) || In(other_mem_, buf) || In(next_mem_, buf);
     }
     static inline bool In(const int16_t* loop, const void* buf)
     {
@@ -249,6 +302,9 @@ public:
     /** The loop is a loaded one (Switch), with these beats (0: none known) */
     inline bool Loaded() const { return mem_ != rec_mem_; }
     inline uint32_t LoadedBeats() const { return loaded_beats_; }
+    /** Where the last switch's loop started, 0-1 through it, 1 at its end in reverse (its
+     *  start that way): for the clock (TempoClock::SetLoop) */
+    inline float SwitchedAt() const { return switched_at_; }
 
     // ===== state, readable from the UI =====
 
@@ -306,8 +362,10 @@ public:
     FRIZZ_HOT void Process(const float* in_l, const float* in_r, float* out_l, float* out_r, size_t size)
     {
         HandleCommand();
-        if (__builtin_expect(next_mem_ && next_at_ == kSwitchNow, 0))
-            DoSwitch();
+        if (__builtin_expect(next_mem_ != nullptr, 0))
+            Switched();
+        if (__builtin_expect(other_mem_ != nullptr, 0))
+            Settle();
         HandleSpeed();
         if (__builtin_expect(cue_, 0))
             HandleCue();
@@ -387,14 +445,15 @@ public:
                         float gain = fade_;
                         if (__builtin_expect(quiet_, 0))
                             gain *= StillGain();
-                        if (__builtin_expect((offset_ | jump_left_ | xf_left_) != 0, 0))
-                            ReadScrambled(&out_l[i], &out_r[i]);
+                        const float step = playing || fading_out_ ? speed_ : scrub_;
+                        if (__builtin_expect((offset_ | jump_left_ | reinterpret_cast<uintptr_t>(other_mem_)) != 0, 0))
+                            ReadScrambled(&out_l[i], &out_r[i], step);
                         else
                             ReadInterpolated(play_pos_, &out_l[i], &out_r[i]);
                         out_l[i] *= gain;
                         out_r[i] *= gain;
                         // an erase or a switch waiting for the loop point happens there
-                        if (Advance(playing || fading_out_ ? speed_ : scrub_) && playing)
+                        if (Advance(step) && playing)
                             Wrapped();
                     }
                     else
@@ -681,12 +740,55 @@ private:
         wraps_++;
         if (erase_at_end_)
             BeginErase();
-        else if (next_mem_ && next_at_ < kSwitchHeld && wraps_ >= next_at_)
+        else if (next_mem_ && next_at_ < kSwitchFade && wraps_ >= next_at_)
             DoSwitch();
     }
 
-    /** The loop waiting (Switch) takes over, at its start, at 1x forward; the one heard fades
-     *  out over kSwitchFrames from where it is. From empty it plays, fading in; paused it stays
+    /** A block's start with a switch waiting: at once, or the crossfader's other loop once
+     *  the voice is free (a switch's fade out over) */
+    __attribute__((noinline, cold)) void Switched()
+    {
+        if (next_at_ == kSwitchNow)
+            DoSwitch();
+        else if (next_at_ == kSwitchFade && !other_mem_)
+        {
+            // nothing to fade from: at once
+            if (state_ != State::PLAYING && state_ != State::PAUSED)
+            {
+                DoSwitch();
+                return;
+            }
+            if (erasing_)
+                return;
+            other_mem_ = next_mem_;
+            other_length_ = next_length_;
+            other_beats_ = next_beats_;
+            next_mem_ = nullptr;
+            ByTime(other_length_, other_pos_, other_frac_);
+            mix_ = mix_to_ = 0.f;
+            fader_ = true;
+            end_ = false;
+        }
+    }
+
+    /** Where a loop of length frames starts by time (Switch's keep): as far into its pass,
+     *  the way the tape runs, as this one is into its own, modulo its length */
+    void ByTime(size_t length, size_t& pos, float& frac) const
+    {
+        frac = play_frac_;
+        if (!reverse_)
+        {
+            pos = play_pos_ % length;
+            return;
+        }
+        // in reverse a pass runs from the end down: the frames left to its start alike
+        const size_t left = (length_ - play_pos_) % length;
+        pos = length - (left ? left : length);
+    }
+
+    /** The loop waiting (Switch) takes over: by time, or at its start the way the tape runs;
+     *  the one heard fades out over kSwitchFrames from where it is (the other voice). The
+     *  tape keeps its speed and direction. From empty it plays, fading in; paused it stays
      *  paused */
     __attribute__((noinline, cold)) void DoSwitch()
     {
@@ -694,16 +796,25 @@ private:
         next_mem_ = nullptr;
         if (state_ == State::RECORDING || erasing_)
             return;
-        xf_left_ = 0;
-        if (state_ == State::PLAYING && fade_ > .0001f)
+        const bool playing = state_ == State::PLAYING;
+        size_t pos = 0;
+        float frac = 0.f;
+        if (next_keep_ && playing)
+            ByTime(next_length_, pos, frac);
+        else if (reverse_)
+            pos = next_length_ - 1;
+        other_mem_ = nullptr;
+        fader_ = end_ = false;
+        if (playing && fade_ > .0001f)
         {
-            old_mem_ = mem_;
-            old_length_ = length_;
-            old_pos_ = Shifted(offset_);
-            old_back_ = speed_ < 0.f;
-            xf_left_ = kSwitchFrames;
+            other_mem_ = mem_;
+            other_length_ = length_;
+            other_pos_ = Shifted(offset_);
+            other_frac_ = play_frac_;
+            mix_ = 1.f;
+            mix_to_ = 0.f;
         }
-        if (state_ != State::PLAYING)
+        if (!playing)
         {
             fade_ = 0.f;
             fading_out_ = false;
@@ -711,22 +822,43 @@ private:
         }
         if (state_ == State::EMPTY)
             state_ = State::PLAYING;
+        TakeOver(mem, next_length_, next_beats_, pos, frac);
+    }
+
+    /** The loop in mem from pos: the looper's from here, a switch (Switches) */
+    void TakeOver(const int16_t* mem, size_t length, uint32_t beats, size_t pos, float frac)
+    {
         mem_ = mem;
-        length_ = next_length_;
-        loaded_beats_ = next_beats_;
+        length_ = length;
+        loaded_beats_ = beats;
         beats_ = 0;
         rec_factor_ = ClockFactor::ONE;
         postroll_ = kXfadeFrames;
-        play_pos_ = 0;
-        play_frac_ = 0.f;
+        play_pos_ = pos;
+        play_frac_ = frac;
+        // in reverse its last frame is its start: 1, so the clock counts the line it crossed
+        switched_at_ = reverse_ && pos == length - 1 ? 1.f : static_cast<float>(pos) / static_cast<float>(length);
         offset_ = from_offset_ = 0;
         jump_left_ = 0;
         cue_ = false;
         erase_at_end_ = false;
-        ApplyResetSpeed();
-        speed_ = 1.f;
-        quiet_ = false;
         switches_++;
+    }
+
+    /** A block's start with the other voice: its fade done, it goes, or, the crossfader's
+     *  won, it takes over where it is */
+    __attribute__((noinline, cold)) void Settle()
+    {
+        if (fade_ <= .0001f)
+            mix_ = mix_to_; // unheard (paused): nothing to glide
+        if (mix_ != mix_to_ || (fader_ && !end_))
+            return;
+        const int16_t* mem = other_mem_;
+        other_mem_ = nullptr;
+        if (fader_ && mix_ >= 1.f && state_ != State::EMPTY && !erasing_)
+            TakeOver(mem, other_length_, other_beats_, other_pos_, other_frac_);
+        fader_ = end_ = false;
+        mix_ = mix_to_ = 0.f;
     }
 
     /** Fades out at play speed, then Clear() in Process */
@@ -885,7 +1017,9 @@ private:
         state_ = State::EMPTY;
         mem_ = rec_mem_;
         next_mem_ = nullptr;
-        xf_left_ = 0;
+        other_mem_ = nullptr;
+        fader_ = end_ = false;
+        mix_ = mix_to_ = 0.f;
         quantized_ = false;
         closing_ = false;
         erasing_ = false;
@@ -990,8 +1124,9 @@ private:
     }
 
     /** The read head offset_ on, crossfading from from_offset_ while jump_left_ runs, and
-     *  from the loop a switch left while xf_left_ does */
-    __attribute__((noinline, cold)) void ReadScrambled(float* l, float* r)
+     *  mixed with the other voice while there is one (a switch's fade out, the crossfader's
+     *  loop), which moves step frames a sample as the read head does */
+    __attribute__((noinline, cold)) void ReadScrambled(float* l, float* r, float step)
     {
         ReadInterpolated(Shifted(offset_), l, r);
         if (jump_left_)
@@ -1003,18 +1138,55 @@ private:
             *r += (or_ - *r) * old;
             jump_left_--;
         }
-        if (xf_left_)
+        if (other_mem_)
         {
-            // the old loop at its own frames, a frame a sample the way it ran
-            const float old = static_cast<float>(xf_left_) / kSwitchFrames;
-            *l += (s162f(old_mem_[old_pos_ * 2]) - *l) * old;
-            *r += (s162f(old_mem_[old_pos_ * 2 + 1]) - *r) * old;
-            if (old_back_)
-                old_pos_ = old_pos_ ? old_pos_ - 1 : old_length_ - 1;
-            else if (++old_pos_ >= old_length_)
-                old_pos_ = 0;
-            xf_left_--;
+            // the mix: a switch's fade linear, the crossfader's equal power
+            const float x = mix_;
+            const float go = fader_ ? EqualPower(x) : x, gm = fader_ ? EqualPower(1.f - x) : 1.f - x;
+            if (x != mix_to_)
+            {
+                const float to = mix_to_, d = 1.f / kSwitchFrames;
+                mix_ = to > x ? (x + d < to ? x + d : to) : (x - d > to ? x - d : to);
+            }
+            float ol, or_;
+            ReadAt(other_mem_, other_length_, other_pos_, other_frac_, &ol, &or_);
+            *l = *l * gm + ol * go;
+            *r = *r * gm + or_ * go;
+            other_frac_ += step;
+            while (other_frac_ >= 1.f)
+            {
+                other_frac_ -= 1.f;
+                if (++other_pos_ >= other_length_)
+                    other_pos_ = 0;
+            }
+            while (other_frac_ < 0.f)
+            {
+                other_frac_ += 1.f;
+                other_pos_ = other_pos_ ? other_pos_ - 1 : other_length_ - 1;
+            }
         }
+    }
+    /** sin(x pi/2) within 0.1 %, 0 at 0 and 1 at 1: the crossfader's gains, x and 1 - x */
+    static inline float EqualPower(float x)
+    {
+        const float x2 = x * x;
+        return x * (1.5707963f - x2 * (.6459640f - .0751677f * x2));
+    }
+    /** A loop of length frames in mem, at pos and frac, as ReadInterpolated (the other voice's:
+     *  a loaded loop, no post-roll) */
+    static void ReadAt(const int16_t* mem, size_t length, size_t pos, float frac, float* l, float* r)
+    {
+        float xl[4], xr[4];
+        for (int k = 0; k < 4; k++)
+        {
+            size_t f = pos + length + static_cast<size_t>(k) - 1;
+            while (f >= length)
+                f -= length;
+            xl[k] = s162f(mem[f * 2]);
+            xr[k] = s162f(mem[f * 2 + 1]);
+        }
+        *l = frac == 0.f ? xl[1] : Hermite(xl, frac);
+        *r = frac == 0.f ? xr[1] : Hermite(xr, frac);
     }
     inline size_t Shifted(size_t offset) const
     {
@@ -1073,13 +1245,21 @@ private:
     const int16_t* mem_;     // the loop read: the recording's, or a loaded one (Switch)
     int16_t* rec_mem_;       // the recording's, written
     MidiClock* midi_clock_;
-    // a switch waiting (Switch), the loop it fades from while xf_left_ runs
+    // a switch waiting (Switch)
     const int16_t* next_mem_ = nullptr;
     size_t next_length_ = 0;
     uint32_t next_beats_ = 0, next_at_ = 0, loaded_beats_ = 0;
-    const int16_t* old_mem_ = nullptr;
-    size_t old_length_ = 0, old_pos_ = 0, xf_left_ = 0;
-    bool old_back_ = false;
+    bool next_keep_ = false;
+    float switched_at_ = 0.f; // where the last one started, 0-1 (SwitchedAt)
+    // the other voice: the loop a switch left, fading out, or the crossfader's (Fade), mixed
+    // at mix_ (0 this loop, 1 the other) gliding to mix_to_; end_: the crossfader let go
+    const int16_t* other_mem_ = nullptr;
+    size_t other_length_ = 0, other_pos_ = 0;
+    float other_frac_ = 0.f;
+    uint32_t other_beats_ = 0;
+    volatile float mix_to_ = 0.f;
+    float mix_ = 0.f;
+    bool fader_ = false, end_ = false;
     uint32_t wraps_ = 0, switches_ = 0;
 
     std::atomic<Command> command_{Command::NONE};

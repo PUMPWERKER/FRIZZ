@@ -1,0 +1,110 @@
+# Two loops on the crossfader under load (#70): every effect with a sound but the tape stop,
+# and the chaos key, latched and saved in scene 1 (in RAM only on the device: play keeps the
+# card), then SHIFT + scene 1 and the transport turned, the crossfader, with a white key: the
+# looper reads both loops (A/01 and A/03, 2 and 4 s at 120 BPM, and then A/02) for as long as
+# the hold lasts, back and forth, another white key replacing the new side; let go in the
+# middle, the new loop takes over; then fully right. For remote.py play --cpu on the device,
+# whose card holds the same files (tools/loopfiles.py page).
+card wav /FRIZZ/a1.wav 2 2 220
+card wav /FRIZZ/a2.wav 1.5 2 330
+card wav /FRIZZ/a3.wav 4 2 220
+input sine 220 0.3
+at 6000
+# A/01, at once, from the Loops page; home again to latch the effects
+down KEY_26
+wait 60
+tap KEY_16
+wait 60
+up KEY_26
+wait 300
+tap KEY_1
+wait 500
+down KEY_26
+wait 60
+tap KEY_16
+wait 60
+up KEY_26
+wait 300
+down KEY_1
+down KEY_2
+down KEY_3
+down KEY_4
+down KEY_5
+down KEY_6
+down KEY_7
+down KEY_8
+down KEY_9
+down KEY_11
+down KEY_12
+down KEY_13
+down KEY_14
+wait 100
+tap KEY_26
+wait 60
+up KEY_1
+up KEY_2
+up KEY_3
+up KEY_4
+up KEY_5
+up KEY_6
+up KEY_7
+up KEY_8
+up KEY_9
+up KEY_11
+up KEY_12
+up KEY_13
+up KEY_14
+wait 1000
+# saved in scene 1 (SAVE, its key, CHOMPI), so the crossfader goes from it to itself
+tap KEY_23
+tap KEY_19
+wait 300
+tap KEY_26
+wait 1000
+# the Loops page: SHIFT + scene 1, the transport 12 detents (the middle), A/03 joins
+down KEY_26
+wait 60
+tap KEY_16
+wait 60
+up KEY_26
+wait 300
+down KEY_26
+wait 60
+tap KEY_19
+wait 60
+turn 5 12
+wait 400
+tap KEY_3
+wait 2000
+turn 5 12
+wait 1000
+turn 5 -18
+wait 1000
+turn 5 6
+wait 300
+# another white key: A/02 for A/03 on the right
+tap KEY_2
+wait 2000
+# let go in the middle: A/02 takes over, its key bright
+up KEY_26
+wait 1500
+expect led smt 23 fc983c
+# fully right with A/01: it takes over
+down KEY_26
+wait 60
+tap KEY_19
+wait 60
+turn 5 24
+wait 500
+tap KEY_1
+wait 2000
+up KEY_26
+wait 1500
+expect led smt 24 fc983c
+expect led smt 23 241408
+# home: a double tap of SHIFT
+tap KEY_26
+wait 100
+tap KEY_26
+wait 300
+expect led pth 0 000000

@@ -337,14 +337,16 @@ the confirm of a scene save, copy or delete and the start-up ripple.
 
 | Control | Function | LED |
 |---|---|---|
-| Lower C#, lower D# | The bank before, the bank after; empty banks are skipped | both in the bank's colour; 3 red blinks at the first or last bank |
+| Lower C#, lower D# | The bank before, the bank after; empty banks are skipped | each in the colour of the bank it leads to; dark at the first or last bank, where a press blinks red 3 times |
 | A white key | Switch to its loop at once | see below |
 | SHIFT + a white key, tapped N times | Switch at the end of the N-th pass | blinks on the beat while it waits |
+| SHIFT + a scene key, the transport turned, a white key | Both loops on the crossfader | see [Two loops on the crossfader](#two-loops-on-the-crossfader) |
 | Scene keys, the transport knob, PLAY, LOOP, SHIFT + LOOP, VOLUME | As on the play page | as on the play page |
 | Knobs 1-4, upper F#, G#, A# | Nothing | dark |
 
 The banks' colours: A orange, B yellow, C green, D teal, E light blue, F blue, G purple,
-H pink. A white key shows its loop:
+H pink. The bank you're on shows on the CHOMPI key and the white keys; the lower C# and D#
+show where they lead. A white key shows its loop:
 
 | LED | Means |
 |---|---|
@@ -387,18 +389,20 @@ the lower C# and D# blink red 3 times.
 
 The banks show in TAPE's own colours, so you recognise them: a purple, b orange, c teal,
 d dark orange, e yellow-green. While you're on the page, the CHOMPI key glows dimly in the
-bank's colour.
+bank's colour, and the lower C# and D# in the colours of the banks they lead to.
 
 ### Switching loops
 
-- **A white key** switches to its loop at once, with a short crossfade, from its start. With
-  no loop playing it starts playing and the input/loop mix goes to the loop, as after a
-  recording; paused, it waits at its start for PLAY. The key of the loop playing starts it
-  again from the top.
-- **SHIFT + a white key** switches at the end of the loop playing, without a gap. Tap the
-  white key more times for more passes: twice is the end of the next pass, and so on, up to
-  8. The passes count from when you let go of SHIFT. With no loop playing, or paused, it
-  switches at once.
+- **A white key** switches to its loop at once, with a short crossfade. It keeps time: the
+  new loop starts as far into its pass as the loop playing is into its own, counted round
+  the new loop's length. So two loops at the same tempo stay on the beat, whatever their
+  lengths and whatever tempo FRIZZ guesses for them. With no loop playing it starts from the
+  top and the input/loop mix goes to the loop, as after a recording; paused, it waits at its
+  start for PLAY. The key of the loop playing starts it again from the top.
+- **SHIFT + a white key** switches at the end of the loop playing, without a gap, the new
+  loop from its start. Tap the white key more times for more passes: twice is the end of the
+  next pass, and so on, up to 8. The passes count from when you let go of SHIFT. With no loop
+  playing, or paused, it switches at once.
 - **The last white key counts:** another white key replaces what you planned.
 - **Loading** takes under a second for the longest loops. A loop not loaded by its time
   switches at the end of the first pass after it is.
@@ -407,29 +411,79 @@ bank's colour.
 
 ### A loop with a scene change
 
-A loop can join a [scene change in time](#scene-changes-in-time) in the same SHIFT hold:
-tap the scene key (once per bar), and a white key, before or after it. Then let go of
-SHIFT.
+A loop can join a [scene change in time](#scene-changes-in-time) in the same SHIFT hold. As
+everywhere in a SHIFT hold, **the first key decides**: a scene key first counts bars, a white
+key first counts passes of the loop playing. Then let go of SHIFT.
+
+**A scene key first: bars.** Tap the scene key once per bar, as for any scene change, then
+optionally the transport (a drop) or a second scene key (a build-up), and a white key. The
+white key only says which loop: tapping it again counts nothing, and another white key
+replaces it.
 
 - **With a morph**, the loop switches where the morph arrives.
-- **With a drop or a build-up** (the transport pressed, or a second scene key), it switches
-  with the drop, on its bar line.
-- **With the crossfader** (the transport turned), it switches at once.
-- If it isn't loaded by then, the scene lands anyway and the loop follows at the next bar
-  line once it is.
+- **With a drop or a build-up**, it switches with the drop, on its bar line.
+- That can be in the middle of the loop's pass: it switches there with the short crossfade,
+  the new loop from its start.
+
+**A white key first: passes.** Tap the white key once per pass of the loop playing (another
+white key replaces it), then a scene key. Everything lands together at the end of the N-th
+pass, without a gap:
+
+- **The scene key alone:** the scene morphs over those passes and arrives exactly at the end.
+- **A second scene key:** a build-up to the first over the passes, the second dropping at the
+  end.
+- **The transport pressed:** the scene drops at the end.
+
+Here the scene key's taps count nothing: the first scene key is the one you go to, a
+different one the drop of a build-up. Turning the transport makes it the
+[crossfader with both loops](#two-loops-on-the-crossfader), and the passes no longer count;
+without a scene key in the hold, SHIFT + the transport turns the speed as always, and the
+switch stays planned.
+
+For both:
+
+- If the loop isn't loaded by its time, the scene lands anyway and the loop follows at the
+  next bar line (or pass end) once it is. If the loop is erased while a scene waits for the
+  pass end, the scene lands on the next bar line.
 - **SHIFT + any blinking key** (the scene's or the loop's) cancels all of it: the scene stops
   where it is and the loop doesn't switch. A scene recalled meanwhile, or the change stopped
   any other way, takes its loop with it.
 
 A planned switch carries on if you leave the Loops page.
 
+### Two loops on the crossfader
+
+Hold SHIFT, tap a scene key and turn the transport knob: that's the
+[crossfader](#crossfading-by-hand). Tap a white key in the same hold, before or after you turn,
+and the crossfader mixes the two loops as it mixes the two scenes: on the left the loop
+playing and its scene, on the right the new loop and the new scene, and both loops in between.
+
+- **The new loop joins in time**, as a white key at once does: as far into its pass as the
+  loop playing is into its own, at the tape's speed.
+- **Let go of SHIFT:** the scene stays where the fader is, as always. The loop goes to the
+  nearer side: from the middle on, the new loop takes over where it is and sets the tempo;
+  below the middle, the loop playing stays and the new one is gone. Fully right is the new
+  loop and the new scene, fully left the old ones.
+- **Until you let go**, the effects' tempo, the beat and MIDI out follow the loop playing.
+- **Another white key** in the hold replaces the new loop, with a quick fade; the same key
+  again, or the key of the loop playing, does nothing. A scene recalled meanwhile (or a
+  program change, or CC 81) drops the new loop.
+- **It's only clean with two loops at the same tempo**, or with pads and textures without
+  drums in the same key. FRIZZ mixes the two loops, it doesn't match their tempos: two loops
+  at different tempos drift apart under the fader.
+
 ### A loaded loop is the loop
 
 - **LOOP** erases it, as it erases a recording (and a switch waiting with it); then LOOP
   records a new one. **PLAY** pauses and plays it; the **transport knob** changes its speed,
   scrubs it while paused.
-- **Its tempo:** a loop plays at its own speed and pitch, 1× forward, and the effects' tempo
-  follows it from its start. FRIZZ takes its beats from its `acid` chunk; without one it
+- **The tape runs on across loops.** Every switch keeps the transport's speed and direction:
+  at once, planned, with a scene and on the crossfader. A loop you switch to at double speed
+  plays at double speed; in reverse it starts from its end, in reverse; at a standstill it
+  stands too. Only a new recording (LOOP) starts at 1×, and pressing the transport knob is 1×
+  forward, as always.
+- **Its tempo:** a loop's tempo is its own times the speed, and the effects' tempo follows it
+  from the switch. FRIZZ takes its beats from its `acid` chunk; without one it
   guesses them from its length, the power of two beats (1, 2, 4, 8 …) that puts it closest to
   the tempo playing, between 50 and 300 BPM. If that lands at half or double the tempo, or the
   loop holds 3 or 6 bars, [tap the tempo](#tap-tempo) (SHIFT + LOOP) and the beats fit again.
@@ -1331,6 +1385,8 @@ without a loop, and the bar lines don't count while you hold it.
   hold a morph, SHIFT + turn crossfades instead of stepping the speed in 5ths and octaves;
   once you've let go, the transport knob is back to speed and scrub at once.
 - Over MIDI, CC 80 is the crossfader (see [Controllers](#controllers)).
+- On the Loops page, a white key in the same hold puts two loops under the crossfader too
+  (see [Two loops on the crossfader](#two-loops-on-the-crossfader)).
 
 ## Settings page
 
@@ -1608,10 +1664,12 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 |---|---|---|
 | SHIFT + lower C#, or two quick taps of SHIFT | Back to the play page | [The Loops page](#the-loops-page) |
 | SHIFT + lower D# | The Cubbi page | [The Cubbi page](#the-cubbi-page) |
-| Lower C#, lower D# | The bank before, after | [The Loops page](#the-loops-page) |
-| A white key | Its loop at once | [Switching loops](#switching-loops) |
+| Lower C#, lower D# | The bank before, after (each lit in the colour of that bank) | [The Loops page](#the-loops-page) |
+| A white key | Its loop at once, in time | [Switching loops](#switching-loops) |
 | SHIFT + a white key, N times | Its loop at the end of the N-th pass | [Switching loops](#switching-loops) |
-| SHIFT + a scene key (and the transport or a second scene key) and a white key | The loop with the morph or the drop | [A loop with a scene change](#a-loop-with-a-scene-change) |
+| SHIFT + a scene key, N times (and the transport or a second scene key), then a white key | The loop with the morph or the drop, N bars on | [A loop with a scene change](#a-loop-with-a-scene-change) |
+| SHIFT + a white key, N times, then a scene key (and the transport or a second scene key) | The scene and the loop together at the end of the N-th pass | [A loop with a scene change](#a-loop-with-a-scene-change) |
+| SHIFT + a scene key, turn the transport knob, a white key | Both loops on the crossfader; letting go, the nearer side | [Two loops on the crossfader](#two-loops-on-the-crossfader) |
 | SHIFT + a blinking key | Cancel the planned switch, and its scene change | [A loop with a scene change](#a-loop-with-a-scene-change) |
 | Scene keys, the transport knob, PLAY, LOOP, VOLUME | As on the play page | [On the play page](#on-the-play-page) |
 

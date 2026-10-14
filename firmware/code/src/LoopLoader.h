@@ -80,7 +80,7 @@ enum Result : uint8_t
     NOT_16BIT,  //
     NOT_48K,    //
     CHANNELS,   // not mono or stereo
-    NO_DATA,    // no data chunk in the first windows
+    NO_DATA,    // no data chunk in the first windows, or not a frame in it
     PAST_END,   // the data goes past the file's end, or a chunk does
     TOO_LONG,   // more than kMaxFrames
     UNREADABLE, // the card wouldn't give it
@@ -198,6 +198,8 @@ private:
         if (channels_ != 1 && channels_ != 2)
             return CHANNELS;
         frames = len / (2u * channels_);
+        if (frames == 0)
+            return NO_DATA; // not a frame: nothing to loop
         if (frames > kMaxFrames)
             return TOO_LONG;
         return channels_ == 1 ? MONO : STEREO;

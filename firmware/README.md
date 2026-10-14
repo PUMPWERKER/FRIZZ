@@ -633,7 +633,9 @@ The segments: nothing on, each effect alone (its knobs moving every 0.25 s), the
 the inserts together, recording a loop, the loop alone, with the inserts, with the delay, with
 PR #7's scene 4 (shifter +7, folder, crusher, slicer, compressor at 1) and the delay, with the
 reverb, then everything, everything with every feedback at the top (the harness's STRESS), and
-the loop with everything. The sends come last because their tails run on (the delay's for 10
+the loop with everything; later ones the chaos key, AUX dry, the mic, the crossfader with two
+loops (the loop beside itself half a pass on, #70) and page 2 off its defaults (`Bench.h`
+lists them all). The sends come last because their tails run on (the delay's for 10
 s). The signal is the bench's own, so runs compare: a little tune in A minor at 120 BPM (Am F
 C G, an arpeggio, bass, kick, hi-hat), made by a few oscillators, so it costs no room for a
 recording. It's made for the next block after each measurement, so its own cost isn't in the
