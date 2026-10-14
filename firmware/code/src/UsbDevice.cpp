@@ -309,6 +309,8 @@ void MidiTinyUsbTransport::StartRx(MidiRxParseCallback callback, void* context)
     midi_rx_cb = callback;
 }
 
+bool MidiTinyUsbTransport::RxActive() { return midi_rx_cb != nullptr; }
+
 size_t MidiTinyUsbTransport::Room() const { return kMidiTxSize - (midi_tx_head - midi_tx_tail); }
 
 bool MidiTinyUsbTransport::Tx(uint8_t* buffer, size_t size)

@@ -93,7 +93,8 @@ public:
     void Init(Config) {}
     void Reset();
     void StartRx(MidiRxParseCallback callback, void* context);
-    bool RxActive() { return true; }
+    /** Whether StartRx was called: MidiHandler::Listen() calls it only while this is false */
+    bool RxActive();
     void FlushRx() {}
     /** All of it queued, or nothing (false): the queue's full, or no host */
     bool Tx(uint8_t* buffer, size_t size);
