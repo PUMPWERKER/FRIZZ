@@ -232,7 +232,8 @@ public:
         }
         if (in_hold_ && kind_ == Kind::FADER)
         {
-            const bool take = fader >= .5f;
+            // from the middle on: the fader's detents (1/24) add up to a hair under it
+            const bool take = fader > .49f;
             if (posted_ != kNone)
                 engine_->looper.EndFade(take);
             if (take)

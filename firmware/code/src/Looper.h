@@ -268,6 +268,20 @@ public:
         mix_to_ = take ? 1.f : 0.f;
         end_ = true;
     }
+#if FRIZZ_BENCH
+    /** The bench's crossfader (Bench.h's FADER): the loop playing beside itself, half a pass
+     *  on, mixed at the middle; off, gone at once. From the audio callback */
+    void BenchFade(bool on)
+    {
+        other_mem_ = on && state_ == State::PLAYING ? mem_ : nullptr;
+        other_length_ = length_;
+        other_pos_ = length_ ? (play_pos_ + length_ / 2) % length_ : 0;
+        other_frac_ = 0.f;
+        mix_ = mix_to_ = .5f;
+        fader_ = other_mem_ != nullptr;
+        end_ = false;
+    }
+#endif
     /** Two loops on the crossfader (or one waiting to join it) */
     inline bool Fading() const { return fader_ || (next_mem_ && next_at_ == kSwitchFade); }
     /** Whether the buffer at buf is read now or will be: the loop's, the other one, the one

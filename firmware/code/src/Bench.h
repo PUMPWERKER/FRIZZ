@@ -342,6 +342,8 @@ private:
                       // and each effect's own knobs (the sends' freeze stays off)
         DRY = 128,    // AUX dry (#152): the input past the effects and the compressor
         MIC = 256,    // the mic (#152): the tune into it, not on the master
+        FADER = 512,  // two loops on the crossfader (#70): the loop beside itself, half a pass
+                      // on, mixed at the middle (Looper::BenchFade)
     };
     struct Segment
     {
@@ -358,7 +360,7 @@ private:
     static const uint16_t kScene4 = (1u << FX_SHIFTER) | (1u << FX_FOLDER) | (1u << FX_CRUSHER)
                                     | (1u << FX_SLICER);
 
-    static constexpr size_t kNumSegments = 27;
+    static constexpr size_t kNumSegments = 28;
     static const Segment kSegments[kNumSegments];
 
     static const size_t kMaxBlock = 48;
@@ -454,6 +456,7 @@ private:
         }
         else
             engine.SetMix(seg.flags & LOOP ? .5f : 0.f);
+        engine.looper.BenchFade(seg.flags & FADER);
     }
 
     void TurnAKnob(PassthroughEngine& engine)
@@ -782,6 +785,8 @@ const Bench::Segment Bench::kSegments[Bench::kNumSegments] = {
     // the inputs (#152): loop+inserts with AUX dry beside them, and with the mic
     {"loop+inserts+dry", Bench::kInserts, Bench::LOOP | Bench::DRY},
     {"loop+inserts+mic", Bench::kInserts, Bench::LOOP | Bench::MIC},
+    // the crossfader with two loops (#70): the looper reads two of them
+    {"loop+everything+fader", Bench::kEverything, Bench::LOOP | Bench::COMP | Bench::FADER},
     // last: the segment after it would start with every insert's page 2 settling back to its
     // defaults, page 2's cost, as the chaos segment did after it (114 % for a block)
     {"loop+everything+page2", Bench::kEverything, Bench::LOOP | Bench::COMP | Bench::PAGE2},

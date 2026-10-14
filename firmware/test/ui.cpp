@@ -3833,8 +3833,11 @@ int main()
         tones(q220, q330, q440);
         Check(Probe().loop_length == 96000 && Probe().tempo == 120 && q330 < .02f * alone,
               "loops-fader: let go below the middle: the old loop plays on, the new one's gone");
-        // let go in the middle: the new loop, by time where it was, with its tempo
-        hold(12);
+        // let go in the middle (there from the right: the detents add up to a hair under it):
+        // the new loop, by time where it was, with its tempo
+        hold(24);
+        Turn(5, -12);
+        RunMs(100);
         Tap(kLoopKeys[1]);
         RunMs(300);
         const ClockState b0 = Probe();
