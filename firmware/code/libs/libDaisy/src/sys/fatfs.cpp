@@ -1,7 +1,8 @@
 #include "sys/fatfs.h"
 #include "ff_gen_drv.h"
 #include "util/sd_diskio.h"
-#include "util/usbh_diskio.h"
+// FRIZZ: no MEDIA_USB, so ST's USB host stack (usbh_*, hal_hcd) isn't linked; FRIZZ mounts
+// the SD card only. A config asking for MEDIA_USB gets ERR_NO_MEDIA_SELECTED.
 
 
 using namespace daisy;
@@ -12,10 +13,6 @@ FatFSInterface::Result FatFSInterface::Init(const FatFSInterface::Config& cfg)
     cfg_       = cfg;
     if(cfg_.media & Config::MEDIA_SD)
         ret = FATFS_LinkDriver(&SD_Driver, path_[0]) == FR_OK
-                  ? Result::OK
-                  : Result::ERR_TOO_MANY_VOLUMES;
-    if(cfg_.media & Config::MEDIA_USB)
-        ret = FATFS_LinkDriver(&USBH_Driver, path_[1]) == FR_OK
                   ? Result::OK
                   : Result::ERR_TOO_MANY_VOLUMES;
     if(ret == Result::OK)
@@ -35,10 +32,6 @@ FatFSInterface::Result FatFSInterface::DeInit()
     Result ret = Result::ERR_NO_MEDIA_SELECTED;
     if(cfg_.media & Config::MEDIA_SD)
         ret = FATFS_UnLinkDriver(path_[0]) == FR_OK
-                  ? Result::OK
-                  : Result::ERR_TOO_MANY_VOLUMES;
-    if(cfg_.media & Config::MEDIA_USB)
-        ret = FATFS_UnLinkDriver(path_[1]) == FR_OK
                   ? Result::OK
                   : Result::ERR_TOO_MANY_VOLUMES;
     if(ret == Result::OK)

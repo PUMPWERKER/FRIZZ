@@ -1,16 +1,17 @@
 # Capacity: what's free on the CHOMPI, and how to make room
 
-What a new feature can still use, measured on 2026-10-13 on `main` affe864 (`FRIZZ.bin` md5
-`0e92b524`, after the beta.1 findings, #179-#201, and the new boot, #197; the history below). `make` prints the memory table after every
-build; the numbers below come from it and from `build/FRIZZ.map`.
+What a new feature can still use, measured on 2026-10-14 after the loop loader (#70) and
+with ST's USB host stack no longer linked (#196; `FRIZZ.bin` md5 `946e7867`; the history
+below). `make` prints the memory table after every build; the numbers below come from it and
+from `build/FRIZZ.map`.
 
 ## Memory
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 247,920 B (89 %) | **~30 KB** | all the code, and the initial values of `.data` |
-| `SRAM` (AXI SRAM) | 240 KB | 226,160 B (92 %) | ~19 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
-| `DTCMRAM` | 128 KB | 71,728 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 261,032 B (94 %) | **~17 KB** | all the code, and the initial values of `.data` |
+| `SRAM` (AXI SRAM) | 240 KB | 226,568 B (92 %) | ~19 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
+| `DTCMRAM` | 128 KB | 72,752 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 23,808 B | ~8 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
 | `ITCMRAM` | 64 KB | 0 (~40 KB with `make ITCM=1`) | 64 KB | the per-sample code with `make ITCM=1` (`FRIZZ_HOT`, `FrizzHot.h`, #51), copied there at boot; off by default |
@@ -24,8 +25,16 @@ and its 3.9 KB beside it: SDRAM 58.6 MB (87.4 %), **~8.5 MB** free. In FRIZZ.bin
 (~2.2 KB of it FatFs's fast seek and folder reading, linked for the first time) and 124 B of
 data; the bench build hasn't the loader.
 
+**The USB host stack dropped (#196, 2026-10-14).** libDaisy linked ST's USB host stack (a USB
+stick's driver for FatFs, the host's interrupt handler) though FRIZZ is a USB device only:
+without it (`THIRD_PARTY.md`), 6,556 B less code in both builds, `FRIZZ.bin` 267,588 →
+261,032 B and the bench build 273,772 → 267,216 B (it had ~4.7 KB left), and 732 B less data.
+The CDC class's handle (540 B) moved from the heap into `.bss` in the same change, so the data
+counts it now: 226,760 → 226,568 B, the bench build's 234,856 → 234,664 B (from `main`
+b608028).
+
 **The bench build hits the walls first.** `FRIZZ-bench.bin` carries the bench as well: its
-code is at 265,956 B (95 %, **~12 KB free**) and its data at 234,548 B (95 %, **~11 KB free**).
+code is at 267,216 B (96 %, **~11 KB free**) and its data at 234,664 B (95 %, **~11 KB free**).
 So a feature of more than ~12 KB of code, or ~11 KB of data in internal RAM, needs room made
 first (below), or the bench build stops linking before `FRIZZ.bin` does. Data grows into
 SDRAM or DTCM where it can; for internal RAM, step 4 below frees 64 KB.
@@ -166,9 +175,13 @@ its own branch with a device test (the layout can change the timing: b5c658c).
    transport. FRIZZ drains them every block, so 32 events would do: -64 KB of data. It's a
    change to vendored libDaisy: rebuild `libdaisy.a` with GCC 10.3 and list it in
    `THIRD_PARTY.md`.
-5. **Trim libDaisy and the HAL**: the USB host driver (`stm32h7xx_hal_hcd.o`, 2.2 KB), USB CDC,
-   the QSPI driver (3.7 KB) are linked though FRIZZ doesn't use them. ~5-8 KB, all in vendored
-   code: worth it last.
+5. **Trim libDaisy and the HAL**: the USB host stack is gone (6.4 KB, #196). What's left,
+   all in vendored code:
+   - `USBD_DEBUG_LEVEL 3` in libDaisy's `src/usbd/usbd_conf.h` links `printf` and newlib's
+     stdio for error messages nobody reads (they go to `_write`, which does nothing): level 0
+     takes 4,424 B of code and 12 B of data off both builds (measured 2026-10-14, #271). Nothing
+     else in FRIZZ calls `printf`. Rebuild every object that includes `usbd_conf.h`.
+   - the QSPI driver (3.7 KB) and the CDC parts FRIZZ's USB MIDI doesn't use.
 
 Not recommended: link-time optimisation (GCC 10.3, and it would merge the `-O0` workarounds
 into their callers), and running code from QSPI flash (slow, and it's the bootloader's).

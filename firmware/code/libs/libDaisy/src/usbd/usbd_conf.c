@@ -24,6 +24,7 @@
 #include "stm32h7xx_hal.h"
 #include "usbd_def.h"
 #include "usbd_core.h"
+#include "usbd_cdc.h"
 
 /* USER CODE BEGIN Includes */
 
@@ -783,6 +784,26 @@ uint32_t USBD_LL_GetRxDataSize(USBD_HandleTypeDef *pdev, uint8_t ep_addr)
 void USBD_LL_Delay(uint32_t Delay)
 {
     HAL_Delay(Delay);
+}
+
+/* FRIZZ: the CDC class's handle (USBD_CDC_Init's USBD_malloc) lives here instead of the
+ * heap: newlib's _sbrk grows the heap from the end of .bss without a bound, so with SRAM
+ * full it ran past its end at boot (a freeze in the fork lost-tty/CHOMPI) where a buffer
+ * here fails the link. One
+ * handle: FRIZZ runs one USB device (MidiClock.h's, EXTERNAL); two at once (UsbHandle's
+ * FS_BOTH) would need a second. As ST's own USBD_static_malloc, it hands out the same buffer
+ * on every Init (the class frees it on DeInit, which is a no-op here) and none for a size
+ * that doesn't fit. */
+static uint32_t usbd_cdc_handle[(sizeof(USBD_CDC_HandleTypeDef) + 3U) / 4U];
+
+void *USBD_static_malloc(uint32_t size)
+{
+    return size <= sizeof(usbd_cdc_handle) ? usbd_cdc_handle : NULL;
+}
+
+void USBD_static_free(void *p)
+{
+    (void)p;
 }
 
 /**
