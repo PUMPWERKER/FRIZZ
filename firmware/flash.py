@@ -15,7 +15,8 @@
 Keys 10 and 13 are the user's: 10 the latest release, 13 the latest beta (FRIZZ-BETA). A build
 goes there only when the key is named (--slot 10, --slot 13), and only a release's or a beta's:
 this checkout stands on a v* tag, nothing changed in code/, the build is the one make makes
-there (a FILE too: the same bytes). So a release goes on from a worktree of its tag
+there (a FILE too: the same bytes), and its kFrizzVersion is the tag's (code/src/Version.h, what
+the loop transfer's HELLO says: tools/builds.py). So a release goes on from a worktree of its tag
 (git worktree add ../FrizZ-vX.Y.Z vX.Y.Z, CLAUDE.md "Releases"). A bare ./flash.py sends
 nothing: say which slot. The bench never goes to 10 or 13.
 
@@ -76,6 +77,7 @@ def user_slot(slot, args):
                  "in a checkout of its v* tag with nothing changed in code/ (git worktree add "
                  "../FrizZ-vX.Y.Z vX.Y.Z): this one isn't. A branch's build goes to the test "
                  "slot: --test" % (slot, what))
+    builds.check_version(tag)
     return tag
 
 

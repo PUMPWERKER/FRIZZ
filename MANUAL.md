@@ -306,8 +306,8 @@ from the card is the loop, as if you had recorded it: LOOP, PLAY, the transport 
 input/loop mix act on it the same way. Switching to one can happen at once, at the end of the
 loop playing, or together with a [scene change in time](#scene-changes-in-time).
 
-**A loop you recorded is gone once you switch to a loaded one.** FRIZZ doesn't write loops to
-the card, and there's no way back to the recording.
+**A loop you recorded is gone once you switch to a loaded one.** FRIZZ doesn't save your
+recordings to the card, and there's no way back to the recording.
 
 ### Loops on the card
 
@@ -315,14 +315,43 @@ Put your loops in the folder `FRIZZ` on the card, beside the scenes and settings
 their bank and key: `a1.wav` to `a15.wav` for bank a, `b1.wav` to `b15.wav` for bank b, and so
 on to `h15.wav`. The letter is the bank, the number the white key from the left (`a1.wav`, not
 `a01.wav`); upper or lower case doesn't matter. A missing name is an empty key. To get them
-onto the card, use the launcher's [USB storage mode](INSTALL.md#usb-storage-mode); FRIZZ reads
-the card when it starts.
+onto the card, use the [Companion](#the-companion) over the USB cable, lend the card to the
+computer [as a USB drive](#the-card-as-a-usb-drive), or use the launcher's [USB storage
+mode](INSTALL.md#usb-storage-mode); FRIZZ reads the card when it starts, and again when it
+comes back from the computer.
 
 - **WAV, 16-bit, 48 kHz**, stereo or mono (a mono loop plays on both sides).
 - **At most about 77 s**: 16 bars at 50 BPM.
 - Anything else (44.1 kHz, 24-bit, compressed, longer) is refused: its key shows dim red.
 - A WAV with an `acid` chunk (many sample packs and DAWs write one) says how many beats it
   holds, and FRIZZ takes its tempo from that.
+
+### The Companion
+
+The **FRIZZ Companion**, [frizz.friedrichwagner.eu/companion](https://frizz.friedrichwagner.eu/companion/),
+is a web page that manages your loop banks over the USB cable while FRIZZ plays. Plug the
+CHOMPI into the computer, open the page and let it use MIDI: it shows what's on the card,
+FRIZZ's 8 banks of 15 with each loop's name, and TAPE's cubbis. Then:
+
+- **Upload:** drop audio files (WAV, AIFF, MP3 …) on the slots. The page turns each into what
+  FRIZZ plays (16-bit, 48 kHz, at most about 77 s, a mono file stays mono) and writes its name
+  and, where it knows them, its beats into the file.
+- **Arrange:** move, swap and delete loops between FRIZZ's slots, or copy a cubbi of TAPE's into
+  one (TAPE's own file stays as it is).
+- **Confirm,** and the page carries the whole batch out with a progress bar. A loop that plays
+  plays on; its key plays the new file the next time you pick it.
+
+- **Browsers:** Chrome, Edge and the other Chromium-based ones, and Firefox, which asks you once
+  to allow a small add-on for the site. Safari has no MIDI for web pages.
+- **Speed:** uploads go over MIDI, about a minute or more for a long loop, a few minutes for 16
+  bars at 50 BPM, depending on the computer; a mono loop takes half. For many loops at once,
+  lending the card [as a USB drive](#the-card-as-a-usb-drive) (or a card reader) is 5 to 20
+  times faster.
+- **While FRIZZ records a loop, loads one or saves to the card,** an upload waits and goes on
+  by itself. Lending the card to the computer ends an upload.
+- **Nothing half is left:** an upload cut short (the tab closed, the cable pulled, the power
+  off) leaves the slot as it was. If the CHOMPI runs a FRIZZ without the Companion, the page
+  says so.
 
 ### The Loops page
 

@@ -199,6 +199,72 @@ static void TestHeader()
     }
 }
 
+/** LIST/INFO with an INAM of name's bytes (a NUL after them, RIFF's pad), as the loop transfer's
+ *  app writes it (docs/LOOP_PROTOCOL.md 5.3) */
+static std::string Info(const std::string& name, const std::string& type = "INFO")
+{
+    return Chunk("LIST", type + Chunk("INAM", name + std::string(1, '\0')));
+}
+static std::string NameOf(const std::string& file, int* result = nullptr, bool* cut = nullptr)
+{
+    WavWalk w;
+    w.Start(static_cast<uint32_t>(file.size()));
+    uint32_t data = 0, frames = 0;
+    int r = WavWalk::MORE;
+    for (size_t k = 0; k < kWindows && r == WavWalk::MORE; k++)
+    {
+        const uint32_t at = w.Want() & ~(kSector - 1);
+        const uint32_t n = at < file.size() ? static_cast<uint32_t>(std::min(kWindow, file.size() - at)) : 0;
+        r = w.Step(reinterpret_cast<const uint8_t*>(file.data()) + at, at, n, data, frames);
+    }
+    if (result)
+        *result = r;
+    if (cut)
+        *cut = w.name_cut;
+    return std::string(w.name, w.name_len);
+}
+
+static void TestInam()
+{
+    int r = 0;
+    bool cut = true;
+    Check(NameOf(Stereo(std::string(400, 'x'), Info("Amen")), &r, &cut) == "Amen" && r == STEREO && !cut,
+          "INAM: a name before the data, the loop still a loop");
+    Check(Info("Amen").size() == 26, "INAM: \"Amen\" is 26 bytes of LIST, as 5.3 counts them");
+    Check(NameOf(Stereo(std::string(400, 'x'), Chunk("acid", std::string(24, '\0')) + Info("Break 2"))) == "Break 2",
+          "INAM: after an acid chunk");
+    // 27 ASCII bytes, then a 3-byte character across the 28th: cut before it
+    const std::string euro = "\xE2\x82\xAC";
+    Check(NameOf(Stereo("xxxx", Info(std::string(27, 'a') + euro + "b")), nullptr, &cut) == std::string(27, 'a') && cut,
+          "INAM: over 28 bytes, cut back to a character's start, the flag set");
+    Check(NameOf(Stereo("xxxx", Info(std::string(26, 'a') + "\xC3\xA9" + "z")), nullptr, &cut) == std::string(26, 'a') + "\xC3\xA9"
+              && cut,
+          "INAM: a 2-byte character ending at 28 is kept whole");
+    Check(NameOf(Stereo("xxxx", Info(std::string(28, 'n'))), nullptr, &cut) == std::string(28, 'n') && !cut,
+          "INAM: exactly 28 bytes, not cut");
+    Check(NameOf(Stereo("xxxx", Chunk("LIST", "INFO" + Chunk("INAM", "ab\0cd")))) == "ab",
+          "INAM: up to the first NUL");
+    Check(NameOf(Stereo("xxxx", Chunk("LIST", "INFO" + Chunk("IART", "someone") + Chunk("INAM", "Name")))) == "Name",
+          "INAM: after another INFO chunk (odd, its pad byte)");
+    Check(NameOf(Stereo("xxxx", Info("Cue", "adtl"))).empty(), "INAM: a LIST of another type (adtl): no name");
+    {
+        std::string after = Stereo("xxxx");
+        after += Info("Late");
+        const uint32_t riff = static_cast<uint32_t>(after.size() - 8);
+        after.replace(4, 4, std::string(reinterpret_cast<const char*>(&riff), 4));
+        Check(NameOf(after, &r).empty() && r == STEREO, "INAM: a LIST after the data: no name, the loop still read");
+    }
+    Check(NameOf(Stereo("xxxx", Chunk("LIST", "INFO" + Chunk("INAM", "Big") + std::string(3000, 'p'))), &r).empty()
+              && r == STEREO,
+          "INAM: a LIST larger than the window: no name, not refused");
+    {
+        std::string lies = Chunk("LIST", "INFO" + Chunk("INAM", "Lies"));
+        lies[16] = 100; // INAM says 100 bytes, the LIST holds 5
+        Check(NameOf(Stereo("xxxx", lies), &r).empty() && r == STEREO, "INAM: a length past its LIST: no name, read no further");
+    }
+    Check(NameOf(Stereo("xxxx", Chunk("LIST", "INF"))).empty(), "INAM: a LIST of 3 bytes: no name, nothing read past");
+}
+
 static void TestNames()
 {
     size_t b = 99, c = 99, d = 99;
@@ -291,6 +357,8 @@ static void TestScan()
     Check(l.GetSlot(0, 1).result == EMPTY && l.GetSlot(1, 0).result == EMPTY && l.GetSlot(7, 14).result == EMPTY,
           "scan: missing names, a01.wav, a folder named B2.wav, the old LOOPS/B/01: empty");
     Check(l.GetSlot(2, 14).result == STEREO, "scan: c15.wav");
+    Check(l.GetSlot(0, 0).size == 4044 && l.GetSlot(0, 0).name_len == 0 && l.GetSlot(0, 3).size == 444,
+          "scan: the files' sizes, no name without an INAM");
     Check(card.open == 0, "scan: no file left open");
     Check(card.raw_reads == 0, "scan: headers through FatFs, no raw reads");
     // the passes it took: /FRIZZ's 9 entries in one, the root's 1 (FRIZZ), each folder's end,
@@ -682,6 +750,7 @@ static void TestWrite()
 int main()
 {
     TestHeader();
+    TestInam();
     TestNames();
     TestScan();
     TestCubbis();

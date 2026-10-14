@@ -67,6 +67,7 @@ static const size_t kMapSize = 512; // the link map (2 KB, in SDRAM): 255 fragme
 static const uint32_t kMapClusters = 256;
 static const size_t kWindow = 1024; // bytes of a file a header step reads
 static const size_t kWindows = 8;   // a header's chunks in those first windows
+static const size_t kNameMax = 28;  // a name's bytes kept (LIST/INFO/INAM; docs/LOOP_PROTOCOL.md 5.3)
 
 /** A slot's state after a scan, or why a load stopped */
 enum Result : uint8_t
@@ -114,15 +115,22 @@ public:
         pos_ = 0;
         fmt_ = false;
         beats_ = 0;
+        name_len = 0;
+        name_cut = false;
     }
     /** The beats an acid chunk before the data gave, 0 for none */
     inline uint32_t Beats() const { return beats_; }
+    /** The name a LIST/INFO chunk's INAM before the data gave (UTF-8, name_len bytes, not
+     *  terminated), its first kNameMax bytes cut back to a character's start (name_cut) */
+    char name[kNameMax];
+    uint8_t name_len = 0;
+    bool name_cut = false;
     /** Where the next window has to include */
     inline uint32_t Want() const { return pos_; }
 
     /** win: the file's n bytes from at. MORE, or a Result: MONO or STEREO with data (the
      *  data's offset in the file) and frames */
-    int Step(const uint8_t* win, uint32_t at, uint32_t n, uint32_t& data, uint32_t& frames)
+    LOOP_LOADER_ONCE int Step(const uint8_t* win, uint32_t at, uint32_t n, uint32_t& data, uint32_t& frames)
     {
         auto has = [&](uint32_t p, uint32_t len) { return p >= at && p - at <= n && len <= n - (p - at); };
         if (pos_ == 0)
@@ -176,6 +184,9 @@ public:
                 const uint32_t beats = Le32(c + 8 + 12);
                 beats_ = beats <= 1024 ? beats : 0;
             }
+            // LIST/INFO: its INAM, the name, read only where the whole chunk is in the window
+            if (!memcmp(c, "LIST", 4) && len >= 4 && has(pos_ + 8, len) && !memcmp(c + 8, "INFO", 4))
+                Name(c + 12, len - 4);
             pos_ += 8 + len;
             if (len & 1)
             {
@@ -187,6 +198,36 @@ public:
     }
 
 private:
+    /** INFO's chunks, n bytes at p: INAM's bytes up to a NUL or its end. One whose length runs
+     *  past the LIST gives none */
+    LOOP_LOADER_ONCE void Name(const uint8_t* p, uint32_t n)
+    {
+        while (n >= 8)
+        {
+            const uint32_t len = Le32(p + 4);
+            if (len > n - 8)
+                return;
+            if (!memcmp(p, "INAM", 4))
+            {
+                uint32_t k = 0;
+                while (k < len && p[8 + k])
+                    k++;
+                name_cut = k > kNameMax;
+                if (name_cut)
+                    for (k = kNameMax; k && (p[8 + k] & 0xC0) == 0x80;)
+                        k--; // not inside a character: its continuation bytes go with it
+                memcpy(name, p + 8, k);
+                name_len = static_cast<uint8_t>(k);
+                return;
+            }
+            const uint32_t step = 8 + len + (len & 1);
+            if (step >= n)
+                return;
+            p += step;
+            n -= step;
+        }
+    }
+
     int Check(uint32_t len, uint32_t& frames) const
     {
         if (tag_ != 1)
@@ -214,9 +255,13 @@ private:
 struct Slot
 {
     uint8_t result; // Result
-    uint32_t frames;
+    uint32_t frames; // MONO's, STEREO's, TOO_LONG's
     uint32_t data; // where its data starts in the file
     uint16_t beats; // an acid chunk's, 0 for none
+    uint32_t size;  // the file's bytes, 0 for none
+    uint8_t name_len; // its name (WavWalk's), name_cut if it was longer
+    bool name_cut;
+    char name[kNameMax];
 };
 
 /** A file's slot, 1-15, by its name in any case: a1.wav ... h15.wav (FRIZZ's, cubbi false),
@@ -247,6 +292,51 @@ inline int SlotOf(const char* name, bool cubbi, size_t& bank)
         return 0;
     bank = static_cast<size_t>(b) + (cubbi ? kCubbiBank : 0);
     return s;
+}
+
+/** "a1" ... "h15", a FRIZZ slot's name, from p: the end */
+inline char* SlotName(char* p, size_t bank, size_t slot)
+{
+    *p++ = static_cast<char>('a' + bank);
+    if (slot >= 9)
+        *p++ = '1';
+    *p++ = static_cast<char>('0' + (slot + 1) % 10);
+    return p;
+}
+/** A swap's temp file, "/FRIZZ/a1-b2.swp": a1's file on its way to b2 (LoopTransfer.h,
+ *  docs/LOOP_PROTOCOL.md 5.6), into path (20 bytes) */
+LOOP_LOADER_ONCE inline void SwapPath(char* path, size_t from, size_t to)
+{
+    memcpy(path, "/FRIZZ/", 7);
+    char* p = SlotName(path + 7, from / kSlots, from % kSlots);
+    *p++ = '-';
+    p = SlotName(p, to / kSlots, to % kSlots);
+    memcpy(p, ".swp", 5);
+}
+/** A FRIZZ slot's name at p in any case ("a1" ... "H15", no leading zero): its id (bank * 15 +
+ *  slot), p past it; -1 for none */
+inline int SlotAt(const char*& p)
+{
+    const int b = (p[0] | 0x20) - 'a';
+    if (b < 0 || b >= static_cast<int>(kFrizzBanks) || p[1] < '1' || p[1] > '9')
+        return -1;
+    int s = p[1] - '0';
+    p += 2;
+    if (*p >= '0' && *p <= '9')
+        s = s * 10 + *p++ - '0';
+    return s <= static_cast<int>(kSlots) ? b * static_cast<int>(kSlots) + s - 1 : -1;
+}
+/** Whether name is a swap's temp file ("a1-b2.swp", any case): from, to its slots' ids */
+LOOP_LOADER_ONCE inline bool SwapOf(const char* name, int& from, int& to)
+{
+    from = SlotAt(name);
+    if (from < 0 || *name++ != '-')
+        return false;
+    to = SlotAt(name);
+    for (int k = 0; k < 5; k++)
+        if ((name[k] | (k < 4 ? 0x20 : 0)) != ".swp"[k])
+            return false;
+    return to >= 0 && to != from;
 }
 
 /** The loader's memory beside the buffer, in SDRAM (chompi_main.cpp): the header's window
@@ -298,6 +388,8 @@ public:
         ms_clock_ = ms;
         ticks_ = ticks;
         ticks_us_ = tick_freq / 1000000u;
+        // its memory isn't cleared at boot (SDRAM_NOINIT_LATER): no slot read before its scan
+        memset(mem_->slots, 0, sizeof(mem_->slots));
         Request(SCANNING);
     }
 
@@ -364,6 +456,35 @@ public:
     inline uint32_t Frames() const { return frames_; }
     inline uint8_t Channels() const { return result_ == loops::MONO ? 1 : 2; }
     inline const loops::Slot& GetSlot(size_t bank, size_t slot) const { return mem_->slots[bank][slot]; }
+    /** The loop transfer's (LoopTransfer.h): a slot as it changed on the card, and whether
+     *  TAPE's cubbis are in /TAPE (else the root) */
+    inline loops::Slot& SetSlot(size_t bank, size_t slot) { return mem_->slots[bank][slot]; }
+    inline bool Tape() const { return tape_; }
+
+    /** The file at path's header walked into s: its result, frames, data, beats, size and
+     *  name. The scan's, and the loop transfer's check of a file it wrote */
+    LOOP_LOADER_ONCE void Walk(const char* path, loops::Slot& s)
+    {
+        s.result = Open(path, s.frames, s.data, false, &s);
+        s.beats = static_cast<uint16_t>(beats_);
+        s.size = size_;
+    }
+
+    /** A slot's file: "/FRIZZ/a1.wav", or "/TAPE/cubbi_a1.wav" ("/cubbi_a1.wav" without /TAPE) */
+    void SlotPath(char* path, size_t bank, size_t slot) const
+    {
+        const bool cubbi = bank >= loops::kCubbiBank;
+        const char* dir = !cubbi ? "/FRIZZ/" : tape_ ? "/TAPE/cubbi_" : "/cubbi_";
+        const size_t n = strlen(dir);
+        memcpy(path, dir, n);
+        char* p = path + n;
+        *p++ = static_cast<char>('a' + bank - (cubbi ? loops::kCubbiBank : 0));
+        if (slot >= 9)
+            *p++ = '1';
+        *p++ = static_cast<char>('0' + (slot + 1) % 10);
+        memcpy(p, ".wav", 5);
+    }
+    static const size_t kPathLen = 24; // "/TAPE/cubbi_a15.wav"
 
     /** The developers' SysEx's LOOPS (MidiControl.h): arg[0] the part, the reply into d (its
      *  length, -1 for a request it doesn't take). Numbers in 7-bit groups, the highest first
@@ -519,20 +640,6 @@ private:
     }
 
     // ---- the scan ----
-    /** A slot's file: "/FRIZZ/a1.wav", or "/TAPE/cubbi_a1.wav" ("/cubbi_a1.wav" without /TAPE) */
-    void SlotPath(char* path, size_t bank, size_t slot) const
-    {
-        const bool cubbi = bank >= loops::kCubbiBank;
-        const char* dir = !cubbi ? "/FRIZZ/" : tape_ ? "/TAPE/cubbi_" : "/cubbi_";
-        const size_t n = strlen(dir);
-        memcpy(path, dir, n);
-        char* p = path + n;
-        *p++ = static_cast<char>('a' + bank - (cubbi ? loops::kCubbiBank : 0));
-        if (slot >= 9)
-            *p++ = '1';
-        *p++ = static_cast<char>('0' + (slot + 1) % 10);
-        memcpy(p, ".wav", 5);
-    }
 
     /** A pass: kDirEntries of a folder's entries listed (/FRIZZ, then TAPE's), or one file
      *  found there checked. The folder stays open from pass to pass; a remount meanwhile (a
@@ -565,9 +672,9 @@ private:
         }
         const size_t slot = static_cast<size_t>(__builtin_ctz(found_[bank]));
         found_[bank] &= found_[bank] - 1;
-        loops::Slot& s = mem_->slots[bank][slot];
-        s.result = Open(bank, slot, s.frames, s.data, false);
-        s.beats = static_cast<uint16_t>(beats_);
+        char path[kPathLen];
+        SlotPath(path, bank, slot);
+        Walk(path, mem_->slots[bank][slot]);
     }
 
     /** A pass of the listing: the folder opened (TAPE's: /TAPE if it's there, else the root),
@@ -613,14 +720,45 @@ private:
                 f_closedir(&dir);
                 dir_open_ = false;
                 listed_ = true;
+                if (!cubbi)
+                    Repair();
                 return;
             }
             entries_++;
             size_t bank = 0;
-            if (!(mem_->info.fattrib & AM_DIR))
-                if (const int s = loops::SlotOf(mem_->info.fname, cubbi, bank))
-                    found_[bank] |= static_cast<uint16_t>(1u << (s - 1));
+            int from, to;
+            if (mem_->info.fattrib & AM_DIR)
+                ;
+            else if (const int s = loops::SlotOf(mem_->info.fname, cubbi, bank))
+                found_[bank] |= static_cast<uint16_t>(1u << (s - 1));
+            else if (!cubbi && swaps_ < kSwaps && loops::SwapOf(mem_->info.fname, from, to))
+            {
+                swap_[swaps_][0] = static_cast<uint8_t>(from);
+                swap_[swaps_++][1] = static_cast<uint8_t>(to);
+            }
         }
+    }
+
+    /** A swap a power cut interrupted (5.6), found in /FRIZZ's listing: its temp file to where
+     *  it was going if that's free (the swap finished), else back where it came from if that
+     *  is (undone), else left; never deleted, it holds a loop */
+    LOOP_LOADER_ONCE void Repair()
+    {
+        for (size_t i = 0; i < swaps_; i++)
+            for (const uint8_t id : {swap_[i][1], swap_[i][0]})
+            {
+                uint16_t& found = found_[id / loops::kSlots];
+                const uint16_t bit = static_cast<uint16_t>(1u << (id % loops::kSlots));
+                if (found & bit)
+                    continue;
+                char tmp[20], path[kPathLen];
+                loops::SwapPath(tmp, swap_[i][0], swap_[i][1]);
+                SlotPath(path, id / loops::kSlots, id % loops::kSlots);
+                if (f_rename(tmp, path) == FR_OK)
+                    found |= bit;
+                break;
+            }
+        swaps_ = 0;
     }
 
     /** Opens the slot's file and checks its header. The file is closed again, unless keep and
@@ -629,10 +767,20 @@ private:
     {
         char path[kPathLen];
         SlotPath(path, bank, slot);
+        return Open(path, frames, data, keep);
+    }
+    /** name: its name into it too */
+    LOOP_LOADER_ONCE uint8_t Open(const char* path, uint32_t& frames, uint32_t& data, bool keep,
+                                  loops::Slot* name = nullptr)
+    {
         FIL& file = mem_->file;
+        loops::WavWalk walk;
+        walk.Start(0);
+        frames = beats_ = size_ = 0;
+        if (name)
+            name->name_len = 0;
         if (f_open(&file, path, FA_READ) != FR_OK)
             return loops::UNREADABLE;
-        loops::WavWalk walk;
         walk.Start(f_size(&file));
         int r = loops::WavWalk::MORE;
         for (size_t w = 0; w < loops::kWindows && r == loops::WavWalk::MORE; w++)
@@ -645,6 +793,13 @@ private:
                 r = walk.Step(mem_->window, at, got, data, frames);
         }
         beats_ = walk.Beats();
+        size_ = f_size(&file);
+        if (name)
+        {
+            name->name_len = walk.name_len;
+            name->name_cut = walk.name_cut;
+            memcpy(name->name, walk.name, loops::kNameMax);
+        }
         if (r == loops::WavWalk::MORE)
             r = loops::NO_DATA;
         if (!keep || (r != loops::MONO && r != loops::STEREO))
@@ -957,7 +1112,7 @@ private:
     uint8_t* buf_ = nullptr;  // the buffer of the last load or write test
     uint8_t* home_ = nullptr; // Init's
     bool cancel_ = false, dev_free_ = true;
-    uint32_t beats_ = 0;
+    uint32_t beats_ = 0, size_ = 0; // Open's file's: its acid chunk's beats, its size
     loops::Mem* mem_ = nullptr;
     FATFS* fs_ = nullptr;
     uint32_t (*ms_clock_)() = nullptr;
@@ -968,11 +1123,12 @@ private:
     uint8_t bank_ = 0, slot_ = 0, error_ = 0, faults_ = 0;
     uint32_t sd_error_ = 0;
     // the scan: the folder (0 /FRIZZ, 1 TAPE's, 2 done), its entries read, the slots found
-    static const size_t kPathLen = 24; // "/TAPE/cubbi_a15.wav"
     uint8_t group_ = 0;
     bool listed_ = false, dir_open_ = false, tape_ = false;
     uint32_t entries_ = 0;
     uint16_t found_[loops::kBanks] = {};
+    static const size_t kSwaps = 4; // swaps' temp files a scan puts right
+    uint8_t swap_[kSwaps][2] = {}, swaps_ = 0;
     // the load
     bool opened_ = false, mapping_ = false, inflight_ = false;
     uint8_t result_ = loops::EMPTY;

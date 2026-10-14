@@ -92,6 +92,8 @@ public:
         CLOCK_USB, // as CLOCK and MIDI, from USB
         MIDI_USB,
         JACK,      // a cable in AUX or out
+        XFER,      // the loop transfer's job (LoopTransfer.h): its begin (id its OP, value its slot
+                   // as bank * 15 + key) or end (0x80 | its status, value its DETAIL); a comment
     };
 
     void Init(EventLogMem* mem, FATFS* fs, const char* path)
@@ -146,6 +148,8 @@ public:
 
     /** From the audio callback: a cable plugged into AUX (true) or pulled, once debounced */
     EVENT_LOG_ONCE void Jack(bool plugged) { Add(JACK, 0, plugged); }
+    /** From MainLoop: the loop transfer's job began or ended (XFER) */
+    EVENT_LOG_ONCE void Xfer(uint8_t what, uint16_t value) { AddFromMain(XFER, what, static_cast<int16_t>(value)); }
 
     /** From the play page, as SHIFT + VOLUME press have been held 2 s on the settings page.
      *  Ignored while a file is being written */
@@ -459,6 +463,12 @@ private:
                 break;
             case JACK:
                 Put(e.value ? "jack in" : "jack out");
+                break;
+            case XFER:
+                Put("# loop transfer");
+                PutHex(e.id);
+                Put(" ");
+                PutNum(static_cast<uint16_t>(e.value));
                 break;
             case MIDI:
             case MIDI_USB:

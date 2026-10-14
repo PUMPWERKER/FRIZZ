@@ -13,6 +13,11 @@ tools/chompi.py), so flash.py and remote.py can say which build runs. That works
 same bytes, on any machine (README.md, 1. Toolchain); another compiler gives other bytes, so
 builds here refuse it.
 
+A build at a v* tag is a release's or a beta's, and reports its version to the loop transfer's
+HELLO from code/src/Version.h's kFrizzVersion (docs/LOOP_PROTOCOL.md 7.1): building refuses a
+tag whose version isn't kFrizzVersion (v1.5.0-beta.1 is 1, 5, 0, 1; v1.5.0 is 1, 5, 0, 0), and so
+does flash.py --slot 10/13 (check_version).
+
 cpu.txt's first line is the bench's own: the checksum of the source it was built from, which
 the bench build also carries. `cpu` files it only if the bench build here carries that line
 and the source still has that checksum, so the md5 it adds is that of the build measured.
@@ -23,6 +28,7 @@ import argparse
 import glob
 import hashlib
 import os
+import re
 import subprocess
 import sys
 import zlib
@@ -70,6 +76,43 @@ def source_checksum():
     data = b"".join(open(os.path.join(SRC, n), "rb").read() for n in names)
     out = subprocess.run(["cksum"], input=data, capture_output=True, check=True).stdout
     return out.split()[0].decode()
+
+
+def frizz_version():
+    """kFrizzVersion in code/src/Version.h: (major, minor, patch, pre-release)"""
+    with open(os.path.join(SRC, "Version.h")) as f:
+        m = re.search(r"kFrizzVersion\[4\] = \{(\d+), (\d+), (\d+), (\d+)\};", f.read())
+    if not m:
+        sys.exit("code/src/Version.h has no kFrizzVersion")
+    return tuple(int(x) for x in m.groups())
+
+
+def tag_version(tag):
+    """v1.5.0 -> (1, 5, 0, 0), v1.5.0-beta.2 -> (1, 5, 0, 2); None for another form"""
+    m = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?", tag)
+    return m and (int(m[1]), int(m[2]), int(m[3]), int(m[4] or 0))
+
+
+def version_name(v):
+    return "v%d.%d.%d%s" % (v[0], v[1], v[2], "-beta.%d" % v[3] if v[3] else "")
+
+
+def head_tag(where=FIRMWARE):
+    """The v* tag on HEAD, None if there's none"""
+    out = subprocess.run(["git", "-C", where, "describe", "--exact-match", "--tags", "--match", "v*", "HEAD"],
+                         capture_output=True, text=True).stdout.strip()
+    return out or None
+
+
+def check_version(tag):
+    """Exits unless kFrizzVersion is tag's version: a release's or a beta's build says which it
+    is (the loop transfer's HELLO)"""
+    want, have = tag_version(tag), frizz_version()
+    if want is None:
+        sys.exit("%s isn't a version's tag (vX.Y.Z, vX.Y.Z-beta.N)" % tag)
+    if want != have:
+        sys.exit("code/src/Version.h's kFrizzVersion is %s, the tag %s: the commit the tag is on sets "
+                 "it to %s (docs/LOOP_PROTOCOL.md 7.1)" % (version_name(have), tag, ", ".join(map(str, want))))
 
 
 def toolchain_env():
@@ -163,6 +206,9 @@ def main():
         file_cpu(args.file)
         return
     if args.what is None:
+        tag = head_tag()
+        if tag:
+            check_version(tag)
         env = toolchain_env()
         for bench in (False, True):
             build(bench, env)

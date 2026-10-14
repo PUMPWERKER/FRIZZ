@@ -159,6 +159,8 @@ namespace chompi
         /** The Loops page's loops (NormalPage::InitLoops, LoopsProcess) */
         void InitLoops(LoopLoader *loader, int16_t *rec) { normal_page_.InitLoops(loader, rec); }
         void LoopsProcess() { normal_page_.LoopsProcess(); }
+        void LoopChanged(int id) { normal_page_.LoopChanged(id); }
+        uint8_t LoopFlags(int id) const { return normal_page_.LoopFlags(id); }
 #endif
 
     private:

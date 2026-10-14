@@ -137,22 +137,29 @@ inline void Boot(Backup& b, uint32_t rsr, uint32_t crc, uint32_t len)
     b.running.alive_ms = 0;
 }
 
-/** zlib's CRC-32 of the image as loaded, which the host works out from the .bin
- *  (tools/builds.py): a nibble at a time, from a table of 16 */
-inline uint32_t Crc32(const uint8_t* p, size_t len)
+/** zlib's CRC-32 carried on over len more bytes: crc 0xFFFFFFFF to start, ~ of it at the end
+ *  (the loop transfer's, LoopTransfer.h, as the bytes come). A nibble at a time, from a table
+ *  of 16 */
+inline uint32_t Crc32More(uint32_t crc, const uint8_t* p, size_t len)
 {
     static const uint32_t kNibble[16] = {
         0x00000000, 0x1DB71064, 0x3B6E20C8, 0x26D930AC, 0x76DC4190, 0x6B6B51F4,
         0x4DB26158, 0x5005713C, 0xEDB88320, 0xF00F9344, 0xD6D6A3E8, 0xCB61B38C,
         0x9B64C2B0, 0x86D3D2D4, 0xA00AE278, 0xBDBDF21C};
-    uint32_t crc = 0xFFFFFFFFu;
     for (size_t i = 0; i < len; i++)
     {
         crc ^= p[i];
         crc = (crc >> 4) ^ kNibble[crc & 15];
         crc = (crc >> 4) ^ kNibble[crc & 15];
     }
-    return ~crc;
+    return crc;
+}
+
+/** zlib's CRC-32 of the image as loaded, which the host works out from the .bin
+ *  (tools/builds.py) */
+inline uint32_t Crc32(const uint8_t* p, size_t len)
+{
+    return ~Crc32More(0xFFFFFFFFu, p, len);
 }
 } // namespace crash
 } // namespace chompi
