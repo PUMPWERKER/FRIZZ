@@ -41,6 +41,8 @@ Checked:
   has one, 3 to 6 moves (### under Session) with 1 to 4 `Controls`, no HTML, images or other
   lists, `code` only in Controls, links only to the docs (anchors resolving), images/ or https.
 - An image that isn't in the repo (yet) is a warning, not an error.
+- Every picture under images/ is what firmware/tools/diagrams/diagrams.py draws now
+  (`diagrams.py --check`): its figures read MANUAL.md's knob names and the firmware's colours.
 """
 import os
 import re
@@ -801,6 +803,16 @@ def selftest(root, quiet=False):
     return 1 if failed else 0
 
 
+def figures(root):
+    """The pictures under images/ as diagrams.py draws them now: the chapters' figures read
+    MANUAL.md's knob names and the firmware's colours, so a change to either leaves them stale"""
+    run = subprocess.run([sys.executable, os.path.join(root, 'firmware/tools/diagrams/diagrams.py'),
+                          '--check'], capture_output=True, text=True)
+    if run.returncode == 0:
+        return []
+    return run.stdout.split('\n')[:-1] + run.stderr.split('\n')[:-1] or ['diagrams.py --check failed']
+
+
 def main():
     root = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True,
                           cwd=os.path.dirname(os.path.abspath(__file__))).stdout.strip()
@@ -811,6 +823,7 @@ def main():
         return 2
     failed = selftest(root, quiet=True) if sys.argv[1:] == ['--all'] else 0
     errors, warnings, checked = check(root)
+    errors += figures(root)
     for w in warnings:
         print('warning:', w)
     for e in errors:

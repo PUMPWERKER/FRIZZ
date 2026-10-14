@@ -35,6 +35,12 @@ what FRIZZ does.
   into the launcher's picker if you use it, or else FRIZZ starts again. A loop in RAM is lost,
   as with the power switch.
 
+- **Figures in the manual:** each effect's chapter, the chaos key's and the compressor's show
+  where its white key is and its knobs' colours; the panel, with what a chapter plays lit, opens
+  Playing an effect, Looper, FX scenes, Scene changes in time, the Loops page and the settings
+  page; and the gestures to know are drawn as keys on the Key combinations page, in the quick
+  start and on the Loops page.
+
 ### Fixed
 
 - **The shifter is mono again right after its stereo returns to 0** (#226): turned up and

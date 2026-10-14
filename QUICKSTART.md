@@ -64,6 +64,8 @@ the loop's steps (see [Chaos key](MANUAL.md#chaos-key)).
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Effect | Freezer | Shifter | Folder | Crusher | Filter | Flanger | Phaser | Resonator | Slicer | Wow & flutter | Tape stop | Delay | Reverb | Chaos | Compressor |
 
+![Keys: an FX key held, then SHIFT, latches it; SHIFT, then an FX key, picks it for the knobs; SHIFT + a knob turned jumps in big steps; a knob pressed turns to its page 2](images/keys-quickstart.svg)
+
 - **Hold a key:** the effect is on while you hold it.
 - **Hold a key, then SHIFT:** latch the effect on. Do it again, or just tap the key, to turn
   it off.

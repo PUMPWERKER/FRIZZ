@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 422" width="480" height="422" role="img" aria-labelledby="title desc">
+<title id="title">Key combinations</title>
+<desc id="desc">The gestures to know, as keys. hold FX key then SHIFT: latch the effect on, or off again. SHIFT then FX key: select it for the knobs, without hearing it. SHIFT + LOOP 3 taps or more: tap the tempo. hold PLAY + LOOP: record in time with the clock; with a loop, erase at its end. SHIFT + VOLUME turn: the input/loop mix. SHIFT + scene key let go: morph to the scene on the bar line. SHIFT + VOLUME hold 2 s: on the settings page: write a bug report.</desc>
+<style>svg{font-size:13px}text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
+<defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
+<rect width="480" height="422" fill="#131314"/>
+<text x="21" y="32.5" class="m as" font-size="12">hold</text>
+<rect x="51.4" y="15" width="61" height="26" rx="3" class="wk"/>
+<text x="81.9" y="32.5" class="gt" font-size="12" font-weight="bold">FX key</text>
+<polyline points="119.4,28 137.4,28" class="ls" marker-end="url(#ms)"/>
+<rect x="140.4" y="15" width="57.8" height="26" rx="3" class="ba"/>
+<text x="169.3" y="32.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<text x="20" y="58" class="m as" font-size="12">Latch the effect on, or off again.</text>
+<rect x="20" y="73" width="57.8" height="26" rx="3" class="ba"/>
+<text x="48.9" y="90.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<polyline points="84.8,86 102.8,86" class="ls" marker-end="url(#ms)"/>
+<rect x="105.8" y="73" width="61" height="26" rx="3" class="wk"/>
+<text x="136.3" y="90.5" class="gt" font-size="12" font-weight="bold">FX key</text>
+<text x="20" y="116" class="m as" font-size="12">Select it for the knobs, without hearing it.</text>
+<rect x="20" y="131" width="57.8" height="26" rx="3" class="ba"/>
+<text x="48.9" y="148.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<text x="90.8" y="149" class="t" font-size="15" font-weight="bold">+</text>
+<rect x="105.8" y="131" width="54" height="26" rx="3" class="ba"/>
+<text x="132.8" y="148.5" class="t" font-size="12" font-weight="bold">LOOP</text>
+<text x="164.8" y="148.5" class="m as" font-size="12">3 taps or more</text>
+<text x="20" y="174" class="m as" font-size="12">Tap the tempo.</text>
+<text x="21" y="206.5" class="m as" font-size="12">hold</text>
+<rect x="51.4" y="189" width="54" height="26" rx="3" class="ba"/>
+<text x="78.4" y="206.5" class="t" font-size="12" font-weight="bold">PLAY</text>
+<text x="118.4" y="207" class="t" font-size="15" font-weight="bold">+</text>
+<rect x="133.4" y="189" width="54" height="26" rx="3" class="ba"/>
+<text x="160.3" y="206.5" class="t" font-size="12" font-weight="bold">LOOP</text>
+<text x="20" y="232" class="m as" font-size="12">Record in time with the clock; with a loop, erase at its end.</text>
+<rect x="20" y="247" width="57.8" height="26" rx="3" class="ba"/>
+<text x="48.9" y="264.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<text x="90.8" y="265" class="t" font-size="15" font-weight="bold">+</text>
+<rect x="105.8" y="247" width="71.9" height="26" rx="13" class="b"/>
+<text x="141.8" y="264.5" class="t" font-size="12" font-weight="bold">VOLUME</text>
+<text x="182.7" y="264.5" class="m as" font-size="12">turn</text>
+<text x="20" y="290" class="m as" font-size="12">The input/loop mix.</text>
+<rect x="20" y="305" width="57.8" height="26" rx="3" class="ba"/>
+<text x="48.9" y="322.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<text x="90.8" y="323" class="t" font-size="15" font-weight="bold">+</text>
+<rect x="105.8" y="305" width="78.3" height="26" rx="3" class="dk"/>
+<text x="145" y="322.5" class="t" font-size="12" font-weight="bold">scene key</text>
+<text x="189.2" y="322.5" class="m as" font-size="12">let go</text>
+<text x="20" y="348" class="m as" font-size="12">Morph to the scene on the bar line.</text>
+<rect x="20" y="363" width="57.8" height="26" rx="3" class="ba"/>
+<text x="48.9" y="380.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<text x="90.8" y="381" class="t" font-size="15" font-weight="bold">+</text>
+<rect x="105.8" y="363" width="71.9" height="26" rx="13" class="b"/>
+<text x="141.8" y="380.5" class="t" font-size="12" font-weight="bold">VOLUME</text>
+<text x="182.7" y="380.5" class="m as" font-size="12">hold 2 s</text>
+<text x="20" y="406" class="m as" font-size="12">On the settings page: write a bug report.</text>
+</svg>
