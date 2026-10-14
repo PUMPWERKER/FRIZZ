@@ -29,6 +29,8 @@ in the source files, must be preserved in any redistribution.
 | **CMSIS** | © ARM Limited | Apache-2.0 | `cube_dfu/Drivers/CMSIS/` (with its `LICENSE.txt`) in `reference/firmware/chompi-bootloader-v6.4-beta/` and in each stock firmware's `code/Chompi_Bootloader/` under `reference/firmware/` |
 | **Kastle 2 FX Wizard** (freezer, slicer, flanger, shifter, resonator comb, crusher XOR and dive) | © 2024 Marek Mach, Vaclav Mach (Bastl Instruments) | MIT | ported to `firmware/code/src/` (`FxFreezer.h`, `FxSlicer.h`, `FxFlanger.h`, `FxShifter.h`, `FxResonator.h`, and the crusher's in `FxCrusher.h`), with the license in `LICENSE-kastle2` next to them |
 | **CHOMPI launcher's `midi-send.py`** | © 2026 CHOMPI Club; by ugrossek (chomplex music theory), from [sfaber02/CHOMPI-MULTI-FIRMWARE](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE) (launcher v1.5) | MIT | `firmware/tools/midi_send.py`, unchanged but for a note of where it's from; `firmware/flash.py` and `firmware/tools/chompi.py` use it |
+| **TinyUSB** 0.21.0 | © Ha Thach (tinyusb.org) | MIT | `firmware/code/libs/tinyusb/` (`src/` with the DWC2 driver as its only port, with its `LICENSE`): upstream's tag 0.21.0 byte for byte but for FRIZZ's two patches, each a file in `patches/` and marked `FRIZZ` in the source (`VERSION` lists them). FRIZZ's USB, `firmware/code/src/UsbDevice.cpp` (#196) |
+| **lost-tty/CHOMPI ("MIXTAPE")**, USB audio and MIDI for TAPE | © 2026 CHOMPI Club; by nils (lost-tty), from [lost-tty/CHOMPI](https://github.com/lost-tty/CHOMPI) (commits a56545b, ab95f98) | MIT | the shape of FRIZZ's USB glue, each file saying what it takes in its head: `firmware/code/src/UsbDevice.cpp` (the PHY's bring-up, CRS, TinyUSB's task on TIM7, the audio FIFOs' glue, the drive's callbacks), `UsbMidiTransport.h` (libDaisy's MIDI transport on TinyUSB), `usb_descriptors.c` and `tusb_config.h` (how the functions sit together), `CardLend.h` (the card as a drive), and the `dcd_dwc2.c` fix in TinyUSB's `patches/0002` |
 | **STM32 HAL, USB Device/Host middleware, FatFs** | © STMicroelectronics | ST Ultimate Liberty / BSD-3-Clause, per file headers | the same `cube_dfu/` folders |
 
 ## libDaisy is Electrosmith's CHOMPI adaptation
@@ -59,7 +61,7 @@ In TEMPO and WAVE:
   compilation: the firmware builds against pristine upstream, but its MIDI output timing won't
   match the released firmware. Keep the vendored file.
 
-FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with six changes:
+FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with seven changes:
 - `src/usbd/usbd_desc.c` names the USB product "FrizZ".
 - `src/hid/midi_parser.cpp` follows MIDI 1.0 where WAVE's didn't:
   - A real-time byte (a clock tick, 0xF8-0xFF) inside a SysEx or another message is passed on,
@@ -83,6 +85,11 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with six changes:
   OTG_HS interrupt handlers call only the device's handler (`HAL_PCD_IRQHandler`), not the
   host's. ST's USB host stack (`usbh_*`, `usb_host`, `stm32h7xx_hal_hcd`) isn't linked any
   more: 6.4 KB of code and 0.7 KB of data (#196).
+- `src/sys/system.cpp` has no OTG_HS interrupt handlers at all: FRIZZ's USB-C port runs on
+  TinyUSB, whose handler is FRIZZ's own (`firmware/code/src/UsbDevice.cpp`), so ST's device
+  stack isn't linked either; libDaisy's own USB on that port (`UsbHandle`, `MidiUsbHandler`)
+  doesn't work in this copy (#196). The usbd changes below stay in the source and the archive,
+  unused by FRIZZ.bin.
 - `src/usbd/usbd_conf.h` and `src/usbd/usbd_conf.c` give the CDC class its handle (540 B) from a
   static buffer, `USBD_static_malloc`, as ST's own templates do, instead of `malloc`: newlib's
   `_sbrk` grows the heap from the end of `.bss` without a bound, so with internal RAM full it
@@ -91,7 +98,8 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with six changes:
   does nothing (#196).
 
 Its prebuilt `build/libdaisy.a` is WAVE's with only the objects of those changes rebuilt:
-`usbd_desc.o`, `midi_parser.o`, `usb_midi.o`, `usbd_conf.o`, `fatfs.o`, `system.o` and
+`usbd_desc.o`, `midi_parser.o`, `usb_midi.o`, `usbd_conf.o`, `fatfs.o`, `system.o` (twice, the
+second time without the handlers: from the source before, it disassembled as the archive's) and
 `usbd_cdc.o` (whose code changes with `usbd_conf.h`'s macro; of the other objects that include
 it none does). They were built with GCC 10.3 and libDaisy's own flags (`make
 build/src/hid/midi_parser.o` in its folder, then `arm-none-eabi-ar r build/libdaisy.a

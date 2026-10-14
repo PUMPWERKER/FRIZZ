@@ -61,6 +61,9 @@ static float mic_amp = 0.f, mic_freq = 1000.f, mic_phase = 0.f; // a sine into t
 static bool usb_playing = false;
 static float usb_amp = 0.f, usb_freq = 500.f, usb_phase = 0.f;
 static std::vector<float> usb_recorded;
+// the master out (L) and what the computer recorded (L), each against AUX's sine and the
+// computer's, summed sample by sample: their sign is the polarity (#209); since set to 0
+static double out_x_aux = 0., out_x_usb = 0., rec_x_aux = 0., rec_x_usb = 0.;
 
 /** Runs blocks (half a ms each) with a sine (or silence) into AUX, and one into the mic
  *  while mic_amp > 0; the master out's RMS over the time. RunMs: as many ms */
@@ -100,6 +103,17 @@ static float RunBlocks(uint32_t blocks)
         Run(1, in, out);
         const std::vector<float> rec = TakeUsbAudioOut();
         usb_recorded.insert(usb_recorded.end(), rec.begin(), rec.end());
+        for (size_t i = 0; i < kBlockSize; i++)
+        {
+            const float a = in[i * kChannels + 2], u = usb_playing ? usb[i * 2] : 0.f;
+            out_x_aux += out[i * kChannels + 2] * a;
+            out_x_usb += out[i * kChannels + 2] * u;
+            if (rec.size() == kBlockSize * 2)
+            {
+                rec_x_aux += rec[i * 2] * a;
+                rec_x_usb += rec[i * 2] * u;
+            }
+        }
         for (size_t i = 0; i < kBlockSize; i++)
         {
             const float o = out[i * kChannels + 2];
@@ -6840,6 +6854,422 @@ int main()
         SetJack(false); // the jack: the mic
         RunMs(300);
         Check(HasCc(UsbCcs(), 0xBF, kSourceCC, 64), "source-feedback: the jack's mic sends it too");
+    }});
+
+    // ---- USB audio (#196): the computer's audio the third source, the master before VOLUME
+    // back to it, the switch, the card lent ----
+    // the master's RMS with only the computer playing, and with only AUX
+    static auto heard_usb = [](float& aux, float& usb) {
+        const float a = amp, u = usb_amp;
+        amp = 0.f;
+        usb_amp = .1f;
+        usb_playing = true;
+        RunMs(50);
+        usb = RunMs(200);
+        usb_playing = false;
+        amp = a ? a : .1f;
+        RunMs(50);
+        aux = RunMs(200);
+        amp = a;
+        usb_amp = u;
+    };
+    // the upper F# round: AUX, the mic, USB (blue), AUX; USB heard, at AUX's level and in its
+    // phase, AUX not; the computer silent, silence
+    cases.push_back({"usb-source", [] {
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        const bool aux = green_led(SmtLedFull(kInSourceKeyLed));
+        Tap("KEY_23");
+        RunMs(100);
+        const bool mic = magenta_led(SmtLedFull(kInSourceKeyLed));
+        Tap("KEY_23");
+        RunMs(100);
+        const bool usb = blue_led(SmtLedFull(kInSourceKeyLed)) && key_lit(kLiveKeyLed)
+                         && green_led(SmtLedFull(kInFxKeyLed));
+        float aux_rms, usb_rms;
+        heard_usb(aux_rms, usb_rms);
+        amp = 0.f;
+        usb_playing = false;
+        RunMs(100);
+        const float quiet = RunMs(200);
+        // the same sine into AUX (by the key, past the mic) and from the computer: the same level,
+        // at 1 kHz, where AUX's DC blocker takes nothing off (at 220 Hz 5 %)
+        usb_amp = .1f;
+        freq = usb_freq = 1000.f;
+        usb_playing = true;
+        RunMs(100);
+        out_x_usb = 0.;
+        const float usb_level = RunMs(500);
+        const double usb_phase = out_x_usb;
+        usb_playing = false;
+        Tap("KEY_23"); // AUX
+        RunMs(100);
+        const bool aux_again = green_led(SmtLedFull(kInSourceKeyLed));
+        amp = .1f;
+        RunMs(100);
+        out_x_aux = 0.;
+        const float aux_level = RunMs(500);
+        const double aux_phase = out_x_aux;
+        amp = .3f;
+        freq = 220.f;
+        printf("      USB: the computer %.4f, AUX unheard %.4f, nothing %.6f; the same sine: USB %.4f, AUX %.4f; "
+               "their phase against the master: USB %+.1f, AUX %+.1f\n",
+               usb_rms, aux_rms, quiet, usb_level, aux_level, usb_phase, aux_phase);
+        Check(aux && mic && usb && aux_again,
+              "usb-source: the upper F#: AUX green, the mic magenta, USB blue (live through the effects), AUX again");
+        Check(usb_rms > .01f && aux_rms < usb_rms * .01f, "usb-source: USB the source: the computer heard, AUX not");
+        Check(quiet < 1e-4f, "usb-source: the computer playing nothing: silence");
+        Check(fabsf(usb_level - aux_level) < aux_level * .02f,
+              "usb-source: the computer's sine as loud as the same sine into AUX");
+        // AUX's converter turns its jack's signal (#209), the computer's comes as it is: against
+        // the line out, the two of opposite signs are in phase at the jacks
+        Check(usb_phase * aux_phase < 0., "usb-source: and in phase with AUX's jack (#209)");
+    }});
+
+    // USB, once picked, stays when a cable goes in or out of AUX; AUX picked again, the jack
+    // decides again
+    cases.push_back({"usb-jack", [] {
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23");
+        RunMs(100);
+        Tap("KEY_23"); // USB
+        RunMs(100);
+        SetJack(false);
+        RunMs(100);
+        float aux, usb;
+        heard_usb(aux, usb);
+        const bool out = blue_led(SmtLedFull(kInSourceKeyLed)) && usb > .01f;
+        SetJack(true);
+        RunMs(100);
+        heard_usb(aux, usb);
+        const bool in = blue_led(SmtLedFull(kInSourceKeyLed)) && usb > .01f && aux < usb * .01f;
+        Tap("KEY_23"); // AUX
+        RunMs(100);
+        SetJack(false);
+        RunMs(100);
+        const bool mic = magenta_led(SmtLedFull(kInSourceKeyLed));
+        Check(out, "usb-jack: USB picked, the cable pulled: still USB, the mic doesn't take over");
+        Check(in, "usb-jack: plugged in again: still USB, AUX unheard");
+        Check(mic, "usb-jack: AUX picked again, the cable pulled: the mic, as before");
+    }});
+
+    // the looper records USB as it does AUX and the mic
+    cases.push_back({"usb-loop", [] {
+        amp = 0.f;
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23");
+        RunMs(100);
+        Tap("KEY_23"); // USB
+        RunMs(100);
+        SetToggle(false);
+        RunMs(300);
+        usb_amp = .1f;
+        usb_playing = true;
+        RunMs(200);
+        Tap("KEY_28"); // record
+        RunMs(2000);
+        Tap("KEY_28"); // play
+        RunMs(300);
+        usb_playing = false;
+        RunMs(300);
+        const float loop = RunMs(500);
+        printf("      the loop recorded from USB: %.4f\n", loop);
+        Check(Probe().loop_state == 2 && loop > .01f, "usb-loop: the looper records USB, and plays it once the computer stops");
+    }});
+
+    // what the computer records: the master before VOLUME, VOLUME's knob doesn't change it; in
+    // phase with what came in (USB) and with AUX's jack; nothing while it doesn't record
+    cases.push_back({"usb-record", [] {
+        RunMs(kReadyMs);
+        amp = .1f;
+        RunMs(300);
+        usb_recorded.clear();
+        RunMs(300);
+        const bool none = usb_recorded.empty();
+        SetUsbRecording(true);
+        RunMs(100);
+        auto rms = [] {
+            double sum = 0.;
+            for (size_t i = 0; i < usb_recorded.size(); i += 2)
+                sum += usb_recorded[i] * usb_recorded[i];
+            return usb_recorded.empty() ? 0.f : static_cast<float>(sqrt(sum / (usb_recorded.size() / 2)));
+        };
+        usb_recorded.clear();
+        rec_x_aux = 0.;
+        const float line_full = RunMs(500);
+        const float rec_full = rms();
+        const double aux_phase = rec_x_aux;
+        Usb({kCC, 85, 30}); // VOLUME down
+        RunMs(300);
+        usb_recorded.clear();
+        const float line_down = RunMs(500);
+        const float rec_down = rms();
+        // the computer's sine back to it, USB the source
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23");
+        RunMs(100);
+        Tap("KEY_23");
+        RunMs(100);
+        amp = 0.f;
+        usb_amp = .1f;
+        usb_playing = true;
+        RunMs(300);
+        rec_x_usb = 0.;
+        usb_recorded.clear();
+        RunMs(500);
+        const double usb_phase = rec_x_usb;
+        const float round_trip = rms();
+        usb_playing = false;
+        SetUsbRecording(false);
+        RunMs(100);
+        usb_recorded.clear();
+        RunMs(300);
+        const bool stopped = usb_recorded.empty();
+        amp = .3f;
+        printf("      recorded %.4f (line out %.4f), VOLUME down %.4f (line out %.4f); its phase against AUX's "
+               "sine %+.1f, against the computer's %+.1f; the computer's 0.0707 back at %.4f\n",
+               rec_full, line_full, rec_down, line_down, aux_phase, usb_phase, round_trip);
+        Check(none && stopped, "usb-record: nothing goes to the computer while it doesn't record");
+        Check(rec_full > .01f && fabsf(rec_down - rec_full) < rec_full * .01f && line_down < line_full * .7f,
+              "usb-record: the master before VOLUME: VOLUME down, the line out drops, the recording doesn't");
+        Check(aux_phase < 0., "usb-record: turned as the line out's jack turns it: against AUX's converter, as AUX's jack is (#209)");
+        Check(usb_phase > 0. && round_trip > .02f, "usb-record: the computer's own audio comes back in its phase");
+    }});
+
+    // SHIFT + the upper F# with USB: USB audio off (FRIZZ leaves the bus and comes back without
+    // the sound card), F# dim blue, USB silent, saved; on again; with SHIFT held F# shows it.
+    // With AUX or the mic, SHIFT + F# is still AUX mono
+    cases.push_back({"usb-switch", [] {
+        RunMs(kReadyMs);
+        const int enumerated = UsbEnumerations();
+        const bool on_at_boot = UsbAudioOn();
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23"); // the mic: SHIFT + F# is mono
+        RunMs(100);
+        TapMono();
+        RunMs(100);
+        const bool mono_on_mic = UsbAudioOn() && UsbEnumerations() == enumerated;
+        Tap("KEY_23"); // USB
+        RunMs(100);
+        Press("KEY_26", true);
+        RunMs(100);
+        const bool shows_on = white_led(SmtLedFull(kInSourceKeyLed));
+        Tap("KEY_23");
+        RunMs(100);
+        const bool shows_off = key_dim(kInSourceKeyLed);
+        Press("KEY_26", false);
+        RunMs(100);
+        const bool away = !UsbAudioOn();
+        RunMs(500);
+        const bool back_without = !UsbAudioOn() && UsbEnumerations() == enumerated + 1;
+        const bool dim_blue = key_dim(kInSourceKeyLed) && SmtLedFull(kInSourceKeyLed).b > SmtLedFull(kInSourceKeyLed).r;
+        float aux, usb;
+        heard_usb(aux, usb);
+        RunMs(2500);
+        const bool saved = Card("/FRIZZ/frizz_master.txt").find("\nusb_audio 0\n") != std::string::npos
+                           && Card("/FRIZZ/frizz_master.txt").find("\nmono 1\n") != std::string::npos;
+        TapMono(); // on again
+        RunMs(600);
+        const bool on_again = UsbAudioOn() && UsbEnumerations() == enumerated + 2
+                              && blue_led(SmtLedFull(kInSourceKeyLed));
+        RunMs(2500);
+        printf("      USB audio off: the computer %.6f, AUX %.4f\n", usb, aux);
+        Check(on_at_boot, "usb-switch: USB audio on out of the box");
+        Check(mono_on_mic, "usb-switch: with the mic, SHIFT + F# is AUX mono, as before: no switch");
+        Check(shows_on && shows_off, "usb-switch: with SHIFT held, F# shows USB audio: lit on, dim off");
+        Check(away && back_without, "usb-switch: off, FRIZZ leaves the bus and comes back without the sound card");
+        Check(dim_blue && usb < 1e-4f, "usb-switch: USB still the source, F# dim blue, silent");
+        Check(saved, "usb-switch: USB audio off on the card");
+        Check(on_again, "usb-switch: SHIFT + F# again: back with the sound card, F# blue");
+        Check(Card("/FRIZZ/frizz_master.txt").find("\nusb_audio 1\n") != std::string::npos,
+              "usb-switch: and that on the card");
+    }});
+
+    // ... and from the card at power-on: FRIZZ comes up without the sound card
+    cases.push_back({"usb-switch-boot", [] {
+        CardFiles()["/FRIZZ/frizz_master.txt"] = "FRIZZ master 1\nusb_audio 0\ngain_usb 40\nusb_live 0\n";
+        RunMs(kReadyMs);
+        const bool off = !UsbAudioOn() && UsbEnumerations() == 1;
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23");
+        RunMs(100);
+        Tap("KEY_23"); // USB: its own from the card, not live
+        RunMs(100);
+        Check(off, "usb-switch-boot: usb_audio 0 on the card: FRIZZ on the bus once, without the sound card");
+        Check(key_dim(kInSourceKeyLed) && key_dim(kLiveKeyLed) && key_dark(kInFxKeyLed),
+              "usb-switch-boot: USB picked: F# dim blue, its own from the card, not live");
+    }});
+
+    // the card lent to the computer: SHIFT + LOOP held 2 s on the settings page, LOOP blue;
+    // the gesture again, an eject, or the computer gone takes it back; meanwhile a scene save
+    // waits, and comes once it's back
+    static auto lend_gesture = [] {
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("KEY_28", true);
+        RunMs(2100);
+        Press("KEY_28", false);
+        Press("KEY_26", false);
+        RunMs(200);
+    };
+    static auto loop_blinks_red = [](uint32_t ms) {
+        int blinks = 0;
+        bool was = false;
+        for (uint32_t t = 0; t < ms; t++)
+        {
+            RunMs(1);
+            const Rgb c = PthLedFull(kLoopLed);
+            const bool red = c.r > 150 && c.g < 40 && c.b < 40;
+            blinks += red && !was;
+            was = red;
+        }
+        return blinks;
+    };
+    cases.push_back({"card-lend", [] {
+        RunMs(kReadyMs);
+        RunMs(3000); // the loops' scan done
+        SetToggle(true);
+        RunMs(300);
+        const bool dark = Max(PthLedFull(kLoopLed)) == 0;
+        lend_gesture();
+        const Rgb lent = PthLedFull(kLoopLed);
+        const bool is_lent = CardLent() && lent.b > 150 && lent.r < 40 && lent.g < 40
+                             && Max(PthLedFull(kChompiKeyLed)) == 0;
+        // a scene saved meanwhile waits for the card
+        SetToggle(false);
+        RunMs(300);
+        const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
+        Latch("KEY_5");
+        Save(1);
+        RunMs(1000);
+        const bool waited = Card("/FRIZZ/frizz_scenes.txt") == scenes;
+        SetToggle(true);
+        RunMs(300);
+        lend_gesture(); // back
+        const bool back = !CardLent() && Max(PthLedFull(kLoopLed)) == 0;
+        RunMs(1000);
+        const bool saved = Card("/FRIZZ/frizz_scenes.txt") != scenes;
+        RunMs(3000);
+        lend_gesture();
+        const bool again = CardLent();
+        EjectCard();
+        RunMs(300);
+        const bool ejected = !CardLent();
+        RunMs(3000);
+        lend_gesture();
+        SetUsbHost(false); // unplugged
+        RunMs(300);
+        const bool unplugged = !CardLent();
+        Check(dark, "card-lend: LOOP dark on the settings page");
+        Check(is_lent, "card-lend: SHIFT + LOOP held 2 s: lent, LOOP blue, SHIFT's LED its own (dark once let go)");
+        Check(waited, "card-lend: a scene saved while it's lent waits");
+        Check(back && saved, "card-lend: the gesture again takes it back, LOOP dark, and the save comes");
+        Check(again && ejected, "card-lend: ejected on the computer: taken back");
+        Check(unplugged, "card-lend: the computer gone: taken back");
+    }});
+
+    // refused, LOOP blinking red 3 times: without a computer, while LOOP records, while a bug
+    // report is written
+    cases.push_back({"card-lend-refused", [] {
+        RunMs(kReadyMs);
+        RunMs(3000);
+        SetToggle(true);
+        RunMs(300);
+        SetUsbHost(false);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("KEY_28", true);
+        RunMs(1950);
+        const int no_host = loop_blinks_red(1000);
+        Press("KEY_28", false);
+        Press("KEY_26", false);
+        const bool not_lent = !CardLent();
+        SetUsbHost(true);
+        RunMs(500);
+        SetToggle(false);
+        RunMs(300);
+        Tap("KEY_28"); // record
+        RunMs(300);
+        SetToggle(true);
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("KEY_28", true);
+        RunMs(1950);
+        const int recording = loop_blinks_red(1000);
+        Press("KEY_28", false);
+        Press("KEY_26", false);
+        const bool not_lent_rec = !CardLent();
+        RunMs(300);
+        SetToggle(false);
+        RunMs(300);
+        Tap("KEY_28"); // play
+        RunMs(300);
+        // a bug report, written slowly, then the gesture while it is
+        SetCardWriteMs(1500);
+        SetToggle(true);
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(2100);
+        Press("ENC_6_SW", false);
+        Press("KEY_28", true);
+        RunMs(2500);
+        Press("KEY_28", false);
+        Press("KEY_26", false);
+        // the LEDs stand still while the card is written (SetCardWriteMs holds MainLoop), so the
+        // blinks may not show here: not lent is what counts
+        const bool not_lent_writing = !CardLent();
+        SetCardWriteMs(0);
+        RunMs(10000);
+        const bool written = Card("/FRIZZ/bug-1.txt").size() > 100;
+        lend_gesture(); // once it's written: lent
+        const bool lent_after = CardLent();
+        printf("      red blinks: no computer %d, recording %d; writing: lent %d, the report %zu B, lent after %d\n", no_host, recording, !not_lent_writing, Card("/FRIZZ/bug-1.txt").size(), lent_after);
+        Check(no_host == 3 && not_lent, "card-lend-refused: without a computer: 3 red blinks, not lent");
+        Check(recording == 3 && not_lent_rec, "card-lend-refused: while LOOP records: 3 red blinks, not lent");
+        Check(not_lent_writing && written && lent_after,
+              "card-lend-refused: while a bug report is written: not lent; once it's written, lent");
+    }});
+
+    // the card lent: SHIFT + F# with USB doesn't switch USB audio, F# blinks red 3 times
+    cases.push_back({"usb-switch-lent", [] {
+        RunMs(kReadyMs);
+        RunMs(3000);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23");
+        RunMs(100);
+        Tap("KEY_23"); // USB
+        RunMs(100);
+        lend_gesture();
+        const int enumerated = UsbEnumerations();
+        Press("KEY_26", true);
+        RunMs(60);
+        Tap("KEY_23");
+        int blinks = 0;
+        bool was = false;
+        for (int t = 0; t < 1000; t++)
+        {
+            RunMs(1);
+            const Rgb c = SmtLedFull(kInSourceKeyLed);
+            const bool red = c.r > 150 && c.g < 40 && c.b < 40;
+            blinks += red && !was;
+            was = red;
+        }
+        Press("KEY_26", false);
+        RunMs(600);
+        Check(CardLent() && UsbAudioOn() && UsbEnumerations() == enumerated && blinks == 3,
+              "usb-switch-lent: the card lent: SHIFT + F# with USB blinks red 3 times, USB audio stays on");
     }});
 
     // a bug report knows AUX's jack: as it was at power-on, and each change; its replay plays

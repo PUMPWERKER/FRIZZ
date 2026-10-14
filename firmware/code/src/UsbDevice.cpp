@@ -18,6 +18,11 @@
 #include "usb_descriptors.h"
 #include "UsbMidiTransport.h"
 
+// built for size, as FRIZZ's code space is tight (docs/CAPACITY.md): it runs a few thousand
+// times a second at most. Receive and Send, a block's frames in the audio callback, at -O3
+#pragma GCC optimize("Os")
+#define USB_AUDIO_BLOCK __attribute__((optimize("O3")))
+
 namespace chompi
 {
 namespace usb
@@ -263,7 +268,7 @@ static inline void Put24(uint8_t* p, float x)
     p[2] = static_cast<uint8_t>(v >> 16);
 }
 
-const float* const* Receive(size_t size)
+USB_AUDIO_BLOCK const float* const* Receive(size_t size)
 {
     PickUpRequests();
     const uint16_t need = static_cast<uint16_t>(size * kFrameBytes);
@@ -315,7 +320,7 @@ const float* const* Receive(size_t size)
     return rx_ptr;
 }
 
-void Send(const float* const* to_host, size_t size)
+USB_AUDIO_BLOCK void Send(const float* const* to_host, size_t size)
 {
     PickUpRequests();
     tu_fifo_t* ff = tud_audio_get_ep_in_ff(); // null until configured

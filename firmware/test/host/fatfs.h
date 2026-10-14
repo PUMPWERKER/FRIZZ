@@ -233,6 +233,12 @@ inline FRESULT f_mount(FATFS* fs, const char*, BYTE)
 {
     FakeCard& c = FakeCard::Get();
     c.Touch();
+    if (!fs)
+    {
+        // unmounted (the card lent as a USB drive, CardLend.h): what was open is no more
+        c.mount++;
+        return FR_OK;
+    }
     fs->csize = c.csize;
     fs->database = c.database;
     c.cwd = "";

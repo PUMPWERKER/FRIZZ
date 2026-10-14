@@ -178,14 +178,14 @@ extern "C" uint32_t g_pfnVectors, _sidata, _sdata, _edata, _stext;
  *  packets instead; 1 -> the drive's (CardStats); 2 X -> the card lent (X 1) or taken back (0),
  *  as the settings page's SHIFT + LOOP. Each answer starts with the flags: a computer 1, it
  *  plays 2, the card lent 4, USB audio on 8, it records 16. Its length, or -1 for BAD */
-static size_t UsbPut(uint8_t* d, size_t n, uint32_t v, size_t groups)
+__attribute__((optimize("Os"))) static size_t UsbPut(uint8_t* d, size_t n, uint32_t v, size_t groups)
 {
     for (size_t g = groups; g-- > 0;)
         d[n++] = static_cast<uint8_t>(g * 7 < 32 ? (v >> (g * 7)) & 0x7F : 0);
     return n;
 }
 
-static int UsbDev(const uint8_t* arg, size_t len, uint8_t* d)
+__attribute__((optimize("Os"))) static int UsbDev(const uint8_t* arg, size_t len, uint8_t* d)
 {
     size_t n = 0;
     const uint8_t part = len ? arg[0] : 0;
@@ -424,7 +424,7 @@ static void CardRemount()
     EnterFrizzDir();
 }
 
-static bool CardLendProcess(uint32_t now)
+__attribute__((optimize("Os"))) static bool CardLendProcess(uint32_t now)
 {
     cardlend::State& card = cardlend::Get();
     usb::CardTask();
