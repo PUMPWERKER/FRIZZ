@@ -113,6 +113,16 @@ public:
         }
     }
 
+    /** FxBase::SleepsThrough: what Process does asleep, once for the run */
+    FX_PER_RUN bool SleepsThrough(const float*, const float*, size_t)
+    {
+        if (!gate_.AsleepForRun())
+            return false;
+        SnapParams();
+        asleep_ = true;
+        return true;
+    }
+
     /** The slewed parameters jump to their targets, at Init */
     void SnapParams()
     {

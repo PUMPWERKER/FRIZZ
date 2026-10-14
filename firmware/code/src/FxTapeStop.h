@@ -76,6 +76,18 @@ public:
 
     void SetTempo(float bpm) { tempo_ = bpm; }
 
+    /** FxBase::SleepsThrough: what Process does off on the live signal, once for the run,
+     *  while its fade is under -120dB (above it, Process fades it on) */
+    FX_PER_RUN bool SleepsThrough(const float* l, const float* r, size_t n)
+    {
+        if (state_ != State::IDLE || !gate_.AsleepForRun())
+            return false;
+        held_[0] = l[n - 1];
+        held_[1] = r[n - 1];
+        recording_ = false;
+        return true;
+    }
+
     FRIZZ_HOT void Process(float* l, float* r)
     {
         gate_.Process();

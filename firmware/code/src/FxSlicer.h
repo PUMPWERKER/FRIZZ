@@ -88,6 +88,18 @@ public:
         }
     }
 
+    /** FxBase::SleepsThrough: what Process does asleep, once for the run, while no step
+     *  comes in it (a step draws its chance, as Process does) */
+    FX_PER_RUN bool SleepsThrough(const float*, const float*, size_t n)
+    {
+        if (step_ || (late_ > 0 && late_ <= n) || !gate_.AsleepForRun())
+            return false;
+        if (late_ > 0)
+            late_ -= static_cast<uint32_t>(n);
+        skipped_ += static_cast<uint32_t>(n);
+        return true;
+    }
+
     void Process(float* l, float* r)
     {
         const float gate = gate_.Process();

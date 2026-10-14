@@ -16,6 +16,9 @@ namespace chompi
 // memory (docs/CAPACITY.md), and -O3 unrolls the effects' buffer clears and settings into
 // kilobytes
 #define FX_ONCE __attribute__((noinline, optimize("Os")))
+// What runs once per run of samples, not per sample (an effect's SleepsThrough): out of line
+// and small, so FxChain::Insert, inlined for every effect, carries only the call
+#define FX_PER_RUN __attribute__((noinline, optimize("Os")))
 
 // The FX knobs 1-4, and the parameters per effect: two pages of them, page 1's on parameters
 // 0-3, page 2's on 4-7 (FxControls.h)
@@ -151,6 +154,15 @@ public:
     }
     /** Off and faded out (under -120dB) */
     inline bool Silent() const { return !on_ && value_ <= kFxGateSleep; }
+    /** Before a run of samples, in place of Process and Asleep on each: asleep for all of
+     *  them, snapped to 0 as Asleep does. The key changes only between runs (FxChain::Block) */
+    inline bool AsleepForRun()
+    {
+        if (!Silent())
+            return false;
+        value_ = 0.f;
+        return true;
+    }
 
     /** True once after each press, for the audio callback */
     bool TakePress()
@@ -193,6 +205,10 @@ public:
      *  Level (FxOutput.h), which an effect sounding on after its key (the tape stop) hides */
     inline float Fade() const { return gate_.Value(); }
     inline bool Quiet() const { return Idle(); }
+    /** Instead of n Process calls on l and r, for FxChain::Insert's fast path while its page 2
+     *  rests: true if asleep for all of them, its bookkeeping for them done; an effect with
+     *  such work has its own. Its output is its input, so l and r stay as they are */
+    inline bool SleepsThrough(const float*, const float*, size_t) { return false; }
 
 protected:
     FxGate gate_;

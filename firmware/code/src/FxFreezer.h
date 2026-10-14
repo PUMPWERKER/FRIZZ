@@ -80,6 +80,14 @@ public:
             start_ = true;
     }
 
+    /** FxBase::SleepsThrough: idle, its key off with its fade at 0 and no knob to apply,
+     *  Process does nothing */
+    FX_PER_RUN bool SleepsThrough(const float*, const float*, size_t)
+    {
+        return state_ == State::IDLE && !start_ && !params_changed_ && !gate_.IsOn()
+               && gate_.Value() == 0.f;
+    }
+
     FRIZZ_HOT void Process(float* l, float* r)
     {
         ApplyParams();

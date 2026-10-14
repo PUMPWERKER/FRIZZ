@@ -79,6 +79,16 @@ public:
         lfo_.Pulse(pos, reverse, (reverse ? 1.f : -1.f) * static_cast<float>(since_) * lfo_.PulseInc());
     }
 
+    /** FxBase::SleepsThrough: what Process does asleep, once for the run */
+    FX_PER_RUN bool SleepsThrough(const float*, const float*, size_t n)
+    {
+        if (!gate_.AsleepForRun())
+            return false;
+        since_ += n;
+        asleep_ = true;
+        return true;
+    }
+
     void Process(float* l, float* r)
     {
         const float gate = gate_.Process();
