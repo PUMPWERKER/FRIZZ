@@ -4813,6 +4813,71 @@ int main()
         Check(PthLedFull(kLoopLed).r > 100, "midi notes: note 47 is LOOP");
     }});
 
+    // a key a note holds isn't held for good when its note off can't come: the computer gone,
+    // FRIZZ leaving the bus for USB audio, or the global channel changed since the note on
+    cases.push_back({"midi-notes-gone", [] {
+        RunMs(kReadyMs);
+        RunMs(3000);
+        const int off = Max(SmtLedFull(kFilterKeyLed));
+        auto held = [off] { return Max(SmtLedFull(kFilterKeyLed)) > 2 * off; };
+        Usb({kNoteOn, kFilterNote, 100});
+        RunMs(100);
+        const bool usb_on = held();
+        SetUsbHost(false); // unplugged
+        RunMs(300);
+        const bool usb_gone = !held();
+        SetUsbHost(true);
+        RunMs(1000);
+        Check(usb_on && usb_gone, "midi-notes-gone: the computer gone, a key its note held lets go");
+
+        // the channel: 16, then 1 on the settings page, and the note off still on 16
+        Trs({kNoteOn, kFilterNote, 100});
+        RunMs(100);
+        const bool on16 = held();
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_1");
+        RunMs(100);
+        SetToggle(false);
+        RunMs(300);
+        const bool still = held();
+        Trs({kNoteOff, kFilterNote, 0});
+        RunMs(300);
+        const bool let_go = !held();
+        Trs({kNoteOn, kFilterNote, 100}); // channel 16 isn't FRIZZ's now
+        RunMs(100);
+        const bool ignored = !held();
+        Trs({0x90, kFilterNote, 100}); // channel 1 is
+        RunMs(100);
+        const bool on1 = held();
+        Trs({0x90, kFilterNote, 0});
+        RunMs(300);
+        Check(on16 && still && let_go && ignored && on1 && !held(),
+              "midi-notes-gone: held on channel 16, its note off lets go after the channel changed to 1; "
+              "a note on on 16 does nothing then");
+
+        // USB audio switched off (SHIFT + upper F# with USB): FRIZZ leaves the bus
+        Usb({0x90, kFilterNote, 100});
+        RunMs(100);
+        const bool usb_held = held();
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23");
+        RunMs(100);
+        Tap("KEY_23"); // USB
+        RunMs(100);
+        Press("KEY_26", true);
+        RunMs(60);
+        Tap("KEY_23");
+        RunMs(60);
+        Press("KEY_26", false);
+        RunMs(600);
+        const bool switched = !UsbAudioOn();
+        SetToggle(false);
+        RunMs(300);
+        Check(usb_held && switched && !held(), "midi-notes-gone: USB audio switched, a key a USB note held lets go");
+    }});
+
     // controllers: latches, an effect's channel, the focus, the compressor, a gain
     cases.push_back({"midi-cc", [] {
         RunMs(kReadyMs);

@@ -624,6 +624,13 @@ namespace chompi
         MIDI_CONTROL_ONCE void Remote()
         {
             const uint32_t now = System::GetNow();
+            // the computer gone, or FRIZZ leaving the bus (USB audio switched): the releases of
+            // what its notes and SysEx hold are lost, so MIDI lets go of them
+            const bool host = midi_->UsbHost(), audio = settings_.UsbAudio();
+            if ((usb_host_ && !host) || audio != usb_audio_)
+                midi_->LetGo();
+            usb_host_ = host;
+            usb_audio_ = audio;
             uint8_t key;
             if (midi_->TakeFocus(key))
             {
@@ -2563,6 +2570,7 @@ namespace chompi
         bool vol_down_ = false;     // VOLUME's press was seen here, not by the boot page
         bool vol_shift_ = false;    // VOLUME's press was SHIFT + press
         uint32_t vol_touched_ = 0;  // VOLUME last turned or pressed on the settings page
+        bool usb_host_ = false, usb_audio_ = true; // as Remote last saw them (MidiControl::LetGo)
         uint32_t gain_turned_ = 0;  // the input gain last set
         float in_meter_ = 0.f;      // the input's meter, full scale 1
         uint32_t in_red_at_ = 0;    // the input last reached the loop's ceiling

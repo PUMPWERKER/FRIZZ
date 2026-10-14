@@ -150,6 +150,11 @@ what FRIZZ does.
 - **Save, copy and delete's notes do nothing on the Loops and Cubbi pages**, as the upper F#,
   G# and A# there: notes 66, 68 and 70 started the function, which the next tap of SHIFT could
   confirm. See [Notes: the keys](MANUAL.md#notes-the-keys).
+- **A key a MIDI note holds no longer stays held for good when its note off can't come**: when
+  the computer goes away (the cable pulled, the computer asleep) or USB audio switches, every
+  key MIDI holds lets go, and a note off on any channel lets go of the key its note holds, so
+  changing the MIDI channel on the settings page meanwhile no longer leaves an effect punched
+  in or SHIFT held. See [Notes: the keys](MANUAL.md#notes-the-keys).
 
 ## v1.0.1 (2026-10-13)
 
