@@ -377,6 +377,9 @@ public:
         using namespace masterfile;
         if (line >= sizeof(kLines) / sizeof(kLines[0]) || !kLines[line].Takes(v))
             return false;
+        // USB audio leaves the bus: not with the card lent there, as its key (Key)
+        if (kLines[line].offset == offsetof(MasterSettings, usb_audio) && cardlend::Get().lent)
+            return false;
         MasterSettings master;
         Store(master);
         *Field(master, kLines[line]) = static_cast<uint8_t>(kLines[line].kind == Line::SWITCH ? v != 0 : v);

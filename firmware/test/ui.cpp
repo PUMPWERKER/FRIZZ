@@ -7842,6 +7842,11 @@ int main()
         RunMs(600);
         Check(CardLent() && UsbAudioOn() && UsbEnumerations() == enumerated && blinks == 3,
               "usb-switch-lent: the card lent: SHIFT + F# with USB blinks red 3 times, USB audio stays on");
+        // the developers' SET of usb_audio (masterfile::kLines' 18) is refused the same
+        const std::string set = Ask({0x3E, 3, 1, 0x23, 18, 0, 0});
+        RunMs(600);
+        Check(set.size() == 5 && set[2] == 1 && CardLent() && UsbAudioOn() && UsbEnumerations() == enumerated,
+              "usb-switch-lent: the developers' SET of USB audio is refused too");
     }});
 
     // a bug report knows AUX's jack: as it was at power-on, and each change; its replay plays
