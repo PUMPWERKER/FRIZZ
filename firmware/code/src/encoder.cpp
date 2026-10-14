@@ -102,3 +102,10 @@ void ChompiEncoder::Debounce(bool a_state, bool b_state)
  *  shift registers bit-banged, the codec on I2C, the card on SDMMC). Defined here, the call
  *  keeps libDaisy's SPI driver and the HAL's out of the build: 5.7 KB of code, 2.9 KB of RAM */
 extern "C" void dsy_spi_global_init() {}
+
+#ifdef __arm__
+/** Nothing in FRIZZ is allocated (no malloc, no new); the deleting destructors of libDaisy's UI
+ *  pages still name operator delete, which would pull newlib's free and its locks */
+void operator delete(void*) noexcept {}
+void operator delete(void*, unsigned int) noexcept {}
+#endif
