@@ -109,6 +109,9 @@ public:
     inline void KeepInRam() { in_ram_ = true; }
     inline bool InRam() const { return in_ram_; }
 
+    /** The card mounted, as the last mount left it (the loop transfer's NO_CARD) */
+    inline bool Mounted() const { return mounted_; }
+
     /** A save requested and not yet written */
     inline bool Busy() const { return save_state_ == SaveState::PENDING || master_pending_; }
 

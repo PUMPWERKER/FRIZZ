@@ -300,6 +300,33 @@ public:
         return failed;
     }
 
+    /** The loop transfer changed slot id (bank * 15 + slot; LoopTransfer.h, docs/LOOP_PROTOCOL.md
+     *  5.5): no buffer holds it any more, though the one playing plays on, so its key loads what
+     *  the slot holds now; a load of it finishes as nobody's; a plan for it loads again when its
+     *  time comes, or goes if the slot is empty now, as if cancelled */
+    void Forget(int id)
+    {
+        for (Buf& b : bufs_)
+            if (b.id == id)
+                b.id = kNone;
+        if (load_ == id)
+            forget_load_ = true;
+        if (plan_ != id)
+            return;
+        ScopedIrqBlocker irq;
+        if (!Playable(static_cast<size_t>(id) / loops::kSlots, static_cast<size_t>(id) % loops::kSlots))
+            Cancel();
+        else if (posted_ == id && kind_ != Kind::FADER)
+        {
+            // handed to the looper with the old file's: taken back, loaded again
+            engine_->looper.CancelSwitch();
+            posted_ = kNone;
+        }
+    }
+    /** For SLOT's flags (LoopTransfer.h): the looper plays slot id's loop (1), a buffer holds
+     *  it ready (2) */
+    uint8_t Flags(int id) const { return (id == playing_ ? 1 : 0) | (Ready(id) >= 0 ? 2 : 0); }
+
     /** A slot of the bank shown */
     Led SlotLed(size_t slot) const
     {
@@ -496,6 +523,7 @@ private:
         bufs_[b].id = kNone;
         target_ = b;
         load_ = plan_;
+        forget_load_ = false;
         spread_ = 0;
     }
 
@@ -515,7 +543,8 @@ private:
         }
         const uint32_t head = buf.frames < kXfadeFrames ? buf.frames : kXfadeFrames;
         memcpy(d + 2 * buf.frames, d, head * 4);
-        buf.id = load_;
+        buf.id = forget_load_ ? kNone : load_; // its slot changed meanwhile: loaded again
+        forget_load_ = false;
         load_ = kNone;
         spread_ = 0;
     }
@@ -539,6 +568,7 @@ private:
     int switched_ = kNone;   // switched to by the hand's plan, for MIDI feedback (TakeSwitched)
     int playing_ = kNone;    // the loop from the card the looper plays
     int load_ = kNone;       // loading, into bufs_[target_]
+    bool forget_load_ = false; // and its slot changed since (Forget)
     int target_ = 1;
     uint32_t spread_ = 0;    // frames of a mono loop still to spread, or kSpreadDone
     uint32_t switches_ = 0;  // the looper's Switches() as last seen

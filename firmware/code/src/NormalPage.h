@@ -249,6 +249,10 @@ namespace chompi
         void InitLoops(LoopLoader *loader, int16_t *rec) { loops_.Init(engine_, loader, rec); }
         /** Each MainLoop pass, after the loader (LoopControls::Process) */
         void LoopsProcess() { loops_.Process(); }
+        /** The loop transfer changed a FRIZZ slot (LoopTransfer::TakeChanged) */
+        void LoopChanged(int id) { loops_.Forget(id); }
+        /** SLOT's flags 1 and 2 (LoopTransfer.h): it plays, it's loaded and ready */
+        uint8_t LoopFlags(int id) const { return loops_.Flags(id); }
 #endif
 
         /** The settings page's USB audio (SettingsPage::UsbAudio) */
@@ -625,7 +629,10 @@ namespace chompi
 #endif
 
             // one answer a pass (every 2 ms), so USB has sent the last before the next goes,
-            // or else MIDI feedback's
+            // or else MIDI feedback's; the loop transfer's first (LoopTransfer.h), whose ack takes
+            // no answer's place
+            if (midi_->xfer_send && midi_->xfer_send())
+                return;
             MidiControl::Query query;
             MidiControl::DevQuery dev;
             if (midi_->TakeQuery(query))

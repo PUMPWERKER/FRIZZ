@@ -28,6 +28,10 @@
 #include "LoopLoader.h"
 #include "Version.h"
 
+// built for size, all of it (SRAM_EXEC, docs/CAPACITY.md): none of it is in a hurry
+#pragma GCC push_options
+#pragma GCC optimize("Os")
+
 namespace loopxfer
 {
 // the protocol's version (HELLO; site/features.json's loopTransfer is the major)
@@ -1111,3 +1115,5 @@ private:
     uint32_t count_sector_ = 0, count_free_ = 0;
     uint16_t changed_[loops::kFrizzBanks] = {};
 };
+
+#pragma GCC pop_options

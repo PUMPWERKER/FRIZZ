@@ -88,6 +88,10 @@ crash::Backup BACKUP_SRAM crash_mem;
 uint8_t SDRAM_NOINIT_LATER __attribute__((aligned(32))) loop_load_mem[loops::kBufBytes];
 loops::Mem SDRAM_NOINIT_LATER loop_loader_mem;
 LoopLoader loop_loader;
+// the loop transfer over USB MIDI (LoopTransfer.h, #278): its staging block, the CHUNKs' ring and
+// its files beside the loader's, the job in MainLoop
+loopxfer::Mem SDRAM_NOINIT_LATER loop_xfer_mem;
+LoopTransfer loop_xfer;
 #endif
 
 // TEMPO's delay buffer: 10s of interleaved stereo float
@@ -251,6 +255,22 @@ static void DevInfo(dev::Info& info)
     info.bench = [](uint8_t part, uint32_t offset, uint8_t* d) { return bench.Report(part, offset, d); };
 #else
     info.loops = [](const uint8_t* arg, size_t len, uint8_t* d) { return loop_loader.Dev(arg, len, d); };
+#endif
+}
+
+/** The loop transfer's messages in the play page's answer a pass (MidiControl::xfer_send): the
+ *  transfer's (LoopTransfer::Send), or the bench's HELLO and NOT_HERE */
+static bool XferSend()
+{
+#if FRIZZ_BENCH
+    loopxfer::Request q;
+    if (!midi_control.xfer.TakeRequest(q))
+        return false;
+    uint8_t d[MidiControl::kMaxReply];
+    midi_control.Reply(kCmdLoops, d, loopxfer::BenchAnswer(q, d));
+    return true;
+#else
+    return loop_xfer.Send();
 #endif
 }
 
@@ -457,6 +477,9 @@ __attribute__((optimize("Os"))) static bool CardLendProcess(uint32_t now)
             card.refused.Start(now);
         else
         {
+#if !FRIZZ_BENCH
+            loop_xfer.Lend(); // the player's gesture wins: a job ends first (3.8)
+#endif
             // FatFs lets go of it: nothing of it cached that the computer would change under it
             f_mount(nullptr, fsi.GetSDPath(), 0);
             card.lent = true;
@@ -519,6 +542,18 @@ void MainLoop(void* data)
         loop_loader.Process(scene_store.Busy() || event_log.Writing());
         // the Loops page's: the loads it asks for, the switch (LoopControls.h)
         ui.LoopsProcess();
+    }
+    // the loop transfer (LoopTransfer.h): a request, its job's step; while the card's lent too,
+    // which its requests are refused for. What it changed, the Loops page forgets
+    {
+        const LoopLoader::State st = loop_loader.GetState();
+        loop_xfer.Process({scene_store.Mounted(), card_lent,
+                           engine.looper.GetState() == chompi::Looper::State::RECORDING,
+                           st == LoopLoader::LOADING || st == LoopLoader::CHECKING || st == LoopLoader::WRITING,
+                           scene_store.Busy() || event_log.Writing(), usb::Host()});
+        int id;
+        while (loop_xfer.TakeChanged(id))
+            ui.LoopChanged(id);
     }
 #endif
     // a scene saved, copied or deleted: the card is written here, never in the audio callback
@@ -624,10 +659,18 @@ int main(void)
     // on the bus, as a sound card or not (frizz_master.txt's usb_audio)
     usb::Start(scene_store.master.usb_audio);
 #if !FRIZZ_BENCH
-    // the loop slots' scan starts, a step a MainLoop pass
+    // a loop transfer's temp file a power cut left, gone; the loop slots' scan starts, a step a
+    // MainLoop pass, and puts a swap a power cut cut short right (LoopTransfer.h)
+    LoopTransfer::Boot();
     loop_loader.Init(loop_load_mem, &loop_loader_mem, &fsi.GetSDFileSystem(), [] { return System::GetNow(); },
                      [] { return System::GetTick(); }, System::GetTickFreq());
+    loop_xfer.Init(&midi_control.xfer, &loop_loader, &loop_xfer_mem, &fsi.GetSDFileSystem(),
+                   [] { return System::GetNow(); },
+                   [](const uint8_t* d, size_t n) { midi_control.Reply(kCmdLoops, d, n); },
+                   [](uint8_t what, uint16_t value) { event_log.Xfer(what, value); },
+                   [](int id) { return ui.LoopFlags(id); });
 #endif
+    midi_control.xfer_send = XferSend;
 
     engine.Init(hw.seed.AudioSampleRate(), loop_mem, &midi_clock,
                 delay_mem, kDelayFrames, &reverb,
