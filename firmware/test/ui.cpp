@@ -3850,16 +3850,17 @@ int main()
               "loops-fader: a white key on the crossfader: both loops, mixed equal power (at the "
               "middle each -3 dB); the tempo still the old loop's");
         Turn(5, 12);
-        RunMs(100);
+        RunMs(300); // the detents play out, then the glide
         float r220, r330, r440;
         tones(r220, r330, r440);
         Turn(5, -18);
-        RunMs(100);
+        RunMs(300);
         float q220, q330, q440;
         tones(q220, q330, q440);
         printf("      right 220 %.3f 330 %.3f; a quarter 220 %.3f 330 %.3f\n", r220, r330, q220, q330);
-        Check(r220 < .02f * alone && r330 > .6f * alone && q220 / q330 > 2.f && q220 / q330 < 2.8f,
-              "loops-fader: fully right only the new loop; a quarter of the way the old one 2.4x the new");
+        Check(r220 < .02f * alone && r330 > .6f * alone && q220 / q330 > 2.25f && q220 / q330 < 2.6f,
+              "loops-fader: fully right only the new loop; a quarter of the way the old one 2.4x the new "
+              "(cos/sin of pi/8)");
         Press("KEY_26", false); // let go at a quarter: the old loop stays
         RunMs(300);
         tones(q220, q330, q440);
