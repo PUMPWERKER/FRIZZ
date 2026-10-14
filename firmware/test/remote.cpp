@@ -54,14 +54,36 @@ static bool OpenPty()
     return true;
 }
 
-/** What remote.py wrote, into the twin's USB; what the twin sent, back to it */
+// the loop transfer's CHUNKs (0x38 0x11) the pty drops: every drop_every-th, 0 none; a message
+// from remote.py gathered until its F7 for it
+static int drop_every = 0, chunks_seen = 0, chunks_dropped = 0;
+static std::string from_remote;
+
+/** What remote.py wrote, into the twin's USB (but the CHUNKs dropped); what the twin sent, back
+ *  to it */
 static void Pump()
 {
     uint8_t buf[256];
     ssize_t n;
     while ((n = read(master_fd, buf, sizeof(buf))) > 0)
         for (ssize_t i = 0; i < n; i++)
-            UsbMidi(buf[i]);
+        {
+            if (!drop_every)
+            {
+                UsbMidi(buf[i]);
+                continue;
+            }
+            from_remote.push_back(static_cast<char>(buf[i]));
+            if (buf[i] != 0xF7)
+                continue;
+            const bool chunk = from_remote.size() > 6 && !from_remote.compare(0, 6, "\xF0\x7D\x43\x48\x38\x11");
+            if (chunk && ++chunks_seen % drop_every == 0)
+                chunks_dropped++;
+            else
+                for (char c : from_remote)
+                    UsbMidi(static_cast<uint8_t>(c));
+            from_remote.clear();
+        }
     const std::string out = TakeUsbOut();
     if (!out.empty() && write(master_fd, out.data(), out.size()) < 0)
         perror("pty");
@@ -823,6 +845,73 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
             printf("%s\n", out.c_str());
         unlink(wav.c_str());
     }
+    // the loop transfer (#278, tools/loopxfer.py's client): an upload, loaded back and its CRC
+    // checked, the names in the listing; the pty dropping CHUNKs, go-back-N on the firmware;
+    // moved, swapped, deleted, a cubbi copied; only FRIZZ's slots changed on the card
+    {
+        CardFiles()["/TAPE/cubbi_c3.wav"] = LoopWav(3000, 48000, 2);
+        const auto before = CardFiles();
+        const std::string wav = tmp_dir + "/h1.wav", other = tmp_dir + "/h2.wav";
+        std::string named = LoopWav(10000, 48000, 2);
+        // a LIST/INFO/INAM before the data: "Loop ünë" (UTF-8), its NUL, a pad byte
+        const std::string name = "Loop \xC3\xBCn\xC3\xAB";
+        std::string list = "LIST";
+        const uint32_t inam = static_cast<uint32_t>(name.size() + 1), size = 4 + 8 + inam + (inam & 1);
+        list.append(reinterpret_cast<const char*>(&size), 4);
+        list += "INFOINAM";
+        list.append(reinterpret_cast<const char*>(&inam), 4);
+        list += name + std::string(1 + (inam & 1), '\0');
+        named.insert(36, list);
+        const uint32_t riff = static_cast<uint32_t>(named.size() - 8);
+        named.replace(4, 4, reinterpret_cast<const char*>(&riff), 4);
+        std::ofstream(wav, std::ios::binary) << named;
+        std::ofstream(other, std::ios::binary) << LoopWav(7000, 48000, 1);
+        rc = Remote({"loops", "rescan"}, out); // what the loader's check above left
+        rc = Remote({"loops", "put", wav, "h", "1", "--cpu"}, out);
+        Check(rc == 0 && Has(out, "h1.wav -> h1: " + std::to_string(named.size()) + " bytes in ")
+                  && Has(out, "KB/s; 409 CHUNKs, 0 rewinds") && Has(out, "the audio callback meanwhile: max ")
+                  && Card("/FRIZZ/h1.wav") == named,
+              "remote: loops put uploads a WAV into h1, byte for byte, its rate and the load meanwhile");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        rc = Remote({"loops", "load", "h", "1", "--check", wav}, out);
+        Check(rc == 0 && Has(out, ": the same"), "remote: loops load of the upload: its CRC-32 the file's data's");
+        drop_every = 7;
+        rc = Remote({"loops", "put", other, "h", "2"}, out);
+        drop_every = 0;
+        Check(rc == 0 && chunks_dropped > 0 && !Has(out, ", 0 rewinds") && Card("/FRIZZ/h2.wav") == Read(other),
+              "remote: loops put with every 7th CHUNK lost on the way: rewound, the file whole");
+        const size_t line = out.rfind("h2.wav ->");
+        printf("      %d CHUNKs dropped: %s", chunks_dropped, line == std::string::npos ? "\n" : out.substr(line).c_str());
+        rc = Remote({"loops", "ls"}, out);
+        Check(rc == 0 && Has(out, "h1  stereo, 10000 frames (0.21 s), " + std::to_string(named.size()) + " B, \"" + name + "\"\n")
+                  && Has(out, "h2  mono, 7000 frames") && Has(out, "cubbi_c3  stereo")
+                  && Has(out, "the cubbis in /TAPE"),
+              "remote: loops ls lists the slots with their names");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        rc = Remote({"loops", "mv", "h", "1", "h", "2"}, out);
+        Check(rc == 1 && Has(out, "move h1 to h2: EXISTS"), "remote: loops mv onto a loop: refused without --replace");
+        rc = Remote({"loops", "mv", "h", "1", "h", "3"}, out);
+        const int mv = rc;
+        rc = Remote({"loops", "swap", "h", "2", "h", "3"}, out);
+        const int sw = rc;
+        Check(mv == 0 && sw == 0 && Card("/FRIZZ/h2.wav") == named && Card("/FRIZZ/h3.wav") == Read(other)
+                  && !CardFiles().count("/FRIZZ/h1.wav"),
+              "remote: loops mv, then swap: the files where they were sent");
+        rc = Remote({"loops", "cp", "cubbi_c", "3", "h", "4"}, out);
+        Check(rc == 0 && Card("/FRIZZ/h4.wav") == Card("/TAPE/cubbi_c3.wav"),
+              "remote: loops cp copies TAPE's cubbi into h4 on the card, the cubbi as it was");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        for (const char* s : {"2", "3", "4"})
+            Remote({"loops", "rm", "h", s}, out);
+        rc = Remote({"loops", "rescan"}, out);
+        Check(rc == 0 && CardFiles() == before, "remote: loops rm and rescan: the card as it was, nothing else touched");
+        CardFiles().erase("/TAPE/cubbi_c3.wav");
+        unlink(wav.c_str());
+        unlink(other.c_str());
+    }
     // the crash record (#105): none on the twin; one as the fault handler writes it, read back
     // and cleared; a watchdog's, as the next start records it
     rc = Remote({"crash"}, out);
@@ -1557,6 +1646,7 @@ builds.built = lambda bench: "tag.bin"
 builds.image = lambda bench: "tag.bin"
 builds.stale = lambda path: False
 builds.describe = lambda path: path
+builds.frizz_version = lambda: (1, 0, 0, 0)
 tag = [None]
 flash.tagged = lambda where=None: tag[0]
 def case(name, *argv):
@@ -1577,6 +1667,14 @@ case("10 tagged", "--no-build", "--slot", "10")
 case("its file to 10", "tag.bin", "--slot", "10")
 case("another file to 10", "other.bin", "--slot", "10")
 case("the bench to 13", "--bench", "--slot", "13")
+builds.frizz_version = lambda: (1, 5, 0, 1)
+case("10 tagged, another version", "--slot", "10")
+tag[0] = "v1.5.0-beta.1"
+case("13 its beta", "--no-build", "--slot", "13")
+tag[0] = "v1.5.0"
+case("10 not its release", "--no-build", "--slot", "10")
+print("versions:", builds.tag_version("v1.5.0"), builds.tag_version("v1.5.0-beta.12"), builds.tag_version("v1.0"),
+      builds.version_name((1, 5, 0, 1)))
 tag[0] = None
 case("test", "--test")
 case("file to 12", "other.bin", "--slot", "12")
@@ -1601,6 +1699,12 @@ case("file to 11", "other.bin", "--slot", "11")
               && Has(out, "exit: key 13 is the latest beta, the user's: never the bench")
               && Has(out, "the bench to 13: []\n"),
           "tools: another file isn't, nor the bench, on a tag too");
+    Check(Has(out, "exit: code/src/Version.h's kFrizzVersion is v1.5.0-beta.1, the tag v1.0.0")
+              && Has(out, "10 tagged, another version: []\n")
+              && Has(out, "13 its beta: ['launcher', 'tag.bin --slot 13 --name FRIZZ-BETA --device l']\n")
+              && Has(out, "10 not its release: []\n")
+              && Has(out, "versions: (1, 5, 0, 0) (1, 5, 0, 12) None v1.5.0-beta.1\n"),
+          "tools: 10 and 13 take a tag's build only where kFrizzVersion is the tag's (the loop transfer's HELLO)");
     Check(Has(out, "test: ['build', 'launcher', 'tag.bin --slot 12 --name FRIZZ-TEST --device l']\n")
               && Has(out, "file to 12: ['launcher', 'other.bin --slot 12 --name FRIZZ-TEST --device l']\n")
               && Has(out, "file to 11: ['launcher', 'other.bin --slot 11 --name FRIZZ-BENCH --device l']\n"),

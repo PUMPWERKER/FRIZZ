@@ -1,22 +1,39 @@
 # Capacity: what's free on the CHOMPI, and how to make room
 
-What a new feature can still use, measured on 2026-10-14 after the loop loader (#70) and
-with FRIZZ's USB on TinyUSB, a sound card and the card as a drive (#196; the history below). `make` prints the memory table after every build; the numbers below come from it and
+What a new feature can still use, measured on 2026-10-14 after the loop loader (#70), with
+FRIZZ's USB on TinyUSB, a sound card and the card as a drive (#196), and with the loop transfer
+over USB MIDI (#278; the history below). `make` prints the memory table after every build; the numbers below come from it and
 from `build/FRIZZ.map`.
 
 ## Memory
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 263,744 B (95 %) | **~14 KB** | all the code, and the initial values of `.data` |
-| `SRAM` (AXI SRAM) | 240 KB | 220,172 B (90 %) | ~25 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 271,260 B (97 %) | **~7.1 KB** | all the code, and the initial values of `.data` |
+| `SRAM` (AXI SRAM) | 240 KB | 220,436 B (90 %) | ~25 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,752 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
 | `ITCMRAM` | 64 KB | 0 (~40 KB with `make ITCM=1`) | 64 KB | the per-sample code with `make ITCM=1` (`FRIZZ_HOT`, `FrizzHot.h`, #51), copied there at boot; off by default |
 | `RAM_D3` | 64 KB | 0 | 64 KB | nothing |
 | `BACKUP_SRAM` | 4 KB | 92 B | ~4 KB | libDaisy's `boot_info` (12 B, first: the bootloader and the launcher hand over through it), then the crash record and the build running (80 B, `Crash.h`, #105); a reset leaves it, a power-off doesn't |
-| `SDRAM` | 64 MB | 43.9 MB | **~23 MB** | the loop (31.7 MB), the tape stop (4.2 MB), the delay (3.8 MB), the event log (2.1 MB), the freezer (1.9 MB), the reverb's pre-delay (0.1 MB); measured on `FRIZZ.bin` md5 `1eb11808` |
+| `SDRAM` | 64 MB | 58.7 MB | **~8.4 MB** | the loop (31.7 MB), the loop loader's buffer (14.75 MB), the tape stop (4.2 MB), the delay (3.8 MB), the event log (2.1 MB), the freezer (1.9 MB), the reverb's pre-delay (0.1 MB), the loop transfer's staging block and ring (34 KB) |
+
+**The loop transfer (#278, for 1.5).** FRIZZ's loop banks over USB MIDI, the Companion's
+(`LoopTransfer.h`, built `-Os` all of it; `LoopLoader.h`'s names and swap repair; the play
+page's forgetting): `FRIZZ.bin` 268,024 → 275,380 B of code (+7,356 B, **~3.1 KB free**) and
+220,172 → 220,436 B of data (+264 B: the job's state); the bench build, which answers HELLO and
+nothing else, 274,104 → 274,952 B (+848 B, **~3.5 KB free**). The audio callback's half (the
+intake, 56 B) is at the DTCM's end, not in `MidiControl`: there it moved the `.bss` after it by
+64 B, and the bench's heaviest segments went from ~80 % to 130-160 % in their worst block
+(their means +1.3, `FRIZZ.bin`'s heavy scenarios unchanged); placed apart they measure as
+`main`'s, which shows how much the bench's worst blocks feel the data's layout. SDRAM +42 KB: the
+staging block (32 KB), the CHUNKs' ring (1.8 KB), the job's two FatFs files (1.1 KB), the
+slots' names and sizes beside the loader's (7 KB). Nothing of it needs a constructor at boot
+(the objects are constant-initialised, the FILs in SDRAM). The biggest piece is the requests'
+handling (`LoopTransfer::Do`, 2.4 KB); the next feature in `FRIZZ.bin` needs room made first
+(below: step 3 for the card code then freed 4.1 KB in `FRIZZ.bin` and 4.5 KB in the bench
+build, #285).
 
 **The loop loader (#70, for 1.1)** adds a second loop buffer, 16 bars at 50 BPM (14.75 MB,
 `.sdram_noinit.later`, linked after the loop and the event log so they keep their addresses),
@@ -44,11 +61,13 @@ The CDC class's handle (540 B) moved from the heap into `.bss` in the same chang
 counts it now: 226,760 → 226,568 B, the bench build's 234,856 → 234,664 B (from `main`
 b608028).
 
-**The bench build hits the walls first.** `FRIZZ-bench.bin` carries the bench as well: its
-code is at 269,744 B (97 %, **~8.6 KB free**, since the card code's `-Os`, step 3 below) and its data at 228,204 B (93 %, **~17 KB
-free**). So a feature of more than ~8 KB of code, or ~17 KB of data in internal RAM, needs
-room made first (below), or the bench build stops linking before `FRIZZ.bin` does. Data grows into
-SDRAM or DTCM where it can; for internal RAM, step 4 below frees 64 KB.
+**Both builds are near the wall.** `FRIZZ-bench.bin` carries the bench as well: its code is at
+270,440 B (97 %, **~7.9 KB free**; 274,952 B before the card code's `-Os`, step 3 below) and
+its data at 228,204 B (93 %, **~17 KB free**). `FRIZZ.bin` has a little less code room
+(~7.1 KB) than the bench build: it has the loader and the transfer, which the bench build
+hasn't. So a feature of more than ~7 KB of code, or ~17 KB of data in internal RAM, needs room
+made first (below), or one of the builds stops linking. Data grows into SDRAM or DTCM where it
+can; for internal RAM, step 4 below frees 64 KB.
 
 Page 2's Mix, Band and Level on every effect and the compressor's page 2 (#40, #38,
 `FxOutput.h`) then took ~7.3 KB of code, and each effect's own page-2 knob (#40) ~3.8 KB
@@ -180,8 +199,9 @@ its own branch with a device test (the layout can change the timing: b5c658c).
    `ResetSmtLeds`), which stays as the callback is built; check with
    `arm-none-eabi-objdump -d` that nothing the callback reaches lost its inlining. The card
    code is too (done, 2026-10-14, #285: the same pragma over `SceneStore.h`,
-   `MasterSettings.h` and `FxScenes.h`), -4,280 B of code in `FRIZZ.bin` (263,744 B, ~14 KB
-   free) and -4,360 B in the bench build (269,744 B, ~8.6 KB free), most of it the store's
+   `MasterSettings.h` and `FxScenes.h`), -4,120 B of code in `FRIZZ.bin` (275,380 →
+   271,260 B, ~7.1 KB free) and -4,512 B in the bench build (274,952 → 270,440 B, ~7.9 KB
+   free), with the loop transfer (#278) in both; most of it the store's
    `Init` and `Process` no longer inlined into `main` (6.2 → 3.4 KB) and `ParseMaster`,
    `PutUint` and `PutValues` no longer unrolled. Two kinds of function stay out of it:
    one-liners `-O3` code calls (`SceneStore::Busy`, `InRam`, …), as GCC won't inline a

@@ -9,6 +9,13 @@
 // fp->clust) and the FAT sectors following the chain reads (fat_reads), and the raw sector reads
 // SdCard.h makes past FatFs; it counts the FatFs calls made while one of those runs (raw_clash),
 // which on the device would put a command on the bus in the middle of its transfer.
+// For the loop transfer (LoopTransfer.h): a file opened for writing as it is (FA_OPEN_EXISTING)
+// and written where its pointer is; what was written since its last f_sync or f_close lost by a
+// remount, as FatFs leaves its directory entry; names found in any case, as FAT's are; the free
+// clusters (clusters less the files' own), FSINFO's count at the mount unless fsinfo is false,
+// then kept as FatFs keeps it, and the FAT's sectors to count them (FatRead); the name changes
+// (a file created, renamed, deleted, a folder made) counted, and a power cut after the cut-th
+// (cut_after): the card gone from there, what was open for writing back to its last sync.
 #pragma once
 #include <algorithm>
 #include <cstdint>
@@ -22,28 +29,41 @@ typedef unsigned int UINT;
 typedef unsigned char BYTE;
 typedef uint32_t DWORD;
 
+// FatFs's numbers (ff.h), as the loop transfer's CARD_ERROR reports them
 enum FRESULT
 {
     FR_OK = 0,
-    FR_DISK_ERR,
-    FR_NOT_READY,
-    FR_NO_FILE,
-    FR_EXIST,
-    FR_DENIED,
-    FR_INVALID_OBJECT,
-    FR_INT_ERR,
-    FR_NO_PATH,
-    FR_NOT_ENOUGH_CORE,
+    FR_DISK_ERR = 1,
+    FR_INT_ERR = 2,
+    FR_NOT_READY = 3,
+    FR_NO_FILE = 4,
+    FR_NO_PATH = 5,
+    FR_DENIED = 7,
+    FR_EXIST = 8,
+    FR_INVALID_OBJECT = 9,
+    FR_NOT_ENOUGH_CORE = 17,
 };
 
 #define FA_READ 0x01
 #define FA_WRITE 0x02
+#define FA_OPEN_EXISTING 0x00
 #define FA_CREATE_ALWAYS 0x08
+#define FS_FAT16 2
+#define FS_FAT32 3
+typedef int DRESULT;
+#define RES_OK 0
+#define RES_ERROR 1
 #define CREATE_LINKMAP ((DWORD)0 - 1)
 
 struct FATFS
 {
+    BYTE fs_type = 0;    // FS_FAT32 once mounted, 0 without a card
+    BYTE drv = 0;
+    BYTE fsi_flag = 0;
     uint16_t csize = 0;  // sectors a cluster, set by the mount
+    DWORD free_clst = 0; // ~0u: not known
+    DWORD n_fatent = 0;  // the clusters + 2
+    DWORD fatbase = 0;
     DWORD database = 0;  // the first cluster's sector
 };
 #define AM_DIR 0x10
@@ -84,6 +104,15 @@ struct FakeCard
     std::string cwd = "";
     std::map<std::string, std::string> files;
     std::map<std::string, bool> dirs;
+    // the files open for writing, and their size at the last sync (a remount's loss)
+    std::map<std::string, size_t> synced;
+    // the free space: the volume's clusters, FSINFO's count there at the mount or not
+    DWORD clusters = 1u << 20;
+    bool fsinfo = true;
+    FATFS* fs = nullptr; // the volume mounted
+    // the name changes made, and a power cut after the cut_after-th (-1: none)
+    int changes = 0;
+    int cut_after = -1;
 
     // the volume's geometry, and where each file's clusters are: given out on its first link
     // map, in fragments of frag_clusters with a free cluster between them
@@ -122,6 +151,62 @@ struct FakeCard
     {
         return name[0] == '/' ? std::string(name) : cwd + "/" + name;
     }
+    /** The file there in any case, as FAT finds it; path itself if there's none */
+    std::string Find(const std::string& path) const
+    {
+        if (files.count(path))
+            return path;
+        for (const auto& file : files)
+            if (file.first.size() == path.size()
+                && std::equal(file.first.begin(), file.first.end(), path.begin(),
+                              [](char a, char b) { return (a | 0x20) == (b | 0x20); }))
+                return file.first;
+        return path;
+    }
+
+    /** The clusters the files take, and the free ones */
+    DWORD Used() const
+    {
+        const size_t bcs = csize * size_t(512);
+        size_t used = 0;
+        for (const auto& file : files)
+            used += (file.second.size() + bcs - 1) / bcs;
+        return static_cast<DWORD>(used);
+    }
+    DWORD Free() const { return Used() < clusters ? clusters - Used() : 0; }
+    /** FatFs keeps a count it has up to date */
+    void KeepFree()
+    {
+        if (fs && fs->free_clst <= fs->n_fatent - 2)
+            fs->free_clst = Free();
+    }
+    /** A FAT sector (FAT32's): the clusters the files take first, the rest free */
+    void FatRead(DWORD sector, BYTE* buf) const
+    {
+        const DWORD used = Used();
+        for (DWORD i = 0; i < 128; i++)
+        {
+            const DWORD e = (sector - (fs ? fs->fatbase : 0)) * 128 + i;
+            const DWORD v = e < 2 || e - 2 < used ? 0x0FFFFFFF : 0;
+            memcpy(buf + 4 * i, &v, 4);
+        }
+    }
+    /** A name changed: the power cut, if this was the last before it */
+    void Changed()
+    {
+        if (++changes == cut_after)
+            Cut();
+    }
+    /** The power gone: the card as it is, what was open for writing as at its last sync */
+    void Cut()
+    {
+        for (const auto& open : synced)
+            if (files.count(open.first))
+                files[open.first].resize(std::min(files[open.first].size(), open.second));
+        synced.clear();
+        present = false;
+        cut_after = -1;
+    }
 
     /** A folder made, or one a file is in (put on the card as a whole path) */
     bool HasDir(const std::string& dir) const
@@ -140,24 +225,41 @@ struct FakeCard
     /** Each FatFs call: none while a raw read runs */
     void Touch() { raw_clash += raw_busy > 0; }
 
-    /** The file's clusters, given out on first asking */
+    /** The file's clusters, given out on first asking; a write past them adds more (Grow),
+     *  as FatFs allocates them: its last fragment goes on while it's the last given out and has
+     *  room, else a new one. A file changed by other means keeps its chain (a broken FAT) */
     const std::vector<size_t>& Chain(const std::string& path)
     {
-        if (!chains.count(path))
+        return chains.count(path) ? chains[path] : Grow(path);
+    }
+    const std::vector<size_t>& Grow(const std::string& path)
+    {
+        std::vector<size_t>& chain = chains[path];
+        const size_t cluster = csize * size_t(512);
+        const size_t clusters = (files[path].size() + cluster - 1) / cluster;
+        size_t at = 0;
+        for (size_t f : chain)
+            at += frags[f].count;
+        if (at < clusters && !chain.empty())
         {
-            std::vector<size_t>& chain = chains[path];
-            const size_t cluster = csize * size_t(512);
-            const size_t clusters = (files[path].size() + cluster - 1) / cluster;
-            for (size_t at = 0; at < clusters;)
+            Frag& last = frags[chain.back()];
+            if (last.first + last.count + 1 == next_cluster && last.count < frag_clusters)
             {
-                const DWORD n = static_cast<DWORD>(std::min<size_t>(frag_clusters, clusters - at));
-                chain.push_back(frags.size());
-                frags.push_back({next_cluster, n, path, at * cluster});
-                next_cluster += n + 1;
+                const DWORD n = static_cast<DWORD>(std::min<size_t>(frag_clusters - last.count, clusters - at));
+                last.count += n;
+                next_cluster += n;
                 at += n;
             }
         }
-        return chains[path];
+        while (at < clusters)
+        {
+            const DWORD n = static_cast<DWORD>(std::min<size_t>(frag_clusters, clusters - at));
+            chain.push_back(frags.size());
+            frags.push_back({next_cluster, n, path, at * cluster});
+            next_cluster += n + 1;
+            at += n;
+        }
+        return chain;
     }
 
     /** The chain's i-th cluster, 0 past its end */
@@ -233,16 +335,28 @@ inline FRESULT f_mount(FATFS* fs, const char*, BYTE)
 {
     FakeCard& c = FakeCard::Get();
     c.Touch();
+    // what was open is no more, and what was written to it since its last sync is lost
+    for (const auto& open : c.synced)
+        if (c.files.count(open.first))
+            c.files[open.first].resize(std::min(c.files[open.first].size(), open.second));
+    c.synced.clear();
+    c.mount++;
     if (!fs)
     {
-        // unmounted (the card lent as a USB drive, CardLend.h): what was open is no more
-        c.mount++;
+        // unmounted (the card lent as a USB drive, CardLend.h)
+        if (c.fs)
+            c.fs->fs_type = 0;
         return FR_OK;
     }
+    c.fs = fs;
     fs->csize = c.csize;
     fs->database = c.database;
+    fs->fs_type = c.present ? FS_FAT32 : 0;
+    fs->n_fatent = c.clusters + 2;
+    fs->fatbase = 32;
+    fs->fsi_flag = 0;
+    fs->free_clst = c.fsinfo ? c.Free() : ~0u;
     c.cwd = "";
-    c.mount++;
     c.fat_win = ~0u;
     return c.present ? FR_OK : FR_NOT_READY;
 }
@@ -264,13 +378,16 @@ inline FRESULT f_mkdir(const char* path)
     if (c.HasDir(path))
         return FR_EXIST;
     c.dirs[path] = true;
+    c.Changed();
     return FR_OK;
 }
 inline FRESULT f_stat(const char* name, FILINFO*)
 {
     FakeCard& c = FakeCard::Get();
     c.Touch();
-    return c.present && c.files.count(c.Path(name)) ? FR_OK : FR_NO_FILE;
+    if (!c.present)
+        return FR_NOT_READY;
+    return c.files.count(c.Find(c.Path(name))) ? FR_OK : FR_NO_FILE;
 }
 inline FRESULT f_unlink(const char* name)
 {
@@ -278,7 +395,7 @@ inline FRESULT f_unlink(const char* name)
     c.Touch();
     if (!c.present)
         return FR_NOT_READY;
-    if (!c.files.count(c.Path(name)))
+    if (!c.files.count(c.Find(c.Path(name))))
     {
         // a folder: only an empty one
         const std::string dir = c.Path(name);
@@ -294,7 +411,11 @@ inline FRESULT f_unlink(const char* name)
     }
     if (c.read_only)
         return FR_DENIED;
-    c.files.erase(c.Path(name));
+    const std::string path = c.Find(c.Path(name));
+    c.files.erase(path);
+    c.chains.erase(path);
+    c.KeepFree();
+    c.Changed();
     return FR_OK;
 }
 inline FRESULT f_rename(const char* from, const char* to)
@@ -303,14 +424,25 @@ inline FRESULT f_rename(const char* from, const char* to)
     c.Touch();
     if (!c.present)
         return FR_NOT_READY;
-    if (!c.files.count(c.Path(from)))
+    const std::string src = c.Find(c.Path(from));
+    if (!c.files.count(src))
         return FR_NO_FILE;
-    if (c.files.count(c.Path(to)))
+    if (c.files.count(c.Find(c.Path(to))))
         return FR_EXIST;
     if (c.read_only)
         return FR_DENIED;
-    c.files[c.Path(to)] = c.files[c.Path(from)];
-    c.files.erase(c.Path(from));
+    c.files[c.Path(to)] = c.files[src];
+    c.files.erase(src);
+    c.chains.erase(c.Path(to));
+    if (c.chains.count(src))
+    {
+        // the clusters go with it
+        c.chains[c.Path(to)] = c.chains[src];
+        for (size_t f : c.chains[src])
+            c.frags[f].path = c.Path(to);
+        c.chains.erase(src);
+    }
+    c.Changed();
     return FR_OK;
 }
 inline FRESULT f_open(FIL* f, const char* name, BYTE mode)
@@ -319,29 +451,30 @@ inline FRESULT f_open(FIL* f, const char* name, BYTE mode)
     c.Touch();
     if (!c.present)
         return FR_NOT_READY;
-    f->path = c.Path(name);
+    f->path = c.Find(c.Path(name));
     f->fptr = 0;
     f->write = mode & FA_WRITE;
     f->mount = c.mount;
-    if (f->write)
+    f->cltbl = nullptr;
+    if (f->write && (mode & FA_CREATE_ALWAYS))
     {
         if (c.read_only)
             return FR_DENIED;
-        c.files[f->path].clear();
+        c.files[f->path].clear(); // an existing one keeps its name's case
+        c.chains.erase(f->path);
+        c.synced[f->path] = 0;
         c.open++;
+        c.KeepFree();
+        c.Changed();
         return FR_OK;
     }
+    // FAT's names are found in any case
     if (!c.files.count(f->path))
-    {
-        // FAT's names are found in any case
-        for (const auto& file : c.files)
-            if (file.first.size() == f->path.size()
-                && std::equal(file.first.begin(), file.first.end(), f->path.begin(),
-                              [](char a, char b) { return (a | 0x20) == (b | 0x20); }))
-                f->path = file.first;
-        if (!c.files.count(f->path))
-            return FR_NO_FILE;
-    }
+        return FR_NO_FILE;
+    if (f->write && c.read_only)
+        return FR_DENIED;
+    if (f->write)
+        c.synced[f->path] = c.files[f->path].size();
     c.open++;
     return FR_OK;
 }
@@ -349,6 +482,8 @@ inline FRESULT f_read(FIL* f, void* buf, UINT n, UINT* read)
 {
     FakeCard::Get().Touch();
     *read = 0;
+    if (!FakeCard::Get().present)
+        return FR_NOT_READY;
     if (f->mount != FakeCard::Get().mount)
         return FR_INVALID_OBJECT;
     const std::string& data = FakeCard::Get().files[f->path];
@@ -370,6 +505,8 @@ inline FRESULT f_write(FIL* f, const void* buf, UINT n, UINT* written)
     FakeCard& c = FakeCard::Get();
     c.Touch();
     *written = 0;
+    if (!c.present)
+        return FR_NOT_READY;
     if (f->mount != c.mount)
         return FR_INVALID_OBJECT;
     if (c.write_time)
@@ -378,16 +515,37 @@ inline FRESULT f_write(FIL* f, const void* buf, UINT n, UINT* written)
     n = static_cast<UINT>(std::min<size_t>(n, c.space));
     c.space -= n;
     const char* src = static_cast<const char*>(buf);
-    std::string& file = c.files[f->path];
+    std::string out;
     const size_t head = std::min<size_t>(n, (kSectorSize - f->fptr % kSectorSize) % kSectorSize);
     const size_t whole = (n - head) / kSectorSize * kSectorSize;
-    file.append(src, head);
+    out.append(src, head);
     const size_t shift = reinterpret_cast<uintptr_t>(src + head) % 4;
     for (size_t i = 0; i < whole; i++)
-        file.push_back(head + i >= shift ? src[head + i - shift] : '\0');
-    file.append(src + head + whole, n - head - whole);
+        out.push_back(head + i >= shift ? src[head + i - shift] : '\0');
+    out.append(src + head + whole, n - head - whole);
+    // where the pointer is: over what's there, and on past its end
+    std::string& file = c.files[f->path];
+    if (file.size() < f->fptr)
+        file.resize(f->fptr);
+    file.replace(f->fptr, std::min(out.size(), file.size() - f->fptr), out);
     f->fptr += n;
     *written = n;
+    if (c.chains.count(f->path))
+        c.Grow(f->path);
+    c.KeepFree();
+    return FR_OK;
+}
+/** What was written so far kept, past a remount */
+inline FRESULT f_sync(FIL* f)
+{
+    FakeCard& c = FakeCard::Get();
+    c.Touch();
+    if (!c.present)
+        return FR_NOT_READY;
+    if (f->mount != c.mount)
+        return FR_INVALID_OBJECT;
+    if (f->write && c.synced.count(f->path))
+        c.synced[f->path] = c.files[f->path].size();
     return FR_OK;
 }
 inline FRESULT f_close(FIL* f)
@@ -395,7 +553,11 @@ inline FRESULT f_close(FIL* f)
     FakeCard& c = FakeCard::Get();
     c.Touch();
     c.open -= c.open > 0;
-    return f->mount == c.mount ? FR_OK : FR_INVALID_OBJECT;
+    if (f->mount != c.mount)
+        return FR_INVALID_OBJECT;
+    if (f->write)
+        c.synced.erase(f->path);
+    return c.present ? FR_OK : FR_NOT_READY;
 }
 
 /** CREATE_LINKMAP fills cltbl as ff.c does: its size, then each fragment's length and first
@@ -407,6 +569,8 @@ inline FRESULT f_lseek(FIL* f, DWORD ofs)
 {
     FakeCard& c = FakeCard::Get();
     c.Touch();
+    if (!c.present)
+        return FR_NOT_READY;
     if (f->mount != c.mount)
         return FR_INVALID_OBJECT;
     if (ofs != CREATE_LINKMAP)

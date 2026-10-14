@@ -53,6 +53,7 @@
 #include "hardware.h"
 #include "Crash.h"
 #include "EventLog.h"
+#include "LoopTransfer.h"
 #include "MidiClock.h"
 #include "MidiFeedback.h"
 #include "PanelKeys.h"
@@ -166,6 +167,7 @@ enum MidiCmd : uint8_t
     kCmdSettings = 0x24, // the channel, transport following, the clock source, MIDI out
     kCmdSceneGet = 0x30, // SLOT PART: a scene, in kSceneParts parts
     kCmdScenePut = 0x31, // SLOT PART DATA: likewise; the last part stores it
+    kCmdLoops = 0x38,    // OP SEQ ARGS: the loop transfer (LoopTransfer.h, docs/LOOP_PROTOCOL.md)
     kCmdDev = 0x3E,      // SUB SEQ ARGS: the developers' (namespace dev)
     kCmdReply = 0x40,
 };
@@ -583,6 +585,12 @@ public:
     dev::Info dev;
     /** SIGNAL's and LEVELS' place in the audio callback */
     dev::Audio audio;
+    /** The loop transfer's half in the audio callback (LoopTransfer.h; chompi_main.cpp keeps it
+     *  out of the .bss beside this, whose layout the bench's heaviest segments feel), and what
+     *  sends its messages in the play page's one answer a pass: true if an answer went
+     *  (LoopTransfer::Send, or the bench's BenchAnswer) */
+    loopxfer::Intake* xfer = nullptr;
+    bool (*xfer_send)() = nullptr;
     /** The clock, for PROBE */
     inline const MidiClock& Clock() const { return *clock_; }
     /** MIDI feedback's bytes for the jack: the play page's, sent by MidiOut */
@@ -910,6 +918,11 @@ private:
                 return;
             switch_ = arg[0];
             break;
+        case kCmdLoops:
+            // over USB only (1.1), and not logged: a CHUNK a message
+            if (usb && xfer)
+                xfer->Take(arg, n);
+            return;
         case kCmdDev:
             if (!usb || n < 2)
                 return;

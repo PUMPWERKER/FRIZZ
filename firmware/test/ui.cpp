@@ -64,6 +64,8 @@ static std::vector<float> usb_recorded;
 // the master out (L) and what the computer recorded (L), each against AUX's sine and the
 // computer's, summed sample by sample: their sign is the polarity (#209); since set to 0
 static double out_x_aux = 0., out_x_usb = 0., rec_x_aux = 0., rec_x_usb = 0.;
+// the master out (L R), kept while master_rec is set
+static std::vector<float>* master_rec = nullptr;
 
 /** Runs blocks (half a ms each) with a sine (or silence) into AUX, and one into the mic
  *  while mic_amp > 0; the master out's RMS over the time. RunMs: as many ms */
@@ -101,6 +103,12 @@ static float RunBlocks(uint32_t blocks)
             mic_phase = fmodf(mic_phase + 2.f * float(M_PI) * mic_freq / kSampleRate, 2.f * float(M_PI));
         }
         Run(1, in, out);
+        if (master_rec)
+            for (size_t i = 0; i < kBlockSize; i++)
+            {
+                master_rec->push_back(out[i * kChannels + 2]);
+                master_rec->push_back(out[i * kChannels + 3]);
+            }
         const std::vector<float> rec = TakeUsbAudioOut();
         usb_recorded.insert(usb_recorded.end(), rec.begin(), rec.end());
         for (size_t i = 0; i < kBlockSize; i++)
@@ -466,6 +474,111 @@ static void PutLoops(const std::vector<std::pair<std::string, std::string>>& fil
     Ask({0x3E, 0x0D, 1, 3});
     RunMs(300);
 }
+// ---- the loop transfer (#278, LoopTransfer.h): requests over USB, 0x38 ----
+static int xfer_seq = 0;
+static std::string xfer_in; // what came back over USB and wasn't looked at yet
+/** FRIZZ's loop transfer messages since the last look: answers and acks, after the 0x78 */
+static std::vector<std::string> XferOut()
+{
+    xfer_in += TakeUsbOut();
+    std::vector<std::string> out;
+    for (size_t at; (at = xfer_in.find("\xF0\x7D\x43\x48\x78")) != std::string::npos;)
+    {
+        const size_t end = xfer_in.find('\xF7', at);
+        if (end == std::string::npos)
+            break;
+        out.push_back(xfer_in.substr(at + 5, end - at - 5));
+        xfer_in.erase(0, end + 1);
+    }
+    return out;
+}
+static std::vector<int> N7(uint32_t v, int groups)
+{
+    std::vector<int> d;
+    for (int g = groups - 1; g >= 0; g--)
+        d.push_back(g * 7 < 32 ? (v >> (7 * g)) & 0x7F : 0);
+    return d;
+}
+/** A request answered: its status (-1 for none), what follows it into data */
+static int Xfer(int op, std::vector<int> args, std::string* data = nullptr)
+{
+    xfer_seq = xfer_seq % 127 + 1;
+    XferOut();
+    Usb({0xF0, 0x7D, 0x43, 0x48, 0x38, op, xfer_seq});
+    Usb(args);
+    Usb({0xF7});
+    for (int ms = 0; ms < 200; ms++)
+    {
+        RunMs(1);
+        for (const std::string& a : XferOut())
+            if (a.size() >= 3 && a[0] == op && a[1] == xfer_seq)
+            {
+                if (data)
+                    *data = a.substr(3);
+                return a[2];
+            }
+    }
+    return -1;
+}
+/** A WAV written into FRIZZ slot bank's slot, a window at a time as the acks come; true once
+ *  it's renamed into place (STATUS's phase done) */
+static bool XferWrite(int bank, int slot, const std::string& wav, int flags = 0)
+{
+    std::string d;
+    std::vector<int> begin = {bank, slot, flags};
+    for (int b : N7(static_cast<uint32_t>(wav.size()), 4))
+        begin.push_back(b);
+    if (Xfer(0x10, begin, &d) != 0)
+        return false;
+    const int tid = d[0];
+    uint32_t next = 0;
+    for (int tries = 0; next < wav.size() && tries < 5000; tries++)
+    {
+        for (uint32_t o = next; o < wav.size() && o < next + 98 * 16; o += 98)
+        {
+            const uint32_t n = std::min<uint32_t>(98, static_cast<uint32_t>(wav.size() - o));
+            std::vector<int> m = {0xF0, 0x7D, 0x43, 0x48, 0x38, 0x11, tid};
+            for (int b : N7(o, 4))
+                m.push_back(b);
+            m.push_back(static_cast<int>(n));
+            for (uint32_t i = 0; i < n; i += 7)
+            {
+                int top = 0;
+                for (uint32_t j = 0; j < 7 && i + j < n; j++)
+                    top |= (static_cast<uint8_t>(wav[o + i + j]) >> 7) << j;
+                m.push_back(top);
+                for (uint32_t j = 0; j < 7 && i + j < n; j++)
+                    m.push_back(static_cast<uint8_t>(wav[o + i + j]) & 0x7F);
+            }
+            m.push_back(0xF7);
+            Usb(m);
+        }
+        RunMs(3);
+        for (const std::string& a : XferOut())
+            if (a.size() >= 9 && a[0] == 0x11 && a[1] == 0 && a[3] == tid)
+                next = std::max<uint32_t>(next, static_cast<uint32_t>(DevNum(a, 4, 4)));
+    }
+    uint32_t crc = 0xFFFFFFFFu;
+    for (unsigned char c : wav)
+    {
+        crc ^= c;
+        for (int k = 0; k < 8; k++)
+            crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1)));
+    }
+    std::vector<int> end = {tid};
+    for (int b : N7(~crc, 5))
+        end.push_back(b);
+    if (Xfer(0x12, end) != 0)
+        return false;
+    for (int ms = 0; ms < 2000; ms += 10)
+    {
+        if (Xfer(0x01, {}, &d) == 0 && d.size() > 7 && d[7] >= 4)
+            return d[7] == 4;
+        RunMs(10);
+    }
+    return false;
+}
+
 /** SHIFT + the lower C#: the Loops page opened, or from it home */
 static void LoopsPage()
 {
@@ -3502,6 +3615,89 @@ int main()
         printf("      the drop landed first: %d; the loop after %d ms, from %.4f\n", drop_first, late, before);
         Check(drop_first && late > 0 && before > .99f,
               "loops-load: the scene drops on its line; the loop, still loading, at the next one");
+    }});
+
+    // the loop transfer (#278, docs/LOOP_PROTOCOL.md 5.5): the loop playing plays on while its
+    // own slot is replaced, swapped with another and the others deleted and written, sample for
+    // sample as without (a copy of the twin, forked, runs the same time without the transfer);
+    // then its key plays what the slot holds now; the Loops page's keys follow the changes, and
+    // a RESCAN what a hand put on the card
+    cases.push_back({"loops-xfer", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(48000, 2, 220.f)}, {"a2", SineWav(24000, 2, 330.f)}, {"a3", SineWav(24000, 2, 550.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(48000, 500);
+        RunMs(100);
+        static const uint32_t kMs = 5000;
+        std::vector<float> with, without;
+        int fd[2];
+        if (pipe(fd))
+            return;
+        const pid_t child = fork();
+        if (child == 0)
+        {
+            close(fd[0]);
+            master_rec = &without;
+            RunMs(kMs);
+            const char* p = reinterpret_cast<const char*>(without.data());
+            for (size_t left = without.size() * sizeof(float); left;)
+            {
+                const ssize_t n = write(fd[1], p, left);
+                if (n <= 0)
+                    break;
+                p += n;
+                left -= static_cast<size_t>(n);
+            }
+            _exit(0);
+        }
+        close(fd[1]);
+        master_rec = &with;
+        const uint32_t t0 = NowMs();
+        const bool replaced = XferWrite(0, 0, SineWav(36000, 2, 440.f), 1); // a1, playing, replaced
+        const int swapped = Xfer(0x21, {0, 0, 0, 1});                     // a1 and a2 swapped
+        const int deleted = Xfer(0x22, {0, 2});                           // a3 deleted
+        const bool written = XferWrite(0, 4, SineWav(12000, 1, 660.f));   // a5 new
+        CardFiles()["/FRIZZ/a7.wav"] = SineWav(12000, 2, 770.f);          // a hand on the card
+        const int rescanned = Xfer(0x30, {});
+        RunMs(300);
+        const uint32_t used = NowMs() - t0;
+        if (used < kMs)
+            RunMs(kMs - used);
+        master_rec = nullptr;
+        std::vector<char> raw;
+        char buf[65536];
+        for (ssize_t n; (n = read(fd[0], buf, sizeof(buf))) > 0;)
+            raw.insert(raw.end(), buf, buf + n);
+        close(fd[0]);
+        waitpid(child, nullptr, 0);
+        without.assign(reinterpret_cast<const float*>(raw.data()),
+                       reinterpret_cast<const float*>(raw.data()) + raw.size() / sizeof(float));
+        const bool same = used < kMs && with == without && !with.empty();
+        printf("      the transfer took %u ms: replaced %d, swapped %d, deleted %d, written %d, rescanned %d; "
+               "%zu samples, the same %d\n", used, replaced, swapped, deleted, written, rescanned, with.size(), same);
+        Check(replaced && swapped == 0 && deleted == 0 && written && rescanned == 0 && same,
+              "loops-xfer: the loop playing plays on, sample for sample as without, while its slot is "
+              "replaced and swapped and the others deleted and written");
+        const Rgb s1 = SmtLedFull(LoopLed(0)), s2 = SmtLedFull(LoopLed(1)), s3 = SmtLedFull(LoopLed(2)),
+                  s5 = SmtLedFull(LoopLed(4)), s7 = SmtLedFull(LoopLed(6));
+        printf("      slots: a1 %s, a2 %s, a3 %s, a5 %s, a7 %s\n", Hex(s1).c_str(), Hex(s2).c_str(), Hex(s3).c_str(),
+               Hex(s5).c_str(), Hex(s7).c_str());
+        Check(Shows(s1, kOrange, kLoopLit) && Shows(s2, kOrange, kLoopDim) && Max(s3) == 0
+                  && Shows(s5, kOrange, kLoopDim) && Shows(s7, kOrange, kLoopDim),
+              "loops-xfer: the Loops page's keys follow: a1 lit (it plays), a2 dim, a3 dark, the new a5 "
+              "dim, a7 dim after the RESCAN");
+        // a1's key: what a1 holds now, a2's 330 Hz of 24000 frames, loaded and switched to
+        Tap(kLoopKeys[0]);
+        const int took = UntilLength(24000, 1000);
+        RunMs(50);
+        std::vector<float> l, r;
+        MasterOut(100, l, r);
+        const float at330 = ToneLevel(l, 330.f), at220 = ToneLevel(l, 220.f), at440 = ToneLevel(l, 440.f);
+        printf("      a1 again after %d ms: 330 Hz %.3f, 220 Hz %.3f, 440 Hz %.3f\n", took, at330, at220, at440);
+        Check(took >= 0 && at330 > 10.f * std::max(at220, at440),
+              "loops-xfer: then a1's key plays what a1 holds now, not the loop it played");
     }});
 
     // MIDI's notes still play the effects on the Loops page, and pick no loops; an effect held
