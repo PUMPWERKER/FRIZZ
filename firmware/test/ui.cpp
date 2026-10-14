@@ -7241,6 +7241,33 @@ int main()
               "card-lend-refused: while a bug report is written: not lent; once it's written, lent");
     }});
 
+    // ... and while a loop loads from the card (as during the loops' scan, LoopLoader::Busy):
+    // refused, 3 red blinks; once it's loaded, lent
+    cases.push_back({"card-lend-loading", [] {
+        PutLoops({{"a1", SineWav(75 * 48000, 2, 220.f)}}); // 75 s, 14.4 MB: the load ~4.6 s
+        RunMs(kReadyMs);
+        RunMs(3000);
+        SetCardRawPolls(4000); // each raw read ~40 ms: the load takes many seconds
+        Ask({0x3E, 0x0D, 1, 4, 0, 0, 0}); // load a1
+        RunMs(300);
+        SetToggle(true);
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("KEY_28", true);
+        RunMs(1950);
+        const int loading = loop_blinks_red(1000);
+        Press("KEY_28", false);
+        Press("KEY_26", false);
+        const bool not_lent = !CardLent();
+        SetCardRawPolls(2);
+        RunMs(15000);
+        lend_gesture();
+        printf("      red blinks while a loop loads: %d\n", loading);
+        Check(loading == 3 && not_lent, "card-lend-loading: while a loop loads: 3 red blinks, not lent");
+        Check(CardLent(), "card-lend-loading: once it's loaded, lent");
+    }});
+
     // the card lent: SHIFT + F# with USB doesn't switch USB audio, F# blinks red 3 times
     cases.push_back({"usb-switch-lent", [] {
         RunMs(kReadyMs);

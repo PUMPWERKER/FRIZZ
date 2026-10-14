@@ -8,7 +8,7 @@ from `build/FRIZZ.map`.
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 267,856 B (96 %) | **~10 KB** | all the code, and the initial values of `.data` |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 268,024 B (96 %) | **~10 KB** | all the code, and the initial values of `.data` |
 | `SRAM` (AXI SRAM) | 240 KB | 220,172 B (90 %) | ~25 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,752 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
@@ -29,9 +29,9 @@ device stack: a USB Audio Class 1 sound card, MIDI and the card as a drive (MSC)
 core, its DWC2 driver and the three classes take ~19 KB of code at `-Os`, FRIZZ's glue
 (`UsbDevice.cpp`, `-Os` but for the audio callback's `Receive` and `Send`) ~2.3 KB, the
 descriptors ~0.8 KB; ST's stack, its CDC class and the `printf` its debug level pulled in
-(#271) are gone. Net: `FRIZZ.bin` 261,032 → 267,856 B of code (+6,824 B, **~10 KB free**),
+(#271) are gone. Net: `FRIZZ.bin` 261,032 → 268,024 B of code (+6,992 B, **~10 KB free**),
 226,568 → 220,172 B of data (−6,396: the CDC buffers gone, TinyUSB's FIFOs and the drive's
-4 KB buffer in), `RAM_D2` −1,496 B; the bench build 267,216 → 274,080 B (+6,864 B, **~4.4 KB
+4 KB buffer in), `RAM_D2` −1,496 B; the bench build 267,216 → 274,104 B (+6,888 B, **~4.3 KB
 free**) and 234,664 → 228,204 B of data (**~17 KB free**); SDRAM +4 KB (the drive's
 transfer buffer, `.sdram_bss`). The three input sources and the settings page's new keys are
 in those figures (from `main` 962505f).
@@ -45,7 +45,7 @@ counts it now: 226,760 → 226,568 B, the bench build's 234,856 → 234,664 B (f
 b608028).
 
 **The bench build hits the walls first.** `FRIZZ-bench.bin` carries the bench as well: its
-code is at 274,080 B (98 %, **~4.4 KB free**) and its data at 228,204 B (93 %, **~17 KB
+code is at 274,104 B (98 %, **~4.3 KB free**) and its data at 228,204 B (93 %, **~17 KB
 free**). So a feature of more than ~4 KB of code, or ~17 KB of data in internal RAM, needs
 room made first (below), or the bench build stops linking before `FRIZZ.bin` does. Data grows into
 SDRAM or DTCM where it can; for internal RAM, step 4 below frees 64 KB.
