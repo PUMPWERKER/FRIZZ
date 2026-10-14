@@ -538,8 +538,9 @@ private:
     /** The computer's channel c for this block, or silence */
     __attribute__((always_inline)) inline const float* UsbIn(size_t c) const
     {
-        static const float kSilence[kUsbMaxBlock] = {};
-        return usb_in_ ? usb_in_[c] : kSilence;
+        // never written: not const, so its zeros sit in .bss rather than in the image
+        static float silence[kUsbMaxBlock] = {};
+        return usb_in_ ? usb_in_[c] : silence;
     }
 
     /** The input during a switch of the source (towards src): the looper's crossfades from
