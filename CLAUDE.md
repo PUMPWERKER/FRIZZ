@@ -22,7 +22,7 @@ The stock firmwares, bootloader and hardware files under `reference/`:
 |---|---|---|
 | `README.md`, `INSTALL.md`, `QUICKSTART.md`, `MANUAL.md`, `CHANGELOG.md` | what FRIZZ is, install, quick start, full controls, what changed since the last release | users |
 | `firmware/` | FRIZZ source (`code/`, `bin/`, `test/`, `twin/`, `flash.py`, `card.py`, `remote.py`, `tools/`) | developers |
-| `docs/` | design notes: `LOOPER.md`, `FX_OVERVIEW.md`, `CAPACITY.md`, `STOCK_FIRMWARES.md` | developers |
+| `docs/` | design notes: `LOOPER.md`, `FX_OVERVIEW.md`, `CAPACITY.md`, `STOCK_FIRMWARES.md`, `LOOP_PROTOCOL.md` | developers |
 | `reference/` | the original CHOMPI release, unchanged except for links | reference only |
 | `images/` | the manual's diagrams (SVG, drawn by `firmware/tools/diagrams/`) | users |
 | `site/` | the website's front-page text (`landing.md`, read by the site at the tag) | users |
