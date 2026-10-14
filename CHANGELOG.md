@@ -92,6 +92,10 @@ what FRIZZ does.
   clock out over USB keeps its time while FRIZZ reads the card (it could come up to 8 ms late
   while a cubbi loaded, #265). FrizZ asks the computer for 100 mA, where it asked for 160. See
   [MIDI out](MANUAL.md#midi-out).
+- **The shifter is brighter** (#305): its taps read between samples more precisely, so the
+  shifted sound keeps more of its highs (a 10 kHz tone a fifth up loses 0.3 dB, where it lost
+  1.3 dB) and carries less aliasing, most audibly with feedback, where every pass lost highs
+  again. The rest of the shifter is as it was.
 
 ### Fixed
 

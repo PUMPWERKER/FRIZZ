@@ -14,7 +14,9 @@ namespace chompi
 
 /** A pitch shifter in semitones. Two taps read the input at 2^(semitones/12) its speed,
  *  each living for a 30ms stretch of delay before it wraps and starts over, half a life
- *  apart and crossfaded with triangles that always sum to one.
+ *  apart and crossfaded with triangles that always sum to one. The taps read between samples
+ *  by Hermite (ReadHermite), which keeps the highs a linear read dulls, at every pass of the
+ *  feedback again (#305).
  *
  *  Where a tap starts over is searched for: within +-7.5ms of its nominal start, the place
  *  whose next samples best match what the other tap is about to play (every 6th offset,
@@ -180,8 +182,8 @@ public:
 
             // triangles: tap 0 peaks mid-window and is silent at the wrap, tap 1 the reverse
             const float w0 = 1.f - fabsf(2.f * w - 1.f);
-            const float a = ring_.Read(c, d[0]);
-            const float b = ring_.Read(c, d[1]);
+            const float a = ring_.ReadHermite(c, d[0]);
+            const float b = ring_.ReadHermite(c, d[1]);
             float wet = a * w0 + b * (1.f - w0);
             if (kFade && c == 1)
                 wet += fade_ * (LeftTaps() - wet);
@@ -258,7 +260,8 @@ private:
     static constexpr float kHoldsPast = 2.f * kSpliceHold * (kMaxRatio - 1.f);
     // a tap's longest delay is the grain's window plus this; the buffer holds the longest
     static constexpr float kDelayPast = kGuard + 2.f * kSearch + kFineRange + 2.f + kHoldsPast;
-    static_assert(kMaxWindowFrames + kDelayPast < kBufSize, "the longest grain fits the buffer");
+    // the taps' Hermite reads reach 2 frames past their delay
+    static_assert(kMaxWindowFrames + kDelayPast + 2.f < kBufSize, "the longest grain fits the buffer");
     static constexpr float kSwoopSemitones = 24.f; // how far the swoop pushes at the top
     // the closest a tap that goes on with a new window comes to the write head (NextWindow):
     // a few samples, for a swoop that speeds up through the wait
@@ -357,7 +360,8 @@ private:
     float LeftTaps()
     {
         const float w0 = 1.f - fabsf(2.f * window_[0] - 1.f);
-        return ring_.Read(1, delay_[0][0]) * w0 + ring_.Read(1, delay_[0][1]) * (1.f - w0);
+        return ring_.ReadHermite(1, delay_[0][0]) * w0
+               + ring_.ReadHermite(1, delay_[0][1]) * (1.f - w0);
     }
 
     /** Where tap t, falling silent, starts over: its nominal start (the far end of the

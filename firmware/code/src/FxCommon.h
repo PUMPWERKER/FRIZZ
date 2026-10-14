@@ -324,6 +324,27 @@ inline float ReadFrac(const float* buf, size_t mask, size_t write_pos, float del
     return a + (b - a) * frac;
 }
 
+/** As ReadFrac, but a 4-point Hermite read (the textbook form, as Mutable's stmlib has it):
+ *  half a sample between two, it loses ~0.5dB at 10kHz and ~2.5dB at 15kHz where the linear
+ *  read loses 2dB and 5dB, and aliases less, for two more reads and a few more multiplies.
+ *  Reads a frame either side of ReadFrac's two, so delay is at least 1 and 2 short of the ring */
+inline float ReadHermite(const float* buf, size_t mask, size_t write_pos, float delay)
+{
+    const size_t whole = static_cast<size_t>(delay);
+    const float f = delay - static_cast<float>(whole);
+    const size_t i = write_pos - whole;
+    const float xm1 = buf[(i + 1) & mask];
+    const float x0 = buf[i & mask];
+    const float x1 = buf[(i - 1) & mask];
+    const float x2 = buf[(i - 2) & mask];
+    const float c = (x1 - xm1) * .5f;
+    const float v = x0 - x1;
+    const float w = c + v;
+    const float a = w + v + (x2 - x0) * .5f;
+    const float b_neg = w + a;
+    return ((a * f - b_neg) * f + c) * f + x0;
+}
+
 /** A one-pole lowpass's coefficient (fonepole) for a cutoff of freq Hz */
 inline float OnePoleCoeff(float freq, float sample_rate)
 {
@@ -405,6 +426,11 @@ struct StereoRing
     inline float Read(size_t c, float delay, size_t ahead = 0) const
     {
         return ReadFrac(buf[c], kMask, pos - 1 + ahead, delay);
+    }
+    /** As Read, by ReadHermite: delay at least 1 */
+    inline float ReadHermite(size_t c, float delay) const
+    {
+        return chompi::ReadHermite(buf[c], kMask, pos - 1, delay);
     }
     /** This sample's frame, one channel at a time; Advance once both are written */
     inline void Write(size_t c, float x) { buf[c][pos] = x; }
