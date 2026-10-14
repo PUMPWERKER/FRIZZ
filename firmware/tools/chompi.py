@@ -383,10 +383,34 @@ def frizz_node(node):
 
 # ---- the card, as a drive -----------------------------------------------------------------
 
-def storage_partition():
-    """/dev/sdXN of the CHOMPI-SD file system, if it is there"""
+def card_partition():
+    """/dev/sdXN of the CHOMPI-SD file system, if it is there, whoever offers it"""
     link = "/dev/disk/by-label/" + STORAGE_LABEL
     return os.path.realpath(link) if os.path.exists(link) else None
+
+
+def lent_by_frizz(part):
+    """Whether PART is the card a running FRIZZ lends as a USB drive (usb-audio-poc, #196: its
+    vendor "FrizZ"), not the USB storage firmware's"""
+    disk = os.path.basename(storage_disk(part))
+    try:
+        with open("/sys/block/%s/device/vendor" % disk) as f:
+            return f.read().strip() == "FrizZ"
+    except OSError:
+        return False
+
+
+def storage_partition():
+    """/dev/sdXN of the CHOMPI-SD file system, if the USB storage firmware offers it (not a
+    FRIZZ lending the card: it answers MIDI as FRIZZ meanwhile)"""
+    part = card_partition()
+    return part if part and not lent_by_frizz(part) else None
+
+
+def lent_partition():
+    """/dev/sdXN of the card a running FRIZZ lends, if it is there"""
+    part = card_partition()
+    return part if part and lent_by_frizz(part) else None
 
 
 def storage_disk(part):

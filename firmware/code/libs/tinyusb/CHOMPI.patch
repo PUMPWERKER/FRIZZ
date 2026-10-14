@@ -1,0 +1,104 @@
+# The CHOMPI changes in this vendored TinyUSB against upstream 0.21.0 (dae3f9a), as lost-tty/CHOMPI made them;
+# the rest of src/ is upstream byte for byte (only the other chips' ports left out). diff -u, upstream first.
+--- src/class/audio/audio_device.c	2026-10-14 12:01:04.698288048 +0200
++++ src/class/audio/audio_device.c	2026-10-14 10:37:22.675978882 +0200
+@@ -589,13 +589,25 @@
+ }
+ #endif
+ 
++// CHOMPI: off unless tusb_config.h turns it on
++#ifndef CFG_TUD_AUDIO20_FS_FEEDBACK_10_14
++  #define CFG_TUD_AUDIO20_FS_FEEDBACK_10_14 0
++#endif
++
+ #if CFG_TUD_AUDIO_ENABLE_EP_OUT && CFG_TUD_AUDIO_ENABLE_FEEDBACK_EP
+ // This function is called once a transmit of a feedback packet was successfully completed. Here, we get the next feedback value to be sent
+ static inline bool audiod_fb_send(uint8_t func_id, bool is_isr) {
+   audiod_function_t *audio = &_audiod_fct[func_id];
+   uint8_t uac_version = tud_audio_n_version(func_id);
++  // CHOMPI: CFG_TUD_AUDIO20_FS_FEEDBACK_10_14 sends UAC2 full speed feedback as the spec's 3 byte 10.14 too.
++  // macOS reads 3 bytes there and reports the 4 byte 16.16 one as babble.
++#if CFG_TUD_AUDIO20_FS_FEEDBACK_10_14
++  const bool fb_10_14 = uac_version == 1 || tud_speed_get() == TUSB_SPEED_FULL;
++#else
++  const bool fb_10_14 = uac_version == 1;
++#endif
+   // Format the feedback value
+-  if (uac_version == 1) {
++  if (fb_10_14) {
+     uint8_t *fb = (uint8_t *) audio->fb_buf;
+ 
+     // For FS format is 10.14
+@@ -607,7 +619,7 @@
+     *audio->fb_buf = audio->feedback.value;
+   }
+ 
+-  return usbd_edpt_xfer(audio->rhport, audio->ep_fb, (uint8_t *) audio->fb_buf, uac_version == 1 ? 3 : 4, is_isr);
++  return usbd_edpt_xfer(audio->rhport, audio->ep_fb, (uint8_t *) audio->fb_buf, fb_10_14 ? 3 : 4, is_isr);
+ }
+ 
+ uint32_t tud_audio_feedback_update(uint8_t func_id, uint32_t cycles) {
+--- src/portable/synopsys/dwc2/dcd_dwc2.c	2026-10-14 12:01:04.706405442 +0200
++++ src/portable/synopsys/dwc2/dcd_dwc2.c	2026-10-14 10:37:22.679252685 +0200
+@@ -321,11 +321,16 @@
+       dep->diepctl |= DIEPCTL_SNAK;
+       while ((dep->diepint & DIEPINT_INEPNE) == 0) {}
+ 
+-      // Disable the endpoint.
+-      dep->diepctl |= DIEPCTL_EPDIS | stall_mask;
+-      while ((dep->diepint & DIEPINT_EPDISD_Msk) == 0) {}
++      // CHOMPI: the transfer may have ended meanwhile, never set EPDIS on a disabled endpoint
++      if (!edpt_is_enabled(dep)) {
++        dep->diepctl |= stall_mask;
++      } else {
++        // Disable the endpoint.
++        dep->diepctl |= DIEPCTL_EPDIS | stall_mask;
++        while ((dep->diepint & DIEPINT_EPDISD_Msk) == 0) {}
+ 
+-      dep->diepint = DIEPINT_EPDISD;
++        dep->diepint = DIEPINT_EPDISD;
++      }
+     }
+ 
+     // Flush the FIFO, and wait until we have confirmed it cleared.
+@@ -647,7 +652,15 @@
+ 
+ bool dcd_edpt_iso_activate(uint8_t rhport,  tusb_desc_endpoint_t const * p_endpoint_desc) {
+   // Disable EP to clear potential incomplete transfers
++  // CHOMPI: IN with the USB interrupt masked, so handle_incomplete_iso_in() can't disable it at the same time
++  const bool is_in = tu_edpt_dir(p_endpoint_desc->bEndpointAddress) == TUSB_DIR_IN;
++  if (is_in) {
++    usbd_spin_lock(false);
++  }
+   edpt_disable(rhport, p_endpoint_desc->bEndpointAddress, false);
++  if (is_in) {
++    usbd_spin_unlock(false);
++  }
+   edpt_activate(rhport, p_endpoint_desc);
+   return true;
+ }
+--- src/portable/synopsys/dwc2/dwc2_stm32.h	2026-10-14 12:01:04.706500447 +0200
++++ src/portable/synopsys/dwc2/dwc2_stm32.h	2026-10-14 10:37:22.679546262 +0200
+@@ -171,10 +171,22 @@
+ TU_ATTR_ALWAYS_INLINE static inline void dwc2_int_set(uint8_t rhport, tusb_role_t role, bool enabled) {
+   (void) role;
+   const IRQn_Type irqn = (IRQn_Type) _dwc2_controller[rhport].irqnum;
++  // CHOMPI: while the USB IRQ is masked, also hold off everything below priority 0 (BASEPRI), so a long
++  // lower priority ISR can't keep it masked. OS_NONE nests disables (spin lock, then queue send inside it)
++  // and the audio ISR may lock on top of the main loop: a depth counter restores BASEPRI only at the outermost
++  // enable, to what it was before the first disable. Only dcd_dwc2.c calls this, so one copy of the statics.
++  static volatile uint32_t depth = 0, basepri = 0;
+   if (enabled) {
+     NVIC_EnableIRQ(irqn);
++    if (depth > 0 && --depth == 0) {
++      __set_BASEPRI(basepri);
++    }
+   } else {
+     NVIC_DisableIRQ(irqn);
++    if (depth++ == 0) {
++      basepri = __get_BASEPRI();
++      __set_BASEPRI_MAX(1u << (8 - __NVIC_PRIO_BITS));
++    }
+   }
+ }
+ 
