@@ -97,5 +97,17 @@ int main(int argc, char** argv)
                 out_samples.empty() ? 0. : sqrt(sum / out_samples.size()),
                 Powered() ? "" : ", powered off");
     }
+    // a queue that overflowed dropped what the firmware sent or got (twin.h): not this script
+    const Drops d = Dropped();
+    if (d.midi_in || d.usb_midi_in || d.usb_out || d.midi_out || d.usb_audio_out)
+    {
+        fprintf(stderr,
+                "frizz-twin: the twin's queues overflowed, dropped: MIDI in %llu, USB MIDI in %llu "
+                "bytes, USB MIDI out %llu bytes, MIDI out %llu, USB audio out %llu frames\n",
+                (unsigned long long)d.midi_in, (unsigned long long)d.usb_midi_in,
+                (unsigned long long)d.usb_out, (unsigned long long)d.midi_out,
+                (unsigned long long)d.usb_audio_out);
+        return 3;
+    }
     return failures ? 1 : 0;
 }

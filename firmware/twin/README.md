@@ -169,6 +169,12 @@ in `test/ui.cpp`.
 ## Files
 
 - `twin.h` / `twin.cpp`: the API and the simulated board; `twin.cpp` includes `chompi_main.cpp`.
+  The queues between a host and the firmware (MIDI in, USB MIDI and MIDI out, USB audio out)
+  have fixed sizes, so hosts that drive the twin from a real-time thread can call `Run()`,
+  `Midi()`, `UsbMidi()` and the `Take...(buf, max)` calls without allocating
+  (`../test/rtalloc.cpp` checks it). A full queue drops the newest and counts it
+  (`Dropped()`): `frizz-twin` then exits 3 with what was dropped, and a case of `ui.cpp`,
+  `sync.cpp`, `midi.cpp` or `midiout.cpp` fails (`cases.h`).
 - `host/`: what replaces libDaisy's hardware layer (`daisy.h`, `daisy_seed.h`, `per/`, `sys/`, ...).
 - `script.cpp` / `script.h`: the script player; `cli.cpp`: `frizz-twin`, around it.
 - `clockgen.h`: a MIDI clock out of a virtual sequencer, with a real sender's jitter, drift, USB

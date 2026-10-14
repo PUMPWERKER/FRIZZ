@@ -224,6 +224,10 @@ __attribute__((unused)) static void RunAllCases(const std::function<bool(const C
             if (!boots || boots(cases[i]))
                 twin::Boot();
             cases[i].run();
+            // a twin queue that overflowed dropped what the firmware sent or got (twin.h)
+            const twin::Drops d = twin::Dropped();
+            if (d.midi_in || d.usb_midi_in || d.usb_out || d.midi_out || d.usb_audio_out)
+                Check(false, (case_name + ": the twin's queues overflowed (twin.h's Dropped())").c_str());
             fflush(stdout);
             result[i] = {failures, known, 1};
             _exit(0);
