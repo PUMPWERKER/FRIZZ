@@ -22,6 +22,7 @@ STRESS=1 ./run.sh work out.bin
 | `routing` | the engine's input routing (`passthroughEngine.h`, #177): each source's gates, so a source that isn't live adds nothing to the master at any sample, also while the source switches back and forth mid-fade (#168); every combination of source, effects and live on the master and the headphones' input feed; the looper recording the source live or not; the slews (`Glide`) settling exactly on 0 and 1, the mix at the loop leaving none of the input |
 | `block` | the FX chain a block at a time (`FxChain::Process`, #136) against the same chain a sample at a time, bit for bit, output and meters: blocks of 1 to 40 samples (runs of 24 and the rest) and each block in two calls, through a script with every effect on, the resonator at its highest pitch and stereo with its tone slewing, page 2 off its defaults (the resonator's Band while its key fades out mid-block) and recalls' fast slews ending on a block's first, middle and last sample; page 2 leaving the chain's work (#142) on a block's first, middle and last sample each of three ways (an insert going quiet, an insert's page 2 back at its defaults, a send's Band back in the middle), and which page 2s are part of the work compared block by block. `block OUT` writes the script's output, meters and page-2 bits, to compare them with a build against another version's headers (`check.sh`'s harness never turns page 2) |
 | `phaser` | the phaser (`FxPhaser.h`): its six stages' notches where they belong and unity between them, dry at depth 0, feedback bounded at the top and ringing down, the stereo LFO half a cycle behind, asleep bit for bit the input, the rate knob's free half in Hz and synced half in divisions, the LFOs running at their rate and on the clock's pulses |
+| `resonator` | the resonator (`FxResonator.h`) alone in the FX chain, rung by an impulse: its ringing's pitch by autocorrelation within 5 cents of the note on every coarse step of the pitch, at the tone knob's 0, .25, .5, .7 and 1, wherever it rings (#303: the loop's lowpass made it ring flat, 67 cents at 440 Hz with the tone dark), the right channel an octave up with the stereo at the top as well; the loop never shorter than a block |
 | `chaos` | the chaos key (`FxChaos.h`): its dice on the grid, the pattern that repeats and the press that rolls a new one, the gates on the engine's pool of latched effects, the loop's scramble (another part of the loop, crossfaded, its position running on) |
 | `scenes`, `store` | the scene and master files and the card: formats, a card not read at boot, backups (also of a file next to a cut save's `.tmp`) |
 | `loops` | the loop loader (`LoopLoader.h`, #70): the WAV header's walk (what it takes and refuses; lengths that would wrap or run past the file), the slots' names, the scan of the bank folders a pass at a time, a load byte for byte (data at any offset, in fragments, past remounts, across the tick clock's wrap), its link map over passes (at most 3 of the FAT's sectors read in one, #212; a remount in its middle), what stops one (a read error, a run overdue, a card that doesn't come back, more fragments than the link map holds, a file shorter than its header or its clusters), the card shared with SceneStore's saves mid-load (no FatFs call while a run's DMA has the card), the CRC and the write test |
@@ -235,6 +236,23 @@ the top. Off and faded out the output is the input bit for bit, and it comes on 
 silence. The rate knob: free .02 to 50 Hz below the centre, 1/16 to 4 bars from it up, a free
 1 Hz LFO back where it was a second on, a synced one on the clock's pulses and gliding between
 them. Turning the knob (fine, stepped, SHIFT across both halves) is `controls`' job.
+
+## Resonator check
+
+```bash
+./unit.sh resonator
+```
+
+The resonator (`FxResonator.h`) alone in the whole FX chain at feedback .97, an impulse in, and
+the ringing's pitch by autocorrelation from 0.125 to 0.75 s after it, on every coarse step of
+the pitch knob (the notes F#0 to A5) at the tone knob's 0, .25, .5, .7 and 1: each within 5
+cents of its note wherever it still rings then (above -125 dB of the impulse; the high notes
+with the tone dark die out sooner), and the right channel, an octave up with the stereo at the
+top, too. It prints the notes off and the worst per tone. The loop's lowpass lags the ringing,
+so the resonator shortens its loop by a table in `Resonator::Retune` fitted to exactly this
+measurement (#303); the impulse rather than the research's noise burst, whose random spectrum
+moved the measured pitch by up to 10 cents from one seed to the next. And the loop at its
+shortest (1760 Hz, the tone dark) stays longer than a block.
 
 ## Freezer check
 
