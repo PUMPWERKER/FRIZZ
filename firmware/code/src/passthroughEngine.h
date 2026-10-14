@@ -546,17 +546,13 @@ private:
      *  one source to the other, and each source goes through its own gates, fading towards
      *  to_fx and to_dry for the source heard and shut for the others. sig and byp get the
      *  input's share through the effects and past them, before the mix. Between AUX and the
-     *  mic, with USB out of it, the two of them alone, sample for sample as before USB */
-    FRIZZ_HOT void ProcessSwitch(const float *const *in, float* dryl, float* dryr, float* sigl,
-                                 float* sigr, float* bypl, float* bypr, size_t size, size_t src,
-                                 float to_fx, float to_dry)
+     *  mic, with USB out of it, USB's terms are exact zeros (its fade and gates at 0). Out of
+     *  line: it runs only during a switch's 5 ms */
+    FRIZZ_HOT __attribute__((noinline)) void ProcessSwitch(
+        const float *const *in, float* dryl, float* dryr, float* sigl, float* sigr, float* bypl,
+        float* bypr, size_t size, size_t src, float to_fx, float to_dry)
     {
         const bool mic = src == kMic, usb = src == kUsb;
-        if (!usb && usb_fade_ == 0.f && in_fx_[kUsb] == 0.f && in_dry_[kUsb] == 0.f)
-        {
-            ProcessSwitchAuxMic(in, dryl, dryr, sigl, sigr, bypl, bypr, size, mic, to_fx, to_dry);
-            return;
-        }
         float fx_to[kNumSources] = {}, dry_to[kNumSources] = {};
         fx_to[src] = to_fx;
         dry_to[src] = to_dry;
@@ -590,35 +586,6 @@ private:
             sigr[i] = r * in_fx_[kAux] + m * in_fx_[kMic] + u_r * in_fx_[kUsb];
             bypl[i] = l * in_dry_[kAux] + m * in_dry_[kMic] + u_l * in_dry_[kUsb];
             bypr[i] = r * in_dry_[kAux] + m * in_dry_[kMic] + u_r * in_dry_[kUsb];
-        }
-    }
-
-    /** ProcessSwitch between AUX and the mic (mic: towards the mic) */
-    FRIZZ_HOT void ProcessSwitchAuxMic(const float *const *in, float* dryl, float* dryr, float* sigl,
-                                       float* sigr, float* bypl, float* bypr, size_t size, bool mic,
-                                       float to_fx, float to_dry)
-    {
-        const float aux_fx = mic ? 0.f : to_fx, aux_dry = mic ? 0.f : to_dry;
-        const float mic_fx = mic ? to_fx : 0.f, mic_dry = mic ? to_dry : 0.f;
-        for (size_t i = 0; i < size; i++)
-        {
-            fonepole(mic_gain_, mic_gain_target_, .001f);
-            const float m = Mic(in[0][i]);
-            fonepole(aux_gain_, aux_gain_target_, .001f);
-            const float in_r = mono_in_ ? in[2][i] : in[3][i];
-            const float l = dcblock_line_in_l_.Process(in[2][i] * aux_gain_ * kLineInGain);
-            const float r = dcblock_line_in_r_.Process(in_r * aux_gain_ * kLineInGain);
-            mic_fade_ = Toward(mic_fade_, mic ? 1.f : 0.f);
-            dryl[i] = l + (m - l) * mic_fade_;
-            dryr[i] = r + (m - r) * mic_fade_;
-            in_fx_[0] = Toward(in_fx_[0], aux_fx);
-            in_dry_[0] = Toward(in_dry_[0], aux_dry);
-            in_fx_[1] = Toward(in_fx_[1], mic_fx);
-            in_dry_[1] = Toward(in_dry_[1], mic_dry);
-            sigl[i] = l * in_fx_[0] + m * in_fx_[1];
-            sigr[i] = r * in_fx_[0] + m * in_fx_[1];
-            bypl[i] = l * in_dry_[0] + m * in_dry_[1];
-            bypr[i] = r * in_dry_[0] + m * in_dry_[1];
         }
     }
 
