@@ -242,15 +242,17 @@ def signal_flow():
 
 # ---------- 2. the input ----------
 def input_diagram():
-    s = Svg(650, 'FRIZZ input',
-            'The input. AUX (stereo, or mono: its left to both sides) and the built-in mic each '
-            'have their own input gain; AUX is then amplified 3× and its DC taken out, the mic '
-            '5×, DC blocked, highpassed at about 150 Hz and the same on both sides. Switch A '
-            '(upper F#, or the AUX jack) picks the source, with a 5 ms crossfade. The source goes '
-            'as it is to the looper and to the headphone feed. Switch B (upper G#), its '
-            'monitoring, has it on the outputs or not, switch C (upper A#) sends it through the '
-            'effects or past them. The input/loop mix sets the input\'s share against the '
-            'loop\'s; the share past the effects joins after the compressor, before VOLUME.')
+    D = 70  # the USB row's: everything below the sources moves down by it
+    s = Svg(650 + D, 'FRIZZ input',
+            'The input. AUX (stereo, or mono: its left to both sides), the built-in mic and USB (a '
+            'computer\'s audio) each have their own input gain; AUX is then amplified 3× and its DC '
+            'taken out, the mic 5×, DC blocked, highpassed at about 150 Hz and the same on both '
+            'sides, USB 3× as AUX. Switch A (upper F#, or the AUX jack between AUX and the mic) '
+            'picks the source, with a 5 ms crossfade. The source goes as it is to the looper and '
+            'to the headphone feed. Switch B (upper G#), its monitoring, has it on the outputs or '
+            'not, switch C (upper A#) sends it through the effects or past them. The input/loop '
+            'mix sets the input\'s share against the loop\'s; the share past the effects joins '
+            'after the compressor, before VOLUME.')
     # AUX
     s.jack(28, 90)
     s.text(20, 72, 'AUX IN', 13, anchor='start', bold=True)
@@ -272,48 +274,56 @@ def input_diagram():
     s.line([(410, 190), (435, 190)])
     s.box(435, 166, 100, 48, ['HIGHPASS', ('150 Hz, mono', 'm')])
     s.line([(535, 190), (550, 190), (550, 155), (562, 155)], arrow=False)
+    # USB
+    s.jack(28, 290)
+    s.text(20, 272, 'USB (a computer)', 13, anchor='start', bold=True)
+    s.line([(33, 290), (185, 290)])
+    s.box(185, 266, 100, 48, ['INPUT GAIN', ('USB\'s own', 'm')])
+    s.line([(285, 290), (310, 290)])
+    s.box(310, 266, 100, 48, ['× 3', ('as AUX', 'm')])
+    s.line([(410, 290), (556, 290), (556, 185), (562, 185)], arrow=False)
     # A: the source
-    s.selector(600, 140, [(565, 125), (565, 155)], 0, 'A', (600, 104))
-    s.text(612, 180, '5 ms crossfade', 12, cls='m')
+    s.selector(600, 155, [(565, 125), (565, 155), (565, 185)], 0, 'A', (600, 104))
+    s.text(612, 210, '5 ms crossfade', 12, cls='m')
     s.text(560, 34, 'the AUX jack: a cable in picks AUX, out the mic', 12, cls='m')
     s.line([(583, 42), (583, 128)], 'c')
-    s.line([(602, 140), (705, 140), (705, 262), (40, 262), (40, 330)], 'a', arrow=False)
-    s.line([(40, 330), (40, 490)], arrow=False)
-    s.dot(40, 330, 'a')
+    s.line([(602, 155), (705, 155), (705, 262 + D), (40, 262 + D), (40, 330 + D)], 'a', arrow=False)
+    s.line([(40, 330 + D), (40, 490 + D)], arrow=False)
+    s.dot(40, 330 + D, 'a')
     # B: the monitoring, whether you hear it; C: then how, through the effects or past them
-    s.line([(40, 330), (75, 330)], 'a', arrow=False)
-    s.switch(75, 330, 'B')
-    s.line([(105, 330), (157, 330)], 'a', arrow=False)
-    s.selector(160, 330, [(195, 305), (195, 355)], 0, 'C', (170, 298))
-    s.line([(197, 305), (330, 305)], 'a')
-    s.text(263, 298, 'through the effects', 12, cls='m')
-    s.line([(197, 355), (330, 355)])
-    s.text(263, 348, 'past the effects', 12, cls='m')
+    s.line([(40, 330 + D), (75, 330 + D)], 'a', arrow=False)
+    s.switch(75, 330 + D, 'B')
+    s.line([(105, 330 + D), (157, 330 + D)], 'a', arrow=False)
+    s.selector(160, 330 + D, [(195, 305 + D), (195, 355 + D)], 0, 'C', (170, 298 + D))
+    s.line([(197, 305 + D), (330, 305 + D)], 'a')
+    s.text(263, 298 + D, 'through the effects', 12, cls='m')
+    s.line([(197, 355 + D), (330, 355 + D)])
+    s.text(263, 348 + D, 'past the effects', 12, cls='m')
     # the looper and the phones take the source as it is
-    s.line([(40, 420), (200, 420)])
-    s.dot(40, 420)
-    s.text(120, 412, 'meter: VOLUME page 2', 12, cls='m')
-    s.box(200, 398, 100, 44, ['LOOPER', ('records it', 'm')])
-    s.line([(300, 420), (330, 420)])
-    s.text(315, 413, 'loop', 12, cls='m')
-    s.line([(40, 490), (470, 490)])
-    s.text(250, 483, 'the source alone, whatever B and C say', 12, cls='m')
-    s.text(478, 494.5, 'to the phones feed (VOLUME p. 3)', 13, anchor='start')
-    s.box(330, 285, 140, 157, ['MIX', ('SHIFT + VOLUME', 'm'), ('', 'm'), ('the input\'s share', 'm'),
-                               ('against the loop\'s,', 'm'), ('on both inputs', 'm')], check=False)
-    s.line([(470, 315), (505, 315)], 'a')
-    s.text(512, 319.5, 'to the effects', 13, anchor='start', bold=True)
-    s.text(512, 336, 'and the compressor', 12, anchor='start', cls='m')
-    s.line([(470, 385), (505, 385)])
-    s.text(512, 389.5, 'past the effects:', 13, anchor='start')
-    s.text(512, 406, 'joins after the compressor', 12, anchor='start', cls='m')
-    s.legend(28, 540, [
-        ('A', 'upper F#: the source, AUX or the mic. The AUX jack picks it; F# the other one'),
+    s.line([(40, 420 + D), (200, 420 + D)])
+    s.dot(40, 420 + D)
+    s.text(120, 412 + D, 'meter: VOLUME page 2', 12, cls='m')
+    s.box(200, 398 + D, 100, 44, ['LOOPER', ('records it', 'm')])
+    s.line([(300, 420 + D), (330, 420 + D)])
+    s.text(315, 413 + D, 'loop', 12, cls='m')
+    s.line([(40, 490 + D), (470, 490 + D)])
+    s.text(250, 483 + D, 'the source alone, whatever B and C say', 12, cls='m')
+    s.text(478, 494.5 + D, 'to the phones feed (VOLUME p. 3)', 13, anchor='start')
+    s.box(330, 285 + D, 140, 157, ['MIX', ('SHIFT + VOLUME', 'm'), ('', 'm'), ('the input\'s share', 'm'),
+                                   ('against the loop\'s,', 'm'), ('on both inputs', 'm')], check=False)
+    s.line([(470, 315 + D), (505, 315 + D)], 'a')
+    s.text(512, 319.5 + D, 'to the effects', 13, anchor='start', bold=True)
+    s.text(512, 336 + D, 'and the compressor', 12, anchor='start', cls='m')
+    s.line([(470, 385 + D), (505, 385 + D)])
+    s.text(512, 389.5 + D, 'past the effects:', 13, anchor='start')
+    s.text(512, 406 + D, 'joins after the compressor', 12, anchor='start', cls='m')
+    s.legend(28, 540 + D, [
+        ('A', 'upper F#: the source, AUX, the mic or USB. The AUX jack picks AUX or the mic'),
         ('B', 'upper G#: monitoring, on the outputs or not'),
         ('C', 'upper A#: through the effects, or past them and the compressor'),
         ('M', 'SHIFT + upper F#: AUX mono, its left channel to both sides'),
     ])
-    s.text(28, 634, 'On the settings page (mode switch up). Each source keeps its own gain, B and C.',
+    s.text(28, 634 + D, 'On the settings page (mode switch up). Each source keeps its own gain, B and C.',
            12, anchor='start', cls='m')
     return s
 
@@ -1007,7 +1017,7 @@ def fig_settings():
             ('C', 'Lower F#: transport'), ('D', 'Lower G#: clock factor, beat'),
             ('E', 'Lower A#: clock source')]
     right = [('F', 'Upper C#: MIDI out'), ('G', 'Upper D#: MIDI feedback'),
-             ('H', 'Upper F#: AUX or the mic'), ('I', 'Upper G#: monitoring'),
+             ('H', 'Upper F#: AUX, the mic or USB'), ('I', 'Upper G#: monitoring'),
              ('J', 'Upper A#: through the effects')]
     rows = [('K', 'White keys: the MIDI channel, 1 to 15; key 15 again: 16.'),
             ('L', 'Knob 1: the LED brightness.'),
@@ -1091,6 +1101,7 @@ KEYS_PLAY = [
     (['k:SHIFT', '+', 'o:VOLUME', '(turn)'], 'The input/loop mix.'),
     (['k:SHIFT', '+', 'd:scene key', '(let go)'], 'Morph to the scene on the bar line.'),
     (['k:SHIFT', '+', 'o:VOLUME', '(hold 2 s)'], 'On the settings page: write a bug report.'),
+    (['k:SHIFT', '+', 'k:LOOP', '(hold 2 s)'], 'On the settings page: lend the card to the computer.'),
 ]
 KEYS_START = [
     (['(hold)', 'w:FX key', '>', 'k:SHIFT'], 'Latch the effect on, or off again.'),

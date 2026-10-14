@@ -1528,7 +1528,7 @@ then how:
 the upper F# picks **the source**, the upper G# switches its **monitoring**, on the outputs or
 not, and the upper A# sends it **through the effects** or past them.
 
-![The input: AUX or the mic, each with its own gain, picked by the upper F# or AUX's jack; the
+![The input: AUX, the mic or USB, each with its own gain, picked by the upper F# (or AUX's jack, between AUX and the mic); the
 source as it is to the looper and the headphone feed; the upper G# its monitoring, on the
 outputs or not, the upper A# through the effects or past them; the share past the effects joining after the
 compressor](images/input.svg)
@@ -1734,7 +1734,7 @@ each version.
 
 Every gesture on one page; each row links to where it's explained. SHIFT is holding CHOMPI.
 
-![Keys for the gestures to know: an FX key held then SHIFT latches, SHIFT then an FX key selects, SHIFT + LOOP taps the tempo, PLAY held + LOOP records in time, SHIFT + VOLUME turned is the input/loop mix, SHIFT + a scene key morphs, SHIFT + VOLUME held 2 s on the settings page writes a bug report](images/keys-play.svg)
+![Keys for the gestures to know: an FX key held then SHIFT latches, SHIFT then an FX key selects, SHIFT + LOOP taps the tempo, PLAY held + LOOP records in time, SHIFT + VOLUME turned is the input/loop mix, SHIFT + a scene key morphs, SHIFT + VOLUME held 2 s on the settings page writes a bug report, SHIFT + LOOP held 2 s there lends the card to the computer](images/keys-play.svg)
 
 ### On the play page
 
