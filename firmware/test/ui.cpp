@@ -7065,9 +7065,9 @@ int main()
         RunMs(100);
         const bool shows_off = key_dim(kInSourceKeyLed);
         Press("KEY_26", false);
-        RunMs(100);
+        RunMs(200);
         const bool away = !UsbAudioOn();
-        RunMs(500);
+        RunMs(400);
         const bool back_without = !UsbAudioOn() && UsbEnumerations() == enumerated + 1;
         const bool dim_blue = key_dim(kInSourceKeyLed) && SmtLedFull(kInSourceKeyLed).b > SmtLedFull(kInSourceKeyLed).r;
         float aux, usb;

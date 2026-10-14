@@ -416,6 +416,10 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
 
 uint32_t uit, now;
 
+// USB audio's switch waits this long, so MIDI's last answer reaches the computer (MainLoop)
+static const uint32_t kUsbSwitchMs = 100;
+static uint32_t usb_switch_at = 0;
+
 /** The card lent to the computer as a USB drive, or taken back, as the settings page or the
  *  developers' SysEx asked (CardLend.h), and the computer's transfers. True while it's lent */
 static void CardRemount()
@@ -491,8 +495,13 @@ void MainLoop(void* data)
         uit = now;
     }
 
-    // USB audio switched on the settings page: off the bus and back with the other layout
-    if (ui.UsbAudio() != usb::Audio())
+    // USB audio switched on the settings page (or by SET): off the bus and back with the other
+    // layout, kUsbSwitchMs on, so an answer to the SET still goes out first
+    if (ui.UsbAudio() == usb::Audio())
+        usb_switch_at = 0;
+    else if (!usb_switch_at)
+        usb_switch_at = now | 1; // 0 is "not yet"
+    else if (now - usb_switch_at >= kUsbSwitchMs)
         usb::SetAudio(ui.UsbAudio());
 #if FRIZZ_USB_SAFETY
     usb::Watch(now); // make USB_SAFETY=1: an enumeration that hangs restarts into the launcher
