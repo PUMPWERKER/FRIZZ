@@ -29,6 +29,8 @@ in the source files, must be preserved in any redistribution.
 | **CMSIS** | © ARM Limited | Apache-2.0 | `cube_dfu/Drivers/CMSIS/` (with its `LICENSE.txt`) in `reference/firmware/chompi-bootloader-v6.4-beta/` and in each stock firmware's `code/Chompi_Bootloader/` under `reference/firmware/` |
 | **Kastle 2 FX Wizard** (freezer, slicer, flanger, shifter, resonator comb, crusher XOR and dive) | © 2024 Marek Mach, Vaclav Mach (Bastl Instruments) | MIT | ported to `firmware/code/src/` (`FxFreezer.h`, `FxSlicer.h`, `FxFlanger.h`, `FxShifter.h`, `FxResonator.h`, and the crusher's in `FxCrusher.h`), with the license in `LICENSE-kastle2` next to them |
 | **CHOMPI launcher's `midi-send.py`** | © 2026 CHOMPI Club; by ugrossek (chomplex music theory), from [sfaber02/CHOMPI-MULTI-FIRMWARE](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE) (launcher v1.5) | MIT | `firmware/tools/midi_send.py`, unchanged but for a note of where it's from; `firmware/flash.py` and `firmware/tools/chompi.py` use it |
+| **TinyUSB** 0.21.0 | © Ha Thach (tinyusb.org) | MIT | `firmware/code/libs/tinyusb/` (`src/`, with its `LICENSE`; `VERSION` lists the changes in it, each marked `CHOMPI`); usb-audio-poc branch only (#196) |
+| **lost-tty/CHOMPI ("MIXTAPE")** USB audio and MIDI for TAPE | © 2026 CHOMPI Club; by nils (lost-tty), from [lost-tty/CHOMPI](https://github.com/lost-tty/CHOMPI) (commits d8d95bb5, a56545b6) | MIT | its TinyUSB as vendored there, and `firmware/code/src/UsbDevice.h`, `UsbDevice.cpp`, `usb_descriptors.c`, `usb_descriptors.h`, `tusb_config.h`, ported (each says so in its head); usb-audio-poc branch only (#196) |
 | **STM32 HAL, USB Device/Host middleware, FatFs** | © STMicroelectronics | ST Ultimate Liberty / BSD-3-Clause, per file headers | the same `cube_dfu/` folders |
 
 ## libDaisy is Electrosmith's CHOMPI adaptation
@@ -87,6 +89,14 @@ same code, only the debug information's paths differ, and FRIZZ.bin comes out by
 the same (checked for `usb_midi.o`, #157, and `usbd_conf.o`, #88; `midi_parser.o` rebuilt
 from the source before #166 disassembles as the archive's). A changed `libdaisy.a` (or `libdaisysp.a`) links
 FRIZZ again on the next `make` (#161).
+
+On the usb-audio-poc branch (#196, an experiment, not merged) two more objects are rebuilt the
+same way, from source changed as lost-tty/CHOMPI changed TAPE's: `src/sys/system.cpp` without
+the OTG_HS interrupt handlers (FRIZZ's USB runs on TinyUSB, `firmware/code/src/UsbDevice.cpp`
+defines `OTG_HS_IRQHandler`; libDaisy's own USB on that port no longer works in this copy), and
+`src/sys/fatfs.cpp` without USB host media (`MEDIA_USB` fails; its driver pulled ST's USB host
+stack into the image). Rebuilt unchanged first, both disassembled as the archive's objects. With
+them FRIZZ.bin holds none of ST's USB middleware.
 
 FRIZZ doesn't use `src/util/sd_diskio.c`'s `SD_read` and `SD_write` (they stay in the archive,
 unchanged): its own, `firmware/code/src/SdDisk.h`, take their place in FatFs's driver table

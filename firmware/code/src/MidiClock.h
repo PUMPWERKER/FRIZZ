@@ -34,8 +34,7 @@
 #include <string.h>
 #include "daisy.h"
 #if defined(__arm__)
-#include "usbd_cdc.h"
-extern "C" USBD_HandleTypeDef hUsbDeviceHS; // libDaisy's (hid/usb.cpp): FRIZZ's USB, external
+#include "UsbDevice.h" // FRIZZ's USB on TinyUSB (usb-audio-poc, #196)
 #endif
 
 using namespace daisy;
@@ -116,8 +115,10 @@ public:
         uart_midi.Init(uart_midi_cfg);
         uart_midi.StartReceive();
 
-        MidiUsbHandler::Config usb_midi_cfg;
+        UsbMidi::Config usb_midi_cfg;
+#if !defined(__arm__)
         usb_midi_cfg.transport_config.periph = MidiUsbTransport::Config::EXTERNAL;
+#endif
         usb_midi.Init(usb_midi_cfg);
         usb_midi.Listen();
 
@@ -223,8 +224,19 @@ public:
         listener_context_ = context;
     }
 
-    /** A message out over USB. From MainLoop only: the transport waits for the bus */
-    void SendUsb(uint8_t* bytes, size_t size) { usb_midi.SendMessage(bytes, size); }
+    /** A message out over USB. From MainLoop only: it waits for room in the transport's
+     *  queue, which TinyUSB's task empties meanwhile, kUsbWaitMs at most */
+    void SendUsb(uint8_t* bytes, size_t size)
+    {
+#if defined(__arm__)
+        const uint32_t start = System::GetNow();
+        while (UsbHost() && !usb_midi.GetMutableTransport().Tx(bytes, size)
+               && System::GetNow() - start < kUsbWaitMs)
+            ;
+#else
+        usb_midi.SendMessage(bytes, size);
+#endif
+    }
     /** The same, at once or not at all: false if it didn't go (no host, or the last transfer
      *  still going), to try again. It never waits, where libDaisy's Tx would (#84) */
     bool TrySendUsb(uint8_t* bytes, size_t size)
@@ -237,7 +249,7 @@ public:
     inline bool UsbHost() const
     {
 #if defined(__arm__)
-        return hUsbDeviceHS.dev_state == USBD_STATE_CONFIGURED;
+        return usb::Host();
 #else
         return twin::UsbHost();
 #endif
@@ -259,12 +271,12 @@ public:
 #endif
     }
 
-    /** A host, and the last transfer done: a message goes now without waiting */
+    /** A host: a message goes now without waiting if the transport takes it (on the device
+     *  its queue, which TinyUSB's task empties) */
     inline bool UsbReady()
     {
 #if defined(__arm__)
-        const USBD_CDC_HandleTypeDef* cdc = static_cast<USBD_CDC_HandleTypeDef*>(hUsbDeviceHS.pClassData);
-        return UsbHost() && cdc && cdc->TxState == 0;
+        return UsbHost();
 #else
         return usb_midi.GetMutableTransport().Ready();
 #endif
@@ -383,7 +395,13 @@ private:
     }
 
     MidiUartHandler uart_midi;
-    MidiUsbHandler usb_midi;
+#if defined(__arm__)
+    typedef MidiHandler<MidiTinyUsbTransport> UsbMidi;
+#else
+    typedef MidiUsbHandler UsbMidi;
+#endif
+    static const uint32_t kUsbWaitMs = 20; // SendUsb's
+    UsbMidi usb_midi;
 
     float sample_rate_;
     Source source_;

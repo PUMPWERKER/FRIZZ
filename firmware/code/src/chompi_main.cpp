@@ -278,6 +278,12 @@ void ZeroSDRAM()
  *  Channel 4 - Master R
  */
 
+// usb-audio-poc (#196): the host plays in AUX's place (UsbDevice.h)
+static bool usb_in = false;
+#if defined(__arm__) && FRIZZ_USB_AUDIO
+static const float* usb_inputs[4];
+#endif
+
 // The audio ISR. Called by the Daisy audio driver once per block
 FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
 {
@@ -319,9 +325,30 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
 
     if(input_jack.Changed(hw.jack_detect.Read()))
     {
-        engine.SetMicInput(!input_jack.plugged);
+        engine.SetMicInput(!input_jack.plugged && !usb_in);
         event_log.Jack(input_jack.plugged);
     }
+
+#if defined(__arm__) && FRIZZ_USB_AUDIO
+    // usb-audio-poc (#196): while the host plays, it's AUX (also with nothing plugged in there,
+    // not the mic)
+    {
+        const float* const* from_host = usb::Receive(size);
+        if (usb::RxStreaming() != usb_in)
+        {
+            usb_in = !usb_in;
+            engine.SetMicInput(!input_jack.plugged && !usb_in);
+        }
+        if (usb_in)
+        {
+            usb_inputs[0] = in[0];
+            usb_inputs[1] = in[1];
+            usb_inputs[2] = from_host[0];
+            usb_inputs[3] = from_host[1];
+            in = usb_inputs;
+        }
+    }
+#endif
 
     // the developers' test signal and peak meters (MidiControl.h's dev::Audio), off unless
     // asked for over USB: then this flag, read once
@@ -335,6 +362,11 @@ FRIZZ_HOT_CALLBACK void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::
 #endif
     if(dev_audio)
         midi_control.audio.Out(out, size);
+#if defined(__arm__) && FRIZZ_USB_AUDIO
+    // usb-audio-poc (#196): the line out to the host
+    const float* to_host[usb::kTxChannels] = {out[2], out[3]};
+    usb::Send(to_host, size);
+#endif
     midi_out.Process(size, engine, midi_control.GetMidiOut());
 #if FRIZZ_BENCH
     bench.BlockEnd(engine);
@@ -376,6 +408,9 @@ void MainLoop(void* data)
 
     // MIDI out's bytes for USB, which only MainLoop may send (MidiOut.h)
     midi_out.FlushUsb();
+#ifdef __arm__
+    usb::Watch(now); // usb-audio-poc: an enumeration that hangs restarts into the launcher
+#endif
 
 #if !FRIZZ_BENCH
     // loops from the card: a step, before the card's other users; it leaves them the card
@@ -463,6 +498,9 @@ int main(void)
     hw.MpWrite(0x0a, 0B00100100); // AutoDPDM
     daisy::System::Delay(1); // Wait a sec
     hw.usb_sw.Write(true);     // take USB control
+#ifdef __arm__
+    usb::Init(); // TinyUSB (usb-audio-poc, #196): connects from its task's first pass
+#endif
 
     /** SDMMC Init */
     System::Delay(100);
