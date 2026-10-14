@@ -96,6 +96,10 @@ what FRIZZ does.
   shifted sound keeps more of its highs (a 10 kHz tone a fifth up loses 0.3 dB, where it lost
   1.3 dB) and carries less aliasing, most audibly with feedback, where every pass lost highs
   again. The rest of the shifter is as it was.
+- **The reverb's tail is smoother, less metallic:** its first allpass is modulated, as in
+  Mutable's Clouds and Elements, so the same hit rings a little differently each time instead of
+  through the same diffusion. Its knobs, decay, level and freeze are as they were. See
+  [Reverb](MANUAL.md#reverb).
 
 ### Fixed
 
