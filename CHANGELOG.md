@@ -24,7 +24,10 @@ what FRIZZ does.
   scene key, the transport turned) a white key puts both loops under the fader, and letting go
   keeps the nearer one. Switching keeps the tape's speed and direction. The loop sets the
   tempo; LOOP, PLAY and the transport knob work on it as on a recording, which is gone once you
-  switch. Two quick taps of SHIFT take you back to the play page. See
+  switch. Two quick taps of SHIFT take you back to the play page. Over MIDI, a bank select (CC 0:
+  1-8 FRIZZ's banks, 9-13 the cubbis') and a program change pick a loop from any page, CC 54
+  says when (at once, at a pass end, with the scene change), CC 81 cancels, and MIDI feedback
+  sends the switches you make by hand, so a DAW records them. See
   [Loop loader](MANUAL.md#loop-loader).
 
 - **A hung FRIZZ restarts by itself** (#105): if its sound stops for a second (a crash, or

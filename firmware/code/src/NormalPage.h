@@ -611,6 +611,12 @@ namespace chompi
             if (feedback && !feedback_on_)
                 feedback_.Reset([this](uint8_t item, uint8_t& v) { return FeedbackValue(item, v); });
             feedback_on_ = feedback;
+#if !FRIZZ_BENCH
+            // a loop the hand switched to (#259): sent before the next sweep
+            const int switched = loops_.TakeSwitched();
+            if (switched != LoopControls::kNone)
+                loop_fed_ = feedback ? switched : LoopControls::kNone;
+#endif
 
             // one answer a pass (every 2 ms), so USB has sent the last before the next goes,
             // or else MIDI feedback's
@@ -648,6 +654,20 @@ namespace chompi
             case Event::INPUT:
                 RemoteInput(e.arg & 3, e.arg & 4);
                 break;
+#if !FRIZZ_BENCH
+            static_assert(midimap::kLoopBanks == loops::kBanks && midimap::kLoopPrograms == loops::kSlots
+                              && midimap::kCubbiProgramBank == loops::kCubbiBank + 1,
+                          "a loop's program change: bank 1 is the loader's 0, the cubbis' after FRIZZ's");
+            case Event::LOOP:
+            {
+                // a loop from the card (#259), from any page: "with the sequence" means one
+                // that waits to land, also held by the hand, not on the crossfader
+                ScopedIrqBlocker irq;
+                loops_.Remote(e.arg / loops::kSlots, e.arg % loops::kSlots, e.arg2,
+                              engine_->FxMorphing() && !scene_ctl_.Fading());
+                break;
+            }
+#endif
             }
         }
 
@@ -810,30 +830,54 @@ namespace chompi
         void Feedback(uint32_t now)
         {
             const uint8_t global = midi_->Channel() ? midi_->Channel() : 16;
+            const uint8_t ch = static_cast<uint8_t>(global - 1);
             const bool usb = midi_->GetMidiOut() == MidiOutPorts::TRS_USB;
             const bool block_trs = midi_->BlockTrs();
-            feedback_.Pass(now, global, [this](uint8_t item, uint8_t& v) { return FeedbackValue(item, v); },
-                           [&](uint8_t* msg, size_t n) {
-                               uint8_t trs[MidiFeedback::kPerPass * 3];
-                               size_t m = 0;
-                               for (size_t i = 0; i < 3 * n; i += 3)
-                                   if (block_trs || (msg[i] & 0x0F) == global - 1)
-                                   {
-                                       trs[m++] = msg[i];
-                                       trs[m++] = msg[i + 1];
-                                       trs[m++] = msg[i + 2];
-                                   }
-                               if (midi_->feedback_trs.Room() < m)
-                                   return false;
-                               // USB busy: again at the next pass, a few times, then without
-                               // it; without a host, not at all (#84)
-                               if (usb && midi_->UsbHost() && !midi_->TrySendUsb(msg, 3 * n)
-                                   && ++feedback_usb_tries_ < kFeedbackUsbTries)
-                                   return false;
-                               feedback_usb_tries_ = 0;
-                               midi_->feedback_trs.Push(trs, m);
-                               return true;
-                           });
+            // msg, its 3-byte CCs n of them (all on the global channel for another), over USB
+            // and into the jack's ring: false to try again at the next pass
+            auto send = [&](uint8_t* msg, size_t n) {
+                uint8_t trs[MidiFeedback::kPerPass * 3];
+                size_t m = 0;
+                for (size_t i = 0; i < 3 * n; i += 3)
+                    if (block_trs || (msg[i] & 0x0F) == ch)
+                    {
+                        trs[m++] = msg[i];
+                        trs[m++] = msg[i + 1];
+                        trs[m++] = msg[i + 2];
+                    }
+                if (midi_->feedback_trs.Room() < m)
+                    return false;
+                // USB busy: again at the next pass, a few times, then without it; without a
+                // host, not at all (#84)
+                if (usb && midi_->UsbHost() && !midi_->TrySendUsb(msg, 3 * n)
+                    && ++feedback_usb_tries_ < kFeedbackUsbTries)
+                    return false;
+                feedback_usb_tries_ = 0;
+                midi_->feedback_trs.Push(trs, m);
+                return true;
+            };
+#if !FRIZZ_BENCH
+            // a loop switched to by hand (#259): its bank (CC 0), its program change, and the
+            // scenes' bank again, so a DAW's recording leaves FRIZZ's program changes on the
+            // scenes: 3 CCs' worth, the PC's 2 bytes then CC 0's 3
+            if (loop_fed_ != LoopControls::kNone)
+            {
+                const uint8_t bank = static_cast<uint8_t>(loop_fed_ / loops::kSlots + 1);
+                uint8_t msg[8] = {static_cast<uint8_t>(0xB0 | ch), midimap::kBankCC, bank,
+                                  static_cast<uint8_t>(0xC0 | ch), static_cast<uint8_t>(loop_fed_ % loops::kSlots),
+                                  static_cast<uint8_t>(0xB0 | ch), midimap::kBankCC, 0};
+                // the jack's ring takes them as they are: each starts with its status byte
+                if (midi_->feedback_trs.Room() < 8
+                    || (usb && midi_->UsbHost() && !midi_->TrySendUsb(msg, 8)
+                        && ++feedback_usb_tries_ < kFeedbackUsbTries))
+                    return;
+                feedback_usb_tries_ = 0;
+                midi_->feedback_trs.Push(msg, 8);
+                loop_fed_ = LoopControls::kNone;
+                return;
+            }
+#endif
+            feedback_.Pass(now, global, [this](uint8_t item, uint8_t& v) { return FeedbackValue(item, v); }, send);
         }
 
         /** A morph (CC 3) or a drop (CC 83) over MIDI: as SHIFT + the scene key, tapped once per
@@ -1418,12 +1462,13 @@ namespace chompi
             return true;
         }
         inline void ShiftUsed() { fx_.ShiftUsed(); }
-        /** CC 81: the sequence stopped where it is */
+        /** CC 81: the sequence stopped where it is, and the whole plan with it: a loop planned
+         *  alone too (#259) */
         bool FreezeMorph()
         {
             ScopedIrqBlocker irq;
 #if !FRIZZ_BENCH
-            loops_.SequenceEnded();
+            loops_.Cancel();
 #endif
             return scene_ctl_.FreezeMorph();
         }
@@ -2466,6 +2511,7 @@ namespace chompi
         volatile bool loops_shown_ = false; // the Loops page or the Cubbi page (#70, loops_.Cubbi())
 #if !FRIZZ_BENCH
         LoopControls loops_;
+        int loop_fed_ = LoopControls::kNone; // a loop switched to, for MIDI feedback (#259)
         LedSignal loop_refused_key_;  // a loop refused, on its key
         size_t loop_refused_slot_ = 0;
         LedSignal bank_refused_;      // no bank further, on its key (both: no loop on the page)

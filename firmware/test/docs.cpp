@@ -1124,6 +1124,8 @@ static void CheckMidi()
         {Midi("kSpeedCC"), 1, "speed"},
         {Midi("kMorphCC"), 1, "morph"},
         {Midi("kMorphBarsCC"), 1, "bars"},
+        {Midi("kBankCC"), 1, "program changes"},
+        {Midi("kLoopTimingCC"), 1, "loop's program change"},
         {Midi("kFaderCC"), 1, "crossfader"},
         {Midi("kStopMorphCC"), 1, "stops"},
         {Midi("kTapCC"), 1, "tap"},
@@ -1136,6 +1138,12 @@ static void CheckMidi()
     };
     const std::map<int, std::string> global_rows = NumberRows(global);
     CheckRows("MIDI's global CCs", global_rows, global_ccs);
+    // the program changes by CC 0's bank (#259)
+    const int cubbi = Midi("kCubbiProgramBank"), banks = Midi("kLoopBanks");
+    CheckRows("MIDI's program change banks",
+              NumberRows(FindTable(Under(appendix, "### Program changes"), "| CC 0 | Program change", 0)),
+              {{0, 1, "scene"}, {1, cubbi - 1, "loop"}, {cubbi, banks - cubbi + 1, "cubbi"},
+               {banks + 1, 127 - banks, "nothing"}});
     for (const auto& e : global_ccs)
         for (int n = e.from; n < e.from + e.count; n++)
             used_ccs.insert(n);

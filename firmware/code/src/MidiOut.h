@@ -157,7 +157,6 @@ public:
             continue_at_ = kNone;
             trs_.Clear();
             feedback_->Clear();
-            feedback_sent_ = 0;
         }
 
         last_ticks_ = ticks;
@@ -212,7 +211,6 @@ private:
     static const uint32_t kNone = 0xFFFFFFFF;
     static const uint32_t kUsbWaitMs = 5;
     FeedbackRing* feedback_ = nullptr;
-    uint32_t feedback_sent_ = 0; // its bytes the UART took
     uint32_t rewinds_ = 0; // the looper's Rewinds() as last seen
     bool usb_waiting_ = false;        // USB didn't take the next message
     uint32_t usb_waiting_since_ = 0;
@@ -315,7 +313,8 @@ private:
         bool fed = false;
         for (;;)
         {
-            const bool mid = feedback_sent_ % 3 != 0; // feedback's are 3-byte CCs
+            // within a message of feedback's: its next byte a data byte (CCs, a program change)
+            const bool mid = !feedback_->Empty() && feedback_->Front() < 0x80;
             if (!trs_.Empty() && (trs_.Front() >= 0xF8 || !mid))
             {
                 if (!clock_->TrsPut(trs_.Front()))
@@ -327,7 +326,6 @@ private:
                 if (!clock_->TrsPut(feedback_->Front()))
                     return;
                 feedback_->Pop();
-                feedback_sent_++;
                 fed = true;
             }
             else
