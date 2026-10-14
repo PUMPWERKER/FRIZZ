@@ -365,9 +365,10 @@ int main()
               "spp-after-pc: the filter stays latched: no program change 0 came of it");
     }});
 
-    // the input's CCs (#177): 84 the source, 116 its effects (dry from 64), 117 it live (on
-    // from 64), over the jack and USB alike; 116 and 117 the source's own, each source keeps
-    // its; RAM only. STATE's input byte: the mic 1, dry 2, live 4
+    // the input's CCs (#177): 84 the source (in thirds, #196: 0-42 AUX, 43-85 the mic, 86-127
+    // USB), 116 its effects (dry from 64), 117 it live (on from 64), over the jack and USB
+    // alike; 116 and 117 the source's own, each source keeps its; RAM only. STATE's input byte:
+    // the mic 1, dry 2, live 4, USB 8
     cases.push_back({"input-cc", [] {
         RunMs(kReadyMs);
         const std::string card = CardFiles()["/FRIZZ/frizz_master.txt"];
@@ -393,13 +394,30 @@ int main()
         Trs({kCC, 116, 100}); // dry
         RunMs(50);
         const int mic_dry_live = input();
-        Trs({kCC, 84, 63}); // AUX again
+        Trs({kCC, 84, 42}); // AUX again, the top of its third
         RunMs(50);
         const int aux_again = input();
-        Usb({kCC, 84, 127}); // and the mic
+        Usb({kCC, 84, 43}); // and the mic, the bottom of its
         RunMs(50);
         const int mic_again = input();
+        Usb({kCC, 84, 86}); // USB, its own: live through the effects
+        RunMs(50);
+        const int usb = input();
+        Usb({kCC, 116, 127}); // USB dry
+        RunMs(50);
+        const int usb_dry = input();
+        Usb({kCC, 84, 85}); // the mic's third's top
+        RunMs(50);
+        const int mic_top = input();
+        Usb({kCC, 84, 127}); // USB's top: as it was left
+        RunMs(50);
+        const int usb_top = input();
+        Usb({kCC, 84, 0}); // AUX
+        RunMs(50);
+        const int aux_last = input();
         RunMs(3000);
+        Report("input-cc: USB %d, dry %d; the mic at 85 %d, USB at 127 %d, AUX at 0 %d", usb, usb_dry, mic_top,
+               usb_top, aux_last);
         Report("input-cc: boot %d, AUX dry %d, off %d, through while off %d; the mic %d, dry and live %d; "
                "AUX again %d, the mic again %d", boot, aux_dry, aux_off, aux_off_through, mic,
                mic_dry_live, aux_again, mic_again);
@@ -409,6 +427,9 @@ int main()
         Check(mic == 1, "input-cc: CC 84 at 64 picks the mic, its own: through the effects, not live");
         Check(mic_dry_live == 7, "input-cc: CC 116 and 117 then set the mic's");
         Check(aux_again == 2 && mic_again == 7, "input-cc: CC 84 back and forth: each source keeps its own");
+        Check(usb == 12 && usb_dry == 14, "input-cc: CC 84 at 86 picks USB, its own: live through the effects; 116 sets its");
+        Check(mic_top == 7 && usb_top == 14 && aux_last == 2,
+              "input-cc: CC 84's thirds: 85 the mic, 127 USB, 0 AUX, each as it was left (#196)");
         Check(CardFiles()["/FRIZZ/frizz_master.txt"] == card, "input-cc: none of it goes to the card");
     }});
 

@@ -158,6 +158,14 @@ inline void SdDiskLink(const char* path)
                                              SdDiskWrite, SD_Driver.disk_ioctl};
     disk.drv[path[0] - '0'] = &driver;
 }
+
+/** The card's sectors for the computer while it's lent (CardLend.h, UsbDevice.h's SetCard), the
+ *  same transfers as FatFs's, and how many it has (known once FatFs has set the card up) */
+inline bool SdDiskTransfer(bool write, uint8_t* buf, uint32_t sector, uint32_t count)
+{
+    return sddisk::Transfer<SdHalPort>(write, buf, sector, count);
+}
+inline uint32_t SdDiskSectors() { return static_cast<uint32_t>(hsd1.SdCard.LogBlockNbr); }
 #else
 inline int SdRawStart(uint8_t* to, uint32_t sector, uint32_t count)
 {
@@ -177,4 +185,7 @@ inline bool SdRawRecover(bool& reinit, bool force = false)
 inline void SdRawFlowControl(bool) {}
 inline uint32_t SdRawClkcr() { return 0; }
 inline void SdDiskLink(const char*) {}
+// the twin lends no sectors: its card is files (FakeCard), the computer's side a stand-in
+inline bool SdDiskTransfer(bool, uint8_t*, uint32_t, uint32_t) { return false; }
+inline uint32_t SdDiskSectors() { return 0; }
 #endif

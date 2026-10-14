@@ -1,9 +1,10 @@
 /** @file passthroughEngine.h
- *  @brief Audio engine: the stereo AUX input, or the built-in mic, goes to both outputs
+ *  @brief Audio engine: the stereo AUX input, the built-in mic, or a computer over USB goes to
+ *  both outputs
  *  through the Volume Engine: input gain -> input/loop mix -> punch-in FX (FxChain.h) ->
  *  master compressor (MasterComp.h) -> output gain -> safety limiter.
  *
- *  The source is AUX or the mic (#152), and each has its own settings (#177): live or not, on
+ *  The source is AUX, the mic (#152) or USB (#196), and each has its own settings (#177): live or not, on
  *  the outputs at all; and if live, through the effects, as above, or dry, its share of the
  *  mix added after the compressor, past the effects and the compressor (a mastered song, a
  *  drum machine), still through VOLUME and the limiter. The mic is off unless asked for: a
@@ -16,7 +17,13 @@
  *  and a source that isn't live adds nothing at any sample (#168: one gate on the crossfaded
  *  input let the mic through, up to a quarter, while the two fades crossed).
  *
- *  The mic (SetMicInput) is TAPE's: DC blocked after the input gain and its own x5, highpassed
+ *  USB is a computer's stereo stream into FRIZZ (UsbDevice.h's Receive, SetUsbInput each block),
+ *  taken as AUX's converter would give the same level (the line in's gain, turned as the jack
+ *  turns it), but without a DC blocker or mono: it's digital. Silent while the computer doesn't
+ *  play. The master before VOLUME and the limiter goes back to it (UsbOut): the line out's level
+ *  at VOLUME full, turned as the line out's jack turns it, clamped at full scale only.
+ *
+ *  The mic (SetSource) is TAPE's: DC blocked after the input gain and its own x5, highpassed
  *  (MicFilter.h), and the same on both sides. It replaces AUX for everything that takes the
  *  input: the looper, the headphones' input on its own. The mic's filter runs only while the
  *  mic is heard.
@@ -60,6 +67,10 @@ static constexpr float kLineOutGain = .3f;
 static constexpr float kHpGain = .2f;
 static constexpr float kLineInGain = 3.f;
 static constexpr float kMicGain = 5.f; // TAPE's, after the input gain as there
+// USB's into the engine and back (#196): AUX's line in gain and the line out's level, each
+// turned, as the jacks' analog stages turn them (#209)
+static constexpr float kUsbInGain = -kLineInGain;
+static constexpr float kUsbOutGain = -.3f; // -kLineOutGain
 // the safety limiter's threshold and makeup (limiter.h)
 static constexpr float kLimThresh = .25f;
 static constexpr float kLimMakeup = .9f;
@@ -67,6 +78,19 @@ static constexpr float kLimMakeup = .9f;
 class PassthroughEngine
 {
 public:
+    // the input's sources (#152, #196); enumerators, never odr-used
+    enum : size_t
+    {
+        kAux = 0,
+        kMic = 1,
+        kUsb = 2,
+        kNumSources = 3,
+    };
+    enum : size_t
+    {
+        kUsbChannels = 2,
+        kUsbMaxBlock = 48, // the most frames a block has with USB in it
+    };
 
     PassthroughEngine() {};
     ~PassthroughEngine() {};
@@ -109,20 +133,24 @@ public:
         float sigl[size], sigr[size], bypl[size], bypr[size];
 
         // the source heard, and where it goes: through the effects, past them, or nowhere
-        const bool mic = mic_in_;
-        const size_t src = mic ? 1 : 0, other = mic ? 0 : 1;
+        const size_t src = source_;
+        const bool mic = src == kMic, usb = src == kUsb;
         const bool live = live_[src], dry = dry_[src];
         const float to_fx = live && !dry ? 1.f : 0.f;
         const float to_dry = live && dry ? 1.f : 0.f;
-        // a switch of the source done: the input at it alone, the other's gates shut
-        const bool switching = mic_fade_ != (mic ? 1.f : 0.f) || in_fx_[other] != 0.f
-                               || in_dry_[other] != 0.f;
+        // a switch of the source done: the input at it alone, the others' gates shut
+        bool others_open = false;
+        for (size_t s = 0; s < kNumSources; s++)
+            others_open |= s != src && (in_fx_[s] != 0.f || in_dry_[s] != 0.f);
+        const bool switching = usb_fade_ != (usb ? 1.f : 0.f) || (!usb && mic_fade_ != (mic ? 1.f : 0.f))
+                               || others_open;
         if (switching)
-            ProcessSwitch(in, dryl, dryr, sigl, sigr, bypl, bypr, size, mic, to_fx, to_dry);
-        else if (!mic)
+            ProcessSwitch(in, dryl, dryr, sigl, sigr, bypl, bypr, size, src, to_fx, to_dry);
+        else if (src == kAux)
         {
-            // AUX alone, as it usually is; the mic's gain, unheard, stands at its target
+            // AUX alone, as it usually is; the others' gains, unheard, stand at their targets
             mic_gain_ = mic_gain_target_;
+            usb_gain_ = usb_gain_target_;
             for (size_t i = 0; i < size; i++)
             {
                 // Every setting has a target and a live value; fonepole() slews the live
@@ -135,14 +163,29 @@ public:
                 dryr[i] = dcblock_line_in_r_.Process(in_r * aux_gain_ * kLineInGain);
             }
         }
-        else
+        else if (mic)
         {
-            // the mic alone; AUX's gain, unheard, at its target
+            // the mic alone; the others' gains, unheard, at their targets
             aux_gain_ = aux_gain_target_;
+            usb_gain_ = usb_gain_target_;
             for (size_t i = 0; i < size; i++)
             {
                 fonepole(mic_gain_, mic_gain_target_, .001f);
                 dryl[i] = dryr[i] = Mic(in[0][i]);
+            }
+        }
+        else
+        {
+            // USB alone
+            aux_gain_ = aux_gain_target_;
+            mic_gain_ = mic_gain_target_;
+            const float* ul = UsbIn(0);
+            const float* ur = UsbIn(1);
+            for (size_t i = 0; i < size; i++)
+            {
+                fonepole(usb_gain_, usb_gain_target_, .001f);
+                dryl[i] = ul[i] * usb_gain_ * kUsbInGain;
+                dryr[i] = ur[i] * usb_gain_ * kUsbInGain;
             }
         }
         // the input's peak as the looper records it, while the UI shows its meter
@@ -299,6 +342,17 @@ public:
             out[2][i] = lim_line_l_.ProcessComp(out[2][i], 1.f, kLimThresh, 1.f, kLimMakeup);
             out[3][i] = lim_line_r_.ProcessComp(out[3][i], 1.f, kLimThresh, 1.f, kLimMakeup);
         }
+        // to the computer while it records (UsbOut): the master before VOLUME and the limiter
+        if (usb_out_on_)
+        {
+            const size_t n = size < kUsbMaxBlock ? size : kUsbMaxBlock;
+            for (size_t i = 0; i < n; i++)
+            {
+                usb_out_[0][i] = sigl[i] * kUsbOutGain;
+                usb_out_[1][i] = sigr[i] * kUsbOutGain;
+            }
+        }
+
         // the line outs' deepest limiting this block, for the compressor key's LED; kept the
         // deepest until the play page takes it
         const float lim = fminf(lim_line_l_.Gain(), lim_line_r_.Gain());
@@ -308,8 +362,12 @@ public:
     }
 
     inline void SetMainGain(float gain) { mgain_target_ = gain; }
-    /** A source's input gain, 0..1: AUX's, or with mic the mic's */
-    inline void SetInputGain(bool mic, float gain) { (mic ? mic_gain_target_ : aux_gain_target_) = gain; }
+    /** A source's input gain, 0..1: AUX's, the mic's or USB's (kAux, kMic, kUsb; false and
+     *  true are AUX and the mic) */
+    inline void SetInputGain(size_t source, float gain)
+    {
+        (source == kMic ? mic_gain_target_ : source == kUsb ? usb_gain_target_ : aux_gain_target_) = gain;
+    }
     /** The master compressor's knobs (MasterComp.h), 0..1 */
     inline void SetCompParam(size_t param, float val) { comp_.SetParam(param, val); }
     /** Its gain reduction now, in dB (<= 0) */
@@ -328,17 +386,29 @@ public:
     inline void SetHeadphoneCue(float cue) { hp_cue_target_ = cue; }
     /** AUX input: false = stereo, true = mono, the left channel to both sides */
     inline void SetMonoInput(bool mono) { mono_in_ = mono; }
-    /** The source: false = AUX, true = the built-in mic, faded over kMicFadeSamples */
-    inline void SetMicInput(bool mic) { mic_in_ = mic; }
-    inline bool MicInput() const { return mic_in_; }
-    /** A source's effects (#177), AUX's (mic false) or the mic's: false = through them, true =
-     *  dry, past them and the compressor */
-    inline void SetDry(bool mic, bool dry) { dry_[mic] = dry; }
-    inline bool Dry(bool mic) const { return dry_[mic]; }
-    inline void SetAuxDry(bool dry) { SetDry(false, dry); }
+    /** The source heard: kAux, kMic (the built-in mic) or kUsb (a computer), faded over
+     *  kMicFadeSamples */
+    inline void SetSource(size_t source) { source_ = static_cast<uint8_t>(source < kNumSources ? source : kAux); }
+    inline size_t Source() const { return source_; }
+    /** The same for AUX (false) or the mic (true) */
+    inline void SetMicInput(bool mic) { SetSource(mic ? kMic : kAux); }
+    inline bool MicInput() const { return source_ == kMic; }
+    /** A source's effects (#177), by its number (false and true are AUX and the mic): false =
+     *  through them, true = dry, past them and the compressor */
+    inline void SetDry(size_t source, bool dry) { dry_[source] = dry; }
+    inline bool Dry(size_t source) const { return dry_[source]; }
+    inline void SetAuxDry(bool dry) { SetDry(kAux, dry); }
     /** And whether it's live, on the outputs at all */
-    inline void SetLive(bool mic, bool live) { live_[mic] = live; }
-    inline bool Live(bool mic) const { return live_[mic]; }
+    inline void SetLive(size_t source, bool live) { live_[source] = live; }
+    inline bool Live(size_t source) const { return live_[source]; }
+    /** The computer's audio for the next block (UsbDevice.h's Receive), kUsbChannels; null:
+     *  silence. From the audio callback, before Process */
+    inline void SetUsbInput(const float* const* usb) { usb_in_ = usb; }
+    /** Whether the computer records: Process then fills UsbOut() */
+    inline void SetUsbOut(bool on) { usb_out_on_ = on; }
+    /** What goes to the computer from the last block: the master before VOLUME and the
+     *  limiter, kUsbChannels, kUsbMaxBlock frames at most */
+    inline const float* const* UsbOut() const { return usb_out_ptr_; }
     /** The input's meter on (VOLUME's page 2 shown) or off, which costs nothing */
     inline void MeterInput(bool on) { in_meter_ = on; }
     /** The input's peak, as the looper records it (full scale 1), since the last call; from
@@ -465,13 +535,68 @@ private:
         return mic_filter_.Process(dcblock_mic_in_.Process(in * mic_gain_ * kMicGain));
     }
 
-    /** The input during a switch of the source (mic: towards the mic): the looper's crossfades
-     *  from one source to the other, and each source goes through its own gates, fading
-     *  towards to_fx and to_dry for the source heard and shut for the other. sig and byp get
-     *  the input's share through the effects and past them, before the mix */
+    /** The computer's channel c for this block, or silence */
+    __attribute__((always_inline)) inline const float* UsbIn(size_t c) const
+    {
+        static const float kSilence[kUsbMaxBlock] = {};
+        return usb_in_ ? usb_in_[c] : kSilence;
+    }
+
+    /** The input during a switch of the source (towards src): the looper's crossfades from
+     *  one source to the other, and each source goes through its own gates, fading towards
+     *  to_fx and to_dry for the source heard and shut for the others. sig and byp get the
+     *  input's share through the effects and past them, before the mix. Between AUX and the
+     *  mic, with USB out of it, the two of them alone, sample for sample as before USB */
     FRIZZ_HOT void ProcessSwitch(const float *const *in, float* dryl, float* dryr, float* sigl,
-                                 float* sigr, float* bypl, float* bypr, size_t size, bool mic,
+                                 float* sigr, float* bypl, float* bypr, size_t size, size_t src,
                                  float to_fx, float to_dry)
+    {
+        const bool mic = src == kMic, usb = src == kUsb;
+        if (!usb && usb_fade_ == 0.f && in_fx_[kUsb] == 0.f && in_dry_[kUsb] == 0.f)
+        {
+            ProcessSwitchAuxMic(in, dryl, dryr, sigl, sigr, bypl, bypr, size, mic, to_fx, to_dry);
+            return;
+        }
+        float fx_to[kNumSources] = {}, dry_to[kNumSources] = {};
+        fx_to[src] = to_fx;
+        dry_to[src] = to_dry;
+        const float* ul = UsbIn(0);
+        const float* ur = UsbIn(1);
+        for (size_t i = 0; i < size; i++)
+        {
+            fonepole(mic_gain_, mic_gain_target_, .001f);
+            const float m = Mic(in[0][i]);
+            fonepole(aux_gain_, aux_gain_target_, .001f);
+            const float in_r = mono_in_ ? in[2][i] : in[3][i];
+            const float l = dcblock_line_in_l_.Process(in[2][i] * aux_gain_ * kLineInGain);
+            const float r = dcblock_line_in_r_.Process(in_r * aux_gain_ * kLineInGain);
+            fonepole(usb_gain_, usb_gain_target_, .001f);
+            const float u_l = ul[i] * usb_gain_ * kUsbInGain;
+            const float u_r = ur[i] * usb_gain_ * kUsbInGain;
+            // AUX or the mic under USB: where it heads, at once while USB covers it all
+            if (!usb)
+                mic_fade_ = usb_fade_ == 1.f ? (mic ? 1.f : 0.f) : Toward(mic_fade_, mic ? 1.f : 0.f);
+            usb_fade_ = Toward(usb_fade_, usb ? 1.f : 0.f);
+            const float bl = l + (m - l) * mic_fade_;
+            const float br = r + (m - r) * mic_fade_;
+            dryl[i] = bl + (u_l - bl) * usb_fade_;
+            dryr[i] = br + (u_r - br) * usb_fade_;
+            for (size_t s = 0; s < kNumSources; s++)
+            {
+                in_fx_[s] = Toward(in_fx_[s], fx_to[s]);
+                in_dry_[s] = Toward(in_dry_[s], dry_to[s]);
+            }
+            sigl[i] = l * in_fx_[kAux] + m * in_fx_[kMic] + u_l * in_fx_[kUsb];
+            sigr[i] = r * in_fx_[kAux] + m * in_fx_[kMic] + u_r * in_fx_[kUsb];
+            bypl[i] = l * in_dry_[kAux] + m * in_dry_[kMic] + u_l * in_dry_[kUsb];
+            bypr[i] = r * in_dry_[kAux] + m * in_dry_[kMic] + u_r * in_dry_[kUsb];
+        }
+    }
+
+    /** ProcessSwitch between AUX and the mic (mic: towards the mic) */
+    FRIZZ_HOT void ProcessSwitchAuxMic(const float *const *in, float* dryl, float* dryr, float* sigl,
+                                       float* sigr, float* bypl, float* bypr, size_t size, bool mic,
+                                       float to_fx, float to_dry)
     {
         const float aux_fx = mic ? 0.f : to_fx, aux_dry = mic ? 0.f : to_dry;
         const float mic_fx = mic ? to_fx : 0.f, mic_dry = mic ? to_dry : 0.f;
@@ -627,19 +752,26 @@ private:
     chompi::FxMorph morph_;
     chompi::MasterComp comp_;
     volatile bool mono_in_ = false;
-    volatile bool mic_in_ = false;
-    // each source's settings, AUX's then the mic's: past the effects, live
-    volatile bool dry_[2] = {false, false};
-    volatile bool live_[2] = {true, false};
-    float mic_fade_ = 0.f; // the looper's input: 0 AUX .. 1 the mic, towards mic_in_
-    // each source's gates, AUX's then the mic's: its share through the effects, past them
-    float in_fx_[2] = {1.f, 0.f}, in_dry_[2] = {0.f, 0.f};
+    volatile uint8_t source_ = kAux;
+    // each source's settings, AUX's, the mic's, USB's: past the effects, live
+    volatile bool dry_[kNumSources] = {false, false, false};
+    volatile bool live_[kNumSources] = {true, false, true};
+    // the looper's input: 0 AUX .. 1 the mic, towards the source; and from there 0 .. 1 USB
+    // (while USB is heard the first stands still)
+    float mic_fade_ = 0.f, usb_fade_ = 0.f;
+    // each source's gates, AUX's, the mic's, USB's: its share through the effects, past them
+    float in_fx_[kNumSources] = {1.f, 0.f, 0.f}, in_dry_[kNumSources] = {0.f, 0.f, 0.f};
+    const float* const* usb_in_ = nullptr;
+    volatile bool usb_out_on_ = false;
+    float usb_out_[kUsbChannels][kUsbMaxBlock] = {};
+    const float* const usb_out_ptr_[kUsbChannels] = {usb_out_[0], usb_out_[1]};
     volatile bool in_meter_ = false;
     volatile float in_peak_ = 0.f; // TakeInputPeak
     // live values start at 0 and slew up to the targets the play page sets at boot
     float mgain_ = 0.f, mgain_target_ = 0.f;
     float aux_gain_ = 0.f, aux_gain_target_ = 0.f;
     float mic_gain_ = 0.f, mic_gain_target_ = 0.f;
+    float usb_gain_ = 0.f, usb_gain_target_ = 0.f;
     float mix_ = 0.f, mix_target_ = 0.f;
     float dry_amt_ = 1.f, wet_amt_ = 0.f; // the crossfade at mix_
     float hp_cue_ = 0.f, hp_cue_target_ = 0.f;

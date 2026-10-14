@@ -220,19 +220,25 @@ static void TestMasterFormat()
     a.mic_dry = true;
     a.aux_live = false;
     a.mic_live = true;
+    a.gain_usb = 20;
+    a.usb_dry = true;
+    a.usb_live = false;
+    a.usb_audio = false;
     char buf[kMasterFileMax];
     const size_t len = FormatMaster(a, buf, sizeof(buf));
     const std::string want = "FRIZZ master 1\n"
                              "compressor2 0 125000 250000 375000 500000 625000 750000 875000\n"
                              "mono 1\nmidi_channel 3\nmidi_transport 1\nclock_factor 50\n"
                              "clock_source 2\nmidi_out 1\nled_brightness 75\nmidi_block_trs 0\nmidi_feedback 1\n"
-                             "aux_dry 1\ngain_aux 100\ngain_mic 36\nmic_dry 1\naux_live 0\nmic_live 1\n";
+                             "aux_dry 1\ngain_aux 100\ngain_mic 36\nmic_dry 1\naux_live 0\nmic_live 1\n"
+                             "gain_usb 20\nusb_dry 1\nusb_live 0\nusb_audio 0\n";
     Check(std::string(buf) == want && len == want.size(), "master: the file's text, line for line");
     a.Reset();
     FormatMaster(a, buf, sizeof(buf));
     Check(std::string(buf).find("\nmono 0\nmidi_channel 16\nmidi_transport 0\nclock_factor 100\n"
                                 "clock_source 0\nmidi_out 0\nled_brightness 100\nmidi_block_trs 1\nmidi_feedback 0\n"
-                                "aux_dry 0\ngain_aux 75\ngain_mic 75\nmic_dry 0\naux_live 1\nmic_live 0\n")
+                                "aux_dry 0\ngain_aux 75\ngain_mic 75\nmic_dry 0\naux_live 1\nmic_live 0\n"
+                                "gain_usb 75\nusb_dry 0\nusb_live 1\nusb_audio 1\n")
               != std::string::npos,
           "master: the defaults' text");
     Check(ParseMaster("FRIZZ master 1\nmono 1\n", b) && b.midi_block_trs,
@@ -245,6 +251,11 @@ static void TestMasterFormat()
           "master: a file from before #177 loads, its aux_dry AUX's effects, AUX live, the mic through them, not live");
     Check(ParseMaster(buf, b) && !b.aux_dry && b.gain_aux == 75,
           "master: the defaults read back");
+    Check(ParseMaster("FRIZZ master 1\naux_dry 1\nmic_live 1\n", b) && b.gain_usb == 75 && !b.usb_dry
+              && b.usb_live && b.usb_audio,
+          "master: a file from before USB audio (#196) loads, USB live through the effects at 75 %, USB audio on");
+    Check(ParseMaster("FRIZZ master 1\nusb_audio 0\ngain_usb 40\n", b) && !b.usb_audio && b.gain_usb == 40,
+          "master: USB audio off and USB's gain read");
     Check(ParseMaster("FRIZZ master 1\naux_dry 1\ngain_aux 101\ngain_mic 0\n", b) && b.aux_dry
               && b.gain_aux == 75 && b.gain_mic == 0,
           "master: an input gain over 100 keeps its default, 0 is read");

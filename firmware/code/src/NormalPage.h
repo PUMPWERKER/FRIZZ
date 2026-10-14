@@ -251,6 +251,9 @@ namespace chompi
         void LoopsProcess() { loops_.Process(); }
 #endif
 
+        /** The settings page's USB audio (SettingsPage::UsbAudio) */
+        bool UsbAudio() const { return settings_.UsbAudio(); }
+
         /** Before a restart: master settings waiting out their kMasterSaveDelayMs go to the
          *  card at once, the first time it's asked (a change after that, automation still
          *  coming, waits as usual). True once there's nothing left to write */
@@ -305,6 +308,9 @@ namespace chompi
                 // SHIFT + VOLUME held there: a bug report, its blink over the transport LEDs
                 if (settings_.BugReportHeld(now))
                     log_->RequestWrite();
+                // SHIFT + LOOP held there: the card lent or taken back (CardLend.h)
+                if (settings_.CardHeld(now))
+                    cardlend::Get().asked = true;
                 // the limiting it sees meanwhile is old once the play page shows the key again
                 engine_->TakeLimiterGain();
                 settings_.Draw(now, Shift());
@@ -652,7 +658,7 @@ namespace chompi
                 ScenePressed(e.arg, false);
                 break;
             case Event::INPUT:
-                RemoteInput(e.arg & 3, e.arg & 4);
+                RemoteInput(e.arg & 3, e.arg >> 2);
                 break;
 #if !FRIZZ_BENCH
             static_assert(midimap::kLoopBanks == loops::kBanks && midimap::kLoopPrograms == loops::kSlots
@@ -671,16 +677,17 @@ namespace chompi
             }
         }
 
-        /** CC 84 the source (on: the mic), 116 its effects (on: dry), 117 it live (#177): as
-         *  the settings page's F#, G# and A#, but the card doesn't get them (#97) */
-        MIDI_CONTROL_ONCE void RemoteInput(uint8_t which, bool on)
+        /** CC 84 the source (value: PassthroughEngine's kAux, kMic or kUsb), 116 its effects
+         *  (on: dry), 117 it live (#177): as the settings page's F#, G# and A#, but the card
+         *  doesn't get them (#97) */
+        MIDI_CONTROL_ONCE void RemoteInput(uint8_t which, uint8_t value)
         {
             if (which == 0)
-                settings_.SetSource(on);
+                settings_.SetSource(value);
             else if (which == 1)
-                settings_.SetDry(on);
+                settings_.SetDry(value != 0);
             else
-                settings_.SetLive(on);
+                settings_.SetLive(value != 0);
             Heard(which == 0 ? feedback::kSource : which == 1 ? feedback::kDry : feedback::kLive);
         }
 
@@ -774,13 +781,14 @@ namespace chompi
                 v = KnobTo7(scene_ctl_.FaderPos());
                 return hand_fader_;
             case kSource:
-                v = engine_->MicInput() ? 127 : 0;
+                // the middle of each third CC 84 reads (MidiControl.h): AUX 0, the mic 64, USB 127
+                v = midimap::kSourceValues[engine_->Source()];
                 return true;
             case kDry:
-                v = engine_->Dry(engine_->MicInput()) ? 127 : 0;
+                v = engine_->Dry(engine_->Source()) ? 127 : 0;
                 return true;
             case kLive:
-                v = engine_->Live(engine_->MicInput()) ? 127 : 0;
+                v = engine_->Live(engine_->Source()) ? 127 : 0;
                 return true;
             }
             return false;
@@ -948,10 +956,12 @@ namespace chompi
                 // the mode switch: 1 if it stands up, plus SysEx's setting (kCmdSwitch) x2
                 d[n++] = static_cast<uint8_t>((hw_->GetToggleState() ? 0 : 1) | midi_->Switch() << 1);
                 d[n++] = static_cast<uint8_t>(fx_.Page()); // the FX knobs' page, 0 or 1
-                // the input (#177): the mic 1 (else AUX), its effects dry 2, it live 4
+                // the input (#177): the mic 1 (else AUX), its effects dry 2, it live 4, USB 8
+                // (#196, else AUX or the mic)
                 d[n++] = static_cast<uint8_t>((engine_->MicInput() ? 1 : 0)
-                                              | (engine_->Dry(engine_->MicInput()) ? 2 : 0)
-                                              | (engine_->Live(engine_->MicInput()) ? 4 : 0));
+                                              | (engine_->Dry(engine_->Source()) ? 2 : 0)
+                                              | (engine_->Live(engine_->Source()) ? 4 : 0)
+                                              | (engine_->Source() == PassthroughEngine::kUsb ? 8 : 0));
                 break;
             }
             case kCmdParams:
@@ -1067,8 +1077,9 @@ namespace chompi
             {
                 d[n++] = group;
                 const size_t count_at = n++;
-                uint16_t values[16];
-                static_assert(kNumFxParams <= 16 && kNumFx <= 16 && sizeof(masterfile::kLines) / sizeof(masterfile::kLines[0]) <= 16, "DevValues' groups fit");
+                uint16_t values[20];
+                static_assert(kNumFxParams <= 20 && kNumFx <= 20 && sizeof(masterfile::kLines) / sizeof(masterfile::kLines[0]) <= 20
+                                  && 5 + 2 * 20 <= MidiControl::kMaxReply, "DevValues' groups fit");
                 const size_t count = DevValues(group, values);
                 status = count ? OK : BAD;
                 for (size_t i = 0; i < count; i++)
@@ -1192,6 +1203,13 @@ namespace chompi
             {
                 const int got = info.loops ? info.loops(q.arg, q.len, d + n) : 0;
                 status = !info.loops ? NOT_HERE : (got < 0 ? BAD : OK);
+                n += got > 0 ? static_cast<size_t>(got) : 0;
+                break;
+            }
+            case USB:
+            {
+                const int got = info.usb ? info.usb(q.arg, q.len, d + n) : 0;
+                status = !info.usb ? NOT_HERE : (got < 0 ? BAD : OK);
                 n += got > 0 ? static_cast<size_t>(got) : 0;
                 break;
             }

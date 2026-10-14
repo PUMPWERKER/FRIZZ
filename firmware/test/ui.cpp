@@ -56,15 +56,29 @@ static float last_out[2] = {0.f, 0.f}, max_step = 0.f; // the master out's large
 static float hp_rms = 0.f; // the headphones' (left) RMS over the last RunMs
 static float out_peak = 0.f; // the master out's largest sample, L or R, since it was set to 0
 static float mic_amp = 0.f, mic_freq = 1000.f, mic_phase = 0.f; // a sine into the mic
+// the computer over USB (#196): while usb_playing it plays a sine of usb_amp into FRIZZ (both
+// sides alike); what it records of FRIZZ, while SetUsbRecording, kept (L R)
+static bool usb_playing = false;
+static float usb_amp = 0.f, usb_freq = 500.f, usb_phase = 0.f;
+static std::vector<float> usb_recorded;
 
 /** Runs blocks (half a ms each) with a sine (or silence) into AUX, and one into the mic
  *  while mic_amp > 0; the master out's RMS over the time. RunMs: as many ms */
 static float RunBlocks(uint32_t blocks)
 {
-    float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
+    float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels], usb[kBlockSize * 2];
     double sum = 0., hp_sum = 0.;
     for (uint32_t b = 0; b < blocks; b++)
     {
+        if (usb_playing)
+        {
+            for (size_t i = 0; i < kBlockSize; i++)
+            {
+                usb[i * 2] = usb[i * 2 + 1] = usb_amp * sinf(usb_phase);
+                usb_phase = fmodf(usb_phase + 2.f * float(M_PI) * usb_freq / kSampleRate, 2.f * float(M_PI));
+            }
+            SetUsbAudioIn(usb);
+        }
         while (clock_bpm > 0.f && clock_next <= NowMs())
         {
             Midi(0xF8);
@@ -84,6 +98,8 @@ static float RunBlocks(uint32_t blocks)
             mic_phase = fmodf(mic_phase + 2.f * float(M_PI) * mic_freq / kSampleRate, 2.f * float(M_PI));
         }
         Run(1, in, out);
+        const std::vector<float> rec = TakeUsbAudioOut();
+        usb_recorded.insert(usb_recorded.end(), rec.begin(), rec.end());
         for (size_t i = 0; i < kBlockSize; i++)
         {
             const float o = out[i * kChannels + 2];
@@ -4928,13 +4944,14 @@ int main()
         const std::string settings = Ask({0x3E, 2, 14, 0x23});
         Check(factor.size() == 5 && factor[2] == 0 && dim.size() == 5 && dim[2] == 1,
               "midi dev: SET a setting, a value it doesn't take refused");
-        Check(settings.size() == 5 + 30 && settings[4] == 15 && settings[11] == 1 && settings[12] == 200 - 128
+        Check(settings.size() == 5 + 38 && settings[4] == 19 && settings[11] == 1 && settings[12] == 200 - 128
                   && settings[17] == 0 && settings[18] == 100 && settings[7] == 0 && settings[8] == 16
                   && settings[19] == 0 && settings[20] == 1 && settings[21] == 0 && settings[22] == 0
                   && settings[24] == 0 && settings[26] == 75 && settings[28] == 75
-                  && settings[30] == 0 && settings[32] == 1 && settings[34] == 0,
-              "midi dev: GET the settings: the clock factor x2, the LEDs at 100 %, channel 16, the effect channels over the jack, no feedback, AUX through the effects, both input gains 75 %, the mic through them, AUX live, the mic not");
-        Check(Ask({0x3E, 3, 15, 0x23, 15, 0, 1})[2] == 1 && Ask({0x3E, 2, 16, 0x30})[2] == 1
+                  && settings[30] == 0 && settings[32] == 1 && settings[34] == 0
+                  && settings[36] == 75 && settings[38] == 0 && settings[40] == 1 && settings[42] == 1,
+              "midi dev: GET the settings: the clock factor x2, the LEDs at 100 %, channel 16, the effect channels over the jack, no feedback, AUX through the effects, the input gains 75 %, the mic through them, AUX live, the mic not; USB live through them, USB audio on (#196)");
+        Check(Ask({0x3E, 3, 15, 0x23, 19, 0, 1})[2] == 1 && Ask({0x3E, 2, 16, 0x30})[2] == 1
                   && Ask({0x3E, 0x30, 17})[2] == 1,
               "midi dev: no such setting, group or sub-command: refused, answered");
         RunMs(2500);
@@ -6118,6 +6135,7 @@ int main()
     static const int kInputKeyLed = kInSourceKeyLed; // the settings page's upper F#: the source
     static auto green_led = [](const Rgb& c) { return c.g > 150 && c.r < 40 && c.b < 40; };
     static auto magenta_led = [](const Rgb& c) { return c.r > 150 && c.b > 150 && c.g < 40; };
+    static auto blue_led = [](const Rgb& c) { return c.b > 150 && c.r < 40 && c.g < 40; };
     // what the input carries of AUX's sine on its own, then of the mic's on its own: on the
     // headphones' cue, the input alone, as the mic isn't live unless asked for (#177)
     static auto heard = [](float& aux, float& mic) {
@@ -6180,8 +6198,8 @@ int main()
         Check(is_aux("plugged again"), "mic-jack: plugged in again: AUX");
     }});
 
-    // the upper F# (#177): the source, AUX, the mic, round again, not to the card; the jack
-    // picks again at its next change
+    // the upper F# (#177): the source, AUX, the mic, USB (#196), round again, not to the card;
+    // the jack picks again at its next change
     static auto white_led = [](const Rgb& c) { return c.r > 150 && c.g > 150 && c.b > 150; };
     cases.push_back({"mic-key", [] {
         mic_amp = .1f;
@@ -6195,8 +6213,11 @@ int main()
               "mic-key: the upper F# with a cable in: the mic, its key magenta");
         Tap("KEY_23");
         RunMs(100);
-        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("the key twice"),
-              "mic-key: again: AUX, its key green");
+        Check(blue_led(SmtLedFull(kInputKeyLed)), "mic-key: again: USB, its key blue (#196)");
+        Tap("KEY_23");
+        RunMs(100);
+        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("the key three times"),
+              "mic-key: and again: AUX, its key green");
         Tap("KEY_23");
         RunMs(3000);
         Check(Card("/FRIZZ/frizz_master.txt") == card, "mic-key: the source isn't saved");
@@ -6802,8 +6823,13 @@ int main()
         Tap("KEY_23"); // the mic: its own, through and not live
         RunMs(300);
         const auto ccs = UsbCcs();
-        Check(HasCc(ccs, 0xBF, kSourceCC, 127) && HasCc(ccs, 0xBF, kDryCC, 0) && !HasCc(ccs, 0xBF, kLiveCC, 127),
-              "source-feedback: the upper F# to the mic sends CC 84 at 127 and the mic's CC 116 at 0");
+        Check(HasCc(ccs, 0xBF, kSourceCC, 64) && HasCc(ccs, 0xBF, kDryCC, 0) && !HasCc(ccs, 0xBF, kLiveCC, 127),
+              "source-feedback: the upper F# to the mic sends CC 84 at 64, its third's middle (#196), and the mic's CC 116 at 0");
+        Tap("KEY_23"); // USB: its own, through and live
+        RunMs(300);
+        const auto usb = UsbCcs();
+        Check(HasCc(usb, 0xBF, kSourceCC, 127) && HasCc(usb, 0xBF, kLiveCC, 127) && !HasCc(usb, 0xBF, kDryCC, 127),
+              "source-feedback: the upper F# to USB sends CC 84 at 127 and USB's CC 117 at 127, live (#196)");
         Usb({kCC, kSourceCC, 0}); // AUX
         RunMs(300);
         const auto back = UsbCcs(), trs = TrsCcs();
@@ -6813,7 +6839,7 @@ int main()
               "source-feedback: CC 84 picks AUX, and isn't sent back; AUX's own CC 116 (dry) is");
         SetJack(false); // the jack: the mic
         RunMs(300);
-        Check(HasCc(UsbCcs(), 0xBF, kSourceCC, 127), "source-feedback: the jack's mic sends it too");
+        Check(HasCc(UsbCcs(), 0xBF, kSourceCC, 64), "source-feedback: the jack's mic sends it too");
     }});
 
     // a bug report knows AUX's jack: as it was at power-on, and each change; its replay plays
@@ -6827,7 +6853,9 @@ int main()
         RunMs(500);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_23"); // AUX, by hand
+        Tap("KEY_23"); // USB, then AUX, by hand
+        RunMs(300);
+        Tap("KEY_23");
         RunMs(300);
         Press("KEY_26", true);
         RunMs(100);

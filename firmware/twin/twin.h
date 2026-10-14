@@ -83,6 +83,22 @@ void SetUsbHost(bool host);
 /** What the firmware sent out over USB MIDI since the last call, taken */
 std::string TakeUsbOut();
 
+/** USB audio, the computer's side (UsbDevice.h, #196). What it plays into FRIZZ in the next
+ *  Run(), interleaved L R, as many frames as Run's (null: it doesn't play), the source USB;
+ *  taken by that Run(). Heard only while FRIZZ is on the bus as a sound card (UsbAudioOn) */
+void SetUsbAudioIn(const float* lr);
+/** Whether the computer records FRIZZ (the master before VOLUME); what it got since the last
+ *  call, interleaved L R, taken */
+void SetUsbRecording(bool on);
+std::vector<float> TakeUsbAudioOut();
+/** Whether FRIZZ is on the bus as a sound card (USB audio on, not away for a switch), and how
+ *  often it went on the bus since power-on */
+bool UsbAudioOn();
+int UsbEnumerations();
+/** The card lent to the computer as a drive (CardLend.h), and the computer ejecting it */
+bool CardLent();
+void EjectCard();
+
 /** A byte MIDI out sent (MidiOut.h): when it went out (ms; the jack's as the UART sends it,
  *  USB's as MainLoop does), and where */
 struct MidiOutByte

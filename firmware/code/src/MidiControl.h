@@ -90,7 +90,9 @@ static const uint8_t kFaderCC = 80;     // the crossfader: a running morph from 
 static const uint8_t kStopMorphCC = 81; // stops a morph where it is, crossing 64 upward
 static const uint8_t kTapCC = 82;       // a tempo tap, crossing 64 upward
 static const uint8_t kDropCC = 83;      // a hard drop to the scene 0-4 on a bar line (CC 9's), as CC 3
-static const uint8_t kSourceCC = 84;    // the input's source: 0-63 AUX, 64-127 the mic (#177)
+static const uint8_t kSourceCC = 84;    // the input's source in thirds: 0-42 AUX, 43-85 the mic, 86-127 USB (#177, #196)
+static const uint8_t kSourceThird = 43; // a third of CC 84's values, kSourceThird apart
+static const uint8_t kSourceValues[3] = {0, 64, 127}; // what feedback sends for AUX, the mic, USB
 static const uint8_t kOutGainCC = 85, kInGainCC = 86, kMixCC = 87;
 static const uint8_t kHpCueCC = 89;     // the headphone feed as VOLUME's knob: 0 the input, 127 the master
 static const uint8_t kSpeedCC = 90;     // the loop's speed in semitones: 0 1/16x, 64 1x, 127 2x
@@ -200,6 +202,7 @@ enum Sub : uint8_t
                  //    check RESET, the crash record and the watchdog: kHangMain, kFaultMain,
                  //    kHangAudio, kFaultAudio
     LOOPS = 0x0D, // PART ...: the loop loader's (LoopLoader::Dev). FRIZZ.bin only
+    USB = 0x0E,   // PART ...: USB's counts, the card lent (chompi_main.cpp's UsbDev, #196)
 };
 enum Status : uint8_t
 {
@@ -318,6 +321,8 @@ struct Info
     int (*bench)(uint8_t part, uint32_t offset, uint8_t* d) = nullptr;
     // the loop loader's to LOOPS (LoopLoader::Dev): its length, or -1 for BAD
     int (*loops)(const uint8_t* arg, size_t len, uint8_t* d) = nullptr;
+    // USB's to USB: its length, or -1 for BAD
+    int (*usb)(const uint8_t* arg, size_t len, uint8_t* d) = nullptr;
 };
 } // namespace dev
 static const uint8_t kMidiHeader[] = {0x7D, 0x43, 0x48};
@@ -369,7 +374,8 @@ public:
             TAP,        // at ms
             PROGRAM,    // arg: the scene 0-4
             DROP,       // arg: as MORPH's, a drop (CC 83)
-            INPUT,      // arg: the source 0 (CC 84), its effects 1 (116), live 2 (117) | on << 2
+            INPUT,      // arg: the source 0 (CC 84), its effects 1 (116), live 2 (117) | its value << 2: CC 84's
+                        // the source (AUX 0, the mic 1, USB 2), the others' on 1
             LOOP,       // arg: the loop, LoopLoader's bank * 15 + its key; arg2: CC 54's then
         };
         uint8_t kind, arg, arg2;
@@ -582,8 +588,8 @@ public:
     /** MIDI feedback's bytes for the jack: the play page's, sent by MidiOut */
     FeedbackRing feedback_trs;
 
-    /** An answer to a query, over USB: F0, the header, cmd | 0x40, the data, F7. Kept to
-     *  16 USB packets (64 bytes), one transfer */
+    /** An answer to a query, over USB: F0, the header, cmd | 0x40, the data, F7. 17 USB
+     *  packets at most, two transfers: the settings' 19 values (#196) don't fit one */
     MIDI_CONTROL_ONCE void Reply(uint8_t cmd, const uint8_t* data, size_t len)
     {
         uint8_t msg[kMaxReply + 6];
@@ -599,7 +605,7 @@ public:
         msg[n++] = 0xF7;
         clock_->SendUsb(msg, n);
     }
-    static const size_t kMaxReply = 39; // + 6 = 45 bytes, 15 USB packets
+    static const size_t kMaxReply = 45; // + 6 = 51 bytes, 17 USB packets
 
 private:
     static void Listen(void* self, const MidiEvent& e, bool usb)
@@ -776,8 +782,9 @@ private:
         case kLiveCC:
             // in the order they came, not the latest of each: 116 and 117 are the source's
             // own, so one before a CC 84 is the source's before it (#177)
+            // which | its value << 2: the source 0-2 (PassthroughEngine's), else on 1
             return Push(Event::INPUT, static_cast<uint8_t>((cc == kSourceCC ? 0 : cc == kDryCC ? 1 : 2)
-                                                          | (v >= 64 ? 4 : 0)));
+                                                          | (cc == kSourceCC ? v / kSourceThird : v >= 64) << 2));
         default:
             return false;
         }

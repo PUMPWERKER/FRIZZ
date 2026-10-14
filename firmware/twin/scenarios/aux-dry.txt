@@ -27,8 +27,8 @@ wait 1000
 midi BF 57 40
 midi BF 67 7F BF 68 7F BF 69 7F BF 6A 7F BF 6B 7F BF 6D 7F
 wait 5000
-# CC 84 at 127: the mic, the upper F# magenta, its own A# dark (not live)
-midi BF 54 7F
+# CC 84 at 64 (its middle third): the mic, the upper F# magenta, its own A# dark (not live)
+midi BF 54 40
 wait 2000
 toggle 1
 wait 300

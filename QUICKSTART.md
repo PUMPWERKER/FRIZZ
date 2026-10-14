@@ -13,7 +13,7 @@ over a loop and nothing gets printed into it. The effects come **after** the inp
 so they act on everything you hear, the input as well as the loop. No cable in AUX? Then the
 input is CHOMPI's built-in microphone, which starts off the outputs so a speaker can't feed it
 back
-([Input: AUX or the mic](MANUAL.md#input-aux-or-the-mic)).
+([Input: AUX, the mic or USB](MANUAL.md#input-aux-the-mic-or-usb)).
 
 **SHIFT** means holding the CHOMPI key. The key lights white while it acts as SHIFT.
 

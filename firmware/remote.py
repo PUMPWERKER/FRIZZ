@@ -172,7 +172,8 @@ GROUPS = dict({n: i for i, n in enumerate(FX_NAMES)}, comp=GROUP_COMP, latch=GRO
               volume=GROUP_VOLUME, settings=GROUP_SETTINGS)
 SETTING_NAMES = ["mono", "midi_channel", "midi_transport", "clock_factor", "clock_source",
                  "midi_out", "led_brightness", "midi_block_trs", "midi_feedback", "aux_dry",
-                 "gain_aux", "gain_mic", "mic_dry", "aux_live", "mic_live"]
+                 "gain_aux", "gain_mic", "mic_dry", "aux_live", "mic_live",
+                 "gain_usb", "usb_dry", "usb_live", "usb_audio"]
 VOLUME_NAMES = ["out", "in", "mix", "headphones"]
 LOOPER = ["empty", "recording", "playing", "paused"]
 MODES = ["none", "save", "copy", "delete"]

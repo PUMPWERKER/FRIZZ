@@ -30,6 +30,23 @@ what FRIZZ does.
   sends the switches you make by hand, so a DAW records them. See
   [Loop loader](MANUAL.md#loop-loader).
 
+- **FRIZZ is a USB sound card** (#196): on a computer's USB it's an audio interface called
+  FrizZ, next to its MIDI, 2 channels each way at 48 kHz / 24 bit, as USB Audio Class 1, which
+  macOS, Windows, Linux and iPadOS know without a driver. FRIZZ sends the master as it is before
+  VOLUME, for recording in a DAW; what the computer plays is the input's third source, **USB**:
+  the settings page's upper F# now picks AUX, the mic or USB (blue), each press the next, and
+  USB has its own input gain, monitoring and effects, saved, as AUX and the mic have; the
+  looper records it. A cable going in or out of AUX doesn't switch away from USB. With USB the
+  source, SHIFT + upper F# switches USB audio off (and on again); it's on out of the box, and
+  saved; switching it, MIDI over USB is gone for about a second. Set the computer to 48 kHz for
+  the best quality. See [USB audio](MANUAL.md#usb-audio).
+
+- **The card as a USB drive while FRIZZ plays** (#196): on the settings page, SHIFT + LOOP held
+  2 s lends the card to the computer (LOOP blue), so you can copy loops, scenes and bug reports
+  without the USB storage firmware; the loop and the effects play on. Eject it on the computer,
+  unplug, or hold SHIFT + LOOP again to take it back: FRIZZ reads it afresh and finds the loops
+  again. See [The card as a USB drive](MANUAL.md#the-card-as-a-usb-drive).
+
 - **A hung FRIZZ restarts by itself** (#105): if its sound stops for a second (a crash, or
   something stuck), the CHOMPI restarts instead of staying frozen until you switch it off:
   into the launcher's picker if you use it, or else FRIZZ starts again. A loop in RAM is lost,
@@ -44,6 +61,16 @@ what FRIZZ does.
   and the gestures to know are drawn as keys on the
   [Key combinations](MANUAL.md#key-combinations) page, in the [quick start](QUICKSTART.md) and
   on the Loops page.
+
+### Changed
+
+- **MIDI map: CC 84 picks the input's source in thirds** (#196): 0-42 AUX, 43-85 the mic, 86-127
+  USB (it was 0-63 AUX, 64-127 the mic: a controller sending 127 for the mic now picks USB; send
+  64). MIDI feedback sends it as 0 for AUX, **64 for the mic** (it was 127) and 127 for USB. See
+  [Controllers](MANUAL.md#controllers).
+- **USB is TinyUSB now** (#196): FRIZZ's USB, its MIDI too, runs on a new USB stack. The MIDI
+  clock out over USB keeps its time while FRIZZ reads the card (it could come up to 8 ms late
+  while a cubbi loaded, #265). FrizZ asks the computer for 100 mA, where it asked for 160.
 
 ### Fixed
 
@@ -86,12 +113,12 @@ what FRIZZ does.
   loop, hear it on the headphones' input-only feed (VOLUME's page 3), or switch on its
   monitoring on the settings page (below). It's mono, 5 times the input gain and through a
   highpass at about 150 Hz, as on TAPE (without TAPE's narrow notches, #127), and the mono
-  setting doesn't touch it. See [Input: AUX or the mic](MANUAL.md#input-aux-or-the-mic).
+  setting doesn't touch it. See [Input: AUX, the mic or USB](MANUAL.md#input-aux-the-mic-or-usb).
 - **AUX dry** (#152): AUX can go past the effects and the master compressor, straight to
   VOLUME and the safety limiter, so a drum machine or a finished song plays as it is while you
   play the loop through the effects. The mix knob still sets the balance (its input share is
   the dry AUX), and the mix's automatism stays: a recording finishes on the loop alone, an
-  erase goes back to the input alone. See [Input: AUX or the mic](MANUAL.md#input-aux-or-the-mic).
+  erase goes back to the input alone. See [Input: AUX, the mic or USB](MANUAL.md#input-aux-the-mic-or-usb).
 - **The input's three keys: source, monitoring, effects** (#177, #243). On the settings page's
   upper octave, left to right the source, whether you hear it, then how (changed since
   v1.0.0-beta.3: G# is the monitoring, A# the effects; the betas called monitoring "live"): F#
@@ -107,7 +134,7 @@ what FRIZZ does.
   The looper always records the source as it is. Over MIDI, CC 84 picks the source (0-63 AUX, 64-127 the mic), CC 116 sets its
   effects (64 and up dry), CC 117 its monitoring (64 and up on), without saving them, and MIDI
   feedback sends all three. A beta.1 card's AUX dry is AUX's A#. See [Input: AUX or
-  the mic](MANUAL.md#input-aux-or-the-mic).
+  the mic](MANUAL.md#input-aux-the-mic-or-usb).
 - **The LEDs' brightness on knob 1, 25-100 %** (#176): on the settings page knob 1 sets it, 5 %
   a detent; SHIFT + turn steps 25, 50, 75, 100 %; SHIFT + press is 100 %. Its LED is white and
   dims with the others. A card's 50, 75 or 100 % stays as it was. See [LED

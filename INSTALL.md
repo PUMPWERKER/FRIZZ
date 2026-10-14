@@ -35,7 +35,7 @@ lasts past power-off.
 1. Make sure the mode switch is **down** (the play page). Plug a stereo source into the
    **AUX input**, and headphones or a mixer into the outputs. (Without a cable in AUX, FRIZZ
    listens to the built-in microphone, but doesn't put it on the outputs at first, so a
-   speaker can't feed it back: see [Input: AUX or the mic](MANUAL.md#input-aux-or-the-mic).)
+   speaker can't feed it back: see [Input: AUX, the mic or USB](MANUAL.md#input-aux-the-mic-or-usb).)
 2. Turn the **VOLUME** knob. You should hear your source, and the VOLUME LED moves with the level.
 
 If you hear nothing, press VOLUME once and turn it to raise the input gain. Press it twice more
@@ -102,6 +102,8 @@ picker. Pressing the blinking LOOP again cancels.
 | No rainbow, the old firmware starts | Check that `FRIZZ.bin` is in the top folder, that it's the only `.bin` there, and that the card is FAT32 |
 | Rainbow, but then nothing works | Copy `FRIZZ.bin` to the card again (the copy may be damaged) and switch on again |
 | The keys don't play | The mode switch is up, on the settings page: flip it down |
-| Silence | Check the input gain (press VOLUME, then turn) and the input/loop mix (SHIFT + turn VOLUME, turn towards green). Is the cable in AUX all the way? Without one, the input is the mic, which isn't monitored at first. On the settings page (mode switch up), the upper G# switches monitoring on for the input you hear (lit) |
+| Silence | Check the input gain (press VOLUME, then turn) and the input/loop mix (SHIFT + turn VOLUME, turn towards green). Is the cable in AUX all the way? Without one, the input is the mic, which isn't monitored at first. On the settings page (mode switch up), the upper G# switches monitoring on for the input you hear (lit), and the upper F# shows which it is: blue is USB, a computer's sound, silent unless it plays to FRIZZ |
 | It restarts by itself while you play (FRIZZ starts again, or the launcher's picker shows) | FRIZZ crashed or its sound stopped, and it restarted rather than stay frozen. A loop in RAM is gone. If it happens again, note what you were doing and [open an issue](https://github.com/ZUHcYa/FrizZ/issues) |
+| A computer has trouble with FRIZZ on USB (it won't take it, MIDI comes and goes, sound glitches), or you don't want FrizZ as a sound card | Switch [USB audio](MANUAL.md#usb-audio) off: on the settings page (mode switch up), pick USB with the upper F# (blue), then SHIFT + upper F#, until it's dim while you hold SHIFT. FRIZZ is then MIDI alone on USB, as before. It's saved |
+| A recording from FRIZZ over USB sounds slightly dull or late | Set the computer or the DAW to 48 kHz, FRIZZ's own rate: at another rate the computer converts |
 | The CHOMPI doesn't respond at all | The bootloader may be damaged. Reinstall CHOMPI's own bootloader (`firmware/bin/CHOMPI_Bootloader_V6_2_0.bin`) as described in [`firmware/README.md`](firmware/README.md#4-put-it-on-the-chompi), then install FRIZZ again. Don't install the generic Daisy bootloader instead |

@@ -17,7 +17,7 @@ set settings aux_live 1
 at 2000
 # the global channel 16, whatever the device's card says, and CC 84 on it: the mic the source
 usb F0 7D 43 48 13 00 10 F7
-midi BF 54 7F
+midi BF 54 40
 wait 300
 set reverb 0 0.6
 set reverb 1 0.6
