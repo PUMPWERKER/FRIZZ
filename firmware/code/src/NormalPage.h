@@ -1428,17 +1428,28 @@ namespace chompi
             return scene_ctl_.FreezeMorph();
         }
         /** SHIFT let go: a sequence started with it runs now, its bars counted from here
-         *  (FxMorph::Release), or the hand's crossfader ends where it is
-         *  (SceneControls::EndFade). One on MIDI's crossfader (CC 80) stays MIDI's */
+         *  (FxMorph::Release), or in a hold that began with a white key to the loop's pass end
+         *  (ReleaseFxMorphAt, LoopControls::WithScene); or the hand's crossfader ends where it
+         *  is (SceneControls::EndFade), its loops to the nearer side. One on MIDI's crossfader
+         *  (CC 80) stays MIDI's */
         void ReleaseMorph()
         {
             ScopedIrqBlocker irq;
+#if !FRIZZ_BENCH
+            const bool passes = loops_.WithScene() && scene_ctl_.HoldSequence();
+            loops_.ShiftUp(scene_ctl_.FaderPos());
+            if (!(scene_ctl_.ShiftUp() && scene_ctl_.EndFade()))
+            {
+                if (passes)
+                    engine_->ReleaseFxMorphAt(loops_.At());
+                else
+                    engine_->ReleaseFxMorph();
+            }
+#else
             if (!(scene_ctl_.ShiftUp() && scene_ctl_.EndFade()))
                 engine_->ReleaseFxMorph();
-            hand_fader_ = false;
-#if !FRIZZ_BENCH
-            loops_.ShiftUp();
 #endif
+            hand_fader_ = false;
         }
         inline void Refused() { loop_refused_.Start(System::GetNow()); }
         inline Looper::State LooperState() const { return engine_->looper.GetState(); }
@@ -1902,7 +1913,11 @@ namespace chompi
             {
                 // a recall within one audio block
                 ScopedIrqBlocker irq;
+#if !FRIZZ_BENCH
+                result = scene_ctl_.Press(slot, shift, loops_.HoldPasses());
+#else
                 result = scene_ctl_.Press(slot, shift);
+#endif
                 if (result == SceneControls<PassthroughEngine>::Slot::MORPH)
                     hand_fader_ = false; // a new morph: no fader has it yet
 #if !FRIZZ_BENCH

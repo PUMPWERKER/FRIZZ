@@ -500,6 +500,22 @@ static void ShiftWith(const std::vector<const char*>& keys)
     }
     Press("KEY_26", false);
 }
+/** The transport turned n detents, one at a time (a step of the speed takes 2, of SHIFT's
+ *  ladder 4), with SHIFT held for shift */
+static void Detents(int n, bool shift = false)
+{
+    if (shift)
+        Press("KEY_26", true);
+    RunMs(30);
+    for (int i = 0; i < abs(n); i++)
+    {
+        Turn(5, n > 0 ? 1 : -1);
+        RunMs(20); // one event each
+    }
+    if (shift)
+        Press("KEY_26", false);
+    RunMs(30);
+}
 /** Whether the Loops page or the Cubbi page shows (SHIFT's LED, not held, dim in a bank's
  *  colour; dark on the play page) */
 static bool LoopsShown() { return Max(PthLedFull(kChompiKeyLed)) > 0; }
@@ -540,6 +556,18 @@ static void MasterOut(uint32_t ms, std::vector<float>& l, std::vector<float>& r)
             r.push_back(out[i * kChannels + 3]);
         }
     }
+}
+/** The level of a tone of hz in v (best a whole number of its periods long) */
+static float ToneLevel(const std::vector<float>& v, float hz)
+{
+    double si = 0., co = 0.;
+    for (size_t i = 0; i < v.size(); i++)
+    {
+        const double ph = 2. * M_PI * hz * static_cast<double>(i) / kSampleRate;
+        si += v[i] * sin(ph);
+        co += v[i] * cos(ph);
+    }
+    return v.empty() ? 0.f : static_cast<float>(2. * sqrt(si * si + co * co) / static_cast<double>(v.size()));
 }
 static int SignChanges(const std::vector<float>& v)
 {
@@ -3262,9 +3290,9 @@ int main()
         Check(max_step < .01f && on_beat, "loops-passes: gapless, its key blinking on the beat while it waits");
     }});
 
-    // a loop joins a scene sequence in one SHIFT hold: lands where the morph lands, with a drop
-    // or a build-up's drop, also tapped before the scene key; with the crossfader, at once.
-    // A/03, 2 bars at 120 BPM, has a bar line halfway
+    // a loop joins a scene sequence in one SHIFT hold, the scene key first: lands where the
+    // morph lands, with a drop or a build-up's drop. A/03, 2 bars at 120 BPM, has a bar line
+    // halfway. (A white key first counts passes: loops-first; the crossfader: loops-fader)
     cases.push_back({"loops-scene", [] {
         RunMs(kReadyMs);
         amp = 0.f;
@@ -3302,24 +3330,14 @@ int main()
         const int build = UntilLength(96000, 3000, &before);
         printf("      the build-up: from %.4f\n", before);
         Check(build >= 0 && before > .49f && before < .51f, "loops-scene: with a build-up's drop: on its line");
+        // the white key only says which loop: tapped again, or another after it, counts nothing
         start(.05f);
-        ShiftWith({kLoopKeys[1], kSceneKeys[1]});
-        const int first = UntilLength(72000, 3000, &before);
-        printf("      the white key first: from %.4f\n", before);
-        Check(first >= 0 && before > .49f && before < .51f,
-              "loops-scene: the white key before the scene key: with the morph too");
-        start(.05f);
-        Press("KEY_26", true);
-        RunMs(60);
-        Tap(kSceneKeys[0]);
-        RunMs(60);
-        Turn(5, 4);
-        RunMs(250);
-        Tap(kLoopKeys[0]);
-        const int fader = UntilLength(96000, 100);
-        Press("KEY_26", false);
-        RunMs(100);
-        Check(fader >= 0, "loops-scene: with the crossfader in the hand: at once");
+        ShiftWith({kSceneKeys[1], kLoopKeys[1], kLoopKeys[1], kLoopKeys[0]});
+        const int last = UntilLength(96000, 3000, &before);
+        printf("      A, then A/02 twice and A/01: A/01 from %.4f\n", before);
+        Check(last >= 0 && before > .49f && before < .51f,
+              "loops-scene: the scene key first: white keys after it count nothing, the last one "
+              "lands with the morph on its bar line");
     }});
 
     // SHIFT + any blinking key cancels the plan: the loop's (a later hold), its scene stopping
@@ -3527,6 +3545,360 @@ int main()
         printf("      A/03 after %d ms: %.2f BPM\n", acid, c.fx_bpm);
         Check(acid >= 0 && std::fabs(c.fx_bpm - 100.f) < .1f,
               "loops-now: an acid chunk's 12 beats set 100 BPM for 3 bars of 7.2 s");
+    }});
+
+    // the tape runs on across loops (#70): a switch keeps the speed and the direction, at once
+    // and planned, and a standstill; the new loop's tempo its own times the speed. A new
+    // recording starts at 1x
+    cases.push_back({"loops-tape", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 500);
+        Turn(5, 4); // two semitones up (2 detents each)
+        RunMs(1500);
+        Tap(kLoopKeys[1]);
+        UntilLength(72000, 500);
+        RunMs(300);
+        const ClockState a = Probe();
+        const float up = std::pow(2.f, 2.f / 12.f);
+        printf("      at once: speed %.4f, %.2f BPM\n", a.loop_speed, a.fx_bpm);
+        Check(std::fabs(a.loop_speed - up) < .002f && std::fabs(a.fx_bpm - 160.f * up) < .5f,
+              "loops-tape: a switch at once keeps the speed (+2 semitones): A/02 at 160 BPM x it");
+        ShiftWith({kLoopKeys[0]});
+        float before = 0.f;
+        const int planned = UntilLength(96000, 2500, &before);
+        RunMs(100);
+        const float planned_speed = Probe().loop_speed;
+        Check(planned >= 0 && before > .99f && std::fabs(planned_speed - up) < .002f,
+              "loops-tape: and at the end of the pass, gapless");
+        // reverse at 1x: SHIFT + the transport, the ladder (4 detents a step) down through 1/16x
+        // and back up
+        Tap("ENC_5_SW"); // 1x
+        Detents(-68, true);
+        RunMs(3000);
+        const float back = Probe().loop_speed;
+        Tap(kLoopKeys[1]);
+        UntilLength(72000, 500);
+        RunMs(200);
+        const float p0 = Probe().loop_pos;
+        RunMs(200);
+        const ClockState b = Probe();
+        printf("      reverse: %.4f, after the switch %.4f, from %.4f to %.4f\n", back, b.loop_speed, p0, b.loop_pos);
+        Check(back < -.99f && std::fabs(b.loop_speed - back) < .002f && (b.loop_pos < p0 || b.loop_pos > p0 + .5f),
+              "loops-tape: in reverse the new loop starts in reverse");
+        // a standstill: the semitones down into the hold zone (#174)
+        Tap("ENC_5_SW");
+        RunMs(1000);
+        Detents(-100);
+        RunMs(4000);
+        const float stood = Probe().loop_speed;
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 500);
+        const float s0 = Probe().loop_pos;
+        RunMs(500);
+        const ClockState c = Probe();
+        printf("      standing %.5f: after the switch %.5f, at %.4f then %.4f\n", stood, c.loop_speed, s0, c.loop_pos);
+        Check(stood == 0.f && c.loop_speed == 0.f && c.loop_pos == s0 && c.loop_length == 96000,
+              "loops-tape: at a standstill the new loop stands too");
+        // LOOP: erased, then a recording, which starts at 1x
+        Tap("KEY_28");
+        RunMs(500);
+        amp = .3f;
+        Tap("KEY_28");
+        RunMs(1000);
+        Tap("KEY_28");
+        RunMs(300);
+        const ClockState d = Probe();
+        amp = 0.f;
+        Check(d.loop_state == 2 && d.loop_speed == 1.f && d.loop_length != 96000,
+              "loops-tape: a new recording (LOOP) still starts at 1x");
+    }});
+
+    // phase by time (#70): a switch at once starts the new loop as far into its pass as the old
+    // one is into its own, modulo its length; with two loops at one tempo (4 and 8 bars at
+    // 120 BPM) on the beat. Paused or retriggered: from the start
+    cases.push_back({"loops-phase", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(384000, 2, 220.f)}, {"a2", SineWav(768000, 2, 330.f)}});
+        LoopsPage();
+        // the old loop's place by time at the switch, against where the new one is after it
+        auto phase = [](size_t from, size_t to, const char* key, bool back) {
+            const ClockState a = Probe();
+            const uint32_t t0 = NowMs();
+            Tap(key);
+            UntilLength(to, 2000);
+            RunMs(50);
+            const ClockState b = Probe();
+            const double dt = (NowMs() - t0) * 48.;
+            double old = a.loop_pos * from + (back ? -dt : dt);
+            while (old < 0.)
+                old += from;
+            old = fmod(old, from);
+            // in reverse a pass runs from its end: the frames left to its start
+            const double want = back ? to - fmod(from - old, static_cast<double>(to)) : fmod(old, static_cast<double>(to));
+            double d = fmod(std::fabs(want - b.loop_pos * to), static_cast<double>(to));
+            d = std::min(d, to - d);
+            printf("      %zu -> %zu frames: the old one at %.0f, the new one at %.0f, want %.0f (%.0f apart)\n",
+                   from, to, a.loop_pos * from, b.loop_pos * to, want, d);
+            return d;
+        };
+        Tap(kLoopKeys[1]);
+        UntilLength(768000, 2000);
+        RunMs(11200); // 5.6 bars into the 8
+        const double eight_four = phase(768000, 384000, kLoopKeys[0], false);
+        const int tempo_a = Probe().tempo;
+        RunMs(2500);
+        const double four_eight = phase(384000, 768000, kLoopKeys[1], false);
+        Check(eight_four < 100. && four_eight < 100. && tempo_a == 120 && Probe().tempo == 120,
+              "loops-phase: at once, 8 bars to 4 and back: the new loop as far into its pass as the "
+              "old one, mod its length; 120 BPM throughout");
+        Detents(-68, true); // reverse, 1x (the ladder)
+        RunMs(3000);
+        const double reverse = phase(768000, 384000, kLoopKeys[0], true);
+        Check(reverse < 100., "loops-phase: in reverse, as far from its end");
+        Tap("ENC_5_SW"); // 1x forward
+        Tap("KEY_27"); // paused
+        RunMs(100);
+        Tap(kLoopKeys[1]);
+        UntilLength(768000, 2000);
+        RunMs(100);
+        const ClockState p = Probe();
+        Check(p.loop_state == 3 && p.loop_pos == 0.f, "loops-phase: paused, the new loop waits at its start");
+    }});
+
+    // a white key first in a SHIFT hold counts passes (#70, #175's "the first key holds"): its
+    // scene keys after it land with it at the n-th pass end, a morph, a build-up's drop or a
+    // drop; their taps count nothing. A/01, 2 bars at 120 BPM, has a bar line halfway
+    cases.push_back({"loops-first", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        Latch("KEY_5"); // the filter, saved in scene 1, then the blank scene again
+        Save(1);
+        Tap(kSceneKeys[0]);
+        RunMs(200);
+        PutLoops({{"a1", SineWav(192000, 2, 220.f)}, {"a2", SineWav(96000, 2, 330.f)},
+                  {"a3", SineWav(72000, 2, 440.f)}});
+        LoopsPage();
+        auto start = [](float at) { // A/01 playing, at its position at
+            Tap(kLoopKeys[0]);
+            UntilLength(192000, 1000);
+            while (Probe().loop_pos < at)
+                RunMs(1);
+        };
+        auto morphing = [] { return (Ask({0x20})[6] & 2) != 0; };
+        auto filter = [] { return (LatchedFx(Ask({0x20})) >> 4 & 1) == 1; };
+        // the loop and a morph, at the end of the pass, not on the bar line halfway
+        start(.05f);
+        ShiftWith({kLoopKeys[1], kSceneKeys[1], kSceneKeys[1]});
+        while (Probe().loop_pos < .6f)
+            RunMs(1);
+        const bool on_past_line = morphing();
+        float before = 0.f;
+        const int morph = UntilLength(96000, 3000, &before);
+        RunMs(20);
+        const bool landed = !morphing() && filter();
+        printf("      a morph: running past the bar line %d, the switch from %.4f, landed %d\n", on_past_line, before, landed);
+        Check(on_past_line && morph >= 0 && before > .99f && landed,
+              "loops-first: SHIFT + a white key, then a scene key (tapped twice): the morph and "
+              "the loop land together at the end of the pass, the scene key's taps no bars");
+        // tapped twice: at the end of the second pass after SHIFT's release
+        Tap(kSceneKeys[0]);
+        start(.05f);
+        ShiftWith({kLoopKeys[1], kLoopKeys[1], kSceneKeys[1]});
+        int wraps = 0;
+        float pos = Probe().loop_pos;
+        for (int ms = 0; ms < 9000 && Probe().loop_length != 96000; ms++)
+        {
+            RunMs(1);
+            const ClockState st = Probe();
+            wraps += st.loop_length == 192000 && st.loop_pos < pos - .5f;
+            pos = st.loop_pos;
+        }
+        RunMs(20);
+        printf("      tapped twice: %d wraps, length %zu, filter %d, morphing %d\n", wraps,
+               static_cast<size_t>(Probe().loop_length), filter(), morphing());
+        Check(wraps == 1 && Probe().loop_length == 96000 && filter() && !morphing(),
+              "loops-first: the white key tapped twice: both at the end of the second pass");
+        // a build-up to A, B dropping at the pass end
+        start(.05f);
+        ShiftWith({kLoopKeys[1], kSceneKeys[1], kSceneKeys[0]});
+        UntilLength(96000, 4000, &before);
+        RunMs(20);
+        Check(before > .99f && !filter() && !morphing(),
+              "loops-first: a build-up to A, B (the blank scene) dropping with the loop at the pass end");
+        // a drop: A at the pass end, not on the bar line before
+        start(.05f);
+        ShiftWith({kLoopKeys[2], kSceneKeys[1], "ENC_5_SW"});
+        while (Probe().loop_pos < .9f)
+            RunMs(1);
+        const bool not_yet = morphing();
+        UntilLength(72000, 3000, &before);
+        RunMs(20);
+        printf("      a drop: waiting past the bar line %d, the switch from %.4f, filter %d\n", not_yet, before, filter());
+        Check(not_yet && before > .99f && filter() && !morphing(),
+              "loops-first: a drop: A drops with the loop at the pass end");
+        // another white key after A: it replaces the loop, A lands with it
+        Tap(kSceneKeys[0]);
+        start(.05f);
+        ShiftWith({kLoopKeys[2], kSceneKeys[1], kLoopKeys[1]});
+        UntilLength(96000, 4000, &before);
+        RunMs(20);
+        Check(before > .99f && filter() && !morphing(),
+              "loops-first: another white key after A replaces the loop; A lands with it");
+        // no scene key: SHIFT + the transport turns the speed (the ladder), the switch stays
+        Tap(kSceneKeys[0]);
+        start(.05f);
+        ShiftWith({kLoopKeys[1], "T1", "T1", "T1", "T1"}); // the ladder: 4 detents a step
+        UntilLength(96000, 4000, &before);
+        RunMs(200);
+        const float fifth = Probe().loop_speed;
+        printf("      SHIFT + white key + a turn: speed %.4f, the switch from %.4f\n", fifth, before);
+        Check(before > .99f && std::fabs(fifth - std::pow(2.f, 7.f / 12.f)) < .002f,
+              "loops-first: with no scene key, SHIFT + the transport turns the speed (a fifth up); "
+              "the switch stays at the pass end");
+        // the loop erased while the scene waits for its pass end: it lands on the next bar line
+        ShiftWith({"ENC_5_SW"}); // 1x again
+        start(.05f);
+        ShiftWith({kLoopKeys[1], kSceneKeys[1]});
+        RunMs(300);
+        Tap("KEY_28");
+        RunMs(2600);
+        Check(!morphing() && filter() && Probe().loop_state == 0,
+              "loops-first: the loop erased meanwhile: the scene lands on the next bar line");
+    }});
+
+    // the crossfader with two loops (#70): SHIFT + a scene key, the transport turned, a white
+    // key: the fader mixes the two loops as the two scenes, equal power; the tempo the old
+    // loop's until SHIFT is let go, then the nearer side wins: from the middle on the new loop,
+    // by time where it is. Another white key replaces the new side; a recall drops it
+    cases.push_back({"loops-fader", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        Save(1); // nothing latched: the scenes leave the loops as they are
+        Tap(kSceneKeys[0]);
+        RunMs(200);
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a3", SineWav(96000, 2, 440.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 500);
+        RunMs(300);
+        // the levels of the three loops' tones in the master out, over 100 ms
+        auto tones = [](float& t220, float& t330, float& t440) {
+            std::vector<float> l, r;
+            MasterOut(100, l, r);
+            t220 = ToneLevel(l, 220.f);
+            t330 = ToneLevel(l, 330.f);
+            t440 = ToneLevel(l, 440.f);
+        };
+        auto hold = [](int detents) { // SHIFT + scene 1, the fader turned to detents/24
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap(kSceneKeys[1]);
+            RunMs(60);
+            Turn(5, detents);
+            RunMs(250);
+        };
+        float alone = 0.f, x330 = 0.f, x440 = 0.f;
+        tones(alone, x330, x440);
+        hold(12);
+        Tap(kLoopKeys[1]);
+        RunMs(200);
+        float m220, m330, m440;
+        tones(m220, m330, m440);
+        const ClockState a = Probe();
+        printf("      A/01 alone %.3f; at the middle 220 Hz %.3f, 330 Hz %.3f; %d BPM, length %zu\n", alone,
+               m220, m330, a.tempo, a.loop_length);
+        Check(m330 > .6f * alone && std::fabs(m220 / m330 - 1.f) < .1f && std::fabs(m220 / alone - .707f) < .05f
+                  && a.tempo == 120 && a.loop_length == 96000,
+              "loops-fader: a white key on the crossfader: both loops, mixed equal power (at the "
+              "middle each -3 dB); the tempo still the old loop's");
+        Turn(5, 12);
+        RunMs(100);
+        float r220, r330, r440;
+        tones(r220, r330, r440);
+        Turn(5, -18);
+        RunMs(100);
+        float q220, q330, q440;
+        tones(q220, q330, q440);
+        printf("      right 220 %.3f 330 %.3f; a quarter 220 %.3f 330 %.3f\n", r220, r330, q220, q330);
+        Check(r220 < .02f * alone && r330 > .6f * alone && q220 / q330 > 2.f && q220 / q330 < 2.8f,
+              "loops-fader: fully right only the new loop; a quarter of the way the old one 2.4x the new");
+        Press("KEY_26", false); // let go at a quarter: the old loop stays
+        RunMs(300);
+        tones(q220, q330, q440);
+        Check(Probe().loop_length == 96000 && Probe().tempo == 120 && q330 < .02f * alone,
+              "loops-fader: let go below the middle: the old loop plays on, the new one's gone");
+        // let go in the middle: the new loop, by time where it was, with its tempo
+        hold(12);
+        Tap(kLoopKeys[1]);
+        RunMs(300);
+        const ClockState b0 = Probe();
+        const uint32_t t0 = NowMs();
+        Press("KEY_26", false);
+        const int took = UntilLength(72000, 100);
+        RunMs(100);
+        const ClockState b = Probe();
+        const double want = fmod(b0.loop_pos * 96000. + (NowMs() - t0) * 48., 72000.);
+        double d = std::fabs(want - b.loop_pos * 72000.);
+        d = std::min(d, 72000. - d);
+        printf("      the middle: taken after %d ms, %d BPM, at %.0f, want %.0f\n", took, b.tempo, b.loop_pos * 72000., want);
+        Check(took >= 0 && b.tempo == 160 && d < 100.,
+              "loops-fader: let go at the middle: the new loop takes over where it is, phase by "
+              "time, and sets the tempo (160 BPM)");
+        // fully right: the new loop (A/01 again)
+        hold(24);
+        Tap(kLoopKeys[0]);
+        RunMs(200);
+        Press("KEY_26", false);
+        Check(UntilLength(96000, 100) >= 0, "loops-fader: let go fully right: the new loop");
+        // another white key replaces the new side; the same again, or the old loop's, nothing
+        hold(12);
+        Tap(kLoopKeys[1]);
+        RunMs(200);
+        Tap(kLoopKeys[2]);
+        RunMs(300);
+        Tap(kLoopKeys[2]);
+        RunMs(60);
+        Tap(kLoopKeys[0]);
+        RunMs(100);
+        float n220, n330, n440;
+        tones(n220, n330, n440);
+        printf("      replaced: 220 %.3f 330 %.3f 440 %.3f\n", n220, n330, n440);
+        Check(n330 < .02f * alone && n440 > .6f * alone && std::fabs(n220 / n440 - 1.f) < .1f,
+              "loops-fader: another white key replaces the new side (A/03 for A/02); it again, or "
+              "the old loop's key, does nothing");
+        // a program change's recall meanwhile: the new loop goes
+        Trs({kPC, 0});
+        RunMs(300);
+        tones(n220, n330, n440);
+        Press("KEY_26", false);
+        RunMs(300);
+        Check(n440 < .02f * alone && Probe().loop_length == 96000,
+              "loops-fader: a recall (a program change) during the hold drops the new loop");
+        // a white key first, then the scene key and the transport turned: the crossfader too,
+        // the passes void: let go in the middle, the new loop at once
+        Press("KEY_26", true);
+        RunMs(60);
+        Tap(kLoopKeys[1]);
+        RunMs(60);
+        Tap(kSceneKeys[1]);
+        RunMs(60);
+        Turn(5, 12);
+        RunMs(300);
+        tones(m220, m330, m440);
+        while (Probe().loop_pos > .3f) // away from the pass end
+            RunMs(1);
+        Press("KEY_26", false);
+        const int first = UntilLength(72000, 100);
+        printf("      a white key first: 220 %.3f 330 %.3f, taken after %d ms\n", m220, m330, first);
+        Check(std::fabs(m220 / m330 - 1.f) < .1f && first >= 0,
+              "loops-fader: a white key first, then a scene key and the transport turned: the "
+              "crossfader with both loops; let go in the middle, the new one at once");
     }});
 
     // the event log (EventLog.h): a session, SHIFT + VOLUME held on the settings page, its

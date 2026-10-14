@@ -155,6 +155,9 @@ public:
         }
         BENCH_MARK(INPUT);
 
+        // two loops on the crossfader (#70): the mix where the morph's fader is
+        if (__builtin_expect(looper.Fading(), 0) && morph_.Manual())
+            looper.Fade(morph_.FaderPos());
         looper.Process(dryl, dryr, wetl, wetr, size);
         BENCH_MARK(LOOPER);
 
@@ -185,11 +188,14 @@ public:
             if (block_pulses_ < kMaxBlockPulses)
                 block_loop_pulse_[block_pulses_++] = tempo_clock_.LoopPulse();
         }
+        if (__builtin_expect(morph_wraps_on_, 0))
+            MorphOnWraps();
         morph_.Process(size, tempo_clock_.PulseSamples());
         if (__builtin_expect(loop_landing_, 0))
             LoopLanding(bar_line);
         if (morph_.Dropping())
-            morph_.DropLead(tempo_clock_.PulsesToBarLine(), tempo_clock_.PulseSamples());
+            morph_.DropLead(morph_wraps_on_ ? DropToWraps() : tempo_clock_.PulsesToBarLine(),
+                            tempo_clock_.PulseSamples());
         // the keys, what the chaos key drops of them, and where it plays the loop
         float jump;
         if (fx_.Block(&jump))
@@ -363,11 +369,24 @@ public:
     void StartFxMorph(const chompi::FxMorphPlan& plan)
     {
         morph_.Start(plan, tempo_clock_.PulsesToBarLine(), true);
+        morph_wraps_on_ = false;
     }
     void ReleaseFxMorph()
     {
         morph_.Release(tempo_clock_.PulsesToBarLine(), tempo_clock_.PulsesPerBarLine());
     }
+    /** As ReleaseFxMorph, but it lands where the loop's Wraps() reaches wraps, with a loop
+     *  from the card switching there (#70, LoopControls.h); erased meanwhile, on the next bar
+     *  line. With the audio interrupt blocked */
+    void ReleaseFxMorphAt(uint32_t wraps)
+    {
+        const uint32_t passes = wraps - looper.Wraps();
+        morph_.ReleaseAt(tempo_clock_.PulsesToLoopEnd() + (passes ? passes - 1 : 0) * tempo_clock_.LoopPulses());
+        morph_wraps_ = wraps;
+        morph_wraps_on_ = true;
+    }
+    /** The morph's landings so far (FxMorph::Landings) */
+    inline uint32_t FxLandings() const { return morph_.Landings(); }
     bool AddFxMorphBar() { return morph_.AddBar(tempo_clock_.PulsesPerBarLine()); }
     void LandFxMorph() { morph_.Land(); }
     /** Makes the held morph a drop on its landing, gliding there first for a build-up
@@ -382,6 +401,7 @@ public:
     bool FreezeFxMorph(float params[chompi::kNumFx][chompi::kNumFxParams],
                        uint16_t* unswitched, uint16_t* was_on)
     {
+        morph_wraps_on_ = false;
         return morph_.Freeze(params, unswitched, was_on);
     }
     inline bool FxMorphing() const { return morph_.Active(); }
@@ -515,6 +535,28 @@ private:
         looper.Scramble(offset);
     }
 
+    /** ReleaseFxMorphAt's landing: in this block, once the loop has wrapped to it */
+    __attribute__((noinline, cold)) void MorphOnWraps()
+    {
+        if (!morph_.Active())
+            morph_wraps_on_ = false;
+        else if (static_cast<int32_t>(looper.Wraps() - morph_wraps_) >= 0)
+        {
+            morph_.LandNext();
+            morph_wraps_on_ = false;
+        }
+        else if (!tempo_clock_.HasLoop())
+        {
+            morph_.CountBars(); // the loop erased: on the next bar line
+            morph_wraps_on_ = false;
+        }
+    }
+    /** A drop on the loop's wrap: the pulses to it on its last pass, else none near */
+    __attribute__((noinline, cold)) uint32_t DropToWraps() const
+    {
+        return looper.Wraps() + 1 == morph_wraps_ ? tempo_clock_.PulsesToLoopEnd() : 0xFFFFu;
+    }
+
     /** The landing a loop waits for (LoopOnLanding): the switch released then, or at a bar
      *  line after it */
     __attribute__((noinline, cold)) void LoopLanding(bool bar_line)
@@ -531,8 +573,8 @@ private:
     /** Hands a loop that just closed to the tempo clock, and takes an erased one away. A
      *  quantized loop knows its beats, as the clock was sent (the tempo clock applies the
      *  factor); an unquantized one fits the tempo set before it, or is guessed. A loop from
-     *  the card (Looper::Switch) takes over the clock as it comes in, with its own beats or
-     *  the power of two nearest the tempo (NearestBeats) */
+     *  the card (Looper::Switch) takes over the clock as it comes in, where it starts, with its
+     *  own beats or the power of two nearest the tempo (NearestBeats) */
     void SyncLoopTempo()
     {
         const chompi::Looper::State state = looper.GetState();
@@ -542,8 +584,10 @@ private:
         {
             const size_t length = looper.GetLength();
             uint32_t beats = looper.GetSenderBeats();
+            float from = 0.f;
             if (looper.Switches() != switches_)
             {
+                from = looper.SwitchedAt();
                 switches_ = looper.Switches();
                 beats = looper.LoadedBeats();
                 if (beats == 0)
@@ -555,7 +599,7 @@ private:
                 beats = tempo_clock_.TempoSet()
                             ? chompi::FitBeats(length, sample_rate_, tempo_clock_.GetBpm())
                             : chompi::GuessBeats(length, sample_rate_);
-            tempo_clock_.SetLoop(length, beats);
+            tempo_clock_.SetLoop(length, beats, from);
         }
         else if (!loop && tempo_clock_.HasLoop())
             tempo_clock_.ClearLoop();
@@ -572,6 +616,8 @@ private:
     uint32_t rewinds_ = 0; // the looper's Rewinds() as last seen
     uint32_t switches_ = 0; // and its Switches()
     volatile bool loop_landing_ = false; // a loop waits for the morph's landing (LoopOnLanding)
+    volatile bool morph_wraps_on_ = false; // the morph lands at the looper's morph_wraps_
+    uint32_t morph_wraps_ = 0;
     bool loop_landed_ = false;           // which has come
     uint32_t landings_ = 0;              // the morph's Landings() when it began to wait
     uint32_t block_pulses_ = 0; // the last block's pulses, up to kMaxBlockPulses
