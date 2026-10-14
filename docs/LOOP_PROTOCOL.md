@@ -39,9 +39,18 @@ the same on libDaisy's USB stack and on TinyUSB (#196): both feed the same MIDI 
 (libDaisy's `MidiHandler`), and every limit below comes from that parser or from FRIZZ's
 own code, never from the stack.
 
-The app finds FRIZZ's port by name: the port names contain "CHOMPI", as
-`tools/chompi.py` finds them. It then checks with HELLO (2.1). A port that doesn't answer HELLO
-is not a FRIZZ that has this protocol.
+**Finding the port.** FRIZZ's USB product string is "FrizZ" (`usbd_desc.c`), and its MIDI
+port is named after it: `FrizZ MIDI 1` in ALSA (`amidi -l`). Each system dresses the name
+differently, for example with a prefix "FrizZ:" in Chrome on Linux. "CHOMPI" appears only in
+the name of the ALSA card (`/proc/asound/cards`, where `tools/midi_send.py` looks), and Web
+MIDI doesn't show that. So the app:
+
+1. tries the ports whose name contains "frizz" in any case first: their input and output
+   together, with HELLO (2.1);
+2. if none matches or answers, asks every input and output port with HELLO.
+
+Only a port that answers HELLO is FRIZZ. A port named "CHOMPI" somewhere is found by step 2
+only. A port that doesn't answer HELLO is not a FRIZZ that has this protocol.
 
 ### 1.2 Framing
 
