@@ -427,11 +427,12 @@ static bool Shows(const Rgb& c, const float* color, int level, int within = 6)
 static const float kOrange[3] = {1.f, .6f, .24f}, kGreen[3] = {0.f, 1.f, 0.f}, kRed[3] = {1.f, 0.f, 0.f},
                    kWhite[3] = {1.f, 1.f, 1.f};
 
-/** Loops on the card ("A/01" and the file), then scanned again (LoopLoader's SysEx) */
+/** Loops on the card ("a1" and the file, in /FRIZZ; a path with a "/", as it is), then
+ *  scanned again (LoopLoader's SysEx) */
 static void PutLoops(const std::vector<std::pair<std::string, std::string>>& files)
 {
     for (const auto& f : files)
-        CardFiles()["/FRIZZ/LOOPS/" + f.first + ".wav"] = f.second;
+        CardFiles()[f.first.find('/') == std::string::npos ? "/FRIZZ/" + f.first + ".wav" : f.first] = f.second;
     Ask({0x3E, 0x0D, 1, 3});
     RunMs(300);
 }
@@ -439,6 +440,39 @@ static void PutLoops(const std::vector<std::pair<std::string, std::string>>& fil
 static void LoopsPage()
 {
     Keys({"+KEY_26", "60", "+KEY_16", "60", "-KEY_16", "60", "-KEY_26", "200"});
+}
+/** SHIFT + the lower D#: the Cubbi page opened, or from it home */
+static void CubbiPage()
+{
+    Keys({"+KEY_26", "60", "+KEY_17", "60", "-KEY_17", "60", "-KEY_26", "200"});
+}
+// TAPE's bank colours (its NormalPage.h), the Cubbi page's a-e
+static const float kTapePurple[3] = {.58f, .05f, 1.f}, kTapeTeal[3] = {.14f, 1.f, .92f},
+                   kTapeDarkOrange[3] = {.77f, .38f, .06f}, kTapeYellowGreen[3] = {.706f, 1.f, 0.f};
+/** SHIFT + key (the lower C# or D#) opening a page: the red blinks on the bank keys' LEDs
+ *  (both: the page has no loop) over 800 ms from the press, the key let go after 60 ms, SHIFT
+ *  after 120 */
+static void OpenCounting(const char* key, int& down, int& up)
+{
+    Press("KEY_26", true);
+    RunMs(60);
+    Press(key, true);
+    down = up = 0;
+    bool was_down = false, was_up = false;
+    for (int t = 0; t < 800; t++)
+    {
+        if (t == 60)
+            Press(key, false);
+        if (t == 120)
+            Press("KEY_26", false);
+        RunMs(1);
+        const Rgb dn = SmtLedFull(kBankDownLed), u = SmtLedFull(kBankUpLed);
+        const bool ld = dn.r > 128 && dn.g == 0 && dn.b == 0, lu = u.r > 128 && u.g == 0 && u.b == 0;
+        down += ld && !was_down;
+        up += lu && !was_up;
+        was_down = ld;
+        was_up = lu;
+    }
 }
 /** Two clean taps of SHIFT, gap ms between them */
 static void DoubleTap(uint32_t gap = 100)
@@ -2911,7 +2945,7 @@ int main()
                 crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1)));
         }
         crc = ~crc;
-        CardFiles()["/FRIZZ/LOOPS/A/01.wav"] = wav;
+        CardFiles()["/FRIZZ/a1.wav"] = wav;
         const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
         // each run takes ~40 ms: the load ~4.7 s, the save and the report inside it
         SetCardRawPolls(4000);
@@ -2959,8 +2993,8 @@ int main()
         std::string w44 = SineWav(4800, 2, 220.f);
         const uint32_t rate = 44100;
         memcpy(&w44[24], &rate, 4);
-        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/02", SineWav(72000, 2, 330.f)},
-                  {"A/04", w44}, {"C/01", SineWav(48000, 1, 440.f)}});
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a4", w44}, {"c1", SineWav(48000, 1, 440.f)}});
         const bool dark = Max(SmtLedFull(kBankDownLed)) == 0 && Max(PthLedFull(kChompiKeyLed)) == 0;
         Tap(kSaveKey); // a scene mode, which opening the page ends
         RunMs(100);
@@ -3006,12 +3040,19 @@ int main()
               "loops-page: D# skips the empty bank B to C (green), C# back to A; 3 red blinks "
               "past either end");
 
-        // SHIFT + D# (kept for a later page) does nothing; SHIFT + C# goes home
-        Keys({"+KEY_26", "60", "+KEY_17", "60", "-KEY_17", "60", "-KEY_26", "200"});
-        const bool still = LoopsShown();
+        // SHIFT + D# the Cubbi page (none on the card: its bank keys blink red), SHIFT + C#
+        // back to the Loops page, SHIFT + C# home
+        int empty_down = 0, empty = 0;
+        OpenCounting("KEY_17", empty_down, empty);
+        const bool cubbi = Shows(SmtLedFull(kBankDownLed), kTapePurple, kLoopLit) && Max(SmtLedFull(LoopLed(0))) == 0;
+        LoopsPage();
+        const bool back_a = Shows(SmtLedFull(kBankDownLed), kOrange, kLoopLit);
         LoopsPage();
         const bool home = !LoopsShown() && Max(PthLedFull(kChompiKeyLed)) == 0;
-        Check(still && home, "loops-page: SHIFT + D# does nothing there, SHIFT + C# goes home");
+        printf("      the Cubbi page: %d red blinks, then a's purple %d; back %d, home %d\n", empty, cubbi, back_a, home);
+        Check(empty == 3 && empty_down == 3 && cubbi && back_a && home,
+              "loops-page: SHIFT + D# the Cubbi page there (no cubbis: 3 red blinks), SHIFT + C# "
+              "the Loops page again, SHIFT + C# home");
 
         // a double tap of SHIFT goes home; on the play page it does nothing
         LoopsPage();
@@ -3041,12 +3082,139 @@ int main()
               "knob's turn between the taps");
     }});
 
+    // the Cubbi page (#70): TAPE's cubbis, in /TAPE or else the card's root, on their own page,
+    // SHIFT + the lower D#; TAPE's bank colours; the same keys as the Loops page, one plan
+    cases.push_back({"cubbi-page", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        std::string w44 = SineWav(4800, 2, 220.f);
+        const uint32_t rate = 44100;
+        memcpy(&w44[24], &rate, 4);
+        // stock TAPE: the root (no /TAPE); its doubles and jammis aren't loops
+        PutLoops({{"/cubbi_a1.wav", SineWav(96000, 2, 220.f)}, {"/cubbi_a2_double.wav", SineWav(48000, 2, 220.f)},
+                  {"/jammi_a4.wav", SineWav(48000, 2, 330.f)}, {"/CUBBI_A3.WAV", SineWav(72000, 2, 330.f)},
+                  {"/cubbi_b15.wav", w44}, {"/cubbi_c2.wav", SineWav(48000, 1, 440.f)},
+                  {"a1", SineWav(192000, 2, 165.f)}});
+        CubbiPage();
+        const Rgb shift = PthLedFull(kChompiKeyLed), down = SmtLedFull(kBankDownLed), up = SmtLedFull(kBankUpLed);
+        const Rgb s1 = SmtLedFull(LoopLed(0)), s2 = SmtLedFull(LoopLed(1)), s3 = SmtLedFull(LoopLed(2)),
+                  s4 = SmtLedFull(LoopLed(3));
+        printf("      SHIFT %s, C# %s, D# %s, slots %s %s %s %s\n", Hex(shift).c_str(), Hex(down).c_str(),
+               Hex(up).c_str(), Hex(s1).c_str(), Hex(s2).c_str(), Hex(s3).c_str(), Hex(s4).c_str());
+        Check(LoopsShown() && Shows(down, kTapePurple, kLoopLit) && Shows(up, kTapePurple, kLoopLit)
+                  && Shows(shift, kTapePurple, kLoopDim, 12),
+              "cubbi-page: SHIFT + the lower D# opens it: the bank keys in TAPE's purple (bank a), "
+              "SHIFT's LED dim in it");
+        Check(Shows(s1, kTapePurple, kLoopDim) && Max(s2) == 0 && Shows(s3, kTapePurple, kLoopDim) && Max(s4) == 0,
+              "cubbi-page: the root's cubbi_a1 and CUBBI_A3 dim; a _double's and a jammi's keys dark");
+        Tap("KEY_17");
+        RunMs(100);
+        const Rgb b = SmtLedFull(kBankDownLed), b15 = SmtLedFull(LoopLed(14));
+        Tap("KEY_17");
+        RunMs(100);
+        const Rgb c = SmtLedFull(kBankDownLed), c2 = SmtLedFull(LoopLed(1));
+        const int past_e = RedBlinks("KEY_17", kBankUpLed);
+        printf("      bank b %s, its 15 %s; bank c %s, its 2 %s; past it %d\n", Hex(b).c_str(), Hex(b15).c_str(),
+               Hex(c).c_str(), Hex(c2).c_str(), past_e);
+        Check(Shows(b, kOrange, kLoopLit) && Shows(b15, kRed, kLoopDim) && Shows(c, kTapeTeal, kLoopLit)
+                  && Shows(c2, kTapeTeal, kLoopDim) && past_e == 3,
+              "cubbi-page: D#: bank b orange (cubbi_b15 at 44.1 kHz dim red), c TAPE's teal (mono "
+              "cubbi_c2 dim); d and e empty: 3 red blinks");
+
+        // SHIFT + C#: the Loops page (FRIZZ's a, orange); SHIFT + D# back, at c still; SHIFT + D#
+        // home; a double tap home from it too
+        LoopsPage();
+        const bool loops = Shows(SmtLedFull(kBankDownLed), kOrange, kLoopLit) && Shows(SmtLedFull(LoopLed(0)), kOrange, kLoopDim)
+                           && Max(SmtLedFull(LoopLed(2))) == 0;
+        CubbiPage();
+        const bool again_c = Shows(SmtLedFull(kBankDownLed), kTapeTeal, kLoopLit);
+        CubbiPage();
+        const bool home = !LoopsShown() && Max(PthLedFull(kChompiKeyLed)) == 0;
+        CubbiPage();
+        DoubleTap();
+        const bool tapped = !LoopsShown();
+        printf("      Loops page %d, Cubbi page at c %d, home %d, double tap %d\n", loops, again_c, home, tapped);
+        Check(loops && again_c && home && tapped,
+              "cubbi-page: SHIFT + C# goes to the Loops page and SHIFT + D# back (the bank it "
+              "showed), SHIFT + D# on it home, a double tap home");
+
+        // a cubbi plays as a loop: at once from an empty looper, its tempo guessed (2 s: 120 BPM)
+        CubbiPage();
+        Tap("KEY_16");
+        RunMs(100);
+        Tap("KEY_16");
+        RunMs(100);
+        Tap(kLoopKeys[0]);
+        const int first = UntilLength(96000, 1000);
+        RunMs(300);
+        const ClockState a = Probe();
+        const Rgb lit = SmtLedFull(LoopLed(0));
+        printf("      cubbi_a1 after %d ms, %d BPM, key %s\n", first, a.tempo, Hex(lit).c_str());
+        Check(first >= 0 && a.loop_state == 2 && a.tempo == 120 && Shows(lit, kTapePurple, kLoopLit),
+              "cubbi-page: a white key: its cubbi plays at once (2 s, 120 BPM guessed), its key bright");
+
+        // one plan for both pages: SHIFT + a FRIZZ loop planned, then a cubbi at once replaces it
+        LoopsPage();
+        ShiftWith({kLoopKeys[0]});
+        RunMs(100);
+        const bool planned = LoopsShown();
+        CubbiPage();
+        Tap(kLoopKeys[2]);
+        const int third = UntilLength(72000, 1000);
+        RunMs(2500); // past the end of the pass the FRIZZ loop was planned for
+        const ClockState d = Probe();
+        printf("      cubbi_a3 after %d ms, then length %zu\n", third, static_cast<size_t>(d.loop_length));
+        Check(planned && third >= 0 && d.loop_length == 72000,
+              "cubbi-page: a cubbi at once replaces a FRIZZ loop planned on the Loops page: one plan");
+
+        // /TAPE there (the launcher's TAPE): its cubbis, not the root's
+        PutLoops({{"/TAPE/cubbi_a5.wav", SineWav(48000, 2, 220.f)}});
+        const bool tape = Shows(SmtLedFull(LoopLed(4)), kTapePurple, kLoopDim) && Max(SmtLedFull(LoopLed(0))) == 0;
+        Tap("KEY_17");
+        RunMs(100);
+        const bool no_b = Shows(SmtLedFull(kBankDownLed), kTapePurple, kLoopLit); // b and c are the root's
+        CardFiles().erase("/TAPE/cubbi_a5.wav");
+        CardFiles()["/TAPE/presets.json"] = "{}";
+        PutLoops({});
+        int lit_keys = 0;
+        for (int k = 0; k < 15; k++)
+            lit_keys += k != 2 && Max(SmtLedFull(LoopLed(k))) > 0; // cubbi_a3 plays on, its key bright
+        printf("      /TAPE: its cubbi_a5 %d, no bank b %d; a /TAPE without cubbis: %d keys lit\n", tape, no_b, lit_keys);
+        Check(tape && no_b && lit_keys == 0,
+              "cubbi-page: with /TAPE, its cubbis and not the root's; a /TAPE without any hides "
+              "the root's, as the launcher's TAPE does");
+        CubbiPage();
+    }});
+
+    // a page without a loop: it opens, its keys dark, both bank keys blink red 3 times
+    cases.push_back({"cubbi-empty", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"/TAPE/jammi_a1.wav", SineWav(4800, 2, 220.f)}, {"/cubbi_a1.wav", SineWav(4800, 2, 220.f)}});
+        int down = 0, up = 0;
+        OpenCounting("KEY_17", down, up);
+        int lit_keys = 0;
+        for (int k = 0; k < 15; k++)
+            lit_keys += Max(SmtLedFull(LoopLed(k))) > 0;
+        const bool purple = Shows(SmtLedFull(kBankDownLed), kTapePurple, kLoopLit);
+        const int more = RedBlinks("KEY_17", kBankUpLed);
+        Tap(kLoopKeys[0]);
+        RunMs(100);
+        printf("      red blinks C# %d, D# %d, then purple %d, keys lit %d, D# again %d\n", down, up, purple, lit_keys, more);
+        Check(LoopsShown() && down == 3 && up == 3 && purple && lit_keys == 0 && more == 3 && Probe().loop_state == 0,
+              "cubbi-empty: no cubbi in /TAPE (the root's not read): the page opens, its keys dark, "
+              "C# and D# blink red 3 times together, then a's purple; D# blinks red, a key plays nothing");
+        int loops_down = 0, loops_up = 0;
+        OpenCounting("KEY_16", loops_down, loops_up);
+        Check(loops_down == 3 && loops_up == 3 && Shows(SmtLedFull(kBankDownLed), kOrange, kLoopLit),
+              "cubbi-empty: the Loops page without FRIZZ loops the same: 3 red blinks, then a's orange");
+    }});
+
     // SHIFT + a white key, tapped twice: at the end of the second pass after SHIFT's release,
     // gapless, its key blinking on the beat meanwhile
     cases.push_back({"loops-passes", [] {
         RunMs(kReadyMs);
         amp = 0.f;
-        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/02", SineWav(72000, 2, 330.f)}});
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)}});
         LoopsPage();
         Tap(kLoopKeys[0]);
         UntilLength(96000, 500);
@@ -3093,8 +3261,8 @@ int main()
         Save(1);
         Tap(kSceneKeys[0]);
         RunMs(200);
-        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/02", SineWav(72000, 2, 330.f)},
-                  {"A/03", SineWav(192000, 2, 220.f)}});
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a3", SineWav(192000, 2, 220.f)}});
         LoopsPage();
         auto start = [](float at) { // A/03 playing, at its position at
             Tap(kLoopKeys[2]);
@@ -3152,7 +3320,7 @@ int main()
         Save(1);
         Tap(kSceneKeys[0]);
         RunMs(200);
-        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/03", SineWav(192000, 2, 220.f)}});
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a3", SineWav(192000, 2, 220.f)}});
         LoopsPage();
         Tap(kLoopKeys[2]);
         UntilLength(192000, 1000);
@@ -3182,7 +3350,7 @@ int main()
         amp = 0.f;
         std::string w24 = SineWav(4800, 2, 220.f);
         w24[34] = 24; // bits per sample
-        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/02", SineWav(72000, 2, 330.f)}, {"A/04", w24}});
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)}, {"a4", w24}});
         LoopsPage();
         Tap(kLoopKeys[0]);
         UntilLength(96000, 500);
@@ -3235,8 +3403,8 @@ int main()
         Save(1);
         Tap(kSceneKeys[0]);
         RunMs(200);
-        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/03", SineWav(192000, 2, 220.f)},
-                  {"A/05", SineWav(2880000, 1, 440.f)}, {"A/06", SineWav(480000, 2, 330.f)}});
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a3", SineWav(192000, 2, 220.f)},
+                  {"a5", SineWav(2880000, 1, 440.f)}, {"a6", SineWav(480000, 2, 330.f)}});
         LoopsPage();
         Tap(kLoopKeys[0]);
         UntilLength(96000, 500);
@@ -3281,7 +3449,7 @@ int main()
     // on the play page lets go there
     cases.push_back({"loops-midi", [] {
         RunMs(kReadyMs);
-        PutLoops({{"A/05", SineWav(96000, 2, 220.f)}});
+        PutLoops({{"a5", SineWav(96000, 2, 220.f)}});
         LoopsPage();
         Trs({kNoteOn, kFilterNote, 100});
         RunMs(100);
@@ -3307,8 +3475,8 @@ int main()
     cases.push_back({"loops-now", [] {
         RunMs(kReadyMs);
         amp = 0.f;
-        PutLoops({{"A/01", SineWav(96000, 2, 220.f)}, {"A/02", SineWav(72000, 2, 330.f)},
-                  {"A/03", SineWav(345600, 2, 220.f, 12)}}); // 3 bars at 100 BPM
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a3", SineWav(345600, 2, 220.f, 12)}}); // 3 bars at 100 BPM
         LoopsPage();
         Tap(kLoopKeys[0]);
         const int first = UntilLength(96000, 1000);

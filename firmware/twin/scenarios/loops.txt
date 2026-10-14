@@ -1,15 +1,15 @@
-# The Loops page (#70, LoopControls.h): loops from the card's /FRIZZ/LOOPS (on the device the
+# The Loops page (#70, LoopControls.h): loops from the card's /FRIZZ, a1.wav ... (on the device the
 # same files, tools/loopfiles.py page). SHIFT + the lower C# opens it, bank A's orange on the
 # lower C# and D#; a white key switches to its loop at once, SHIFT + one at the end of the
 # loop's pass, one in a SHIFT hold with a scene drop on the drop's bar line; the lower D# the
 # next bank, B's yellow; a double tap of SHIFT goes home. Nothing is saved.
-card wav /FRIZZ/LOOPS/A/01.wav 2 2 220
-card wav /FRIZZ/LOOPS/A/02.wav 1.5 2 330
-card wav /FRIZZ/LOOPS/A/03.wav 4 2 220
-card wav /FRIZZ/LOOPS/A/04.wav 2 1 440
-card wav /FRIZZ/LOOPS/A/05.wav 7.2 2 165 12
-card wav /FRIZZ/LOOPS/A/15.wav 76.8 2 125
-card wav /FRIZZ/LOOPS/B/01.wav 2 2 275
+card wav /FRIZZ/a1.wav 2 2 220
+card wav /FRIZZ/a2.wav 1.5 2 330
+card wav /FRIZZ/a3.wav 4 2 220
+card wav /FRIZZ/a4.wav 2 1 440
+card wav /FRIZZ/a5.wav 7.2 2 165 12
+card wav /FRIZZ/a15.wav 76.8 2 125
+card wav /FRIZZ/b1.wav 2 2 275
 input sine 220 0.3
 at 6000
 down KEY_26

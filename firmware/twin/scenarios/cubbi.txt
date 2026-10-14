@@ -1,0 +1,76 @@
+# The Cubbi page (#70, LoopControls.h): TAPE's recordings, its cubbis, from /TAPE. The twin's are
+# sines as long as TAPE 2.0's factory cubbis (a1 12 s, b1 3.88 s, b3 4.42 s, c1 16 s); on the
+# device the card's own, only read. SHIFT + the lower D# opens it in TAPE's purple (bank a); a
+# white key switches at once, SHIFT + one at the end of the pass; the lower D# the next banks
+# (b orange, c TAPE's teal); SHIFT + the lower C# the Loops page and SHIFT + D# back, at c;
+# a double tap of SHIFT goes home. Nothing is saved. On the device its expect lines need TAPE's
+# factory cubbis a1, b1, b3 and c1 on the card (what the CHOMPI ships with): a cubbi recorded over
+# one of them moves its times, and a missing one darkens its key.
+card wav /TAPE/cubbi_a1.wav 12 2 220
+card wav /TAPE/cubbi_b1.wav 3.8773333 2 275
+card wav /TAPE/cubbi_b3.wav 4.4235208 2 330
+card wav /TAPE/cubbi_c1.wav 16 2 165
+card wav /FRIZZ/a1.wav 2 2 220
+input sine 220 0.3
+at 6000
+down KEY_26
+wait 60
+tap KEY_17
+wait 60
+up KEY_26
+wait 300
+# the bank keys in TAPE's purple, a1 dim, the 15th key dark, knob 1 dark
+expect led smt 0 900cfc
+expect led smt 1 900cfc
+expect led smt 24 140024
+expect led smt 10 000000
+expect led pth 1 000000
+# a1 at once: its key bright
+tap KEY_1
+wait 400
+expect led smt 24 900cfc
+# bank b, orange: b1 at once
+tap KEY_17
+wait 300
+expect led smt 0 fc983c
+tap KEY_1
+wait 400
+expect led smt 24 fc983c
+# SHIFT + b3: at the end of b1's pass (3.88 s)
+down KEY_26
+wait 60
+tap KEY_3
+wait 60
+up KEY_26
+wait 4300
+expect led smt 22 fc983c
+expect led smt 24 241408
+# bank c, TAPE's teal, c1 dim
+tap KEY_17
+wait 300
+expect led smt 0 20fce8
+expect led smt 24 042420
+# SHIFT + C#: the Loops page, FRIZZ's a in orange; SHIFT + D# back to the Cubbi page at c
+down KEY_26
+wait 60
+tap KEY_16
+wait 60
+up KEY_26
+wait 300
+expect led smt 0 fc983c
+expect led smt 24 241408
+down KEY_26
+wait 60
+tap KEY_17
+wait 60
+up KEY_26
+wait 300
+expect led smt 0 20fce8
+# home: a double tap of SHIFT; the bank keys dark again, b3 plays on
+tap KEY_26
+wait 100
+tap KEY_26
+wait 300
+expect led smt 0 000000
+expect led smt 1 000000
+wait 1000

@@ -199,10 +199,23 @@ static void TestHeader()
 
 static void TestNames()
 {
-    Check(SlotOf("01.wav") == 1 && SlotOf("15.WAV") == 15 && SlotOf("07.Wav") == 7, "names: 01.wav ... 15.WAV");
-    Check(!SlotOf("00.wav") && !SlotOf("16.wav") && !SlotOf("1.wav") && !SlotOf("01.wave")
-              && !SlotOf("01.aif") && !SlotOf("a1.wav") && !SlotOf("01_120bpm.wav"),
-          "names: anything else isn't a slot");
+    size_t b = 99, c = 99, d = 99;
+    Check(SlotOf("a1.wav", false, b) == 1 && b == 0 && SlotOf("H15.WAV", false, c) == 15 && c == 7
+              && SlotOf("c7.Wav", false, d) == 7 && d == 2,
+          "names: a1.wav ... H15.WAV, the bank by its letter");
+    size_t x = 99;
+    bool none = true;
+    for (const char* n : {"a0.wav", "a16.wav", "a01.wav", "a1.wave", "a1.aif", "i1.wav", "01.wav", "a.wav",
+                          "a1", "a1_120bpm.wav", "a123.wav", "cubbi_a1.wav", "a1.wav.txt"})
+        none = none && !SlotOf(n, false, x);
+    Check(none && x == 99, "names: anything else isn't one of FRIZZ's (a leading zero neither), the bank untouched");
+    Check(SlotOf("cubbi_a1.wav", true, b) == 1 && b == kCubbiBank && SlotOf("CUBBI_E15.WAV", true, c) == 15
+              && c == kCubbiBank + 4 && SlotOf("Cubbi_c10.wav", true, d) == 10 && d == kCubbiBank + 2,
+          "names: TAPE's cubbi_a1.wav ... cubbi_e15.wav, any case, banks from kCubbiBank");
+    for (const char* n : {"cubbi_a1_double.wav", "jammi_a1.wav", "cubbi_f1.wav", "cubbi_a16.wav", "cubbi_a01.wav",
+                          "a1.wav", "cubbi_a.wav", "cubbia1.wav", "temp_rec.wav"})
+        none = none && !SlotOf(n, true, x);
+    Check(none && x == 99, "names: TAPE's doubles, jammis, banks past e, other names aren't cubbis");
 }
 
 static Mem mem;
@@ -225,8 +238,8 @@ static bool Run(LoopLoader& l, int passes = 100000, bool card_wanted = false)
 static void PutLoop(const char* path, const std::string& wav)
 {
     std::string p = path;
-    card.dirs[p.substr(0, p.rfind('/'))] = true;
-    card.dirs["/FRIZZ/LOOPS"] = true;
+    if (p.rfind('/'))
+        card.dirs[p.substr(0, p.rfind('/'))] = true;
     card.files[p] = wav;
 }
 
@@ -253,28 +266,33 @@ static void TestScan()
     NewCard();
     LoopLoader l;
     l.Init(Buf(), &mem, &fs, Ms, Ticks, 10000000);
-    Check(Run(l) && l.GetState() == LoopLoader::IDLE, "scan: a card without /FRIZZ/LOOPS: done, nothing found");
+    Check(Run(l) && l.GetState() == LoopLoader::IDLE, "scan: a card without /FRIZZ or cubbis: done, nothing found");
     Check(card.open == 0, "scan: no file left open");
 
     NewCard();
-    PutLoop("/FRIZZ/LOOPS/A/01.wav", Stereo(Pattern(4000, 1)));
-    PutLoop("/FRIZZ/LOOPS/A/03.WAV", Wav(Fmt(1, 1, 48000, 16), Pattern(2000, 2)));
-    PutLoop("/FRIZZ/LOOPS/A/04.wav", Wav(Fmt(1, 2, 44100, 16), Pattern(400, 3)));
-    PutLoop("/FRIZZ/LOOPS/A/notes.txt", "hello");
-    PutLoop("/FRIZZ/LOOPS/C/15.wav", Stereo(Pattern(400, 4)));
-    card.dirs["/FRIZZ/LOOPS/B"] = true;
+    PutLoop("/FRIZZ/a1.wav", Stereo(Pattern(4000, 1)));
+    PutLoop("/FRIZZ/a3.WAV", Wav(Fmt(1, 1, 48000, 16), Pattern(2000, 2)));
+    PutLoop("/FRIZZ/a4.wav", Wav(Fmt(1, 2, 44100, 16), Pattern(400, 3)));
+    PutLoop("/FRIZZ/notes.txt", "hello");
+    PutLoop("/FRIZZ/frizz_scenes.txt", "FRIZZ scenes 1\n");
+    PutLoop("/FRIZZ/a01.wav", Stereo(Pattern(400, 5)));
+    PutLoop("/FRIZZ/B2.wav/x.wav", "a folder by a loop's name");
+    PutLoop("/FRIZZ/c15.wav", Stereo(Pattern(400, 4)));
+    card.dirs["/FRIZZ/LOOPS/B"] = true; // the layout before 1.1: not read
+    PutLoop("/FRIZZ/LOOPS/B/01.wav", Stereo(Pattern(400, 6)));
     l.Init(Buf(), &mem, &fs, Ms, Ticks, 10000000);
     Check(Run(l) && l.GetState() == LoopLoader::IDLE, "scan: done");
     Check(l.GetSlot(0, 0).result == STEREO && l.GetSlot(0, 0).frames == 1000 && l.GetSlot(0, 0).data == 44,
-          "scan: A/01 stereo, its frames, its data at 44");
-    Check(l.GetSlot(0, 2).result == MONO, "scan: A/03.WAV mono (any case)");
-    Check(l.GetSlot(0, 3).result == NOT_48K, "scan: A/04 refused, why");
+          "scan: a1.wav stereo, its frames, its data at 44");
+    Check(l.GetSlot(0, 2).result == MONO, "scan: a3.WAV mono (any case)");
+    Check(l.GetSlot(0, 3).result == NOT_48K, "scan: a4.wav refused, why");
     Check(l.GetSlot(0, 1).result == EMPTY && l.GetSlot(1, 0).result == EMPTY && l.GetSlot(7, 14).result == EMPTY,
-          "scan: missing names, an empty bank, a missing one: empty");
-    Check(l.GetSlot(2, 14).result == STEREO, "scan: C/15");
+          "scan: missing names, a01.wav, a folder named B2.wav, the old LOOPS/B/01: empty");
+    Check(l.GetSlot(2, 14).result == STEREO, "scan: c15.wav");
     Check(card.open == 0, "scan: no file left open");
     Check(card.raw_reads == 0, "scan: headers through FatFs, no raw reads");
-    // the passes it took: one a folder (8) and one a bank's end (8), one a file (4), one to end
+    // the passes it took: /FRIZZ's 9 entries in one, the root's 1 (FRIZZ), each folder's end,
+    // one a file (4), one to end
     LoopLoader again;
     again.Init(Buf(), &mem, &fs, Ms, Ticks, 10000000);
     int passes = 0;
@@ -283,7 +301,85 @@ static void TestScan()
         again.Process(false);
         passes++;
     }
-    Check(passes == 8 + 8 + 4 + 1, "scan: a pass a folder, a pass a bank's end, a pass a file, one to end");
+    Check(passes == 1 + 1 + 4 + 1 + 1 + 1, "scan: a pass a folder's kDirEntries, a pass its end, a pass a file, one to end");
+}
+
+/** TAPE's cubbis: in /TAPE if it's there (an empty one too, as the launcher's TAPE), else in the
+ *  root; their names, a folder listed over passes and across a remount */
+static void TestCubbis()
+{
+    NewCard();
+    PutLoop("/cubbi_a1.wav", Stereo(Pattern(4000, 1)));
+    PutLoop("/cubbi_a1_double.wav", Stereo(Pattern(2000, 1)));
+    PutLoop("/jammi_a2.wav", Stereo(Pattern(400, 2)));
+    PutLoop("/CUBBI_C14.WAV", Stereo(Pattern(800, 3)));
+    PutLoop("/cubbi_e15.wav", Wav(Fmt(1, 2, 44100, 16), Pattern(400, 3)));
+    PutLoop("/a1.wav", Stereo(Pattern(400, 4)));
+    PutLoop("/FRIZZ/b3.wav", Stereo(Pattern(400, 5)));
+    LoopLoader l;
+    l.Init(Buf(), &mem, &fs, Ms, Ticks, 10000000);
+    Check(Run(l) && l.GetState() == LoopLoader::IDLE, "cubbis: scanned");
+    Check(l.GetSlot(kCubbiBank, 0).result == STEREO && l.GetSlot(kCubbiBank, 0).frames == 1000
+              && l.GetSlot(kCubbiBank + 2, 13).result == STEREO && l.GetSlot(kCubbiBank + 4, 14).result == NOT_48K,
+          "cubbis: no /TAPE, the root's: cubbi_a1, CUBBI_C14 (any case), cubbi_e15 refused");
+    Check(l.GetSlot(kCubbiBank, 1).result == EMPTY && l.GetSlot(0, 0).result == EMPTY && l.GetSlot(1, 2).result == STEREO,
+          "cubbis: a jammi isn't one, a1.wav in the root isn't FRIZZ's; /FRIZZ/b3.wav is");
+    Check(l.Request(LoopLoader::LOADING, kCubbiBank + 2, 13) && Run(l) && Loaded(l, Pattern(800, 3)),
+          "cubbis: CUBBI_C14.WAV loads from the root");
+
+    // /TAPE there: its cubbis, the root's not
+    PutLoop("/TAPE/cubbi_b2.wav", Stereo(Pattern(1200, 7)));
+    PutLoop("/TAPE/presets.json", "{}");
+    Check(l.Request(LoopLoader::SCANNING) && Run(l) && l.GetSlot(kCubbiBank + 1, 1).result == STEREO
+              && l.GetSlot(kCubbiBank, 0).result == EMPTY && l.GetSlot(kCubbiBank + 2, 13).result == EMPTY,
+          "cubbis: /TAPE there: its cubbi_b2, not the root's");
+    Check(l.Request(LoopLoader::LOADING, kCubbiBank + 1, 1) && Run(l) && Loaded(l, Pattern(1200, 7)),
+          "cubbis: cubbi_b2.wav loads from /TAPE");
+    // an empty /TAPE: none, as the launcher's TAPE finds none
+    card.files.erase("/TAPE/cubbi_b2.wav");
+    card.files.erase("/TAPE/presets.json");
+    card.dirs["/TAPE"] = true;
+    bool none = true;
+    Check(l.Request(LoopLoader::SCANNING) && Run(l), "cubbis: an empty /TAPE scanned");
+    for (size_t b = kCubbiBank; b < kBanks; b++)
+        for (size_t s = 0; s < kSlots; s++)
+            none = none && l.GetSlot(b, s).result == EMPTY;
+    Check(none, "cubbis: an empty /TAPE: none, the root's not either");
+
+    // TAPE's card as it ships (171 files in the root): kDirEntries a pass, a remount between
+    NewCard();
+    for (char b : {'a', 'b', 'c'})
+        for (int s = 1; s <= 14; s++)
+        {
+            const std::string n = std::string(1, b) + std::to_string(s);
+            PutLoop(("/cubbi_" + n + ".wav").c_str(), Stereo(Pattern(100, s)));
+            PutLoop(("/cubbi_" + n + "_double.wav").c_str(), Stereo(Pattern(50, s)));
+            PutLoop(("/jammi_" + n + ".wav").c_str(), Stereo(Pattern(100, s)));
+            PutLoop(("/jammi_" + n + "_double.wav").c_str(), Stereo(Pattern(50, s)));
+        }
+    PutLoop("/CHOMPI_TAPEv2_0.bin", "x");
+    PutLoop("/options.json", "{}");
+    PutLoop("/presets.json", "{}");
+    l.Init(Buf(), &mem, &fs, Ms, Ticks, 10000000);
+    int passes = 0, most = 0;
+    while (l.Busy() && passes < 1000)
+    {
+        const uint32_t reads = card.dir_reads;
+        l.Process(false);
+        most = std::max(most, static_cast<int>(card.dir_reads - reads));
+        if (++passes == 3)
+            f_mount(&fs, "", 1); // a save's or a bug report's, mid-listing: the folder's invalid
+    }
+    int found = 0;
+    for (size_t b = kCubbiBank; b < kBanks; b++)
+        for (size_t s = 0; s < kSlots; s++)
+            found += l.GetSlot(b, s).result == STEREO;
+    Check(!l.Busy() && found == 42 && l.GetSlot(kCubbiBank + 2, 13).result == STEREO && l.GetSlot(kCubbiBank + 3, 0).result == EMPTY,
+          "cubbis: TAPE's own card, a remount mid-listing: its 42 cubbis, a-c 1-14");
+    Check(most <= static_cast<int>(kDirEntries) + 1 + 2 * static_cast<int>(kDirEntries) && card.open == 0,
+          "cubbis: a pass reads at most kDirEntries (after a remount, those read before again)");
+    Check(passes == 1 + (171 + kDirEntries) / kDirEntries + 1 + 1 + 42 + 1 + 1,
+          "cubbis: 171 files: a pass /FRIZZ, 8 the root, a remount's, a header a pass, to end");
 }
 
 static LoopLoader& Fresh()
@@ -299,11 +395,11 @@ static void TestLoad()
 {
     NewCard();
     const std::string big = Pattern(kMaxFrames * 4, 5);
-    PutLoop("/FRIZZ/LOOPS/A/01.wav", Stereo(big));
+    PutLoop("/FRIZZ/a1.wav", Stereo(big));
     const std::string odd = Pattern(30001 * 2, 6);
-    PutLoop("/FRIZZ/LOOPS/A/02.wav", Wav(Fmt(1, 1, 48000, 16), odd, Chunk("junk", std::string(504 - 44 - 8, 'j'))));
+    PutLoop("/FRIZZ/a2.wav", Wav(Fmt(1, 1, 48000, 16), odd, Chunk("junk", std::string(504 - 44 - 8, 'j'))));
     const std::string past = Pattern(9000 * 4, 7);
-    PutLoop("/FRIZZ/LOOPS/A/03.wav", Stereo(past, Chunk("bext", std::string(1500, 'b'))));
+    PutLoop("/FRIZZ/a3.wav", Stereo(past, Chunk("bext", std::string(1500, 'b'))));
     LoopLoader& l = Fresh();
 
     l.Request(LoopLoader::LOADING, 0, 0, 0);
@@ -332,7 +428,7 @@ static void TestLoad()
     NewCard();
     card.frag_clusters = 7; // 28 KB fragments
     const std::string frag = Pattern(300000 * 4 / 4, 8);
-    PutLoop("/FRIZZ/LOOPS/B/05.wav", Stereo(frag));
+    PutLoop("/FRIZZ/b5.wav", Stereo(frag));
     LoopLoader& f = Fresh();
     f.Request(LoopLoader::LOADING, 1, 4, 0);
     Check(Run(f) && Loaded(f, frag) && f.Dev(part0, 1, d) && d[34] == 11,
@@ -341,14 +437,14 @@ static void TestLoad()
     NewCard();
     card.frag_clusters = 1;
     const std::string many = Pattern(200 * 4096 - 44, 13);
-    PutLoop("/FRIZZ/LOOPS/B/06.wav", Stereo(many));
+    PutLoop("/FRIZZ/b6.wav", Stereo(many));
     LoopLoader& g = Fresh();
     g.Request(LoopLoader::LOADING, 1, 5, 0);
     Check(Run(g) && Loaded(g, many) && card.raw_reads == 200, "load: a file in 200 fragments, a run each: every byte");
     // more than the map holds (255): refused, the card untouched
     NewCard();
     card.frag_clusters = 1;
-    PutLoop("/FRIZZ/LOOPS/B/05.wav", Stereo(Pattern(300 * 4096, 12)));
+    PutLoop("/FRIZZ/b5.wav", Stereo(Pattern(300 * 4096, 12)));
     LoopLoader& m = Fresh();
     m.Request(LoopLoader::LOADING, 1, 4, 0);
     Check(Run(m) && m.GetState() == LoopLoader::FAILED && m.Dev(part0, 1, d) && d[3] == FRAGMENTED
@@ -358,7 +454,7 @@ static void TestLoad()
     // a remount between runs (a bug report's, a save's): FatFs's files are invalid after one,
     // the loader keeps none open between its runs; its map's file is opened again where it was
     NewCard();
-    PutLoop("/FRIZZ/LOOPS/A/01.wav", Stereo(big));
+    PutLoop("/FRIZZ/a1.wav", Stereo(big));
     LoopLoader& r = Fresh();
     r.Request(LoopLoader::LOADING, 0, 0, 0);
     for (int i = 0; i < 20; i++)
@@ -394,7 +490,7 @@ static void TestMap()
 {
     NewCard();
     const std::string big = Pattern(kMaxFrames * 4, 5);
-    PutLoop("/FRIZZ/LOOPS/A/01.wav", Stereo(big));
+    PutLoop("/FRIZZ/a1.wav", Stereo(big));
     LoopLoader& l = Fresh();
     const int clusters = static_cast<int>((44 + big.size() + 4095) / 4096);
     int passes = 0, reads = card.fat_reads;
@@ -409,7 +505,7 @@ static void TestMap()
     // the clusters spread wider: 16 a fragment, one free between
     NewCard();
     card.frag_clusters = 16;
-    PutLoop("/FRIZZ/LOOPS/A/01.wav", Stereo(big));
+    PutLoop("/FRIZZ/a1.wav", Stereo(big));
     LoopLoader& f = Fresh();
     f.Request(LoopLoader::LOADING, 0, 0, 0);
     worst = FatPerPass(f, passes);
@@ -422,7 +518,7 @@ static void TestMap()
     // a remount in the middle of the map: the file opened again where it was, no FAT sector
     // read twice but the one in the window then
     NewCard();
-    PutLoop("/FRIZZ/LOOPS/A/01.wav", Stereo(big));
+    PutLoop("/FRIZZ/a1.wav", Stereo(big));
     LoopLoader& r = Fresh();
     reads = card.fat_reads;
     r.Request(LoopLoader::LOADING, 0, 0, 0);
@@ -437,7 +533,7 @@ static void TestFaults()
 {
     NewCard();
     const std::string big = Pattern(200000 * 4, 9);
-    PutLoop("/FRIZZ/LOOPS/A/01.wav", Stereo(big));
+    PutLoop("/FRIZZ/a1.wav", Stereo(big));
     LoopLoader& l = Fresh();
     uint8_t d[40];
     const uint8_t part0[] = {0};
@@ -490,19 +586,19 @@ static void TestFaults()
     card.raw_fail = card.raw_dead = false;
 
     // a file cut short since the scan: its header is checked again at the load
-    PutLoop("/FRIZZ/LOOPS/A/02.wav", Stereo(big));
+    PutLoop("/FRIZZ/a2.wav", Stereo(big));
     LoopLoader& s = Fresh();
-    card.files["/FRIZZ/LOOPS/A/02.wav"].resize(100000);
+    card.files["/FRIZZ/a2.wav"].resize(100000);
     const int reads = card.raw_reads;
     s.Request(LoopLoader::LOADING, 0, 1, 0);
     Check(Run(s, 20) && s.GetState() == LoopLoader::FAILED && s.Dev(part0, 1, d) && d[3] == PAST_END
               && card.raw_reads == reads,
           "fault: a file cut short since the scan: its header refused at the load, nothing read");
     // its clusters ending before its size does (a broken FAT): the runs stop there
-    PutLoop("/FRIZZ/LOOPS/A/03.wav", Stereo(Pattern(4000, 11)));
+    PutLoop("/FRIZZ/a3.wav", Stereo(Pattern(4000, 11)));
     s.Request(LoopLoader::LOADING, 0, 2, 0);
     Run(s);
-    card.files["/FRIZZ/LOOPS/A/03.wav"] = Stereo(big); // the chain given out stays the short one
+    card.files["/FRIZZ/a3.wav"] = Stereo(big); // the chain given out stays the short one
     s.Request(LoopLoader::LOADING, 0, 2, 0);
     Check(Run(s, 20) && s.GetState() == LoopLoader::FAILED && s.Dev(part0, 1, d) && d[3] == SHORT,
           "fault: a chain shorter than the file: SHORT, not a read past it");
@@ -515,7 +611,7 @@ static void TestShared()
     NewCard();
     card.raw_polls = 4;
     const std::string big = Pattern(kMaxFrames * 4, 10);
-    PutLoop("/FRIZZ/LOOPS/A/01.wav", Stereo(big));
+    PutLoop("/FRIZZ/a1.wav", Stereo(big));
     chompi::SceneStore store;
     store.Init(&fs, "");
     LoopLoader& l = Fresh();
@@ -550,8 +646,8 @@ static void TestWrite()
     l.Dev(write, 5, d);
     Check(Run(l) && l.GetState() == LoopLoader::WRITTEN && l.Dev(part0, 1, d) && d[3] == 0,
           "write test: 64 KB in 256-byte writes, renamed, read back: passed");
-    Check(!card.dirs.count("/FRIZZ/LOOPS/T") && !card.dirs.count("/FRIZZ/LOOPS") && card.files.empty() && card.open == 0,
-          "write test: its file, its folder and /FRIZZ/LOOPS it made are gone");
+    Check(!card.dirs.count("/FRIZZ/T") && !card.HasDir("/FRIZZ/LOOPS") && card.files.empty() && card.open == 0,
+          "write test: its file and its folder /FRIZZ/T are gone, no /FRIZZ/LOOPS made");
     // a fault for the device test (#213) in KB's high group: FatFs's next write of more than a
     // sector armed (SdDisk.h; the host card's FatFs doesn't go through it), the KB as they were
     const uint8_t faulty[] = {6, 0x10 | 1024 >> 7, 0, 32, 0}; // 1024 KB in 4096-byte writes
@@ -561,20 +657,19 @@ static void TestWrite()
               && (d[13] << 21 | d[14] << 14 | d[15] << 7 | d[16]) == 1024 * 1024
               && armed == (sddisk::kCutShort | sddisk::kWrites) && sddisk::Fault() == 0,
           "write test: LOOPS 6's fault in KB's high group, armed for the writes, disarmed after");
-    card.dirs["/FRIZZ/LOOPS"] = true;
     const uint8_t odd[] = {6, 0, 3, 2, 44}; // 3 KB in 300-byte writes
     l.Dev(odd, 5, d);
-    Check(Run(l) && l.Dev(part0, 1, d) && d[3] == 0 && card.dirs.count("/FRIZZ/LOOPS") && !card.dirs.count("/FRIZZ/LOOPS/T"),
-          "write test: 300-byte writes; a /FRIZZ/LOOPS that was there stays");
+    Check(Run(l) && l.Dev(part0, 1, d) && d[3] == 0 && !card.dirs.count("/FRIZZ/T"),
+          "write test: 300-byte writes");
     const uint8_t mb[] = {6, 8, 0, 32, 0}; // 1024 KB: KB's high group 8, past the banks
     Check(l.Dev(mb, 5, d) == 0 && Run(l) && l.Dev(part0, 1, d) && d[3] == 0,
           "write test: 1024 KB in 4096-byte writes, the most it takes");
     // a byte the card gives back otherwise: caught
     l.Dev(write, 5, d);
-    for (int i = 0; i < 10000 && !card.files.count("/FRIZZ/LOOPS/T/w.bin"); i++)
+    for (int i = 0; i < 10000 && !card.files.count("/FRIZZ/T/w.bin"); i++)
         l.Process(false);
-    card.files["/FRIZZ/LOOPS/T/w.bin"][12345] ^= 1;
-    Check(Run(l) && l.Dev(part0, 1, d) && d[3] == WRITE_BAD && !card.dirs.count("/FRIZZ/LOOPS/T"),
+    card.files["/FRIZZ/T/w.bin"][12345] ^= 1;
+    Check(Run(l) && l.Dev(part0, 1, d) && d[3] == WRITE_BAD && !card.dirs.count("/FRIZZ/T"),
           "write test: a byte read back otherwise: WRITE_BAD, and still cleaned up");
     card.read_only = true;
     l.Dev(write, 5, d);
@@ -587,6 +682,7 @@ int main()
     TestHeader();
     TestNames();
     TestScan();
+    TestCubbis();
     TestLoad();
     TestMap();
     TestFaults();

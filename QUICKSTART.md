@@ -152,5 +152,6 @@ Scenes are stored on the SD card. See the [manual](MANUAL.md#fx-scenes) for the 
 ## Where next
 
 - [Manual](MANUAL.md): what every knob does on every effect
-- [Loop loader](MANUAL.md#loop-loader): your own loops from the SD card, SHIFT + the lower C#
+- [Loop loader](MANUAL.md#loop-loader): your own loops from the SD card, SHIFT + the lower C#,
+  and TAPE's recordings, SHIFT + the lower D#
 - [Install guide](INSTALL.md): updating FRIZZ, going back to stock firmware

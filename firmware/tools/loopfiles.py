@@ -1,36 +1,44 @@
 #!/usr/bin/env python3
 """loopfiles.py: test files for the loop loader (code/src/LoopLoader.h, #70), for a test on the
-device. Nothing here is for players: the files are patterns, not music.
+device. Nothing here is for players: the files are patterns, not music. FRIZZ's loops live in
+/FRIZZ as a1.wav ... h15.wav; this writes only there, never TAPE's cubbis (/TAPE, the root).
 
-    tools/loopfiles.py make DIR         the set into DIR (DIR/A/01.wav ...), checked by
+    tools/loopfiles.py make DIR         the set into DIR (DIR/a1.wav ...), checked by
                                         remote.py loops load --check
     tools/loopfiles.py card DIR ROOT    onto the card mounted at ROOT (card.py mount, in a hold):
-                                        ROOT/FRIZZ/LOOPS made, DIR's files copied there, and A/02,
-                                        A/12 and A/13 written in pieces between a filler's, which
-                                        is then deleted, so they lie in fragments
-    tools/loopfiles.py clean ROOT       ROOT/FRIZZ/LOOPS deleted, all of it
+                                        DIR's files copied into ROOT/FRIZZ, and a2, a12 and a13
+                                        written in pieces between a filler's, which is then
+                                        deleted, so they lie in fragments; refused if one of
+                                        the set's names is there
+    tools/loopfiles.py clean ROOT       the files this makes (card, page) deleted from
+                                        ROOT/FRIZZ, only where their bytes are this tool's: a
+                                        loop of your own by the same name stays
     tools/loopfiles.py page ROOT        the Loops page's set onto the card mounted at ROOT:
                                         the loops twin/scenarios/loops.txt puts on the twin's
                                         card (its `card wav` lines), so it plays on the device
-                                        as on the twin (remote.py play); refused if one of its
-                                        banks is there, the others left alone
+                                        as on the twin (remote.py play); refused if one of
+                                        them is there, the rest of /FRIZZ left alone
+    tools/loopfiles.py move ROOT        the layout before 1.1's release onto the new one:
+                                        ROOT/FRIZZ/LOOPS/A/01.wav to ROOT/FRIZZ/a1.wav and so
+                                        on, refused where a name is taken; the emptied folders
+                                        removed, anything else in them left there
 
 The set, by slot, and what FRIZZ's scan says (LoopLoader's Result):
-    A/01  16 bars at 50 BPM (3,686,400 frames), stereo, the most it takes     stereo
-    A/02  the same data, in 57 fragments on the card (256 KB pieces)            stereo
-    A/03  44.1 kHz                                                              not 48 kHz
-    A/04  80 s, longer than 16 bars at 50 BPM                                   too long
-    A/05  mono, 10 s                                                            mono
-    A/06  24-bit                                                                not 16-bit
-    A/07  a LIST chunk before the data (the data at 70)                         stereo
-    A/08  a 1,500-byte bext chunk before the data (the data at 1,552)           stereo
-    A/09  WAVE_FORMAT_EXTENSIBLE with PCM as its subformat (the data at 68)     stereo
-    A/10  its header says 10 s, the file holds 1 s                              past the end
-    A/11  16 bars at 50 BPM with its data at 504                                stereo
-    A/12  A/01's data in ~450 fragments (32 KB pieces)   stereo at the scan; its load refused
-    A/13  A/01's data in ~113 fragments (128 KB pieces)                         stereo
-    B/01-15  0.5 s each                                                         stereo
-    C     an empty folder; D-H none
+    a1   16 bars at 50 BPM (3,686,400 frames), stereo, the most it takes      stereo
+    a2   the same data, in 57 fragments on the card (256 KB pieces)            stereo
+    a3   44.1 kHz                                                              not 48 kHz
+    a4   80 s, longer than 16 bars at 50 BPM                                   too long
+    a5   mono, 10 s                                                            mono
+    a6   24-bit                                                                not 16-bit
+    a7   a LIST chunk before the data (the data at 70)                         stereo
+    a8   a 1,500-byte bext chunk before the data (the data at 1,552)           stereo
+    a9   WAVE_FORMAT_EXTENSIBLE with PCM as its subformat (the data at 68)     stereo
+    a10  its header says 10 s, the file holds 1 s                              past the end
+    a11  16 bars at 50 BPM with its data at 504                                stereo
+    a12  a1's data in ~450 fragments (32 KB pieces)       stereo at the scan; its load refused
+    a13  a1's data in ~113 fragments (128 KB pieces)                           stereo
+    b1-b15  0.5 s each                                                         stereo
+    c-h  none
 
 The data: little-endian 32-bit words, word j = j * 2654435761 ^ 0x5A5A5A5A (mod 2^32), as
 #70's measurement had them; each file's data starts at word 0.
@@ -43,7 +51,8 @@ import sys
 
 FRAMES_16_BARS = 3686400  # 16 bars at 50 BPM, 48 kHz
 # the files written in pieces on the card, and the pieces' size
-PIECES = {"02.wav": 256 * 1024, "12.wav": 32 * 1024, "13.wav": 128 * 1024}
+PIECES = {"a2.wav": 256 * 1024, "a12.wav": 32 * 1024, "a13.wav": 128 * 1024}
+FILLER = "loopfiles-filler.bin"
 
 
 def pattern(nbytes):
@@ -81,35 +90,33 @@ def wav(data, channels=2, rate=48000, bits=16, extensible=False, before=b"", siz
 
 
 def the_set():
-    """{path: bytes}, paths relative to /FRIZZ/LOOPS"""
+    """{name: bytes}, the names in /FRIZZ"""
     sec = 48000 * 4
     big = pattern(FRAMES_16_BARS * 4)
     files = {
-        "A/01.wav": wav(big),
-        "A/03.wav": wav(pattern(2 * 44100 * 4), rate=44100),
-        "A/04.wav": wav(pattern(80 * sec)),
-        "A/05.wav": wav(pattern(10 * 48000 * 2), channels=1),
-        "A/06.wav": wav(pattern(2 * 48000 * 6), bits=24),
-        "A/07.wav": wav(pattern(5 * sec), before=chunk(b"LIST", b"INFOISFT" + struct.pack("<I", 6) + b"FRIZZ\0")),
-        "A/08.wav": wav(pattern(5 * sec), before=chunk(b"bext", b"\0" * 1500)),
-        "A/09.wav": wav(pattern(5 * sec), extensible=True),
-        "A/10.wav": wav(pattern(1 * sec), size=10 * sec),
-        "A/11.wav": wav(big, before=chunk(b"junk", b"\0" * (504 - 44 - 8))),
+        "a1.wav": wav(big),
+        "a3.wav": wav(pattern(2 * 44100 * 4), rate=44100),
+        "a4.wav": wav(pattern(80 * sec)),
+        "a5.wav": wav(pattern(10 * 48000 * 2), channels=1),
+        "a6.wav": wav(pattern(2 * 48000 * 6), bits=24),
+        "a7.wav": wav(pattern(5 * sec), before=chunk(b"LIST", b"INFOISFT" + struct.pack("<I", 6) + b"FRIZZ\0")),
+        "a8.wav": wav(pattern(5 * sec), before=chunk(b"bext", b"\0" * 1500)),
+        "a9.wav": wav(pattern(5 * sec), extensible=True),
+        "a10.wav": wav(pattern(1 * sec), size=10 * sec),
+        "a11.wav": wav(big, before=chunk(b"junk", b"\0" * (504 - 44 - 8))),
     }
     for s in range(1, 16):
-        files["B/%02d.wav" % s] = wav(pattern(sec // 2))
+        files["b%d.wav" % s] = wav(pattern(sec // 2))
     # written in pieces on the card (card): their bytes here are what FRIZZ must load
-    files["A/02.wav"] = files["A/12.wav"] = files["A/13.wav"] = files["A/01.wav"]
+    files["a2.wav"] = files["a12.wav"] = files["a13.wav"] = files["a1.wav"]
     return files
 
 
 def make(out):
-    for path, data in the_set().items():
-        dst = os.path.join(out, path)
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        with open(dst, "wb") as f:
+    os.makedirs(out, exist_ok=True)
+    for name, data in the_set().items():
+        with open(os.path.join(out, name), "wb") as f:
             f.write(data)
-    os.makedirs(os.path.join(out, "C"), exist_ok=True)
     print("made %s" % out)
 
 
@@ -126,25 +133,30 @@ def fragmented(dst, data, piece, filler):
             os.fsync(g.fileno())
 
 
+def taken(frizz, names):
+    """Those of names /FRIZZ has already, in any case (FAT's names don't tell case apart)"""
+    there = {n.lower() for n in os.listdir(frizz)} if os.path.isdir(frizz) else set()
+    return [n for n in names if n.lower() in there]
+
+
 def card(src, root):
-    loops = os.path.join(root, "FRIZZ", "LOOPS")
-    if os.path.exists(loops):
-        sys.exit("%s is there already: not made by this, not touched" % loops)
-    for bank in "ABC":
-        os.makedirs(os.path.join(loops, bank))
-    for bank in "AB":
-        for name in sorted(os.listdir(os.path.join(src, bank))):
-            if bank == "A" and name in PIECES:
-                continue
-            shutil.copyfile(os.path.join(src, bank, name), os.path.join(loops, bank, name))
-    with open(os.path.join(src, "A", "01.wav"), "rb") as f:
+    frizz = os.path.join(root, "FRIZZ")
+    names = sorted(the_set())
+    there = taken(frizz, names + [FILLER])
+    if there:
+        sys.exit("%s already in %s: not made by this, not touched" % (", ".join(there), frizz))
+    os.makedirs(frizz, exist_ok=True)
+    for name in names:
+        if name not in PIECES:
+            shutil.copyfile(os.path.join(src, name), os.path.join(frizz, name))
+    with open(os.path.join(src, "a1.wav"), "rb") as f:
         data = f.read()
-    filler = os.path.join(loops, "filler.bin")
+    filler = os.path.join(frizz, FILLER)
     for name, piece in PIECES.items():
-        fragmented(os.path.join(loops, "A", name), data, piece, filler)
+        fragmented(os.path.join(frizz, name), data, piece, filler)
         os.remove(filler)
     os.sync()
-    print("put on the card under %s" % loops)
+    print("put on the card in %s" % frizz)
 
 
 SCENARIO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "twin", "scenarios", "loops.txt")
@@ -162,31 +174,92 @@ def sine(seconds, channels, hz, beats=0):
     return wav(bytes(out), channels=channels, before=acid)
 
 
-def page(root):
-    loops = os.path.join(root, "FRIZZ", "LOOPS")
+def page_set():
+    """{name: bytes}: the scenario's `card wav` lines, its loops in /FRIZZ"""
     with open(SCENARIO) as f:
         lines = [line.split() for line in f if line.split()[:2] == ["card", "wav"]]
-    # only its own banks, and only where there's none yet: other banks are left as they are
-    banks = sorted({w[2].split("/")[3] for w in lines})
-    there = [b for b in banks if os.path.exists(os.path.join(loops, b))]
-    if there:
-        sys.exit("%s already there: not made by this, not touched" % ", ".join(os.path.join(loops, b) for b in there))
+    files = {}
     for w in lines:
-        path = os.path.join(root, w[2].lstrip("/"))
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as g:
-            g.write(sine(float(w[3]), int(w[4]), float(w[5]), int(w[6]) if len(w) > 6 else 0))
-        print("  %s" % w[2])
+        if not w[2].startswith("/FRIZZ/") or w[2].count("/") != 2:
+            sys.exit("%s: only FRIZZ's own loops, in /FRIZZ" % w[2])
+        files[w[2][len("/FRIZZ/"):]] = sine(float(w[3]), int(w[4]), float(w[5]), int(w[6]) if len(w) > 6 else 0)
+    return files
+
+
+def page(root):
+    frizz = os.path.join(root, "FRIZZ")
+    files = page_set()
+    # only where there's none yet: the rest of /FRIZZ is left as it is
+    there = taken(frizz, sorted(files))
+    if there:
+        sys.exit("%s already in %s: not made by this, not touched" % (", ".join(there), frizz))
+    os.makedirs(frizz, exist_ok=True)
+    for name, data in files.items():
+        with open(os.path.join(frizz, name), "wb") as g:
+            g.write(data)
+        print("  /FRIZZ/%s" % name)
     os.sync()
-    print("put on the card under %s" % loops)
+    print("put on the card in %s" % frizz)
 
 
 def clean(root):
+    """The set's and the page's files deleted from /FRIZZ, only those whose bytes are this
+    tool's"""
+    frizz = os.path.join(root, "FRIZZ")
+    if not os.path.isdir(frizz):
+        return
+    ours = {}
+    for files in (the_set(), page_set()):
+        for name, data in files.items():
+            ours.setdefault(name, []).append(data)
+    gone = []
+    for name in sorted(os.listdir(frizz)):
+        path = os.path.join(frizz, name)
+        if name == FILLER:
+            os.remove(path)
+            gone.append(name)
+            continue
+        if name.lower() not in ours or not os.path.isfile(path):
+            continue
+        with open(path, "rb") as f:
+            data = f.read()
+        if any(data == d for d in ours[name.lower()]):
+            os.remove(path)
+            gone.append(name)
+    os.sync()
+    print("deleted from %s: %s" % (frizz, ", ".join(gone) if gone else "nothing"))
+
+
+def move(root):
+    """/FRIZZ/LOOPS/A/01.wav ... H/15.wav to /FRIZZ/a1.wav ... h15.wav"""
     loops = os.path.join(root, "FRIZZ", "LOOPS")
-    if os.path.exists(loops):
-        shutil.rmtree(loops)
-        os.sync()
-        print("deleted %s" % loops)
+    frizz = os.path.join(root, "FRIZZ")
+    if not os.path.isdir(loops):
+        sys.exit("%s isn't there: nothing to move" % loops)
+    moves = []
+    for bank in sorted(os.listdir(loops)):
+        folder = os.path.join(loops, bank)
+        if len(bank) != 1 or bank.upper() not in "ABCDEFGH" or not os.path.isdir(folder):
+            continue
+        for name in sorted(os.listdir(folder)):
+            stem, ext = os.path.splitext(name)
+            if ext.lower() == ".wav" and len(stem) == 2 and stem.isdigit() and 1 <= int(stem) <= 15:
+                moves.append((os.path.join(folder, name), "%s%d.wav" % (bank.lower(), int(stem))))
+    there = taken(frizz, [m[1] for m in moves])
+    if there:
+        sys.exit("%s already in %s: nothing moved" % (", ".join(there), frizz))
+    for src, name in moves:
+        os.rename(src, os.path.join(frizz, name))
+        print("  %s -> /FRIZZ/%s" % (os.path.relpath(src, root), name))
+    for bank in sorted(os.listdir(loops)):
+        folder = os.path.join(loops, bank)
+        if os.path.isdir(folder) and not os.listdir(folder):
+            os.rmdir(folder)
+    if not os.listdir(loops):
+        os.rmdir(loops)
+    os.sync()
+    print("moved %d; %s" % (len(moves), "/FRIZZ/LOOPS removed" if not os.path.isdir(loops)
+                            else "/FRIZZ/LOOPS kept: %s" % ", ".join(os.listdir(loops))))
 
 
 def main():
@@ -199,6 +272,8 @@ def main():
         clean(a[1])
     elif a[:1] == ["page"] and len(a) == 2:
         page(a[1])
+    elif a[:1] == ["move"] and len(a) == 2:
+        move(a[1])
     else:
         sys.exit(__doc__)
 
