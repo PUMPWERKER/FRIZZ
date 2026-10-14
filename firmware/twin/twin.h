@@ -8,6 +8,13 @@
  *
  *  Power-on is Boot(); there is one power cycle per process (the firmware's globals are
  *  constructed once), so a test that needs a fresh device runs a fresh process.
+ *
+ *  Everything here is called from one thread at a time. A host may call Run() from a
+ *  real-time audio thread: the queues between it and the firmware (MIDI in and out, USB MIDI
+ *  out, USB audio out) have fixed sizes, so Run(), Midi(), UsbMidi() and the Take...(buf, max)
+ *  calls never allocate. The Take...() calls that return a string or vector do; so does the
+ *  card (CardFiles() is a std::map): a Run() in which main() writes it (a setting saved 2 s
+ *  after it changed, a scene, a bug report, the loop transfer) allocates.
  */
 #pragma once
 #include <cstddef>
@@ -72,6 +79,25 @@ void SetToggle(bool raw_level);
  *  Before Boot() too, for a power-on without one. The audio into the mic is Run()'s channel 0 */
 void SetJack(bool plugged);
 
+/** The queues' sizes. MIDI in: what Midi() and UsbMidi() queue for the next block, each
+ *  port its own; the next Run() hands it all to the firmware in one piece, as the UART's DMA
+ *  and the USB interrupt do. Out: what the firmware sent until it's taken.
+ *  A full queue drops what comes next, the newest, counted in Dropped(): MIDI in byte by
+ *  byte, USB MIDI out a message (one transmit) whole, MIDI out byte by byte, USB audio out a
+ *  block whole. The firmware doesn't notice: the UART's timing and USB's answers go on as if
+ *  it had been sent */
+static const size_t kMidiInCapacity = 65536;    // bytes per port, waiting for the next block
+static const size_t kUsbOutCapacity = 65536;    // bytes, TakeUsbOut()'s
+static const size_t kMidiOutCapacity = 16384;   // MidiOutBytes, TakeMidiOut()'s
+static const size_t kUsbAudioOutFrames = 48000; // frames (L R), TakeUsbAudioOut()'s: 1 s
+
+/** What a full queue dropped since power-on: bytes, MidiOutBytes, frames */
+struct Drops
+{
+    uint64_t midi_in, usb_midi_in, usb_out, midi_out, usb_audio_out;
+};
+Drops Dropped();
+
 /** A byte into the MIDI jack (TRS, the UART) */
 void Midi(uint8_t byte);
 
@@ -82,6 +108,9 @@ void SetUsbHost(bool host);
 
 /** What the firmware sent out over USB MIDI since the last call, taken */
 std::string TakeUsbOut();
+/** The same without allocating: at most max bytes of it into buf, the oldest first; the rest
+ *  stays for the next call. Returns how many */
+size_t TakeUsbOut(uint8_t* buf, size_t max);
 
 /** USB audio, the computer's side (UsbDevice.h, #196). What it plays into FRIZZ in the next
  *  Run(), interleaved L R, as many frames as Run's (null: it doesn't play), the source USB;
@@ -91,6 +120,9 @@ void SetUsbAudioIn(const float* lr);
  *  call, interleaved L R, taken */
 void SetUsbRecording(bool on);
 std::vector<float> TakeUsbAudioOut();
+/** The same without allocating: at most max_frames frames of it into lr (L R), the oldest
+ *  first; the rest stays for the next call. Returns how many frames */
+size_t TakeUsbAudioOut(float* lr, size_t max_frames);
 /** Whether FRIZZ is on the bus as a sound card (USB audio on, not away for a switch), and how
  *  often it went on the bus since power-on */
 bool UsbAudioOn();
@@ -110,6 +142,9 @@ struct MidiOutByte
 /** What went out of the MIDI jack, and MIDI out's clock, transport and Song Position over
  *  USB, since the last call, taken */
 std::vector<MidiOutByte> TakeMidiOut();
+/** The same without allocating: at most max of them into buf, the oldest first; the rest
+ *  stays for the next call. Returns how many */
+size_t TakeMidiOut(MidiOutByte* buf, size_t max);
 
 /** The start of the current block in ms, to the block (NowMs() is whole ms) */
 double BlockMs();

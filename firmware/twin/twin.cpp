@@ -11,7 +11,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <deque>
 #include <vector>
 
 // the firmware itself: its main() becomes the coroutine below
@@ -387,10 +386,51 @@ Rgb SmtLedFull(int index)
 static AudioCallback audio_cb = nullptr;
 void StartAudio(AudioCallback cb) { audio_cb = cb; }
 
+// ======== the queues between the host and the firmware (twin.h's capacities) ========
+// Fixed in size, so nothing on Run()'s way allocates: a host may run the twin on a real-time
+// thread. Full, a queue drops what comes next and counts it. Static only: zeroed before any
+// constructor runs, none of its own
+template <typename T, size_t N>
+struct Queue
+{
+    T items[N];
+    size_t size;
+    uint64_t dropped;
+
+    /** Room for n more at the end, all or none: null and counted when they don't fit */
+    T* Add(size_t n)
+    {
+        if (n > N - size)
+        {
+            dropped += n;
+            return nullptr;
+        }
+        T* at = items + size;
+        size += n;
+        return at;
+    }
+    void Put(const T& item)
+    {
+        if (T* at = Add(1))
+            *at = item;
+    }
+    /** At most max from the front into out; the rest moves up */
+    size_t Take(T* out, size_t max)
+    {
+        const size_t n = size < max ? size : max;
+        if (n == 0)
+            return 0;
+        memcpy(out, items, n * sizeof(T));
+        memmove(items, items + n, (size - n) * sizeof(T));
+        size -= n;
+        return n;
+    }
+};
+
 // ======== MIDI ========
 static UartRx uart_rx = nullptr;
 static void* uart_context = nullptr;
-static std::deque<uint8_t> midi_in;
+static Queue<uint8_t, kMidiInCapacity> midi_in;
 void UartListen(UartRx rx, void* context)
 {
     uart_rx = rx;
@@ -399,14 +439,14 @@ void UartListen(UartRx rx, void* context)
 
 static UartRx usb_rx = nullptr;
 static void* usb_context = nullptr;
-static std::deque<uint8_t> usb_in;
-static std::string usb_out;
+static Queue<uint8_t, kMidiInCapacity> usb_in;
+static Queue<uint8_t, kUsbOutCapacity> usb_out;
 void UsbListen(UartRx rx, void* context)
 {
     usb_rx = rx;
     usb_context = context;
 }
-static std::vector<MidiOutByte> midi_out;
+static Queue<MidiOutByte, kMidiOutCapacity> midi_out;
 static uint64_t uart_tx_free_ns = 0; // when the UART has sent everything it was given
 static const uint64_t kUartByteNs = 320000; // 10 bits at 31250 baud
 bool UartTx(uint8_t byte)
@@ -416,7 +456,7 @@ bool UartTx(uint8_t byte)
         return false;
     const uint64_t start = uart_tx_free_ns > block_ns ? uart_tx_free_ns : block_ns;
     uart_tx_free_ns = start + kUartByteNs;
-    midi_out.push_back({start / 1e6, byte, false});
+    midi_out.Put({start / 1e6, byte, false});
     return true;
 }
 static bool usb_host = true;
@@ -425,22 +465,23 @@ void SetUsbHost(bool host) { usb_host = host; }
 static bool in_usb_task = false; // TinyUSB's task's pass (usb::SetTaskHook), at the block's time
 void UsbTx(const uint8_t* data, size_t size)
 {
-    usb_out.append(reinterpret_cast<const char*>(data), size);
+    if (uint8_t* at = usb_out.Add(size))
+        memcpy(at, data, size);
     // MIDI out's (MidiOut.h): the clock, the transport, a Song Position; not SysEx
     const uint64_t at = in_usb_task || main_ns < block_ns ? block_ns : main_ns;
     if (size > 0 && (data[0] == 0xF2 || data[0] >= 0xF8))
         for (size_t i = 0; i < size; i++)
-            midi_out.push_back({at / 1e6, data[i], true});
+            midi_out.Put({at / 1e6, data[i], true});
 }
-// what arrived since the last block, handed over at its start, as the UART's DMA and the USB
-// interrupt do before the audio callback polls them
-static void Deliver(std::deque<uint8_t>& q, void (*rx)(uint8_t*, size_t, void*), void* context)
+// what arrived since the last block, handed over at its start in one piece, as the UART's DMA
+// and the USB interrupt do before the audio callback polls them; the parser reads it in place
+static void Deliver(Queue<uint8_t, kMidiInCapacity>& q, void (*rx)(uint8_t*, size_t, void*),
+                    void* context)
 {
-    if (!rx || q.empty())
+    if (!rx || q.size == 0)
         return;
-    std::vector<uint8_t> bytes(q.begin(), q.end());
-    q.clear();
-    rx(bytes.data(), bytes.size(), context);
+    rx(q.items, q.size, context);
+    q.size = 0;
 }
 
 // ======== USB (UsbDevice.h, #196) ========
@@ -450,7 +491,7 @@ static void Deliver(std::deque<uint8_t>& q, void (*rx)(uint8_t*, size_t, void*),
 static const float* usb_audio_in = nullptr; // SetUsbAudioIn's, for this Run()
 static const float* usb_block_in = nullptr; // this block's, interleaved L R
 static bool usb_recording = false;
-static std::vector<float> usb_audio_out;
+static Queue<float, kUsbAudioOutFrames * 2> usb_audio_out; // L R
 static struct
 {
     bool started = false, audio = true;
@@ -469,9 +510,13 @@ void SetUsbAudioIn(const float* lr) { usb_audio_in = lr; }
 void SetUsbRecording(bool on) { usb_recording = on; }
 std::vector<float> TakeUsbAudioOut()
 {
-    std::vector<float> out;
-    out.swap(usb_audio_out);
+    std::vector<float> out(usb_audio_out.items, usb_audio_out.items + usb_audio_out.size);
+    usb_audio_out.size = 0;
     return out;
+}
+size_t TakeUsbAudioOut(float* lr, size_t max_frames)
+{
+    return usb_audio_out.Take(lr, max_frames * 2) / 2;
 }
 bool UsbAudioOn() { return usb_host && UsbOnBus() && usb_dev.audio; }
 int UsbEnumerations() { return usb_dev.enumerations; }
@@ -632,7 +677,7 @@ void SetJack(bool plugged)
     pin_level[kJackDetect] = plugged;
 }
 
-void Midi(uint8_t byte) { midi_in.push_back(byte); }
+void Midi(uint8_t byte) { midi_in.Put(byte); }
 
 double BlockMs() { return block_ns / 1e6; }
 
@@ -690,20 +735,28 @@ ClockState Probe()
     return c;
 }
 
-void UsbMidi(uint8_t byte) { usb_in.push_back(byte); }
+void UsbMidi(uint8_t byte) { usb_in.Put(byte); }
 
 std::string TakeUsbOut()
 {
-    std::string out;
-    out.swap(usb_out);
+    std::string out(reinterpret_cast<const char*>(usb_out.items), usb_out.size);
+    usb_out.size = 0;
     return out;
 }
+size_t TakeUsbOut(uint8_t* buf, size_t max) { return usb_out.Take(buf, max); }
 
 std::vector<MidiOutByte> TakeMidiOut()
 {
-    std::vector<MidiOutByte> out;
-    out.swap(midi_out);
+    std::vector<MidiOutByte> out(midi_out.items, midi_out.items + midi_out.size);
+    midi_out.size = 0;
     return out;
+}
+size_t TakeMidiOut(MidiOutByte* buf, size_t max) { return midi_out.Take(buf, max); }
+
+Drops Dropped()
+{
+    return {midi_in.dropped, usb_in.dropped, usb_out.dropped, midi_out.dropped,
+            usb_audio_out.dropped / 2};
 }
 
 void SetBattery(float volts, bool plugged, bool full)
@@ -800,12 +853,14 @@ void Send(const float* const* to_host, size_t size)
 {
     if (!TxStreaming())
         return;
-    for (size_t i = 0; i < size; i++)
-        for (size_t c = 0; c < kChannels; c++)
-        {
-            const float x = to_host[c][i];
-            twin::usb_audio_out.push_back(x > 1.f ? 1.f : x < -1.f ? -1.f : x);
-        }
+    // the block whole or not at all; the firmware sees it sent either way
+    if (float* at = twin::usb_audio_out.Add(size * kChannels))
+        for (size_t i = 0; i < size; i++)
+            for (size_t c = 0; c < kChannels; c++)
+            {
+                const float x = to_host[c][i];
+                *at++ = x > 1.f ? 1.f : x < -1.f ? -1.f : x;
+            }
     stats.tx_blocks++;
 }
 

@@ -133,6 +133,15 @@ static void RunMs(uint32_t ms)
             in[i * kChannels + 3] = r;
         }
         Run(1, in, out);
+        // what came out taken each block, so the twin's queues never fill (twin.h): USB's kept
+        // for the script, MIDI out and what the computer records not looked at
+        usb_kept += TakeUsbOut();
+        static MidiOutByte midi_out[256];
+        while (TakeMidiOut(midi_out, 256) == 256)
+            ;
+        static float recorded[kBlockSize * 2];
+        while (TakeUsbAudioOut(recorded, kBlockSize) == kBlockSize)
+            ;
         for (size_t i = 0; out_samples && i < kBlockSize; i++)
         {
             out_samples->push_back(out[i * kChannels + 2]);
