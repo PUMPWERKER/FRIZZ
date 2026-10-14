@@ -356,11 +356,11 @@ off its defaults) goes past 100 % and crackles (#21, settled by the user for 1.0
 cheap (`FxGate::Asleep`). A change that only shifts the memory layout has made it crackle on
 the device (b5c658c) while the host stayed bit-identical, so suspect the CPU when crackles
 appear that the twin can't reproduce. The host can't measure the load; the device can:
-`make BENCH=1` builds `FRIZZ-bench.bin` (`Bench.h`, compiled in only then), which runs 27
+`make BENCH=1` builds `FRIZZ-bench.bin` (`Bench.h`, compiled in only then), which runs 28
 segments by itself and writes `/FRIZZ/cpu.txt`; `firmware/remote.py load` and `remote.py play
 SCRIPT --cpu` read `FRIZZ.bin`'s own load. Every firmware branch runs the bench in stage 2,
 on its final build, and its PR compares it with `main`'s `firmware/bin/cpu.txt`; a segment
-noticeably higher is explained or fixed before the PR is ready. **A branch doesn't commit
+noticeably higher is explained or fixed before the PR is ready. Compare in one hold (A/B against main's build): the same build benched on another day reads up to ~0.5 points apart in single columns (#261), so `cpu.txt` files of different days only compare in their totals. **A branch doesn't commit
 `bin/cpu.txt`** (decided 2026-10-11), so firmware PRs don't queue behind each other's bench:
 after a round of merges, and before every test build or release, a session benches `main`'s
 own build, files it with `tools/builds.py cpu` (which heads it with the md5 of the build it
@@ -397,7 +397,7 @@ loop and the event log (`SDRAM_NOINIT`) aren't, as they're always written before
 buffers live in internal RAM, 32-byte aligned, written in whole sectors (`EventLog::Flush`).
 
 **Memory**: the firmware runs from SRAM, loaded by CHOMPI's bootloader (`APP_TYPE=BOOT_SRAM`).
-Code has about 30 KB left (`SRAM_EXEC`), the bench build only ~12 KB, and its data ~11 KB (2026-10-13); `docs/CAPACITY.md` lists every
+Code has about 11 KB left (`SRAM_EXEC`), the bench build only ~5 KB, and data (`SRAM`) ~18 KB (2026-10-14, after the loop loader); `docs/CAPACITY.md` lists every
 region and the ways to make room. Never use `make program-boot`, and never swap in upstream
 libDaisy: the vendored copy is patched (`THIRD_PARTY.md`).
 `__attribute__((optimize("-O0")))` and similar per-function overrides (`ProcessAllControls`)
