@@ -46,9 +46,11 @@ struct FATFS
     uint16_t csize = 0;  // sectors a cluster, set by the mount
     DWORD database = 0;  // the first cluster's sector
 };
+#define AM_DIR 0x10
 struct FILINFO
 {
     DWORD fsize = 0;
+    BYTE fattrib = 0; // AM_DIR for a folder
     char fname[256] = {};
 };
 struct FIL
@@ -63,8 +65,9 @@ struct FIL
 struct DIR
 {
     std::vector<std::string> names;
-    std::vector<DWORD> sizes;
+    std::vector<DWORD> sizes; // ~0u: a folder
     size_t at = 0;
+    uint32_t mount = 0; // the mount it was opened on: a remount makes it invalid, as a FIL
 };
 #define f_eof(fp) ((int)((fp)->fptr == FakeCard::Get().files[(fp)->path].size()))
 #define f_size(fp) ((DWORD)FakeCard::Get().files[(fp)->path].size())
@@ -76,6 +79,7 @@ struct FakeCard
     size_t space = SIZE_MAX;
     int open = 0;
     uint32_t mount = 0; // counts the mounts (ff.c's fs->id)
+    uint32_t dir_reads = 0; // f_readdir's calls
     void (*write_time)(size_t bytes) = nullptr; // a write taking time (the twin's), if set
     std::string cwd = "";
     std::map<std::string, std::string> files;
@@ -454,31 +458,56 @@ inline FRESULT f_opendir(DIR* d, const char* path)
 {
     FakeCard& c = FakeCard::Get();
     c.Touch();
-    const std::string dir = c.Path(path);
+    std::string dir = c.Path(path);
+    if (dir == "/")
+        dir = ""; // the root: every path starts with its "/"
     if (!c.present)
         return FR_NOT_READY;
-    if (!c.HasDir(dir))
+    if (!dir.empty() && !c.HasDir(dir))
         return FR_NO_PATH;
     d->names.clear();
     d->sizes.clear();
     d->at = 0;
-    for (const auto& file : c.files)
-        if (file.first.size() > dir.size() + 1 && !file.first.compare(0, dir.size() + 1, dir + "/")
-            && file.first.find('/', dir.size() + 1) == std::string::npos)
+    d->mount = c.mount;
+    // its files, then its folders (made, or a file's in them)
+    std::map<std::string, bool> folders;
+    auto child = [&](const std::string& p, DWORD size) {
+        if (p.size() <= dir.size() + 1 || p.compare(0, dir.size() + 1, dir + "/"))
+            return;
+        const size_t slash = p.find('/', dir.size() + 1);
+        if (slash == std::string::npos && size != ~0u)
         {
-            d->names.push_back(file.first.substr(dir.size() + 1));
-            d->sizes.push_back(static_cast<DWORD>(file.second.size()));
+            d->names.push_back(p.substr(dir.size() + 1));
+            d->sizes.push_back(size);
         }
+        else
+            folders[p.substr(dir.size() + 1, slash == std::string::npos ? std::string::npos : slash - dir.size() - 1)] = true;
+    };
+    for (const auto& file : c.files)
+        child(file.first, static_cast<DWORD>(file.second.size()));
+    for (const auto& made : c.dirs)
+        child(made.first, ~0u);
+    for (const auto& f : folders)
+    {
+        d->names.push_back(f.first);
+        d->sizes.push_back(~0u);
+    }
     return FR_OK;
 }
 inline FRESULT f_readdir(DIR* d, FILINFO* info)
 {
-    FakeCard::Get().Touch();
+    FakeCard& c = FakeCard::Get();
+    c.Touch();
     info->fname[0] = '\0';
+    if (d->mount != c.mount)
+        return FR_INVALID_OBJECT;
+    c.dir_reads++;
     if (d->at < d->names.size())
     {
         snprintf(info->fname, sizeof(info->fname), "%s", d->names[d->at].c_str());
-        info->fsize = d->sizes[d->at];
+        const bool folder = d->sizes[d->at] == ~0u;
+        info->fsize = folder ? 0 : d->sizes[d->at];
+        info->fattrib = folder ? AM_DIR : 0;
         d->at++;
     }
     return FR_OK;

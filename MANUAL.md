@@ -67,7 +67,8 @@ On the settings page, the keys and knob 1 set other things: see [Settings page](
 ### SHIFT and the mode switch
 
 **SHIFT** means holding the CHOMPI key. The CHOMPI key lights white while it acts as SHIFT,
-and glows dimly while you're on the [Loops page](#the-loops-page).
+and glows dimly while you're on the [Loops page](#the-loops-page) or the
+[Cubbi page](#the-cubbi-page).
 The mode switch picks the page: **down** is the play page, which most of this manual is about; **up** is the
 [settings page](#settings-page), for what you set once rather than play. If the keys don't
 play, flip it down.
@@ -81,7 +82,8 @@ Some controls do more than one thing, each on a page of its own, picked with a p
 VOLUME's pages 1-3 (below), and on knobs 1-4 an effect's [page 2](#page-2), the second set of
 its parameters. Picking a page blinks its number in white on the LEDs: once for page 1, twice
 for page 2, and so on. These pages are not the play page and the settings page, which the
-mode switch picks, nor the [Loops page](#the-loops-page), which SHIFT + the lower C# opens.
+mode switch picks, nor the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page),
+which SHIFT + the lower C# and SHIFT + the lower D# open.
 
 ### VOLUME knob
 
@@ -126,7 +128,7 @@ recording or waiting to erase, the compressor's key while the safety limiter wor
 2), on the settings page the clock factor on double, and VOLUME in the low-battery countdown.
 
 Waiting for something blinks slowly: LOOP while a recording finishes its bar, a picked scene
-slot, the CHOMPI key ready to confirm, a planned loop's key on the Loops page. On the knobs, white is a parameter's neutral point.
+slot, the CHOMPI key ready to confirm, a planned loop's key on the Loops or Cubbi page. On the knobs, white is a parameter's neutral point.
 The [LED brightness](#led-brightness) sets how bright all of them are.
 
 <!-- part: Looper and tempo -->
@@ -296,20 +298,23 @@ It's kept as `clock_factor` in `FRIZZ/frizz_master.txt` (50, 100 or 200).
 
 <!-- summary: Your own loops from the SD card, switched in time. -->
 
-FRIZZ plays loops from the SD card: 8 banks of 15, one on each white key of the **Loops
-page**. A loop from the card is the loop, as if you had recorded it: LOOP, PLAY, the transport
-knob and the input/loop mix act on it the same way. Switching to one can happen at once, at
-the end of the loop playing, or together with a [scene change in time](#scene-changes-in-time).
+FRIZZ plays loops from the SD card: your own, 8 banks of 15, one on each white key of the
+**Loops page**, and the recordings you made with TAPE (its cubbis) on the **Cubbi page**. A loop
+from the card is the loop, as if you had recorded it: LOOP, PLAY, the transport knob and the
+input/loop mix act on it the same way. Switching to one can happen at once, at the end of the
+loop playing, or together with a [scene change in time](#scene-changes-in-time).
 
 **A loop you recorded is gone once you switch to a loaded one.** FRIZZ doesn't write loops to
 the card, and there's no way back to the recording.
 
 ### Loops on the card
 
-Put your loops in a folder `FRIZZ/LOOPS` on the card, one folder per bank, `A` to `H`, and in
-each the files `01.wav` to `15.wav`: the number is the white key, from the left. A missing
-number is an empty key. To get them onto the card, use the launcher's
-[USB storage mode](INSTALL.md#usb-storage-mode); FRIZZ reads the folder when it starts.
+Put your loops in the folder `FRIZZ` on the card, beside the scenes and settings, named for
+their bank and key: `a1.wav` to `a15.wav` for bank a, `b1.wav` to `b15.wav` for bank b, and so
+on to `h15.wav`. The letter is the bank, the number the white key from the left (`a1.wav`, not
+`a01.wav`); upper or lower case doesn't matter. A missing name is an empty key. To get them
+onto the card, use the launcher's [USB storage mode](INSTALL.md#usb-storage-mode); FRIZZ reads
+the card when it starts.
 
 - **WAV, 16-bit, 48 kHz**, stereo or mono (a mono loop plays on both sides).
 - **At most about 77 s**: 16 bars at 50 BPM.
@@ -322,7 +327,9 @@ number is an empty key. To get them onto the card, use the launcher's
 **SHIFT + the lower C#** opens the Loops page. **SHIFT + the lower C#** again, or **two quick
 taps of SHIFT** (each a short tap with nothing else in between), takes you back to the play
 page. On the play page a double tap does nothing, so it's a safe way home wherever you are.
-Opening the Loops page ends a [save, copy or delete](#save-copy-and-delete) you had started.
+**SHIFT + the lower D#** takes you to the [Cubbi page](#the-cubbi-page). Opening the Loops page
+ends a [save, copy or delete](#save-copy-and-delete) you had started. With no loop on the card,
+the page opens with its white keys dark, and the lower C# and D# blink red 3 times.
 
 While you're on the Loops page, the CHOMPI key glows dimly in the bank's colour (white while
 you hold it as SHIFT). The CHOMPI key's LED only ever shows SHIFT held, the page you're on,
@@ -350,6 +357,37 @@ H pink. A white key shows its loop:
 
 The effects can't be punched in by hand there, since the white keys are the loops, but the
 latched ones and the [chaos key](#chaos-key) play on, and MIDI notes still play the effects.
+
+### The Cubbi page
+
+The Cubbi page plays what you recorded with TAPE, the CHOMPI's sampler firmware: its
+**cubbis**, the recordings TAPE keeps one on each white key, in 5 banks, a to e. You don't copy
+anything: FRIZZ reads them where TAPE keeps them, and never changes them.
+
+- **Where:** in the folder `TAPE` on the card if there is one (the multi-firmware launcher's
+  TAPE keeps its files there), otherwise in the card's root (TAPE on its own). If there's a
+  `TAPE` folder, FRIZZ looks only there, as the launcher's TAPE does.
+- **Which:** the files `cubbi_a1.wav` to `cubbi_e15.wav`, the bank's letter and the white key
+  from the left, as TAPE names them. TAPE's other files (its chromatic samples, `jammi_…`, and
+  the `…_double.wav` copies it keeps for fast playback) aren't loops, and FRIZZ leaves them out.
+  TAPE's own 15th key plays its recording buffer rather than a file, so the 15th key here is
+  usually dark.
+- **What it takes:** what TAPE records, 16-bit 48 kHz stereo, up to about 77 s, as on the
+  [Loops page](#loops-on-the-card). TAPE can record up to about 165 s: a longer cubbi shows dim
+  red, and pressing it blinks red 3 times.
+
+**SHIFT + the lower D#** opens the Cubbi page, from the play page or the Loops page. **SHIFT +
+the lower D#** again, or **two quick taps of SHIFT**, takes you back to the play page, and
+**SHIFT + the lower C#** to the Loops page. Everything else works as on the
+[Loops page](#the-loops-page): the lower C# and D# step the banks, a white key switches at
+once, SHIFT + a white key at the end of a pass or with a scene change, the same LEDs. Each
+page remembers its bank, and there's one plan for both: a loop planned on one page is replaced
+by a key on the other. With no cubbi on the card, the page opens with its white keys dark, and
+the lower C# and D# blink red 3 times.
+
+The banks show in TAPE's own colours, so you recognise them: a purple, b orange, c teal,
+d dark orange, e yellow-green. While you're on the page, the CHOMPI key glows dimly in the
+bank's colour.
 
 ### Switching loops
 
@@ -1058,8 +1096,8 @@ keys in the middle are scene keys: lower F#, lower G#, lower A#, upper C# and up
 - **The other four (lower G#, lower A#, upper C#, upper D#) hold your scenes 1-4.** They're
   saved to the SD card and come back at power-on.
 
-On the play page the lower D# does nothing, and the lower C# only opens the
-[Loops page](#the-loops-page) with SHIFT.
+On the play page the lower C# and D# do nothing by themselves: with SHIFT they open the
+[Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page).
 
 A saved scene stays as you saved it: changes you make after recalling one are only kept if you
 save again.
@@ -1469,7 +1507,8 @@ FRIZZ keeps what it saves on the SD card, in a folder `FRIZZ`, as text files. Le
 | `FRIZZ/frizz_master.txt` | The [master compressor](#master-compressor) and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, and for AUX and the mic each their input gain, monitoring and effects | 2 s after the last change |
 | `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | The versions before | With each write of the file |
 | `FRIZZ/bug-1.txt`, `bug-2.txt` … | [Bug reports](#bug-reports) | When you ask for one |
-| `FRIZZ/LOOPS/A/01.wav` … `H/15.wav` | Your [loops](#loops-on-the-card) | Never: FRIZZ only reads them |
+| `FRIZZ/a1.wav` … `h15.wav` | Your [loops](#loops-on-the-card) | Never: FRIZZ only reads them |
+| `TAPE/cubbi_a1.wav` … `cubbi_e15.wav` (or in the card's root) | TAPE's recordings, on the [Cubbi page](#the-cubbi-page) | Never: FRIZZ only reads them |
 
 ### Scenes and settings on the card
 
@@ -1561,18 +1600,30 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | Upper F#, G# or A#, the slot (copy: the source, then the destination), then CHOMPI | Save, copy or delete a scene | [Save, copy and delete](#save-copy-and-delete) |
 | The function's key again, or the mode switch up | Out of save, copy or delete, doing nothing | [Save, copy and delete](#save-copy-and-delete) |
 | SHIFT + lower C# | The Loops page | [The Loops page](#the-loops-page) |
+| SHIFT + lower D# | The Cubbi page | [The Cubbi page](#the-cubbi-page) |
 
 ### On the Loops page
 
 | Gesture | Does | See |
 |---|---|---|
 | SHIFT + lower C#, or two quick taps of SHIFT | Back to the play page | [The Loops page](#the-loops-page) |
+| SHIFT + lower D# | The Cubbi page | [The Cubbi page](#the-cubbi-page) |
 | Lower C#, lower D# | The bank before, after | [The Loops page](#the-loops-page) |
 | A white key | Its loop at once | [Switching loops](#switching-loops) |
 | SHIFT + a white key, N times | Its loop at the end of the N-th pass | [Switching loops](#switching-loops) |
 | SHIFT + a scene key (and the transport or a second scene key) and a white key | The loop with the morph or the drop | [A loop with a scene change](#a-loop-with-a-scene-change) |
 | SHIFT + a blinking key | Cancel the planned switch, and its scene change | [A loop with a scene change](#a-loop-with-a-scene-change) |
 | Scene keys, the transport knob, PLAY, LOOP, VOLUME | As on the play page | [On the play page](#on-the-play-page) |
+
+### On the Cubbi page
+
+The same keys as on the Loops page, with TAPE's recordings on the white keys. Only the way out
+differs:
+
+| Gesture | Does | See |
+|---|---|---|
+| SHIFT + lower D#, or two quick taps of SHIFT | Back to the play page | [The Cubbi page](#the-cubbi-page) |
+| SHIFT + lower C# | The Loops page | [The Loops page](#the-loops-page) |
 
 ### On the settings page
 

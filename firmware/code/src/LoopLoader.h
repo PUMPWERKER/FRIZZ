@@ -4,17 +4,24 @@
  *  from the recorded loop isn't here yet: for now the developers' SysEx drives it (LOOPS,
  *  MidiControl.h's namespace dev; remote.py loops).
  *
- *  The card: one folder per bank, /FRIZZ/LOOPS/A ... H, slots 01.wav ... 15.wav in each (the
- *  name sets the slot, a missing one is empty). A loop is a WAV of 16-bit PCM at 48 kHz, mono
- *  or stereo, its data in the file, at most 16 bars at 50 BPM (3,686,400 frames); anything
- *  else is refused, with its reason (Result). An `acid` chunk before the data (ACID's,
- *  Ableton's, many sample packs') gives its beats, which then set the tempo (#70).
+ *  The card: FRIZZ's own loops in /FRIZZ, a1.wav ... h15.wav (banks a-h, the white key from
+ *  the left; any case, no leading zero), and TAPE's cubbis, cubbi_a1.wav ... cubbi_e15.wav
+ *  (TAPE's per-key recordings; its _double and jammi files aren't loops), in /TAPE if there's
+ *  one (the multi-firmware launcher's TAPE keeps its files there, an empty /TAPE too), else in
+ *  the card's root (stock TAPE). The name sets the bank and slot, a missing one is empty; here
+ *  they're banks 0-7 and kCubbiBank + 0-4, one row of ids. A loop is a WAV of 16-bit PCM at
+ *  48 kHz, mono or stereo, its data in the file, at most 16 bars at 50 BPM (3,686,400
+ *  frames); anything else is refused, with its reason (Result). An `acid` chunk before the
+ *  data (ACID's, Ableton's, many sample packs') gives its beats, which then set the tempo
+ *  (#70).
  *
  *  Everything runs from MainLoop, a step a pass, as the card's other users do (SceneStore.h,
- *  EventLog.h); no FatFs object stays open from one pass to the next, so a remount by one of
- *  them (a bug report's, a save's) never pulls a file from under it.
- *   - At boot it scans: a pass reads a bank's folder (one f_readdir), then a pass a file found
- *     there, checking its header (WavWalk) from its first sectors.
+ *  EventLog.h); a FatFs object kept open from one pass to the next (the scan's folder, the
+ *  map's file) is opened again where it was after a remount by one of them (a bug report's, a
+ *  save's), which makes it invalid.
+ *   - At boot it scans /FRIZZ, then TAPE's folder: a pass reads kDirEntries of its entries
+ *     (the folder open from pass to pass, opened again after a remount), then a pass a file
+ *     found there, checking its header (WavWalk) from its first sectors.
  *   - A load opens the file, checks its header again, takes the file's clusters into a link
  *     map as FatFs's fast seek does (CREATE_LINKMAP), kMapClusters a pass (MapStep), and
  *     closes it; then it reads whole runs of the file's sectors, up to 128 KB each, straight
@@ -29,7 +36,7 @@
  *  For a test on the device, also: a CRC-32 of the data loaded (zlib's, so the computer checks
  *  it against the file), faults to provoke (the flow control off, a read past the card's end,
  *  a run cut short), and a write test, which writes, renames, reads back and deletes a file in
- *  /FRIZZ/LOOPS/T, a folder of its own, in the chunks of FRIZZ's own writes.
+ *  /FRIZZ/T, a folder of its own, in the chunks of FRIZZ's own writes.
  */
 #pragma once
 #include <stdint.h>
@@ -41,8 +48,12 @@
 
 namespace loops
 {
-static const size_t kBanks = 8;
+static const size_t kFrizzBanks = 8;   // /FRIZZ/a1.wav ... h15.wav
+static const size_t kCubbiBanks = 5;   // TAPE's cubbi_a1.wav ... cubbi_e15.wav
+static const size_t kCubbiBank = kFrizzBanks; // the cubbis' first bank here
+static const size_t kBanks = kFrizzBanks + kCubbiBanks;
 static const size_t kSlots = 15;
+static const size_t kDirEntries = 24; // a folder's entries a scan's pass reads (~1-3 ms)
 static const uint32_t kMaxFrames = 3686400; // 16 bars at 50 BPM: 76.8 s at 48 kHz
 static const uint32_t kPostRoll = 240;      // the looper's frames after the loop (Looper.h)
 static const uint32_t kSector = 512;
@@ -206,16 +217,34 @@ struct Slot
     uint16_t beats; // an acid chunk's, 0 for none
 };
 
-/** The 2-digit slot of a file's name, NN.wav (any case), 1-15; 0 for anything else */
-inline int SlotOf(const char* name)
+/** A file's slot, 1-15, by its name in any case: a1.wav ... h15.wav (FRIZZ's, cubbi false),
+ *  cubbi_a1.wav ... cubbi_e15.wav (TAPE's, cubbi true), the number without a leading zero;
+ *  bank its bank here (cubbis from kCubbiBank). 0 for anything else */
+inline int SlotOf(const char* name, bool cubbi, size_t& bank)
 {
-    if (name[0] < '0' || name[0] > '9' || name[1] < '0' || name[1] > '9' || name[2] != '.')
+    auto lower = [](char c) { return static_cast<char>(c >= 'A' && c <= 'Z' ? c | 0x20 : c); };
+    if (cubbi)
+    {
+        for (int i = 0; i < 6; i++)
+            if (lower(name[i]) != "cubbi_"[i])
+                return 0;
+        name += 6;
+    }
+    const int b = lower(name[0]) - 'a';
+    if (b < 0 || b >= static_cast<int>(cubbi ? kCubbiBanks : kFrizzBanks))
         return 0;
-    for (int i = 0; i < 3; i++)
-        if ((name[3 + i] | 0x20) != "wav"[i])
+    int s = 0, i = 1;
+    for (; i < 3 && name[i] >= '0' && name[i] <= '9'; i++)
+        s = s * 10 + name[i] - '0';
+    if (name[1] == '0' || s < 1 || s > static_cast<int>(kSlots))
+        return 0;
+    for (int k = 0; k < 4; k++)
+        if (lower(name[i + k]) != ".wav"[k])
             return 0;
-    const int s = (name[0] - '0') * 10 + name[1] - '0';
-    return name[6] == '\0' && s >= 1 && s <= static_cast<int>(kSlots) ? s : 0;
+    if (name[i + 4] != '\0')
+        return 0;
+    bank = static_cast<size_t>(b) + (cubbi ? kCubbiBank : 0);
+    return s;
 }
 
 /** The loader's memory beside the buffer, in SDRAM (chompi_main.cpp): the header's window
@@ -442,8 +471,13 @@ private:
         sd_error_ = 0;
         if (what == SCANNING)
         {
-            bank_ = 0;
-            listed_ = false;
+            if (dir_open_)
+                f_closedir(&mem_->dir);
+            group_ = 0;
+            listed_ = dir_open_ = false;
+            entries_ = 0;
+            ms_ = 0;
+            start_ms_ = ms_clock_();
         }
         else if (what == LOADING)
         {
@@ -483,62 +517,115 @@ private:
     }
 
     // ---- the scan ----
-    static void BankPath(char* path, size_t bank) // "/FRIZZ/LOOPS/A"
+    /** A slot's file: "/FRIZZ/a1.wav", or "/TAPE/cubbi_a1.wav" ("/cubbi_a1.wav" without /TAPE) */
+    void SlotPath(char* path, size_t bank, size_t slot) const
     {
-        memcpy(path, "/FRIZZ/LOOPS/A", 15);
-        path[13] = static_cast<char>('A' + bank);
-    }
-    static void SlotPath(char* path, size_t bank, size_t slot) // "/FRIZZ/LOOPS/A/01.wav"
-    {
-        BankPath(path, bank);
-        memcpy(path + 14, "/01.wav", 8);
-        path[15] = static_cast<char>('0' + (slot + 1) / 10);
-        path[16] = static_cast<char>('0' + (slot + 1) % 10);
+        const bool cubbi = bank >= loops::kCubbiBank;
+        const char* dir = !cubbi ? "/FRIZZ/" : tape_ ? "/TAPE/cubbi_" : "/cubbi_";
+        const size_t n = strlen(dir);
+        memcpy(path, dir, n);
+        char* p = path + n;
+        *p++ = static_cast<char>('a' + bank - (cubbi ? loops::kCubbiBank : 0));
+        if (slot >= 9)
+            *p++ = '1';
+        *p++ = static_cast<char>('0' + (slot + 1) % 10);
+        memcpy(p, ".wav", 5);
     }
 
-    /** A pass: a bank's folder listed, or one file found there checked */
+    /** A pass: kDirEntries of a folder's entries listed (/FRIZZ, then TAPE's), or one file
+     *  found there checked. The folder stays open from pass to pass; a remount meanwhile (a
+     *  save's, a bug report's) makes it invalid, and it's opened again past what was read */
     LOOP_LOADER_ONCE void ScanStep()
     {
-        if (bank_ == loops::kBanks)
+        if (group_ == 2)
         {
+            ms_ = ms_clock_() - start_ms_;
             End(IDLE, 0);
             return;
         }
-        loops::Slot* slots = mem_->slots[bank_];
+        const bool cubbi = group_ == 1;
+        const size_t first = cubbi ? loops::kCubbiBank : 0;
+        const size_t last = cubbi ? loops::kBanks : loops::kFrizzBanks;
         if (!listed_)
         {
-            listed_ = true;
-            found_ = 0;
-            for (size_t s = 0; s < loops::kSlots; s++)
-                slots[s] = {loops::EMPTY, 0, 0, 0};
-            char path[16];
-            BankPath(path, bank_);
-            if (f_opendir(&mem_->dir, path) != FR_OK)
-                return;
-            while (f_readdir(&mem_->dir, &mem_->info) == FR_OK && mem_->info.fname[0])
-                if (const int s = loops::SlotOf(mem_->info.fname))
-                    found_ |= 1u << (s - 1);
-            f_closedir(&mem_->dir);
+            ListStep(cubbi, first, last);
             return;
         }
-        if (!found_)
+        size_t bank = first;
+        while (bank < last && !found_[bank])
+            bank++;
+        if (bank == last)
         {
-            bank_++;
+            group_++;
             listed_ = false;
+            entries_ = 0;
             return;
         }
-        const size_t slot = static_cast<size_t>(__builtin_ctz(found_));
-        found_ &= found_ - 1;
-        loops::Slot& s = slots[slot];
-        s.result = Open(bank_, slot, s.frames, s.data, false);
+        const size_t slot = static_cast<size_t>(__builtin_ctz(found_[bank]));
+        found_[bank] &= found_[bank] - 1;
+        loops::Slot& s = mem_->slots[bank][slot];
+        s.result = Open(bank, slot, s.frames, s.data, false);
         s.beats = static_cast<uint16_t>(beats_);
+    }
+
+    /** A pass of the listing: the folder opened (TAPE's: /TAPE if it's there, else the root),
+     *  kDirEntries read */
+    LOOP_LOADER_ONCE void ListStep(bool cubbi, size_t first, size_t last)
+    {
+        DIR& dir = mem_->dir;
+        if (!dir_open_)
+        {
+            if (!entries_)
+            {
+                for (size_t b = first; b < last; b++)
+                {
+                    found_[b] = 0;
+                    for (size_t s = 0; s < loops::kSlots; s++)
+                        mem_->slots[b][s] = {loops::EMPTY, 0, 0, 0};
+                }
+                if (cubbi)
+                    tape_ = f_opendir(&dir, "/TAPE") == FR_OK;
+            }
+            const char* path = !cubbi ? "/FRIZZ" : tape_ ? "/TAPE" : "/";
+            if ((!cubbi || entries_ || !tape_) && f_opendir(&dir, path) != FR_OK)
+            {
+                listed_ = true; // no folder: nothing there
+                return;
+            }
+            dir_open_ = true;
+            // opened again after a remount: past the entries read before it
+            for (uint32_t n = 0; n < entries_; n++)
+                if (f_readdir(&dir, &mem_->info) != FR_OK || !mem_->info.fname[0])
+                    break;
+        }
+        for (size_t n = 0; n < loops::kDirEntries; n++)
+        {
+            const FRESULT r = f_readdir(&dir, &mem_->info);
+            if (r == FR_INVALID_OBJECT)
+            {
+                dir_open_ = false; // a remount: opened again at the next pass
+                return;
+            }
+            if (r != FR_OK || !mem_->info.fname[0])
+            {
+                f_closedir(&dir);
+                dir_open_ = false;
+                listed_ = true;
+                return;
+            }
+            entries_++;
+            size_t bank = 0;
+            if (!(mem_->info.fattrib & AM_DIR))
+                if (const int s = loops::SlotOf(mem_->info.fname, cubbi, bank))
+                    found_[bank] |= static_cast<uint16_t>(1u << (s - 1));
+        }
     }
 
     /** Opens the slot's file and checks its header. The file is closed again, unless keep and
      *  it's a loop */
     LOOP_LOADER_ONCE uint8_t Open(size_t bank, size_t slot, uint32_t& frames, uint32_t& data, bool keep)
     {
-        char path[24];
+        char path[kPathLen];
         SlotPath(path, bank, slot);
         FIL& file = mem_->file;
         if (f_open(&file, path, FA_READ) != FR_OK)
@@ -641,7 +728,7 @@ private:
     {
         FIL& file = mem_->file;
         f_close(&file);
-        char path[24];
+        char path[kPathLen];
         SlotPath(path, bank_, slot_);
         FRESULT r = f_open(&file, path, FA_READ);
         if (r != FR_OK || !cluster_)
@@ -791,22 +878,21 @@ private:
         }
     }
 
-    // ---- the write test, in /FRIZZ/LOOPS/T: a chunk a pass, written then read back ----
+    // ---- the write test, in /FRIZZ/T: a chunk a pass, written then read back ----
     static const uint32_t kWriteMax = 1u << 20;
     static uint8_t Pattern(uint32_t i) { return static_cast<uint8_t>((i * 2654435761u) >> 24); }
 
     LOOP_LOADER_ONCE void WriteStep()
     {
-        static const char* const kDir = "/FRIZZ/LOOPS/T";
-        static const char* const kTmp = "/FRIZZ/LOOPS/T/w.tmp";
-        static const char* const kName = "/FRIZZ/LOOPS/T/w.bin";
+        static const char* const kDir = "/FRIZZ/T";
+        static const char* const kTmp = "/FRIZZ/T/w.tmp";
+        static const char* const kName = "/FRIZZ/T/w.bin";
         FIL& file = mem_->file;
         uint8_t* back = buf_ + kWriteMax;
         UINT got = 0;
         bool ok = true;
         if (phase_ == 0)
         {
-            made_loops_ = f_mkdir("/FRIZZ/LOOPS") == FR_OK;
             const FRESULT d = f_mkdir(kDir);
             ok = (d == FR_OK || d == FR_EXIST) && f_open(&file, kTmp, FA_CREATE_ALWAYS | FA_WRITE) == FR_OK;
             phase_ = 1;
@@ -856,15 +942,13 @@ private:
         }
     }
 
-    /** Whatever the test left, deleted: its files, its folder, /FRIZZ/LOOPS if it made it */
+    /** Whatever the test left, deleted: its files, its folder */
     void WriteEnd(uint8_t error)
     {
         DiskFaultEnd();
-        f_unlink("/FRIZZ/LOOPS/T/w.tmp");
-        f_unlink("/FRIZZ/LOOPS/T/w.bin");
-        f_unlink("/FRIZZ/LOOPS/T");
-        if (made_loops_)
-            f_unlink("/FRIZZ/LOOPS");
+        f_unlink("/FRIZZ/T/w.tmp");
+        f_unlink("/FRIZZ/T/w.bin");
+        f_unlink("/FRIZZ/T");
         End(WRITTEN, error);
     }
 
@@ -881,9 +965,12 @@ private:
     State state_ = IDLE;
     uint8_t bank_ = 0, slot_ = 0, error_ = 0, faults_ = 0;
     uint32_t sd_error_ = 0;
-    // the scan
-    bool listed_ = false;
-    uint16_t found_ = 0;
+    // the scan: the folder (0 /FRIZZ, 1 TAPE's, 2 done), its entries read, the slots found
+    static const size_t kPathLen = 24; // "/TAPE/cubbi_a15.wav"
+    uint8_t group_ = 0;
+    bool listed_ = false, dir_open_ = false, tape_ = false;
+    uint32_t entries_ = 0;
+    uint16_t found_[loops::kBanks] = {};
     // the load
     bool opened_ = false, mapping_ = false, inflight_ = false;
     uint8_t result_ = loops::EMPTY;
@@ -901,5 +988,4 @@ private:
     // the CRC, the write test
     uint32_t crc_ = 0, at_ = 0, chunk_ = 0, bad_ = 0;
     uint8_t phase_ = 0;
-    bool made_loops_ = false;
 };

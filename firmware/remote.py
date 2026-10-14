@@ -52,17 +52,20 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
     ./remote.py crash-test hang-main|fault-main|hang-audio|fault-audio
                                       the bench (FRIZZ-bench.bin) hangs or faults on purpose,
                                       for RESET, the crash record and the watchdog
-    ./remote.py loops [--scan]        the loop slots on the card (/FRIZZ/LOOPS/A-H/01-15.wav)
-                                      as FRIZZ's scan found them; --scan scans again first
+    ./remote.py loops [--scan]        the loop slots on the card (/FRIZZ/a1.wav ... h15.wav, and
+                                      TAPE's cubbi_a1.wav ... cubbi_e15.wav in /TAPE or the
+                                      root) as FRIZZ's scan found them; --scan scans again
+                                      first, and says how long it took
     ./remote.py loops load BANK SLOT [--fault no-flow|past-end|cut-short|reinit|fatfs-cut-short|
                                       fatfs-past-end] [--check WAV]
-                                      loads one (A 1 ... H 15) into the loop buffer, following
+                                      loads one (a 1 ... h 15, cubbi_a 1 ... cubbi_e 15) into
+                                      the loop buffer, following
                                       it: its time, the audio callback's load meanwhile,
                                       MainLoop's longest step; --check: the CRC-32 of what
                                       landed against WAV's data. A fault provokes an error
                                       (fatfs-: in FatFs's read as it opens the file)
     ./remote.py loops write KB CHUNK [--fault cut-short|past-end]
-                                      the write test: KB written to /FRIZZ/LOOPS/T in CHUNK-
+                                      the write test: KB written to /FRIZZ/T in CHUNK-
                                       byte writes, renamed, read back, deleted with its folder;
                                       a fault in FatFs's next write of more than a sector
 
@@ -756,7 +759,8 @@ LOOP_FAULTS = {"no-flow": 1, "past-end": 2, "cut-short": 4,
                "fatfs-cut-short": 16, "fatfs-past-end": 32}
 # the write test's: FatFs's next write of more than a sector
 WRITE_FAULTS = {"cut-short": 16, "past-end": 32}
-BANKS = "ABCDEFGH"
+# LoopLoader's banks: FRIZZ's a-h in /FRIZZ, then TAPE's cubbis a-e
+BANKS = list("abcdefgh") + ["cubbi_" + b for b in "abcde"]
 
 
 def loop_result(r):
@@ -799,7 +803,7 @@ def loops_show(f, scan):
         sys.exit("no answer to LOOPS: a FRIZZ from before it")
     s, secs, worst = loops_wait(f, [1], 30)
     if scan:
-        print("scanned in %.2f s, MainLoop's longest step %.1f ms" % (secs, worst / 1000))
+        print("scanned in %d ms, MainLoop's longest step %.1f ms" % (s["ms"], worst / 1000))
     filled = 0
     for b, name in enumerate(BANKS):
         d = dev_data(f, chompi.LOOPS, [1, b], "LOOPS")
@@ -807,7 +811,7 @@ def loops_show(f, scan):
             if not r:
                 continue
             filled += 1
-            line = "%s/%02d  %s" % (name, slot + 1, loop_result(r))
+            line = "%s%d  %s" % (name, slot + 1, loop_result(r))
             if r in (1, 2):
                 i = dev_data(f, chompi.LOOPS, [2, b, slot], "LOOPS")
                 frames = chompi.get7(i[1:5])
@@ -846,7 +850,7 @@ def loops_load(f, bank, slot, fault, check):
     mx, mean, over = load(f)
     ok = s["state"] == 3
     mb = s["done"] / 1e6
-    print("%s/%02d %s: %.2f of %.2f MB in %d ms (%.1f MB/s), %d runs%s%s" % (
+    print("%s%d %s: %.2f of %.2f MB in %d ms (%.1f MB/s), %d runs%s%s" % (
         BANKS[bank], slot, "loaded" if ok else "failed, " + loop_result(s["error"]), mb,
         s["total"] / 1e6, s["ms"], mb * 1000 / s["ms"] if s["ms"] else 0, s["runs"],
         ", the file in %d fragment%s" % (s["frags"], "" if s["frags"] == 1 else "s") if s["frags"] else "",
@@ -1476,10 +1480,10 @@ def command(a):
     elif a.cmd == "crash-test":
         crash_test(f, a.what)
     elif a.cmd == "loops" and a.action == "load":
-        if len(a.args) != 2 or a.args[0].upper() not in BANKS or not a.args[1].isdigit() \
+        if len(a.args) != 2 or a.args[0].lower() not in BANKS or not a.args[1].isdigit() \
                 or not 1 <= int(a.args[1]) <= 15:
-            sys.exit("loops load BANK SLOT: A-H, 1-15")
-        sys.exit(0 if loops_load(f, BANKS.index(a.args[0].upper()), int(a.args[1]), a.fault,
+            sys.exit("loops load BANK SLOT: a-h or cubbi_a-cubbi_e, 1-15")
+        sys.exit(0 if loops_load(f, BANKS.index(a.args[0].lower()), int(a.args[1]), a.fault,
                                  a.check) else 1)
     elif a.cmd == "loops" and a.action == "write":
         if len(a.args) != 2 or not all(x.isdigit() for x in a.args) or not 1 <= int(a.args[0]) <= 1024 \

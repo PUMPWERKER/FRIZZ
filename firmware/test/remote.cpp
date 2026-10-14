@@ -786,37 +786,39 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     {
         const std::string a01 = LoopWav(96000, 48000, 2), wav = tmp_dir + "/a01.wav";
         std::ofstream(wav, std::ios::binary) << a01;
-        CardFiles()["/FRIZZ/LOOPS/A/01.wav"] = a01;
-        CardFiles()["/FRIZZ/LOOPS/C/15.WAV"] = LoopWav(1000, 44100, 2);
+        CardFiles()["/FRIZZ/a1.wav"] = a01;
+        CardFiles()["/FRIZZ/c15.WAV"] = LoopWav(1000, 44100, 2);
+        CardFiles()["/cubbi_b2.wav"] = LoopWav(1000, 48000, 2);
         rc = Remote({"loops", "--scan"}, out);
-        Check(rc == 0 && Has(out, "A/01  stereo, 96000 frames (2.00 s), its data at 44\n")
-                  && Has(out, "C/15  not 48 kHz\n") && Has(out, "2 slots filled"),
+        Check(rc == 0 && Has(out, "a1  stereo, 96000 frames (2.00 s), its data at 44\n")
+                  && Has(out, "c15  not 48 kHz\n") && Has(out, "cubbi_b2  stereo") && Has(out, "3 slots filled"),
               "remote: loops --scan lists the slots on the card, a refused one with why");
         if (rc != 0)
             printf("%s\n", out.c_str());
         rc = Remote({"loops", "load", "a", "1", "--check", wav}, out);
-        Check(rc == 0 && Has(out, "A/01 loaded: 0.38 of 0.38 MB in ") && Has(out, ", 3 runs, the file in 1 fragment\n")
+        Check(rc == 0 && Has(out, "a1 loaded: 0.38 of 0.38 MB in ") && Has(out, ", 3 runs, the file in 1 fragment\n")
                   && Has(out, "the audio callback meanwhile: max ") && Has(out, "a01.wav's data 0x")
                   && Has(out, ": the same"),
               "remote: loops load reads a slot in runs, its CRC-32 the file's data's");
         if (rc != 0)
             printf("%s\n", out.c_str());
         rc = Remote({"loops", "load", "A", "1", "--fault", "past-end"}, out);
-        Check(rc == 1 && Has(out, "A/01 failed, card error: 0.26 of 0.38 MB") && Has(out, "SD error 0x2000000")
+        Check(rc == 1 && Has(out, "a1 failed, card error: 0.26 of 0.38 MB") && Has(out, "SD error 0x2000000")
                   && Has(out, "card recovered 1 times"),
               "remote: a load's fault provoked: it stops at once, why, the card recovered");
         if (rc != 1)
             printf("%s\n", out.c_str());
-        CardFiles().erase("/FRIZZ/LOOPS/A/01.wav");
-        CardFiles().erase("/FRIZZ/LOOPS/C/15.WAV");
+        CardFiles().erase("/FRIZZ/a1.wav");
+        CardFiles().erase("/FRIZZ/c15.WAV");
+        CardFiles().erase("/cubbi_b2.wav");
         const size_t files = CardFiles().size();
         rc = Remote({"loops", "write", "16", "300"}, out);
         bool left = false;
         for (const auto& f : CardFiles())
-            left = left || f.first.find("/LOOPS") != std::string::npos;
+            left = left || f.first.find("/FRIZZ/T") != std::string::npos;
         Check(rc == 0 && Has(out, "write test, 16 KB in 300-byte writes: passed") && !left
                   && CardFiles().size() == files,
-              "remote: loops write writes, renames, reads back and deletes a file in /FRIZZ/LOOPS/T");
+              "remote: loops write writes, renames, reads back and deletes a file in /FRIZZ/T");
         if (rc != 0)
             printf("%s\n", out.c_str());
         unlink(wav.c_str());

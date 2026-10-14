@@ -1,9 +1,11 @@
 /** @file LoopControls.h
- *  @brief The Loops page's loops (#70, MANUAL.md "Loop loader"): which loop the white keys pick
- *  and when it takes over, the loads behind it, and what the keys' LEDs show. NormalPage.h
- *  routes the page's keys here and draws; LoopLoader.h reads the card; the looper switches
- *  (Looper::Switch) and the engine times a switch with a scene sequence (LoopOnLanding).
- *  Everything here runs from MainLoop.
+ *  @brief The Loops page's and the Cubbi page's loops (#70, MANUAL.md "Loop loader"): which
+ *  loop the white keys pick and when it takes over, the loads behind it, and what the keys'
+ *  LEDs show. The Loops page has FRIZZ's own loops (banks a-h), the Cubbi page TAPE's cubbis
+ *  (a-e, LoopLoader's from kCubbiBank); both are one row of loops, with one plan, and each page
+ *  remembers the bank it showed. NormalPage.h routes the pages' keys here and draws;
+ *  LoopLoader.h reads the card; the looper switches (Looper::Switch) and the engine times a
+ *  switch with a scene sequence (LoopOnLanding). Everything here runs from MainLoop.
  *
  *  A loop is the loop: there are two buffers, the recording's own (the looper's, Init's
  *  rec) and the loader's, and a loop is loaded into the one the looper doesn't read, so the
@@ -72,28 +74,32 @@ public:
         bufs_[1].mem = const_cast<uint8_t*>(loader->Home());
     }
 
-    // ---- the banks ----
-    inline size_t Bank() const { return bank_; }
-    /** The next bank (dir 1) or the one before (-1) with a file in it; false at the end */
+    // ---- the pages and their banks ----
+    /** The bank shown (LoopLoader's: the Cubbi page's from kCubbiBank) */
+    inline size_t Bank() const { return bank_[cubbi_]; }
+    /** The Cubbi page shown, not the Loops page */
+    inline bool Cubbi() const { return cubbi_; }
+    /** The next bank (dir 1) or the one before (-1) of the page with a file in it; false at
+     *  the end */
     bool StepBank(int dir)
     {
-        for (int b = static_cast<int>(bank_) + dir; b >= 0 && b < static_cast<int>(loops::kBanks); b += dir)
+        for (int b = static_cast<int>(Bank()) + dir; b >= static_cast<int>(First()) && b < static_cast<int>(Last()); b += dir)
             if (BankUsed(static_cast<size_t>(b)))
             {
-                bank_ = static_cast<size_t>(b);
+                bank_[cubbi_] = static_cast<size_t>(b);
                 return true;
             }
         return false;
     }
-    /** On the page opening: the first bank with a file, unless the one shown has one */
-    void Show()
+    /** On a page opening: the first bank with a file, unless the one it showed has one. False
+     *  if none has */
+    bool Show(bool cubbi)
     {
-        if (!BankUsed(bank_))
-        {
-            bank_ = 0;
-            if (!BankUsed(0))
-                StepBank(1);
-        }
+        cubbi_ = cubbi;
+        if (BankUsed(Bank()))
+            return true;
+        bank_[cubbi_] = First();
+        return BankUsed(First()) || StepBank(1);
     }
 
     // ---- the keys (NormalPage) ----
@@ -103,12 +109,12 @@ public:
      *  On the device with the audio interrupt blocked */
     Key Press(size_t slot, bool shift, bool sequence, bool fader, bool spent)
     {
-        const loops::Slot& s = loader_->GetSlot(bank_, slot);
+        const loops::Slot& s = loader_->GetSlot(Bank(), slot);
         const Looper& looper = engine_->looper;
         if ((s.result != loops::MONO && s.result != loops::STEREO)
             || looper.GetState() == Looper::State::RECORDING)
             return Key::REFUSED;
-        const int id = static_cast<int>(bank_ * loops::kSlots + slot);
+        const int id = static_cast<int>(Bank() * loops::kSlots + slot);
         if (shift && plan_ == id)
         {
             if (!in_hold_)
@@ -207,8 +213,8 @@ public:
     /** A slot of the bank shown */
     Led SlotLed(size_t slot) const
     {
-        const int id = static_cast<int>(bank_ * loops::kSlots + slot);
-        const uint8_t result = loader_->GetSlot(bank_, slot).result;
+        const int id = static_cast<int>(Bank() * loops::kSlots + slot);
+        const uint8_t result = loader_->GetSlot(Bank(), slot).result;
         if (id == plan_)
             return Ready(id) >= 0 ? Led::PLANNED : Led::LOADING;
         if (id == playing_)
@@ -298,6 +304,9 @@ private:
         const int16_t* data = nullptr;
         uint32_t frames = 0, beats = 0;
     };
+
+    inline size_t First() const { return cubbi_ ? loops::kCubbiBank : 0; }
+    inline size_t Last() const { return cubbi_ ? loops::kBanks : loops::kFrizzBanks; }
 
     bool BankUsed(size_t bank) const
     {
@@ -406,7 +415,8 @@ private:
     PassthroughEngine* engine_ = nullptr;
     LoopLoader* loader_ = nullptr;
     Buf bufs_[2];            // the recording's, the loader's
-    size_t bank_ = 0;        // shown
+    size_t bank_[2] = {0, loops::kCubbiBank}; // shown: the Loops page's, the Cubbi page's
+    bool cubbi_ = false;     // the Cubbi page shown (or last shown)
     int plan_ = kNone;       // the loop planned (bank * 15 + slot)
     Kind kind_ = Kind::NOW;  // and when it switches
     bool in_hold_ = false;   // planned in this SHIFT hold

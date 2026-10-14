@@ -42,15 +42,18 @@
  *  in it. A morph on MIDI's crossfader (CC 80) stays MIDI's: letting go of SHIFT doesn't end it.
  *  The card is written from MainLoop (SceneStore::Process), never here.
  *
- *  The Loops page (#70, LoopControls.h), a sub-page: SHIFT + the lower C# opens it from
- *  anywhere but the settings page, SHIFT + it again or a double tap of SHIFT (two clean taps
- *  within kDoubleTapMs) goes home. The keys the hand presses there come as kLoopsKeyBase
- *  plus the key (ui.h), MIDI's notes as ever, so MIDI plays the effects there and picks no
- *  loops. Its white keys are the bank's loops, the lower C# and D# the banks; the scene keys,
- *  the transport, PLAY, LOOP and VOLUME are the play page's; the scene modes and knobs 1-4
- *  do nothing, dark. Opening it ends a scene mode, so a tap of SHIFT confirms nothing there.
- *  SHIFT's LED shows the sub-page, dim in its colour (the bank's here), and nothing else may
- *  use it: white held, the confirm blink, the boot ripple. A later sub-page brings its own.
+ *  The Loops page and the Cubbi page (#70, LoopControls.h), sub-pages with the same keys:
+ *  FRIZZ's own loops and TAPE's cubbis. SHIFT + the lower C# opens the Loops page, SHIFT + the
+ *  lower D# the Cubbi page, from anywhere but the settings page (also from each other);
+ *  SHIFT + the page's own key or a double tap of SHIFT (two clean taps within kDoubleTapMs)
+ *  goes home. The keys the hand presses there come as kLoopsKeyBase plus the key (ui.h),
+ *  MIDI's notes as ever, so MIDI plays the effects there and picks no loops. Their white keys
+ *  are the bank's loops, the lower C# and D# the banks; the scene keys, the transport, PLAY,
+ *  LOOP and VOLUME are the play page's; the scene modes and knobs 1-4 do nothing, dark.
+ *  Opening one ends a scene mode, so a tap of SHIFT confirms nothing there; opening one
+ *  without a loop blinks both bank keys red. SHIFT's LED shows the sub-page, dim in its
+ *  colour (the bank's here), and nothing else may use it: white held, the confirm blink, the
+ *  boot ripple. A later sub-page brings its own.
  *
  *  MIDI (MidiControl.h): notes and FRIZZ's SysEx keys and detents come as the hand's do (ui.h);
  *  the rest, Remote() takes from MainLoop: a controller sets a parameter, a latch, a gain, the
@@ -185,6 +188,15 @@ namespace chompi
     // the banks A-H, around the colour wheel; not red (refused) nor white (flashes)
     static constexpr const float* kBankColors[8] = {orange, yellow, green, teal,
                                                     med_blue, blue, purple, pink};
+    // the Cubbi page's banks a-e in TAPE's own colours (its NormalPage.h), so a TAPE player
+    // knows them: purple, orange, and three LedColors.h hasn't (kept here, its shape is the
+    // site's)
+    static const float kTapeTeal[3] = {.14f, 1.f, .92f};
+    static const float kTapeDarkOrange[3] = {.77f, .38f, .06f};
+    static const float kTapeYellowGreen[3] = {.706f, 1.f, 0.f};
+    static constexpr const float* kCubbiColors[5] = {purple, orange, kTapeTeal, kTapeDarkOrange,
+                                                     kTapeYellowGreen};
+    static const uint16_t kBothBankKeys = 0xFFFF; // bank_refused_key_: a page without a loop
 
     static const float kVuDim[3] = {.1f, .1f, .1f}; // the VU meter's floor
     // the input's meter on VOLUME's page 2: dim to green to yellow from kInMeterFloorDb to the
@@ -332,7 +344,7 @@ namespace chompi
                 PthLed(kChompiKeyLed, SceneModeColor(), BlinkOn(now, kPendingBlinkMs) ? 1.f : 0.f);
 #if !FRIZZ_BENCH
             else if (loops_shown_ && !Shift())
-                PthLed(kChompiKeyLed, kBankColors[loops_.Bank()], kFxOffLevel);
+                PthLed(kChompiKeyLed, BankColor(loops_.Bank()), kFxOffLevel);
 #endif
             else
                 PthLed(kChompiKeyLed, white, Shift() ? 1.f : 0.f);
@@ -444,11 +456,13 @@ namespace chompi
             // cancel a confirm or a latch in the making.
 
 #if !FRIZZ_BENCH
-            // SHIFT + the lower C#: the Loops page
-            if (buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_16) && Shift())
+            // SHIFT + the lower C#: the Loops page; SHIFT + the lower D#: the Cubbi page
+            if ((buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_16)
+                 || buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_17))
+                && Shift())
             {
                 keys_.Used();
-                ShowLoops(true);
+                ShowLoops(true, buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_17));
                 return true;
             }
 #endif
@@ -1475,12 +1489,12 @@ namespace chompi
                 return true;
             if (key == static_cast<uint16_t>(S::KEY_16) || key == static_cast<uint16_t>(S::KEY_17))
             {
-                // SHIFT + the page's key goes home; SHIFT + the lower D# is kept for a later page
+                // SHIFT + the page's key goes home, SHIFT + the other's to the other page
                 if (Shift())
                 {
                     keys_.Used();
-                    if (key == static_cast<uint16_t>(S::KEY_16))
-                        ShowLoops(false);
+                    const bool cubbi = key == static_cast<uint16_t>(S::KEY_17);
+                    ShowLoops(cubbi != loops_.Cubbi(), cubbi);
                 }
                 else if (!loops_.StepBank(key == static_cast<uint16_t>(S::KEY_16) ? -1 : 1))
                 {
@@ -1523,16 +1537,28 @@ namespace chompi
             loop_refused_key_.Start(System::GetNow());
         }
 
-        /** The Loops page opened (a scene mode ends) or left */
-        void ShowLoops(bool on)
+        /** The Loops page or the Cubbi page opened (a scene mode ends; without a loop on it
+         *  the bank keys blink red), or left */
+        void ShowLoops(bool on, bool cubbi = false)
         {
             ResetSmtLeds(); // the keys a page doesn't draw would keep the other's colours
             loops_shown_ = on;
+            loop_refused_key_.Stop();
+            bank_refused_.Stop();
             if (on)
             {
                 scene_ctl_.Cancel();
-                loops_.Show();
+                if (!loops_.Show(cubbi))
+                {
+                    bank_refused_key_ = kBothBankKeys;
+                    bank_refused_.Start(System::GetNow());
+                }
             }
+        }
+
+        static const float* BankColor(size_t bank)
+        {
+            return bank < loops::kCubbiBank ? kBankColors[bank] : kCubbiColors[bank - loops::kCubbiBank];
         }
 
         /** SHIFT went down or up (held: its press was seen): two clean taps on a sub-page, each
@@ -1562,7 +1588,7 @@ namespace chompi
         {
             // the limiting it sees meanwhile is old once the play page shows the key again
             engine_->TakeLimiterGain();
-            const float* color = kBankColors[loops_.Bank()];
+            const float* color = BankColor(loops_.Bank());
             const uint32_t pos = engine_->FxClockPosition();
             const bool beat = pos % kPulsesPerBeat < kPulsesPerBeat / 2;
             for (size_t w = 0; w < kNumWhiteKeys; w++)
@@ -1600,7 +1626,8 @@ namespace chompi
             }
             for (Hardware::SwId key : {Hardware::SwId::KEY_16, Hardware::SwId::KEY_17})
             {
-                if (static_cast<uint16_t>(key) == bank_refused_key_ && bank_refused_.Active(now))
+                if ((static_cast<uint16_t>(key) == bank_refused_key_ || bank_refused_key_ == kBothBankKeys)
+                    && bank_refused_.Active(now))
                     SmtLed(KeyLedOf(key), red, bank_refused_.BlinkLit(now) ? 1.f : 0.f);
                 else
                     SmtLed(KeyLedOf(key), color, 1.f);
@@ -2417,12 +2444,12 @@ namespace chompi
         LedSignal knob_page_flash_; // the FX knobs' page turned: its number in blinks
         size_t knob_flash_page_ = 0; // the page knob_page_flash_ blinks for
 
-        volatile bool loops_shown_ = false; // the Loops page (#70)
+        volatile bool loops_shown_ = false; // the Loops page or the Cubbi page (#70, loops_.Cubbi())
 #if !FRIZZ_BENCH
         LoopControls loops_;
         LedSignal loop_refused_key_;  // a loop refused, on its key
         size_t loop_refused_slot_ = 0;
-        LedSignal bank_refused_;      // no bank further, on its key
+        LedSignal bank_refused_;      // no bank further, on its key (both: no loop on the page)
         uint16_t bank_refused_key_ = 0;
         uint32_t tap_up_ = 0;         // SHIFT's last clean tap let go
         bool tap_one_ = false;        // one clean tap, the next may make it two
