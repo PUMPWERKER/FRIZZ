@@ -379,7 +379,10 @@ that keeps to the window never overfills it. Otherwise:
   stops.
 
 **FRIZZ acks** (`SEQ` 0, `NEXT` and `DROPS` as they stand) once in every pass of its UI
-(~2 ms) in which `NEXT` or `DROPS` changed, and every 250 ms while paused. An ack takes
+(~2 ms) in which `NEXT` or `DROPS` changed, every 250 ms while paused, and once in the pass in
+which a pause ends (an `OK` ack, so the app starts sending again without waiting for its
+`STATUS` poll; the app also takes `STATUS` phase 1 as the pause's end, in case that ack is
+lost). An ack takes
 precedence over FRIZZ's other answers and over MIDI feedback in that pass. `DROPS` (0-127,
 wrapping, 0 at `WRITE_BEGIN`) goes up by one for every CHUNK dropped as a gap. Because it is a
 count and not a flag, a lost ack loses nothing: the next one still shows that it changed. An
@@ -538,7 +541,8 @@ Numbers are fixed from v1 on. New ones are only appended.
 | `15` | TIMED_OUT | FRIZZ ended the job: no CHUNK for 30 s |
 | `16` | ABORTED | ended by ABORT, or USB went away |
 
-The `BUSY_…` statuses and `CARD_LENT` are passing states: ask again later. The app shows them
+The `BUSY_…` statuses, `CARD_LENT` and `NO_CARD` are passing states (as in 1.5): ask again
+later. The app shows them
 in words ("FRIZZ is recording a loop"). The rest are final for that request.
 
 ### 4.2 DETAIL
