@@ -96,10 +96,10 @@ class Reverb {
       engine_.Start(&c);
 
     // Smear AP1 inside the loop (FRIZZ: on, as in Clouds, Elements and Beads; Rings has it
-    // commented out). Beads reads at 10 +- 80, which in this 32K buffer reaches behind ap1
-    // into what del2 wrote 0.36s before: a second feedback path that doubled the decay and
-    // blew up under freeze. 50 +- 40 keeps the read inside ap1's written part, so it only
-    // varies ap1's length, 59 to 139 samples: each hit diffused a little differently
+    // commented out): ap1's length varies, 59 to 139 samples, so each hit is diffused a little
+    // differently. Beads' 10 + 80 * its LFO, which runs 0..1; FRIZZ's runs -1..1, so it's
+    // 50 + 40 here. Read as 10 +- 80, it would reach behind ap1, into what del2 wrote 0.36 s
+    // before: a second feedback path, under which the frozen room grows to the clip
     c.Interpolate(ap1, 50.0f, LFO_1, 40.0f, 1.0f);
     c.Write(ap1, 100, 0.0f);
 

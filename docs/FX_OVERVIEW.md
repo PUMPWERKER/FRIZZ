@@ -95,7 +95,7 @@ their keys' order left to right (see the FRIZZ chain above). Their controls are 
 | 10th white | Wow & flutter (insert) | TAPE's `Warble.h` as knob 1, plus FRIZZ's own flutter, tone and stereo |
 | 11th white | Tape stop (insert) | FRIZZ's own: a varispeed read head on an SDRAM buffer, tempo-synced stop and spin-up |
 | 12th white | Delay (send) | TEMPO's `granularDelay.h`, clocked by FRIZZ's `TempoClock.h` (the loop, MIDI clock, taps or free running) |
-| 13th white | Reverb (send, also fed the delay's echoes) | TEMPO's `reverb.h` + `fx_engine.h`, with the first allpass's LFO smear on as in Clouds, Elements and Beads (Rings has it commented out), its read kept inside the allpass (50 ± 40 samples, not Beads' 10 ± 80) |
+| 13th white | Reverb (send, also fed the delay's echoes) | TEMPO's `reverb.h` + `fx_engine.h`, with the first allpass's LFO smear on as in Clouds, Elements and Beads (Rings has it commented out), Beads' depth (10 + 80 on Mutable's 0..1 LFO, 50 ± 40 on FRIZZ's ±1) |
 | 14th white | Chaos key (no sound: gates the latched effects, scrambles the loop) | FRIZZ's own (#65), after the Red Panda Tensor's RAND and the Chase Bliss Blooper's Scrambler |
 | 15th white | Master compressor (always on, after the chain) | FRIZZ's own (`MasterComp.h`) |
 
