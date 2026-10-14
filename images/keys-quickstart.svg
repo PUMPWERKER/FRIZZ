@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 248" width="480" height="248" role="img" aria-labelledby="title desc">
+<title id="title">First gestures</title>
+<desc id="desc">The quick start's gestures, as keys. hold FX key then SHIFT: latch the effect on, or off again. SHIFT then FX key: pick it for the knobs, without hearing it. SHIFT + knob turn: jump in big steps: notes, octaves, intervals. knob press: its page 2: Mix, stereo, band and level; again, back.</desc>
+<style>svg{font-size:13px}text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
+<defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
+<rect width="480" height="248" fill="#131314"/>
+<text x="21" y="32.5" class="m as" font-size="12">hold</text>
+<rect x="51.4" y="15" width="61" height="26" rx="3" class="wk"/>
+<text x="81.9" y="32.5" class="gt" font-size="12" font-weight="bold">FX key</text>
+<polyline points="119.4,28 137.4,28" class="ls" marker-end="url(#ms)"/>
+<rect x="140.4" y="15" width="57.8" height="26" rx="3" class="ba"/>
+<text x="169.3" y="32.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<text x="20" y="58" class="m as" font-size="12">Latch the effect on, or off again.</text>
+<rect x="20" y="73" width="57.8" height="26" rx="3" class="ba"/>
+<text x="48.9" y="90.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<polyline points="84.8,86 102.8,86" class="ls" marker-end="url(#ms)"/>
+<rect x="105.8" y="73" width="61" height="26" rx="3" class="wk"/>
+<text x="136.3" y="90.5" class="gt" font-size="12" font-weight="bold">FX key</text>
+<text x="20" y="116" class="m as" font-size="12">Pick it for the knobs, without hearing it.</text>
+<rect x="20" y="131" width="57.8" height="26" rx="3" class="ba"/>
+<text x="48.9" y="148.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<text x="90.8" y="149" class="t" font-size="15" font-weight="bold">+</text>
+<rect x="105.8" y="131" width="46.2" height="26" rx="13" class="b"/>
+<text x="128.9" y="148.5" class="t" font-size="12" font-weight="bold">knob</text>
+<text x="157.1" y="148.5" class="m as" font-size="12">turn</text>
+<text x="20" y="174" class="m as" font-size="12">Jump in big steps: notes, octaves, intervals.</text>
+<rect x="20" y="189" width="46.2" height="26" rx="13" class="b"/>
+<text x="43.1" y="206.5" class="t" font-size="12" font-weight="bold">knob</text>
+<text x="71.2" y="206.5" class="m as" font-size="12">press</text>
+<text x="20" y="232" class="m as" font-size="12">Its page 2: Mix, stereo, band and level; again, back.</text>
+</svg>

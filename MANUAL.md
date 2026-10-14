@@ -137,6 +137,8 @@ The [LED brightness](#led-brightness) sets how bright all of them are.
 
 <!-- summary: Record, play and erase a loop, and change its speed. -->
 
+![The panel with LOOP, PLAY, the transport knob and the CHOMPI key lit: LOOP records, stops and erases, PLAY plays and pauses, the transport knob sets the speed, SHIFT + LOOP taps the tempo](images/panel-looper.svg)
+
 FRIZZ has one loop. It records the input before the effects, so you can play effects over it
 without printing them into it. LOOP and PLAY run it:
 
@@ -331,9 +333,13 @@ page. On the play page a double tap does nothing, so it's a safe way home wherev
 ends a [save, copy or delete](#save-copy-and-delete) you had started. With no loop on the card,
 the page opens with its white keys dark, and the lower C# and D# blink red 3 times.
 
+![Keys: SHIFT + lower C# opens the Loops page, SHIFT + lower D# the Cubbi page, two taps of SHIFT go back, SHIFT + a white key tapped N times switches at the end of the N-th pass](images/keys-loops.svg)
+
 While you're on the Loops page, the CHOMPI key glows dimly in the bank's colour (white while
 you hold it as SHIFT). The CHOMPI key's LED only ever shows SHIFT held, the page you're on,
 the confirm of a scene save, copy or delete and the start-up ripple.
+
+![The panel on the Loops page in bank B: the CHOMPI key glows yellow, held as SHIFT for the page's gestures; the lower C# and D# lead to banks A and C in orange and green, white keys 1 to 9 hold loops in dim yellow, key 3 bright as the loop playing](images/panel-loops.svg)
 
 | Control | Function | LED |
 |---|---|---|
@@ -583,6 +589,8 @@ time than there is, heard as crackles (see [Processing load](#processing-load)).
 
 ### Playing an effect
 
+![The panel with the white keys 1 to 14 lit in their effects' colours, the CHOMPI key and knobs 1 to 4: hold a key for its effect, then SHIFT to latch it; SHIFT first selects it; the knobs turn it, a press turns to page 2](images/panel-punch-in.svg)
+
 | Control | Function |
 |---|---|
 | Hold an FX key | Effect on while held |
@@ -724,6 +732,8 @@ direction you turn, so a value set finely snaps onto the grid with the first coa
 White key 1. Grabs a slice of what's playing, from a whole bar down to a 16th, and repeats it
 while you hold the key. Turn up the roll for a beat repeat's build-up.
 
+![The white keys from above, the freezer lit on key 1; its knobs 1 to 4 are length, feedback, roll, gate](images/key-freezer.svg)
+
 | Knob | Page 1 | Page 2 |
 |---|---|---|
 | 1 | Length: 1/16, 1/8T, 1/8, 1/4T, 1/4, 1/2T, 1/2, 1 bar (default 1 bar) | Mix |
@@ -760,6 +770,8 @@ while you hold the key. Turn up the roll for a beat repeat's build-up.
 White key 2. Shifts the pitch in semitones, with big steps at fourths, fifths and octaves.
 Feedback shifts again on every pass.
 
+![The white keys from above, the shifter lit on key 2; its knobs 1 to 4 are shift, feedback, swoop, grain](images/key-shifter.svg)
+
 | Knob | Page 1 | Page 2 |
 |---|---|---|
 | 1 | Shift: -12 to +12 semitones, one step per 3 detents; centre off (default 0, off) | Mix: the dry sound under the shifted one, a harmony |
@@ -781,6 +793,8 @@ Feedback shifts again on every pass.
 
 White key 3. A wavefolder: past the fold point the signal mirrors back on itself, for bright,
 gritty overtones.
+
+![The white keys from above, the folder lit on key 3; its knobs 1 to 4 are drive, shape, tone, symmetry](images/key-folder.svg)
 
 | Knob | Page 1 | Page 2 |
 |---|---|---|
@@ -808,6 +822,8 @@ gritty overtones.
 
 White key 4. Fewer bits and a lower sample rate, down to 480 Hz, with a dive on every press.
 
+![The white keys from above, the crusher lit on key 4; its knobs 1 to 4 are rate, bits, tone, XOR](images/key-crusher.svg)
+
 | Knob | Page 1 | Page 2 |
 |---|---|---|
 | 1 | Rate: 21.6 kHz down to 480 Hz, halving every 18% of the knob (default 21.6 kHz) | Mix |
@@ -832,6 +848,8 @@ White key 4. Fewer bits and a lower sample rate, down to 480 Hz, with a dive on 
 White key 5. A DJ filter, lowpass one way and highpass the other, with an LFO on the cutoff
 that follows the tempo (the DJ filter of TAPE, TEMPO and WAVE).
 
+![The white keys from above, the filter lit on key 5; its knobs 1 to 4 are cutoff, resonance, LFO depth, LFO division](images/key-filter.svg)
+
 | Knob | Page 1 | Page 2 |
 |---|---|---|
 | 1 | Cutoff: lowpass left of centre, highpass right, flat at centre (default centre, flat) | Mix |
@@ -853,6 +871,8 @@ that follows the tempo (the DJ filter of TAPE, TEMPO and WAVE).
 White key 6. A swept short delay with feedback: the jet sweep, a chorus, or at the top a
 vibrato.
 
+![The white keys from above, the flanger lit on key 6; its knobs 1 to 4 are rate, feedback, amount, polarity](images/key-flanger.svg)
+
 | Knob | Page 1 | Page 2 |
 |---|---|---|
 | 1 | Rate: 0.02 Hz to 50 Hz (default 0.55 Hz) | — (its Amount is its mix) |
@@ -872,6 +892,8 @@ vibrato.
 
 White key 7. Sweeping notches with resonance, free-running or locked to the tempo (after the
 SP-404MK2's Phaser and the Elektron Tonverk's Phase 98).
+
+![The white keys from above, the phaser lit on key 7; its knobs 1 to 4 are rate, feedback, depth, centre](images/key-phaser.svg)
 
 | Knob | Page 1 | Page 2 |
 |---|---|---|
@@ -922,6 +944,8 @@ White key 8. A tuned comb feedback loop that rings at a note you set. While on, 
 signal after the phaser and feeds it back in after the freezer, so the ringing goes through
 the inserts in between on every trip.
 
+![The white keys from above, the resonator lit on key 8; its knobs 1 to 4 are pitch, feedback, tone, env mod](images/key-resonator.svg)
+
 | Knob | Page 1 | Page 2 |
 |---|---|---|
 | 1 | Pitch: 22 Hz to 880 Hz (default 110 Hz) | — |
@@ -950,6 +974,8 @@ the inserts in between on every trip.
 
 White key 9. Chops the sound in 16th-note patterns, locked to the tempo.
 
+![The white keys from above, the slicer lit on key 9; its knobs 1 to 4 are pattern, decay, chance, shuffle](images/key-slicer.svg)
+
 | Knob | Page 1 | Page 2 |
 |---|---|---|
 | 1 | Pattern: 8 steps of 16ths, `x.......`, `x...x...`, `..x...x.`, `x....x..`, `x..x..x.`, `x.x.x.x.`, `x.x.xx..`, `xxxxxxxx` (default `xxxxxxxx`) | Mix: at less than full, closed steps duck instead of mute (the SP-404MK2's DEPTH) |
@@ -970,6 +996,8 @@ White key 9. Chops the sound in 16th-note patterns, locked to the tempo.
 
 White key 10. Tape warble: a slow drift in pitch and the fast wobble of a capstan, with worn
 tape's dropouts.
+
+![The white keys from above, the wow & flutter lit on key 10; its knobs 1 to 4 are wow, flutter, tone, age](images/key-wow-flutter.svg)
 
 | Knob | Page 1 | Page 2 |
 |---|---|---|
@@ -993,6 +1021,8 @@ tape's dropouts.
 
 White key 11. Winds the tape down to a standstill while you hold the key, and spins it back
 up when you let go.
+
+![The white keys from above, the tape stop lit on key 11; its knobs 1 to 4 are stop time, spin-up time on release, curve, depth](images/key-tape-stop.svg)
 
 | Knob | Page 1 | Page 2 |
 |---|---|---|
@@ -1026,6 +1056,8 @@ up when you let go.
 White key 12. Echoes in time with the tempo, with random events and shimmer; they keep ringing
 after you let go.
 
+![The white keys from above, the delay lit on key 12; its knobs 1 to 4 are division, feedback, random, ducking](images/key-delay.svg)
+
 | Knob | Page 1 | Page 2 |
 |---|---|---|
 | 1 | Division: 1/8, 1/4T, 1/4, 1/2T, 1/4., 1/2, 1/2., 1 bar, 2 bars (default 1/4) | Freeze: the input shut and the echoes held as they are, by degrees; no random events while frozen (default off) |
@@ -1053,6 +1085,8 @@ after you let go.
 
 White key 13. From a room to a long wash; the tail rings on after you let go.
 
+![The white keys from above, the reverb lit on key 13; its knobs 1 to 4 are decay, diffusion, tone, ducking](images/key-reverb.svg)
+
 | Knob | Page 1 | Page 2 |
 |---|---|---|
 | 1 | Decay (default 60%) | Freeze: the input shut and the room held (default off) |
@@ -1072,6 +1106,8 @@ White key 14. Makes no sound of its own: it drops your latched effects out at ra
 scrambles the steps of the loop, on its grid (like the Red Panda Tensor's RAND and the Chase
 Bliss Blooper's Scrambler). Its key works like any effect's: hold to play, hold + SHIFT to
 latch, part of scenes and morphs. It has no page 2: a knob press does nothing.
+
+![The white keys from above, the chaos key lit on key 14; its knobs 1 to 4 are FX chance, scramble chance, grid, random to pattern](images/key-chaos.svg)
 
 | Knob | Page 1 |
 |---|---|
@@ -1109,6 +1145,8 @@ White key 15. A stereo compressor on the master out, after the effects and befor
 turning VOLUME doesn't change how hard it works. It's always in the signal path; at the
 default threshold (0 dB) it does nothing. It only turns loud parts down, and turns anything up
 only by its Makeup knob.
+
+![The white keys from above, the master compressor lit on key 15; its knobs 1 to 4 are threshold, ratio, attack, release](images/key-compressor.svg)
 
 The key selects it for knobs 1-4, which then turn it the way they turn an effect: 1% per
 detent, SHIFT + turn coarse, SHIFT + press resets, and a knob press for its
@@ -1158,6 +1196,8 @@ keys in the middle are scene keys: lower F#, lower G#, lower A#, upper C# and up
   delete it, but you can copy it into a slot to start a scene from scratch.
 - **The other four (lower G#, lower A#, upper C#, upper D#) hold your scenes 1-4.** They're
   saved to the SD card and come back at power-on.
+
+![The panel with the five scene keys lit, the blank scene and scenes 1 to 4, then save in green, copy in blue and delete in red, and the CHOMPI key that confirms](images/panel-scenes.svg)
 
 On the play page the lower C# and D# do nothing by themselves: with SHIFT they open the
 [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page).
@@ -1240,6 +1280,8 @@ changed a latch since. The save, copy and delete keys are dimly lit in their col
 Changing to a [scene](#fx-scenes) in time with the music: a morph glides to it over 1 to 8
 bars, a drop lands it hard on a bar line, and the crossfader puts the morph in your hand.
 Each starts with SHIFT + a scene key.
+
+![The panel with the CHOMPI key, scene keys 1 to 4 and the transport knob lit, numbered in order: hold SHIFT, tap a scene key once per bar, press or turn the transport knob, let go of SHIFT](images/panel-scene-changes.svg)
 
 ### Timed scene changes
 
@@ -1403,6 +1445,8 @@ without a loop, and the bar lines don't count while you hold it.
 
 With the mode switch **up**, the keys set up MIDI, the input and the LEDs. The loop, the
 effects and MIDI play on meanwhile; switch back down to play.
+
+![The panel on the settings page, the mode switch up: the white keys pick the MIDI channel in light blue, key 15 white for channel 16, the ten dark keys set MIDI, the clock and the input, each in its colour, knob 1 the LED brightness](images/panel-settings.svg)
 
 Each key sets one thing on its press. The white keys pick the MIDI channel; the dark keys
 and knob 1 set the rest:
@@ -1626,6 +1670,8 @@ each version.
 <!-- summary: Every gesture in one table, with where it's explained. -->
 
 Every gesture on one page; each row links to where it's explained. SHIFT is holding CHOMPI.
+
+![Keys for the gestures to know: an FX key held then SHIFT latches, SHIFT then an FX key selects, SHIFT + LOOP taps the tempo, PLAY held + LOOP records in time, SHIFT + VOLUME turned is the input/loop mix, SHIFT + a scene key morphs, SHIFT + VOLUME held 2 s on the settings page writes a bug report](images/keys-play.svg)
 
 ### On the play page
 

@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
 """Draws the docs' diagrams into images/: signal-flow, input, fx-chain, clock-midi, panel and
-the quick start's quickstart-flow.
+the quick start's quickstart-flow; and the chapters' figures: a key locator for each white key
+(key-*), the panel with what a chapter plays lit (panel-*) and gestures as keycaps (keys-*).
 
-Plain block diagrams, by hand in coordinates of a 720 px wide picture (the quick start's 480,
-so it reads on a phone): boxes, arrows, lettered
+Plain block diagrams, by hand in coordinates of a 720 px wide picture (the quick start's and the
+chapters' figures 480, so they read on a phone): boxes, arrows, lettered
 switches and a legend. What they show is the code's (firmware/code/src: passthroughEngine.h,
 FxChain.h, FxOutput.h, MasterComp.h, TempoClock.h, MidiClock.h, MidiOut.h, SettingsPage.h) and
 MANUAL.md's; the panel's positions come from firmware/twin/web/layout.json (CHOMPI's board
-file) and the enclosure's drawings in reference/hardware.
+file) and the enclosure's drawings in reference/hardware. The chapters' figures read their
+colours from the firmware as the website does (LedColors.h, FxSlots.h, NormalPage.h's banks) and
+the knobs' names from MANUAL.md's knob tables, so run it again after changing either.
 
 Run it from anywhere, standard library only; it writes the same bytes every time:
 
     firmware/tools/diagrams/diagrams.py
+    firmware/tools/diagrams/diagrams.py --check   # writes nothing; exit 1 if a picture is stale
 
 The colours are frizz-web's (design/system/tokens.json): the website is dark, so each picture
 has its own dark ground and reads the same on the site and on GitHub.
 """
+import contextlib
+import io
 import json
+import math
 import os
+import re
+import sys
 from xml.sax.saxutils import escape
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -58,6 +67,8 @@ class Svg:
         self.title = title
         self.desc = desc
         self.items = []
+        self.style = ''  # a figure's own classes, after the shared ones
+        self.defs = []   # its own gradients
 
     def add(self, s):
         self.items.append(s)
@@ -176,8 +187,8 @@ class Svg:
             'role="img" aria-labelledby="title desc">' % (self.w, self.h, self.w, self.h),
             '<title id="title">%s</title>' % escape(self.title),
             '<desc id="desc">%s</desc>' % escape(self.desc),
-            '<style>%s</style>' % style,
-            '<defs>%s</defs>' % defs,
+            '<style>%s</style>' % (style + self.style),
+            '<defs>%s</defs>' % (defs + ''.join(self.defs)),
             '<rect width="%d" height="%d" fill="%s"/>' % (self.w, self.h, BG),
         ] + self.items + ['</svg>']
         return '\n'.join(out) + '\n'
@@ -520,13 +531,41 @@ EFFECTS = ['Freezer', 'Shifter', 'Folder', 'Crusher', 'Filter', 'Flanger', 'Phas
            'Slicer', 'Wow & flutter', 'Tape stop', 'Delay', 'Reverb', 'Chaos', 'Compressor']
 # the dark keys on the play page, left to right (KEY16-25); '' does nothing there
 DARK = ['', '', 'blank', '1', '2', '3', '4', 'save', 'copy', 'delete']
+# the dark keys as MANUAL.md names them, left to right
+DARK_NAMES = ['lower C#', 'lower D#', 'lower F#', 'lower G#', 'lower A#', 'upper C#', 'upper D#',
+              'upper F#', 'upper G#', 'upper A#']
+DEPTH = 104  # the top board's play side, from the front edge (y 0) back
+
+
+def board():
+    """Every control on the top board: name -> (x, y) in mm, y from the front edge back, from
+    firmware/twin/web/layout.json. White keys 'w1'-'w15', the dark keys by DARK_NAMES, 'SHIFT'
+    (the CHOMPI key), 'PLAY', 'LOOP', knobs 'k1'-'k4', 'VOLUME', 'transport' and 'mode'"""
+    layout = json.load(open(os.path.join(ROOT, 'firmware', 'twin', 'web', 'layout.json')))
+    keys = {k['name']: k for k in layout['keys']}
+    at = {}
+    for n in range(1, 16):
+        at['w%d' % n] = (keys['KEY%d' % n]['x'], keys['KEY%d' % n]['y'])
+    for i, name in enumerate(DARK_NAMES):
+        at[name] = (keys['KEY%d' % (16 + i)]['x'], keys['KEY%d' % (16 + i)]['y'])
+    for n, name in ((26, 'SHIFT'), (27, 'PLAY'), (28, 'LOOP')):
+        at[name] = (keys['KEY%d' % n]['x'], keys['KEY%d' % n]['y'])
+    # knobs (SWn: EncoderId's, app.js); the transport wheel is on the lower board and comes up
+    # through the panel's big hole, in the knobs' row (the enclosure's drawing: 212.8, 71.36
+    # less the panel's offset)
+    for e in layout['encoders']:
+        name = {'SW4': 'k1', 'SW1': 'k2', 'SW2': 'k3', 'SW3': 'k4', 'SW5': 'transport',
+                'SW6': 'VOLUME'}[e['name']]
+        at[name] = (e['x'], 68.46 if name == 'transport' else e['y'])
+    at['mode'] = (layout['toggle']['x'], layout['toggle']['y'])
+    return at, layout
 
 
 def panel():
-    layout = json.load(open(os.path.join(ROOT, 'firmware', 'twin', 'web', 'layout.json')))
+    at, layout = board()
     sc = 1.8
     x0, top = 72, 46
-    depth = 104  # the top board's play side, from the front edge (y 0) back
+    depth = DEPTH
     X = lambda x: x0 + x * sc
     Y = lambda y: top + (depth - y) * sc
     s = Svg(410, 'FRIZZ panel',
@@ -539,56 +578,50 @@ def panel():
             'the right, USB-C, the microSD card and the line out at the back.')
     s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="10" class="b"/>'
           % (num(X(0)), num(Y(depth)), num(320 * sc), num(depth * sc)))
-    keys = {k['name']: k for k in layout['keys']}
     # white keys, their effects below the panel
     for n in range(1, 16):
-        k = keys['KEY%d' % n]
+        kx, ky = at['w%d' % n]
         w, h = 17.5 * sc, 17 * sc
         s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="3" class="wk"/>'
-              % (num(X(k['x']) - w / 2), num(Y(k['y']) - h / 2), num(w), num(h)))
-        s.text(X(k['x']), Y(k['y']) + 5, str(n), 12, cls='gt', bold=True)
-        lx, ly = X(k['x']) - 3, Y(0) + 14
+              % (num(X(kx) - w / 2), num(Y(ky) - h / 2), num(w), num(h)))
+        s.text(X(kx), Y(ky) + 5, str(n), 12, cls='gt', bold=True)
+        lx, ly = X(kx) - 3, Y(0) + 14
         s.text(lx, ly, EFFECTS[n - 1], 12, anchor='start', rotate=40)
     # dark keys: the scenes in the middle, their functions above them
-    for i, n in enumerate(range(16, 26)):
-        k = keys['KEY%d' % n]
+    for i, name in enumerate(DARK_NAMES):
+        kx, ky = at[name]
         w, h = 17.5 * sc, 15 * sc
         cls = 'sk' if 2 <= i <= 6 else 'dk'
         s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="3" class="%s"/>'
-              % (num(X(k['x']) - w / 2), num(Y(k['y']) - h / 2), num(w), num(h), cls))
+              % (num(X(kx) - w / 2), num(Y(ky) - h / 2), num(w), num(h), cls))
         if DARK[i]:
-            s.text(X(k['x']), Y(k['y']) - h / 2 - 6, DARK[i], 12)
+            s.text(X(kx), Y(ky) - h / 2 - 6, DARK[i], 12)
     # the keys behind: CHOMPI (SHIFT), PLAY, LOOP; PLAY's and LOOP's names above them, as
     # the dark keys' names take the line below
-    for name, label, above in (('KEY26', 'CHOMPI = SHIFT', False), ('KEY27', 'PLAY', True),
-                               ('KEY28', 'LOOP', True)):
-        k = keys[name]
+    for name, label, above in (('SHIFT', 'CHOMPI = SHIFT', False), ('PLAY', 'PLAY', True),
+                               ('LOOP', 'LOOP', True)):
+        kx, ky = at[name]
         w = 14 * sc
         s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="3" class="ba"/>'
-              % (num(X(k['x']) - w / 2), num(Y(k['y']) - w / 2), num(w), num(w)))
-        s.text(X(k['x']), Y(k['y']) - w / 2 - 6 if above else Y(k['y']) + w / 2 + 15, label, 12,
+              % (num(X(kx) - w / 2), num(Y(ky) - w / 2), num(w), num(w)))
+        s.text(X(kx), Y(ky) - w / 2 - 6 if above else Y(ky) + w / 2 + 15, label, 12,
                bold=True)
-    # knobs, their numbers in them, and the transport wheel (SWn: EncoderId's, app.js)
-    knobs = {'SW4': '1', 'SW1': '2', 'SW2': '3', 'SW3': '4', 'SW6': ''}
-    for e in layout['encoders']:
-        x, y = X(e['x']), Y(e['y'])
-        if e['name'] == 'SW5':
-            # on the lower board; its wheel comes up through the panel's big hole, in the
-            # knobs' row (the enclosure's drawing: 212.8, 71.36 less the panel's offset)
-            y = Y(68.46)
+    # knobs, their numbers in them, and the transport wheel
+    for name in ('k2', 'k3', 'k4', 'k1', 'transport', 'VOLUME'):  # layout.json's order
+        x, y = X(at[name][0]), Y(at[name][1])
+        if name == 'transport':
             s.add('<circle cx="%s" cy="%s" r="%s" class="ba"/>' % (num(x), num(y), num(15.5 * sc)))
             s.text(x, y + 4.5, 'transport', 12, bold=True)
             continue
         s.add('<circle cx="%s" cy="%s" r="%s" class="b"/>' % (num(x), num(y), num(7 * sc)))
-        s.text(x, y + 4.5, knobs[e['name']], 12, bold=True)
+        s.text(x, y + 4.5, name[1] if name[0] == 'k' else '', 12, bold=True)
     s.text(X(119.7), Y(68.46) - 7 * sc - 6, 'knobs 1–4', 12, cls='m')
     s.text(X(300.65), Y(68.46) - 7 * sc - 6, 'VOLUME', 12, bold=True)
     # the LEDs above the knobs and the transport
     for l in layout['pth']:
         s.add('<circle cx="%s" cy="%s" r="3" class="led"/>' % (num(X(l['x'])), num(Y(l['y']))))
     # the mode switch
-    t = layout['toggle']
-    x, y = X(t['x']), Y(t['y'])
+    x, y = X(at['mode'][0]), Y(at['mode'][1])
     s.add('<rect x="%s" y="%s" width="10" height="24" rx="5" class="b"/>' % (num(x - 5), num(y - 12)))
     s.add('<circle cx="%s" cy="%s" r="3.5" class="g"/>' % (num(x), num(y + 6)))
     s.text(x, y - 18, 'mode', 12, cls='m')
@@ -652,16 +685,473 @@ def quickstart_flow():
     return s
 
 
+# ---------- 7. the chapters' figures: what they read ----------
+SRC = os.path.join(ROOT, 'firmware', 'code', 'src')
+DIM = '#3a3a3c'       # a white key the figure doesn't use
+DIM_DARK = '#232325'  # a dark key it doesn't use
+DIM_LINE = '#5c5c5e'  # the outline of a knob it doesn't use, the panel's edge
+
+
+def source(name):
+    return open(os.path.join(SRC, name), encoding='utf-8').read()
+
+
+def led_colours():
+    """The LED colours by name, as hex: LedColors.h's (`static const float name[3] = {r, g, b};`,
+    the shape the site reads) and the ones NormalPage.h keeps for the Cubbi page, rounded as the
+    site rounds them"""
+    pat = re.compile(r'static\s+(?:const|constexpr const)\s+float\s+(\w+)\[3\]\s*=\s*\{([^}]*)\}')
+    out = {}
+    for text in (source('LedColors.h'), source('NormalPage.h')):
+        for name, rgb in pat.findall(text):
+            vals = [float(v.strip().rstrip('f')) for v in rgb.split(',')]
+            out[name] = '#' + ''.join('%02x' % math.floor(v * 255 + .5) for v in vals)
+    return out
+
+
+def key_colours():
+    """White key n -> (its colour, its knobs' colours at 0 and at 1), from FxSlots.h's kFxSlots
+    (`{Hardware::SwId::KEY_<n>, <colour>, {<at 0>, <unused>, <at 1>}, …`) and kCompKey, white
+    with kCompKnobColors, as the site reads them"""
+    c = led_colours()
+    code = re.sub(r'//.*', '', source('FxSlots.h'))
+    out = {}
+    for n, key, k0, k1 in re.findall(
+            r'\{\s*Hardware::SwId::KEY_(\d+)\s*,\s*(\w+)\s*,\s*\{\s*(\w+)\s*,\s*\w+\s*,\s*(\w+)\s*\}', code):
+        out[int(n)] = (c[key], c[k0], c[k1])
+    comp = int(re.search(r'kCompKey\s*=\s*Hardware::SwId::KEY_(\d+)', code).group(1))
+    k0, k1 = re.search(r'kCompKnobColors\[3\]\s*=\s*\{\s*(\w+)\s*,\s*\w+\s*,\s*(\w+)\s*\}', code).groups()
+    out[comp] = (c['white'], c[k0], c[k1])
+    return out
+
+
+def bank_colours(name):
+    """A page's bank colours, NormalPage.h's kBankColors (the Loops page) or kCubbiColors"""
+    c = led_colours()
+    names = re.search(name + r'\[\d+\]\s*=\s*\{([^}]*)\}', source('NormalPage.h')).group(1)
+    return [c[n.strip()] for n in names.split(',')]
+
+
+def knob_names(chapter):
+    """A chapter's knobs on page 1, from MANUAL.md's knob table: each Page 1 cell up to the first
+    ":", "," or " (", as the website's landing page reads them"""
+    text = open(os.path.join(ROOT, 'MANUAL.md'), encoding='utf-8').read()
+    body = text.split('\n## ' + chapter + '\n', 1)[1].split('\n## ', 1)[0]
+    names = {}
+    for n, cell in re.findall(r'^\| ([1-4]) \| ([^|]*)\|', body, re.M):
+        names.setdefault(int(n), re.split(r':|,| \(', cell.strip(), maxsplit=1)[0])
+    return [names[n] for n in (1, 2, 3, 4)]
+
+
+def ink(colour):
+    """The text colour that reads on a fill: the ground's on a light one, white on a dark one"""
+    r, g, b = (int(colour[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    return BG if .2126 * r + .7152 * g + .0722 * b > .4 else '#ffffff'
+
+
+def slug(name):
+    return re.sub(r'[^a-z]+', '-', name.lower()).strip('-')
+
+
+# ---------- 8. a key locator for each effect's chapter ----------
+# The chapters' own names in MANUAL.md, where they differ from EFFECTS'
+CHAPTER = {'Chaos': 'Chaos key', 'Compressor': 'Master compressor'}
+LW = 480  # the chapters' figures: as wide as the quick start's, so they read on a phone
+
+
+def locator(n):
+    """White key n among the 15 and the dark keys above them, in its colour, and its knobs' LED
+    colours"""
+    name = EFFECTS[n - 1]
+    chapter = CHAPTER.get(name, name)
+    colour, k0, k1 = key_colours()[n]
+    knobs = knob_names(chapter)
+    at, _ = board()
+    sc, x0 = 1.38, (LW - 320 * 1.38) / 2
+    X = lambda x: x0 + x * sc
+    s = Svg(84, '%s: white key %d' % (chapter, n),
+            'The keys from above: the %s is white key %d of 15, counted from the left, lit in its '
+            'colour. Its knobs 1 to 4 are %s; their LEDs go from one colour to the other.'
+            % (chapter.lower() if name not in ('Chaos', 'Compressor') else chapter.lower(), n,
+               ', '.join(knobs)), w=LW)
+    for name_ in DARK_NAMES:
+        kx = X(at[name_][0])
+        s.add('<rect x="%s" y="10" width="%s" height="9" rx="2" fill="%s"/>'
+              % (num(kx - 17.5 * sc / 2), num(17.5 * sc), DIM_DARK))
+    for k in range(1, 16):
+        kx = X(at['w%d' % k][0])
+        on = k == n
+        s.add('<rect x="%s" y="24" width="%s" height="%s" rx="3" fill="%s"%s/>'
+              % (num(kx - 17.5 * sc / 2), num(17.5 * sc), num(17 * sc), colour if on else DIM,
+                 ' stroke="%s" stroke-width="1.5"' % FG if on else ''))
+        s.add('<text x="%s" y="%s" font-size="%d"%s style="fill:%s">%d</text>'
+              % (num(kx), num(24 + 17 * sc / 2 + 4.5 if on else 24 + 17 * sc / 2 + 4), 13 if on else 11,
+                 ' font-weight="bold"' if on else '', ink(colour) if on else MUTED, k))
+    # the key's name under it, kept within the picture; the knobs' colours on the other side
+    kx = X(at['w%d' % n][0])
+    label = chapter if name != 'Compressor' else 'Master compressor'
+    lw = width(label, 13, True)
+    lx = min(max(kx, 8 + lw / 2), LW - 8 - lw / 2)
+    s.text(lx, 74, label, 13, bold=True)
+    s.add('<path d="M%s,%sv6" stroke="%s" stroke-width="1.5"/>' % (num(kx), num(24 + 17 * sc + 3), FG))
+    gid = 'k%d' % n
+    s.defs.append('<linearGradient id="%s"><stop offset="0" stop-color="%s"/>'
+                  '<stop offset="1" stop-color="%s"/></linearGradient>' % (gid, k0, k1))
+    bx = 24 if kx > LW / 2 else LW - 24 - 150
+    s.text(bx, 74, 'knob LEDs', 12, anchor='start', cls='m')
+    s.add('<rect x="%s" y="65" width="80" height="10" rx="5" fill="url(#%s)"/>' % (num(bx + 70), gid))
+    return s
+
+
+# ---------- 9. the panel in a chapter: what that chapter plays, lit ----------
+class Mini:
+    """The panel at the chapters' width, every control dim but the ones a chapter is about, each
+    lit in its colour; rose badges mark them for the legend under it, as the other diagrams'
+    letters do"""
+    SC = 1.38
+
+    def __init__(self, s, top, lit, mode='down'):
+        """lit: control (board()'s names) -> its colour, or (colour, 'dim') for an LED that glows"""
+        self.s, self.top = s, top
+        self.at, _ = board()
+        self.x0 = (s.w - 320 * self.SC) / 2
+        sc = self.SC
+        s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="8" fill="none" stroke="%s" '
+              'stroke-width="1.5"/>' % (num(self.X(0)), num(top), num(320 * sc), num(DEPTH * sc), DIM_LINE))
+        for name, (x, y) in sorted(self.at.items(), key=lambda kv: (kv[1][1], kv[1][0])):
+            c = lit.get(name)
+            dim = isinstance(c, tuple)
+            c = c[0] if dim else c
+            fill = c if c else (DIM if name[0] == 'w' else DIM_DARK if name in DARK_NAMES else 'none')
+            stroke = (' stroke="%s" stroke-width="1.5"' % (FG if not dim else c) if c
+                      else '' if fill != 'none' else ' stroke="%s" stroke-width="1.5"' % DIM_LINE)
+            op = ' fill-opacity=".4"' if dim or (c and name == 'transport') else ''
+            cx, cy = self.X(x), self.Y(y)
+            if name[0] == 'w' or name in DARK_NAMES or name in ('SHIFT', 'PLAY', 'LOOP'):
+                w, h = ((17.5, 17) if name[0] == 'w' else (17.5, 15) if name in DARK_NAMES
+                        else (14, 14))
+                s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="3" fill="%s"%s%s/>'
+                      % (num(cx - w * sc / 2), num(cy - h * sc / 2), num(w * sc), num(h * sc), fill, op, stroke))
+            elif name == 'mode':
+                s.add('<rect x="%s" y="%s" width="8" height="18" rx="4" fill="none" stroke="%s" '
+                      'stroke-width="1.5"/>' % (num(cx - 4), num(cy - 9), c or DIM_LINE))
+                s.add('<circle cx="%s" cy="%s" r="2.6" fill="%s"/>'
+                      % (num(cx), num(cy + (4.5 if mode == 'down' else -4.5)), c or DIM_LINE))
+            else:
+                r = 15.5 if name == 'transport' else 7
+                s.add('<circle cx="%s" cy="%s" r="%s" fill="%s"%s%s/>'
+                      % (num(cx), num(cy), num(r * sc), fill, op,
+                         stroke if fill != 'none' or c else stroke))
+            if c and name == 'transport':
+                s.add('<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="2"/>'
+                      % (num(cx), num(cy), num(15.5 * sc), c))
+
+    def X(self, x):
+        return self.x0 + x * self.SC
+
+    def Y(self, y):
+        return self.top + (DEPTH - y) * self.SC
+
+    def pos(self, name):
+        return self.X(self.at[name][0]), self.Y(self.at[name][1])
+
+    def label(self, name, text, dy):
+        """A control's name or number, centred on it or dy below its centre"""
+        x, y = self.pos(name)
+        self.s.text(x, y + dy, text, 11, cls='m')
+
+    def badge(self, name, letter, dx=0, dy=0):
+        x, y = self.pos(name)
+        self.s.badge(x + dx, y + dy, letter)
+
+    def bracket(self, first, last, letter, y):
+        """A badge for a group of controls: a line from first to last at y, the badge on it"""
+        x1, x2 = self.pos(first)[0], self.pos(last)[0]
+        self.s.add('<path d="M%s,%sh%s" stroke="%s" stroke-width="2" stroke-linecap="round"/>'
+                   % (num(x1), num(y), num(x2 - x1), ACC))
+        self.s.badge((x1 + x2) / 2, y, letter)
+
+    def bottom(self):
+        return self.Y(0)
+
+
+def chapter_svg(h, title, desc):
+    return Svg(h, title, desc, w=LW)
+
+
+def legend_rows(s, y, rows, x=20):
+    """The legend under a panel: (badge, text) rows; a row whose badge is '' goes on with the one
+    above it"""
+    for i, (mark, text) in enumerate(rows):
+        yy = y + i * 20
+        if mark:
+            s.badge(x + 9, yy - 4, mark)
+        s.text(x + 26, yy, text, 12, anchor='start')
+        if width(text, 12) + x + 26 > s.w - 6:
+            print('  legend too wide: %r' % text)
+    return y + len(rows) * 20
+
+
+def fit(s, y):
+    """The picture's height from where its legend left off"""
+    s.h = int(y - 20 + 14)
+    return s
+
+
+def fig_punch_in():
+    c = key_colours()
+    rows = [('A', 'Hold a white key: its effect is on while you hold it.'),
+            ('B', 'Hold the key, then SHIFT: latched on, or off again.'),
+            ('', 'SHIFT first, then the key: selected for the knobs, unheard.'),
+            ('C', 'Turn: the effect\'s sound. SHIFT + turn: in big steps.'),
+            ('', 'Press: its page 2 and back. SHIFT + press: the default.')]
+    s = chapter_svg(170 + 20 * len(rows) + 28, 'Playing an effect',
+                    'The panel with what plays an effect lit: the white keys 1 to 14 in their '
+                    'effects\' colours, the CHOMPI key (SHIFT) and knobs 1 to 4. ' +
+                    ' '.join(t for _, t in rows))
+    lit = {'w%d' % n: c[n][0] for n in range(1, 15)}
+    lit.update({'SHIFT': FG, 'k1': FG, 'k2': FG, 'k3': FG, 'k4': FG})
+    m = Mini(s, 30, lit)
+    m.bracket('w1', 'w14', 'A', m.bottom() + 12)
+    m.badge('SHIFT', 'B', 0, -22)
+    m.bracket('k1', 'k4', 'C', m.top - 14)
+    return fit(s, legend_rows(s, m.bottom() + 46, rows))
+
+
+def fig_looper():
+    c = led_colours()
+    rows = [('A', 'LOOP: record; again, stop and play; again, erase.'),
+            ('B', 'PLAY: play or pause, when you let go.'),
+            ('', 'Hold PLAY, press LOOP: record in time, or erase at the end.'),
+            ('C', 'The transport knob: turn for speed, press for 1×.'),
+            ('D', 'SHIFT + LOOP: tap the tempo.')]
+    s = chapter_svg(170 + 20 * len(rows) + 10, 'The looper',
+                    'The panel with the looper\'s controls lit: LOOP, PLAY, the transport knob '
+                    'and the CHOMPI key (SHIFT). ' + ' '.join(t for _, t in rows))
+    m = Mini(s, 30, {'LOOP': c['red'], 'PLAY': FG, 'transport': c['purple'], 'SHIFT': FG})
+    m.badge('LOOP', 'A', 0, -24)
+    m.badge('PLAY', 'B', 0, -24)
+    m.badge('transport', 'C', 0, -32)
+    m.badge('SHIFT', 'D', 0, -22)
+    return fit(s, legend_rows(s, m.bottom() + 26, rows))
+
+
+def fig_scenes():
+    c = led_colours()
+    rows = [('A', 'A scene key: recall it. The first is the blank scene, then 1–4.'),
+            ('1', 'Save, copy or delete (green, blue, red): tap one,'),
+            ('2', 'then the slot (for copy, the source, then the destination),'),
+            ('3', 'then CHOMPI to confirm. White: done.')]
+    s = chapter_svg(170 + 20 * len(rows) + 10, 'FX scenes',
+                    'The panel with the scene keys lit: the five dark keys in the middle, the '
+                    'blank scene and scenes 1 to 4; the last three dark keys, save in green, copy '
+                    'in blue, delete in red; and the CHOMPI key. ' + ' '.join(t for _, t in rows))
+    lit = {n: FG for n in DARK_NAMES[2:7]}
+    lit.update({'upper F#': c['green'], 'upper G#': c['blue'], 'upper A#': c['red'], 'SHIFT': FG})
+    m = Mini(s, 30, lit)
+    for i, n in enumerate(DARK_NAMES[3:7]):
+        x, y = m.pos(n)
+        s.add('<text x="%s" y="%s" font-size="11" font-weight="bold" style="fill:%s">%d</text>'
+              % (num(x), num(y + 4), BG, i + 1))
+    m.bracket('lower F#', 'upper D#', 'A', m.Y(36.56 + 7.5) - 9)
+    m.bracket('upper F#', 'upper A#', '1', m.Y(36.56 + 7.5) - 9)
+    m.badge('SHIFT', '3', 0, -22)
+    return fit(s, legend_rows(s, m.bottom() + 26, rows))
+
+
+def fig_scene_changes():
+    c = led_colours()
+    rows = [('1', 'Hold SHIFT,'),
+            ('2', 'tap a scene key, once per bar (1 to 8),'),
+            ('3', 'press the transport knob for a drop, turn it for the'),
+            ('', 'crossfader, or leave it for a morph,'),
+            ('4', 'let go of SHIFT: the bars count from there.')]
+    s = chapter_svg(170 + 20 * len(rows) + 10, 'Scene changes in time',
+                    'The panel with one SHIFT hold\'s controls lit: the CHOMPI key (SHIFT), the '
+                    'scene keys 1 to 4 and the transport knob. ' + ' '.join(t for _, t in rows))
+    lit = {n: FG for n in DARK_NAMES[3:7]}
+    lit.update({'SHIFT': FG, 'transport': c['purple']})
+    m = Mini(s, 30, lit)
+    m.badge('SHIFT', '1', -12, -22)
+    m.badge('SHIFT', '4', 12, -22)
+    m.bracket('lower G#', 'upper D#', '2', m.Y(36.56 + 7.5) - 9)
+    m.badge('transport', '3', 0, -32)
+    return fit(s, legend_rows(s, m.bottom() + 26, rows))
+
+
+def fig_loops_page():
+    banks = bank_colours('kBankColors')
+    rows = [('A', 'CHOMPI glows in the bank\'s colour; hold it as SHIFT for the'),
+            ('', 'gestures: SHIFT + lower C# opens and closes the page.'),
+            ('B', 'Lower C#, lower D#: the bank before, after, in its colour.'),
+            ('C', 'A white key: its loop, at once. SHIFT + the key: at the end'),
+            ('', 'of the pass, tapped N times at the end of the N-th.')]
+    s = chapter_svg(170 + 20 * len(rows) + 10, 'The Loops page',
+                    'The panel on the Loops page, in bank B: the CHOMPI key glows yellow, bank '
+                    'B\'s colour; the lower C# is orange, leading to bank A, the lower D# green, '
+                    'leading to bank C; white keys 1 to 9 hold loops, dim yellow, key 3 bright, '
+                    'the loop playing. ' + ' '.join(t for _, t in rows))
+    lit = {'w%d' % n: (banks[1], 'dim') for n in range(1, 10)}
+    lit.update({'w3': banks[1], 'SHIFT': (banks[1], 'dim'), 'lower C#': banks[0],
+                'lower D#': banks[2]})
+    m = Mini(s, 30, lit)
+    m.badge('SHIFT', 'A', 0, -22)
+    m.bracket('lower C#', 'lower D#', 'B', m.Y(36.56 + 7.5) - 9)
+    m.bracket('w1', 'w15', 'C', m.bottom() + 12)
+    return fit(s, legend_rows(s, m.bottom() + 46, rows))
+
+
+def fig_settings():
+    c = led_colours()
+    left = [('A', 'Lower C#: every channel'), ('B', 'Lower D#: effects over TRS'),
+            ('C', 'Lower F#: transport'), ('D', 'Lower G#: clock factor, beat'),
+            ('E', 'Lower A#: clock source')]
+    right = [('F', 'Upper C#: MIDI out'), ('G', 'Upper D#: MIDI feedback'),
+             ('H', 'Upper F#: AUX or the mic'), ('I', 'Upper G#: monitoring'),
+             ('J', 'Upper A#: through the effects')]
+    rows = [('K', 'White keys: the MIDI channel, 1 to 15; key 15 again: 16.'),
+            ('L', 'Knob 1: the LED brightness.'),
+            ('M', 'The mode switch: up for this page, down to play.')]
+    s = chapter_svg(170 + 20 * 7 + 30, 'The settings page',
+                    'The panel on the settings page, the mode switch up: the white keys pick the '
+                    'MIDI channel, dim light blue, key 15 white for channel 16; the ten dark keys set the rest, each lit in its '
+                    'own colour; knob 1 sets the LED brightness. ' +
+                    ' '.join('%s.' % t[0].upper() + t[1:] for _, t in left + right) + ' ' +
+                    ' '.join(t for _, t in rows))
+    lit = {'w%d' % n: (c['med_blue'], 'dim') for n in range(1, 16)}
+    lit.update({'w15': FG, 'lower C#': (c['med_blue'], 'dim'),
+                'lower D#': c['med_blue'], 'lower F#': c['green'], 'lower G#': c['yellow'],
+                'lower A#': FG, 'upper C#': (FG, 'dim'), 'upper D#': (c['med_blue'], 'dim'),
+                'upper F#': c['green'], 'upper G#': FG, 'upper A#': c['green'], 'k1': FG,
+                'mode': ACC})
+    m = Mini(s, 30, lit, mode='up')
+    for i, n in enumerate(DARK_NAMES):
+        m.badge(n, 'ABCDEFGHIJ'[i], 0, -21)
+    m.badge('w8', 'K', 0, 30)
+    m.badge('k1', 'L', 0, -22)
+    m.badge('mode', 'M', 0, -22)
+    y = legend_rows(s, m.bottom() + 46, left)
+    legend_rows(s, m.bottom() + 46, right, x=250)
+    return fit(s, legend_rows(s, y + 6, rows))
+
+
+# ---------- 10. key combinations: keycaps in a row, each shaped as on the panel ----------
+# a cap's kind: 'w' a white key, 'd' a dark key, 'k' CHOMPI, PLAY or LOOP, 'o' a knob; '+' with,
+# '>' then, and a string in brackets a note
+def caps(s, x, y, parts):
+    """One gesture from x, its caps centred on y; returns where it ends"""
+    for p in parts:
+        if p in ('+', '>'):
+            if p == '+':
+                s.text(x + 9, y + 5, '+', 15, bold=True)
+            else:
+                s.line([(x + 3, y), (x + 21, y)], 's')
+            x += 24
+        elif p.startswith('('):
+            s.text(x + 1, y + 4.5, p[1:-1], 12, anchor='start', cls='m')
+            x += width(p[1:-1], 12) + 8
+        else:
+            kind, name = p[0], p[2:]
+            w = width(name, 12, True) + 18
+            attrs = {'w': 'rx="3" class="wk"', 'd': 'rx="3" class="dk"', 'k': 'rx="3" class="ba"',
+                     'o': 'rx="13" class="b"'}[kind]
+            s.add('<rect x="%s" y="%s" width="%s" height="26" %s/>' % (num(x), num(y - 13), num(w), attrs))
+            s.text(x + w / 2, y + 4.5, name, 12, cls='gt' if kind == 'w' else 't', bold=True)
+            x += w + 4
+    if x > s.w - 8:
+        print('  past the edge: %r' % parts)
+    return x
+
+
+def card(title, desc, rows):
+    """rows: (the caps, what it does): the gesture, its meaning under it"""
+    s = Svg(16 + len(rows) * 58, title, desc, w=LW)
+    for i, (parts, does) in enumerate(rows):
+        y = 28 + i * 58
+        caps(s, 20, y, parts)
+        s.text(20, y + 30, does, 12, anchor='start', cls='m')
+    return s
+
+
+def describe(rows):
+    """The cards' description: each gesture in words"""
+    out = []
+    for parts, does in rows:
+        words = ' '.join({'+': '+', '>': 'then'}.get(p, p[1:-1] if p.startswith('(') else p[2:])
+                         for p in parts)
+        out.append('%s: %s' % (words, does[0].lower() + does[1:].rstrip('.')))
+    return '. '.join(out) + '.'
+
+
+KEYS_PLAY = [
+    (['(hold)', 'w:FX key', '>', 'k:SHIFT'], 'Latch the effect on, or off again.'),
+    (['k:SHIFT', '>', 'w:FX key'], 'Select it for the knobs, without hearing it.'),
+    (['k:SHIFT', '+', 'k:LOOP', '(3 taps or more)'], 'Tap the tempo.'),
+    (['(hold)', 'k:PLAY', '+', 'k:LOOP'], 'Record in time with the clock; with a loop, erase at its end.'),
+    (['k:SHIFT', '+', 'o:VOLUME', '(turn)'], 'The input/loop mix.'),
+    (['k:SHIFT', '+', 'd:scene key', '(let go)'], 'Morph to the scene on the bar line.'),
+    (['k:SHIFT', '+', 'o:VOLUME', '(hold 2 s)'], 'On the settings page: write a bug report.'),
+]
+KEYS_START = [
+    (['(hold)', 'w:FX key', '>', 'k:SHIFT'], 'Latch the effect on, or off again.'),
+    (['k:SHIFT', '>', 'w:FX key'], 'Pick it for the knobs, without hearing it.'),
+    (['k:SHIFT', '+', 'o:knob', '(turn)'], 'Jump in big steps: notes, octaves, intervals.'),
+    (['o:knob', '(press)'], 'Its page 2: Mix, stereo, band and level; again, back.'),
+]
+KEYS_LOOPS = [
+    (['k:SHIFT', '+', 'd:lower C#'], 'Open the Loops page; again, back to the play page.'),
+    (['k:SHIFT', '+', 'd:lower D#'], 'Open the Cubbi page; again, back to the play page.'),
+    (['k:SHIFT', '(tap)', 'k:SHIFT', '(tap)'], 'Back to the play page, from either.'),
+    (['k:SHIFT', '+', 'w:white key', '(N taps)'], 'Its loop at the end of the N-th pass.'),
+]
+
+
+def keys_play():
+    return card('Key combinations', 'The gestures to know, as keys. ' + describe(KEYS_PLAY), KEYS_PLAY)
+
+
+def keys_start():
+    return card('First gestures', 'The quick start\'s gestures, as keys. ' + describe(KEYS_START),
+                KEYS_START)
+
+
+def keys_loops():
+    return card('The loop pages\' keys', 'The Loops and Cubbi pages\' keys. ' + describe(KEYS_LOOPS),
+                KEYS_LOOPS)
+
+
 def main():
+    """Writes every picture; with --check, writes nothing and names each one that isn't what this
+    draws (doclinks.py runs it so: a knob renamed in MANUAL.md or a colour changed in the firmware
+    leaves its figure behind)"""
+    check = sys.argv[1:] == ['--check']
+    figures = [('signal-flow', signal_flow), ('input', input_diagram), ('fx-chain', fx_chain),
+               ('clock-midi', clock_midi), ('panel', panel), ('quickstart-flow', quickstart_flow)]
+    figures += [('key-' + slug(EFFECTS[n - 1]), lambda n=n: locator(n)) for n in range(1, 16)]
+    figures += [('panel-punch-in', fig_punch_in), ('panel-looper', fig_looper),
+                ('panel-scenes', fig_scenes), ('panel-scene-changes', fig_scene_changes),
+                ('panel-loops', fig_loops_page), ('panel-settings', fig_settings),
+                ('keys-play', keys_play), ('keys-quickstart', keys_start), ('keys-loops', keys_loops)]
     os.makedirs(OUT, exist_ok=True)
-    for name, make in (('signal-flow', signal_flow), ('input', input_diagram),
-                       ('fx-chain', fx_chain), ('clock-midi', clock_midi), ('panel', panel),
-                       ('quickstart-flow', quickstart_flow)):
+    stale = 0
+    for name, make in figures:
+        path = os.path.join(OUT, name + '.svg')
+        if check:
+            with contextlib.redirect_stdout(io.StringIO()):
+                svg = make().render()
+            try:
+                same = open(path, encoding='utf-8').read() == svg
+            except OSError:
+                same = False
+            if not same:
+                print('images/%s.svg: not what diagrams.py draws: run it' % name)
+                stale += 1
+            continue
         print(name)
         svg = make().render()
-        with open(os.path.join(OUT, name + '.svg'), 'w', encoding='utf-8') as f:
+        with open(path, 'w', encoding='utf-8') as f:
             f.write(svg)
-
+    return 1 if stale else 0
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
