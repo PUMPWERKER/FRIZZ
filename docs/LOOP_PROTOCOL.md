@@ -302,7 +302,7 @@ Refused: `BAD` for a bank over 12.
 | beats | N(2) | the `acid` chunk's, 0 without one |
 | file size, bytes | N(4) | 0 for an empty slot |
 | name length, bytes | 1 | 0 without a name |
-| flags | 1 | bit 0 the name was cut (the file's is longer than `nameMax`), 1 the looper plays this slot's loop, 2 it's loaded into a buffer and ready |
+| flags | 1 | bit 0 the name was cut (the file's is longer than `nameMax`), 1 the looper plays this slot's file (5.5), 2 it's loaded into a buffer and ready |
 
 Refused: `BAD` for a bank over 12 or a slot over 14.
 
@@ -487,7 +487,10 @@ together: once the old file is deleted, nothing (no `ABORT`) comes between it an
 
 A failure in steps 2-5 deletes `xfer.tmp`, leaves the slot as it was, and sets phase 5 with
 the status. The app polls `STATUS` until the phase is 4 or 5. A FatFs call that fails at any
-point is `CARD_ERROR` with FatFs's `FRESULT` as `DETAIL`.
+point is `CARD_ERROR` with FatFs's `FRESULT` as `DETAIL`. One exception: a card error in step 5,
+after step 4 deleted the old file, leaves the slot empty, as a power cut there does (5.6).
+After a card error in steps 4-5 FRIZZ reads the slot from the card again, so `SLOT` and `BANK`
+show what it holds.
 
 ### 3.10 ABORT
 
@@ -511,6 +514,11 @@ forgets their copies in RAM (5.5).
   (both empty). Three renames through a temp name that says where its file belongs (5.6).
 - **DELETE** `OP 22 BANK SLOT`: deletes a FRIZZ slot's file. Refused: `NOT_A_SLOT`, `EMPTY`
   (already empty; the app counts that as done).
+
+A FatFs call that fails is `CARD_ERROR` (its `FRESULT` as `DETAIL`), maybe after others
+worked: a RENAME with `REPLACE` may have deleted the target's file. A swap puts its temp file
+right at once, as a scan would (5.6), mostly undoing it. Then FRIZZ reads both slots from the
+card again, so `SLOT` and `BANK` show what they hold.
 
 ### 3.12 COPY
 
@@ -691,6 +699,10 @@ replacing, renaming or deleting its file changes nothing that plays.
   buffer holds, so going back needs no load (`LoopControls.h`). After any change to a slot,
   FRIZZ forgets that it holds that slot, except for the loop playing, which plays on as it
   was. Picking that key again loads what the slot holds now.
+- **The slot playing** is the one whose file the looper plays: its key lit, `SLOT`'s flag 1.
+  RENAME and SWAP move it with the file. Replaced or deleted, the file is gone from the slots,
+  so no slot plays (the loop plays on), and picking that key again switches to the new file by
+  time, as any other key does.
 - **A planned switch** (SHIFT + a key, MIDI's program change) to a slot that changes loads the
   slot's new file when its time comes. If the slot became empty, the plan is cancelled as if
   the player had cancelled it.
@@ -980,6 +992,9 @@ bytes depend on it: where this summary leaves a doubt, they settle it.
   - a power cut after every FatFs call: a fresh boot on the card as it was, then the card holds
     whole files only;
   - the swap's repair;
+  - a card error (FatFs failing, the card staying) at every name change of a replacing write,
+    a copy, RENAME, SWAP and DELETE: every slot's `SLOT` as the card holds it, the swap's two
+    loops still there;
   - a diff of the card's file list after each case: only the allowed names changed, `/TAPE`
     and the root never.
 - **`loops.cpp`** gets `WavWalk`'s `INAM` cases: a name, one over 28 bytes cut at a UTF-8

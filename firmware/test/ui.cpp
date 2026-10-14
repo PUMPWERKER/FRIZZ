@@ -3684,10 +3684,11 @@ int main()
                   s5 = SmtLedFull(LoopLed(4)), s7 = SmtLedFull(LoopLed(6));
         printf("      slots: a1 %s, a2 %s, a3 %s, a5 %s, a7 %s\n", Hex(s1).c_str(), Hex(s2).c_str(), Hex(s3).c_str(),
                Hex(s5).c_str(), Hex(s7).c_str());
-        Check(Shows(s1, kOrange, kLoopLit) && Shows(s2, kOrange, kLoopDim) && Max(s3) == 0
+        // the loop playing is a1's old file, which no slot holds once it's replaced (#295)
+        Check(Shows(s1, kOrange, kLoopDim) && Shows(s2, kOrange, kLoopDim) && Max(s3) == 0
                   && Shows(s5, kOrange, kLoopDim) && Shows(s7, kOrange, kLoopDim),
-              "loops-xfer: the Loops page's keys follow: a1 lit (it plays), a2 dim, a3 dark, the new a5 "
-              "dim, a7 dim after the RESCAN");
+              "loops-xfer: the Loops page's keys follow: a1 dim (its loop plays on, the slot holds another), "
+              "a2 dim, a3 dark, the new a5 dim, a7 dim after the RESCAN");
         // a1's key: what a1 holds now, a2's 330 Hz of 24000 frames, loaded and switched to
         Tap(kLoopKeys[0]);
         const int took = UntilLength(24000, 1000);
@@ -3698,6 +3699,92 @@ int main()
         printf("      a1 again after %d ms: 330 Hz %.3f, 220 Hz %.3f, 440 Hz %.3f\n", took, at330, at220, at440);
         Check(took >= 0 && at330 > 10.f * std::max(at220, at440),
               "loops-xfer: then a1's key plays what a1 holds now, not the loop it played");
+    }});
+
+    // the loop playing is the file's (#295, docs/LOOP_PROTOCOL.md 5.5): moved or swapped, its
+    // key lit goes with it, SLOT's "plays" too; deleted or replaced, no key is lit for it, and
+    // it plays on
+    cases.push_back({"loops-xfer-playing", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(48000, 2, 220.f)}, {"a2", SineWav(24000, 2, 330.f)}, {"a3", SineWav(36000, 2, 440.f)}});
+        LoopsPage();
+        auto plays = [](int slot) {
+            std::string d;
+            return Xfer(0x03, {0, slot}, &d) == 0 && d.size() > 14 && (d[14] & 2);
+        };
+        auto lit = [](int slot) { return Shows(SmtLedFull(LoopLed(slot)), kOrange, kLoopLit); };
+        auto dim = [](int slot) { return Shows(SmtLedFull(LoopLed(slot)), kOrange, kLoopDim); };
+        auto dark = [](int slot) { return Max(SmtLedFull(LoopLed(slot))) == 0; };
+        auto leds = [] {
+            printf("      a1 %s a2 %s a3 %s a5 %s\n", Hex(SmtLedFull(LoopLed(0))).c_str(), Hex(SmtLedFull(LoopLed(1))).c_str(),
+                   Hex(SmtLedFull(LoopLed(2))).c_str(), Hex(SmtLedFull(LoopLed(4))).c_str());
+        };
+        // a1 played, then deleted
+        Tap(kLoopKeys[0]);
+        UntilLength(48000, 1000);
+        RunMs(100);
+        const bool a1_lit = lit(0) && plays(0);
+        const int deleted = Xfer(0x22, {0, 0});
+        RunMs(100);
+        leds();
+        const ClockState st = Probe();
+        Check(a1_lit && deleted == 0 && dark(0) && !plays(0) && st.loop_length == 48000 && st.loop_state >= 2,
+              "loops-xfer-playing: a1 deleted while it plays: its key dark, the loop plays on");
+        // a2 played, moved to a5, swapped back with a3
+        Tap(kLoopKeys[1]);
+        UntilLength(24000, 1000);
+        RunMs(100);
+        const int moved = Xfer(0x20, {0, 1, 0, 4, 0}); // a2 -> a5
+        RunMs(100);
+        leds();
+        Check(moved == 0 && dark(1) && lit(4) && plays(4) && !plays(1),
+              "loops-xfer-playing: the playing a2 moved to a5: a2 dark, a5 lit, SLOT says a5 plays");
+        const int swapped = Xfer(0x21, {0, 4, 0, 2}); // a5 <-> a3
+        RunMs(100);
+        leds();
+        Check(swapped == 0 && lit(2) && plays(2) && dim(4) && !plays(4),
+              "loops-xfer-playing: a5 swapped with a3: a3 lit and plays, a5 dim");
+        // a5 (a3's 440 Hz now) played, then replaced: no slot holds the loop playing any more
+        Tap(kLoopKeys[4]);
+        UntilLength(36000, 1000);
+        RunMs(100);
+        const bool a5_lit = lit(4) && plays(4);
+        const bool replaced = XferWrite(0, 4, SineWav(12000, 2, 660.f), 1);
+        RunMs(100);
+        leds();
+        Check(a5_lit && replaced && dim(4) && !plays(4) && Probe().loop_length == 36000,
+              "loops-xfer-playing: a5 replaced while it plays: its key dim, not lit, the old loop plays on");
+    }});
+
+    // the card lent (#292, CardLend.h): a loop already loaded switches at once, it needs no
+    // card; one that needs loading waits for the card, which then loads it once it's scanned
+    cases.push_back({"loops-lent", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(48000, 2, 220.f)}, {"a2", SineWav(24000, 2, 330.f)}, {"a3", SineWav(36000, 2, 440.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(48000, 500);
+        Tap(kLoopKeys[1]);
+        UntilLength(24000, 1000); // a1 and a2 each in a buffer now
+        RunMs(100);
+        Ask({0x3E, 0x0E, 1, 2, 1});
+        RunMs(300);
+        const bool lent = CardLent();
+        Tap(kLoopKeys[0]);
+        const int back_to_a1 = UntilLength(48000, 1000);
+        Tap(kLoopKeys[2]); // a3: not loaded
+        const int a3_lent = UntilLength(36000, 1000);
+        Ask({0x3E, 0x0E, 1, 2, 0});
+        RunMs(20);
+        const bool returned = !CardLent();
+        const int a3 = UntilLength(36000, 5000);
+        printf("      lent %d: a1 after %d ms; a3 while lent %d, after it's back %d ms\n", lent, back_to_a1, a3_lent, a3);
+        Check(lent && back_to_a1 >= 0 && back_to_a1 < 100,
+              "loops-lent: the card lent: a loop already loaded switches at once");
+        Check(a3_lent < 0 && returned && a3 >= 0,
+              "loops-lent: a loop to load waits for the card; once it's back and scanned, it loads and plays");
     }});
 
     // MIDI's notes still play the effects on the Loops page, and pick no loops; an effect held

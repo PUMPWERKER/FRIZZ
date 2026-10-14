@@ -546,11 +546,10 @@ void MainLoop(void* data)
     // loops from the card: a step, before the card's other users; it leaves them the card
     // when they want it (LoopLoader.h)
     if (!card_lent)
-    {
         loop_loader.Process(scene_store.Busy() || event_log.Writing());
-        // the Loops page's: the loads it asks for, the switch (LoopControls.h)
-        ui.LoopsProcess();
-    }
+    // the Loops page's: the loads it asks for, the switch (LoopControls.h); a loop loaded
+    // switches while the card is lent too
+    ui.LoopsProcess(!card_lent);
     // the loop transfer (LoopTransfer.h): a request, its job's step; while the card's lent too,
     // which its requests are refused for. What it changed, the Loops page forgets
     {
@@ -559,7 +558,10 @@ void MainLoop(void* data)
                            engine.looper.GetState() == chompi::Looper::State::RECORDING,
                            st == LoopLoader::LOADING || st == LoopLoader::CHECKING || st == LoopLoader::WRITING,
                            scene_store.Busy() || event_log.Writing(), usb::Host()});
-        int id;
+        int id, to;
+        bool swap;
+        if (loop_xfer.TakeMoved(id, to, swap))
+            ui.LoopMoved(id, to, swap);
         while (loop_xfer.TakeChanged(id))
             ui.LoopChanged(id);
     }
