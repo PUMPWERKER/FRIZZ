@@ -3760,6 +3760,17 @@ int main()
         Check(before > .99f && std::fabs(fifth - std::pow(2.f, 7.f / 12.f)) < .002f,
               "loops-first: with no scene key, SHIFT + the transport turns the speed (a fifth up); "
               "the switch stays at the pass end");
+        // SHIFT + the blinking white key in a later hold cancels both: the loop doesn't switch,
+        // the morph stops where it is
+        Tap(kSceneKeys[0]);
+        start(.05f);
+        ShiftWith({kLoopKeys[1], kSceneKeys[1]});
+        RunMs(300);
+        ShiftWith({kLoopKeys[1]});
+        const bool stopped = !morphing();
+        Check(stopped && UntilLength(96000, 5000) < 0,
+              "loops-first: SHIFT + the blinking white key in a later hold cancels the loop and "
+              "its scene");
         // the loop erased while the scene waits for its pass end: it lands on the next bar line
         ShiftWith({"ENC_5_SW"}); // 1x again
         start(.05f);
