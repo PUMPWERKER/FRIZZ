@@ -9,7 +9,7 @@ from `build/FRIZZ.map`.
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 271,260 B (97 %) | **~7.1 KB** | all the code, and the initial values of `.data` |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 272,572 B (98 %) | **~5.8 KB** | all the code, and the initial values of `.data` |
 | `SRAM` (AXI SRAM) | 240 KB | 220,436 B (90 %) | ~25 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,752 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
@@ -32,7 +32,7 @@ staging block (32 KB), the CHUNKs' ring (1.8 KB), the job's two FatFs files (1.1
 slots' names and sizes beside the loader's (7 KB). Nothing of it needs a constructor at boot
 (the objects are constant-initialised, the FILs in SDRAM). The biggest piece is the requests'
 handling (`LoopTransfer::Do`, 2.4 KB); the next feature in `FRIZZ.bin` needs room made first
-(below: step 3 for the card code then freed 4.1 KB in `FRIZZ.bin` and 4.5 KB in the bench
+(below: step 3 for the card code then freed 2.8 KB in `FRIZZ.bin` and 3.1 KB in the bench
 build, #285).
 
 **The loop loader (#70, for 1.1)** adds a second loop buffer, 16 bars at 50 BPM (14.75 MB,
@@ -62,10 +62,10 @@ counts it now: 226,760 → 226,568 B, the bench build's 234,856 → 234,664 B (f
 b608028).
 
 **Both builds are near the wall.** `FRIZZ-bench.bin` carries the bench as well: its code is at
-270,440 B (97 %, **~7.9 KB free**; 274,952 B before the card code's `-Os`, step 3 below) and
+271,808 B (98 %, **~6.6 KB free**; 274,952 B before the card code's `-Os`, step 3 below) and
 its data at 228,204 B (93 %, **~17 KB free**). `FRIZZ.bin` has a little less code room
-(~7.1 KB) than the bench build: it has the loader and the transfer, which the bench build
-hasn't. So a feature of more than ~7 KB of code, or ~17 KB of data in internal RAM, needs room
+(~5.8 KB) than the bench build: it has the loader and the transfer, which the bench build
+hasn't. So a feature of more than ~5 KB of code, or ~17 KB of data in internal RAM, needs room
 made first (below), or one of the builds stops linking. Data grows into SDRAM or DTCM where it
 can; for internal RAM, step 4 below frees 64 KB.
 
@@ -170,7 +170,7 @@ A feature that runs per sample costs CPU in that budget; one that runs in `MainL
 
 ## Making room for code, the biggest lever first
 
-Steps 1 and, for the play page and the card code, 3 are done, and of 5 the USB host stack and ST's device stack; the rest isn't built yet: do it when a feature needs it, each step on
+Steps 1 and, for the play page and the card store, 3 are done, and of 5 the USB host stack and ST's device stack; the rest isn't built yet: do it when a feature needs it, each step on
 its own branch with a device test (the layout can change the timing: b5c658c).
 
 1. **Move the split between code and data** (done, #26: 232 KB / 280 KB became 272 KB /
@@ -198,22 +198,29 @@ its own branch with a device test (the layout can change the timing: b5c658c).
    -15.5 KB before #89, -12.0 KB after), but for what the audio callback calls (`NormalPage::ShowSettings`,
    `ResetSmtLeds`), which stays as the callback is built; check with
    `arm-none-eabi-objdump -d` that nothing the callback reaches lost its inlining. The card
-   code is too (done, 2026-10-14, #285: the same pragma over `SceneStore.h`,
-   `MasterSettings.h` and `FxScenes.h`), -4,120 B of code in `FRIZZ.bin` (275,380 →
-   271,260 B, ~7.1 KB free) and -4,512 B in the bench build (274,952 → 270,440 B, ~7.9 KB
-   free), with the loop transfer (#278) in both; most of it the store's
-   `Init` and `Process` no longer inlined into `main` (6.2 → 3.4 KB) and `ParseMaster`,
-   `PutUint` and `PutValues` no longer unrolled. Two kinds of function stay out of it:
-   one-liners `-O3` code calls (`SceneStore::Busy`, `InRam`, …), as GCC won't inline a
-   function with an `optimize` attribute into a caller built otherwise; and what calls an
-   engine helper `-Os` code won't inline (`SendsTo5`/`SendsFrom5` and `FxOutput::LevelGain`):
-   the helper's copy left out of line changed how the engine's own `FxOutput::SetParam` was
-   built. Compare every function's code with main's, not only the sizes. In the bench build
-   the -O0 control polling (`Hardware::ProcessAllControls`, the profile's `ctrl`) went from
-   7.2 to 7.8 % in every segment though its code and data are unchanged: only libDaisy's GPIO
-   and timer code moved relative to it. `aligned(64)` on it gave 7.5 on main and 7.6 here, so
-   that column moves about half a point with the layout alone; FRIZZ.bin's own load didn't
-   move (`play --cpu`, idle 32.3 → 32.1). The boot and init
+   store is too (done, 2026-10-14, #285: the same pragma over `SceneStore.h` and
+   `MasterSettings.h`), -2,808 B of code in `FRIZZ.bin` (275,380 → 272,572 B, ~5.8 KB free)
+   and -3,144 B in the bench build (274,952 → 271,808 B, ~6.6 KB free), with the loop
+   transfer (#278) in both: `SceneStore::Process` 2,080 → 316 B, `ParseMaster` 1,000 → 320
+   B, `LoadScenes` 692 → 144 B. SceneStore's one-liners that `-O3` code calls (`Busy`,
+   `InRam`, …) stay out of the pragma, as GCC won't inline a function with an `optimize`
+   attribute into a caller built otherwise. `FxScenes.h` stays as it is, on purpose: with it
+   (-4,120 / -4,512 B) the bench's effects ran up to 0.5 points slower (page2, scene4)
+   and page2's worst block 1.75 higher, against at most 0.2 without it, measured in one
+   hold. None of its code runs in the callback; what moved is `FxChain::Run`, whose source
+   didn't change: GCC's inlining budget (`inline-unit-growth`) is a share of the whole
+   translation unit, so code that shrinks anywhere in `chompi_main.cpp` changes which of
+   `Shifter::Process` and `Warble::Process` `Run` keeps out of line (#286). Its scene file
+   functions keep their own `noinline, optimize("Os")`. And its helpers that call an engine
+   helper `-Os` code won't inline (`SendsTo5`/`SendsFrom5` call `FxOutput::LevelGain`) would
+   have to stay out: the helper's copy left out of line changed how the engine's own
+   `FxOutput::SetParam` was built. Compare every function's code with main's, not only the
+   sizes. In the bench build the -O0 control polling (`Hardware::ProcessAllControls`, the
+   profile's `ctrl`) reads ~0.4 points higher in every segment though its code and data are
+   unchanged: only libDaisy's GPIO and timer code moved relative to it. `aligned(64)` on it
+   gave 7.5 on main and 7.6 with all three files, against 7.2 / 7.8 without, so that column
+   moves about half a point with the layout alone; FRIZZ.bin's own load doesn't (`play
+   --cpu`). The boot and init
    code is left: a few KB more; measure with the map. The per-sample path stays `-O3`.
 4. **Shrink the MIDI queues.** libDaisy's `MidiHandler` keeps `FIFO<MidiEvent, 256>`
    (`libs/libDaisy/src/hid/midi.h:261`), each event with a 128-byte SysEx buffer: 37 KB per
