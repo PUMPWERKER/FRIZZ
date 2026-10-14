@@ -1420,6 +1420,8 @@ class Client:
         self.acks = []
         self.busy_wait = busy_wait
         self.log = log or (lambda *a: None)
+        self.other = None  # what gets the messages that aren't the loop transfer's
+        self.tick = None   # called as a write goes, with the link's time (remote.py's --cpu)
         self.stats = dict(chunks=0, rewinds=0, polls=0, ack_ms=[])
 
     def next_seq(self, op):
@@ -1432,6 +1434,8 @@ class Client:
         """An answer to op/seq; an ack is kept for the write"""
         a = parse(msg) if msg else None
         if a is None:
+            if msg and self.other:
+                self.other(msg)
             return None
         if a.ack:
             self.acks.append((a, self.link.now()))
@@ -1543,13 +1547,15 @@ class Client:
             while not paused and sent < size and sent - acked < window * max_chunk:
                 n = min(max_chunk, size - sent)
                 self.link.send(chunk(tid, sent, data[sent:sent + n]))
-                sent_at.setdefault(sent + n, self.link.now())
+                sent_at[sent + n] = self.link.now()
                 self.stats["chunks"] += 1
                 sent += n
             if not self.acks:
                 wait = 0.25 if paused else max(0.002, moved + 0.5 - self.link.now())
                 self._take(self.link.recv(wait), None, None)
             now = self.link.now()
+            if self.tick:
+                self.tick(now)
             while self.acks:
                 ack, at = self.acks.pop(0)
                 if ack.tid != tid:

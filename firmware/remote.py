@@ -69,6 +69,21 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
                                       byte writes, renamed, read back, deleted with its folder;
                                       a fault in FatFs's next write of more than a sector
 
+and the loop transfer's (0x38, the Companion's: tools/loopxfer.py's client, docs/LOOP_PROTOCOL.md),
+BANK a-h for FRIZZ's slots, cubbi_a-cubbi_e for TAPE's, SLOT 1-15:
+
+    ./remote.py loops ls              every slot with a file: what it is, its frames, beats, size
+                                      and name; the free space, where the cubbis are
+    ./remote.py loops put WAV BANK SLOT [--replace] [--cpu]
+                                      WAV, as it is, into a FRIZZ slot: its rate, the acks'
+                                      round trip; --cpu the audio callback's load meanwhile
+    ./remote.py loops mv BANK SLOT BANK SLOT [--replace]
+    ./remote.py loops swap BANK SLOT BANK SLOT
+    ./remote.py loops rm BANK SLOT
+    ./remote.py loops cp CUBBI SLOT BANK SLOT [--replace]
+                                      a cubbi copied into a FRIZZ slot on the card
+    ./remote.py loops rescan          FRIZZ reads the card again, as at the end of a batch
+
 `play` presses the keys and turns the knobs of a script over FRIZZ's SysEx, at the script's
 times, sends its `midi` and `clock` to the device, and checks its `expect led` lines against the
 LEDs the device shows, dimmed as the card's led_brightness (the settings page) has them: at
@@ -142,6 +157,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "tools"))
 import chompi  # noqa: E402
+import loopxfer  # noqa: E402
 import midi_send  # noqa: E402
 
 KEY, TURN, SETTING, SWITCH = 0x11, 0x12, 0x13, 0x14
@@ -900,6 +916,119 @@ def loops_write(f, kb, chunk, fault=None):
     return not s["error"]
 
 
+# ---- the loop transfer (tools/loopxfer.py's client) ----
+
+def xfer(f):
+    """loopxfer's client on FRIZZ's USB node, after its HELLO (1.5)"""
+    link = loopxfer.RawLink(f.link.fd)
+    link.buf = f.link.buf  # what came in already
+    c = loopxfer.Client(link, log=lambda s: print(s, file=sys.stderr))
+    try:
+        hello = c.hello()
+    except TimeoutError:
+        sys.exit("no answer to the loop transfer's HELLO: a FRIZZ before it (v1.5), or the bench")
+    if hello["major"] != loopxfer.MAJOR:
+        sys.exit("FRIZZ speaks the loop transfer's version %d, this %d" % (hello["major"], loopxfer.MAJOR))
+    return c
+
+
+def xfer_slot(bank, slot, frizz=True):
+    """(bank, slot) from a-h (cubbi_a-cubbi_e unless frizz) and 1-15, or exits"""
+    names = BANKS[:8] if frizz else BANKS[8:]
+    if bank.lower() not in names or not slot.isdigit() or not 1 <= int(slot) <= 15:
+        sys.exit("%s %s: a slot is %s and 1-15" % (bank, slot, "a-h" if frizz else "cubbi_a-cubbi_e"))
+    return BANKS.index(bank.lower()), int(slot) - 1
+
+
+def xfer_run(what, call):
+    try:
+        return call()
+    except loopxfer.LoopError as e:
+        sys.exit(str(e))
+    except TimeoutError as e:
+        sys.exit("%s: %s" % (what, e))
+
+
+def loops_ls(f):
+    c = xfer(f)
+    st = xfer_run("ls", c.status)
+    if st["flags"] & 16:
+        xfer_run("ls", c.wait_scan)
+        st = c.status()
+    listing = xfer_run("ls", c.listing)
+    for (b, s), i in sorted(listing.items()):
+        line = "%s%d  %s" % (BANKS[b], s + 1, loop_result(i["result"]))
+        if i["frames"]:
+            line += ", %d frames (%.2f s)" % (i["frames"], i["frames"] / 48000)
+        if i["beats"]:
+            line += ", %d beats" % i["beats"]
+        line += ", %d B" % i["size"]
+        if i["name"]:
+            line += ", \"%s\"%s" % (i["name"], " (cut)" if i["cut"] else "")
+        line += "".join(", " + w for w, on in (("playing", i["playing"]), ("ready", i["ready"])) if on)
+        print(line)
+    print("%d slots filled; %s free; the cubbis in %s" % (
+        len(listing), "%.1f MB" % (st["free_kb"] / 1024) if st["flags"] & 64 else "unknown",
+        "/TAPE" if st["tape"] else "the card's root"))
+
+
+def loops_put(f, path, bank, slot, replace, cpu):
+    with open(path, "rb") as w:
+        data = w.read()
+    c = xfer(f)
+    loads = []
+    if cpu:
+        load(f)  # the meter from here
+        asked = [0.0]
+
+        def tick(now):
+            if now - asked[0] >= 0.25:
+                asked[0] = now
+                f.send(LOAD)
+
+        def other(msg):
+            if msg[1:4] == midi_send.HEADER[1:4] and msg[4] == LOAD | 0x40 and len(msg) >= 10:
+                d = msg[5:-1]
+                loads.append((get14(d[0], d[1]) / 10, get14(d[2], d[3]) / 10))
+        c.tick, c.other = tick, other
+    t0 = time.monotonic()
+
+    def progress(done, total):
+        print("\r  %5.1f of %.1f MB" % (done / 1e6, total / 1e6), end="", flush=True)
+    xfer_run("put", lambda: c.write(bank, slot, data, replace, progress))
+    secs = time.monotonic() - t0
+    print()
+    acks = sorted(c.stats["ack_ms"])
+    print("%s -> %s%d: %d bytes in %.1f s, %.1f KB/s; %d CHUNKs, %d rewinds; the acks' round trip "
+          "median %.1f ms, 90 %% %.1f ms" % (
+              os.path.basename(path), BANKS[bank], slot + 1, len(data), secs, len(data) / 1024 / secs,
+              c.stats["chunks"], c.stats["rewinds"], acks[len(acks) // 2] if acks else 0,
+              acks[len(acks) * 9 // 10] if acks else 0))
+    if cpu and loads:
+        print("  the audio callback meanwhile: max %.1f %%, mean %.1f %% (%d reads)" % (
+            max(m for m, _ in loads), sum(m for _, m in loads) / len(loads), len(loads)))
+
+
+def loops_op(f, action, args, replace):
+    c = xfer(f)
+    if action == "rescan":
+        xfer_run("rescan", c.rescan)
+        return
+    if action == "rm" and len(args) == 2:
+        xfer_run("rm", lambda: c.delete(*xfer_slot(*args)))
+        return
+    if action in ("mv", "swap") and len(args) == 4:
+        a, b = xfer_slot(*args[:2]), xfer_slot(*args[2:])
+        xfer_run(action, lambda: c.rename(*a, *b, replace) if action == "mv" else c.swap(*a, *b))
+        return
+    if action == "cp" and len(args) == 4:
+        a, b = xfer_slot(*args[:2], frizz=False), xfer_slot(*args[2:])
+        xfer_run("cp", lambda: c.copy(*a, *b, replace))
+        return
+    sys.exit("loops %s: %s" % (action, {"rm": "BANK SLOT", "mv": "BANK SLOT BANK SLOT", "swap": "BANK SLOT BANK SLOT",
+                                        "cp": "CUBBI SLOT BANK SLOT"}[action]))
+
+
 def scene_get(f, slot):
     parts = [f.ask(SCENE_GET, [slot, p])[2:] for p in range(SCENE_PARTS)]
     params = {n: [] for n in FX_NAMES}
@@ -1367,8 +1496,10 @@ def main():
     p = sub.add_parser("crash-test", parents=[common])
     p.add_argument("what", choices=CRASH_TESTS)
     p = sub.add_parser("loops", parents=[common])
-    p.add_argument("action", nargs="?", choices=["load", "write"])
+    p.add_argument("action", nargs="?", choices=["load", "write", "ls", "put", "mv", "swap", "rm", "cp", "rescan"])
     p.add_argument("args", nargs="*")
+    p.add_argument("--replace", action="store_true", help="put, mv, cp: a file in the slot is replaced")
+    p.add_argument("--cpu", action="store_true", help="put: the audio callback's load meanwhile")
     p.add_argument("--scan", action="store_true", help="scan the card again first")
     p.add_argument("--fault", choices=sorted(set(LOOP_FAULTS) | set(WRITE_FAULTS)),
                    help="load: any; write: cut-short or past-end, FatFs's write (#213)")
@@ -1493,6 +1624,14 @@ def command(a):
         if a.fault and a.fault not in WRITE_FAULTS:
             sys.exit("loops write --fault: %s" % " or ".join(sorted(WRITE_FAULTS)))
         sys.exit(0 if loops_write(f, int(a.args[0]), int(a.args[1]), a.fault) else 1)
+    elif a.cmd == "loops" and a.action == "ls":
+        loops_ls(f)
+    elif a.cmd == "loops" and a.action == "put":
+        if len(a.args) != 3:
+            sys.exit("loops put WAV BANK SLOT")
+        loops_put(f, a.args[0], *xfer_slot(*a.args[1:]), a.replace, a.cpu)
+    elif a.cmd == "loops" and a.action:
+        loops_op(f, a.action, a.args, a.replace)
     elif a.cmd == "loops":
         loops_show(f, a.scan)
     elif a.cmd == "play":
