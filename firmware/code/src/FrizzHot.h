@@ -13,7 +13,10 @@
 #define FRIZZ_HOT __attribute__((section(".itcmram"), noinline))
 // AudioCallback's: in a section of its own, as the inline ones are COMDAT and it isn't
 #define FRIZZ_HOT_CALLBACK __attribute__((section(".itcmram.callback")))
+// FxChain::Run's, in FxChain.cpp, which isn't inline either (FxChainRun.h, #286)
+#define FRIZZ_HOT_RUN __attribute__((section(".itcmram.fxchain"), noinline))
 #else
 #define FRIZZ_HOT
 #define FRIZZ_HOT_CALLBACK
+#define FRIZZ_HOT_RUN
 #endif

@@ -11,6 +11,8 @@
  *      scenes to the SD card, the card lent as a USB drive, and boot-time stuff.
  *  In between, TinyUSB's task (UsbDevice.h) on its own timer: USB, MIDI over it.
  */
+// FxChain::Run is FxChain.cpp's, a translation unit of its own (FxChainRun.h, #286)
+#define FRIZZ_FXCHAIN_TU 1
 #include "FrizzHot.h"
 #include "hardware.h"
 #include "ui.h"

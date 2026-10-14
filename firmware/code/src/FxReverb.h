@@ -10,9 +10,15 @@ namespace chompi
 {
 
 // The reverb's pre-delay, 2 x 16384 frames (> 250ms) in SDRAM. Weak, so a header can define
-// it once for every file that includes it; ZeroSDRAM clears it at boot
+// it once for every file that includes it; ZeroSDRAM clears it at boot. FxChain.cpp only
+// declares it (FRIZZ_FXCHAIN_CPP, #286): in a section of its own, ld would keep a copy for
+// each object, one of them unused
 static const size_t kPreDelayFrames = 16384;
+#if FRIZZ_FXCHAIN_CPP
+extern float reverb_pre_delay_mem[2][kPreDelayFrames];
+#else
 __attribute__((weak)) float reverb_pre_delay_mem[2][kPreDelayFrames] DSY_SDRAM_BSS;
+#endif
 
 /** TEMPO's reverb (reverb.h, the Rings/Clouds Griesinger topology) as a send.
  *  Params: 0 decay, 1 diffusion, 2 tone (damping), 3 ducking (the room ducks under what goes

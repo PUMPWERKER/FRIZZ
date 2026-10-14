@@ -743,6 +743,8 @@ LoopControls.h         the Loops page's and the Cubbi page's loops: the plan, th
 LoopTransfer.h         the loop transfer over USB MIDI (#278, ../../docs/LOOP_PROTOCOL.md), the
                        Companion's: SysEx 0x38, the CHUNKs' ring, MainLoop's job; Version.h kFrizzVersion
 FxChain.h              the punch-in effects in their processing order, with a level meter each
+FxChain.cpp            FxChain::Run (FxChainRun.h), the effects' per-sample code, compiled alone so its
+                       machine code follows only its own sources (#286; tools/fxchain_tu.py checks the link)
 FxParams.h             each effect's knobs: how many, defaults, steps, coarse grids; the compressor's too
 FxSlots.h              each effect's key, LED and colours; the compressor's key
 MasterComp.h           the master compressor: amount, ratio, speed, mix, stereo-linked
@@ -820,6 +822,13 @@ chompi_sram.lds        linker script (the firmware runs from SRAM, placed there 
   cleared at boot (`ZeroSDRAM`). The loop and the event log, always written before they're
   read, are in SDRAM too but not cleared (`SDRAM_NOINIT`, `.sdram_noinit`): what goes there
   must never be read before it's written.
+- **`FxChain::Run` is a translation unit of its own** (`FxChain.cpp`, `FxChainRun.h`, #286):
+  compiled with the rest of `chompi_main.cpp`, its loop transformations and register
+  allocation changed with code the audio never runs. It calls nothing in `chompi_main.cpp`, and
+  the engine calls it once per block. A buffer defined in a header in a section of its own
+  (weak, as `delay_out_l`) is only declared under `FRIZZ_FXCHAIN_CPP`, or ld keeps a copy per
+  object. After each link the build checks that the inline functions both objects emit are
+  `FxChain.o`'s copies (`tools/fxchain_tu.py`): `FxChain.cpp` stays first in `CPP_SOURCES`.
 - `__attribute__((optimize("-O0")))` and similar per-function overrides are deliberate
   workarounds inherited from the stock firmware. Don't remove them as leftovers. Code that runs
   rarely (`EVENT_LOG_ONCE`, `MIDI_CONTROL_ONCE`) is built for size (`-Os`, noinline): code
