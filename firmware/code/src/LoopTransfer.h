@@ -469,6 +469,19 @@ public:
         return false;
     }
 
+    /** A RENAME or SWAP done since the last ask, before its slots' TakeChanged: from's file is
+     *  to's now, and with swap to's from's; false for none */
+    bool TakeMoved(int& from, int& to, bool& swap)
+    {
+        if (!moved_[0])
+            return false;
+        from = moved_[0] - 1;
+        to = moved_[1] - 1;
+        swap = moved_swap_;
+        moved_[0] = 0;
+        return true;
+    }
+
     /** No card work waiting: no job's step, no temp file to delete, the free space known
      *  (the unit check's settle) */
     bool Settled() const
@@ -494,6 +507,22 @@ private:
     inline bool Filled(size_t bank, size_t slot) const { return Slot(bank, slot).result != loops::EMPTY; }
     static inline bool Frizz(size_t bank, size_t slot) { return bank < loops::kFrizzBanks && slot < loops::kSlots; }
     inline void Changed(size_t bank, size_t slot) { changed_[bank] |= static_cast<uint16_t>(1u << slot); }
+
+    /** After a card error: bank's slot as the card holds it now, no file empty, one that
+     *  won't say unreadable (#294) */
+    LOOP_LOADER_ONCE void Recheck(size_t bank, size_t slot)
+    {
+        char path[LoopLoader::kPathLen];
+        loader_->SlotPath(path, bank, slot);
+        FILINFO info;
+        loops::Slot& s = loader_->SetSlot(bank, slot);
+        const FRESULT r = f_stat(path, &info);
+        if (r == FR_OK)
+            loader_->Walk(path, s);
+        else
+            s = r == FR_NO_FILE || r == FR_NO_PATH ? loops::Slot{} : loops::Slot{loops::UNREADABLE};
+        Changed(bank, slot);
+    }
 
     /** A request's arguments, by its OP; -1 for an OP there's none of */
     static int Args(uint8_t op)
@@ -749,10 +778,14 @@ private:
             return EMPTY;
         if (q.op == RENAME && to && !(a[4] & kReplace))
             return EXISTS;
+        const int id = static_cast<int>(bank * loops::kSlots + slot);
+        const int to_id = static_cast<int>(to_bank * loops::kSlots + to_slot);
         char pa[LoopLoader::kPathLen], pb[LoopLoader::kPathLen];
         loader_->SlotPath(pa, bank, slot);
         loader_->SlotPath(pb, to_bank, to_slot);
         FRESULT r;
+        char tmp[20];
+        loops::SwapPath(tmp, bank * loops::kSlots + slot, to_bank * loops::kSlots + to_slot);
         loops::Slot& sa = loader_->SetSlot(bank, slot);
         if (q.op == DELETE)
         {
@@ -764,14 +797,16 @@ private:
             loops::Slot& sb = loader_->SetSlot(to_bank, to_slot);
             if (q.op == SWAP && from && to)
             {
-                // A -> A-B.swp, B -> A, A-B.swp -> B: the temp name says where it belongs (5.6)
-                char tmp[20];
-                loops::SwapPath(tmp, bank * loops::kSlots + slot, to_bank * loops::kSlots + to_slot);
+                // A -> A-B.swp, B -> A, A-B.swp -> B: the temp name says where it belongs (5.6);
+                // one failing, the temp file goes on to B if that's free, else back to A, as a
+                // scan puts it right
                 r = f_rename(pa, tmp);
                 if (r == FR_OK)
                     r = f_rename(pb, pa);
                 if (r == FR_OK)
                     r = f_rename(tmp, pb);
+                if (r != FR_OK && f_rename(tmp, pb) != FR_OK)
+                    f_rename(tmp, pa);
             }
             else
             {
@@ -794,6 +829,10 @@ private:
                 sb = t;
                 if (q.op == RENAME)
                     sa = loops::Slot{};
+                // the file moved: a loop playing from it goes with it (LoopControls::Moved)
+                moved_[0] = static_cast<uint8_t>((from ? id : to_id) + 1);
+                moved_[1] = static_cast<uint8_t>((from ? to_id : id) + 1);
+                moved_swap_ = q.op == SWAP && from && to;
             }
             Changed(to_bank, to_slot);
         }
@@ -802,6 +841,10 @@ private:
         Changed(bank, slot);
         if (r == FR_OK)
             return OK;
+        // a FatFs call failed, maybe after others worked: the slots as the card holds them (#294)
+        Recheck(bank, slot);
+        if (q.op != DELETE)
+            Recheck(to_bank, to_slot);
         detail_out_ = static_cast<uint8_t>(r);
         return CARD_ERROR;
     }
@@ -986,6 +1029,7 @@ private:
         if (r != FR_OK)
         {
             End(CARD_ERROR, static_cast<uint8_t>(r), true);
+            Recheck(bank_, slot_); // the old file may be gone (#294)
             return;
         }
         loader_->SetSlot(bank_, slot_) = walked_;
@@ -1106,6 +1150,10 @@ private:
     uint8_t job_ = loopxfer::NONE, phase_ = loopxfer::IDLE, tid_ = 0, tid_seq_ = 0;
     uint8_t bank_ = 0, slot_ = 0, src_bank_ = 0, src_slot_ = 0, result_ = 0, detail_ = 0;
     bool replace_ = false;
+    // TakeMoved's: the two slots' ids + 1 (0 none), in replace_'s padding, so the object stays
+    // as it was in .bss (#286)
+    uint8_t moved_[2] = {};
+    bool moved_swap_ = false;
     uint32_t total_ = 0, next_ = 0;  // a write's NEXT, a copy's bytes copied
     uint32_t staged_ = 0, written_ = 0, crc_ = 0;
     uint8_t step_ = 0;               // 3.9's

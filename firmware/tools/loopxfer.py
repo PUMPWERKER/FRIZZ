@@ -1036,6 +1036,9 @@ class Transfer:
                     r = self.card.rename(pb, pa)
                 if r == FR_OK:
                     r = self.card.rename(tmp, pb)
+                # one failing: the temp file on to B if that's free, else back to A (5.6)
+                if r != FR_OK and self.card.rename(tmp, pb) != FR_OK:
+                    self.card.rename(tmp, pa)
             elif not frm:
                 r = self.card.rename(pb, pa)
             else:
@@ -1050,8 +1053,22 @@ class Transfer:
         self.changed.add(b * SLOTS + s)
         if r == FR_OK:
             return OK
+        # maybe after other calls worked: the slots as the card holds them (#294)
+        self.recheck(b, s)
+        if op != DELETE:
+            self.recheck(tb, ts)
         self.detail_out = r
         return CARD_ERROR
+
+    def recheck(self, b, s):
+        """After a card error: the slot as the card holds it (LoopTransfer::Recheck)"""
+        path = slot_path(b, s, False)
+        r = self.card.stat(path)
+        if r == FR_OK:
+            self.loader.slots[b][s] = self.loader.walk(path)
+        else:
+            self.loader.slots[b][s] = empty_slot() | ({} if r in (FR_NO_FILE, FR_NO_PATH) else dict(result=UNREADABLE))
+        self.changed.add(b * SLOTS + s)
 
     def job_step(self):
         if self.phase == FINISHING:
@@ -1164,6 +1181,7 @@ class Transfer:
             r = self.card.rename(TMP, path)
         if r:
             self.end(CARD_ERROR, r, True)
+            self.recheck(self.bank, self.slot)  # the old file may be gone (#294)
             return
         self.loader.slots[self.bank][self.slot] = self.walked
         self.changed.add(self.bank * SLOTS + self.slot)

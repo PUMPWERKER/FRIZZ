@@ -55,8 +55,8 @@ void Init();
 /** Once the card's settings are read: on the bus, with the audio function or without */
 void Start(bool audio);
 
-/** USB audio switched: off the bus and back with the other layout, about half a second; MIDI
- *  and the drive come back with it. From MainLoop */
+/** USB audio switched: off the bus and back with the other layout; MIDI and the drive come
+ *  back with it, MIDI answering again ~1.2 s after (measured for #281). From MainLoop */
 void SetAudio(bool audio);
 
 /** The layout FRIZZ is on the bus with (or will be): true with the sound card */
