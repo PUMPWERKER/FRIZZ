@@ -164,9 +164,12 @@ static void Task()
 
 bool Host() { return tud_ready(); }
 
-// the frame number the core saw last, and since when frames come without a configuration
-static uint32_t watch_frame = 0, watch_since = 0;
+// the frame number the core saw last and when it last moved, since when frames come without a
+// configuration (MainLoop passes many times a 1 ms frame: the host is there while it moved
+// within kFramesGoneMs)
+static uint32_t watch_frame = 0, watch_moved = 0, watch_since = 0;
 static bool watch_done = false;
+static const uint32_t kFramesGoneMs = 1000, kUnconfiguredMs = 10000;
 
 #if FRIZZ_USB_SAFETY
 static uint32_t mounted_since = 0; // configured, nothing heard
@@ -195,15 +198,16 @@ void Watch(uint32_t now_ms)
     const USB_OTG_DeviceTypeDef* dev
         = reinterpret_cast<const USB_OTG_DeviceTypeDef*>(USB_OTG_HS_PERIPH_BASE + USB_OTG_DEVICE_BASE);
     const uint32_t frame = (dev->DSTS & USB_OTG_DSTS_FNSOF) >> USB_OTG_DSTS_FNSOF_Pos;
-    if(frame == watch_frame)
+    if(frame != watch_frame)
     {
-        watch_since = 0; // no frames: no host (a charger, a battery), or it suspends us
-        return;
+        watch_frame = frame;
+        watch_moved = now_ms;
+        if(!watch_since)
+            watch_since = now_ms | 1;
     }
-    watch_frame = frame;
-    if(!watch_since)
-        watch_since = now_ms | 1;
-    else if(now_ms - watch_since > 10000)
+    else if(now_ms - watch_moved > kFramesGoneMs)
+        watch_since = 0; // no frames: no host (a charger, a battery), or it suspends us
+    if(watch_since && now_ms - watch_since > kUnconfiguredMs)
         NVIC_SystemReset(); // as a restart over MIDI: the bootloader starts the launcher
 }
 
