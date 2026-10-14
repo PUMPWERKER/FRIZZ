@@ -49,8 +49,14 @@ static_assert(delayStereoOffsetLeft < kDelayOutLeft && delayStereoOffsetRight < 
 #else
 #define FRIZZ_DTCM_BSS
 #endif
+// Weak, as reverb_pre_delay_mem (FxReverb.h), and only declared in FxChain.cpp
+#if FRIZZ_FXCHAIN_CPP
+extern float delay_out_l[kDelayOutLeft];
+extern float delay_out_r[kDelayOutRight];
+#else
 __attribute__((weak)) float delay_out_l[kDelayOutLeft] FRIZZ_DTCM_BSS;
 __attribute__((weak)) float delay_out_r[kDelayOutRight] FRIZZ_DTCM_BSS;
+#endif
 
 namespace chompi {
     /** The frame at read_head, interpolated, added to out_l and out_r */

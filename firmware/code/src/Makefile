@@ -50,7 +50,11 @@ TINYUSB_SOURCES = $(TINYUSB_DIR)/tusb.c \
 
 # Sources
 C_SOURCES = $(TINYUSB_SOURCES) usb_descriptors.c
-CPP_SOURCES = chompi_main.cpp \
+# FxChain.cpp first: FxChain::Run, the effects' per-sample code, in a translation unit of its
+# own (FxChainRun.h, #286), and the inline functions it shares with chompi_main.cpp taken from
+# its object, not chompi_main.o's (checked after the link: tools/fxchain_tu.py)
+CPP_SOURCES = FxChain.cpp \
+	chompi_main.cpp \
 	encoder.cpp \
 	UsbDevice.cpp
 
@@ -70,6 +74,14 @@ include $(SYSTEM_FILES_DIR)/Makefile
 # A change to the memory layout, or to a prebuilt library it links (a libDaisy fix rebuilt
 # into libdaisy.a, THIRD_PARTY.md), relinks (#161)
 $(BUILD_DIR)/$(TARGET).elf: $(LDSCRIPT) $(LIBDAISY_DIR)/build/libdaisy.a $(DAISYSP_DIR)/build/libdaisysp.a
+
+# FxChain::Run's code is FxChain.o's, the inline functions it shares with chompi_main.o too
+# (#286): checked after each link, and the build fails (its .bin removed) if not
+all: $(BUILD_DIR)/fxchain-tu.ok
+$(BUILD_DIR)/fxchain-tu.ok: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).bin ../../tools/fxchain_tu.py
+	python3 ../../tools/fxchain_tu.py $(BUILD_DIR)/$(TARGET).map $(BUILD_DIR)/FxChain.o $(subst objcopy,nm,$(CP)) \
+		|| { rm -f $(BUILD_DIR)/$(TARGET).bin; exit 1; }
+	touch $@
 
 # TinyUSB at -Os, as lost-tty/CHOMPI builds it: its code isn't the audio callback's
 $(addprefix $(BUILD_DIR)/,$(notdir $(TINYUSB_SOURCES:.c=.o))): OPT = -Os

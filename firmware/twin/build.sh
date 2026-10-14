@@ -37,6 +37,9 @@ stage()
 
 stage
 SRCS="src/twin.cpp src/script.cpp src/encoder.cpp lib/ui/UI.cpp lib/hid/switch.cpp lib/hid/midi.cpp lib/hid/midi_parser.cpp"
+# FxChain::Run in a translation unit of its own, as on the CHOMPI (#286): a firmware from before
+# it has none
+[ -f "$TREE.new/src/FxChain.cpp" ] && SRCS="$SRCS src/FxChain.cpp"
 
 if [ "$1" = wasm ]; then
     command -v em++ > /dev/null || source ~/opt/emsdk/emsdk_env.sh > /dev/null 2>&1 \
@@ -94,8 +97,8 @@ for f in $SRCS; do
     g++ $FLAGS -w -c "$TREE/$f" -o "$B/obj/$(basename "$f" .cpp).o" &
 done
 wait
-for f in twin script encoder UI switch midi midi_parser; do
-    [ -f "$B/obj/$f.o" ] || { echo "the twin didn't build"; exit 1; }
+for f in $SRCS; do
+    [ -f "$B/obj/$(basename "$f" .cpp).o" ] || { echo "the twin didn't build"; exit 1; }
 done
 rm -f "$B/libtwin.a"
 ar rcs "$B/libtwin.a" "$B"/obj/*.o
