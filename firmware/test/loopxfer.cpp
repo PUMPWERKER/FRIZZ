@@ -696,6 +696,97 @@ static void TestPowerCuts()
         }
 }
 
+/** Every FRIZZ slot's SLOT as the card holds it: no file EMPTY, else what it walks as, its size */
+static bool SlotsAsCard(App& app)
+{
+    for (uint8_t b = 0; b < loops::kFrizzBanks; b++)
+        for (uint8_t s = 0; s < loops::kSlots; s++)
+        {
+            const std::string path = std::string("/FRIZZ/") + static_cast<char>('a' + b) + std::to_string(s + 1) + ".wav";
+            const auto it = card.files.find(path);
+            int want = loops::EMPTY;
+            uint32_t size = 0;
+            if (it != card.files.end())
+            {
+                loops::WavWalk w;
+                w.Start(static_cast<uint32_t>(it->second.size()));
+                uint32_t data = 0, frames = 0;
+                want = w.Step(reinterpret_cast<const uint8_t*>(it->second.data()), 0,
+                              static_cast<uint32_t>(std::min<size_t>(it->second.size(), 1024)), data, frames);
+                size = static_cast<uint32_t>(it->second.size());
+            }
+            if (app.Ask(SLOT, {b, s}) != OK || app.last[2] != want || Get7(app.last.data() + 9, 4) != size)
+            {
+                printf("  %s: SLOT says %d (%u bytes), the card %d (%u bytes)\n", path.c_str() + 7, app.last[2],
+                       Get7(app.last.data() + 9, 4), want, size);
+                return false;
+            }
+        }
+    return true;
+}
+
+/** A card error (FatFs failing, the card staying) at each name change of a replacing write, a
+ *  copy, RENAME, SWAP and DELETE (#294): the slots say what the card holds, no loop is lost to
+ *  a swap, and only the allowed names changed */
+static void TestCardErrors()
+{
+    const std::string fresh = Wav(321, 11);
+    static const char* const kWhat[] = {"a replacing write", "a replacing copy", "a replacing rename", "a swap",
+                                        "a delete"};
+    for (int what = 0; what < 5; what++)
+    {
+        int failed = 0;
+        bool ok = true;
+        for (int k = 0; k < 4; k++)
+        {
+            NewCard(Base());
+            const auto before = card.files;
+            Frizz f;
+            Boot(f);
+            App app{f};
+            card.fail_after = card.changes + k;
+            if (what == 0)
+                app.Write(0, 0, fresh, kReplace);
+            else if (what == 1)
+                app.Ask(COPY, {8, 0, 0, 1, kReplace});
+            else if (what == 2)
+                app.Ask(RENAME, {0, 0, 0, 1, kReplace});
+            else if (what == 3)
+                app.Ask(SWAP, {0, 0, 0, 1});
+            else
+                app.Ask(DELETE, {0, 0});
+            std::vector<std::vector<uint8_t>> out;
+            f.Settle(out);
+            failed += card.fail_after < 0;
+            card.fail_after = -1;
+            bool swapped = true;
+            if (what == 3)
+            {
+                // undone or done, never lost
+                const auto a1 = card.files.find("/FRIZZ/a1.wav"), a2 = card.files.find("/FRIZZ/a2.wav");
+                swapped = a1 != card.files.end() && a2 != card.files.end()
+                          && ((a1->second == before.at("/FRIZZ/a1.wav") && a2->second == before.at("/FRIZZ/a2.wav"))
+                              || (a1->second == before.at("/FRIZZ/a2.wav") && a2->second == before.at("/FRIZZ/a1.wav")));
+                for (const auto& kv : card.files)
+                    swapped = swapped && kv.first.find(".swp") == std::string::npos;
+            }
+            const bool as_card = SlotsAsCard(app), allowed = OnlyAllowed(before);
+            if (!as_card || !swapped || !allowed || card.files.count(kTmp))
+            {
+                printf("  %s, the name change after %d failing: slots as the card %d, swap whole %d, allowed %d, "
+                       "xfer.tmp %d\n",
+                       kWhat[what], k, as_card, swapped, allowed, static_cast<int>(card.files.count(kTmp)));
+                ok = false;
+            }
+        }
+        char line[200];
+        snprintf(line, sizeof(line),
+                 "card error: %s, each of its name changes failing (%d did): the slots say what the card holds%s",
+                 kWhat[what], failed, what == 3 ? ", both loops still there, no .swp left" : "");
+        Check(ok && failed > 0, line);
+    }
+}
+
 /** A load's DMA in flight: no FatFs call from the transfer meanwhile (it pauses for the load) */
 static void TestLoadInFlight()
 {
@@ -748,6 +839,7 @@ int main()
     TestTooLong();
     TestFragments();
     TestPowerCuts();
+    TestCardErrors();
     TestLoadInFlight();
     TestFreeCount();
     return Finish();

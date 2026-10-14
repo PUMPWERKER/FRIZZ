@@ -15,7 +15,8 @@
 // clusters (clusters less the files' own), FSINFO's count at the mount unless fsinfo is false,
 // then kept as FatFs keeps it, and the FAT's sectors to count them (FatRead); the name changes
 // (a file created, renamed, deleted, a folder made) counted, and a power cut after the cut-th
-// (cut_after): the card gone from there, what was open for writing back to its last sync.
+// (cut_after): the card gone from there, what was open for writing back to its last sync; or
+// the one after the fail_after-th failing (FR_DISK_ERR, nothing changed), once, the card staying.
 #pragma once
 #include <algorithm>
 #include <cstdint>
@@ -113,6 +114,7 @@ struct FakeCard
     // the name changes made, and a power cut after the cut_after-th (-1: none)
     int changes = 0;
     int cut_after = -1;
+    int fail_after = -1;
 
     // the volume's geometry, and where each file's clusters are: given out on its first link
     // map, in fragments of frag_clusters with a free cluster between them
@@ -196,6 +198,14 @@ struct FakeCard
     {
         if (++changes == cut_after)
             Cut();
+    }
+    /** A name change that fails: the one after the fail_after-th, once */
+    bool Fails()
+    {
+        if (fail_after < 0 || changes != fail_after)
+            return false;
+        fail_after = -1;
+        return true;
     }
     /** The power gone: the card as it is, what was open for writing as at its last sync */
     void Cut()
@@ -411,6 +421,8 @@ inline FRESULT f_unlink(const char* name)
     }
     if (c.read_only)
         return FR_DENIED;
+    if (c.Fails())
+        return FR_DISK_ERR;
     const std::string path = c.Find(c.Path(name));
     c.files.erase(path);
     c.chains.erase(path);
@@ -431,6 +443,8 @@ inline FRESULT f_rename(const char* from, const char* to)
         return FR_EXIST;
     if (c.read_only)
         return FR_DENIED;
+    if (c.Fails())
+        return FR_DISK_ERR;
     c.files[c.Path(to)] = c.files[src];
     c.files.erase(src);
     c.chains.erase(c.Path(to));

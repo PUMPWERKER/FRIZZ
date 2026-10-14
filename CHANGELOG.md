@@ -85,6 +85,16 @@ what FRIZZ does.
 
 ### Fixed
 
+- **A key of the Loops page is bright only while its slot holds the loop playing** (#295):
+  deleting the playing loop's slot in the Companion left its key bright, though the slot was
+  empty; replacing it did too. Now the key goes dark (deleted) or dim (replaced) while the
+  loop plays on, and moving or swapping it in the Companion takes the bright key along.
+- **With the card lent to the computer, the loop you played before switches at once** (#292):
+  it waited until the card was back, though it was already in memory. A loop that has to be
+  loaded from the card still waits.
+- **A card error while the Companion replaces, moves or swaps a loop no longer leaves a key lit
+  for a loop that's gone** (#294): the Loops page and the Companion's list show what's on the
+  card afterwards, and a swap that fails half way is put back at once.
 - **The shifter is mono again right after its stereo returns to 0** (#226): turned up and
   back to 0 while the shifter plays, its left and right channel stayed apart (hollow when
   summed to mono) until it was punched in again or the shift passed the centre. Now the right

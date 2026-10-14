@@ -300,15 +300,27 @@ public:
         return failed;
     }
 
+    /** The loop transfer moved slot from's file to slot to, and with swap to's to from
+     *  (LoopTransfer::TakeMoved), before it says they changed (Forget): the loop playing goes
+     *  with its file */
+    void Moved(int from, int to, bool swap)
+    {
+        carried_ = playing_ == from ? to : swap && playing_ == to ? from : kNone;
+        if (carried_ != kNone)
+            playing_ = carried_;
+    }
     /** The loop transfer changed slot id (bank * 15 + slot; LoopTransfer.h, docs/LOOP_PROTOCOL.md
-     *  5.5): no buffer holds it any more, though the one playing plays on, so its key loads what
-     *  the slot holds now; a load of it finishes as nobody's; a plan for it loads again when its
-     *  time comes, or goes if the slot is empty now, as if cancelled */
+     *  5.5): no buffer holds it any more; the loop playing plays on, but unless its file moved
+     *  there (Moved) the slot doesn't hold it, so its key loads what the slot holds now; a load
+     *  of it finishes as nobody's; a plan for it loads again when its time comes, or goes if the
+     *  slot is empty now, as if cancelled */
     void Forget(int id)
     {
         for (Buf& b : bufs_)
             if (b.id == id)
                 b.id = kNone;
+        if (playing_ == id && id != carried_)
+            playing_ = kNone;
         if (load_ == id)
             forget_load_ = true;
         if (plan_ != id)
@@ -341,10 +353,13 @@ public:
         return result == loops::MONO || result == loops::STEREO ? Led::FILLED : Led::BAD;
     }
 
-    /** Each MainLoop pass, after the loader's: what the looper did, the load, the switch */
-    void Process()
+    /** Each MainLoop pass, after the loader's: what the looper did, the load, the switch.
+     *  card: the card is there to load from (not lent, CardLend.h); a loop loaded switches
+     *  without it */
+    void Process(bool card)
     {
         Looper& looper = engine_->looper;
+        carried_ = kNone;
         const Looper::State state = looper.GetState();
         // the developers' loads go into the loader's buffer: not while it's played or ours,
         // and what it held is gone after one
@@ -401,7 +416,7 @@ public:
             with_scene_ = false;
         }
 
-        Load();
+        Load(card);
         if (plan_ == kNone || posted_ != kNone || (kind_ == Kind::PASSES && in_hold_))
             return;
         const int b = Ready(plan_);
@@ -472,8 +487,8 @@ private:
 
     /** The plan's loop loaded, a step: started into the buffer the looper doesn't read
      *  (the loader's first), spread to stereo, its post-roll; one load at a time, a new
-     *  plan's waiting for the last to stop */
-    void Load()
+     *  plan's waiting for the last to stop, and for the card */
+    void Load(bool card)
     {
         const Looper& looper = engine_->looper;
         if (load_ != kNone)
@@ -509,7 +524,7 @@ private:
             load_ = kNone;
             return;
         }
-        if (plan_ == kNone || Ready(plan_) >= 0 || loader_->Busy())
+        if (plan_ == kNone || Ready(plan_) >= 0 || loader_->Busy() || !card)
             return;
         // the loader's buffer unless the looper reads it, then the recording's
         int b = looper.Reads(bufs_[1].mem) ? 0 : 1;
@@ -566,7 +581,8 @@ private:
     int posted_ = kNone;     // switch handed to the looper, for this loop
     bool midi_ = false, posted_midi_ = false; // the plan MIDI's, and the switch posted
     int switched_ = kNone;   // switched to by the hand's plan, for MIDI feedback (TakeSwitched)
-    int playing_ = kNone;    // the loop from the card the looper plays
+    int playing_ = kNone;    // the slot whose file the looper plays
+    int carried_ = kNone;    // playing_, moved there in this pass (Moved)
     int load_ = kNone;       // loading, into bufs_[target_]
     bool forget_load_ = false; // and its slot changed since (Forget)
     int target_ = 1;

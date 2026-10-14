@@ -34,11 +34,11 @@
  *
  *  The jack's bytes go to the UART from the audio callback without waiting
  *  (MidiClock::TrsPut): a ring of them, drained as the UART takes them, two at once, then one
- *  every 0.32 ms. USB's are sent by MainLoop (FlushUsb), between the answers to queries,
- *  which keeps them out of a SysEx; while MainLoop writes the card (a scene saved), they wait,
- *  so USB's ticks can bunch up then. Ticks leave room in a ring for the transport
- *  (kTransportRoom): held up long enough to fill it, USB drops ticks, not a Stop, a Song
- *  Position and Continue or a Start.
+ *  every 0.32 ms. USB's are queued from TinyUSB's task (FlushUsb, UsbDevice.h's
+ *  SetTaskHook), a whole message at a time, so they stay out of an answer's SysEx, and a
+ *  MainLoop held up by the card (a scene saved) doesn't hold them up (#265). Ticks leave room
+ *  in a ring for the transport (kTransportRoom): held up long enough to fill it, USB drops
+ *  ticks, not a Stop, a Song Position and Continue or a Start.
  */
 #pragma once
 #include "MidiClock.h"
@@ -176,10 +176,10 @@ public:
         last_ticks_ = clock_->GetTicks();
     }
 
-    /** From MainLoop, every pass: USB's bytes, a message at a time, never waiting. Without
-     *  a host (on a battery) they're dropped unsent (#84); one USB can't take yet (the
-     *  transfer before still going, MIDI feedback's or an answer's) waits for the next pass,
-     *  for kUsbWaitMs at most */
+    /** From TinyUSB's task, each time it runs (UsbDevice.h's SetTaskHook): USB's bytes, a
+     *  message at a time, never waiting. Without a host (on a battery) they're dropped unsent
+     *  (#84); one USB can't take yet (the transfer before still going, MIDI feedback's or an
+     *  answer's) waits for the task's next run, for kUsbWaitMs at most */
     void FlushUsb()
     {
         uint8_t msg[3];

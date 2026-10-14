@@ -339,7 +339,9 @@ FRIZZ's 8 banks of 15 with each loop's name, and TAPE's cubbis. Then:
 - **Arrange:** move, swap and delete loops between FRIZZ's slots, or copy a cubbi of TAPE's into
   one (TAPE's own file stays as it is).
 - **Confirm,** and the page carries the whole batch out with a progress bar. A loop that plays
-  plays on; its key plays the new file the next time you pick it.
+  plays on; its key plays the new file the next time you pick it. The bright key is the slot
+  that holds the loop playing: moved or swapped, the light goes with it; replaced or deleted,
+  no key is bright for it.
 
 - **Browsers:** Chrome, Edge and the other Chromium-based ones, and Firefox, which asks you once
   to allow a small add-on for the site. Safari has no MIDI for web pages.
@@ -1733,7 +1735,9 @@ the card on it. The loop and the effects play on meanwhile.
   for 2 s again. FRIZZ then reads the card afresh and looks for the loops again (the Loops page
   shows what's there now).
 - **While it's lent, FRIZZ leaves the card alone:** saving a scene or a setting waits until
-  it's back, a loop can't be loaded from it, and a bug report can't be written.
+  it's back, a loop can't be loaded from it, and a bug report can't be written. The loop you
+  played before the one playing is still in memory and switches at once; one that has to be
+  loaded waits until the card is back.
 - **Refused** (LOOP blinks red 3 times): without a computer on USB, while LOOP records, while a
   loop loads or FRIZZ looks for the loops (a few seconds after power-on, and after the card
   comes back), or while FRIZZ writes the card.

@@ -248,8 +248,10 @@ namespace chompi
         /** The loops from the card: rec the looper's own buffer */
         void InitLoops(LoopLoader *loader, int16_t *rec) { loops_.Init(engine_, loader, rec); }
         /** Each MainLoop pass, after the loader (LoopControls::Process) */
-        void LoopsProcess() { loops_.Process(); }
-        /** The loop transfer changed a FRIZZ slot (LoopTransfer::TakeChanged) */
+        void LoopsProcess(bool card) { loops_.Process(card); }
+        /** The loop transfer moved a file (LoopTransfer::TakeMoved), changed a FRIZZ slot
+         *  (TakeChanged) */
+        void LoopMoved(int from, int to, bool swap) { loops_.Moved(from, to, swap); }
         void LoopChanged(int id) { loops_.Forget(id); }
         /** SLOT's flags 1 and 2 (LoopTransfer.h): it plays, it's loaded and ready */
         uint8_t LoopFlags(int id) const { return loops_.Flags(id); }
