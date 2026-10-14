@@ -188,7 +188,12 @@ its own branch with a device test (the layout can change the timing: b5c658c).
    function with an `optimize` attribute into a caller built otherwise; and what calls an
    engine helper `-Os` code won't inline (`SendsTo5`/`SendsFrom5` and `FxOutput::LevelGain`):
    the helper's copy left out of line changed how the engine's own `FxOutput::SetParam` was
-   built. Compare every function's code with main's, not only the sizes. The boot and init
+   built. Compare every function's code with main's, not only the sizes. In the bench build
+   the -O0 control polling (`Hardware::ProcessAllControls`, the profile's `ctrl`) went from
+   7.2 to 7.8 % in every segment though its code and data are unchanged: only libDaisy's GPIO
+   and timer code moved relative to it. `aligned(64)` on it gave 7.5 on main and 7.6 here, so
+   that column moves about half a point with the layout alone; FRIZZ.bin's own load didn't
+   move (`play --cpu`, idle 32.3 → 32.1). The boot and init
    code is left: a few KB more; measure with the map. The per-sample path stays `-O3`.
 4. **Shrink the MIDI queues.** libDaisy's `MidiHandler` keeps `FIFO<MidiEvent, 256>`
    (`libs/libDaisy/src/hid/midi.h:261`), each event with a 128-byte SysEx buffer: 37 KB per
