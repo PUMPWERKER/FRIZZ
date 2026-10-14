@@ -297,6 +297,10 @@ PERSIST 0) wrote what came after to the card, and the command fails, saying so. 
 device stands first (the page, what the knobs edit, the scene mode); `--force` plays it
 anyway. Linux only, Python 3, no packages, like `flash.py`.
 
+**The loop transfer** (`0x38`, the web app's: list, upload, move, delete the loops, copy a
+cubbi) is a protocol of its own, stable and versioned: [`docs/LOOP_PROTOCOL.md`](../docs/LOOP_PROTOCOL.md)
+(#278, specified, not built yet).
+
 **The developers' SysEx** (`0x3E`, `MidiControl.h`'s `namespace dev`) is for the tools, not
 for players (MANUAL.md lists it only briefly): `F0 7D 43 48 3E SUB SEQ ARGS F7`, over USB
 only, answered `F0 7D 43 48 7E SUB SEQ STATUS DATA F7`. SEQ comes back, so a tool matches its
