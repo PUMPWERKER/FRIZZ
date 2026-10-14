@@ -6,7 +6,7 @@ Your first ten minutes with FRIZZ. Every detail is in the [manual](MANUAL.md).
 
 ## How the sound flows
 
-![The input, AUX or the mic after its input gain, goes to the looper, which records it before the effects, and, if monitored, to the input/loop mix, where the loop joins it; from there input and loop alike go through the effects, the compressor and VOLUME to the outputs](images/quickstart-flow.svg)
+![The input, AUX, the mic or USB after its input gain, goes to the looper, which records it before the effects, and, if monitored, to the input/loop mix, where the loop joins it; from there input and loop alike go through the effects, the compressor and VOLUME to the outputs](images/quickstart-flow.svg)
 
 Plug a source into AUX. The looper records it **before** the effects, so you can play effects
 over a loop and nothing gets printed into it. The effects come **after** the input/loop mix,
@@ -22,7 +22,7 @@ back
 | Do this | To set |
 |---|---|
 | Turn VOLUME | Output volume. The LED is a level meter |
-| Press VOLUME, then turn | Input gain, AUX's and the mic's each their own. The LED is the input's meter, red where the loop would clip; while you turn, blue to red for the gain |
+| Press VOLUME, then turn | Input gain, AUX's, the mic's and USB's each their own. The LED is the input's meter, red where the loop would clip; while you turn, blue to red for the gain |
 | Press again, then turn | Headphones: white = the master out, green = the input alone |
 | Press again | Back to output volume |
 | SHIFT + turn VOLUME | Input/loop mix: green = only the input, purple = only the loop |
@@ -155,5 +155,8 @@ Scenes are stored on the SD card. See the [manual](MANUAL.md#fx-scenes) for the 
 
 - [Manual](MANUAL.md): what every knob does on every effect
 - [Loop loader](MANUAL.md#loop-loader): your own loops from the SD card, SHIFT + the lower C#,
-  and TAPE's recordings, SHIFT + the lower D#
+  and TAPE's recordings, SHIFT + the lower D#; the [Companion](MANUAL.md#the-companion) puts
+  them on the card over the USB cable
+- [USB audio](MANUAL.md#usb-audio): FRIZZ as a sound card, to record it on a computer or play
+  into it
 - [Install guide](INSTALL.md): updating FRIZZ, going back to stock firmware
