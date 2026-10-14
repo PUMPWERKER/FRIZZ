@@ -545,6 +545,12 @@ namespace chompi
             {
                 if (buttonID == static_cast<uint16_t>(key.key))
                 {
+#if !FRIZZ_BENCH
+                    // MIDI's note on the Loops page does nothing, as the hand's (LoopsKey): a
+                    // mode can't start where a tap of SHIFT confirms nothing
+                    if (loops_shown_)
+                        return true;
+#endif
                     keys_.Used();
                     scene_ctl_.ModePressed(key.mode);
                     return true;

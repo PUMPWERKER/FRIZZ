@@ -147,6 +147,9 @@ what FRIZZ does.
   [Scenes and settings on the card](MANUAL.md#scenes-and-settings-on-the-card).
 - **SHIFT + press of knob 1 on the settings page sets the LEDs to 100 %**: it was knob 2's
   press that did, and knob 1's did nothing. See [LED brightness](MANUAL.md#led-brightness).
+- **Save, copy and delete's notes do nothing on the Loops and Cubbi pages**, as the upper F#,
+  G# and A# there: notes 66, 68 and 70 started the function, which the next tap of SHIFT could
+  confirm. See [Notes: the keys](MANUAL.md#notes-the-keys).
 
 ## v1.0.1 (2026-10-13)
 

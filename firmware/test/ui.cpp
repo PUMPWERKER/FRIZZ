@@ -3816,6 +3816,32 @@ int main()
               "loops-midi: the filter held by hand on the play page lets go on the Loops page");
     }});
 
+    // save, copy and delete's notes (66, 68, 70) do nothing on the Loops page, as the hand's
+    // upper F#, G#, A# there: no mode a tap of SHIFT could confirm
+    cases.push_back({"loops-midi-modes", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a5", SineWav(96000, 2, 220.f)}});
+        LoopsPage();
+        bool none = true;
+        for (int note : {66, 68, 70})
+        {
+            Trs({kNoteOn, note, 100});
+            RunMs(100);
+            Trs({kNoteOff, note, 0});
+            RunMs(100);
+            none = none && Ask({0x20})[7] == 0;
+        }
+        const bool shown = LoopsShown();
+        LoopsPage(); // home
+        Trs({kNoteOn, 70, 100});
+        RunMs(100);
+        Trs({kNoteOff, 70, 0});
+        RunMs(100);
+        const bool home = Ask({0x20})[7] != 0;
+        Check(none && shown && home,
+              "loops-midi-modes: notes 66, 68, 70 arm no mode on the Loops page, and on the play page do");
+    }});
+
     // loops over MIDI (#259): CC 0 picks the program changes' bank (0 the scenes, 1-8 FRIZZ's
     // a-h, 9-13 the cubbis a-e), a program change 0-14 the key; CC 54 when: 0 at once, 1-8 at
     // the n-th pass end, 127 with the waiting scene sequence (at once if none); CC 81 cancels
