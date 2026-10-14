@@ -72,12 +72,7 @@ public:
     /** The tempo clock, as the filter's (FxFilter.h): the pulses' spacing in samples once a
      *  block, then each pulse in the block with the clock's position */
     void SetPulseSamples(float samples) { lfo_.SetPulseSamples(samples); }
-    void ClockPulse(uint32_t pos, bool reverse = false)
-    {
-        // on the pulse, less the samples counted since the LFOs last moved: they went by
-        // before it, and the next Retune adds them
-        lfo_.Pulse(pos, reverse, (reverse ? 1.f : -1.f) * static_cast<float>(since_) * lfo_.PulseInc());
-    }
+    void ClockPulse(uint32_t pos, bool reverse = false) { lfo_.PulseAfter(pos, reverse, since_); }
 
     /** FxBase::SleepsThrough: what Process does asleep, once for the run */
     FX_PER_RUN bool SleepsThrough(const float*, const float*, size_t n)
@@ -181,7 +176,7 @@ private:
         Advance(since_);
         since_ = 0;
         // the knobs slew here, once per kRetune samples, at the rate they would per sample
-        const float coeff = snap ? 1.f : fminf(FxSlew::coeff * n, 1.f);
+        const float coeff = FxSlewOver(n, snap);
         const float depth = depth_.Process(coeff);
         const float centre = centre_.Process(coeff);
         feedback_ = kMaxFeedback * feedback_knob_.Process(coeff);

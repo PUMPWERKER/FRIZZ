@@ -56,12 +56,7 @@ public:
      *  each pulse in the block with the clock's position. reverse: the position counts down,
      *  so the LFO eases down towards the pulse before */
     void SetPulseSamples(float samples) { lfo_.SetPulseSamples(samples); }
-    void ClockPulse(uint32_t pos, bool reverse = false)
-    {
-        // on the pulse, less the samples counted since the LFO last moved: they went by
-        // before it, and the next Retune adds them
-        lfo_.Pulse(pos, reverse, (reverse ? 1.f : -1.f) * static_cast<float>(since_) * lfo_.PulseInc());
-    }
+    void ClockPulse(uint32_t pos, bool reverse = false) { lfo_.PulseAfter(pos, reverse, since_); }
 
     void Process(float* l, float* r)
     {
@@ -139,7 +134,7 @@ private:
         since_ = 0;
         // the knobs slew here, at the rate they would per sample; the resonance too, so
         // turning it doesn't zipper
-        const float coeff = snap ? 1.f : fminf(FxSlew::coeff * n, 1.f);
+        const float coeff = FxSlewOver(n, snap);
         const float cutoff = cutoff_.Process(coeff);
         const float depth = depth_.Process(coeff);
         if (res_.Settle(coeff))

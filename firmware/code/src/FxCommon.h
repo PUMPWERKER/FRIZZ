@@ -56,6 +56,10 @@ template <class Unused>
 float FxSlewT<Unused>::coeff = kFxParamCoeff;
 using FxSlew = FxSlewT<>;
 
+/** The knobs' slew (FxSlew) over n samples at once, for an effect that moves them every few
+ *  (the filter, the phaser): 1 to snap */
+inline float FxSlewOver(float n, bool snap) { return snap ? 1.f : fminf(FxSlew::coeff * n, 1.f); }
+
 /** v slewed a sample toward target (fonepole), and snapped onto it once it's within 1e-5 or
  *  a step no longer moves it, so it settles (#168): near 1 a step smaller than half the
  *  float's spacing there stalls short of it, and towards 0 it would creep on through the
@@ -97,10 +101,7 @@ struct Smoothed
     {
         if (value == target)
             return false;
-        const float before = value;
-        Process(coeff);
-        if (value == before || fabsf(value - target) < 1e-5f)
-            Snap();
+        value = Glide(value, target, coeff);
         return true;
     }
 };
