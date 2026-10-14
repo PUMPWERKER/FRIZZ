@@ -546,7 +546,7 @@ private:
     static const Hardware::SwId kLiveKey = Hardware::SwId::KEY_24;
     static const Hardware::SwId kInFxKey = Hardware::SwId::KEY_25;
     // knob 1's press, the brightness's (#176), and its LED and the others' (PanelLeds.h)
-    static const int kBrightnessKnobKey = static_cast<int>(Hardware::SwId::ENC_1_SW);
+    static const int kBrightnessKnobKey = static_cast<int>(Hardware::SwId::ENC_4_SW);
     static constexpr uint8_t kKnobLeds[4] = {1, 2, 3, 4};
     static const int kBrightnessStep = 5, kQuarter = 25, kMinBrightness = 25; // percent
     // the factor's hue, by ClockFactor: x1/2 light blue, x1 yellow, x2 red

@@ -2345,16 +2345,20 @@ int main()
               "settings-brightness: SHIFT + turn steps by quarters, 35 % up to 50, then 75, 50, 25, and up to 100");
         TurnBrightness(-3); // 85 %
         RunMs(3000);
-        Tap("ENC_1_SW"); // a press alone: nothing
+        Tap("ENC_4_SW"); // knob 1: a press alone, nothing
         RunMs(3000);
         const bool kept = brightness_saved(85);
         Press("KEY_26", true);
         RunMs(100);
-        Tap("ENC_1_SW"); // SHIFT + press: 100 %
+        Tap("ENC_1_SW"); // knob 2: SHIFT + press, nothing either
+        RunMs(3000);
+        const bool not_knob2 = brightness_saved(85);
+        Tap("ENC_4_SW"); // knob 1: SHIFT + press, 100 %
         RunMs(100);
         Press("KEY_26", false);
         RunMs(3000);
         Check(kept && brightness_saved(100), "settings-brightness: knob 1 pressed does nothing, SHIFT + press is 100 %");
+        Check(not_knob2, "settings-brightness: SHIFT + press of knob 2 leaves it");
         SetToggle(false);
         RunMs(300);
         Check(Same(SmtLed(kFilterKeyLed), filter), "settings-brightness: at 100 % as full as before");

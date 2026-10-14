@@ -145,6 +145,8 @@ what FRIZZ does.
   the save flashes red as when the card can't be written. A card that stops answering
   altogether can take a few seconds longer. See
   [Scenes and settings on the card](MANUAL.md#scenes-and-settings-on-the-card).
+- **SHIFT + press of knob 1 on the settings page sets the LEDs to 100 %**: it was knob 2's
+  press that did, and knob 1's did nothing. See [LED brightness](MANUAL.md#led-brightness).
 
 ## v1.0.1 (2026-10-13)
 
