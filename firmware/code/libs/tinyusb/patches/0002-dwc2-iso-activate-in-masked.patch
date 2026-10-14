@@ -1,0 +1,37 @@
+dwc2: dcd_edpt_iso_activate() disables an IN endpoint with the USB interrupt masked
+
+dcd_edpt_iso_activate() runs in the task, for SET_INTERFACE, and first disables the
+endpoint through edpt_disable(). The USB interrupt's handle_incomplete_iso_in() can
+disable the same IN endpoint at the same moment, after its retries are used up. Both
+then set SNAK and EPDIS and wait for EPDISD. The ISR clears the flag first, and the
+task waits for it forever.
+
+The fix holds the usbd spin lock (in_isr=false, so the USB interrupt is masked) around
+the IN endpoint's disable in dcd_edpt_iso_activate(). OUT endpoints don't need it:
+the ISR never disables them.
+
+From lost-tty/CHOMPI (MIT), where it was found. Upstream master (4c195b7) has
+reworked incomplete-ISO-IN handling with iso_retry, but iso_activate still takes no
+lock.
+
+Upstream candidate: yes, once checked against master's new incomplete-ISO-IN code.
+
+--- a/src/portable/synopsys/dwc2/dcd_dwc2.c	2026-10-14 13:10:53.446221642 +0200
++++ b/src/portable/synopsys/dwc2/dcd_dwc2.c	2026-10-14 13:16:05.623623043 +0200
+@@ -647,7 +653,16 @@
+ 
+ bool dcd_edpt_iso_activate(uint8_t rhport,  tusb_desc_endpoint_t const * p_endpoint_desc) {
+   // Disable EP to clear potential incomplete transfers
++  // FRIZZ (patches/0002): an IN endpoint with the USB interrupt masked, so handle_incomplete_iso_in() can't
++  // disable the same endpoint in the middle of it (this runs in the task, on SET_INTERFACE)
++  const bool is_in = tu_edpt_dir(p_endpoint_desc->bEndpointAddress) == TUSB_DIR_IN;
++  if (is_in) {
++    usbd_spin_lock(false);
++  }
+   edpt_disable(rhport, p_endpoint_desc->bEndpointAddress, false);
++  if (is_in) {
++    usbd_spin_unlock(false);
++  }
+   edpt_activate(rhport, p_endpoint_desc);
+   return true;
+ }

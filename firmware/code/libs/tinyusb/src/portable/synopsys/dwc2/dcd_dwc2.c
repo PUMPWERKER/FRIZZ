@@ -321,11 +321,17 @@ static void edpt_disable(uint8_t rhport, uint8_t ep_addr, bool stall) {
       dep->diepctl |= DIEPCTL_SNAK;
       while ((dep->diepint & DIEPINT_INEPNE) == 0) {}
 
-      // Disable the endpoint.
-      dep->diepctl |= DIEPCTL_EPDIS | stall_mask;
-      while ((dep->diepint & DIEPINT_EPDISD_Msk) == 0) {}
+      // FRIZZ (patches/0001): the transfer may have completed while SNAK took effect, and EPDIS set on an
+      // endpoint that is no longer enabled never raises EPDISD: check again before disabling it.
+      if (!edpt_is_enabled(dep)) {
+        dep->diepctl |= stall_mask;
+      } else {
+        // Disable the endpoint.
+        dep->diepctl |= DIEPCTL_EPDIS | stall_mask;
+        while ((dep->diepint & DIEPINT_EPDISD_Msk) == 0) {}
 
-      dep->diepint = DIEPINT_EPDISD;
+        dep->diepint = DIEPINT_EPDISD;
+      }
     }
 
     // Flush the FIFO, and wait until we have confirmed it cleared.
@@ -647,7 +653,16 @@ bool dcd_edpt_iso_alloc(uint8_t rhport, uint8_t ep_addr, uint16_t largest_packet
 
 bool dcd_edpt_iso_activate(uint8_t rhport,  tusb_desc_endpoint_t const * p_endpoint_desc) {
   // Disable EP to clear potential incomplete transfers
+  // FRIZZ (patches/0002): an IN endpoint with the USB interrupt masked, so handle_incomplete_iso_in() can't
+  // disable the same endpoint in the middle of it (this runs in the task, on SET_INTERFACE)
+  const bool is_in = tu_edpt_dir(p_endpoint_desc->bEndpointAddress) == TUSB_DIR_IN;
+  if (is_in) {
+    usbd_spin_lock(false);
+  }
   edpt_disable(rhport, p_endpoint_desc->bEndpointAddress, false);
+  if (is_in) {
+    usbd_spin_unlock(false);
+  }
   edpt_activate(rhport, p_endpoint_desc);
   return true;
 }

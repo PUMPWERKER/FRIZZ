@@ -1,0 +1,14 @@
+TinyUSB 0.21.0 (tag 0.21.0, dae3f9a366bfcddbf9dcf1b48d7500286a849539), https://github.com/hathach/tinyusb
+
+Vendored: src/ with the Synopsys DWC2 driver as its only port (src/portable/synopsys/), LICENSE and
+README.rst. Everything else in src/ is upstream's, byte for byte.
+
+FRIZZ's changes, each a patch in patches/ (against upstream, `git apply`), each marked FRIZZ in the
+source:
+- 0001 src/portable/synopsys/dwc2/dcd_dwc2.c: edpt_disable() checks again that an IN endpoint is
+  still enabled before it sets EPDIS
+- 0002 src/portable/synopsys/dwc2/dcd_dwc2.c: dcd_edpt_iso_activate() disables an IN endpoint with
+  the USB interrupt masked
+
+To update: copy src/ of the new tag the same way, apply the patches, and check that each one is
+still needed (upstream may have taken it).
