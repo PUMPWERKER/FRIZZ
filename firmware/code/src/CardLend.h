@@ -13,7 +13,9 @@
  *  While it's lent FRIZZ doesn't touch the card: no saves (they wait until it's back), no loop
  *  loads, no bug report (one asked for fails). The loop in RAM and the effects play on. Taken
  *  back, the card is mounted afresh and the loops are scanned again (the computer may have
- *  changed them); the scenes and the settings stay as they are in RAM.
+ *  changed them), and the scenes and the settings the computer changed are read again, as at
+ *  boot, unless the device changed its own meanwhile, which then wins (SceneStore::Reread;
+ *  #291).
  *
  *  MainLoop decides (chompi_main.cpp's CardLendProcess); this holds what the settings page
  *  shows and asks.

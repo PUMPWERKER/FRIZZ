@@ -260,6 +260,37 @@ namespace chompi
         /** The settings page's USB audio (SettingsPage::UsbAudio) */
         bool UsbAudio() const { return settings_.UsbAudio(); }
 
+        /** A master change the hand or SysEx made that's still waiting out its rest, not yet
+         *  asked to be saved (SceneStore::Reread) */
+        bool MasterWaiting() const { return master_unsaved_; }
+
+        /** The card taken back from the computer: what SceneStore::Reread took from it,
+         *  applied as at boot. The master settings at once, the compressor's knobs and the
+         *  input gains gliding there as a turn does (and USB audio switched over MainLoop's
+         *  way); what MIDI set without the card goes to the file's. The scenes for their next
+         *  recall: what plays stays, an active one changed counts as edited, one emptied is no
+         *  longer active (as over SysEx) */
+        void Reread(uint8_t taken)
+        {
+            if (taken & SceneStore::kRereadMaster)
+            {
+                for (size_t p = 0; p < kNumFxParams; p++)
+                    fx_.SetComp(p, scenes_->master.comp[p]);
+                fx_.TakeCompChanged();
+                settings_.Init(engine_, midi_, hw_, scenes_->master);
+                midi_->SetChannel(scenes_->master.midi_channel);
+                midi_->SetTransport(scenes_->master.midi_transport);
+            }
+            for (size_t s = kBlankSlot + 1; s < kNumSlots; s++)
+                if ((taken >> s) & 1)
+                {
+                    if (!scenes_->scenes[s].used)
+                        scene_ctl_.Emptied(s);
+                    else if (static_cast<int>(s) == scene_ctl_.Active())
+                        fx_.MarkEdited();
+                }
+        }
+
         /** Before a restart: master settings waiting out their kMasterSaveDelayMs go to the
          *  card at once, the first time it's asked (a change after that, automation still
          *  coming, waits as usual). True once there's nothing left to write */

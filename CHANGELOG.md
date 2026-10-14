@@ -80,6 +80,13 @@ what FRIZZ does.
 
 ### Changed
 
+- **The card as a USB drive** (#291): taken back from the computer, FRIZZ reads
+  `frizz_scenes.txt` and `frizz_master.txt` again if the computer changed them, as at power-on:
+  the settings apply at once (the input gains and the compressor glide there), the scenes come
+  in for their next recall, and what plays stays. If you changed a scene or a setting on FRIZZ
+  while the card was lent, FRIZZ's wins and the computer's file is kept as `frizz_scenes.bak`
+  or `frizz_master.bak`. Before, FRIZZ kept what it had and its next save wrote over the
+  computer's changes. See [The card as a USB drive](MANUAL.md#the-card-as-a-usb-drive).
 - **MIDI map: CC 0 is the bank select** (#259), where it was left free: 0 (the default) keeps
   program changes on the scenes, 1-8 before a program change pick a loop from FRIZZ's banks
   a-h, 9-13 a cubbi. A host that sends another bank select before its program changes now

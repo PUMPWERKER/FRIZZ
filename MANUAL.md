@@ -1724,7 +1724,7 @@ loops from there. Leave the card in.
 |---|---|---|
 | `FRIZZ/frizz_scenes.txt` | The 4 [FX scenes](#fx-scenes) | When you save, copy or delete a scene |
 | `FRIZZ/frizz_master.txt` | The [master compressor](#master-compressor) and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, USB audio, and for AUX, the mic and USB each their input gain, monitoring and effects | 2 s after the last change |
-| `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | The versions before | With each write of the file |
+| `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | A file FRIZZ couldn't read, or the computer's version that FRIZZ's own replaced ([The card as a USB drive](#the-card-as-a-usb-drive)) | When FRIZZ's save replaces it |
 | `FRIZZ/bug-1.txt`, `bug-2.txt` … | [Bug reports](#bug-reports) | When you ask for one |
 | `FRIZZ/a1.wav` … `h15.wav` | Your [loops](#loops-on-the-card) | Only by the [Companion](#the-companion), as it uploads, moves or deletes them |
 | `FRIZZ/xfer.tmp` | A Companion upload under way, renamed to its slot when it's whole | During an upload; one left over is deleted at power-on |
@@ -1763,9 +1763,9 @@ on again, so the scenes on the card aren't replaced by the session's.
 A line FRIZZ doesn't know is skipped, a setting left out or out of its range keeps its
 default, and a word where a number belongs makes the whole file unreadable: FRIZZ then starts
 with every setting at its default and keeps the file as `frizz_master.bak`. Edit the files
-with the card taken out or in the launcher's [USB storage mode](INSTALL.md#usb-storage-mode),
-not on the card [lent as a USB drive](#the-card-as-a-usb-drive): FRIZZ reads them only at
-power-on.
+with the card taken out, in the launcher's [USB storage mode](INSTALL.md#usb-storage-mode), or
+on the card [lent as a USB drive](#the-card-as-a-usb-drive), which FRIZZ reads again when it
+takes the card back.
 
 ### The card as a USB drive
 
@@ -1778,10 +1778,23 @@ lent). The loop and the effects play on meanwhile.
 - **To take it back:** eject the drive on the computer, unplug the cable, or hold SHIFT + LOOP
   for 2 s again on the settings page; a computer going to sleep takes it back too. FRIZZ then
   looks for the loops again (the Loops page shows what's there now).
-- **The scenes and settings stay as they are in FRIZZ:** it reads `frizz_scenes.txt` and
-  `frizz_master.txt` only at power-on, and its next save writes over what the computer changed
-  in them. Copy them off the drive freely; to edit them, see
-  [Scenes and settings on the card](#scenes-and-settings-on-the-card).
+- **Scenes and settings edited on the computer come in:** taken back, FRIZZ reads
+  `frizz_scenes.txt` and `frizz_master.txt` again if the computer changed them, as at power-on
+  ([Scenes and settings on the card](#scenes-and-settings-on-the-card)). A file the computer
+  left as it was changes nothing.
+  - The settings apply at once. The input gains and the compressor's knobs glide there as when
+    you turn them, and `usb_audio` switched takes FRIZZ off USB and back on as the settings
+    page does. What MIDI set without the card (an input gain by CC, say) goes to the file's
+    value, as after a restart.
+  - The scenes come in for their next recall: what plays stays as it is. If the scene that
+    plays changed, its key pulses as edited, as after you turn a knob.
+- **If you changed them on FRIZZ meanwhile, FRIZZ's wins**, file by file: a scene saved, copied
+  or deleted while the card was lent, or a setting changed (or still in its 2 s before it's
+  saved) when you take the card back. FRIZZ then writes its own over the computer's, and keeps
+  the computer's as `frizz_scenes.bak` or `frizz_master.bak`.
+- **A file the computer left unreadable** changes nothing in FRIZZ: it writes its own at once
+  and keeps the computer's as the `.bak`. One the computer deleted changes nothing either, and
+  FRIZZ's next save writes it again.
 - **While it's lent, FRIZZ leaves the card alone:** saving a scene or a setting waits until
   it's back, a loop can't be loaded from it, a bug report can't be written, and a
   [Companion](#the-companion) upload running ends. A loop from the card you played just before

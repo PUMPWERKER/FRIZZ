@@ -17,6 +17,15 @@
  *  overwritten: the next save moves it to frizz_scenes.bak first, or the boot, when it
  *  finishes a .tmp.
  *
+ *  The card lent to the computer as a USB drive (CardLend.h) and taken back: Reread reads
+ *  each file again that the computer changed (its text against what FRIZZ last read or wrote
+ *  of it, a hash), as at boot, when nothing of it waits to be saved on the device. If
+ *  something does (a scene saved meanwhile, a setting changed, still in its rest), the device
+ *  wins: its save moves the computer's file to the .bak, as it does an unreadable one. One the
+ *  computer left unreadable goes there too, and the device's own is written at once, so the
+ *  card holds one that reads; one it deleted is written again by the next save. An unchanged
+ *  file isn't read again at all.
+ *
  *  For a test on the device, KeepInRam (kCmdDev's PERSIST 0) stops the writes until a
  *  restart: the session's scenes and settings stay in RAM, the card as it was at boot.
  *
@@ -96,6 +105,67 @@ public:
             return;
         LoadMaster();
         unreadable_ = !LoadScenes(Saved());
+        // what's on the card now, for Reread
+        master_hash_ = FileHash(kMasterFile);
+        scenes_hash_ = FileHash(kSceneFile);
+    }
+
+    // Reread: the master settings taken from the card; bit s, slot s's scene changed
+    static const uint8_t kRereadMaster = 0x80;
+
+    /** From MainLoop, the card taken back from the computer (CardLend.h): mounts it again and
+     *  reads what the computer changed of FRIZZ's files (the file comment). master_waiting: the
+     *  play page has a master change not yet asked to be saved (NormalPage::MasterWaiting).
+     *  Returns what it took into scenes and master: kRereadMaster, and a bit per slot that
+     *  changed */
+    __attribute__((noinline, optimize("Os"))) uint8_t Reread(bool master_waiting)
+    {
+        if (!Mount() || !loaded_)
+            return 0;
+        uint8_t taken = 0;
+        const uint32_t master_hash = FileHash(kMasterFile);
+        if (master_hash != master_hash_)
+        {
+            master_hash_ = master_hash;
+            MasterSettings read;
+            if (master_hash > 1 && !master_waiting && !master_pending_ && ParseMaster(buf_, read))
+            {
+                master = read;
+                master_unreadable_ = false;
+                taken = kRereadMaster;
+            }
+            else if (master_hash)
+            {
+                // the device's wins, the computer's goes to the .bak
+                master_unreadable_ = true;
+                master_pending_ = true;
+            }
+        }
+        const uint32_t scenes_hash = FileHash(kSceneFile);
+        if (scenes_hash != scenes_hash_)
+        {
+            scenes_hash_ = scenes_hash;
+            FxScene read[kNumScenes];
+            if (scenes_hash > 1 && save_state_ != SaveState::PENDING && ParseSaved(read))
+            {
+                for (size_t s = 0; s < kNumScenes; s++)
+                {
+                    FxScene& to = Saved()[s];
+                    if (to.used != read[s].used
+                        || (to.used
+                            && (to.latched != read[s].latched || memcmp(to.params, read[s].params, sizeof(to.params)))))
+                        taken |= 1u << (kBlankSlot + 1 + s);
+                    to = read[s];
+                }
+                unreadable_ = false;
+            }
+            else if (scenes_hash)
+            {
+                unreadable_ = true;
+                save_state_ = SaveState::PENDING;
+            }
+        }
+        return taken;
     }
 
     /** From the play page after a change: the next Process writes the file */
@@ -155,6 +225,8 @@ public:
                 master_unreadable_ = failed_;
             }
             failed_ = failed_ || !(len && WriteText(kMasterFile, kMasterTmpFile, len));
+            if (!failed_)
+                master_hash_ = Hash(len);
             master_failed_ = failed_;
         }
     }
@@ -216,25 +288,43 @@ private:
         return f_rename(tmp, name) == FR_OK;
     }
 
-    bool Load(const char* name, const float (*defaults)[kNumFxParams], FxScene* into)
+    /** buf_'s text hashed (FNV-1a), never 0 or 1 */
+    __attribute__((optimize("Os"))) uint32_t Hash(size_t len) const
     {
-        return ReadText(name) && ParseScenes(buf_, defaults, into);
+        uint32_t h = 2166136261u;
+        for (size_t i = 0; i < len; i++)
+            h = (h ^ static_cast<uint8_t>(buf_[i])) * 16777619u;
+        return h | 2;
     }
 
-    /** The card's scenes into `into`, or a .tmp a save cut short before its rename, which it
-     *  finishes. False if a scene file is there but can't be read */
-    bool LoadScenes(FxScene* into)
+    /** The file's text hashed, for Reread: 0 if it isn't there, 1 if it can't be read whole.
+     *  Leaves its text in buf_ */
+    __attribute__((noinline, optimize("Os"))) uint32_t FileHash(const char* name)
+    {
+        if (!ReadText(name))
+            return Exists(name) ? 1 : 0;
+        return Hash(strlen(buf_));
+    }
+
+    /** buf_'s scenes into `into`; false if they can't be read */
+    __attribute__((noinline, optimize("Os"))) bool ParseSaved(FxScene* into)
     {
         // for the effects a saved scene leaves out
         float defaults[kNumFx][kNumFxParams];
         for (size_t fx = 0; fx < kNumFx; fx++)
             for (size_t p = 0; p < kNumFxParams; p++)
                 defaults[fx][p] = kFxParams[fx].defaults[p];
+        return ParseScenes(buf_, defaults, into);
+    }
 
-        if (Load(kSceneFile, defaults, into))
+    /** The card's scenes into `into`, or a .tmp a save cut short before its rename, which it
+     *  finishes. False if a scene file is there but can't be read */
+    bool LoadScenes(FxScene* into)
+    {
+        if (ReadText(kSceneFile) && ParseSaved(into))
             return true;
         const bool there = Exists(kSceneFile);
-        if (Load(kSceneTmpFile, defaults, into))
+        if (ReadText(kSceneTmpFile) && ParseSaved(into))
         {
             // the file that couldn't be read is kept, as a save keeps it; if it can't be
             // moved, the .tmp stays too, and the next save tries again
@@ -304,12 +394,17 @@ private:
             unreadable_ = false;
         }
 
-        return WriteText(kSceneFile, kSceneTmpFile, len);
+        if (!WriteText(kSceneFile, kSceneTmpFile, len))
+            return false;
+        scenes_hash_ = Hash(len);
+        return true;
     }
 
     FATFS* fs_ = nullptr;
     const char* path_ = nullptr;
-    bool unreadable_ = false; // a scene file is there that couldn't be read, or would be lost
+    // a scene file is there that couldn't be read, or would be lost, or the computer's that the
+    // device's save replaces (Reread): the next save keeps it as the .bak
+    bool unreadable_ = false;
     bool loaded_ = false;     // the card was read at boot: only then is it written
     bool failed_ = false;     // the last save failed
     FIL file_;
@@ -319,7 +414,9 @@ private:
     volatile SaveState save_state_;
     bool master_pending_ = false;
     bool master_failed_ = false;
-    bool master_unreadable_ = false; // a master file is there that couldn't be read
+    bool master_unreadable_ = false; // a master file is there that couldn't be read, or the computer's
+    uint32_t master_hash_ = 0;       // each file's text as FRIZZ last read or wrote it (FileHash)
+    uint32_t scenes_hash_ = 0;
     bool in_ram_ = false;
 };
 
