@@ -140,7 +140,7 @@ A feature that runs per sample costs CPU in that budget; one that runs in `MainL
 
 ## Making room for code, the biggest lever first
 
-Steps 1 and, for the play page, 3 are done; the rest isn't built yet: do it when a feature needs it, each step on
+Steps 1 and, for the play page, 3 are done, and of 5 the USB host stack; the rest isn't built yet: do it when a feature needs it, each step on
 its own branch with a device test (the layout can change the timing: b5c658c).
 
 1. **Move the split between code and data** (done, #26: 232 KB / 280 KB became 272 KB /

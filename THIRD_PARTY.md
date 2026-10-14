@@ -86,7 +86,7 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with six changes:
 - `src/usbd/usbd_conf.h` and `src/usbd/usbd_conf.c` give the CDC class its handle (540 B) from a
   static buffer, `USBD_static_malloc`, as ST's own templates do, instead of `malloc`: newlib's
   `_sbrk` grows the heap from the end of `.bss` without a bound, so with internal RAM full it
-  ran past it at boot (a freeze in the fork lost-tty/CHOMPI), where the buffer fails the link.
+  would run past it at boot (a freeze in the fork lost-tty/CHOMPI), where the buffer fails the link.
   One handle, for FRIZZ's one USB device; it's the same buffer on every Init, and freeing it
   does nothing (#196).
 
