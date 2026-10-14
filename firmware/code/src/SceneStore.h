@@ -35,6 +35,11 @@
 namespace chompi
 {
 
+// The card's side, at boot and from MainLoop: small rather than fast (docs/CAPACITY.md, step
+// 3). The one-line accessors stay as their callers are built, so they inline into them
+#pragma GCC push_options
+#pragma GCC optimize("Os")
+
 static const char kSceneFile[] = "frizz_scenes.txt";
 static const char kSceneTmpFile[] = "frizz_scenes.tmp";
 static const char kSceneBakFile[] = "frizz_scenes.bak";
@@ -97,6 +102,7 @@ public:
         LoadMaster();
         unreadable_ = !LoadScenes(Saved());
     }
+#pragma GCC pop_options
 
     /** From the play page after a change: the next Process writes the file */
     inline void RequestSave() { save_state_ = SaveState::PENDING; }
@@ -122,6 +128,8 @@ public:
         return failed;
     }
 
+#pragma GCC push_options
+#pragma GCC optimize("Os")
     /** From MainLoop. log_open: a bug report is being written (EventLog::Writing); a remount
      *  would make its open file invalid, so a write that needs one waits for it */
     void Process(bool log_open)
@@ -319,5 +327,6 @@ private:
     bool master_unreadable_ = false; // a master file is there that couldn't be read
     bool in_ram_ = false;
 };
+#pragma GCC pop_options
 
 } // namespace chompi

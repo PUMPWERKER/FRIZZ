@@ -61,6 +61,11 @@
 namespace chompi
 {
 
+// Read at boot and written on a save, from MainLoop or the play page's -Os code: small
+// rather than fast (docs/CAPACITY.md, step 3); the audio callback reaches none of it
+#pragma GCC push_options
+#pragma GCC optimize("Os")
+
 // The file's size at most
 static const size_t kMasterFileMax = 512;
 
@@ -260,5 +265,7 @@ inline bool ParseMaster(const char* text, MasterSettings& settings)
     }
     return true;
 }
+
+#pragma GCC pop_options
 
 } // namespace chompi

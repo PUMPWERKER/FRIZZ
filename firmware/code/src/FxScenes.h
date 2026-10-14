@@ -37,6 +37,11 @@
 namespace chompi
 {
 
+// Read at boot and written on a save, from MainLoop: small rather than fast, as the code space
+// is tight (docs/CAPACITY.md, step 3); the audio callback reaches none of it
+#pragma GCC push_options
+#pragma GCC optimize("Os")
+
 // The scenes saved on the card, "scene 1" to "scene 4" in the file
 static const size_t kNumScenes = 4;
 // The play page's slots: the blank scene first, a fixed one that unlatches every effect and
@@ -178,6 +183,10 @@ inline __attribute__((noinline, optimize("Os"))) void UpgradeTo3(size_t fx, floa
         v[3] = defaults[3];
 }
 
+#pragma GCC pop_options
+
+// These stay as the engine is built: they call FxOutput::LevelGain, which -Os code wouldn't
+// inline, and the copy left out of line would change how the engine's own calls are built
 /** Stereo and the effect's own swapped, on the effects with stereo: a line from before layout
  *  4 to the knobs now, and the defaults now to those before, for the upgrades above */
 inline void SwapStereo(size_t fx, float* v)
@@ -209,6 +218,9 @@ inline void SendsFrom5(size_t fx, float* v)
     v[FxOutput::kLevel] = v[kFxOwnKnob];
     v[kFxOwnKnob] = FxOutput::LevelGain(knob);
 }
+
+#pragma GCC push_options
+#pragma GCC optimize("Os")
 
 // once at boot, or on a save: small rather than fast, as the code space is tight
 
@@ -357,5 +369,7 @@ inline __attribute__((noinline, optimize("Os"))) bool ParseScenes(const char* te
     }
     return true;
 }
+
+#pragma GCC pop_options
 
 } // namespace chompi
