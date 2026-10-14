@@ -8,7 +8,7 @@ from `build/FRIZZ.map`.
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 268,024 B (96 %) | **~10 KB** | all the code, and the initial values of `.data` |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 263,744 B (95 %) | **~14 KB** | all the code, and the initial values of `.data` |
 | `SRAM` (AXI SRAM) | 240 KB | 220,172 B (90 %) | ~25 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,752 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
@@ -45,8 +45,8 @@ counts it now: 226,760 → 226,568 B, the bench build's 234,856 → 234,664 B (f
 b608028).
 
 **The bench build hits the walls first.** `FRIZZ-bench.bin` carries the bench as well: its
-code is at 274,104 B (98 %, **~4.3 KB free**) and its data at 228,204 B (93 %, **~17 KB
-free**). So a feature of more than ~4 KB of code, or ~17 KB of data in internal RAM, needs
+code is at 269,744 B (97 %, **~8.6 KB free**, since the card code's `-Os`, step 3 below) and its data at 228,204 B (93 %, **~17 KB
+free**). So a feature of more than ~8 KB of code, or ~17 KB of data in internal RAM, needs
 room made first (below), or the bench build stops linking before `FRIZZ.bin` does. Data grows into
 SDRAM or DTCM where it can; for internal RAM, step 4 below frees 64 KB.
 
@@ -151,7 +151,7 @@ A feature that runs per sample costs CPU in that budget; one that runs in `MainL
 
 ## Making room for code, the biggest lever first
 
-Steps 1 and, for the play page, 3 are done, and of 5 the USB host stack and ST's device stack; the rest isn't built yet: do it when a feature needs it, each step on
+Steps 1 and, for the play page and the card code, 3 are done, and of 5 the USB host stack and ST's device stack; the rest isn't built yet: do it when a feature needs it, each step on
 its own branch with a device test (the layout can change the timing: b5c658c).
 
 1. **Move the split between code and data** (done, #26: 232 KB / 280 KB became 272 KB /
@@ -179,8 +179,17 @@ its own branch with a device test (the layout can change the timing: b5c658c).
    -15.5 KB before #89, -12.0 KB after), but for what the audio callback calls (`NormalPage::ShowSettings`,
    `ResetSmtLeds`), which stays as the callback is built; check with
    `arm-none-eabi-objdump -d` that nothing the callback reaches lost its inlining. The card
-   code (`SceneStore.h`, `MasterSettings.h`, `FxScenes.h`), the boot and init code are left:
-   a few KB more; measure with the map. The per-sample path stays `-O3`.
+   code is too (done, 2026-10-14, #285: the same pragma over `SceneStore.h`,
+   `MasterSettings.h` and `FxScenes.h`), -4,280 B of code in `FRIZZ.bin` (263,744 B, ~14 KB
+   free) and -4,360 B in the bench build (269,744 B, ~8.6 KB free), most of it the store's
+   `Init` and `Process` no longer inlined into `main` (6.2 → 3.4 KB) and `ParseMaster`,
+   `PutUint` and `PutValues` no longer unrolled. Two kinds of function stay out of it:
+   one-liners `-O3` code calls (`SceneStore::Busy`, `InRam`, …), as GCC won't inline a
+   function with an `optimize` attribute into a caller built otherwise; and what calls an
+   engine helper `-Os` code won't inline (`SendsTo5`/`SendsFrom5` and `FxOutput::LevelGain`):
+   the helper's copy left out of line changed how the engine's own `FxOutput::SetParam` was
+   built. Compare every function's code with main's, not only the sizes. The boot and init
+   code is left: a few KB more; measure with the map. The per-sample path stays `-O3`.
 4. **Shrink the MIDI queues.** libDaisy's `MidiHandler` keeps `FIFO<MidiEvent, 256>`
    (`libs/libDaisy/src/hid/midi.h:261`), each event with a 128-byte SysEx buffer: 37 KB per
    transport. FRIZZ drains them every block, so 32 events would do: -64 KB of data. It's a
