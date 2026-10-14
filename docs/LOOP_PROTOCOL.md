@@ -122,6 +122,11 @@ repeated `WRITE_END` after `BAD_CRC` gets `BAD_CRC` again, not `NO_TRANSFER`. So
 a lost answer by sending the same request with the same `SEQ`, and a `BUSY_…` by sending it
 again later with a new `SEQ`.
 
+**HELLO clears that memory**, so a new visit can't get an earlier visit's answer by hitting the
+same `OP` and `SEQ`. The app starts each connection with HELLO (2.1), begins its `SEQ` at a
+random value, and never sends a new changing request with the `OP` and `SEQ` of its own last
+one (after 127 requests the counter comes round again: it skips that value).
+
 ### 1.6 Timeouts
 
 | Who | Waits for | How long | Then |
@@ -158,7 +163,8 @@ a write alive: `STATUS` polls don't, so an app that is stuck can't hold a write 
 
 ### 2.1 HELLO
 
-`OP 00`, no arguments. FRIZZ answers it in any state.
+`OP 00`, no arguments. FRIZZ answers it in any state, and forgets the last changing request
+it remembered (1.5). An open job stays open.
 
 | Data | Bytes | v1 value |
 |---|---|---|
@@ -372,11 +378,13 @@ are FRIZZ's to write: they stay in its RAM, in order, until they're on the card,
 only if the whole write fails. Since `NEXT` never counts what still sits in the ring, an app
 that keeps to the window never overfills it. Otherwise:
 
-- OFFSET below the end of what was taken: a repeat. Ignored, not counted.
+- OFFSET below the end of what was taken: a repeat. Not taken again and not counted, but it
+  is acked (at most once a pass), so a lost ack is made good by the app's next repeat.
 - OFFSET beyond it, a length that doesn't match, a full ring, a paused write: a **gap**. The
   CHUNK is dropped and `DROPS` counts it.
 - an unknown TID: ignored, with an ack of `NO_TRANSFER` at most every 250 ms, so a stale app
-  stops.
+  stops. The app then reads `STATUS` for how its job ended (it may have ended while an answer
+  was lost, e.g. `WRITE_BEGIN`'s) and acts on that result.
 
 **FRIZZ acks** (`SEQ` 0, `NEXT` and `DROPS` as they stand) once in every pass of its UI
 (~2 ms) in which `NEXT` or `DROPS` changed, every 250 ms while paused, and once in the pass in
@@ -408,9 +416,12 @@ It sends while `sent < SIZE` and `sent − acked < window × maxChunk`. On each 
    `sent = rewound = acked` and sends again from there. If `rewound` is set, the new drops are
    the CHUNKs sent before that rewind, still arriving behind the gap, and they don't call for
    another rewind.
-3. No ack moving `acked` for 500 ms while no ack says paused, or an `OK` ack after a pause:
-   `sent = rewound = acked`, and the app sends again from there. That is also how it starts
-   after a pause, since FRIZZ dropped what came during it.
+3. No ack moving `acked` for 500 ms while no ack says paused: the app first asks `STATUS`
+   and sets `acked = max(acked, done)`, since the ack that would have moved it may be the one
+   lost (the window's last, or the file's end). Then, and on an `OK` ack after a pause,
+   `sent = rewound = acked`, and the app sends again from there (if `acked` is SIZE, it sends
+   `WRITE_END`). That is also how it starts after a pause, since FRIZZ dropped what came
+   during it.
 
 The progress bar follows `acked`, in bytes.
 
@@ -428,7 +439,10 @@ A job is never refused halfway because of something the player does. FRIZZ pause
   write, usually milliseconds. These remount the card. FRIZZ then opens `xfer.tmp` again and
   goes on at its end, as the loader does after a remount (`Reopen`).
 - **The card is lent** (SHIFT + LOOP): the player's gesture wins. The job ends with
-  `CARD_LENT`, the temp file deleted, before the card goes to the computer.
+  `CARD_LENT`, the temp file deleted, before the card goes to the computer. A job already at
+  step 5 of 3.9 (the rename, which `ABORT` can't stop either, 3.10) finishes first, within
+  milliseconds, and the card is lent after it; the job's result is then `OK`. The same holds
+  when USB goes away (1.6).
 
 While paused, FRIZZ takes no CHUNKs and its 30 s timeout stands still. The app waits as long
 as the pause lasts. A recording can take 77 s or more, so the app tells the player why it
