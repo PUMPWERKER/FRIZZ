@@ -97,3 +97,8 @@ void ChompiEncoder::Debounce(bool a_state, bool b_state)
     }
     // the switch isn't debounced here: on the shift register, its state comes from there
 }
+
+/** libDaisy's System::Init sets up its SPI handles; FRIZZ has no SPI (the LEDs are timer PWM, the
+ *  shift registers bit-banged, the codec on I2C, the card on SDMMC). Defined here, the call
+ *  keeps libDaisy's SPI driver and the HAL's out of the build: 5.7 KB of code, 2.9 KB of RAM */
+extern "C" void dsy_spi_global_init() {}
