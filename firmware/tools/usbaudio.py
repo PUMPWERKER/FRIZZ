@@ -6,6 +6,9 @@
                                                  hw_ptr against the clock (/proc/asound) and
                                                  the playback's feedback (stream0's Momentary freq)
     tools/usbaudio.py gen FILE.wav [--freq F] [--secs N] [--db D]   a stereo 24-bit sine to play
+    tools/usbaudio.py stats [--every S]          FRIZZ's own counts (kCmdDev's USB): blocks to and
+                                                 from the host, the stream run dry, the FIFOs, the card
+    tools/usbaudio.py card on|off                the card lent to the computer, or taken back
 
 A sine's glitches: a clean sine x satisfies x[n] = 2 cos(w) x[n-1] - x[n-2]; the residual of
 that is noise-small, and a dropped or doubled packet, a click or a fade shows as a spike far
@@ -148,6 +151,55 @@ def rate(args):
         print("playback's Momentary freq: min %d, max %d, last %d Hz (%d reads)" % (min(fb), max(fb), fb[-1], len(fb)))
 
 
+USB = 0x0E  # kCmdDev's USB (MidiControl.h)
+
+
+def frizz():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import chompi
+    import remote
+    return chompi, remote.Frizz(chompi.to_frizz(None))
+
+
+def flags_text(f):
+    return "host %s, streaming in %s, card %s" % ("yes" if f & 1 else "no", "yes" if f & 2 else "no",
+                                                  "lent" if f & 4 else "FRIZZ's")
+
+
+def stats(args):
+    chompi, f = frizz()
+    while True:
+        got = f.dev(USB, [0])
+        if not got or got[0] != chompi.OK:
+            sys.exit("no answer to USB: not a usb-audio-poc build")
+        d = got[1]
+        v = [chompi.get7(d[1 + 5 * i:6 + 5 * i]) for i in range(5)]
+        rx_fill = d[26] << 7 | d[27] if len(d) >= 30 else 0
+        tx_fill = d[28] << 7 | d[29] if len(d) >= 30 else 0
+        line = ("%s; from the host %d blocks, ran dry %d, starts %d; to the host %d blocks, IN FIFO full %d; "
+                "FIFOs %d / %d bytes" % (flags_text(d[0]), v[0], v[1], v[2], v[3], v[4], rx_fill, tx_fill))
+        got = f.dev(USB, [1])
+        if got and got[0] == chompi.OK:
+            c = [chompi.get7(got[1][1 + 5 * i:6 + 5 * i]) for i in range(6)]
+            line += "; card %d reads %d KB, %d writes %d KB, %d errors, %.1f s in the card" % (
+                c[0], c[2], c[1], c[3], c[4], c[5] / 1000)
+        print(line, flush=True)
+        if not args.every:
+            break
+        time.sleep(args.every)
+
+
+def card(args):
+    chompi, f = frizz()
+    got = f.dev(USB, [2, 1 if args.state == "on" else 0])
+    if not got or got[0] != chompi.OK:
+        sys.exit("no answer to USB: not a usb-audio-poc build")
+    time.sleep(0.3)
+    got = f.dev(USB, [1])
+    print(flags_text(got[1][0]) if got and got[0] == chompi.OK else "?")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -164,8 +216,12 @@ def main():
     r.add_argument("card")
     r.add_argument("--secs", type=float, default=60)
     r.add_argument("--every", type=float, default=1)
+    t = sub.add_parser("stats")
+    t.add_argument("--every", type=float, default=0)
+    c = sub.add_parser("card")
+    c.add_argument("state", choices=("on", "off"))
     args = ap.parse_args()
-    {"sine": sine, "gen": gen, "rate": rate}[args.cmd](args)
+    {"sine": sine, "gen": gen, "rate": rate, "stats": stats, "card": card}[args.cmd](args)
 
 
 if __name__ == "__main__":
