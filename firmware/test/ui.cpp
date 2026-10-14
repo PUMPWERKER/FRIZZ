@@ -3589,6 +3589,27 @@ int main()
         printf("      reverse: %.4f, after the switch %.4f, from %.4f to %.4f\n", back, b.loop_speed, p0, b.loop_pos);
         Check(back < -.99f && std::fabs(b.loop_speed - back) < .002f && (b.loop_pos < p0 || b.loop_pos > p0 + .5f),
               "loops-tape: in reverse the new loop starts in reverse");
+        // planned in reverse: at the loop point, the new loop from its end; the clock's beat 1
+        // (pulse 0) on the line, as the old loop crossed it
+        ShiftWith({kLoopKeys[0]});
+        std::vector<uint32_t> seen; // the pulses, as they change
+        int at = -1;
+        for (int ms = 0; ms < 2500 && (at < 0 || static_cast<int>(seen.size()) < at + 4); ms++)
+        {
+            RunMs(1);
+            const ClockState st = Probe();
+            if (seen.empty() || seen.back() != st.position)
+                seen.push_back(st.position);
+            if (at < 0 && st.loop_length == 96000)
+                at = static_cast<int>(seen.size()) - 1;
+        }
+        std::string around;
+        for (int i = std::max(0, at - 4); i < static_cast<int>(seen.size()); i++)
+            around += " " + std::to_string(seen[i]);
+        const bool line = at >= 2 && std::find(seen.begin() + at - 2, seen.end(), 0u) != seen.end()
+                          && seen[at - 2] == 2 && std::fabs(Probe().loop_speed + 1.f) < .002f;
+        printf("      planned in reverse: the pulses around the switch:%s\n", around.c_str());
+        Check(line, "loops-tape: planned in reverse: the pass end's pulse 0 (beat 1) is counted, 2 1 0 47 ...");
         // a standstill: the semitones down into the hold zone (#174)
         Tap("ENC_5_SW");
         RunMs(1000);
@@ -3913,6 +3934,29 @@ int main()
         Check(std::fabs(m220 / m330 - 1.f) < .1f && first >= 0,
               "loops-fader: a white key first, then a scene key and the transport turned: the "
               "crossfader with both loops; let go in the middle, the new one at once");
+        // at the tape's speed: two semitones up, the new loop joins at it, by time, and keeps it
+        Detents(4);
+        RunMs(1500);
+        hold(12);
+        while (Probe().loop_pos < .1f || Probe().loop_pos > .4f) // the old loop away from its end
+            RunMs(1);
+        const ClockState s0 = Probe();
+        const uint32_t ts = NowMs();
+        Tap(kLoopKeys[0]);
+        RunMs(300);
+        Press("KEY_26", false);
+        const int sped = UntilLength(96000, 100);
+        RunMs(100);
+        const ClockState s1 = Probe();
+        const double fast = std::pow(2., 2. / 12.);
+        const double at_speed = fmod(s0.loop_pos * 72000. + (NowMs() - ts) * 48. * fast, 96000.);
+        double ds = std::fabs(at_speed - s1.loop_pos * 96000.);
+        ds = std::min(ds, 96000. - ds);
+        printf("      at +2 semitones: taken after %d ms, speed %.4f, at %.0f, want %.0f\n", sped, s1.loop_speed,
+               s1.loop_pos * 96000., at_speed);
+        Check(sped >= 0 && std::fabs(s1.loop_speed - fast) < .002f && ds < 150.,
+              "loops-fader: at +2 semitones the new loop joins at the tape's speed, by time, and "
+              "keeps it once it takes over");
     }});
 
     // the event log (EventLog.h): a session, SHIFT + VOLUME held on the settings page, its

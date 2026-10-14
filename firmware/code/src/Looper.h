@@ -302,7 +302,8 @@ public:
     /** The loop is a loaded one (Switch), with these beats (0: none known) */
     inline bool Loaded() const { return mem_ != rec_mem_; }
     inline uint32_t LoadedBeats() const { return loaded_beats_; }
-    /** Where the last switch's loop started, 0-1 through it: for the clock (TempoClock::SetLoop) */
+    /** Where the last switch's loop started, 0-1 through it, 1 at its end in reverse (its
+     *  start that way): for the clock (TempoClock::SetLoop) */
     inline float SwitchedAt() const { return switched_at_; }
 
     // ===== state, readable from the UI =====
@@ -835,7 +836,8 @@ private:
         postroll_ = kXfadeFrames;
         play_pos_ = pos;
         play_frac_ = frac;
-        switched_at_ = static_cast<float>(pos) / static_cast<float>(length);
+        // in reverse its last frame is its start: 1, so the clock counts the line it crossed
+        switched_at_ = reverse_ && pos == length - 1 ? 1.f : static_cast<float>(pos) / static_cast<float>(length);
         offset_ = from_offset_ = 0;
         jump_left_ = 0;
         cue_ = false;
@@ -1164,8 +1166,12 @@ private:
             }
         }
     }
-    /** sin(x pi/2) within 1 %, 0 at 0 and 1 at 1: the crossfader's gains, x and 1 - x */
-    static inline float EqualPower(float x) { return x * (1.5707963f - .5707963f * x * x); }
+    /** sin(x pi/2) within 0.1 %, 0 at 0 and 1 at 1: the crossfader's gains, x and 1 - x */
+    static inline float EqualPower(float x)
+    {
+        const float x2 = x * x;
+        return x * (1.5707963f - x2 * (.6459640f - .0751677f * x2));
+    }
     /** A loop of length frames in mem, at pos and frac, as ReadInterpolated (the other voice's:
      *  a loaded loop, no post-roll) */
     static void ReadAt(const int16_t* mem, size_t length, size_t pos, float frac, float* l, float* r)

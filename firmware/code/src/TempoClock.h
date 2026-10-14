@@ -135,7 +135,8 @@ public:
     }
 
     /** A loop closed: it's the clock from now on, length frames holding beats beats. from:
-     *  where it starts, 0-1 (a loop from the card switched to by time, Looper::SwitchedAt) */
+     *  where it starts, 0-1, 1 its end running in reverse (a loop from the card, switched to
+     *  by time or in reverse, Looper::SwitchedAt) */
     void SetLoop(size_t length, uint32_t beats, float from = 0.f)
     {
         SyncFactor();
@@ -143,11 +144,21 @@ public:
         SetLoopBeats(beats);
         pass_ = 0;
         loop_pos_ = from;
-        // on a pulse (its start): one step before it, so the first block pulses it (beat 1);
-        // between two, the one passed is past
-        const float at = from * static_cast<float>(loop_pulses_);
-        const uint32_t idx = PulseIndex(from);
-        loop_idx_ = at == static_cast<float>(idx) ? (idx + grid_pulses_ - 1) % grid_pulses_ : idx;
+        if (from >= 1.f)
+        {
+            // at its end in reverse: the next block crosses its start's line (beat 1), down
+            // from the last pass of the grid
+            pass_ = grid_pulses_ != loop_pulses_ ? 1 : 0;
+            loop_idx_ = 0;
+        }
+        else
+        {
+            // on a pulse (its start): one step before it, so the first block pulses it (beat 1);
+            // between two, the one passed is past
+            const float at = from * static_cast<float>(loop_pulses_);
+            const uint32_t idx = PulseIndex(from);
+            loop_idx_ = at == static_cast<float>(idx) ? (idx + grid_pulses_ - 1) % grid_pulses_ : idx;
+        }
         paused_ = false;
     }
 
