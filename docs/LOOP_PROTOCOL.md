@@ -992,6 +992,9 @@ bytes depend on it: where this summary leaves a doubt, they settle it.
   - a power cut after every FatFs call: a fresh boot on the card as it was, then the card holds
     whole files only;
   - the swap's repair;
+  - a card error (FatFs failing, the card staying) at every name change of a replacing write,
+    a copy, RENAME, SWAP and DELETE: every slot's `SLOT` as the card holds it, the swap's two
+    loops still there;
   - a diff of the card's file list after each case: only the allowed names changed, `/TAPE`
     and the root never.
 - **`loops.cpp`** gets `WavWalk`'s `INAM` cases: a name, one over 28 bytes cut at a UTF-8

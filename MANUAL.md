@@ -1735,9 +1735,9 @@ the card on it. The loop and the effects play on meanwhile.
   for 2 s again. FRIZZ then reads the card afresh and looks for the loops again (the Loops page
   shows what's there now).
 - **While it's lent, FRIZZ leaves the card alone:** saving a scene or a setting waits until
-  it's back, a loop can't be loaded from it, and a bug report can't be written. The loop you
-  played before the one playing is still in memory and switches at once; one that has to be
-  loaded waits until the card is back.
+  it's back, a loop can't be loaded from it, and a bug report can't be written. A loop from the
+  card you played just before is usually still in memory and switches at once; one that has to
+  be loaded waits until the card is back.
 - **Refused** (LOOP blinks red 3 times): without a computer on USB, while LOOP records, while a
   loop loads or FRIZZ looks for the loops (a few seconds after power-on, and after the card
   comes back), or while FRIZZ writes the card.

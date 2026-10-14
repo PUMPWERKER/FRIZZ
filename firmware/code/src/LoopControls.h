@@ -302,8 +302,10 @@ public:
 
     /** The loop transfer moved slot from's file to slot to, and with swap to's to from
      *  (LoopTransfer::TakeMoved), before it says they changed (Forget): the loop playing goes
-     *  with its file */
-    void Moved(int from, int to, bool swap)
+     *  with its file. Out of line: inlined into MainLoop, it moved GCC's inlining in
+     *  FxChain::Run (a call to Shifter::Process left out of line), which the audio callback
+     *  runs (#285) */
+    __attribute__((noinline)) void Moved(int from, int to, bool swap)
     {
         carried_ = static_cast<int8_t>(playing_ == from ? to : swap && playing_ == to ? from : kNone);
         if (carried_ != kNone)
