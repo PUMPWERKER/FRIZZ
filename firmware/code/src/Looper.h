@@ -230,6 +230,8 @@ public:
      *  or erasing */
     void Switch(const int16_t* mem, size_t length, uint32_t beats, uint32_t at, bool keep = false)
     {
+        if (length == 0)
+            return; // nothing to loop (the loader refuses it)
         next_mem_ = mem;
         next_length_ = length;
         next_beats_ = beats;

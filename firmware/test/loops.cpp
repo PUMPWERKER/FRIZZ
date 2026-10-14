@@ -138,6 +138,8 @@ static void TestHeader()
     Check(Walk(at504, data, frames) == STEREO && data == 504 && frames == kMaxFrames,
           "header: data at 504, 16 bars at 50 BPM exactly");
     Check(Walk(Stereo(std::string(kMaxFrames * 4 + 4, 'x'))) == TOO_LONG, "header: a frame longer is refused");
+    Check(Walk(Stereo("")) == NO_DATA && Walk(Stereo("xx")) == NO_DATA,
+          "header: a data chunk without a whole frame is refused (a loop of 0 frames would hang the looper)");
     // a broadcast WAV's bext chunk (602 bytes and more): the data past the first window
     const std::string bext = Stereo(std::string(800, 'x'), Chunk("bext", std::string(1500, 'b')));
     Check(Walk(bext, data, frames) == STEREO && data == 44 + 8 + 1500 && frames == 200,
