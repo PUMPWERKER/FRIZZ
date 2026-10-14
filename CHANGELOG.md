@@ -13,12 +13,12 @@ what FRIZZ does.
   that manages your loop banks over the USB cable while FRIZZ plays, in Chrome, Edge and other
   Chromium-based browsers and in Firefox. It lists what's on the card, FRIZZ's banks with each
   loop's name and TAPE's cubbis, uploads audio files into FRIZZ's slots (converted to 16-bit
-  48 kHz in the browser, their name and beats written into the file), moves, swaps and deletes
-  them, and copies a cubbi into a FRIZZ slot, as one batch with a progress bar. A loop that
-  plays plays on, and an upload cut short leaves the slot as it was. Uploads go over MIDI: a
-  long loop takes minutes, so for many loops at once the card as a USB drive is faster. FRIZZ
-  now reads a loop's name from its WAV (`LIST/INFO/INAM`). See
-  [The Companion](MANUAL.md#the-companion).
+  48 kHz in the browser, their name, and their beats where it knows them, written into the
+  file), moves, swaps and deletes them, and copies a cubbi into a FRIZZ slot, as one batch with
+  a progress bar. A loop that plays plays on, and an upload cut short leaves the slot as it
+  was. Uploads go over MIDI: the longest loop takes about two minutes, so for many loops at
+  once the card as a USB drive is faster. FRIZZ now reads a loop's name from its WAV
+  (`LIST/INFO/INAM`), which the Companion shows. See [The Companion](MANUAL.md#the-companion).
 
 - **Loops from the SD card** (#70): put your own WAVs in the card's `FRIZZ` folder as `a1.wav`
   to `h15.wav` (bank a-h and the white key, 16-bit 48 kHz, up to 16 bars at 50 BPM) and play
@@ -39,7 +39,8 @@ what FRIZZ does.
   1-8 FRIZZ's banks, 9-13 the cubbis') and a program change pick a loop from any page, CC 54
   says when (at once, at a pass end, with the scene change), CC 81 cancels, and MIDI feedback
   sends the switches you make by hand, so a DAW records them. See
-  [Loop loader](MANUAL.md#loop-loader).
+  [Loop loader](MANUAL.md#loop-loader), [Playing loops](MANUAL.md#playing-loops) and
+  [Loops and scenes](MANUAL.md#loops-and-scenes).
 
 - **FRIZZ is a USB sound card** (#196): on a computer's USB it's an audio interface called
   FrizZ, next to its MIDI, 2 channels each way at 48 kHz / 24 bit, as USB Audio Class 1, which
@@ -50,18 +51,22 @@ what FRIZZ does.
   looper records it. A cable going in or out of AUX doesn't switch away from USB. With USB the
   source, SHIFT + upper F# switches USB audio off (and on again); it's on out of the box, and
   saved; switching it, MIDI over USB is gone for about a second. Set the computer to 48 kHz for
-  the best quality. See [USB audio](MANUAL.md#usb-audio).
+  the best quality. USB audio and the card drive (below) build on lost-tty's
+  [MIXTAPE](https://github.com/lost-tty/CHOMPI), USB audio for TAPE (MIT). See
+  [USB audio](MANUAL.md#usb-audio).
 
 - **The card as a USB drive while FRIZZ plays** (#196): on the settings page, SHIFT + LOOP held
   2 s lends the card to the computer (LOOP blue), so you can copy loops, scenes and bug reports
   without the USB storage firmware; the loop and the effects play on. Eject it on the computer,
-  unplug, or hold SHIFT + LOOP again to take it back: FRIZZ reads it afresh and finds the loops
-  again. See [The card as a USB drive](MANUAL.md#the-card-as-a-usb-drive).
+  unplug, or hold SHIFT + LOOP again to take it back: FRIZZ finds the loops again. The scenes
+  and settings stay as FRIZZ has them, and its next save writes over a change made to their
+  files on the drive: edit those with the card taken out (#291). See
+  [The card as a USB drive](MANUAL.md#the-card-as-a-usb-drive).
 
-- **A hung FRIZZ restarts by itself** (#105): if its sound stops for a second (a crash, or
-  something stuck), the CHOMPI restarts instead of staying frozen until you switch it off:
-  into the launcher's picker if you use it, or else FRIZZ starts again. A loop in RAM is lost,
-  as with the power switch.
+- **A crashed FRIZZ restarts by itself** (#105): if FRIZZ crashes, or its sound stops for
+  about a second, the CHOMPI restarts instead of staying frozen until you switch it off: into
+  the launcher's picker if you use it, or else FRIZZ starts again. A loop in RAM is lost, as
+  with the power switch. See [Power and battery](MANUAL.md#power-and-battery).
 
 - **Figures in the manual:** each effect's chapter, the [chaos key](MANUAL.md#chaos-key)'s and
   the [compressor](MANUAL.md#master-compressor)'s show where its white key is and its knobs'
@@ -75,13 +80,18 @@ what FRIZZ does.
 
 ### Changed
 
+- **MIDI map: CC 0 is the bank select** (#259), where it was left free: 0 (the default) keeps
+  program changes on the scenes, 1-8 before a program change pick a loop from FRIZZ's banks
+  a-h, 9-13 a cubbi. A host that sends another bank select before its program changes now
+  picks loops: send bank 0 for the scenes. See [Program changes](MANUAL.md#program-changes).
 - **MIDI map: CC 84 picks the input's source in thirds** (#196): 0-42 AUX, 43-85 the mic, 86-127
   USB (it was 0-63 AUX, 64-127 the mic: a controller sending 127 for the mic now picks USB; send
   64). MIDI feedback sends it as 0 for AUX, **64 for the mic** (it was 127) and 127 for USB. See
   [Controllers](MANUAL.md#controllers).
 - **USB is TinyUSB now** (#196): FRIZZ's USB, its MIDI too, runs on a new USB stack. The MIDI
   clock out over USB keeps its time while FRIZZ reads the card (it could come up to 8 ms late
-  while a cubbi loaded, #265). FrizZ asks the computer for 100 mA, where it asked for 160.
+  while a cubbi loaded, #265). FrizZ asks the computer for 100 mA, where it asked for 160. See
+  [MIDI out](MANUAL.md#midi-out).
 
 ### Fixed
 
@@ -98,12 +108,14 @@ what FRIZZ does.
 - **The shifter is mono again right after its stereo returns to 0** (#226): turned up and
   back to 0 while the shifter plays, its left and right channel stayed apart (hollow when
   summed to mono) until it was punched in again or the shift passed the centre. Now the right
-  channel glides onto the left's within a grain (about 30 ms), without a click.
+  channel glides onto the left's within a grain (about 30 ms), without a click. See
+  [Shifter](MANUAL.md#shifter).
 - **An SD card error no longer freezes the panel for half a minute** (#213): if the card fails
   while FRIZZ saves a scene or the settings, writes a bug report or reads at power-on, the
   LEDs and keys come back within seconds, not after 30 or 60 (the sound never stopped), and
   the save flashes red as when the card can't be written. A card that stops answering
-  altogether can take a few seconds longer.
+  altogether can take a few seconds longer. See
+  [Scenes and settings on the card](MANUAL.md#scenes-and-settings-on-the-card).
 
 ## v1.0.1 (2026-10-13)
 

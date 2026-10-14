@@ -7,10 +7,11 @@ Every control in FRIZZ. For a first session, start with the [Quick start](QUICKS
 <!-- summary: What FRIZZ does, and how this manual names things. -->
 
 FRIZZ turns the CHOMPI into a stereo effects box and looper for whatever you plug into its AUX
-input, or for its built-in microphone. You record a loop and play it faster, slower or
-backwards, punch effects in over it and over the input on the white keys, and keep the
-effects' settings as scenes, to recall, morph or drop to on the bar line. A master compressor
-sits on the outputs, and MIDI over TRS and USB reaches every control.
+input, for its built-in microphone, or for a computer on USB. You record a loop, or load your
+own from the SD card, and play it faster, slower or backwards, punch effects in over it and
+over the input on the white keys, and keep the effects' settings as scenes, to recall, morph or
+drop to on the bar line. A master compressor sits on the outputs, MIDI over TRS and USB reaches
+every control, and on a computer FRIZZ is a USB sound card too.
 
 ### How to read this manual
 
@@ -44,7 +45,7 @@ On the play page (the mode switch down), the controls are:
 | White keys 1-13 | The [punch-in effects](#punch-in-fx), in the order the sound goes through them: [Freezer](#freezer), [Shifter](#shifter), [Folder](#folder), [Crusher](#crusher), [Filter](#filter), [Flanger](#flanger), [Phaser](#phaser), [Resonator](#resonator), [Slicer](#slicer), [Wow & flutter](#wow--flutter), [Tape stop](#tape-stop), [Delay](#delay), [Reverb](#reverb) |
 | White key 14 | The [Chaos key](#chaos-key) |
 | White key 15 | The [Master compressor](#master-compressor) on knobs 1-4 |
-| Lower C# and D# | Nothing, kept free |
+| Lower C# and D# | With SHIFT, the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page): loops from the card |
 | Lower F#, G#, A#, upper C#, D# | The [FX scenes](#fx-scenes): the blank scene, then scenes 1-4 |
 | Upper F#, G#, A# | [Save, copy and delete](#save-copy-and-delete) a scene |
 | Knobs 1-4 | The effect picked last, or the compressor; a press turns them to its [page 2](#page-2) |
@@ -53,10 +54,10 @@ On the play page (the mode switch down), the controls are:
 | CHOMPI | SHIFT; it confirms a save, copy or delete |
 | PLAY, LOOP | The [Looper](#looper); SHIFT + LOOP taps the [tempo](#tap-tempo) |
 | The mode switch | Down the play page, up the [settings page](#settings-page) |
-| AUX in | The stereo input; with no cable in it, the built-in microphone is the input ([Input: AUX, the mic or USB](#input-aux-the-mic-or-usb)) |
+| AUX in | The stereo input; with no cable in it, the built-in microphone is the input, and a computer on USB is the third ([Input: AUX, the mic or USB](#input-aux-the-mic-or-usb)) |
 | The outputs | The master out and the headphones |
-| MIDI in and out (TRS), USB | [MIDI](#appendix-midi), the clock and FRIZZ's [remote control](#remote-control) |
-| The SD card | Scenes, settings and bug reports ([Card and files](#card-and-files)) |
+| MIDI in and out (TRS), USB | [MIDI](#appendix-midi), the clock and FRIZZ's [remote control](#remote-control); over USB also a [sound card](#usb-audio), the [card as a drive](#the-card-as-a-usb-drive) and the [Companion](#the-companion) |
+| The SD card | Scenes, settings, bug reports and your [loops](#loops-on-the-card) ([Card and files](#card-and-files)) |
 
 On the settings page, the keys and knob 1 set other things: see [Settings page](#settings-page).
 
@@ -125,10 +126,12 @@ Every effect has its own colour, on its key and its knobs (see [Keys and knobs](
 Throughout FRIZZ, 3 quick red blinks mean refused or not stored, and 3 white ones done.
 Besides the effects' own colours, red lit or blinking slowly means something else: LOOP
 recording or waiting to erase, the compressor's key while the safety limiter works, the input gain near 100% (VOLUME's page
-2), on the settings page the clock factor on double, and VOLUME in the low-battery countdown.
+2), on the settings page the clock factor on double, on the Loops and Cubbi pages a file FRIZZ
+can't play (dim red), and VOLUME in the low-battery countdown.
 
 Waiting for something blinks slowly: LOOP while a recording finishes its bar, a picked scene
-slot, the CHOMPI key ready to confirm, a planned loop's key on the Loops or Cubbi page. On the knobs, white is a parameter's neutral point.
+slot, the CHOMPI key ready to confirm, a planned loop's key on the Loops or Cubbi page (fast
+while it still loads). On the knobs, white is a parameter's neutral point.
 The [LED brightness](#led-brightness) sets how bright all of them are.
 
 <!-- part: Looper and tempo -->
@@ -298,13 +301,16 @@ It's kept as `clock_factor` in `FRIZZ/frizz_master.txt` (50, 100 or 200).
 
 ## Loop loader
 
-<!-- summary: Your own loops from the SD card, switched in time. -->
+<!-- summary: Your own loops and TAPE's recordings from the SD card. -->
 
 FRIZZ plays loops from the SD card: your own, 8 banks of 15, one on each white key of the
-**Loops page**, and the recordings you made with TAPE (its cubbis) on the **Cubbi page**. A loop
+**Loops page** (SHIFT + the lower C#), and the recordings you made with TAPE (its cubbis) on the
+**Cubbi page** (SHIFT + the lower D#). A loop
 from the card is the loop, as if you had recorded it: LOOP, PLAY, the transport knob and the
-input/loop mix act on it the same way. Switching to one can happen at once, at the end of the
-loop playing, or together with a [scene change in time](#scene-changes-in-time).
+input/loop mix act on it the same way. This chapter is about getting loops onto the card;
+[Playing loops](#playing-loops) is about the two pages and switching, at once or at the end of
+the loop playing, and [Loops and scenes](#loops-and-scenes) about switching together with a
+[scene change in time](#scene-changes-in-time).
 
 **A loop you recorded is gone once you switch to a loaded one.** FRIZZ doesn't save your
 recordings to the card, and there's no way back to the recording.
@@ -324,7 +330,9 @@ comes back from the computer.
 - **At most about 77 s**: 16 bars at 50 BPM.
 - Anything else (44.1 kHz, 24-bit, compressed, longer) is refused: its key shows dim red.
 - A WAV with an `acid` chunk (many sample packs and DAWs write one) says how many beats it
-  holds, and FRIZZ takes its tempo from that.
+  holds, and FRIZZ takes its tempo from that, if the chunk comes before the audio data in the
+  file (the Companion writes it there). Otherwise FRIZZ guesses the beats (see
+  [A loaded loop is the loop](#a-loaded-loop-is-the-loop)).
 
 ### The Companion
 
@@ -345,15 +353,26 @@ FRIZZ's 8 banks of 15 with each loop's name, and TAPE's cubbis. Then:
 
 - **Browsers:** Chrome, Edge and the other Chromium-based ones, and Firefox, which asks you once
   to allow a small add-on for the site. Safari has no MIDI for web pages.
-- **Speed:** uploads go over MIDI, about a minute or more for a long loop, a few minutes for 16
-  bars at 50 BPM, depending on the computer; a mono loop takes half. For many loops at once,
-  lending the card [as a USB drive](#the-card-as-a-usb-drive) (or a card reader) is 5 to 20
-  times faster.
+- **Speed:** uploads go over MIDI, about two minutes for the longest loop (16 bars at 50 BPM,
+  stereo) and more on a slower computer; a mono loop takes half. For many loops at once,
+  lending the card [as a USB drive](#the-card-as-a-usb-drive) is several times faster (a card
+  reader too).
 - **While FRIZZ records a loop, loads one or saves to the card,** an upload waits and goes on
-  by itself. Lending the card to the computer ends an upload.
+  by itself. Lending the card to the computer ends an upload, and so does switching
+  [USB audio](#usb-audio) on or off. A card too full for a loop refuses it.
 - **Nothing half is left:** an upload cut short (the tab closed, the cable pulled, the power
-  off) leaves the slot as it was. If the CHOMPI runs a FRIZZ without the Companion, the page
-  says so.
+  off) leaves the slot as it was. If the CHOMPI doesn't answer (another firmware, or an
+  older FRIZZ), the page says so.
+- **The loops' names** are written into their files, and FRIZZ reads them, but only the
+  Companion shows them: the panel has no place for a name.
+
+## Playing loops
+
+<!-- summary: The Loops and Cubbi pages, and switching between loops. -->
+
+Loops from the card play from two pages of their own, the **Loops page** for yours and the
+**Cubbi page** for TAPE's, where the white keys are the loops. To get loops onto the card, see
+[Loop loader](#loop-loader).
 
 ### The Loops page
 
@@ -361,8 +380,9 @@ FRIZZ's 8 banks of 15 with each loop's name, and TAPE's cubbis. Then:
 taps of SHIFT** (each a short tap with nothing else in between), takes you back to the play
 page. On the play page a double tap does nothing, so it's a safe way home wherever you are.
 **SHIFT + the lower D#** takes you to the [Cubbi page](#the-cubbi-page). Opening the Loops page
-ends a [save, copy or delete](#save-copy-and-delete) you had started. With no loop on the card,
-the page opens with its white keys dark, and the lower C# and D# blink red 3 times.
+ends a [save, copy or delete](#save-copy-and-delete) you had started. Flipping the mode switch
+up and down again brings you back to the page you were on. With no loop file on the card, the
+page opens with its white keys dark, and the lower C# and D# blink red 3 times.
 
 ![Keys: SHIFT + lower C# opens the Loops page, SHIFT + lower D# the Cubbi page, two taps of SHIFT go back, SHIFT + a white key tapped N times switches at the end of the N-th pass](images/keys-loops.svg)
 
@@ -374,7 +394,7 @@ the confirm of a scene save, copy or delete and the start-up ripple.
 
 | Control | Function | LED |
 |---|---|---|
-| Lower C#, lower D# | The bank before, the bank after; empty banks are skipped | each in the colour of the bank it leads to; dark at the first or last bank, where a press blinks red 3 times |
+| Lower C#, lower D# | The bank before, the bank after; banks without a file are skipped | each in the colour of the bank it leads to; dark at the first or last bank, where a press blinks red 3 times |
 | A white key | Switch to its loop at once | see below |
 | SHIFT + a white key, tapped N times | Switch at the end of the N-th pass | blinks on the beat while it waits |
 | SHIFT + a scene key, the transport turned, a white key | Both loops on the crossfader | see [Two loops on the crossfader](#two-loops-on-the-crossfader) |
@@ -387,7 +407,7 @@ show where they lead. A white key shows its loop:
 
 | LED | Means |
 |---|---|
-| Dark | No loop on that key |
+| Dark | No loop on that key; pressing it blinks red 3 times |
 | Dim, the bank's colour | A loop |
 | Dim red | A file FRIZZ refuses; pressing it blinks red 3 times |
 | Bright | The loop playing |
@@ -421,8 +441,8 @@ the lower D#** again, or **two quick taps of SHIFT**, takes you back to the play
 [Loops page](#the-loops-page): the lower C# and D# step the banks, a white key switches at
 once, SHIFT + a white key at the end of a pass or with a scene change, the same LEDs. Each
 page remembers its bank, and there's one plan for both: a loop planned on one page is replaced
-by a key on the other. With no cubbi on the card, the page opens with its white keys dark, and
-the lower C# and D# blink red 3 times.
+by a key on the other. With no cubbi file on the card, the page opens with its white keys dark,
+and the lower C# and D# blink red 3 times.
 
 The banks show in TAPE's own colours, so you recognise them: a purple, b orange, c teal,
 d dark orange, e yellow-green. While you're on the page, the CHOMPI key glows dimly in the
@@ -443,8 +463,47 @@ bank's colour, and the lower C# and D# in the colours of the banks they lead to.
 - **The last white key counts:** another white key replaces what you planned.
 - **Loading** takes under a second for the longest loops. A loop not loaded by its time
   switches at the end of the first pass after it is.
-- **To cancel**, hold SHIFT and tap the blinking key again: nothing switches.
+- **To cancel**, hold SHIFT again (in a new hold: in the one that planned it, a tap adds a
+  pass) and tap the blinking key: nothing switches, and a scene change running stops where it
+  is.
 - A white key while LOOP records blinks red 3 times.
+
+### A loaded loop is the loop
+
+- **LOOP** erases it, as it erases a recording (and a switch waiting with it); then LOOP
+  records a new one. **PLAY** pauses and plays it; the **transport knob** changes its speed,
+  scrubs it while paused.
+- **The tape runs on across loops.** Every switch keeps the transport's speed and direction:
+  at once, planned, with a scene and on the crossfader. A loop you switch to at double speed
+  plays at double speed; in reverse it starts from its end, in reverse; at a standstill it
+  stands too. Only erasing (LOOP) puts the tape back to 1× forward, so a new recording, or a
+  loop loaded after an erase, starts at 1×; pressing the transport knob is 1× forward, as
+  always.
+- **Its tempo:** a loop's tempo is its own times the speed, and the effects' tempo follows it
+  from the switch. FRIZZ takes its beats from its [`acid` chunk](#loops-on-the-card); without
+  one it guesses them from its length: the power of two beats (1, 2, 4, 8 …) that puts it
+  closest to the tempo of the loop playing (at 1×), or to the last tempo, between 50 and 300
+  BPM; at power-on, with no tempo set yet, the one that puts it between 80 and 160 BPM, as for
+  a recording. If that lands at half or double the tempo, or the loop holds 3 or 6 bars,
+  [tap the tempo](#tap-tempo) (SHIFT + LOOP) and the beats fit again.
+
+### Loops over MIDI
+
+A DAW or a controller picks loops with a bank select and a program change, on FRIZZ's global
+channel, from any page: CC 0 = 1-8 for FRIZZ's banks a-h, 9-13 for the cubbis' a-e, then
+program change 0-14 for the white key. CC 54 says when it switches (at once, at the end of a
+pass, or with a scene change), and CC 81 cancels. With [MIDI feedback](#midi-feedback) on, a
+switch you make by hand goes out the same way, so a DAW can record it. The details:
+[Program changes](#program-changes).
+
+## Loops and scenes
+
+<!-- summary: Loops switched with a scene change, or crossfaded by hand. -->
+
+A loop switch can go with a [scene change in time](#scene-changes-in-time), in the same SHIFT
+hold on the Loops or Cubbi page: the loop lands with the morph or the drop, or the scene with
+the loop at the end of its pass. On the [crossfader](#crossfading-by-hand), the two loops mix
+as the two scenes do.
 
 ### A loop with a scene change
 
@@ -509,31 +568,6 @@ playing and its scene, on the right the new loop and the new scene, and both loo
   drums in the same key. FRIZZ mixes the two loops, it doesn't match their tempos: two loops
   at different tempos drift apart under the fader.
 
-### A loaded loop is the loop
-
-- **LOOP** erases it, as it erases a recording (and a switch waiting with it); then LOOP
-  records a new one. **PLAY** pauses and plays it; the **transport knob** changes its speed,
-  scrubs it while paused.
-- **The tape runs on across loops.** Every switch keeps the transport's speed and direction:
-  at once, planned, with a scene and on the crossfader. A loop you switch to at double speed
-  plays at double speed; in reverse it starts from its end, in reverse; at a standstill it
-  stands too. Only a new recording (LOOP) starts at 1×, and pressing the transport knob is 1×
-  forward, as always.
-- **Its tempo:** a loop's tempo is its own times the speed, and the effects' tempo follows it
-  from the switch. FRIZZ takes its beats from its `acid` chunk; without one it
-  guesses them from its length, the power of two beats (1, 2, 4, 8 …) that puts it closest to
-  the tempo playing, between 50 and 300 BPM. If that lands at half or double the tempo, or the
-  loop holds 3 or 6 bars, [tap the tempo](#tap-tempo) (SHIFT + LOOP) and the beats fit again.
-
-### Loops over MIDI
-
-A DAW or a controller picks loops with a bank select and a program change, on FRIZZ's global
-channel, from any page: CC 0 = 1-8 for FRIZZ's banks a-h, 9-13 for the cubbis' a-e, then
-program change 0-14 for the white key. CC 54 says when it switches (at once, at the end of a
-pass, or with a scene change), and CC 81 cancels. With [MIDI feedback](#midi-feedback) on, a
-switch you make by hand goes out the same way, so a DAW can record it. The details:
-[Program changes](#program-changes).
-
 <!-- part: Effects -->
 
 ## Sound architecture
@@ -543,20 +577,22 @@ How the sound goes through FRIZZ, from the input to the outputs.
 
 ### Signal flow
 
-![The signal flow: the input after its gain to the looper and the input/loop mix, that
-through the effects and the master compressor, a source past the effects joining after them,
-then VOLUME and a safety limiter on the line out and on the headphones, whose feed can blend
-in the input alone](images/signal-flow.svg)
+![The signal flow: the input, AUX, the mic or USB, after its gain to the looper and the
+input/loop mix, that through the effects and the master compressor, a source past the effects
+joining after them, the master to the computer over USB, then VOLUME and a safety limiter on
+the line out and on the headphones, whose feed can blend in the input alone](images/signal-flow.svg)
 
-The input is AUX, or the built-in microphone while no cable is in AUX (see [Input: AUX or the
-mic](#input-aux-the-mic-or-usb)). It goes to the looper and, through the input/loop mix (SHIFT +
-VOLUME), to the effects on the white keys, then to the master compressor, VOLUME and a fixed
-safety limiter on every output. The looper records the input before the effects, so an effect
-is never printed into a loop. The settings page can send the input past the effects and the
-compressor instead; it joins again before VOLUME.
+The input is AUX, the built-in microphone while no cable is in AUX, or a computer on USB (see
+[Input: AUX, the mic or USB](#input-aux-the-mic-or-usb)). It goes to the looper and, through the
+input/loop mix (SHIFT + VOLUME), to the effects on the white keys, then to the master
+compressor, VOLUME and a fixed safety limiter on every output. The looper records the input
+before the effects, so an effect is never printed into a loop; a loop
+[from the card](#loop-loader) plays from the looper as a recording does. The settings page can
+send the input past the effects and the compressor instead; it joins again before VOLUME.
 
 The master out always carries the whole signal; the headphones carry the same, or the input
-alone (see [VOLUME knob](#volume-knob)).
+alone (see [VOLUME knob](#volume-knob)). Over USB, the computer gets the master before VOLUME
+(see [USB audio](#usb-audio)).
 
 ### Effect chain
 
@@ -1531,9 +1567,9 @@ the input.
 - Flipping up ends a [save, copy or delete](#save-copy-and-delete) function: nothing is
   saved, copied or deleted, and you're out of the function when you flip back down.
 - The low-battery warning dims with the LEDs too.
-- Every setting but the source itself (AUX or the mic) is saved on the card with the master
-  compressor, 2 s after the last change, so it comes back at power-on: each source's
-  monitoring and effects, and both input gains too. None is part of a scene. Without a card, or when the
+- Every setting but the source itself (AUX, the mic or USB) is saved on the card with the
+  master compressor, 2 s after the last change, so it comes back at power-on: each source's
+  monitoring and effects, all three input gains and USB audio too. None is part of a scene. Without a card, or when the
   card can't be written, the key you changed last (or knob 1's LED, for the brightness) blinks
   red 3 times, and FRIZZ tries again 2 s later, up to 3 times; the setting then lasts until
   power-off.
@@ -1671,9 +1707,9 @@ long take.
 **USB audio on or off:** on the settings page, with USB the source, SHIFT + upper F# switches
 it; while you hold SHIFT, the upper F# shows it (lit on, dim off). It's on out of the box, and
 saved. Switching it, FRIZZ leaves USB for a moment and comes back with the other setup: MIDI
-over USB is gone for about a second, then back. Off, FRIZZ is MIDI (and the [card
-reader](#the-card-as-a-usb-drive)) alone, as before: for a computer that has trouble with the
-sound card, or that you don't want to offer one. With USB audio off, USB stays a source you
+over USB is gone for about a second, then back, and a [Companion](#the-companion) upload
+running ends. Off, FRIZZ is MIDI and the [card drive](#the-card-as-a-usb-drive) alone: for a
+computer that has trouble with the sound card, or that you don't want to offer one. With USB audio off, USB stays a source you
 can pick, dimly blue, and silent. While the card is lent to the computer, USB audio can't be
 switched: the upper F# blinks red 3 times.
 
@@ -1681,7 +1717,8 @@ switched: the upper F# blinks red 3 times.
 
 <!-- summary: What FRIZZ keeps on the SD card, and how to edit it. -->
 
-FRIZZ keeps what it saves on the SD card, in a folder `FRIZZ`, as text files. Leave the card in.
+FRIZZ keeps what it saves on the SD card, in a folder `FRIZZ`, as text files, and plays your
+loops from there. Leave the card in.
 
 | File | Holds | Written |
 |---|---|---|
@@ -1689,7 +1726,8 @@ FRIZZ keeps what it saves on the SD card, in a folder `FRIZZ`, as text files. Le
 | `FRIZZ/frizz_master.txt` | The [master compressor](#master-compressor) and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, USB audio, and for AUX, the mic and USB each their input gain, monitoring and effects | 2 s after the last change |
 | `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | The versions before | With each write of the file |
 | `FRIZZ/bug-1.txt`, `bug-2.txt` … | [Bug reports](#bug-reports) | When you ask for one |
-| `FRIZZ/a1.wav` … `h15.wav` | Your [loops](#loops-on-the-card) | Never: FRIZZ only reads them |
+| `FRIZZ/a1.wav` … `h15.wav` | Your [loops](#loops-on-the-card) | Only by the [Companion](#the-companion), as it uploads, moves or deletes them |
+| `FRIZZ/xfer.tmp` | A Companion upload under way, renamed to its slot when it's whole | During an upload; one left over is deleted at power-on |
 | `TAPE/cubbi_a1.wav` … `cubbi_e15.wav` (or in the card's root) | TAPE's recordings, on the [Cubbi page](#the-cubbi-page) | Never: FRIZZ only reads them |
 
 ### Scenes and settings on the card
@@ -1722,22 +1760,34 @@ on again, so the scenes on the card aren't replaced by the session's.
 | `usb_audio` | [USB audio](#usb-audio) | 1 on, 0 off |
 | `compressor2` | The master compressor's knobs | |
 
-A line FRIZZ doesn't know is skipped, and a setting left out keeps its default.
+A line FRIZZ doesn't know is skipped, a setting left out or out of its range keeps its
+default, and a word where a number belongs makes the whole file unreadable: FRIZZ then starts
+with every setting at its default and keeps the file as `frizz_master.bak`. Edit the files
+with the card taken out or in the launcher's [USB storage mode](INSTALL.md#usb-storage-mode),
+not on the card [lent as a USB drive](#the-card-as-a-usb-drive): FRIZZ reads them only at
+power-on.
 
 ### The card as a USB drive
 
 To get files on or off the card (loops, scenes, bug reports) while FRIZZ runs, lend it to the
 computer: on the [settings page](#settings-page), with a computer on USB, hold **SHIFT + LOOP
-for 2 s**. LOOP lights blue there while the card is lent, and the computer finds a drive with
-the card on it. The loop and the effects play on meanwhile.
+for 2 s**. LOOP lights blue there while the card is lent, and the computer finds the drive
+"FrizZ card" with the card on it (the drive is there all the time, empty while the card isn't
+lent). The loop and the effects play on meanwhile.
 
 - **To take it back:** eject the drive on the computer, unplug the cable, or hold SHIFT + LOOP
-  for 2 s again. FRIZZ then reads the card afresh and looks for the loops again (the Loops page
-  shows what's there now).
+  for 2 s again on the settings page; a computer going to sleep takes it back too. FRIZZ then
+  looks for the loops again (the Loops page shows what's there now).
+- **The scenes and settings stay as they are in FRIZZ:** it reads `frizz_scenes.txt` and
+  `frizz_master.txt` only at power-on, and its next save writes over what the computer changed
+  in them. Copy them off the drive freely; to edit them, see
+  [Scenes and settings on the card](#scenes-and-settings-on-the-card).
 - **While it's lent, FRIZZ leaves the card alone:** saving a scene or a setting waits until
-  it's back, a loop can't be loaded from it, and a bug report can't be written. A loop from the
-  card you played just before is usually still in memory and switches at once; one that has to
-  be loaded waits until the card is back.
+  it's back, a loop can't be loaded from it, a bug report can't be written, and a
+  [Companion](#the-companion) upload running ends. A loop from the card you played just before
+  is usually still in memory and switches at once; one that has to be loaded waits until the
+  card is back. Only the settings page shows it (LOOP blue); on the play page FRIZZ plays as
+  always.
 - **Refused** (LOOP blinks red 3 times): without a computer on USB, while LOOP records, while a
   loop loads or FRIZZ looks for the loops (a few seconds after power-on, and after the card
   comes back), or while FRIZZ writes the card.
@@ -1748,7 +1798,7 @@ drive, so the computer has written everything.
 ### Taking the card out
 
 Take the card out or swap it only while the CHOMPI is off: a card pulled while FRIZZ runs
-isn't looked after. To get files on or off it (scenes, bug reports), lend it to the computer
+isn't looked after. To get files on or off it (loops, scenes, bug reports), lend it to the computer
 as a [USB drive](#the-card-as-a-usb-drive), or use the multi-firmware launcher's [USB storage
 mode](INSTALL.md#usb-storage-mode), instead of taking it out. On a card
 with several firmwares, FRIZZ keeps its `FRIZZ` folder apart from the others' files.
@@ -1821,7 +1871,7 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | SHIFT + a scene key, N times (and the transport or a second scene key), then a white key | The loop with the morph or the drop, N bars on | [A loop with a scene change](#a-loop-with-a-scene-change) |
 | SHIFT + a white key, N times, then a scene key (and the transport or a second scene key) | The scene and the loop together at the end of the N-th pass | [A loop with a scene change](#a-loop-with-a-scene-change) |
 | SHIFT + a scene key, turn the transport knob, a white key | Both loops on the crossfader; letting go, the nearer side | [Two loops on the crossfader](#two-loops-on-the-crossfader) |
-| SHIFT + a blinking key | Cancel the planned switch, and its scene change | [A loop with a scene change](#a-loop-with-a-scene-change) |
+| SHIFT + a blinking key, in a new hold | Cancel the planned switch, and a scene change running | [Switching loops](#switching-loops) |
 | Scene keys, the transport knob, PLAY, LOOP, VOLUME | As on the play page | [On the play page](#on-the-play-page) |
 
 ### On the Cubbi page
@@ -1875,6 +1925,10 @@ differs:
   LED.
 - **Shipping mode:** hold CHOMPI, PLAY and LOOP while switching on: the battery is
   disconnected until the CHOMPI is plugged into power again. Use it to store it for weeks.
+- **A restart by itself:** if FRIZZ crashes, or its sound stops for about a second, the
+  CHOMPI restarts rather than stay frozen: into the launcher's picker if you use it, or else
+  FRIZZ starts again. A loop in RAM is gone, as at power-off. If it happens, note what you
+  were doing and report it (see [Troubleshooting](INSTALL.md#troubleshooting)).
 - **Hardware test:** FRIZZ has no self-test of its own. To check keys, knobs and LEDs, put the
   stock TAPE or WAVE firmware on a card and hold VOLUME while switching on.
 
@@ -1891,8 +1945,10 @@ did, key for key.
 
 - It's on the settings page so it can't be written by accident while playing.
 - While it's written, both transport LEDs blink white; then they blink 3 times, white when
-  it's on the card, red when it isn't (no card, or a full one). A long session takes a moment,
+  it's on the card, red when it isn't (no card, a full one, or the card lent to the computer). A long session takes a moment,
   and the keys answer late until it's done; the sound plays on.
+- It starts afresh at every start of FRIZZ: after a [restart by itself](#power-and-battery),
+  it holds only what came after, so describe what happened before it.
 - It doesn't hold the audio you played in, so a problem that depends on the sound itself
   needs a description too, nor scenes sent over MIDI. Dense MIDI automation fills it
   faster: each controller message is an event. It holds about 260,000 events, hours of playing; a session longer
@@ -2017,7 +2073,7 @@ save, copy and delete 66, 68 and 70. Below them:
 | 3 | Morph to scene 0-4 (0 the blank one), as SHIFT + its key, landing on the bar line (CC 9's), counted from the CC. During a morph, drop or build-up, it stops that where it is and starts the new one from there. It acts as the value changes: to morph to the same scene again, send another value first (127, no scene) |
 | 9 | How many bars a morph over CC 3, or a drop over CC 83, takes, 1-8 (1 at first) |
 | 0 | Bank select for the [program changes](#program-changes) that follow: 0 the scenes (at first), 1-8 FRIZZ's loop banks a-h, 9-13 TAPE's cubbi banks a-e. It stays until the next CC 0; CC 32 is ignored |
-| 54 | When a loop's program change switches: 0 at once (at first), 1-8 at the end of the 1st to 8th pass of the loop playing (more is 8), 127 with the scene change waiting to land (CC 3's or 83's, or one you hold), at once if none waits. It stays until the next CC 54 |
+| 54 | When a loop's program change switches: 0 at once (at first), 1-8 at the end of the 1st to 8th pass of the loop playing (more is 8), 127 with the scene change waiting to land (CC 3's or 83's, or one you hold), at once if none waits or the morph is on the crossfader. It stays until the next CC 54 |
 | 80 | The [crossfader](#crossfading-by-hand): takes a running morph (CC 3's, or one you hold) to where it says, 0 the scene it started from, 127 the scene it goes to. Reaching 127 lands it; reaching 0 after being away from it goes back to where it started; in between it waits |
 | 81 | Stops a morph, drop or build-up where it is, and cancels a planned loop switch with it or alone, as the value crosses 64 upward |
 | 82 | A [tempo tap](#tap-tempo), as the value crosses 64 upward: a button sending 127 and 0 |
@@ -2069,8 +2125,7 @@ of the N-th pass (1-8), or with the scene change waiting to land (127). It stays
 next CC 54, so a DAW sets it once. A program change on a key without a loop, or while LOOP
 records, does nothing. CC 81 cancels a planned switch, with its scene change.
 
-A DAW that sends bank 0 and a program change when a project loads lands on the scenes, as
-before.
+A DAW that sends bank 0 and a program change when a project loads lands on the scenes.
 
 ### Start and Stop
 
@@ -2143,8 +2198,8 @@ feedback](#midi-feedback) on.
 - Gear that follows any clock by itself takes FRIZZ's tempo as soon as MIDI out is on, even
   while nothing plays. That's why it's off at first.
 - Over USB, the clock goes out between FRIZZ's other work: it's less steady than the TRS
-  output's (by up to a millisecond or so), and while FRIZZ writes the card (a scene saved)
-  its ticks wait and come out in a bunch. For tight timing, use TRS.
+  output's, by up to a millisecond or so, also while FRIZZ reads a loop from the card. For
+  tight timing, use TRS.
 - A DAW that follows FRIZZ's clock (synced to an external MIDI clock): set its project tempo
   roughly to the loop's. REAPER, for one, keeps its own tempo and follows a clock smoothly
   only within about half to twice it (measured); further off, it plays in jumps. So the
@@ -2204,6 +2259,9 @@ The `7D` in that header is MIDI's ID for projects without a manufacturer ID of t
 the multi-firmware launcher uses the same header. FRIZZ keeps it until the launcher moves to an ID of its
 own, and then follows (#103).
 
+The [Companion](#the-companion) talks to FRIZZ over the same SysEx, with a protocol of its own
+for the loops (`docs/LOOP_PROTOCOL.md` in the repository).
+
 For developers, one more command over USB, `0x3E`, lets the test tools read and set FRIZZ's
 state by number: see [the developers' SysEx](firmware/README.md#4-put-it-on-the-chompi) in
 the developer guide.
@@ -2240,7 +2298,8 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
   channels each way, asynchronous: the computer follows FRIZZ's clock, about 2 ms of buffer
   each way in FRIZZ. To the computer, the master before VOLUME and the safety limiter, at the
   line out's level at full VOLUME, clipped only at full scale; from it, the source USB, at
-  the level AUX would have with the same signal at its jack.
+  the level AUX would have with the same signal at its jack. FRIZZ asks the computer for
+  100 mA.
 - The effects: the shifter lands within about a cent of the interval, its taps lining up
   within 7.5 ms where they start over. The folder's sine fold keeps its aliases more than
   85 dB down on a sine below about 1.5 kHz at any drive; the triangle's corners alias, and
@@ -2268,7 +2327,7 @@ effect's page 2 turned off its defaults (Mix, Band and Level), needs more than t
 | The effects' tempo following a clock that changes | 10 BPM within about 0.4 s, 1 BPM within about 2 s |
 | The clock source on Auto, its clock stopping | The other input's clock counts within about 0.8 s |
 | MIDI clock out over TRS (120 BPM) | Jitter 0.53 ms; 0.64 ms with MIDI feedback sending 1652 CCs meanwhile |
-| MIDI clock out over USB | Its tempo right (120.08 BPM for 120), its ticks less even, bunched while the card is written |
+| MIDI clock out over USB | Its tempo right (120.08 BPM for 120), each tick within about 1 ms, also while a loop loads from the card |
 | A computer's clock over USB, passed on out of TRS (200 and 300 BPM) | Each tick 0.13-0.16 ms off even on average, 99% within 0.5 ms |
 | MIDI feedback | One CC per value every 10 ms at most |
 | Switching on | Sound about a second after FRIZZ starts |
@@ -2277,6 +2336,8 @@ effect's page 2 turned off its defaults (Mix, Band and Level), needs more than t
 
 - The card: microSD, FAT32. FRIZZ's files are text, in the `FRIZZ` folder (see [Card and
   files](#card-and-files)).
+- Loops: WAV, 16-bit, 48 kHz, mono or stereo, up to about 77 s (see
+  [Loops on the card](#loops-on-the-card)).
 - MIDI clock in and out at 24 PPQN. The keys are notes 48 to 72, the knob presses and the
   other keys below them (see [Notes: the keys](#notes-the-keys)).
 - FRIZZ's own SysEx starts `F0 7D 43 48` (see [Remote control](#remote-control)).

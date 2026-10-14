@@ -197,14 +197,15 @@ class Svg:
 # ---------- 1. the whole way at a glance ----------
 def signal_flow():
     s = Svg(440, 'FRIZZ signal flow',
-            'The whole way of the sound. The input, AUX or the built-in mic after its input gain, '
+            'The whole way of the sound. The input, AUX, the built-in mic or USB after its input gain, '
             'goes to the looper and to the input/loop mix; the looper\'s playback is the input/loop '
             'mix\'s other side. The input/loop mix goes through the effects of the white keys and '
             'the master compressor. A source set past the effects: the input/loop mix\'s input '
-            'share skips the effects and the compressor and joins after them. Then VOLUME, the output gain, and a safety limiter on each output: the line '
+            'share skips the effects and the compressor and joins after them. From there the master '
+            'goes to the computer over USB, and through VOLUME, the output gain, and a safety limiter on each output: the line '
             'out, and the headphones, whose feed can blend in the input alone.')
     # row 1: input, looper, mix, effects, compressor, the branch past them joining
-    s.box(20, 42, 110, 56, ['INPUT', ('AUX or mic', 'm'), ('input gain', 'm')], accent=True)
+    s.box(20, 42, 110, 56, ['INPUT', ('AUX, mic or USB', 'm'), ('input gain', 'm')], accent=True)
     s.line([(130, 70), (295, 70)], 'a')
     s.dot(150, 70, 'a')
     s.text(225, 62, 'input', 12, cls='m')
@@ -223,6 +224,13 @@ def signal_flow():
     s.text(537, 223, 'the input\'s share, past the effects and the compressor', 12, cls='m')
     # on to row 2
     s.line([(697, 70), (708, 70), (708, 240), (75, 240), (75, 268)], 'a')
+    # the master before VOLUME to the computer
+    s.dot(600, 240)
+    s.line([(600, 240), (600, 300)])
+    s.jack(600, 307)
+    s.text(600, 332, 'USB OUT', 13, bold=True)
+    s.text(600, 348, 'to the computer,', 12, cls='m')
+    s.text(600, 364, 'before VOLUME', 12, cls='m')
     s.box(20, 268, 110, 56, ['VOLUME', ('output gain', 'm')], accent=True)
     s.line([(130, 296), (150, 296), (150, 280), (330, 280)], 'a')
     s.dot(150, 296, 'a')
@@ -236,7 +244,7 @@ def signal_flow():
         s.line([(430, y), (465, y)], kind)
         s.jack(472, y)
         s.text(484, y + 4.5, name, 13, anchor='start', bold=True)
-    s.legend(560, 290, [('a', 'the usual way'), ('s', 'other ways')])
+    s.legend(360, 400, [('a', 'the usual way'), ('s', 'other ways')])
     return s
 
 
@@ -660,13 +668,13 @@ def panel():
 # ---------- 6. the quick start's way of the sound, narrow for a phone ----------
 def quickstart_flow():
     s = Svg(450, 'How the sound flows',
-            'The input, AUX or the built-in mic after its input gain, goes two ways: to the '
+            'The input, AUX, the built-in mic or USB after its input gain, goes two ways: to the '
             'looper, which records it before the effects, so nothing is printed into the loop; '
             'and, if monitored (the mic starts off), on to the input/loop mix, SHIFT + VOLUME, '
             'where the loop joins it. From there input and loop alike go through the effects '
             '(white keys 1-14), the compressor (white key 15) and VOLUME, the output gain, to '
             'the line out and the headphones.', w=480)
-    s.box(50, 20, 200, 60, ['INPUT', ('AUX in, or the built-in mic', 'm'), ('input gain', 'm')],
+    s.box(50, 20, 200, 60, ['INPUT', ('AUX, the mic or USB', 'm'), ('input gain', 'm')],
           accent=True)
     # the looper takes the input before the monitoring, the mix and the effects
     s.line([(150, 80), (150, 212)], 'a')
