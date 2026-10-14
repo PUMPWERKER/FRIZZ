@@ -3693,7 +3693,7 @@ int main()
         auto filter = [] { return (LatchedFx(Ask({0x20})) >> 4 & 1) == 1; };
         // the loop and a morph, at the end of the pass, not on the bar line halfway
         start(.05f);
-        ShiftWith({kLoopKeys[1], kSceneKeys[1], kSceneKeys[1]});
+        ShiftWith({kLoopKeys[1], kSceneKeys[1], kSceneKeys[1], kSceneKeys[1]});
         while (Probe().loop_pos < .6f)
             RunMs(1);
         const bool on_past_line = morphing();
@@ -3703,7 +3703,7 @@ int main()
         const bool landed = !morphing() && filter();
         printf("      a morph: running past the bar line %d, the switch from %.4f, landed %d\n", on_past_line, before, landed);
         Check(on_past_line && morph >= 0 && before > .99f && landed,
-              "loops-first: SHIFT + a white key, then a scene key (tapped twice): the morph and "
+              "loops-first: SHIFT + a white key, then a scene key (tapped 3 times): the morph and "
               "the loop land together at the end of the pass, the scene key's taps no bars");
         // tapped twice: at the end of the second pass after SHIFT's release
         Tap(kSceneKeys[0]);
