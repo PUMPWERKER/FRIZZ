@@ -15,6 +15,7 @@ firmware/code/src/build-itcm/
 firmware/code/src/build-bench-itcm/
 firmware/code/src/build-midi/
 firmware/code/src/build-uac1/
+firmware/code/src/build-flushmain/
 firmware/code/src/build-bench-midi/
 firmware/code/src/build-bench-uac1/
 firmware/test/build/

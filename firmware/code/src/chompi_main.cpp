@@ -406,8 +406,11 @@ void MainLoop(void* data)
         uit = now;
     }
 
-    // MIDI out's bytes for USB, which only MainLoop may send (MidiOut.h)
+    // MIDI out's bytes for USB, which only MainLoop may send (MidiOut.h); on TinyUSB its task
+    // sends them (usb-audio-poc, #265), unless make USB_FLUSH=main
+#if !defined(__arm__) || FRIZZ_USB_FLUSH_MAIN
     midi_out.FlushUsb();
+#endif
 #ifdef __arm__
     usb::Watch(now); // usb-audio-poc: an enumeration that hangs restarts into the launcher
 #endif
@@ -532,6 +535,9 @@ int main(void)
                       scene_store.master.midi_transport, System::GetTickFreq(),
                       24.f / hw.seed.AudioSampleRate());
     midi_out.Init(&midi_clock, &midi_control.feedback_trs);
+#if defined(__arm__) && !FRIZZ_USB_FLUSH_MAIN
+    usb::SetTaskHook([] { midi_out.FlushUsb(); }); // usb-audio-poc, #265
+#endif
     ui.Init(&engine, &hw, &scene_store, &event_log, &midi_control);
 #if !FRIZZ_BENCH
     ui.InitLoops(&loop_loader, loop_mem);

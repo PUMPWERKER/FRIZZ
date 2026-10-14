@@ -69,6 +69,10 @@ struct Stats
 const Stats& GetStats();
 #endif
 
+/** A function TinyUSB's task calls every pass, before it sends MIDI: MIDI out's USB bytes
+ *  (MidiOut::FlushUsb), so a MainLoop held up by the card doesn't hold them up (#265) */
+void SetTaskHook(void (*hook)());
+
 /** From MainLoop: an enumeration that never finishes (the host sends frames for 10 s but
  *  never configures FRIZZ) restarts into the launcher, whose USB the tools can reach. A PoC's
  *  way back without the power switch */

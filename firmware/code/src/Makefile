@@ -29,6 +29,10 @@ ifeq ($(USB_AUDIO),0)
 C_DEFS += -DFRIZZ_USB_AUDIO=0
 override BUILD_DIR := $(or $(BUILD_DIR),build)-midi
 endif
+ifeq ($(USB_FLUSH),main)
+C_DEFS += -DFRIZZ_USB_FLUSH_MAIN=1
+override BUILD_DIR := $(or $(BUILD_DIR),build)-flushmain
+endif
 ifeq ($(UAC1),1)
 C_DEFS += -DFRIZZ_UAC1=1
 override BUILD_DIR := $(or $(BUILD_DIR),build)-uac1

@@ -143,6 +143,10 @@ void Init()
     TIM7->CR1 = TIM_CR1_CEN;
 }
 
+static void (*volatile task_hook)() = nullptr;
+
+void SetTaskHook(void (*hook)()) { task_hook = hook; }
+
 static void Task()
 {
     if(!connected)
@@ -151,6 +155,8 @@ static void Task()
         tud_connect();
     }
     tud_task();
+    if(task_hook)
+        task_hook();
     MidiTinyUsbTransport::Process();
 }
 
