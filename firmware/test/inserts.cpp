@@ -1,8 +1,10 @@
-// inserts.cpp: checks the two effects that had none of their own, the folder (FxFolder.h) and
-// the slicer (FxSlicer.h): the folder's bypass when off, its level at 1x and that nothing
-// matches it to the input, the slicer's patterns on the clock's 16ths, its chance and its
-// stereo; and page 2's Mix on the shifter (FxOutput.h). Exits 0 when everything passes.
-// Run by unit.sh inserts.
+// inserts.cpp: checks the effects that had none of their own, the folder (FxFolder.h), the
+// slicer (FxSlicer.h) and the filter (FxFilter.h): the folder's bypass when off, its level at
+// 1x and that nothing matches it to the input, the slicer's patterns on the clock's 16ths, its
+// chance and its stereo; the filter's centre (the input, bit for bit, at any resonance), its
+// -3dB points and resonance peak where WAVE's were (#304), and its LFO sweeping a low sine
+// across the centre without a step; and page 2's Mix on the shifter (FxOutput.h). Exits 0 when
+// everything passes. Run by unit.sh inserts.
 #include <cmath>
 #include <cstdio>
 #include "check.h"
@@ -142,6 +144,133 @@ static void TestSlicer()
     Check(sl != sr, "slicer: stereo plays different patterns left and right");
 }
 
+// ======== the filter ========
+
+/** The filter at a cutoff and resonance, LFO off, on a sine of hz: its gain in dB over the
+ *  last half of 0.3s */
+static float FilterGain(float cutoff, float res, float hz)
+{
+    static Filter f;
+    f.Init(kSr);
+    f.SetParam(Filter::CUTOFF, cutoff);
+    f.SetParam(Filter::RESONANCE, res);
+    f.SnapParams();
+    f.SetOn(true);
+    for (size_t i = 0; i < 4800; i++) // the key's fade in
+    {
+        float l = 0.f, r = 0.f;
+        f.Process(&l, &r);
+    }
+    double in_sum = 0., out_sum = 0.;
+    const size_t n = 14400;
+    for (size_t i = 0; i < n; i++)
+    {
+        const float x = sinf(2.f * static_cast<float>(M_PI) * hz * static_cast<float>(i) / kSr);
+        float l = x, r = x;
+        f.Process(&l, &r);
+        if (i >= n / 2)
+        {
+            in_sum += x * x;
+            out_sum += l * l;
+        }
+    }
+    return 10.f * log10f(static_cast<float>(out_sum / in_sum));
+}
+
+/** Where the gain crosses -3dB between lo and hi Hz (the passband at lo for a lowpass, at hi
+ *  for a highpass), by bisection in octaves */
+static float FilterMinus3(float cutoff, float res, float lo, float hi)
+{
+    const bool lp = cutoff < .5f;
+    for (int k = 0; k < 24; k++)
+    {
+        const float mid = sqrtf(lo * hi);
+        if ((FilterGain(cutoff, res, mid) > -3.f) == lp)
+            lo = mid;
+        else
+            hi = mid;
+    }
+    return sqrtf(lo * hi);
+}
+
+static void TestFilter()
+{
+    // the centre: the input itself, whatever the resonance
+    bool dry = true;
+    for (float res : {0.f, .5f, 1.f})
+    {
+        static Filter f;
+        f.Init(kSr);
+        f.SetParam(Filter::CUTOFF, .5f);
+        f.SetParam(Filter::RESONANCE, res);
+        f.SnapParams();
+        f.SetOn(true);
+        for (size_t i = 0; i < 24000; i++)
+        {
+            const float x = .5f * sinf(static_cast<float>(i) * .37f) + .3f * sinf(static_cast<float>(i) * .011f);
+            float l = x, r = -x;
+            f.Process(&l, &r);
+            dry = dry && l == x && r == -x;
+        }
+    }
+    Check(dry, "filter: at the centre it's the input, bit for bit, at any resonance");
+
+    // WAVE's -3dB points at the default resonance (50%), measured on its filter (#304)
+    struct Point
+    {
+        float cutoff, lo, hi, wave_hz;
+    };
+    const Point points[] = {{.1f, 20.f, 1000.f, 88.f},    {.3f, 200.f, 20000.f, 2368.f},
+                            {.45f, 1000.f, 20000.f, 10470.f}, {.65f, 10.f, 2000.f, 80.f},
+                            {.8f, 50.f, 10000.f, 915.f},  {1.f, 200.f, 20000.f, 4763.f}};
+    float worst = 0.f;
+    for (const Point& p : points)
+    {
+        const float hz = FilterMinus3(p.cutoff, .5f, p.lo, p.hi);
+        const float st = 12.f * log2f(hz / p.wave_hz);
+        printf("      filter: cutoff %.2f, -3dB at %.0fHz (WAVE's %.0fHz, %+.1f semitones)\n", p.cutoff, hz,
+               p.wave_hz, st);
+        worst = fmaxf(worst, fabsf(st));
+    }
+    Check(worst < 1.f, "filter: at the default resonance the cutoff is within a semitone of WAVE's");
+
+    // the resonance at the top: a peak of ~20dB at the cutoff, as WAVE's 19-21dB
+    float peak = -100.f;
+    for (float hz = 300.f; hz < 900.f; hz *= 1.005f)
+        peak = fmaxf(peak, FilterGain(.2f, 1.f, hz));
+    printf("      filter: resonance at the top, a %.1fdB peak\n", peak);
+    Check(peak > 18.f && peak < 22.f, "filter: the resonance peaks at ~20dB at the top");
+
+    // the LFO sweeping a 50Hz sine across the centre, lowpass to highpass and back, at full
+    // depth, 1/16 and the default resonance: no step beyond the sine's own (.0033 a sample)
+    // and the sweep's, where the one filter changes sides (clicks.cpp has the cutoff jumping
+    // across)
+    {
+        static Filter f;
+        f.Init(kSr);
+        f.SetParam(Filter::CUTOFF, .5f);
+        f.SetParam(Filter::RESONANCE, .5f);
+        f.SetParam(Filter::LFO_DEPTH, 1.f);
+        f.SetParam(Filter::LFO_DIVISION, 0.f);
+        f.SnapParams();
+        f.SetPulseSamples(2000.f);
+        f.SetOn(true);
+        float last = 0.f, step = 0.f;
+        for (size_t i = 0; i < 96000; i++)
+        {
+            if (i % 2000 == 0)
+                f.ClockPulse(static_cast<uint32_t>(i / 2000));
+            float l = .5f * sinf(2.f * static_cast<float>(M_PI) * 50.f * static_cast<float>(i) / kSr), r = l;
+            f.Process(&l, &r);
+            if (i > 9600)
+                step = fmaxf(step, fabsf(l - last));
+            last = l;
+        }
+        printf("      filter: a 50Hz sine swept across the centre, largest step %.4f\n", step);
+        Check(step < .015f, "filter: the LFO sweeps a low sine across the centre without a step");
+    }
+}
+
 // ======== page 2's Mix on the shifter (FxOutput.h) ========
 
 static void TestShifterMix()
@@ -188,5 +317,6 @@ int main()
     TestShifterMix();
     TestFolder();
     TestSlicer();
+    TestFilter();
     return Finish();
 }
