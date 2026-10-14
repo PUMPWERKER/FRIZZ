@@ -230,8 +230,13 @@ through with why, and the issue is closed with it; the next one opens.
 A build handed out for testing goes on GitHub as a **pre-release**, never as Latest:
 
 - Each release candidate (or other test round the user asks for) gets a numbered one,
-  `v<next>-beta.N` (next: `v1.1.0-beta.1`, or `v1.0.1-beta.1` for a fix release), tagged on
-  the pushed commit, with that commit's build attached: `make` in a clean worktree at the tag
+  `v<next>-beta.N` (next: `v1.5.0-beta.1`, or `v1.0.2-beta.1` for a fix release), tagged on
+  the pushed commit, with that commit's build attached. First the commit to tag sets
+  `kFrizzVersion` in `firmware/code/src/Version.h` to the tag's version (`{1, 5, 0, 1}` for
+  `v1.5.0-beta.1`, the last 0 for a release), on a branch merged before tagging: the loop
+  transfer's HELLO reports it, and `tools/builds.py` and `flash.py --slot 10/13` refuse a tag's
+  build whose constant isn't its tag. After the tag, main's next commit may carry the next
+  version's. Then the build: `make` in a clean worktree at the tag
   (`git worktree add ../FrizZ-<tag> <tag>`, GCC 10.3), and its `firmware/code/src/build/FRIZZ.bin` uploaded under that name. The
   notes name its md5 and are taken from `CHANGELOG.md`'s Unreleased section, plus a link to
   the release-test issue (or the PR). The number never moves, so feedback can name the build.
