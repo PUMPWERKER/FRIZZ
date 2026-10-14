@@ -18,7 +18,7 @@ STRESS=1 ./run.sh work out.bin
 |---|---|
 | `check.sh` | the engine harness (below): every output sample and FX meter of a fixed script, two versions compared; a refactor must be `bit-identical` |
 | `doclinks` | not a `.cpp`: `../tools/doclinks.py --all`, the files the website is built from (MANUAL, QUICKSTART, INSTALL, `site/landing.md`, the key colours in `LedColors.h`/`FxSlots.h`) in every format frizz-web's `fetch-docs.mjs` parses, the pictures in `images/` as `tools/diagrams/diagrams.py` draws them (`--check`), and its `--selftest`, which breaks a copy of them case by case and checks each break is reported; needs `python3` |
-| `pitch`, `splice`, `tape`, `delay`, `crusher`, `freezer`, `comp`, `clicks`, `level`, `sleep`, `inserts`, `page2` | parts of the engine on their own: the shifter's tuning and its splice search (its taps inside their delays, the grain turned at once too), wow and flutter and the tape stop, the delay's pitch-up and random events, its echoes on the beat and its damping turned on by a jump, the crusher's rate, bits and dive (through a sleep too), the freezer's capture and roll, the master compressor, moves that used to click, page 2's Mix, Band and Level (`FxOutput.h`), effects that are off costing no time (and `Smoothed::Settle` landing), the folder's bypass and level, the slicer's patterns, chance and stereo, page 2's Mix on the shifter, and each effect's own page-2 knob |
+| `pitch`, `splice`, `tape`, `delay`, `crusher`, `freezer`, `comp`, `clicks`, `level`, `sleep`, `inserts`, `page2` | parts of the engine on their own: the shifter's tuning and its splice search (its taps inside their delays, the grain turned at once too), wow and flutter and the tape stop, the delay's pitch-up and random events, its echoes on the beat and its damping turned on by a jump, the crusher's rate, bits and dive (through a sleep too), the freezer's capture and roll, the master compressor, moves that used to click, page 2's Mix, Band and Level (`FxOutput.h`), effects that are off costing no time (and `Smoothed::Settle` landing), the folder's bypass and level, the slicer's patterns, chance and stereo, the filter's centre, cutoff and resonance against WAVE's, page 2's Mix on the shifter, and each effect's own page-2 knob |
 | `routing` | the engine's input routing (`passthroughEngine.h`, #177): each source's gates, so a source that isn't live adds nothing to the master at any sample, also while the source switches back and forth mid-fade (#168); every combination of source, effects and live on the master and the headphones' input feed; the looper recording the source live or not; the slews (`Glide`) settling exactly on 0 and 1, the mix at the loop leaving none of the input |
 | `block` | the FX chain a block at a time (`FxChain::Process`, #136) against the same chain a sample at a time, bit for bit, output and meters: blocks of 1 to 40 samples (runs of 24 and the rest) and each block in two calls, through a script with every effect on, the resonator at its highest pitch and stereo with its tone slewing, page 2 off its defaults (the resonator's Band while its key fades out mid-block) and recalls' fast slews ending on a block's first, middle and last sample; page 2 leaving the chain's work (#142) on a block's first, middle and last sample each of three ways (an insert going quiet, an insert's page 2 back at its defaults, a send's Band back in the middle), and which page 2s are part of the work compared block by block. `block OUT` writes the script's output, meters and page-2 bits, to compare them with a build against another version's headers (`check.sh`'s harness never turns page 2) |
 | `phaser` | the phaser (`FxPhaser.h`): its six stages' notches where they belong and unity between them, dry at depth 0, feedback bounded at the top and ringing down, the stereo LFO half a cycle behind, asleep bit for bit the input, the rate knob's free half in Hz and synced half in divisions, the LFOs running at their rate and on the clock's pulses |
@@ -359,7 +359,7 @@ page 1's knob 4 with stereo off, the tape stop's depth is a full stop, a send's 
 the first test builds goes back to its defaults (not frozen), and layout 4 round-trips
 (`scenes` checks layout 1-3 files moving stereo to page 2's knob 2).
 
-## Folder and slicer check
+## Folder, slicer and filter check
 
 ```bash
 ./unit.sh inserts
@@ -369,7 +369,11 @@ The two effects with no check of their own before: the folder off passes its inp
 bit; on, at 1x a quiet input comes out within 1 dB of its level, and driven far louder:
 nothing matches it to the input. The slicer on a steady input, at 120 BPM: every
 pattern hits on its own steps of the clock's 16ths, on both channels; chance at full flips
-steps at random, both channels alike; stereo plays different patterns left and right.
+steps at random, both channels alike; stereo plays different patterns left and right. The
+filter (#304): at the centre it passes its input bit for bit at any resonance; at the default
+resonance its -3 dB points lie within a semitone of WAVE's filter's, measured on it, on both
+sides; the resonance at the top peaks at about 20 dB, as WAVE's did; and its LFO sweeping a
+50 Hz sine across the centre steps no further than the sine does.
 
 ## Whole-device check
 

@@ -176,7 +176,7 @@ static const FxParams kFxParams[] = {
      0xaf, kP2Bipolar},
     // filter: cutoff (centre, flat), resonance, LFO depth (off), LFO division (1 bar); page
     // 2's stereo (off: both LFOs in step). The cutoff is a DJ filter's (lowpass below the
-    // centre, highpass above), not in Hz, so coarse is 10%
+    // centre, highpass above, on WAVE's knob law: DJFilter.h), not in Hz, so coarse is 10%
     {0xff, {.5f, .5f, 0.f, .6667f, kP2Mix, 0.f, kP2Band, kP2Level}, {0, 0, 0, Filter::kNumLfoDivisions},
      {GRID_10, GRID_10, GRID_10, GRID_LFO_DIVISION, GRID_10, GRID_10, GRID_10, GRID_LEVEL},
      0x87, kP2Bipolar | 0x01},
