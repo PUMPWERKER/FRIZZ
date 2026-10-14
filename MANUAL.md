@@ -929,6 +929,8 @@ that follows the tempo (the DJ filter of TAPE, TEMPO and WAVE).
   from lowpass to highpass. It's at the centre of the cutoff on the beat and rises towards
   highpass first. Like the delay's events, the beat is counted from the loop's start, or
   without a loop from when the clock locked, not from the DAW's beat 1.
+- **Slopes:** 12 dB per octave either way. The resonance goes from none to a peak of about
+  20 dB at the cutoff; at the centre the filter is out of the sound, whatever the resonance.
 - LEDs: the key is pink; the cutoff goes blue through white (flat) to orange, the other knobs
   pink to light blue.
 

@@ -42,16 +42,6 @@ public:
     /** The LFO's advance a sample, in pulses */
     inline float PulseInc() const { return pulse_inc_; }
 
-    /** One sample on */
-    inline void Step()
-    {
-        const float inc = pulse_inc_;
-        frac_ += reverse_ ? -inc : inc;
-        if (frac_ > .999f)
-            frac_ = .999f;
-        else if (frac_ < -.999f)
-            frac_ = -.999f;
-    }
     /** n samples on */
     inline void Advance(uint32_t n)
     {

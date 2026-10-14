@@ -763,7 +763,7 @@ Fx*.h                  one effect each: Freezer, Shifter, Folder, Crusher, Filte
                        Resonator, Slicer, Warble (wow & flutter), TapeStop, Delay, Reverb
 LICENSE-kastle2        the MIT license of the effects ported from Bastl's Kastle 2 FX Wizard
 LedColors.h            the LED colours
-DJFilter.h, BasicMMF.h WAVE's DJ filter
+DJFilter.h             the DJ filter: WAVE's knob on stmlib's state-variable filter (#304)
 granularDelay.h        TEMPO's tempo-synced delay, without its freeze
 reverb.h, fx_engine.h  TEMPO's reverb
 TempoClock.h           the tempo and the shared 12 PPQN pulse position for the clocked effects: from the
