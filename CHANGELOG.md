@@ -80,6 +80,15 @@ what FRIZZ does.
 
 ### Changed
 
+- **The filter (white key 5) is a state-variable filter now** (#304): one filter a channel,
+  lowpass left of the centre and highpass right, where it was WAVE's lowpass and highpass in
+  series. The cutoff knob and the resonance keep their ranges: the cutoff sits within about
+  half a semitone of where it was at the default resonance, and the resonance goes from none to
+  about a 20 dB peak, as before. What you hear differently: at the centre the filter is now
+  really flat, where WAVE's lowpass stayed in with the resonance on it, a peak near 8 kHz (+5 dB
+  at the default resonance, up to +25 dB with the resonance up), on the whole highpass side too;
+  the highpass is 12 dB per octave now, where it was 6 dB at low resonance, so it thins the
+  sound faster; and the far right is no longer quieter. The filter takes less of the CPU.
 - **The card as a USB drive** (#291): taken back from the computer, FRIZZ reads
   `frizz_scenes.txt` and `frizz_master.txt` again if the computer changed them, as at power-on:
   the settings apply at once (the input gains and the compressor glide there), the scenes come

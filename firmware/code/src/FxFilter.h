@@ -20,7 +20,12 @@ static_assert(kPulsesPerCycle % 192 == 0, "the longest LFO cycle must divide the
  *  cutoff, like WAVE's filter LFO but locked to the tempo clock (TempoClock.h).
  *  Params: 0 cutoff, 1 resonance, 2 LFO depth, 3 LFO division (kNumLfoDivisions
  *  steps); page 2: 5 stereo (the right LFO up to half a cycle behind, Tonverk's LAG; only
- *  heard with the LFO). */
+ *  heard with the LFO).
+ *
+ *  The knobs, the LFO and the filter's coefficients move every kRetune samples, as the
+ *  phaser's (FxPhaser.h); a sample costs the two channels' filter and the blend. Off and faded
+ *  out (FxGate::Asleep), the filter runs on unheard, so a punch-in finds it where it would
+ *  be. */
 class Filter : public FxBase
 {
 public:
@@ -37,8 +42,7 @@ public:
 
     FX_ONCE void Init(float sample_rate)
     {
-        filter_.Init(sample_rate);
-        filter_.SetSlew(1.f); // the cutoff is slewed here, so the LFO isn't smoothed away
+        filter_.Init();
         gate_.Init();
         lfo_.Init(sample_rate);
         lfo_div_pulses_ = 48;
@@ -52,53 +56,26 @@ public:
      *  each pulse in the block with the clock's position. reverse: the position counts down,
      *  so the LFO eases down towards the pulse before */
     void SetPulseSamples(float samples) { lfo_.SetPulseSamples(samples); }
-    void ClockPulse(uint32_t pos, bool reverse = false) { lfo_.Pulse(pos, reverse, 0.f); }
+    void ClockPulse(uint32_t pos, bool reverse = false)
+    {
+        // on the pulse, less the samples counted since the LFO last moved: they went by
+        // before it, and the next Retune adds them
+        lfo_.Pulse(pos, reverse, (reverse ? 1.f : -1.f) * static_cast<float>(since_) * lfo_.PulseInc());
+    }
 
     void Process(float* l, float* r)
     {
         const float gate = gate_.Process();
-        const float cutoff = cutoff_.Process();
-        const float depth = depth_.Process();
-        // the resonance slews like the other knobs, so turning it doesn't zipper
-        if (res_.Settle())
-            filter_.SetRes(res_.value);
-
-        lfo_.Step();
-
-        // off and faded out: what's heard is the input, but the filter runs on, so a
-        // punch-in finds it where it would be; only its cutoff, LFO and all, is worked out
-        // once every kSleepRetune samples rather than every one
-        if (gate_.Asleep())
-        {
-            if (++sleep_samples_ >= kSleepRetune)
-            {
-                sleep_samples_ = 0;
-                SetControls(cutoff, depth);
-                filter_.Retune();
-            }
-            float fl, fr;
-            filter_.Run(*l, *r, &fl, &fr);
-            return;
-        }
-        sleep_samples_ = 0;
-
-        SetControls(cutoff, depth);
+        if (++since_ >= DjFilter::kRetune)
+            Retune(false);
 
         float fl, fr;
-        filter_.Process(*l, *r, &fl, &fr);
+        filter_.Run(*l, *r, &fl, &fr);
+        if (gate_.Asleep())
+            return;
 
         *l += gate * (fl - *l);
         *r += gate * (fr - *r);
-    }
-
-    /** Both channels' cutoffs: the right one's LFO lags with the stereo knob */
-    inline void SetControls(float cutoff, float depth)
-    {
-        filter_.SetControl(Control(cutoff, depth));
-        if (lag_ > 0.f && depth > 0.f)
-            filter_.SetControlR(Control(cutoff, depth, lag_));
-        else
-            filter_.SetControlR(-1.f);
     }
 
     /** The cutoff with the LFO on it, 0..1, the LFO lag cycles behind */
@@ -123,6 +100,7 @@ public:
         depth_.Snap();
         res_.Snap();
         filter_.SetRes(res_.value);
+        Retune(true);
     }
 
     void SetParam(size_t param, float val) override
@@ -151,13 +129,31 @@ public:
     }
 
 private:
+    /** The knobs and the LFO on by the samples since the last time, and the filter's
+     *  coefficients: both channels' cutoffs, the right one's LFO lagging with the stereo
+     *  knob. Out of line, so the per-sample code stays small (#51) */
+    __attribute__((noinline)) void Retune(bool snap)
+    {
+        const float n = static_cast<float>(since_);
+        lfo_.Advance(since_);
+        since_ = 0;
+        // the knobs slew here, at the rate they would per sample; the resonance too, so
+        // turning it doesn't zipper
+        const float coeff = snap ? 1.f : fminf(FxSlew::coeff * n, 1.f);
+        const float cutoff = cutoff_.Process(coeff);
+        const float depth = depth_.Process(coeff);
+        if (res_.Settle(coeff))
+            filter_.SetRes(res_.value);
+        const bool lag = lag_ > 0.f && depth > 0.f;
+        filter_.Retune(Control(cutoff, depth), lag ? Control(cutoff, depth, lag_) : -1.f, snap);
+    }
+
     DjFilter filter_;
     Smoothed cutoff_;
     Smoothed depth_;
     Smoothed res_;
     TempoLfo lfo_;
-    static const uint32_t kSleepRetune = 8;
-    uint32_t sleep_samples_ = 0; // asleep: samples since the cutoff was last worked out
+    uint32_t since_ = 0; // samples since the knobs and the LFO last moved
     uint32_t lfo_div_pulses_; // pulses per LFO cycle
     float lag_ = 0.f;         // the right LFO's lag, in cycles
 };
