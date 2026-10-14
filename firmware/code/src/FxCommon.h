@@ -324,10 +324,11 @@ inline float ReadFrac(const float* buf, size_t mask, size_t write_pos, float del
     return a + (b - a) * frac;
 }
 
-/** As ReadFrac, but a 4-point Hermite read (the textbook form, as Mutable's stmlib has it):
- *  half a sample between two, it loses ~0.5dB at 10kHz and ~2.5dB at 15kHz where the linear
- *  read loses 2dB and 5dB, and aliases less, for two more reads and a few more multiplies.
- *  Reads a frame either side of ReadFrac's two, so delay is at least 1 and 2 short of the ring */
+/** As ReadFrac, but a 4-point Hermite read (de Soras' "x-form": its coefficients don't wait for
+ *  each other, so the chain of arithmetic is short): half a sample between two, it loses ~0.5dB
+ *  at 10kHz and ~2.5dB at 15kHz where the linear read loses 2dB and 5dB, and aliases less, for
+ *  two more reads and a few more multiplies. Reads a frame either side of ReadFrac's two, so
+ *  delay is at least 1 and 2 short of the ring */
 inline float ReadHermite(const float* buf, size_t mask, size_t write_pos, float delay)
 {
     const size_t whole = static_cast<size_t>(delay);
@@ -337,12 +338,10 @@ inline float ReadHermite(const float* buf, size_t mask, size_t write_pos, float 
     const float x0 = buf[i & mask];
     const float x1 = buf[(i - 1) & mask];
     const float x2 = buf[(i - 2) & mask];
-    const float c = (x1 - xm1) * .5f;
-    const float v = x0 - x1;
-    const float w = c + v;
-    const float a = w + v + (x2 - x0) * .5f;
-    const float b_neg = w + a;
-    return ((a * f - b_neg) * f + c) * f + x0;
+    const float c1 = .5f * (x1 - xm1);
+    const float c2 = xm1 - 2.5f * x0 + 2.f * x1 - .5f * x2;
+    const float c3 = .5f * (x2 - xm1) + 1.5f * (x0 - x1);
+    return ((c3 * f + c2) * f + c1) * f + x0;
 }
 
 /** A one-pole lowpass's coefficient (fonepole) for a cutoff of freq Hz */

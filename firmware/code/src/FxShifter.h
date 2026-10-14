@@ -138,62 +138,90 @@ public:
 
     /** The taps of both channels on by a sample, read, written back with the feedback, and
      *  the output; with kFade, the right channel's output faded towards the left's taps by
-     *  fade_ (Relock) */
+     *  fade_ (Relock). The four reads go together, between the taps' steps and the writes,
+     *  so their chains of arithmetic overlap (#305): no read reaches the frame written. The
+     *  fade, rare, takes a channel at a time (Taps), which keeps it small */
     template <bool kFade>
     __attribute__((always_inline)) inline void Channels(float* l, float* r, float gate, float dry,
                                                         float feedback)
     {
+        float wet[2];
+        if (kFade)
+        {
+            wet[0] = Taps(0);
+            wet[1] = Taps(1);
+            wet[1] += fade_ * (LeftTaps() - wet[1]);
+        }
+        else
+        {
+            const float w0[2] = {Step(0), Step(1)};
+            const float a0 = ring_.ReadHermite(0, delay_[0][0]);
+            const float a1 = ring_.ReadHermite(1, delay_[1][0]);
+            const float b0 = ring_.ReadHermite(0, delay_[0][1]);
+            const float b1 = ring_.ReadHermite(1, delay_[1][1]);
+            wet[0] = a0 * w0[0] + b0 * (1.f - w0[0]);
+            wet[1] = a1 * w0[1] + b1 * (1.f - w0[1]);
+        }
+
         float* const io[2] = {l, r};
         for (size_t c = 0; c < 2; c++)
         {
-            const float ratio = ratio_[c];
-            const bool up = ratio > 1.f;
-            float* const d = delay_[c];
+            ring_.Write(c, SoftClip(*io[c] + wet[c] * feedback));
 
-            // both taps' delays move by 1 - ratio a sample; the window moves through their
-            // lives at the same pace, so each tap covers the grain's window of delay per life
-            const float window = window_frames_[c];
-            const float max_delay = window + kDelayPast;
-            d[0] = fclamp(d[0] + 1.f - ratio, 1.f, max_delay);
-            d[1] = fclamp(d[1] + 1.f - ratio, 1.f, max_delay);
-            const float prev = window_[c];
-            float w = prev;
-            if (waiting_[c])
-            {
-                // a tap waits, silent, for the rest of its search, a block after its start
-                if (++held_[c] >= kSpliceHold)
-                    FinishSplice(c);
-            }
-            else
-            {
-                w = prev + fabsf(1.f - ratio) / window;
-                if (w >= 1.f)
-                {
-                    w = 0.f; // tap 0 is silent here
-                    StartSplice(c, 0, ratio, up);
-                }
-                else if (prev < .5f && w >= .5f)
-                {
-                    w = .5f; // tap 1 is silent here
-                    StartSplice(c, 1, ratio, up);
-                }
-            }
-            window_[c] = w;
-
-            // triangles: tap 0 peaks mid-window and is silent at the wrap, tap 1 the reverse
-            const float w0 = 1.f - fabsf(2.f * w - 1.f);
-            const float a = ring_.ReadHermite(c, d[0]);
-            const float b = ring_.ReadHermite(c, d[1]);
-            float wet = a * w0 + b * (1.f - w0);
-            if (kFade && c == 1)
-                wet += fade_ * (LeftTaps() - wet);
-
-            ring_.Write(c, SoftClip(*io[c] + wet * feedback));
-
-            const float out = wet + dry * (*io[c] - wet);
+            const float out = wet[c] + dry * (*io[c] - wet[c]);
             *io[c] += gate * (out - *io[c]);
         }
         ring_.Advance();
+    }
+
+    /** Channel c's taps on by a sample (Step) and what they read, for the fade */
+    __attribute__((noinline)) float Taps(size_t c)
+    {
+        const float w0 = Step(c);
+        return ring_.ReadHermite(c, delay_[c][0]) * w0
+               + ring_.ReadHermite(c, delay_[c][1]) * (1.f - w0);
+    }
+
+    /** Channel c's taps on by a sample, their lives, their splices; tap 0's share of what they
+     *  read */
+    __attribute__((always_inline)) inline float Step(size_t c)
+    {
+        const float ratio = ratio_[c];
+        const bool up = ratio > 1.f;
+        float* const d = delay_[c];
+
+        // both taps' delays move by 1 - ratio a sample; the window moves through their
+        // lives at the same pace, so each tap covers the grain's window of delay per life
+        const float window = window_frames_[c];
+        const float max_delay = window + kDelayPast;
+        d[0] = fclamp(d[0] + 1.f - ratio, 1.f, max_delay);
+        d[1] = fclamp(d[1] + 1.f - ratio, 1.f, max_delay);
+        const float prev = window_[c];
+        float w = prev;
+        if (waiting_[c])
+        {
+            // a tap waits, silent, for the rest of its search, a block after its start
+            if (++held_[c] >= kSpliceHold)
+                FinishSplice(c);
+        }
+        else
+        {
+            w = prev + fabsf(1.f - ratio) / window;
+            if (w >= 1.f)
+            {
+                w = 0.f; // tap 0 is silent here
+                StartSplice(c, 0, ratio, up);
+            }
+            else if (prev < .5f && w >= .5f)
+            {
+                w = .5f; // tap 1 is silent here
+                StartSplice(c, 1, ratio, up);
+            }
+        }
+        window_[c] = w;
+
+        // triangles: tap 0 peaks mid-window and is silent at the wrap, tap 1 the reverse
+        return 1.f - fabsf(2.f * w - 1.f);
     }
 
     /** Channels with the right channel's fade (Relock) */
