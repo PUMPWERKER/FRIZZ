@@ -1,7 +1,8 @@
 #!/bin/bash
 # lib.sh: what the test scripts share; sourced, not run. Sets T (this folder), REPO, INC (the
 # DaisySP include flags) and BUILD, builds DaisySP for the host when needed, and provides
-# units (the unit checks' names), twin_for NAME (below) and unit_test NAME: builds NAME.cpp
+# daisysp NAME (another build of it, below), units (the unit checks' names), twin_for NAME
+# (below) and unit_test NAME: builds NAME.cpp
 # against the working tree's headers, with the host MidiClock in place of the real one (it
 # opens MIDI), and runs it (with C sources of its own, if it names them: unit_test). FRIZZ's code is built with -funsigned-char, as on the CHOMPI, where
 # char is unsigned (on x86 it's signed); DaisySP needn't be, it doesn't depend on it.
@@ -13,18 +14,25 @@ BUILD=$T/build
 INC=$(find "$DAISYSP" -type d | sed 's/^/-I/' | tr '\n' ' ')
 mkdir -p "$BUILD"
 
-# DaisySP for the host, rebuilt when its sources or the compiler change
-STAMP=$( (g++ --version; find "$DAISYSP" -name '*.cpp' -o -name '*.h' | sort | xargs cat) | md5sum | cut -d' ' -f1)
-if [ ! -f "$BUILD/libdaisysp_host.a" ] || [ "$(cat "$BUILD/daisysp.stamp" 2>/dev/null)" != "$STAMP" ]; then
-    echo "building DaisySP for the host"
-    rm -rf "$BUILD/daisysp" "$BUILD/libdaisysp_host.a"
-    mkdir -p "$BUILD/daisysp"
+# DaisySP for the host, rebuilt when its sources or the compiler change: daisysp NAME [FLAGS]
+# builds build/libdaisysp_NAME.a with FLAGS added. The checks link host's (no flags);
+# twinlib.cpp builds pic's (-fPIC), for a shared library
+daisysp()
+{
+    local lib=$BUILD/libdaisysp_$1.a dir=$BUILD/daisysp stamp f
+    [ "$1" = host ] || dir=$BUILD/daisysp-$1
+    stamp=$( (g++ --version; find "$DAISYSP" -name '*.cpp' -o -name '*.h' | sort | xargs cat) | md5sum | cut -d' ' -f1)
+    [ -f "$lib" ] && [ "$(cat "$dir.stamp" 2>/dev/null)" = "$stamp" ] && return
+    echo "building DaisySP for the host${2:+ ($2)}"
+    rm -rf "${dir:?}" "$lib"
+    mkdir -p "$dir"
     for f in $(find "$DAISYSP" -name '*.cpp'); do
-        g++ -O2 -std=gnu++14 -w -c "$f" $INC -o "$BUILD/daisysp/$(basename "$f" .cpp).o"
+        g++ -O2 -std=gnu++14 -w $2 -c "$f" $INC -o "$dir/$(basename "$f" .cpp).o"
     done
-    ar rcs "$BUILD/libdaisysp_host.a" "$BUILD"/daisysp/*.o
-    echo "$STAMP" > "$BUILD/daisysp.stamp"
-fi
+    ar rcs "$lib" "$dir"/*.o
+    echo "$stamp" > "$dir.stamp"
+}
+daisysp host
 
 # the unit checks: every NAME.cpp but the harness
 units()
@@ -93,8 +101,11 @@ unit_test()
         fi
         objs+=("$dir/$(basename "$c" .c).o")
     done
+    # a line "// unit libs: -lNAME ..." in NAME.cpp links those system libraries (twinlib.cpp: dlopen)
+    local libs
+    libs=$(sed -n 's|^// unit libs: *||p' "$T/$name.cpp" | head -1)
     if ! g++ -O2 -std=gnu++14 -funsigned-char -Wall -Wno-unused-function -Wno-unused-variable "${extra[@]}" -I"$dir" \
-        -I"$T/host" $INC "$T/$name.cpp" "${objs[@]}" "$BUILD/libdaisysp_host.a" -o "$dir/$name" 2> "$log"; then
+        -I"$T/host" $INC "$T/$name.cpp" "${objs[@]}" "$BUILD/libdaisysp_host.a" $libs -o "$dir/$name" 2> "$log"; then
         cat "$log"
         echo "$name.cpp didn't build"
         exit 1
