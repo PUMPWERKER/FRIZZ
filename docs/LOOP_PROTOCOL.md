@@ -62,7 +62,7 @@ answer   F0 7D 43 48 78 OP SEQ STATUS DATA… F7
 - `STATUS` is one byte (section 4). An answer with a status other than `OK` (0) carries
   exactly one more byte, `DETAIL` (4.2), and nothing else. The data listed for each command
   below is the data of an `OK` answer. The one exception is a write's ack (3.7), which always
-  carries its `TID` and `NEXT`.
+  carries its `TID`, `NEXT` and `DROPS`.
 
 ### 1.3 Sizes
 
@@ -103,11 +103,15 @@ browser tabs, a tab and `remote.py`) are not supported. The transfer ID (`TID`, 
 second app's CHUNKs out of the first one's job. The second app's `WRITE_BEGIN` gets
 `BUSY_JOB`.
 
-**Repeats are safe.** FRIZZ remembers the last request it carried out (its `OP` and `SEQ`)
-and the answer it gave. The same `OP` and `SEQ` again get that answer again, and nothing is
-done twice. A request that was refused (any status but `OK`) isn't remembered: sent again with
-any `SEQ`, it is tried again. So the app answers a lost answer by sending the same request with
-the same `SEQ`, and answers a `BUSY_…` by sending it again later with a new `SEQ`.
+**Repeats are safe.** FRIZZ remembers the last **changing** request it answered (`10`, `12`,
+`13`, `20`-`23`, `30`: its `OP`, `SEQ` and the answer it gave). The same `OP` and `SEQ` again
+get that answer again, and nothing is done twice. Read-only requests (`00`-`04`) and CHUNKs
+don't touch that memory, so a `STATUS` poll between a lost answer and its repeat doesn't make
+FRIZZ forget it. The passing refusals (`BUSY_…`, `CARD_LENT`, `NO_CARD`) aren't remembered:
+they are tried again when they come again. A final refusal is remembered like an `OK`, so a
+repeated `WRITE_END` after `BAD_CRC` gets `BAD_CRC` again, not `NO_TRANSFER`. So the app answers
+a lost answer by sending the same request with the same `SEQ`, and a `BUSY_…` by sending it
+again later with a new `SEQ`.
 
 ### 1.6 Timeouts
 
@@ -116,13 +120,13 @@ the same `SEQ`, and answers a `BUSY_…` by sending it again later with a new `S
 | app | an answer to a request | 500 ms | sends it again, same `SEQ`, up to 4 times |
 | app | 5 tries without an answer | — | "FRIZZ doesn't answer": not FRIZZ, a FRIZZ without this protocol, or one that hangs |
 | app | an ack that moves `NEXT` during a write | 500 ms | sends again from `NEXT` (3.7) |
-| app | progress during a write, while no ack says paused | 10 s | `WRITE_ABORT`, and reports the failure |
+| app | progress during a write, while no ack says paused | 10 s | `ABORT`, and reports the failure |
 | app | a `BUSY_…` answer | 250 ms | asks again, new `SEQ` |
-| FRIZZ | a CHUNK, `WRITE_END` or `STATUS` while a write is open and not paused by FRIZZ | **30 s** | aborts the write and deletes the temp file; the job's result is `TIMED_OUT` |
+| FRIZZ | a CHUNK or `WRITE_END`, while a write is running (phase 1: not paused, not finishing) | **30 s** | aborts the write and deletes the temp file; the job's result is `TIMED_OUT` |
 | FRIZZ | USB unconfigured (cable out, computer asleep) during a job | — | aborts it at once; result `ABORTED` |
 
-A paused write (3.8) doesn't count towards FRIZZ's 30 s. The app's `STATUS` polls keep a
-write alive while it waits.
+A paused write (3.8) and one finishing don't count towards FRIZZ's 30 s. Nothing else keeps
+a write alive: `STATUS` polls don't, so an app that is stuck can't hold a write open forever.
 
 ### 1.7 Web MIDI
 
@@ -288,7 +292,8 @@ Refused: `BAD` for a bank over 12.
 Refused: `BAD` for a bank over 12 or a slot over 14.
 
 A listing is BANK for each of the 13 banks, then SLOT and NAME for every slot that isn't
-empty. At ~2 ms an answer, a full card takes about half a second.
+empty, then STATUS for the free space. At ~2 ms an answer, a full card takes about half a
+second.
 
 ### 3.4 NAME
 
@@ -342,43 +347,62 @@ the next byte FRIZZ expects, is 0.
 
 ```
 CHUNK  F0 7D 43 48 38 11 TID OFFSET(4) LEN DATA(packed) F7
-ACK    F0 7D 43 48 78 11 00 STATUS TID NEXT(4) F7
+ACK    F0 7D 43 48 78 11 00 STATUS TID NEXT(4) DROPS F7
 ```
 
 A CHUNK has no `SEQ` (its `OFFSET` does that job) and gets no answer of its own. LEN is
 1-`maxChunk` and DATA is the file's bytes OFFSET … OFFSET + LEN − 1, packed. Every CHUNK but
-the file's last should carry `maxChunk` bytes, though FRIZZ accepts any LEN.
+the file's last carries `maxChunk` bytes.
 
-**FRIZZ takes a CHUNK** only if it all fits: the TID is the open write's, OFFSET = `NEXT`,
-the packed length matches LEN, LEN ≤ `maxChunk`, OFFSET + LEN ≤ SIZE, and its ring has room.
-Then `NEXT += LEN`. Bytes it took are FRIZZ's to write: they stay in its RAM, in order, until
-they're on the card, and are lost only if the whole write fails. Otherwise:
+**FRIZZ takes a CHUNK** in the audio callback, into a ring that holds `window` CHUNKs, only if
+it all fits: the TID is the open write's, OFFSET is the end of what it has taken so far, the
+packed length matches LEN, LEN ≤ `maxChunk`, OFFSET + LEN ≤ SIZE, the ring has room, and the
+write isn't paused. MainLoop takes the CHUNKs out of the ring, in order, into its staging
+buffer. **`NEXT` is the end of what MainLoop has taken out of the ring.** Bytes below `NEXT`
+are FRIZZ's to write: they stay in its RAM, in order, until they're on the card, and are lost
+only if the whole write fails. Since `NEXT` never counts what still sits in the ring, an app
+that keeps to the window never overfills it. Otherwise:
 
-- OFFSET < `NEXT`: a repeat. Ignored.
-- OFFSET > `NEXT`, a length that doesn't match, a ring that's full: a **gap**. Dropped, and an
-  ack goes out at the next pass so the app goes back.
+- OFFSET below the end of what was taken: a repeat. Ignored, not counted.
+- OFFSET beyond it, a length that doesn't match, a full ring, a paused write: a **gap**. The
+  CHUNK is dropped and `DROPS` counts it.
 - an unknown TID: ignored, with an ack of `NO_TRANSFER` at most every 250 ms, so a stale app
   stops.
-- while FRIZZ has paused the write (3.8): dropped. The acks say why.
 
-**FRIZZ acks** (`SEQ` 0, `NEXT` as it stands) once in every pass of its UI (~2 ms) in which
-`NEXT` moved or a CHUNK was dropped, and every 250 ms while paused. An ack takes precedence
-over FRIZZ's other answers and over MIDI feedback in that pass. An ack's `STATUS`:
+**FRIZZ acks** (`SEQ` 0, `NEXT` and `DROPS` as they stand) once in every pass of its UI
+(~2 ms) in which `NEXT` or `DROPS` changed, and every 250 ms while paused. An ack takes
+precedence over FRIZZ's other answers and over MIDI feedback in that pass. `DROPS` (0-127,
+wrapping, 0 at `WRITE_BEGIN`) goes up by one for every CHUNK dropped as a gap. Because it is a
+count and not a flag, a lost ack loses nothing: the next one still shows that it changed. An
+ack's `STATUS`:
 
 - `OK`: running.
-- `BUSY_RECORDING`, `BUSY_LOADING`, `BUSY_CARD`: paused (3.8). The app stops sending, keeps
-  the window as it is, and waits for an `OK` ack or polls `STATUS`.
+- `BUSY_RECORDING`, `BUSY_LOADING`, `BUSY_CARD`: paused (3.8). The app stops sending and
+  waits for an `OK` ack, polling `STATUS` meanwhile.
 - anything else ends the write: `NO_TRANSFER`, `NO_SPACE`, `CARD_ERROR`, `CARD_LENT`,
-  `TIMED_OUT`, `ABORTED`. FRIZZ has deleted the temp file. `STATUS` keeps the result.
+  `TIMED_OUT`, `ABORTED`. FRIZZ has deleted the temp file, and `STATUS` keeps the result.
 
-**The app sends go-back-N.** It keeps `acked`, the last `NEXT` an ack gave, and `sent`, the end
-of what it has sent. It sends while `sent < SIZE` and fewer than `window` CHUNKs lie between
-`acked` and `sent` (`sent − acked < window × maxChunk`). An ack moves `acked` up (never down).
-An ack whose `NEXT` lies below `sent` while FRIZZ dropped something, or no ack moving `acked`
-for 500 ms, sets `sent = acked` and sends again from there. The progress bar follows `acked`,
-in bytes.
+**The app sends go-back-N.** It keeps:
 
-The CRC-32 comes from the bytes FRIZZ took, in order, as they come, so `WRITE_END` needn't
+- `acked`, the highest `NEXT` an ack gave;
+- `sent`, the end of what it has sent;
+- `drops`, the last `DROPS` it saw (0 at `WRITE_BEGIN`);
+- `rewound`, the offset it last went back to, or none.
+
+It sends while `sent < SIZE` and `sent − acked < window × maxChunk`. On each ack:
+
+1. `acked = max(acked, NEXT)`. Once `acked` has moved past `rewound`, `rewound` is none again.
+2. If `DROPS` ≠ `drops`: `drops = DROPS`, and if `rewound` is none, the app sets
+   `sent = rewound = acked` and sends again from there. If `rewound` is set, the new drops are
+   the CHUNKs sent before that rewind, still arriving behind the gap, and they don't call for
+   another rewind.
+3. No ack moving `acked` for 500 ms while no ack says paused, or an `OK` ack after a pause:
+   `sent = rewound = acked`, and the app sends again from there. That is also how it starts
+   after a pause, since FRIZZ dropped what came during it.
+
+The progress bar follows `acked`, in bytes.
+
+The CRC-32 comes from the bytes MainLoop took, in order, as they come, so `WRITE_END` needn't
 read the file back.
 
 ### 3.8 Pauses during a job
@@ -545,7 +569,7 @@ loader reads any WAV within its limits, but the app writes only this one:
 | 0 | `RIFF` | 12 | `"RIFF"`, file size − 8 (LE32), `"WAVE"` |
 | 12 | `fmt ` | 8 + 16 | format 1 (PCM), channels 1 or 2, 48,000 Hz, bytes a second, block align (2 × channels), 16 bits |
 | 36 | `acid` | 8 + 24 | the beats (below); left out when the app doesn't know them |
-| 68 | `LIST` | 8 + 4 + 8 + name | `"INFO"`, then `"INAM"`, its length, the name and a NUL, padded to an even length (5.3); left out without a name |
+| 68 | `LIST` | 8 + 4 + 8 + name | `"INFO"`, then the `INAM` chunk (5.3); left out without a name |
 | … | `data` | 8 + frames × 2 × channels | 16-bit signed little-endian PCM, interleaved L R in stereo |
 
 - **48 kHz, 16-bit, PCM, mono or stereo**, at most **3,686,400 frames** (HELLO's max frames:
@@ -583,6 +607,21 @@ loader reads any WAV within its limits, but the app writes only this one:
   app cuts a longer name at a code point's boundary, never inside a character. The name is
   the source file's name without its extension, as the player sees it in the app. The app
   may let the player edit it before the upload.
+- **The bytes** for a name of n bytes (1-28):
+
+  | Offset in `LIST` | Bytes | Content |
+  |---|---|---|
+  | 0 | 4 | `"LIST"` |
+  | 4 | 4 | LE32: 4 + 8 + (n + 1) + pad |
+  | 8 | 4 | `"INFO"` |
+  | 12 | 4 | `"INAM"` |
+  | 16 | 4 | LE32: n + 1 (the name and its NUL; the pad isn't counted) |
+  | 20 | n + 1 | the name, then `00` |
+  | 21 + n | pad | one `00` when n + 1 is odd, else nothing |
+
+  So `INAM`'s size is the name's bytes plus 1, a pad byte follows when that's odd, and `LIST`'s
+  size counts the pad. For "Amen" (n = 4): `INAM` size 5, one pad byte, `LIST` size 18, 26
+  bytes in all.
 - **Why 28:** NAME's answer has to fit one reply: 28 bytes pack into 32.
 - **What FRIZZ learns** (new in `WavWalk`): a `LIST` chunk whose first 4 bytes are `"INFO"`,
   before `data`, is walked for `INAM`. Its bytes up to the first NUL or the chunk's end are
@@ -802,8 +841,10 @@ The protocol's executable specification, in Python 3 with no packages, like `rem
   USB node (`remote.py`'s);
 - **`loopxfer.py vectors`**: writes `firmware/test/loopxfer/vectors.json`, scripted sessions as
   the bytes each side sends and the card before and after. Covered: every command, every
-  refusal in sections 3-4, a write with lost, repeated and cut-off CHUNKs, a pause, a timeout,
-  an abort, a power cut mid-write and mid-swap with the boot after it;
+  refusal in sections 3-4, a write with lost, repeated and cut-off CHUNKs (a gap, its `DROPS`,
+  the rewind and the stale CHUNKs behind it), a lost ack, a lost answer and its repeat across a
+  `STATUS` poll, a pause, a timeout, an abort, a power cut mid-write and mid-swap with the boot
+  after it;
 - **`loopxfer.py --selftest`**: the client against the model, with a lossy link, over a few
   hundred random batches. The card must hold only whole files, and only the allowed names may
   ever change.
