@@ -112,7 +112,10 @@ def main():
         t_loads = time.monotonic()
         for k in range(a.loads):
             t0 = time.monotonic()
-            remote.loops_load(f, bank, slots[k % len(slots)], None, None)
+            try:
+                remote.loops_load(f, bank, slots[k % len(slots)], None, None)
+            except SystemExit as e:  # refused or failed: the card was still asked
+                print("load %d: %s" % (k + 1, e))
             windows.append((t0, time.monotonic()))
         t_end = time.monotonic()
         time.sleep(a.idle)

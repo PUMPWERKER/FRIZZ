@@ -20,6 +20,9 @@ namespace chompi
 namespace usb
 {
 static bool connected = false;
+#if FRIZZ_USB_MSC
+static volatile uint32_t reconnect_ticks = 0; // CardMode's reconnect, counted down by the task
+#endif
 
 #if FRIZZ_USB_AUDIO
 static constexpr size_t kBytes = FRIZZ_USB_BYTES_PER_SAMPLE;
@@ -157,6 +160,15 @@ static void Task()
         connected = true;
         tud_connect();
     }
+#if FRIZZ_USB_MSC
+    if(reconnect_ticks)
+    {
+        if(reconnect_ticks == 1200)
+            tud_disconnect();
+        if(--reconnect_ticks == 0)
+            tud_connect();
+    }
+#endif
     tud_task();
     if(task_hook)
         task_hook();
@@ -327,7 +339,8 @@ namespace usb
 // is aligned to 4)
 static uint8_t DSY_SDRAM_BSS __attribute__((aligned(32))) card_buf[CFG_TUD_MSC_EP_BUFSIZE];
 static bool (*card_io)(bool, uint8_t*, uint32_t, uint32_t) = nullptr;
-static uint32_t card_sectors = 0;
+static uint32_t (*card_size)() = nullptr;
+static volatile uint32_t card_sectors = 0; // as CardMode found it
 static volatile bool card_on = false, card_gone = false;
 struct CardRequest
 {
@@ -340,16 +353,22 @@ struct CardRequest
 static CardRequest card_req = {};
 static CardStats card_stats = {};
 
-void SetCard(bool (*io)(bool, uint8_t*, uint32_t, uint32_t), uint32_t sectors)
+void SetCard(bool (*io)(bool, uint8_t*, uint32_t, uint32_t), uint32_t (*sectors)())
 {
     card_io = io;
-    card_sectors = sectors;
+    card_size = sectors;
 }
 
-void CardMode(bool on)
+static volatile bool card_attention = false; // the next TEST UNIT READY: the medium changed
+
+void CardMode(bool on, bool reconnect)
 {
+    card_sectors = on && card_size ? card_size() : 0;
+    card_attention = on;
     card_on = on;
     card_gone = false;
+    if(on && reconnect)
+        reconnect_ticks = 1200; // the task's passes off the bus: 300 ms
 }
 
 bool InCardMode() { return card_on; }
@@ -435,6 +454,13 @@ extern "C"
 
     bool tud_msc_test_unit_ready_cb(uint8_t lun)
     {
+        chompi::usb::card_stats.unit_ready++;
+        if(chompi::usb::card_on && chompi::usb::card_attention)
+        {
+            chompi::usb::card_attention = false;
+            tud_msc_set_sense(lun, SCSI_SENSE_UNIT_ATTENTION, 0x28, 0x00); // not ready to ready: medium changed
+            return false;
+        }
         if(chompi::usb::card_on)
             return true;
         tud_msc_set_sense(lun, SCSI_SENSE_NOT_READY, 0x3a, 0x00); // medium not present
@@ -444,6 +470,7 @@ extern "C"
     void tud_msc_capacity_cb(uint8_t lun, uint32_t* block_count, uint16_t* block_size)
     {
         (void)lun;
+        chompi::usb::card_stats.capacity++;
         *block_count = chompi::usb::card_on ? chompi::usb::card_sectors : 0;
         *block_size = 512;
     }

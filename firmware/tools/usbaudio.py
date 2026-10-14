@@ -237,6 +237,9 @@ def stats(args):
             c = [chompi.get7(got[1][1 + 5 * i:6 + 5 * i]) for i in range(6)]
             line += "; card %d reads %d KB, %d writes %d KB, %d errors, %.1f s in the card" % (
                 c[0], c[2], c[1], c[3], c[4], c[5] / 1000)
+            if len(got[1]) >= 35:
+                line += "; the host's TEST UNIT READY %d, READ CAPACITY %d" % (
+                    got[1][31] << 7 | got[1][32], got[1][33] << 7 | got[1][34])
         print(line, flush=True)
         if not args.every:
             break
@@ -245,7 +248,7 @@ def stats(args):
 
 def card(args):
     chompi, f = frizz()
-    got = f.dev(USB, [2, 1 if args.state == "on" else 0])
+    got = f.dev(USB, [2, {"on": 1, "off": 0, "reconnect": 2}[args.state]])
     if not got or got[0] != chompi.OK:
         sys.exit("no answer to USB: not a usb-audio-poc build")
     time.sleep(0.3)
@@ -275,7 +278,7 @@ def main():
     t = sub.add_parser("stats")
     t.add_argument("--every", type=float, default=0)
     c = sub.add_parser("card")
-    c.add_argument("state", choices=("on", "off"))
+    c.add_argument("state", choices=("on", "off", "reconnect"))
     args = ap.parse_args()
     {"sine": sine, "gen": gen, "rate": rate, "stats": stats, "card": card, "ramp": ramp}[args.cmd](args)
 

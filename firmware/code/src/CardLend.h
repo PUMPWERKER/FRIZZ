@@ -26,6 +26,7 @@ struct State
 {
     volatile bool lent = false;  // the computer has the card
     volatile bool asked = false; // the gesture (or the SysEx): lend it, or take it back
+    volatile bool reconnect = false; // lend it with a USB reconnect (UsbDevice.h's CardMode)
     LedSignal refused;           // LOOP's 3 red blinks
 };
 

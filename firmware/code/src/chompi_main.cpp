@@ -222,11 +222,14 @@ static int UsbDev(const uint8_t* arg, size_t len, uint8_t* d)
         const usb::CardStats& c = usb::GetCardStats();
         for (uint32_t v : {c.reads, c.writes, c.kb_read, c.kb_written, c.errors, c.io_us / 1000})
             n = UsbPut(d, n, v, 5);
+        n = UsbPut(d, n, c.unit_ready, 2);
+        n = UsbPut(d, n, c.capacity, 2);
         return static_cast<int>(n);
     }
     if (part == 2 && len > 1)
     {
         cardlend::State& card = cardlend::Get();
+        card.reconnect = arg[1] == 2; // 2: lent with a reconnect (UsbDevice.h's CardMode)
         if ((arg[1] != 0) != card.lent)
             card.asked = true;
         d[n++] = flags;
@@ -491,7 +494,7 @@ static bool CardLendProcess(uint32_t now)
             // FatFs lets go of it: nothing of it cached that the computer would change under it
             f_mount(nullptr, fsi.GetSDPath(), 0);
             card.lent = true;
-            usb::CardMode(true);
+            usb::CardMode(true, card.reconnect);
         }
     }
     return card.lent;
@@ -650,7 +653,7 @@ int main(void)
     // the card as a USB drive, while lent (CardLend.h): its sectors through SdDisk.h's transfers
     usb::SetCard([](bool write, uint8_t* buf, uint32_t sector, uint32_t count) {
         return sddisk::Transfer<SdHalPort>(write, buf, sector, count);
-    }, hsd1.SdCard.LogBlockNbr);
+    }, [] { return static_cast<uint32_t>(hsd1.SdCard.LogBlockNbr); });
 #endif
     System::Delay(100);
     // FRIZZ's files live in /FRIZZ, created on first start (SceneStore.h)

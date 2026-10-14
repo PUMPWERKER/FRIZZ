@@ -79,11 +79,14 @@ const Stats& GetStats();
 
 #if FRIZZ_USB_MSC
 /** The card as a USB drive (CardLend.h): MainLoop moves its sectors, through io (SdDisk.h's
- *  transfers), the card's sectors many */
-void SetCard(bool (*io)(bool write, uint8_t* buf, uint32_t sector, uint32_t count), uint32_t sectors);
+ *  transfers); sectors() tells how many the card has, asked as it's lent (the HAL knows only
+ *  once FatFs's first mount has set the card up) */
+void SetCard(bool (*io)(bool write, uint8_t* buf, uint32_t sector, uint32_t count), uint32_t (*sectors)());
 /** On: the computer sees the card (a medium in the drive), FRIZZ leaves it alone; off: no
- *  medium. From MainLoop */
-void CardMode(bool on);
+ *  medium. The first TEST UNIT READY after it's on answers UNIT ATTENTION, the medium changed;
+ *  reconnect: FRIZZ also leaves the bus for 300 ms and comes back, so a host that doesn't poll
+ *  the drive finds the medium as it enumerates (audio and MIDI gone meanwhile). From MainLoop */
+void CardMode(bool on, bool reconnect = false);
 bool InCardMode();
 /** True once when the computer ejected it, or USB went (unplugged, suspended) while it was on */
 bool TakeCardGone();
@@ -95,6 +98,7 @@ struct CardStats
     uint32_t kb_read, kb_written; // their KB
     uint32_t errors;
     uint32_t io_us;               // the card's time in them, us
+    uint32_t unit_ready, capacity; // the host's TEST UNIT READY and READ CAPACITY: does it poll
 };
 const CardStats& GetCardStats();
 #endif
