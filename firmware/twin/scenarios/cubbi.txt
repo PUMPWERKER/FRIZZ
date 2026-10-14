@@ -3,7 +3,9 @@
 # device the card's own, only read. SHIFT + the lower D# opens it in TAPE's purple (bank a); a
 # white key switches at once, SHIFT + one at the end of the pass; the lower D# the next banks
 # (b orange, c TAPE's teal); SHIFT + the lower C# the Loops page and SHIFT + D# back, at c;
-# a double tap of SHIFT goes home. Nothing is saved.
+# a double tap of SHIFT goes home. Nothing is saved. On the device its expect lines need TAPE's
+# factory cubbis a1, b1, b3 and c1 on the card (what the CHOMPI ships with): a cubbi recorded over
+# one of them moves its times, and a missing one darkens its key.
 card wav /TAPE/cubbi_a1.wav 12 2 220
 card wav /TAPE/cubbi_b1.wav 3.8773333 2 275
 card wav /TAPE/cubbi_b3.wav 4.4235208 2 330
