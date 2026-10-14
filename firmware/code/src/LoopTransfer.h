@@ -112,11 +112,13 @@ static const uint32_t kAckEveryMs = 250;                           // paused, NO
 static const size_t kMaxFragments = (loops::kMapSize - 2) / 2;     // 255: the loader's map
 static const char kTmp[] = "/FRIZZ/xfer.tmp";
 
-/** In SDRAM (chompi_main.cpp): the staging block (the card's DMA reads it), the ring */
+/** In SDRAM (chompi_main.cpp): the staging block (the card's DMA reads it), the ring, the
+ *  job's files (xfer.tmp, a copy's cubbi), as the loader keeps its own */
 struct Mem
 {
     alignas(32) uint8_t stage[kBlock + kMaxChunk];
     uint8_t ring[kWindow][kPacked];
+    FIL file, src;
 };
 
 /** A request that isn't a CHUNK: OP SEQ, len argument bytes (the first 8 kept) */
@@ -302,17 +304,18 @@ private:
         w_ = static_cast<uint8_t>(w_ + 1);
     }
 
-    Mem* mem_ = nullptr;
-    Request req_ = {};
-    volatile bool pending_ = false;
+    // zero as a static's (MidiControl's), so no code sets them at boot
+    Mem* mem_;
+    Request req_;
+    volatile bool pending_;
     // the open write's
-    volatile bool open_ = false, paused_ = false;
-    uint8_t tid_ = 0;
-    uint32_t size_ = 0, taken_ = 0; // taken_: the end of what the ring took
-    uint8_t lens_[kWindow] = {};
-    volatile uint8_t w_ = 0, r_ = 0, drops_ = 0;
-    volatile bool repeat_ = false, heard_ = false, stale_ = false;
-    volatile uint8_t stale_tid_ = 0;
+    volatile bool open_, paused_;
+    uint8_t tid_;
+    uint32_t size_, taken_; // taken_: the end of what the ring took
+    uint8_t lens_[kWindow];
+    volatile uint8_t w_, r_, drops_;
+    volatile bool repeat_, heard_, stale_;
+    volatile uint8_t stale_tid_;
 };
 
 /** FRIZZ-bench.bin's answer (7.2): HELLO, NOT_HERE to the rest; into d, its length */
@@ -684,14 +687,14 @@ private:
             {
                 char path[LoopLoader::kPathLen];
                 loader_->SlotPath(path, bank, slot);
-                r = f_open(&src_, path, FA_READ);
+                r = f_open(&mem_->src, path, FA_READ);
                 src_open_ = r == FR_OK;
             }
             if (r == FR_OK)
             {
-                r = f_open(&file_, kTmp, FA_CREATE_ALWAYS | FA_WRITE);
+                r = f_open(&mem_->file, kTmp, FA_CREATE_ALWAYS | FA_WRITE);
                 if (r == FR_NO_PATH && f_mkdir("/FRIZZ") == FR_OK)
-                    r = f_open(&file_, kTmp, FA_CREATE_ALWAYS | FA_WRITE);
+                    r = f_open(&mem_->file, kTmp, FA_CREATE_ALWAYS | FA_WRITE);
                 file_open_ = r == FR_OK;
             }
             if (r != FR_OK)
@@ -816,9 +819,9 @@ private:
             // 32 KB of the cubbi read and written
             const uint32_t n = total_ - next_ < kBlock ? total_ - next_ : kBlock;
             UINT got = 0;
-            FRESULT r = f_read(&src_, mem_->stage, n, &got);
+            FRESULT r = f_read(&mem_->src, mem_->stage, n, &got);
             if (r == FR_INVALID_OBJECT && (r = Reopen()) == FR_OK)
-                r = f_read(&src_, mem_->stage, n, &got);
+                r = f_read(&mem_->src, mem_->stage, n, &got);
             if (r != FR_OK || got != n)
             {
                 End(CARD_ERROR, static_cast<uint8_t>(r ? r : FR_INT_ERR), false);
@@ -841,16 +844,16 @@ private:
     {
         using namespace loopxfer;
         UINT put = 0;
-        FRESULT r = f_write(&file_, mem_->stage, n, &put);
+        FRESULT r = f_write(&mem_->file, mem_->stage, n, &put);
         if (r == FR_INVALID_OBJECT && (r = Reopen()) == FR_OK)
-            r = f_write(&file_, mem_->stage, n, &put);
+            r = f_write(&mem_->file, mem_->stage, n, &put);
         if (r == FR_OK && put != n)
         {
             End(NO_SPACE, 0, false);
             return false;
         }
         if (r == FR_OK)
-            r = f_sync(&file_);
+            r = f_sync(&mem_->file);
         if (r != FR_OK)
         {
             End(CARD_ERROR, static_cast<uint8_t>(r), false);
@@ -865,20 +868,20 @@ private:
     LOOP_LOADER_ONCE FRESULT Reopen()
     {
         CloseFiles();
-        FRESULT r = f_open(&file_, loopxfer::kTmp, FA_WRITE);
+        FRESULT r = f_open(&mem_->file, loopxfer::kTmp, FA_WRITE);
         file_open_ = r == FR_OK;
-        if (r == FR_OK && f_size(&file_) != written_)
+        if (r == FR_OK && f_size(&mem_->file) != written_)
             r = FR_INT_ERR;
         if (r == FR_OK)
-            r = f_lseek(&file_, written_);
+            r = f_lseek(&mem_->file, written_);
         if (r == FR_OK && job_ == loopxfer::COPY_JOB)
         {
             char path[LoopLoader::kPathLen];
             loader_->SlotPath(path, src_bank_, src_slot_);
-            r = f_open(&src_, path, FA_READ);
+            r = f_open(&mem_->src, path, FA_READ);
             src_open_ = r == FR_OK;
             if (r == FR_OK)
-                r = f_lseek(&src_, written_);
+                r = f_lseek(&mem_->src, written_);
         }
         return r;
     }
@@ -886,9 +889,9 @@ private:
     void CloseFiles()
     {
         if (file_open_)
-            f_close(&file_);
+            f_close(&mem_->file);
         if (src_open_)
-            f_close(&src_);
+            f_close(&mem_->src);
         file_open_ = src_open_ = false;
     }
 
@@ -914,7 +917,7 @@ private:
                 End(BAD_WAV, walked_.result, true);
                 return;
             }
-            const FRESULT r = f_open(&file_, kTmp, FA_READ);
+            const FRESULT r = f_open(&mem_->file, kTmp, FA_READ);
             file_open_ = r == FR_OK;
             if (r != FR_OK)
             {
@@ -934,20 +937,20 @@ private:
             for (uint32_t k = 0; k < loops::kMapClusters && cluster_ < clusters_; k++, cluster_++)
             {
                 const uint32_t end = (cluster_ + 1) * bcs < size ? (cluster_ + 1) * bcs : size;
-                FRESULT r = f_lseek(&file_, end);
+                FRESULT r = f_lseek(&mem_->file, end);
                 if (r == FR_INVALID_OBJECT)
                 {
-                    f_close(&file_);
-                    r = f_open(&file_, kTmp, FA_READ);
+                    f_close(&mem_->file);
+                    r = f_open(&mem_->file, kTmp, FA_READ);
                     if (r == FR_OK)
-                        r = f_lseek(&file_, end);
+                        r = f_lseek(&mem_->file, end);
                 }
                 if (r != FR_OK)
                 {
                     End(CARD_ERROR, static_cast<uint8_t>(r), true);
                     return;
                 }
-                const DWORD c = file_.clust;
+                const DWORD c = mem_->file.clust;
                 frags_ += !frags_ || c != last_ + 1;
                 last_ = c;
             }
@@ -1101,7 +1104,6 @@ private:
     uint32_t total_ = 0, next_ = 0;  // a write's NEXT, a copy's bytes copied
     uint32_t staged_ = 0, written_ = 0, crc_ = 0;
     uint8_t step_ = 0;               // 3.9's
-    FIL file_, src_;                 // xfer.tmp, a copy's cubbi
     bool file_open_ = false, src_open_ = false;
     loops::Slot walked_ = {};        // xfer.tmp's header
     uint32_t clusters_ = 0, cluster_ = 0, frags_ = 0;

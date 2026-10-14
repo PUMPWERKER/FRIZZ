@@ -130,7 +130,7 @@ public:
 
     /** win: the file's n bytes from at. MORE, or a Result: MONO or STEREO with data (the
      *  data's offset in the file) and frames */
-    int Step(const uint8_t* win, uint32_t at, uint32_t n, uint32_t& data, uint32_t& frames)
+    LOOP_LOADER_ONCE int Step(const uint8_t* win, uint32_t at, uint32_t n, uint32_t& data, uint32_t& frames)
     {
         auto has = [&](uint32_t p, uint32_t len) { return p >= at && p - at <= n && len <= n - (p - at); };
         if (pos_ == 0)
@@ -200,7 +200,7 @@ public:
 private:
     /** INFO's chunks, n bytes at p: INAM's bytes up to a NUL or its end. One whose length runs
      *  past the LIST gives none */
-    void Name(const uint8_t* p, uint32_t n)
+    LOOP_LOADER_ONCE void Name(const uint8_t* p, uint32_t n)
     {
         while (n >= 8)
         {
@@ -305,7 +305,7 @@ inline char* SlotName(char* p, size_t bank, size_t slot)
 }
 /** A swap's temp file, "/FRIZZ/a1-b2.swp": a1's file on its way to b2 (LoopTransfer.h,
  *  docs/LOOP_PROTOCOL.md 5.6), into path (20 bytes) */
-inline void SwapPath(char* path, size_t from, size_t to)
+LOOP_LOADER_ONCE inline void SwapPath(char* path, size_t from, size_t to)
 {
     memcpy(path, "/FRIZZ/", 7);
     char* p = SlotName(path + 7, from / kSlots, from % kSlots);
@@ -327,7 +327,7 @@ inline int SlotAt(const char*& p)
     return s <= static_cast<int>(kSlots) ? b * static_cast<int>(kSlots) + s - 1 : -1;
 }
 /** Whether name is a swap's temp file ("a1-b2.swp", any case): from, to its slots' ids */
-inline bool SwapOf(const char* name, int& from, int& to)
+LOOP_LOADER_ONCE inline bool SwapOf(const char* name, int& from, int& to)
 {
     from = SlotAt(name);
     if (from < 0 || *name++ != '-')
@@ -465,12 +465,9 @@ public:
      *  name. The scan's, and the loop transfer's check of a file it wrote */
     LOOP_LOADER_ONCE void Walk(const char* path, loops::Slot& s)
     {
-        s.result = Open(path, s.frames, s.data, false);
+        s.result = Open(path, s.frames, s.data, false, &s);
         s.beats = static_cast<uint16_t>(beats_);
         s.size = size_;
-        s.name_len = walk_.name_len;
-        s.name_cut = walk_.name_cut;
-        memcpy(s.name, walk_.name, loops::kNameMax);
     }
 
     /** A slot's file: "/FRIZZ/a1.wav", or "/TAPE/cubbi_a1.wav" ("/cubbi_a1.wav" without /TAPE) */
@@ -772,12 +769,16 @@ private:
         SlotPath(path, bank, slot);
         return Open(path, frames, data, keep);
     }
-    LOOP_LOADER_ONCE uint8_t Open(const char* path, uint32_t& frames, uint32_t& data, bool keep)
+    /** name: its name into it too */
+    LOOP_LOADER_ONCE uint8_t Open(const char* path, uint32_t& frames, uint32_t& data, bool keep,
+                                  loops::Slot* name = nullptr)
     {
         FIL& file = mem_->file;
-        loops::WavWalk& walk = walk_;
+        loops::WavWalk walk;
         walk.Start(0);
         frames = beats_ = size_ = 0;
+        if (name)
+            name->name_len = 0;
         if (f_open(&file, path, FA_READ) != FR_OK)
             return loops::UNREADABLE;
         walk.Start(f_size(&file));
@@ -793,6 +794,12 @@ private:
         }
         beats_ = walk.Beats();
         size_ = f_size(&file);
+        if (name)
+        {
+            name->name_len = walk.name_len;
+            name->name_cut = walk.name_cut;
+            memcpy(name->name, walk.name, loops::kNameMax);
+        }
         if (r == loops::WavWalk::MORE)
             r = loops::NO_DATA;
         if (!keep || (r != loops::MONO && r != loops::STEREO))
@@ -1106,7 +1113,6 @@ private:
     uint8_t* home_ = nullptr; // Init's
     bool cancel_ = false, dev_free_ = true;
     uint32_t beats_ = 0, size_ = 0; // Open's file's: its acid chunk's beats, its size
-    loops::WavWalk walk_;
     loops::Mem* mem_ = nullptr;
     FATFS* fs_ = nullptr;
     uint32_t (*ms_clock_)() = nullptr;

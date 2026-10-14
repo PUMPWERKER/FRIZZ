@@ -866,9 +866,9 @@ As built (`LoopTransfer.h`):
 - `crash::Crc32More`: the CRC carried on between steps (the same table).
 - The protocol's version: `loopxfer::kLoopsProtocol` (major) and `kLoopsProtocolMinor`;
   FRIZZ's: `kFrizzVersion` in `Version.h` (7.1).
-- Code room: the header is built `-Os`. `FRIZZ.bin` took ~8 KB of `SRAM_EXEC` (~2.5 KB left
-  after it, `docs/CAPACITY.md`), ~1.5 KB of `SRAM` (the job's state and its two files); the
-  ring, the staging block and the names are in SDRAM.
+- Code room: the header is built `-Os`. `FRIZZ.bin` took ~7 KB of `SRAM_EXEC` (~3.2 KB left
+  after it, `docs/CAPACITY.md`) and 0.3 KB of `SRAM`; the ring, the staging block, the job's
+  files and the names are in SDRAM.
 - `FRIZZ-bench.bin` answers `NOT_HERE` to every OP but HELLO (`loopxfer::BenchAnswer`).
 
 ---
