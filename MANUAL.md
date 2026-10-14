@@ -53,7 +53,7 @@ On the play page (the mode switch down), the controls are:
 | CHOMPI | SHIFT; it confirms a save, copy or delete |
 | PLAY, LOOP | The [Looper](#looper); SHIFT + LOOP taps the [tempo](#tap-tempo) |
 | The mode switch | Down the play page, up the [settings page](#settings-page) |
-| AUX in | The stereo input; with no cable in it, the built-in microphone is the input ([Input: AUX or the mic](#input-aux-or-the-mic)) |
+| AUX in | The stereo input; with no cable in it, the built-in microphone is the input ([Input: AUX, the mic or USB](#input-aux-the-mic-or-usb)) |
 | The outputs | The master out and the headphones |
 | MIDI in and out (TRS), USB | [MIDI](#appendix-midi), the clock and FRIZZ's [remote control](#remote-control) |
 | The SD card | Scenes, settings and bug reports ([Card and files](#card-and-files)) |
@@ -90,7 +90,7 @@ which SHIFT + the lower C# and SHIFT + the lower D# open.
 | Control | Function | LED |
 |---|---|---|
 | Turn (page 1, default) | Output gain, headphone + master (default 75%) | VU meter of the master, scaled by gain: dim when silent, then green, yellow, pink at the loudest |
-| Press, then turn (page 2) | Input gain of the input you hear, AUX or the mic: each has its own, saved (default 75%) | the input's meter: dim when silent, then green, yellow, **red where the loop would clip**; while you turn, the gain: blue (0%) to red (100%) |
+| Press, then turn (page 2) | Input gain of the input you hear, AUX, the mic or USB: each has its own, saved (default 75%) | the input's meter: dim when silent, then green, yellow, **red where the loop would clip**; while you turn, the gain: blue (0%) to red (100%) |
 | Press twice, then turn (page 3) | Headphone feed: left towards the input alone, right back to the master out (default: the master out) | white (master) to green (input) |
 | Press on page 3 | Back to page 1 | blinks once |
 | SHIFT + turn | Input/loop mix: input only to loop only | green (input) to purple (loop) |
@@ -100,7 +100,7 @@ Turning moves the gains 2% per detent, the input/loop mix (SHIFT + turn) 4% and 
 feed 1%. Whether a press is SHIFT + press is decided when it goes down, so letting go of
 CHOMPI first doesn't also change the page.
 
-- **The input gain** is the one setting here that's saved: AUX and the mic each keep their own
+- **The input gain** is the one setting here that's saved: AUX, the mic and USB each keep their own
   on the card (2 s after the last turn), and switching the input picks its gain. The output
   gain, the input/loop mix and the headphone feed start from their defaults at every power-on.
 - **The input/loop mix moves by itself:** it starts on the input only, jumps to the loop only
@@ -113,9 +113,9 @@ CHOMPI first doesn't also change the page.
   flashes red on the loudest hits. For a second after a turn it shows the gain instead, blue
   to red.
 - **Headphone feed (page 3):** the master out always carries the full signal. Turned left, the
-  headphones carry the input alone instead (AUX or the mic, after input gain and VOLUME): no
+  headphones carry the input alone instead (AUX, the mic or USB, after input gain and VOLUME): no
   loop, no effects, no compressor. It's where you hear the mic while it isn't monitored (see
-  [Input: AUX or the mic](#input-aux-or-the-mic)). Use it when the master goes to a PA, mixer
+  [Input: AUX, the mic or USB](#input-aux-the-mic-or-usb)). Use it when the master goes to a PA, mixer
   or recorder and you listen on the headphones; with headphones alone, leave it at the
   master. It's back on the master at every power-on.
 
@@ -518,7 +518,7 @@ then VOLUME and a safety limiter on the line out and on the headphones, whose fe
 in the input alone](images/signal-flow.svg)
 
 The input is AUX, or the built-in microphone while no cable is in AUX (see [Input: AUX or the
-mic](#input-aux-or-the-mic)). It goes to the looper and, through the input/loop mix (SHIFT +
+mic](#input-aux-the-mic-or-usb)). It goes to the looper and, through the input/loop mix (SHIFT +
 VOLUME), to the effects on the white keys, then to the master compressor, VOLUME and a fixed
 safety limiter on every output. The looper records the input before the effects, so an effect
 is never printed into a loop. The settings page can send the input past the effects and the
@@ -1462,10 +1462,10 @@ and knob 1 set the rest:
 | Lower A# | [Clock source](#clock-source), each press the next: Auto (default), TRS, USB, internal | white (Auto), orange (TRS), blue (USB), pink (internal) |
 | Upper C# | [MIDI out](#midi-out), each press the next: off (default), TRS, TRS and USB | dim (off), orange (TRS), white (TRS and USB) |
 | Upper D# | [MIDI feedback](#midi-feedback): on (lit) / off (dim, default) | light blue |
-| Upper F# | [The input's source](#input-aux-or-the-mic), each press the other: AUX / the built-in mic. Not saved: AUX's jack picks again when a cable goes in or out | green (AUX), magenta (mic) |
-| SHIFT + upper F# | [Mono input](#mono-input), AUX only: mono / stereo (default). While you hold SHIFT, the upper F# shows it: lit when mono, dim when stereo | white |
-| Upper G# | [The source's monitoring](#input-aux-or-the-mic), on the outputs: on (lit) / off (dim). AUX on, the mic off at first | white |
-| Upper A# | [The source's effects](#input-aux-or-the-mic): through them (default) / past them and the compressor. Dark while the source isn't monitored: pressed then, it blinks red 3 times and changes nothing | green (through), white (past) |
+| Upper F# | [The input's source](#input-aux-the-mic-or-usb), each press the next: AUX, the built-in mic, USB (a computer). Not saved: AUX's jack picks AUX or the mic again when a cable goes in or out, but leaves USB | green (AUX), magenta (mic), blue (USB; dim while [USB audio](#usb-audio) is off) |
+| SHIFT + upper F# | With AUX or the mic: [mono input](#mono-input), mono / stereo (default). With USB: [USB audio](#usb-audio) on (default) / off. While you hold SHIFT, the upper F# shows it: lit when on, dim when off. With the card lent to the computer, USB audio can't switch: it blinks red 3 times | white; red (refused) |
+| Upper G# | [The source's monitoring](#input-aux-the-mic-or-usb), on the outputs: on (lit) / off (dim). AUX and USB on, the mic off at first | white |
+| Upper A# | [The source's effects](#input-aux-the-mic-or-usb): through them (default) / past them and the compressor. Dark while the source isn't monitored: pressed then, it blinks red 3 times and changes nothing | green (through), white (past) |
 | Knob 1 | [LED brightness](#led-brightness): turned, 5% a detent from 25% to 100% (default); SHIFT + turn the next of 25, 50, 75, 100%; SHIFT + press 100% | its LED white, as bright as the LEDs are |
 
 The dark keys are grouped by topic: the lower ones are MIDI in, the upper ones MIDI out and
@@ -1515,26 +1515,30 @@ press is back to 100%. Its own LED is white and dims with all the others, so it 
 you are. The dim colours keep their hue, and nothing lit at 100% goes dark; below 25% they
 would. Saved 2 s after the last turn.
 
-## Input: AUX or the mic
+## Input: AUX, the mic or USB
 
-<!-- summary: AUX or the built-in mic, through the effects or past them. -->
+<!-- summary: AUX, the mic or a computer, through the effects or past them. -->
 
 With a cable in AUX, you hear AUX through the effects. With no cable, the input is CHOMPI's
 built-in microphone, as on TAPE and TEMPO: the looper can record it, but it stays off the
-outputs, so a loudspeaker near CHOMPI can't feed it back. Three keys on the [settings
-page](#settings-page) change this, left to right the source, whether you hear it, then how:
+outputs, so a loudspeaker near CHOMPI can't feed it back. The third source is a computer on
+USB: what it plays to FRIZZ as a sound card (see [USB audio](#usb-audio)). Three keys on the
+[settings page](#settings-page) change this, left to right the source, whether you hear it,
+then how:
 the upper F# picks **the source**, the upper G# switches its **monitoring**, on the outputs or
 not, and the upper A# sends it **through the effects** or past them.
 
-![The input: AUX or the mic, each with its own gain, picked by the upper F# or AUX's jack; the
+![The input: AUX, the mic or USB, each with its own gain, picked by the upper F# (or AUX's jack, between AUX and the mic); the
 source as it is to the looper and the headphone feed; the upper G# its monitoring, on the
 outputs or not, the upper A# through the effects or past them; the share past the effects joining after the
 compressor](images/input.svg)
 
-- **Upper F#, the source:** AUX or the mic. AUX's jack picks: with a cable plugged in, it's AUX;
-  pull it out and it's the mic; plug one in and it's AUX again. At power-on the jack decides
-  the same way. The upper F# picks the other by hand, until a cable next goes in or out of
-  AUX. A jack change while recording just switches. The source isn't saved.
+- **Upper F#, the source:** AUX (green), the mic (magenta) or USB (blue), each press the next.
+  AUX's jack picks between AUX and the mic: with a cable plugged in, it's AUX; pull it out and
+  it's the mic; plug one in and it's AUX again. At power-on the jack decides the same way. The
+  upper F# picks another by hand, until a cable next goes in or out of AUX; USB, once picked,
+  stays when a cable goes in or out. A jack change while recording just switches. The source
+  isn't saved.
 - **Upper G#, monitoring:** the source on the outputs or not, lit when it is, as monitoring in
   a DAW: the looper records the source either way. Unmonitored, you can still record it and
   hear it alone on the headphones' feed, without it on the master.
@@ -1545,9 +1549,9 @@ compressor](images/input.svg)
   blinks red 3 times and changes nothing; its setting is kept for when it's monitored again).
 
 The upper G# and A# are **each source's own**: they show and set the source heard now, and
-switching the source (the upper F# or the jack) brings up the other's. Both sources' are
-saved. Out of the box AUX is monitored through the effects, and the mic is through the effects
-but **not monitored**.
+switching the source (the upper F# or the jack) brings up the other's. All three sources' are
+saved. Out of the box AUX and USB are monitored through the effects, and the mic is through
+the effects but **not monitored**.
 
 **The looper always records the source as it is**, whatever the upper G# and A# say; the loop
 always goes through the effects. The input/loop mix (SHIFT + VOLUME) moves by itself for
@@ -1567,6 +1571,9 @@ it turned left, a blend between:
 | mic | on ⚠ | through | the mic through the effects + compressor | the mic and the loop together through the effects | the loop through the effects | mic pure |
 | mic | on ⚠ | past | the mic pure | the mic pure + the loop through the effects | the loop through the effects | mic pure |
 | mic | off | – | silence | the loop alone through the effects, at its share | the loop through the effects | mic pure |
+| USB | on | through | the computer through the effects + compressor | the computer and the loop together through the effects + compressor | the loop through the effects + compressor | the computer pure |
+| USB | on | past | the computer pure | the computer pure + the loop through the effects | the loop through the effects | the computer pure |
+| USB | off | – | silence | the loop alone through the effects, at its share | the loop through the effects | the computer pure |
 
 - In the column heads, "mix" is the input/loop mix.
 - "–": the upper A# doesn't matter while the source isn't monitored (its key dark, its value kept).
@@ -1588,10 +1595,14 @@ the mic monitored through the effects, a delay or a reverb rings out their click
 takes use AUX; with the mic, record the loop first, then switch its monitoring off before you
 play the effects over it. FRIZZ treats it as TAPE does: 5× the input gain
 (AUX gets 3×), its DC taken out, and a highpass at about 150 Hz. VOLUME's page 2 sets the
-input gain of the source heard: the mic's is its own, kept apart from AUX's and saved. A
+input gain of the source heard: each source has its own, saved. A
 switch of the source, of the upper G# or of the upper A# fades over 5 ms, so it doesn't
 click; the source going out fades out of the outputs while the one coming in fades in, so a
 source that isn't monitored is never heard, not even during a switch.
+
+**USB** is stereo, as AUX is, and comes in at the level AUX would have with the same signal at
+its jack, but without mono. While the computer plays nothing (or [USB audio](#usb-audio) is
+off) it's silent.
 
 Over MIDI, CC 84 picks the source, CC 116 sets its effects and CC 117 its monitoring (see
 [Controllers](#controllers)), without saving them.
@@ -1602,7 +1613,38 @@ Mono is for a mono (TS) cable, such as one from a Lyra-8 or a guitar pedal: the 
 the right channel, so in stereo the source is heard on the left only. In mono the left channel
 feeds both sides, and the effects' stereo knobs spread it from there. On the [settings
 page](#settings-page), SHIFT + upper F# toggles it; while you hold SHIFT, the upper F# shows it
-(lit when mono). It's for AUX only: the mic is mono anyway, and plays on both sides either way.
+(lit when mono). It's for AUX only: the mic is mono anyway, and plays on both sides either way, and USB brings
+its own channels. With USB the source, SHIFT + upper F# switches [USB audio](#usb-audio)
+instead.
+
+## USB audio
+
+<!-- summary: FRIZZ as a USB sound card: record its master, play into it. -->
+
+On a computer's USB, FRIZZ is a **sound card**, called FrizZ, alongside its MIDI: 2 channels
+each way, 48 kHz, 24 bit, as USB Audio Class 1, which macOS, Windows, Linux and iPadOS know
+without a driver.
+
+- **From FRIZZ to the computer:** the master as it is before VOLUME, so a recording doesn't
+  change with the knob: the line out's signal at full VOLUME, before the safety limiter. Pick
+  FrizZ as an input in the DAW or the recording app.
+- **From the computer to FRIZZ:** the [input](#input-aux-the-mic-or-usb)'s third source, USB. Pick
+  FrizZ as an output, and on the [settings page](#settings-page) USB with the upper F# (blue).
+  Like AUX it has its own input gain, monitoring and effects, and the looper records it.
+
+**Set the computer (or the DAW) to 48 kHz for the best quality.** FRIZZ runs at 48 kHz only; a
+computer set to another rate converts on its side, which costs it a little quality and
+latency. The computer follows FRIZZ's own clock, both ways, so nothing drifts or clicks over a
+long take.
+
+**USB audio on or off:** on the settings page, with USB the source, SHIFT + upper F# switches
+it; while you hold SHIFT, the upper F# shows it (lit on, dim off). It's on out of the box, and
+saved. Switching it, FRIZZ leaves USB for a moment and comes back with the other setup: MIDI
+over USB is gone for about a second, then back. Off, FRIZZ is MIDI (and the [card
+reader](#the-card-as-a-usb-drive)) alone, as before: for a computer that has trouble with the
+sound card, or that you don't want to offer one. With USB audio off, USB stays a source you
+can pick, dimly blue, and silent. While the card is lent to the computer, USB audio can't be
+switched: the upper F# blinks red 3 times.
 
 ## Card and files
 
@@ -1613,7 +1655,7 @@ FRIZZ keeps what it saves on the SD card, in a folder `FRIZZ`, as text files. Le
 | File | Holds | Written |
 |---|---|---|
 | `FRIZZ/frizz_scenes.txt` | The 4 [FX scenes](#fx-scenes) | When you save, copy or delete a scene |
-| `FRIZZ/frizz_master.txt` | The [master compressor](#master-compressor) and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, and for AUX and the mic each their input gain, monitoring and effects | 2 s after the last change |
+| `FRIZZ/frizz_master.txt` | The [master compressor](#master-compressor) and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, USB audio, and for AUX, the mic and USB each their input gain, monitoring and effects | 2 s after the last change |
 | `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | The versions before | With each write of the file |
 | `FRIZZ/bug-1.txt`, `bug-2.txt` … | [Bug reports](#bug-reports) | When you ask for one |
 | `FRIZZ/a1.wav` … `h15.wav` | Your [loops](#loops-on-the-card) | Never: FRIZZ only reads them |
@@ -1643,18 +1685,39 @@ on again, so the scenes on the card aren't replaced by the session's.
 | `midi_feedback` | [MIDI feedback](#midi-feedback) | 1 on, 0 off |
 | `led_brightness` | [LED brightness](#led-brightness) | 25-100 |
 | `mono` | [Mono input](#mono-input) | 1 mono, 0 stereo |
-| `gain_aux`, `gain_mic` | Each source's input gain ([VOLUME knob](#volume-knob)) | 0-100 |
-| `aux_dry`, `mic_dry` | Each source's effects ([Input: AUX or the mic](#input-aux-or-the-mic)) | 0 through them, 1 past them |
-| `aux_live`, `mic_live` | Each source's monitoring | 1 on, 0 off |
+| `gain_aux`, `gain_mic`, `gain_usb` | Each source's input gain ([VOLUME knob](#volume-knob)) | 0-100 |
+| `aux_dry`, `mic_dry`, `usb_dry` | Each source's effects ([Input: AUX, the mic or USB](#input-aux-the-mic-or-usb)) | 0 through them, 1 past them |
+| `aux_live`, `mic_live`, `usb_live` | Each source's monitoring | 1 on, 0 off |
+| `usb_audio` | [USB audio](#usb-audio) | 1 on, 0 off |
 | `compressor2` | The master compressor's knobs | |
 
 A line FRIZZ doesn't know is skipped, and a setting left out keeps its default.
 
+### The card as a USB drive
+
+To get files on or off the card (loops, scenes, bug reports) while FRIZZ runs, lend it to the
+computer: on the [settings page](#settings-page), with a computer on USB, hold **SHIFT + LOOP
+for 2 s**. LOOP lights blue there while the card is lent, and the computer finds a drive with
+the card on it. The loop and the effects play on meanwhile.
+
+- **To take it back:** eject the drive on the computer, unplug the cable, or hold SHIFT + LOOP
+  for 2 s again. FRIZZ then reads the card afresh and looks for the loops again (the Loops page
+  shows what's there now).
+- **While it's lent, FRIZZ leaves the card alone:** saving a scene or a setting waits until
+  it's back, a loop can't be loaded from it, and a bug report can't be written.
+- **Refused** (LOOP blinks red 3 times): without a computer on USB, while LOOP records, while a
+  loop loads or FRIZZ looks for the loops (a few seconds after power-on, and after the card
+  comes back), or while FRIZZ writes the card.
+
+Eject the drive on the computer before you take the card back by the gesture, as you would any
+drive, so the computer has written everything.
+
 ### Taking the card out
 
 Take the card out or swap it only while the CHOMPI is off: a card pulled while FRIZZ runs
-isn't looked after. To get files on or off it (scenes, bug reports), use the multi-firmware
-launcher's [USB storage mode](INSTALL.md#usb-storage-mode) instead of taking it out. On a card
+isn't looked after. To get files on or off it (scenes, bug reports), lend it to the computer
+as a [USB drive](#the-card-as-a-usb-drive), or use the multi-firmware launcher's [USB storage
+mode](INSTALL.md#usb-storage-mode), instead of taking it out. On a card
 with several firmwares, FRIZZ keeps its `FRIZZ` folder apart from the others' files.
 
 ### Files from an older FRIZZ
@@ -1671,7 +1734,7 @@ each version.
 
 Every gesture on one page; each row links to where it's explained. SHIFT is holding CHOMPI.
 
-![Keys for the gestures to know: an FX key held then SHIFT latches, SHIFT then an FX key selects, SHIFT + LOOP taps the tempo, PLAY held + LOOP records in time, SHIFT + VOLUME turned is the input/loop mix, SHIFT + a scene key morphs, SHIFT + VOLUME held 2 s on the settings page writes a bug report](images/keys-play.svg)
+![Keys for the gestures to know: an FX key held then SHIFT latches, SHIFT then an FX key selects, SHIFT + LOOP taps the tempo, PLAY held + LOOP records in time, SHIFT + VOLUME turned is the input/loop mix, SHIFT + a scene key morphs, SHIFT + VOLUME held 2 s on the settings page writes a bug report, SHIFT + LOOP held 2 s there lends the card to the computer](images/keys-play.svg)
 
 ### On the play page
 
@@ -1750,13 +1813,14 @@ differs:
 | Lower A# | Clock source: Auto, TRS, USB, internal | [Clock source](#clock-source) |
 | Upper C# | MIDI out: off, TRS, TRS and USB | [MIDI out](#midi-out) |
 | Upper D# | MIDI feedback | [MIDI feedback](#midi-feedback) |
-| Upper F# | The input's source: AUX or the mic | [Input: AUX or the mic](#input-aux-or-the-mic) |
-| SHIFT + upper F# | AUX mono | [Mono input](#mono-input) |
-| Upper G# | The source's monitoring, on the outputs | [Input: AUX or the mic](#input-aux-or-the-mic) |
-| Upper A# | The source through the effects, or past them | [Input: AUX or the mic](#input-aux-or-the-mic) |
+| Upper F# | The input's source: AUX, the mic, USB | [Input: AUX, the mic or USB](#input-aux-the-mic-or-usb) |
+| SHIFT + upper F# | AUX mono; with USB the source, USB audio on / off | [Mono input](#mono-input), [USB audio](#usb-audio) |
+| Upper G# | The source's monitoring, on the outputs | [Input: AUX, the mic or USB](#input-aux-the-mic-or-usb) |
+| Upper A# | The source through the effects, or past them | [Input: AUX, the mic or USB](#input-aux-the-mic-or-usb) |
 | Turn knob 1; SHIFT + turn; SHIFT + press | LED brightness; in steps of 25%; back to 100% | [LED brightness](#led-brightness) |
 | Turn VOLUME; press | Output gain, input gain | [Settings page](#settings-page) |
 | SHIFT + VOLUME held 2 s | A bug report | [Bug reports](#bug-reports) |
+| SHIFT + LOOP held 2 s | The card lent to the computer as a USB drive, or taken back | [The card as a USB drive](#the-card-as-a-usb-drive) |
 
 ### At power-on
 
@@ -1911,11 +1975,11 @@ save, copy and delete 66, 68 and 70. Below them:
 | 14-22 | The effect in focus, as on its own channel |
 | 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the compressor). It's the effect the knobs edit, as SHIFT + its key picks it, and it follows when you pick one by hand |
 | 24-31 | The master compressor's knobs, as channel 15's 14-21: 24-27 page 1 (threshold, ratio, attack, release), 28, 30 and 31 page 2 (the compressor's Mix, sidechain highpass, Makeup); 29 does nothing |
-| 84 | [The input's source](#input-aux-or-the-mic): 0-63 AUX, 64-127 the mic, as the settings page's upper F# picks it |
+| 84 | [The input's source](#input-aux-the-mic-or-usb) in thirds: 0-42 AUX, 43-85 the mic, 86-127 USB, as the settings page's upper F# picks it |
 | 85 | Output gain |
-| 86 | Input gain, of the input heard (AUX or the mic) |
+| 86 | Input gain, of the input heard (AUX, the mic or USB) |
 | 87 | Input/loop mix |
-| 89 | Headphone feed, as VOLUME's page 3: 127 the master out, 0 the input alone (AUX or the mic) |
+| 89 | Headphone feed, as VOLUME's page 3: 127 the master out, 0 the input alone (AUX, the mic or USB) |
 | 90 | The loop's speed in semitones, set outright: 64 as recorded (1×), 0 the slowest (1/16×), 127 double. Only with a loop; forward or in reverse as it runs |
 | 3 | Morph to scene 0-4 (0 the blank one), as SHIFT + its key, landing on the bar line (CC 9's), counted from the CC. During a morph, drop or build-up, it stops that where it is and starts the new one from there. It acts as the value changes: to morph to the same scene again, send another value first (127, no scene) |
 | 9 | How many bars a morph over CC 3, or a drop over CC 83, takes, 1-8 (1 at first) |
@@ -1926,8 +1990,8 @@ save, copy and delete 66, 68 and 70. Below them:
 | 82 | A [tempo tap](#tap-tempo), as the value crosses 64 upward: a button sending 127 and 0 |
 | 83 | [Drop](#dropping-to-a-scene) to scene 0-4 (0 the blank one) hard on the next bar line, or CC 9's, counted from the CC, as SHIFT + its key and a press of the transport knob. Like CC 3, it stops a sequence running and acts as the value changes: to drop to the same scene again, send another value first (127, no scene) |
 | 102-115 | The latch of white key 1-14 (102 the freezer … 108 the phaser … 114 the reverb, 115 the chaos key), as CC 22 |
-| 116 | [The source's effects](#input-aux-or-the-mic), the source heard now: 0-63 through them, 64-127 past them, as the settings page's upper A#. Set also while the source isn't monitored |
-| 117 | [The source's monitoring](#input-aux-or-the-mic), the source heard now: 0-63 off, 64-127 on, as the settings page's upper G# |
+| 116 | [The source's effects](#input-aux-the-mic-or-usb), the source heard now: 0-63 through them, 64-127 past them, as the settings page's upper A#. Set also while the source isn't monitored |
+| 117 | [The source's monitoring](#input-aux-the-mic-or-usb), the source heard now: 0-63 off, 64-127 on, as the settings page's upper G# |
 | 120, 123 | All Sound Off, All Notes Off: let go of every key MIDI holds |
 
 - **Set outright**, a value does what the knob or key would: the LEDs follow, the scene key
@@ -2072,7 +2136,7 @@ where [MIDI out](#midi-out) goes, so MIDI out has to be on too.
 - **What goes out:** an effect's knobs (CC 14-21) and latch (CC 22) on its own channel, and
   for the effect in focus also on the global channel (CC 14-22); the latches by key (CC
   102-115), the focus (CC 23) as you pick an effect, the compressor (CC 24-31), the gains and
-  the input/loop mix (CC 85-87), the headphone feed (CC 89), the input (CC 84: 0 AUX, 127 the mic, also
+  the input/loop mix (CC 85-87), the headphone feed (CC 89), the input (CC 84: 0 AUX, 64 the mic, 127 USB, also
   when the jack switches it; CC 116 and 117, 0 or 127, the source's effects and monitoring, also
   when a switch of the source brings up the other's), the loop's speed (CC 90), and the crossfader
   (CC 80) while you hold it by hand.
@@ -2139,6 +2203,11 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
 - The tempo: 50-300 BPM, 120 at power-on.
 - Every output has a fixed safety limiter after VOLUME (see [Master
   compressor](#master-compressor)).
+- USB audio (see [USB audio](#usb-audio)): USB Audio Class 1 at full speed, 48 kHz, 24 bit, 2
+  channels each way, asynchronous: the computer follows FRIZZ's clock, about 2 ms of buffer
+  each way in FRIZZ. To the computer, the master before VOLUME and the safety limiter, at the
+  line out's level at full VOLUME, clipped only at full scale; from it, the source USB, at
+  the level AUX would have with the same signal at its jack.
 - The effects: the shifter lands within about a cent of the interval, its taps lining up
   within 7.5 ms where they start over. The folder's sine fold keeps its aliases more than
   85 dB down on a sine below about 1.5 kHz at any drive; the triangle's corners alias, and

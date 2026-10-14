@@ -1,13 +1,15 @@
 # The input (#113, #177): a cable in AUX picks AUX; the settings page's upper F# picks the
-# other source by hand, G# puts it live, A# sets its effects (through / dry, dark while not
-# live; #243); each source has its own, saved (on the device play keeps them in RAM), the source
-# isn't. On the device AUX has its cable in, as the twin has at first
+# next source by hand (AUX, the mic, USB, #196), G# puts it live, A# sets its effects (through
+# / dry, dark while not live; #243); each source has its own, saved (on the device play keeps
+# them in RAM), the source isn't. On the device AUX has its cable in, as the twin has at first
 input sine 220 0.3
 # what the card keeps, as a fresh card has it: the device's card holds the player's own (#214)
 set settings aux_dry 0
 set settings aux_live 1
 set settings mic_dry 0
 set settings mic_live 0
+set settings usb_dry 0
+set settings usb_live 1
 at 6000
 toggle 1
 wait 300
@@ -34,6 +36,12 @@ wait 1000
 tap KEY_24
 wait 300
 expect led smt 8 242424
+tap KEY_23
+wait 300
+# USB (#196), its own: live through the effects, F# blue
+expect led smt 7 0000fc
+expect led smt 8 fcfcfc
+expect led smt 9 00fc00
 tap KEY_23
 wait 300
 # AUX again, dry as it was left

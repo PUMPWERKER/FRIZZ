@@ -68,6 +68,11 @@ The output goes to `code/src/build/`:
 - `FRIZZ.elf`: the same firmware with debug info, for gdb
 
 `make BENCH=1` builds the CPU bench into `code/src/build-bench/` ([below](#measure-the-cpu-load)).
+`make USB_SAFETY=1` builds a development build for a new USB stack into `build-usbsafety/`:
+with `UsbDevice.h`'s `Watch()`, an enumeration that never finishes (10 s) or a computer that
+sends FRIZZ no MIDI for 60 s restarts into the launcher, a way back without the power switch.
+Use it for the first flash of a USB change, after `test/unit.sh usbtransport`; never hand it
+out (a computer that sends no MIDI is no fault).
 Neither is committed: a build is named by its md5, and `tools/builds.py` builds both and
 prints it (`tools/builds.py md5` only prints). That works because GCC 10.3 builds the same
 source to the same bytes on any machine; another compiler gives other bytes (and the risk
@@ -441,6 +446,36 @@ alone, the two recordings' THD side by side. Run it on an empty looper.
 For an A/B, send each build to the test slot in turn (`flash.py FILE --slot 12`) and measure
 from a fresh start each time; `remote.py load` and `remote.py play SCRIPT --cpu` give the load.
 
+### USB audio: the sound card and the drive
+
+FRIZZ is a USB Audio Class 1 sound card (`UsbDevice.h`, #196): ALSA's `hw:FrizZ`, 2 channels each
+way, `S24_3LE` at 48000. PipeWire opens it too: for the raw `hw:` tests set its profile off
+first and back after (`LANG=C pactl list cards short` names it
+`alsa_card.usb-Chompi_Club_FrizZ_…`; `pactl set-card-profile CARD off`, then
+`output:analog-stereo+input:analog-stereo`; `LANG=C`, as pactl's words are localised).
+`tools/usbaudio.py` measures it without packages:
+
+```bash
+cd firmware
+tools/usbaudio.py gen /tmp/440.wav --freq 440 --secs 120 --db -12   # a sine to play into FRIZZ
+aplay -D hw:FrizZ /tmp/440.wav & arecord -D hw:FrizZ -f S24_3LE -c2 -r48000 -d 118 /tmp/back.wav
+tools/usbaudio.py sine /tmp/back.wav    # level, frequency, glitches and phase steps
+tools/usbaudio.py rate FrizZ --secs 60  # the streams' rate against the computer's clock, the feedback
+tools/usbaudio.py stats                 # FRIZZ's own counts (kCmdDev's USB): blocks, FIFOs, the drive
+tools/usbaudio.py card on|off           # the card lent as a drive, or taken back (SHIFT + LOOP's way)
+tools/usbjitter.py --loads 40           # USB MIDI out's clock while cubbis load (#265)
+```
+
+- The loop through FRIZZ (`aplay` into the source USB, the master back) is the sample-exact
+  test: with USB the source and nothing else on, what comes back is the sine at 0.675 × its
+  level (75 % input gain × 3 × the line out's 0.3) and in phase. Use 440 Hz: at 997 Hz one
+  49-frame packet is about one period, so a lost one hides.
+- A lent card shows up as a drive with the label `CHOMPI-SD` and the vendor `FrizZ`
+  (`tools/chompi.py` tells it from the USB storage firmware's by that). Write only into a
+  folder of its own (`/USBTEST`) and list the root, `/FRIZZ` and `/TAPE` before and after.
+- A build with a new USB stack goes first as `make USB_SAFETY=1`, after `test/unit.sh
+  usbtransport`, and every hold chain ends in `; ./flash.py --run 10`.
+
 ### The MIDI suite: the release test's MIDI items, unattended
 
 `tools/midisuite.py` runs the release test's MIDI clock, sync, MIDI out and MIDI control
@@ -693,9 +728,15 @@ erase a stuck Seed, but the generic Daisy bootloader it offers is not CHOMPI's.
 ## Where things are in `code/src`
 
 ```
-chompi_main.cpp        entry point: audio callback, main loop, boot sequence, AUX's jack picking the input
-passthroughEngine.h    the engine: the input (AUX or the built-in mic) and its gain, the looper, input/loop mix ("dry/wet" in the code), punch-in FX,
-                       master compressor, output gain, headphone cue, safety limiter
+chompi_main.cpp        entry point: audio callback, main loop, boot sequence, AUX's jack picking the input,
+                       the card lent as a USB drive
+passthroughEngine.h    the engine: the input (AUX, the built-in mic or USB) and its gain, the looper, input/loop mix ("dry/wet" in the code), punch-in FX,
+                       master compressor, output gain, headphone cue, safety limiter, the master to USB
+UsbDevice.h / .cpp     FRIZZ's USB-C port on TinyUSB (../libs/tinyusb): the sound card (UAC1), MIDI,
+                       the card as a drive; TinyUSB's task on TIM7 (#196)
+usb_descriptors.c/.h   the USB descriptors, with and without the sound card; tusb_config.h TinyUSB's settings
+UsbMidiTransport.h     libDaisy's MIDI transport on TinyUSB (test/usbtransport.cpp)
+CardLend.h             the card lent to the computer: what the settings page shows and asks
 FxChain.h              the punch-in effects in their processing order, with a level meter each
 FxParams.h             each effect's knobs: how many, defaults, steps, coarse grids; the compressor's too
 FxSlots.h              each effect's key, LED and colours; the compressor's key
@@ -756,6 +797,10 @@ chompi_sram.lds        linker script (the firmware runs from SRAM, placed there 
   creates on a new card) and writes it only from `MainLoop`, when a scene is saved, copied or
   deleted, 2 s after the compressor's knobs, the mono input or the MIDI settings were last
   changed (`SceneStore.h`), or for a bug report (`EventLog.h`).
+- **TinyUSB is called only from its task and the USB interrupt** (`UsbDevice.h`): MainLoop
+  posts what it wants (a transfer done, the bus left for a switch) and the task does it.
+  TinyUSB's lock masks the USB interrupt, not the task's timer, so a call from MainLoop could be
+  preempted in the middle of TinyUSB's event queue.
 - **MIDI is read in the audio callback, acted on in `MainLoop`.** `MidiControl.h` only notes
   what came (keys, detents, a table of controller values); the play page takes the rest in
   `MainLoop` and answers queries over USB from there, never from the interrupt.

@@ -340,7 +340,7 @@ checks need only `g++` and `python3`; the browser twin needs Emscripten in `~/op
 `firmware/test/all.sh` runs everything, side by side (about a minute; the first run ~80 s): `check.sh` (the engine against HEAD;
 a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
 `pitch`, `tape`, `block`, `crusher`, `freezer`, `scenes`, `store`, `clicks`, `delay`, `controls`, `keys`, `looper`, `tempo`,
-`comp`, `level`, `sleep`, `inserts`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `splice`, `usbmidi`, `routing`, `measure`, `loops`, `sddisk`, `twinlib`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
+`comp`, `level`, `sleep`, `inserts`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `splice`, `usbmidi`, `routing`, `measure`, `loops`, `sddisk`, `twinlib`, `usbtransport`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
 `NAME.cpp`; [`firmware/test/README.md`](firmware/test/README.md) says what each covers.
 `check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail.
 
@@ -377,11 +377,17 @@ comments alone (or benches again).
 
 ## Firmware architecture
 
-`chompi_main.cpp` documents the skeleton. Two execution contexts:
+`chompi_main.cpp` documents the skeleton. Two execution contexts, and USB's task between them:
 
 1. **`AudioCallback()`**, the audio ISR, once per 24-sample block at 48 kHz: polls controls,
-   reads MIDI (`MidiClock.h`), generates UI events, runs the engine.
-2. **`MainLoop()`**: UI event dispatch, LEDs, the card, USB answers, battery.
+   reads MIDI (`MidiClock.h`), generates UI events, runs the engine, USB audio in and out.
+2. **`MainLoop()`**: UI event dispatch, LEDs, the card (and lending it as a USB drive), USB
+   answers, battery.
+
+USB runs on TinyUSB (`UsbDevice.h`, #196): a UAC1 sound card, MIDI and the card as a drive, its
+task on TIM7 at 4 kHz (priority 2, below the audio callback). TinyUSB is called only from that
+task and the USB interrupt; `MainLoop()` posts what it wants. A change to USB gets `test/unit.sh
+usbtransport` and a first flash of `make USB_SAFETY=1` before anything else.
 
 **No file I/O and no blocking call from the audio ISR.** FRIZZ reads the card once at boot and
 writes it only from `MainLoop()`: when an FX scene is saved, copied or deleted, 2 s after the
@@ -392,7 +398,7 @@ master compressor's knobs, the mono input or the MIDI settings rest (`SceneStore
 (`MidiClock.h` → `TempoClock.h`, `TapTempo.h` as the fallback), notes, CCs, program changes and
 FRIZZ's SysEx (`MidiControl.h`), answered over USB from `MainLoop()`. MIDI out
 (`MidiOut.h`, off unless the settings page asks): the clock and the loop's transport, out of
-the jack from the audio callback without waiting, over USB from `MainLoop()`.
+the jack from the audio callback without waiting, over USB from TinyUSB's task (#265).
 
 The play page is `NormalPage.h`; the engine is `passthroughEngine.h` → `Looper.h` +
 `FxMorph.h` → `FxChain.h` → `MasterComp.h` → output gain → `limiter.h`. Large buffers live in
@@ -401,7 +407,7 @@ loop and the event log (`SDRAM_NOINIT`) aren't, as they're always written before
 buffers live in internal RAM, 32-byte aligned, written in whole sectors (`EventLog::Flush`).
 
 **Memory**: the firmware runs from SRAM, loaded by CHOMPI's bootloader (`APP_TYPE=BOOT_SRAM`).
-Code has about 17 KB left (`SRAM_EXEC`), the bench build ~11 KB, and data (`SRAM`) ~19 KB (2026-10-14, after the loop loader and without the USB host stack, #196); `docs/CAPACITY.md` lists every
+Code has about 10 KB left (`SRAM_EXEC`), the bench build **~4.3 KB**, and data (`SRAM`) ~25 KB (2026-10-14, with USB on TinyUSB, #196); `docs/CAPACITY.md` lists every
 region and the ways to make room. Never use `make program-boot`, and never swap in upstream
 libDaisy: the vendored copy is patched (`THIRD_PARTY.md`).
 `__attribute__((optimize("-O0")))` and similar per-function overrides (`ProcessAllControls`)

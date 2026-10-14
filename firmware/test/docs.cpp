@@ -1220,6 +1220,7 @@ static void CheckSettings()
         return colours;
     };
     const Strings factor = array("kFactorColors"), source = array("kSourceColors");
+    const Strings input = array("kInSourceColors"); // the upper F#'s, by the input's source
 
     // each key's colours, as Draw lights them: KeyLed(KEY, COLOUR, ...) and
     // SmtLed(KeyLedOf(KEY), COLOUR, ...), COLOUR a name, a choice of two or a colour array
@@ -1243,6 +1244,8 @@ static void CheckSettings()
             names = factor;
         else if (colour.find("kSourceColors") != std::string::npos)
             names = source;
+        else if (colour.find("kInSourceColors") != std::string::npos)
+            names = input;
         else
             for (const auto& w : Words(colour))
                 if (!ColourName(w).empty())

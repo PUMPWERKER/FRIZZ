@@ -13,6 +13,8 @@ firmware/code/src/build/
 firmware/code/src/build-bench/
 firmware/code/src/build-itcm/
 firmware/code/src/build-bench-itcm/
+firmware/code/src/build-usbsafety/
+firmware/code/src/build-bench-usbsafety/
 firmware/test/build/
 firmware/twin/build/
 firmware/twin/web/build/

@@ -1178,6 +1178,9 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc |= Remote({"get", "settings"}, out);
     Check(rc == 0 && Has(out, "clock_factor    50\n") && Has(out, "midi_channel    5\n"),
           "remote: set the clock factor, get reads every setting");
+    // the settings' 19 values come in an answer of 49 bytes, two USB transfers (#196)
+    Check(rc == 0 && Has(out, "usb_live        1\n") && Has(out, "usb_audio       1\n") && !Has(out, "?"),
+          "remote: and the last ones, USB's, from an answer longer than a USB transfer");
     rc = Remote({"set", "settings", "led_brightness", "20"}, out);
     Check(rc != 0 && Has(out, "refused"), "remote: a value a setting doesn't take is refused");
     rc = Remote({"set", "volume", "mix", "1"}, out);

@@ -153,6 +153,8 @@ namespace chompi
 
     /** Before a restart: true once the play page has nothing left for the card */
         bool MasterSettled() { return normal_page_.MasterSettled(); }
+        /** Whether FRIZZ should be a USB sound card (the settings page's, UsbDevice.h) */
+        bool UsbAudio() const { return normal_page_.UsbAudio(); }
 #if !FRIZZ_BENCH
         /** The Loops page's loops (NormalPage::InitLoops, LoopsProcess) */
         void InitLoops(LoopLoader *loader, int16_t *rec) { normal_page_.InitLoops(loader, rec); }

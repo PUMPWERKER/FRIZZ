@@ -73,7 +73,8 @@ EMPTY = {("flanger", 4), ("resonator", 4), ("comp", 5)} | {("chaos", i) for i in
 # the settings each case starts from: the global channel 16, the effect channels over TRS on,
 # AUX live through the effects and the mic through them, not live (#177), nothing else
 BASELINE = dict(midi_channel=16, midi_transport=0, clock_factor=100, clock_source=0, midi_out=0,
-                midi_block_trs=1, midi_feedback=0, aux_dry=0, aux_live=1, mic_dry=0, mic_live=0)
+                midi_block_trs=1, midi_feedback=0, aux_dry=0, aux_live=1, mic_dry=0, mic_live=0,
+                usb_dry=0, usb_live=1)
 SOURCES = dict(auto=0, trs=1, usb=2, internal=3)
 OUTS = dict(off=0, trs=1, all=2)
 
@@ -1227,13 +1228,13 @@ def feedback(r):
 
 
 def input_bits(r):
-    """STATE's input byte (#177): the mic 1 (else AUX), its effects dry 2, it live 4"""
+    """STATE's input byte (#177): the mic 1 (else AUX), its effects dry 2, it live 4, USB 8 (#196)"""
     return r.f.state()[25]
 
 
-@case("input-cc", "8: CC 84 picks the input's source, CC 116 its effects, CC 117 it live, in the "
-      "order they came, each source its own; feedback sends them, not what came; CC 88 and 91, "
-      "as a keyboard sends them at power-on, do nothing (#177)")
+@case("input-cc", "8: CC 84 picks the input's source in thirds (AUX, the mic, USB, #196), CC 116 "
+      "its effects, CC 117 it live, in the order they came, each source its own; feedback sends "
+      "them, not what came; CC 88 and 91, as a keyboard sends them at power-on, do nothing (#177)")
 def input_cc(r):
     r.setting(midi_out=OUTS["all"], midi_feedback=1)
     log = r.usb.log
@@ -1258,16 +1259,21 @@ def input_cc(r):
     r.send_usb(cc(GLOBAL, 117, 0))
     time.sleep(.2)
     aux_off = input_bits(r)
-    r.send_usb(cc(GLOBAL, 116, 0) + cc(GLOBAL, 84, 127))
+    r.send_usb(cc(GLOBAL, 116, 0) + cc(GLOBAL, 84, 64))
     time.sleep(.2)
     mic = input_bits(r)
+    r.send_usb(cc(GLOBAL, 84, 127))
+    time.sleep(.2)
+    usb = input_bits(r)
     r.send_usb(cc(GLOBAL, 84, 0))
     time.sleep(.2)
     aux = input_bits(r)
     r.check("CC 116 at 127: AUX dry", aux_dry == 2 | (start & 4), aux_dry, 2 | (start & 4))
     r.check("CC 117 at 0: AUX not live", aux_off == 2, aux_off, 2)
-    r.check("CC 116 at 0, then CC 84 at 127 in one packet: the 116 AUX's, the mic its own", mic & 1 and aux == 0,
+    r.check("CC 116 at 0, then CC 84 at 64 in one packet: the 116 AUX's, the mic its own", mic & 1 and aux == 0,
             "the mic %d, AUX then %d" % (mic, aux), "the mic odd, AUX 0")
+    r.check("CC 84 at 127: USB, its own, live through the effects (#196)", usb & 8 and usb & 4 and not usb & 3,
+            usb, "USB, live: 12")
     time.sleep(.3)
     back = {(m[1], m[2]) for t, m in log if t >= t0 and len(m) == 3 and m[0] == 0xBF and m[1] in (84, 116, 117)}
     sent_back = sorted(k for k in back if k[0] == 84)
@@ -1459,7 +1465,8 @@ def reset(r, snap, scenes):
     r.usb.echo = None
     r.f.release()
     r.f.send(remote.SWITCH, [0])
-    r.setting(**BASELINE)
+    # a FRIZZ from before USB audio (#196) has fewer settings: the ones it has
+    r.setting(**{k: v for k, v in BASELINE.items() if remote.SETTING_NAMES.index(k) < len(snap.settings)})
     r.erase()
     snap.restore(r, scenes)
     time.sleep(.6)  # the clock let go (0.5 s)

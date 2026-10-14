@@ -954,7 +954,7 @@ def daw_input(r, d):
     d.send(midisuite.cc(GLOBAL, 84, 0))  # AUX: the cable is in on the device
     time.sleep(.3)
     start = midisuite.input_bits(r)
-    d.lane(4, [(.1, 0xBF, 116, 127), (.3, 0xBF, 84, 127), (.5, 0xBF, 117, 127)])
+    d.lane(4, [(.1, 0xBF, 116, 127), (.3, 0xBF, 84, 64), (.5, 0xBF, 117, 127)])  # 64: the mic's third (#196)
     d.tempo(120)
     d.locate(0)
     d.play()

@@ -51,6 +51,8 @@ struct Source
     }
 };
 static Source aux_in, mic_in;
+// what a computer plays into FRIZZ over USB (#196): while it isn't OFF, it plays
+static Source usb_in;
 
 // MIDI clock out of a virtual sequencer on the jack and a DAW over USB (clockgen.h)
 static ClockGen clock_trs, clock_usb;
@@ -109,9 +111,15 @@ static void LogLeds()
 static void RunMs(uint32_t ms)
 {
     const size_t blocks = ms * 2;
-    float in[kBlockSize * kChannels], out[kBlockSize * kChannels];
+    float in[kBlockSize * kChannels], out[kBlockSize * kChannels], usb[kBlockSize * 2];
     for (size_t b = 0; b < blocks; b++)
     {
+        if (usb_in.mode != Source::OFF)
+        {
+            for (size_t i = 0; i < kBlockSize; i++)
+                usb_in.Next(usb[i * 2], usb[i * 2 + 1]);
+            SetUsbAudioIn(usb);
+        }
         clock_trs.Step(BlockMs());
         clock_usb.Step(BlockMs());
         for (size_t i = 0; i < kBlockSize; i++)
@@ -227,7 +235,8 @@ static const char* const kVolumeNames[] = {"out", "in", "mix", "headphones"};
 static const char* const kSettingNames[] = {
     "mono",     "midi_channel",  "midi_transport", "clock_factor", "clock_source",
     "midi_out", "led_brightness", "midi_block_trs", "midi_feedback", "aux_dry",
-    "gain_aux", "gain_mic",       "mic_dry",        "aux_live",      "mic_live"};
+    "gain_aux", "gain_mic",       "mic_dry",        "aux_live",      "mic_live",
+    "gain_usb", "usb_dry",        "usb_live",       "usb_audio"};
 
 static int IndexOf(const char* const* names, int count, const std::string& name)
 {
@@ -411,11 +420,24 @@ int PlayScript(std::istream& src_in, FILE* leds, std::vector<float>* out)
             SetBattery(v, a == "plugged" || b == "plugged", a == "full" || b == "full");
             continue;
         }
-        if (cmd == "input" || cmd == "mic")
+        if (cmd == "input" || cmd == "mic" || cmd == "usbaudio")
         {
-            Source& src = cmd == "mic" ? mic_in : aux_in;
+            Source& src = cmd == "mic" ? mic_in : cmd == "usbaudio" ? usb_in : aux_in;
             std::string what;
             in >> what;
+            if (cmd == "usbaudio" && (what == "record" || what == "eject"))
+            {
+                // usbaudio record on|off: the computer records FRIZZ; usbaudio eject: it ejects
+                // the card lent to it
+                std::string on;
+                if (what == "eject")
+                    EjectCard();
+                else if (in >> on && (on == "on" || on == "off"))
+                    SetUsbRecording(on == "on");
+                else
+                    Fail(line_no, "usbaudio record on|off");
+                continue;
+            }
             if (what == "sine")
             {
                 in >> src.freq >> src.amp;
@@ -590,6 +612,16 @@ int PlayScript(std::istream& src_in, FILE* leds, std::vector<float>* out)
                     Fail(line_no, "usb sent" + (got.empty() ? std::string(" nothing") : got) +
                                       ", not" + want);
             }
+            else if (what == "usbaudio")
+            {
+                // expect usbaudio on|off: FRIZZ on the bus as a sound card, or not
+                std::string want;
+                in >> want;
+                if (want != "on" && want != "off")
+                    Fail(line_no, "expect usbaudio on|off");
+                else if (UsbAudioOn() != (want == "on"))
+                    Fail(line_no, std::string("USB audio is ") + (UsbAudioOn() ? "on" : "off"));
+            }
             else if (what == "off")
             {
                 if (Powered())
@@ -601,7 +633,7 @@ int PlayScript(std::istream& src_in, FILE* leds, std::vector<float>* out)
                     Fail(line_no, "powered off");
             }
             else
-                Fail(line_no, "expect led, usb, on or off");
+                Fail(line_no, "expect led, usb, usbaudio, on or off");
         }
         else
             Fail(line_no, "unknown command " + cmd);
