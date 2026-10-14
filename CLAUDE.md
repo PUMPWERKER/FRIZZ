@@ -401,7 +401,7 @@ loop and the event log (`SDRAM_NOINIT`) aren't, as they're always written before
 buffers live in internal RAM, 32-byte aligned, written in whole sectors (`EventLog::Flush`).
 
 **Memory**: the firmware runs from SRAM, loaded by CHOMPI's bootloader (`APP_TYPE=BOOT_SRAM`).
-Code has about 11 KB left (`SRAM_EXEC`), the bench build only ~5 KB, and data (`SRAM`) ~18 KB (2026-10-14, after the loop loader); `docs/CAPACITY.md` lists every
+Code has about 17 KB left (`SRAM_EXEC`), the bench build ~11 KB, and data (`SRAM`) ~19 KB (2026-10-14, after the loop loader and without the USB host stack, #196); `docs/CAPACITY.md` lists every
 region and the ways to make room. Never use `make program-boot`, and never swap in upstream
 libDaisy: the vendored copy is patched (`THIRD_PARTY.md`).
 `__attribute__((optimize("-O0")))` and similar per-function overrides (`ProcessAllControls`)

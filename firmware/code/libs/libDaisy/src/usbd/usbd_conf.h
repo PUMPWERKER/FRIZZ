@@ -89,11 +89,16 @@ extern "C"
 
 /* Memory management macros */
 
-/** Alias for memory allocation. */
-#define USBD_malloc malloc
+/** Alias for memory allocation.
+    FRIZZ: a static buffer, not malloc (usbd_conf.c), so the linker counts the CDC
+    class's handle and newlib's unbounded _sbrk never runs past the end of SRAM. */
+#define USBD_malloc USBD_static_malloc
 
     /** Alias for memory release. */
-#define USBD_free free
+#define USBD_free USBD_static_free
+
+    void *USBD_static_malloc(uint32_t size);
+    void  USBD_static_free(void *p);
 
 /** Alias for memory set. */
 #define USBD_memset memset

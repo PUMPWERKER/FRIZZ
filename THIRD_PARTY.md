@@ -59,7 +59,7 @@ In TEMPO and WAVE:
   compilation: the firmware builds against pristine upstream, but its MIDI output timing won't
   match the released firmware. Keep the vendored file.
 
-FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with four changes:
+FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with six changes:
 - `src/usbd/usbd_desc.c` names the USB product "FrizZ".
 - `src/hid/midi_parser.cpp` follows MIDI 1.0 where WAVE's didn't:
   - A real-time byte (a clock tick, 0xF8-0xFF) inside a SysEx or another message is passed on,
@@ -78,15 +78,31 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with four changes:
   late (the audio DMA's has the same priority) and the host's next SETUP had already come in,
   that STALL held into the next transfer, its reply stayed in the FIFO, and every reply after
   it went out one late: the USB names garbled (#88).
+- `src/sys/fatfs.cpp` and `src/sys/system.cpp` leave out the USB host: `FatFSInterface` no
+  longer links a USB stick's driver for `MEDIA_USB` (FRIZZ mounts the SD card only), and the
+  OTG_HS interrupt handlers call only the device's handler (`HAL_PCD_IRQHandler`), not the
+  host's. ST's USB host stack (`usbh_*`, `usb_host`, `stm32h7xx_hal_hcd`) isn't linked any
+  more: 6.4 KB of code and 0.7 KB of data (#196).
+- `src/usbd/usbd_conf.h` and `src/usbd/usbd_conf.c` give the CDC class its handle (540 B) from a
+  static buffer, `USBD_static_malloc`, as ST's own templates do, instead of `malloc`: newlib's
+  `_sbrk` grows the heap from the end of `.bss` without a bound, so with internal RAM full it
+  would run past it at boot (a freeze in the fork lost-tty/CHOMPI), where the buffer fails the link.
+  One handle, for FRIZZ's one USB device; it's the same buffer on every Init, and freeing it
+  does nothing (#196).
 
-Its prebuilt `build/libdaisy.a` is WAVE's with only those four objects, `usbd_desc.o`,
-`midi_parser.o`, `usb_midi.o` and `usbd_conf.o`, rebuilt from them. They were built with GCC 10.3 and
-libDaisy's own flags (`make build/src/hid/midi_parser.o` in its folder, then `arm-none-eabi-ar r
-build/libdaisy.a build/src/hid/midi_parser.o`). These reproduce WAVE's objects from WAVE's source: the
-same code, only the debug information's paths differ, and FRIZZ.bin comes out byte for byte
-the same (checked for `usb_midi.o`, #157, and `usbd_conf.o`, #88; `midi_parser.o` rebuilt
-from the source before #166 disassembles as the archive's). A changed `libdaisy.a` (or `libdaisysp.a`) links
-FRIZZ again on the next `make` (#161).
+Its prebuilt `build/libdaisy.a` is WAVE's with only the objects of those changes rebuilt:
+`usbd_desc.o`, `midi_parser.o`, `usb_midi.o`, `usbd_conf.o`, `fatfs.o`, `system.o` and
+`usbd_cdc.o` (whose code changes with `usbd_conf.h`'s macro; of the other objects that include
+it none does). They were built with GCC 10.3 and libDaisy's own flags (`make
+build/src/hid/midi_parser.o` in its folder, then `arm-none-eabi-ar r build/libdaisy.a
+build/src/hid/midi_parser.o`; delete the object first to rebuild it, `make -B` fails on the
+`build` folder). The loose objects in `build/src/` stay WAVE's: only the archive is linked.
+These reproduce WAVE's objects from WAVE's source: the same code, only the debug information's
+paths differ, and FRIZZ.bin comes out byte for byte the same (checked for `usb_midi.o`, #157,
+and `usbd_conf.o`, #88; `midi_parser.o` rebuilt from the source before #166, and `fatfs.o`,
+`system.o` and every object that includes `usbd_conf.h`, rebuilt from the source before #196,
+disassemble as the archive's). A changed `libdaisy.a` (or `libdaisysp.a`) links FRIZZ again on
+the next `make` (#161).
 
 FRIZZ doesn't use `src/util/sd_diskio.c`'s `SD_read` and `SD_write` (they stay in the archive,
 unchanged): its own, `firmware/code/src/SdDisk.h`, take their place in FatFs's driver table
