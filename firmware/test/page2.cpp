@@ -422,6 +422,15 @@ static void TestReverb()
     const float held = ReverbRun(1.f, 0.f, 0.f, 200000, 240000);
     printf("  reverb 4 s on: plain %.5f, frozen %.5f\n", fades, held);
     Check(held > 20.f * fades && held > 1e-3f, "reverb: freeze holds the room");
+    {
+        // held a minute, the room doesn't grow: the smear's read stays inside its allpass (at
+        // Beads' 10 +- 80 it reached into del2's past, a second feedback path, and the frozen
+        // room rose ~20dB to the clip)
+        const float early = ReverbRun(1.f, 0.f, 0.f, 48000, 96000);
+        const float late = ReverbRun(1.f, 0.f, 0.f, 24000 + 60 * 48000, 24000 + 61 * 48000);
+        printf("  reverb frozen: %.5f at 1 s, %.5f a minute on\n", early, late);
+        Check(late > 1e-3f && late < early * 1.12f, "reverb: frozen a minute, the room doesn't grow");
+    }
     size_t plain_on = 0, pre_on = 0;
     ReverbRun(0.f, 0.f, 0.f, 0, 30000, false, &plain_on);
     ReverbRun(0.f, 1.f, 0.f, 0, 30000, false, &pre_on);
