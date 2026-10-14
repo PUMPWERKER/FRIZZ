@@ -129,21 +129,23 @@ public:
             {
                 // a burst of pulses (a tap refit, a jump) sends one: the next re-aligns
                 const uint32_t at = engine.BlockLoopPulse(0);
+                uint8_t started = 0; // the ports a Start or Continue went to
                 if (start_)
                 {
-                    Transport(kStart, start_ & Ports(back));
+                    started = Transport(kStart, start_ & Ports(back));
                     start_ = 0;
                 }
                 else if (continue_at_ != kNone && at % kPulsesPer16th == 0)
                 {
-                    Transport(kContinue, Ports(back));
+                    started = Transport(kContinue, Ports(back));
                     continue_at_ = kNone;
                 }
                 // a tick within half a tick of the last one sent is that one, re-aligned: the
                 // passed-on clock's bar line a quantized loop starts on, or a halfway tick
-                // that came late as the grid moved
+                // that came late as the grid moved; but not where a Start or Continue just
+                // went: gear counts from the tick after it (#198)
                 const float tick = .5f * tempo.PulseSamples();
-                Tick(tick, .5f * tick, back);
+                Tick(tick, .5f * tick, back, started);
             }
             DrainTrs();
         }
@@ -155,7 +157,6 @@ public:
             continue_at_ = kNone;
             trs_.Clear();
             feedback_->Clear();
-            feedback_sent_ = 0;
         }
 
         last_ticks_ = ticks;
@@ -210,7 +211,6 @@ private:
     static const uint32_t kNone = 0xFFFFFFFF;
     static const uint32_t kUsbWaitMs = 5;
     FeedbackRing* feedback_ = nullptr;
-    uint32_t feedback_sent_ = 0; // its bytes the UART took
     uint32_t rewinds_ = 0; // the looper's Rewinds() as last seen
     bool usb_waiting_ = false;        // USB didn't take the next message
     uint32_t usb_waiting_since_ = 0;
@@ -265,30 +265,42 @@ private:
         return ring.Push(msg, n);
     }
 
-    /** Start, Continue or Stop to ports: the gear plays there, or not, where it went */
-    void Transport(uint8_t status, uint8_t ports)
+    /** Start, Continue or Stop to ports: the gear plays there, or not, where it went; the
+     *  ports it went to */
+    uint8_t Transport(uint8_t status, uint8_t ports)
     {
         const uint8_t sent = Send(&status, 1, ports);
         if (status == kStop)
             playing_ &= ~sent;
         else
             playing_ |= sent;
+        return sent;
     }
 
     /** A tick now, unless one went out less than min_gap samples ago, and another one
-     *  half_after samples on if that's not 0 */
-    void Tick(float half_after, float min_gap, MidiClock::Source not_to)
+     *  half_after samples on if that's not 0. started: ports a Start or Continue just went
+     *  to, which get a tick now regardless: their gear's beat 1 or the Song Position's 16th.
+     *  The tick before it may then be closer than min_gap, but that's on the clock the gear
+     *  stopped on; others carry on as they were */
+    void Tick(float half_after, float min_gap, MidiClock::Source not_to, uint8_t started = 0)
     {
         if (half_due_)
-            SendTick(not_to); // the halfway one of the last, late
+        {
+            SendTick(Ports(not_to)); // the halfway one of the last, late
+            started = 0;             // which goes with the Start
+        }
         if (min_gap <= 0.f || static_cast<float>(now_ - last_tick_at_) >= min_gap)
-            SendTick(not_to);
+            SendTick(Ports(not_to));
+        else if (started)
+            SendTick(started);
         half_due_ = half_after > 0.f;
         half_at_ = now_ + static_cast<uint32_t>(half_after);
     }
-    void SendTick(MidiClock::Source not_to)
+    void SendTick(MidiClock::Source not_to) { SendTick(Ports(not_to)); }
+    void SendTick(uint8_t ports)
     {
-        Send(kTick, not_to);
+        const uint8_t tick = kTick;
+        Send(&tick, 1, ports);
         last_tick_at_ = now_;
     }
 
@@ -301,7 +313,8 @@ private:
         bool fed = false;
         for (;;)
         {
-            const bool mid = feedback_sent_ % 3 != 0; // feedback's are 3-byte CCs
+            // within a message of feedback's: its next byte a data byte (CCs, a program change)
+            const bool mid = !feedback_->Empty() && feedback_->Front() < 0x80;
             if (!trs_.Empty() && (trs_.Front() >= 0xF8 || !mid))
             {
                 if (!clock_->TrsPut(trs_.Front()))
@@ -313,7 +326,6 @@ private:
                 if (!clock_->TrsPut(feedback_->Front()))
                     return;
                 feedback_->Pop();
-                feedback_sent_++;
                 fed = true;
             }
             else

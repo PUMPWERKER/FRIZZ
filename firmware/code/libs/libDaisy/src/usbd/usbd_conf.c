@@ -24,6 +24,7 @@
 #include "stm32h7xx_hal.h"
 #include "usbd_def.h"
 #include "usbd_core.h"
+#include "usbd_cdc.h"
 
 /* USER CODE BEGIN Includes */
 
@@ -209,6 +210,24 @@ static void PCD_SetupStageCallback(PCD_HandleTypeDef *hpcd)
 void HAL_PCD_SetupStageCallback(PCD_HandleTypeDef *hpcd)
 #endif /* USE_HAL_PCD_REGISTER_CALLBACKS */
 {
+    /* FRIZZ (#88): a SETUP ends the control transfer before it, so EP0 IN starts afresh.
+     * The USB interrupt shares its priority with the audio DMA's: answered late, the
+     * last packet's XFRC of the transfer before can be handled after this SETUP came in.
+     * USBD_LL_DataInStage then stalls EP0 IN, which the core clears only on receiving a
+     * SETUP, so the STALL holds into this transfer; the host retries it, and the reply
+     * written for the stalled try stays in EP0's TxFIFO, sent in place of each reply
+     * after it (the USB names one string late). Clear both before answering. */
+    USB_OTG_GlobalTypeDef *USBx      = hpcd->Instance;
+    uint32_t               USBx_BASE = (uint32_t)USBx;
+    if(USBx_INEP(0U)->DIEPCTL & USB_OTG_DIEPCTL_STALL)
+    {
+        USBx_INEP(0U)->DIEPCTL &= ~USB_OTG_DIEPCTL_STALL;
+    }
+    if((USBx_INEP(0U)->DTXFSTS & USB_OTG_DTXFSTS_INEPTFSAV)
+       != (USBx->DIEPTXF0_HNPTXFSIZ >> 16))
+    {
+        (void)USB_FlushTxFifo(USBx, 0U);
+    }
     USBD_LL_SetupStage((USBD_HandleTypeDef *)hpcd->pData,
                        (uint8_t *)hpcd->Setup);
 }
@@ -765,6 +784,26 @@ uint32_t USBD_LL_GetRxDataSize(USBD_HandleTypeDef *pdev, uint8_t ep_addr)
 void USBD_LL_Delay(uint32_t Delay)
 {
     HAL_Delay(Delay);
+}
+
+/* FRIZZ: the CDC class's handle (USBD_CDC_Init's USBD_malloc) lives here instead of the
+ * heap: newlib's _sbrk grows the heap from the end of .bss without a bound, so with SRAM
+ * full it ran past its end at boot (a freeze in the fork lost-tty/CHOMPI) where a buffer
+ * here fails the link. One
+ * handle: FRIZZ runs one USB device (MidiClock.h's, EXTERNAL); two at once (UsbHandle's
+ * FS_BOTH) would need a second. As ST's own USBD_static_malloc, it hands out the same buffer
+ * on every Init (the class frees it on DeInit, which is a no-op here) and none for a size
+ * that doesn't fit. */
+static uint32_t usbd_cdc_handle[(sizeof(USBD_CDC_HandleTypeDef) + 3U) / 4U];
+
+void *USBD_static_malloc(uint32_t size)
+{
+    return size <= sizeof(usbd_cdc_handle) ? usbd_cdc_handle : NULL;
+}
+
+void USBD_static_free(void *p)
+{
+    (void)p;
 }
 
 /**

@@ -63,9 +63,10 @@ def stale(path):
 
 
 def source_checksum():
-    """the Makefile's BENCH_SOURCE: cksum of every *.h and *.cpp in code/src, sorted by name"""
-    names = sorted(os.path.basename(p) for p in
-                   glob.glob(os.path.join(SRC, "*.h")) + glob.glob(os.path.join(SRC, "*.cpp")))
+    """the Makefile's BENCH_SOURCE: cksum of every *.h, *.c and *.cpp in code/src, sorted by
+    name as make's $(sort) sorts (byte by byte)"""
+    names = sorted(os.path.basename(p) for ext in ("*.h", "*.c", "*.cpp")
+                   for p in glob.glob(os.path.join(SRC, ext)))
     data = b"".join(open(os.path.join(SRC, n), "rb").read() for n in names)
     out = subprocess.run(["cksum"], input=data, capture_output=True, check=True).stdout
     return out.split()[0].decode()

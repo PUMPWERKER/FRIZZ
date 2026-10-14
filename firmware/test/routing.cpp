@@ -2,7 +2,8 @@
 // gates, so a source that isn't live adds nothing to the outputs at any sample, also while
 // the source switches (#168 item 1); the looper's input the source, live or not; and the
 // slews that settle exactly on their targets (#168 item 2: Glide, the mix, the headphone
-// cue). Exits 0 when everything passes. Run by unit.sh routing.
+// cue); and each output's polarity against AUX (#209). Exits 0 when everything passes. Run by
+// unit.sh routing.
 #include <cmath>
 #include <cstdio>
 #include "check.h"
@@ -172,6 +173,87 @@ static void TestRecordsRaw()
     }
 }
 
+/** Plays blocks of a bump into AUX every `every` samples (a 2 ms raised cosine, upwards, at
+ *  amp), and gives the sample of the largest magnitude, with its sign, on the line out's left
+ *  and on the headphones' left */
+static void PlayBumps(size_t blocks, uint32_t every, float amp, float* line, float* phones)
+{
+    static const uint32_t kBump = 96;
+    float mic[kBlock] = {}, x[kBlock] = {}, auxl[kBlock], auxr[kBlock];
+    float o[4][kBlock];
+    const float* in[4] = {mic, x, auxl, auxr};
+    float* out[4] = {o[0], o[1], o[2], o[3]};
+    float l = 0.f, h = 0.f;
+    for (size_t b = 0; b < blocks; b++)
+    {
+        for (size_t i = 0; i < kBlock; i++, n++)
+        {
+            const uint32_t at = n % every;
+            auxl[i] = auxr[i] = at < kBump ? amp * .5f * (1.f - cosf(2.f * float(M_PI) * at / kBump)) : 0.f;
+        }
+        engine.Process(in, out, kBlock);
+        for (size_t i = 0; i < kBlock; i++)
+        {
+            if (fabsf(o[2][i]) > fabsf(l))
+                l = o[2][i];
+            if (fabsf(o[0][i]) > fabsf(h))
+                h = o[0][i];
+        }
+    }
+    *line = l;
+    *phones = h;
+}
+
+/** Each output's polarity against AUX (#209). This check, like the twin, sees the digital
+ *  signal; the CHOMPI's analog stages turn it (CC_Chompi_Rev4.sch): AUX in once (U16C/D), the
+ *  line out once (U16A/B after the PCM3060), the headphones not at all (U2B and the TPA6110,
+ *  twice). So the line out comes out at its jack as AUX went in when it carries the input's
+ *  sign, and the headphones only when they carry it turned: digitally the headphones are
+ *  against the line out, and at the jacks both are in phase with AUX. Through the effects,
+ *  dry, with the cue anywhere from the mix to the input, and from the loop */
+static void TestPolarity()
+{
+    struct Case
+    {
+        const char* what;
+        bool dry;
+        float cue;
+    };
+    const Case cases[] = {
+        {"through the effects, the headphones on the mix", false, 0.f},
+        {"dry, the headphones on the mix", true, 0.f},
+        {"through the effects, the headphones' cue halfway", false, .5f},
+        {"through the effects, the headphones on the input", false, 1.f},
+    };
+    float line, phones;
+    for (const Case& c : cases)
+    {
+        Init();
+        engine.SetDry(false, c.dry);
+        engine.SetHeadphoneCue(c.cue);
+        PlayBumps(400, 4800, 0.f, &line, &phones); // the cue and the gates settled, in silence
+        PlayBumps(400, 4800, .3f, &line, &phones);
+        printf("      a bump up into AUX, %s: the line out %+.4f, the headphones %+.4f\n", c.what,
+               line, phones);
+        const std::string what = std::string("polarity, ") + c.what
+                                 + ": the line out as AUX, the headphones turned";
+        Check(line > .01f && phones < -.01f, what.c_str());
+    }
+
+    // the loop: bumps recorded, then the loop alone
+    Init();
+    engine.looper.StartRecording(false);
+    PlayBumps(2000, 4800, .3f, &line, &phones);
+    engine.looper.StopRecording();
+    engine.SetMix(1.f);
+    PlayBumps(2000, 4800, 0.f, &line, &phones); // the mix at the loop
+    PlayBumps(2000, 4800, 0.f, &line, &phones);
+    printf("      bumps up recorded from AUX, the loop alone: the line out %+.4f, the headphones %+.4f\n",
+           line, phones);
+    Check(line > .01f && phones < -.01f,
+          "polarity, the loop alone: the line out as AUX, the headphones turned");
+}
+
 /** Glide settles exactly on its target, from either side (#168): near 1 a fonepole step stalls */
 static void TestGlide()
 {
@@ -212,5 +294,6 @@ int main()
     TestCombinations();
     TestRecordsRaw();
     TestGlide();
+    TestPolarity();
     return Finish();
 }

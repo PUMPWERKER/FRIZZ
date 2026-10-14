@@ -378,5 +378,99 @@ int main()
                      g.name, at, stuck, there ? "at" : "NOT at");
             Check(stuck == 0 && there, line);
         }
+
+    // back at stereo 0 while it plays (#226): a stereo offset set the channels' taps apart, and
+    // the right channel fades over a life from its own taps to the left's, then takes them. A
+    // 311Hz sine, the same into both, feedback 0. The right channel's steps sample to sample
+    // through the fade stay within the left's (a jump would stand out: moving the right's taps
+    // to the left's at once jumps by |L - R|, up to what the fade's first tenth shows, where
+    // the right still plays its own), both channels splice through
+    // it, and once it's over L and R are the same to the bit. At every grain, up and down,
+    // with the swoop rising through it, and turned apart again halfway: back to its own taps
+    // without a jump, and on to the left's once at 0 again
+    struct Relock
+    {
+        const char* name;
+        float shift, grain, swoop;
+        bool reverse;
+    } relocks[] = {
+        {"+7, grain 30ms", .5f + 7.f / 24, .5f, 0.f, false},
+        {"-12, grain 10ms", 0.f, 0.f, 0.f, false},
+        {"+12, grain 50ms", 1.f, 1.f, 0.f, false},
+        {"-5, grain 50ms", .5f - 5.f / 24, 1.f, 0.f, false},
+        {"+7, the swoop rising", .5f + 7.f / 24, .5f, 1.f, false},
+        {"+7, apart again halfway", .5f + 7.f / 24, .5f, 0.f, true},
+    };
+    for (const Relock& rl : relocks)
+    {
+        double sph = 0;
+        float l = 0.f, r = 0.f, prev_l = 0.f, prev_r = 0.f;
+        int splices[2] = {0, 0};
+        auto step = [&] {
+            sph += 311.0 / 48000.0;
+            prev_l = l;
+            prev_r = r;
+            l = r = .3f * static_cast<float>(sin(2 * M_PI * sph));
+            shifter.Process(&l, &r);
+            for (size_t c = 0; c < 2; c++)
+                splices[c] += shifter.held_[c] == 1;
+        };
+        shifter.Init(48000.f);
+        shifter.SetParam(chompi::Shifter::SHIFT, rl.shift);
+        shifter.SetParam(chompi::Shifter::GRAIN, rl.grain);
+        shifter.SetParam(chompi::Shifter::SWOOP, rl.swoop);
+        shifter.SetParam(chompi::Shifter::STEREO, .25f);
+        shifter.SetOn(true);
+        for (int i = 0; i < (rl.swoop > 0.f ? 4800 : 48000); i++)
+            step();
+        const bool apart = shifter.window_[0] != shifter.window_[1]
+                           || shifter.delay_[0][0] != shifter.delay_[1][0];
+        shifter.SetParam(chompi::Shifter::STEREO, 0.f);
+        float jump = 0.f, step_l = 0.f, step_r = 0.f;
+        int fade = 0, back = 0;
+        splices[0] = splices[1] = 0;
+        bool reversed = !rl.reverse;
+        while ((shifter.fade_ > 0.f || shifter.apart_) && fade < 48000)
+        {
+            if (!reversed && shifter.fade_ >= .5f)
+            {
+                // apart again: back to its own taps, then at 0 once it's there
+                shifter.SetParam(chompi::Shifter::STEREO, .25f);
+                while (fade < 48000 && (step(), shifter.fade_ > 0.f))
+                {
+                    step_l = fmaxf(step_l, fabsf(l - prev_l));
+                    step_r = fmaxf(step_r, fabsf(r - prev_r));
+                    fade++;
+                    back++;
+                }
+                for (int i = 0; i < 4800; i++)
+                    step();
+                shifter.SetParam(chompi::Shifter::STEREO, 0.f);
+                reversed = true;
+            }
+            step();
+            step_l = fmaxf(step_l, fabsf(l - prev_l));
+            step_r = fmaxf(step_r, fabsf(r - prev_r));
+            if (!back && shifter.fade_ < .1f)
+                jump = fmaxf(jump, fabsf(l - r));
+            fade++;
+        }
+        bool same = !shifter.apart_ && shifter.fade_ == 0.f;
+        for (int i = 0; i < 48000; i++)
+        {
+            step();
+            same &= l == r;
+        }
+        char line[220];
+        snprintf(line, sizeof(line),
+                 "%s: back at stereo 0, the right channel on the left's taps after %d samples%s, "
+                 "its steps up to %.4f (the left's %.4f; at once: %.4f), %d and %d splices; L == R "
+                 "after: %s",
+                 rl.name, fade, rl.reverse ? (back ? " (back to its own first)" : " (NOT back)") : "",
+                 step_r, step_l, jump, splices[0], splices[1], same ? "yes" : "NO");
+        Check(apart && same && fade < 48000 && step_r <= 1.1f * step_l && jump > 3.f * step_l
+                  && splices[0] > 0 && splices[1] > 0 && (!rl.reverse || back > 0),
+              line);
+    }
     return Finish();
 }

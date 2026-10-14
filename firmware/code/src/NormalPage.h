@@ -42,6 +42,20 @@
  *  in it. A morph on MIDI's crossfader (CC 80) stays MIDI's: letting go of SHIFT doesn't end it.
  *  The card is written from MainLoop (SceneStore::Process), never here.
  *
+ *  The Loops page and the Cubbi page (#70, LoopControls.h), sub-pages with the same keys:
+ *  FRIZZ's own loops and TAPE's cubbis. SHIFT + the lower C# opens the Loops page, SHIFT + the
+ *  lower D# the Cubbi page, from anywhere but the settings page (also from each other);
+ *  SHIFT + the page's own key or a double tap of SHIFT (two clean taps within kDoubleTapMs)
+ *  goes home. The keys the hand presses there come as kLoopsKeyBase plus the key (ui.h),
+ *  MIDI's notes as ever, so MIDI plays the effects there and picks no loops. Their white keys
+ *  are the bank's loops, the lower C# and D# the banks (each lit in the colour of the bank it
+ *  leads to, dark at the end); the scene keys, the transport, PLAY,
+ *  LOOP and VOLUME are the play page's; the scene modes and knobs 1-4 do nothing, dark.
+ *  Opening one ends a scene mode, so a tap of SHIFT confirms nothing there; opening one
+ *  without a loop blinks both bank keys red. SHIFT's LED shows the sub-page, dim in its
+ *  colour (the bank's here), and nothing else may use it: white held, the confirm blink, the
+ *  boot ripple. A later sub-page brings its own.
+ *
  *  MIDI (MidiControl.h): notes and FRIZZ's SysEx keys and detents come as the hand's do (ui.h);
  *  the rest, Remote() takes from MainLoop: a controller sets a parameter, a latch, a gain, the
  *  mix or the loop's speed outright, as its knob or key would, a program change is a scene key,
@@ -66,6 +80,9 @@
 #include "LedColors.h"
 #include "passthroughEngine.h"
 #include "temp_led_stuff.h"
+#if !FRIZZ_BENCH
+#include "LoopControls.h"
+#endif
 
 // the play page's logic, a key or a frame now and then and never per sample: built for size,
 // as FRIZZ's code space is tight (SRAM_EXEC, docs/CAPACITY.md)
@@ -165,6 +182,23 @@ namespace chompi
     };
     static const uint32_t kScenePulseMs = 1000;     // the active scene, edited
 
+    // The Loops page (#70): the hand's keys there come as these IDs plus their SwId (ui.h)
+    static const uint16_t kLoopsKeyBase = 128;
+    static const uint32_t kDoubleTapMs = 400;  // SHIFT's taps home: each, and the gap
+    static const uint32_t kLoadingBlinkMs = 100; // a planned loop not loaded yet
+    // the banks A-H, around the colour wheel; not red (refused) nor white (flashes)
+    static constexpr const float* kBankColors[8] = {orange, yellow, green, teal,
+                                                    med_blue, blue, purple, pink};
+    // the Cubbi page's banks a-e in TAPE's own colours (its NormalPage.h), so a TAPE player
+    // knows them: purple, orange, and three LedColors.h hasn't (kept here, its shape is the
+    // site's)
+    static const float kTapeTeal[3] = {.14f, 1.f, .92f};
+    static const float kTapeDarkOrange[3] = {.77f, .38f, .06f};
+    static const float kTapeYellowGreen[3] = {.706f, 1.f, 0.f};
+    static constexpr const float* kCubbiColors[5] = {purple, orange, kTapeTeal, kTapeDarkOrange,
+                                                     kTapeYellowGreen};
+    static const uint16_t kBothBankKeys = 0xFFFF; // bank_refused_key_: a page without a loop
+
     static const float kVuDim[3] = {.1f, .1f, .1f}; // the VU meter's floor
     // the input's meter on VOLUME's page 2: dim to green to yellow from kInMeterFloorDb to the
     // loop's ceiling, red at it, held kInRedMs; the gain's colour kGainShownMs after a turn
@@ -210,6 +244,16 @@ namespace chompi
             PthLedsOff();
         }
 
+#if !FRIZZ_BENCH
+        /** The loops from the card: rec the looper's own buffer */
+        void InitLoops(LoopLoader *loader, int16_t *rec) { loops_.Init(engine_, loader, rec); }
+        /** Each MainLoop pass, after the loader (LoopControls::Process) */
+        void LoopsProcess() { loops_.Process(); }
+#endif
+
+        /** The settings page's USB audio (SettingsPage::UsbAudio) */
+        bool UsbAudio() const { return settings_.UsbAudio(); }
+
         /** Before a restart: master settings waiting out their kMasterSaveDelayMs go to the
          *  card at once, the first time it's asked (a change after that, automation still
          *  coming, waits as usual). True once there's nothing left to write */
@@ -226,6 +270,8 @@ namespace chompi
 #pragma GCC pop_options
         /** From ui.h, as the mode switch goes: up shows the settings page */
         inline void ShowSettings(bool show) { show_settings_ = show; }
+        /** For ui.h: the Loops page is shown, its keys kLoopsKeyBase's */
+        inline bool LoopsShown() const { return loops_shown_; }
         /** From ui.h, a key of this page going down or up, when the audio callback saw it */
         inline void KeyEdge(int key, bool down, uint32_t now)
         {
@@ -262,6 +308,9 @@ namespace chompi
                 // SHIFT + VOLUME held there: a bug report, its blink over the transport LEDs
                 if (settings_.BugReportHeld(now))
                     log_->RequestWrite();
+                // SHIFT + LOOP held there: the card lent or taken back (CardLend.h)
+                if (settings_.CardHeld(now))
+                    cardlend::Get().asked = true;
                 // the limiting it sees meanwhile is old once the play page shows the key again
                 engine_->TakeLimiterGain();
                 settings_.Draw(now, Shift());
@@ -287,13 +336,23 @@ namespace chompi
 
             DrawLooperLeds(now);
             DrawLogLeds(now);
-            DrawFxLeds(now);
+#if !FRIZZ_BENCH
+            if (loops_shown_)
+                DrawLoopsLeds(now);
+            else
+#endif
+                DrawFxLeds(now);
             DrawSceneLeds(now);
 
             // CHOMPI key: blinking in the mode's colour while a tap would confirm a scene
-            // action, otherwise white while it is acting as SHIFT
+            // action, otherwise white while it is acting as SHIFT; on a sub-page dim in its
+            // colour (nothing else may use it)
             if (scene_ctl_.Armed() && !keys_.ShiftCombo())
                 PthLed(kChompiKeyLed, SceneModeColor(), BlinkOn(now, kPendingBlinkMs) ? 1.f : 0.f);
+#if !FRIZZ_BENCH
+            else if (loops_shown_ && !Shift())
+                PthLed(kChompiKeyLed, BankColor(loops_.Bank()), kFxOffLevel);
+#endif
             else
                 PthLed(kChompiKeyLed, white, Shift() ? 1.f : 0.f);
 
@@ -305,6 +364,13 @@ namespace chompi
                       bool isRetriggering) override
         {
             const bool rising = numberOfPresses == 1;
+#if !FRIZZ_BENCH
+            // anything but SHIFT between its taps: no double tap
+            if (buttonID % kLoopsKeyBase != static_cast<uint16_t>(Hardware::SwId::KEY_26))
+                tap_one_ = tap_clean_ = false;
+            if (buttonID >= kLoopsKeyBase)
+                return LoopsKey(buttonID - kLoopsKeyBase, numberOfPresses);
+#endif
             if (buttonID >= kSettingsKeyBase)
             {
                 const int key = buttonID - kSettingsKeyBase;
@@ -330,6 +396,9 @@ namespace chompi
                 keys_.Chompi(rising);
                 if (!rising && held)
                     ReleaseMorph();
+#if !FRIZZ_BENCH
+                ShiftTap(rising, held);
+#endif
                 return true;
             }
             case static_cast<uint16_t>(Hardware::SwId::KEY_27):
@@ -393,6 +462,17 @@ namespace chompi
             // something count as a SHIFT combo (keys_.Used): a key without a function doesn't
             // cancel a confirm or a latch in the making.
 
+#if !FRIZZ_BENCH
+            // SHIFT + the lower C#: the Loops page; SHIFT + the lower D#: the Cubbi page
+            if ((buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_16)
+                 || buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_17))
+                && Shift())
+            {
+                keys_.Used();
+                ShowLoops(true, buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_17));
+                return true;
+            }
+#endif
             // transport press: back to 1x forward; SHIFT + press makes a held scene morph a drop
             // (#175), and otherwise does nothing (it wrote a bug report until v0.11, now held on
             // the settings page)
@@ -460,6 +540,11 @@ namespace chompi
                              int16_t turns,
                              uint16_t stepsPerRevolution) override
         {
+#if !FRIZZ_BENCH
+            tap_one_ = tap_clean_ = false;
+            if (encoderID < kNumFxKnobs && loops_shown_ && !show_settings_)
+                return true; // knobs 1-4 do nothing on the Loops page
+#endif
             if (encoderID == kTransportEncoder)
                 TransportTurned(turns);
             else if (encoderID < kNumFxKnobs && show_settings_)
@@ -532,6 +617,12 @@ namespace chompi
             if (feedback && !feedback_on_)
                 feedback_.Reset([this](uint8_t item, uint8_t& v) { return FeedbackValue(item, v); });
             feedback_on_ = feedback;
+#if !FRIZZ_BENCH
+            // a loop the hand switched to (#259): sent before the next sweep
+            const int switched = loops_.TakeSwitched();
+            if (switched != LoopControls::kNone)
+                loop_fed_ = feedback ? switched : LoopControls::kNone;
+#endif
 
             // one answer a pass (every 2 ms), so USB has sent the last before the next goes,
             // or else MIDI feedback's
@@ -567,21 +658,36 @@ namespace chompi
                 ScenePressed(e.arg, false);
                 break;
             case Event::INPUT:
-                RemoteInput(e.arg & 3, e.arg & 4);
+                RemoteInput(e.arg & 3, e.arg >> 2);
                 break;
+#if !FRIZZ_BENCH
+            static_assert(midimap::kLoopBanks == loops::kBanks && midimap::kLoopPrograms == loops::kSlots
+                              && midimap::kCubbiProgramBank == loops::kCubbiBank + 1,
+                          "a loop's program change: bank 1 is the loader's 0, the cubbis' after FRIZZ's");
+            case Event::LOOP:
+            {
+                // a loop from the card (#259), from any page: "with the sequence" means one
+                // that waits to land, also held by the hand, not on the crossfader
+                ScopedIrqBlocker irq;
+                loops_.Remote(e.arg / loops::kSlots, e.arg % loops::kSlots, e.arg2,
+                              engine_->FxMorphing() && !scene_ctl_.Fading());
+                break;
+            }
+#endif
             }
         }
 
-        /** CC 84 the source (on: the mic), 116 its effects (on: dry), 117 it live (#177): as
-         *  the settings page's F#, G# and A#, but the card doesn't get them (#97) */
-        MIDI_CONTROL_ONCE void RemoteInput(uint8_t which, bool on)
+        /** CC 84 the source (value: PassthroughEngine's kAux, kMic or kUsb), 116 its effects
+         *  (on: dry), 117 it live (#177): as the settings page's F#, G# and A#, but the card
+         *  doesn't get them (#97) */
+        MIDI_CONTROL_ONCE void RemoteInput(uint8_t which, uint8_t value)
         {
             if (which == 0)
-                settings_.SetSource(on);
+                settings_.SetSource(value);
             else if (which == 1)
-                settings_.SetDry(on);
+                settings_.SetDry(value != 0);
             else
-                settings_.SetLive(on);
+                settings_.SetLive(value != 0);
             Heard(which == 0 ? feedback::kSource : which == 1 ? feedback::kDry : feedback::kLive);
         }
 
@@ -675,13 +781,14 @@ namespace chompi
                 v = KnobTo7(scene_ctl_.FaderPos());
                 return hand_fader_;
             case kSource:
-                v = engine_->MicInput() ? 127 : 0;
+                // the middle of each third CC 84 reads (MidiControl.h): AUX 0, the mic 64, USB 127
+                v = midimap::kSourceValues[engine_->Source()];
                 return true;
             case kDry:
-                v = engine_->Dry(engine_->MicInput()) ? 127 : 0;
+                v = engine_->Dry(engine_->Source()) ? 127 : 0;
                 return true;
             case kLive:
-                v = engine_->Live(engine_->MicInput()) ? 127 : 0;
+                v = engine_->Live(engine_->Source()) ? 127 : 0;
                 return true;
             }
             return false;
@@ -731,30 +838,54 @@ namespace chompi
         void Feedback(uint32_t now)
         {
             const uint8_t global = midi_->Channel() ? midi_->Channel() : 16;
+            const uint8_t ch = static_cast<uint8_t>(global - 1);
             const bool usb = midi_->GetMidiOut() == MidiOutPorts::TRS_USB;
             const bool block_trs = midi_->BlockTrs();
-            feedback_.Pass(now, global, [this](uint8_t item, uint8_t& v) { return FeedbackValue(item, v); },
-                           [&](uint8_t* msg, size_t n) {
-                               uint8_t trs[MidiFeedback::kPerPass * 3];
-                               size_t m = 0;
-                               for (size_t i = 0; i < 3 * n; i += 3)
-                                   if (block_trs || (msg[i] & 0x0F) == global - 1)
-                                   {
-                                       trs[m++] = msg[i];
-                                       trs[m++] = msg[i + 1];
-                                       trs[m++] = msg[i + 2];
-                                   }
-                               if (midi_->feedback_trs.Room() < m)
-                                   return false;
-                               // USB busy: again at the next pass, a few times, then without
-                               // it; without a host, not at all (#84)
-                               if (usb && midi_->UsbHost() && !midi_->TrySendUsb(msg, 3 * n)
-                                   && ++feedback_usb_tries_ < kFeedbackUsbTries)
-                                   return false;
-                               feedback_usb_tries_ = 0;
-                               midi_->feedback_trs.Push(trs, m);
-                               return true;
-                           });
+            // msg, its 3-byte CCs n of them (all on the global channel for another), over USB
+            // and into the jack's ring: false to try again at the next pass
+            auto send = [&](uint8_t* msg, size_t n) {
+                uint8_t trs[MidiFeedback::kPerPass * 3];
+                size_t m = 0;
+                for (size_t i = 0; i < 3 * n; i += 3)
+                    if (block_trs || (msg[i] & 0x0F) == ch)
+                    {
+                        trs[m++] = msg[i];
+                        trs[m++] = msg[i + 1];
+                        trs[m++] = msg[i + 2];
+                    }
+                if (midi_->feedback_trs.Room() < m)
+                    return false;
+                // USB busy: again at the next pass, a few times, then without it; without a
+                // host, not at all (#84)
+                if (usb && midi_->UsbHost() && !midi_->TrySendUsb(msg, 3 * n)
+                    && ++feedback_usb_tries_ < kFeedbackUsbTries)
+                    return false;
+                feedback_usb_tries_ = 0;
+                midi_->feedback_trs.Push(trs, m);
+                return true;
+            };
+#if !FRIZZ_BENCH
+            // a loop switched to by hand (#259): its bank (CC 0), its program change, and the
+            // scenes' bank again, so a DAW's recording leaves FRIZZ's program changes on the
+            // scenes: 3 CCs' worth, the PC's 2 bytes then CC 0's 3
+            if (loop_fed_ != LoopControls::kNone)
+            {
+                const uint8_t bank = static_cast<uint8_t>(loop_fed_ / loops::kSlots + 1);
+                uint8_t msg[8] = {static_cast<uint8_t>(0xB0 | ch), midimap::kBankCC, bank,
+                                  static_cast<uint8_t>(0xC0 | ch), static_cast<uint8_t>(loop_fed_ % loops::kSlots),
+                                  static_cast<uint8_t>(0xB0 | ch), midimap::kBankCC, 0};
+                // the jack's ring takes them as they are: each starts with its status byte
+                if (midi_->feedback_trs.Room() < 8
+                    || (usb && midi_->UsbHost() && !midi_->TrySendUsb(msg, 8)
+                        && ++feedback_usb_tries_ < kFeedbackUsbTries))
+                    return;
+                feedback_usb_tries_ = 0;
+                midi_->feedback_trs.Push(msg, 8);
+                loop_fed_ = LoopControls::kNone;
+                return;
+            }
+#endif
+            feedback_.Pass(now, global, [this](uint8_t item, uint8_t& v) { return FeedbackValue(item, v); }, send);
         }
 
         /** A morph (CC 3) or a drop (CC 83) over MIDI: as SHIFT + the scene key, tapped once per
@@ -769,6 +900,9 @@ namespace chompi
                 started = scene_ctl_.Remote(slot, bars, drop);
                 if (started)
                 {
+#if !FRIZZ_BENCH
+                    loops_.SequenceEnded();
+#endif
                     hand_fader_ = false; // a new morph: no fader has it yet
                     if (!Shift())
                         engine_->ReleaseFxMorph();
@@ -822,10 +956,12 @@ namespace chompi
                 // the mode switch: 1 if it stands up, plus SysEx's setting (kCmdSwitch) x2
                 d[n++] = static_cast<uint8_t>((hw_->GetToggleState() ? 0 : 1) | midi_->Switch() << 1);
                 d[n++] = static_cast<uint8_t>(fx_.Page()); // the FX knobs' page, 0 or 1
-                // the input (#177): the mic 1 (else AUX), its effects dry 2, it live 4
+                // the input (#177): the mic 1 (else AUX), its effects dry 2, it live 4, USB 8
+                // (#196, else AUX or the mic)
                 d[n++] = static_cast<uint8_t>((engine_->MicInput() ? 1 : 0)
-                                              | (engine_->Dry(engine_->MicInput()) ? 2 : 0)
-                                              | (engine_->Live(engine_->MicInput()) ? 4 : 0));
+                                              | (engine_->Dry(engine_->Source()) ? 2 : 0)
+                                              | (engine_->Live(engine_->Source()) ? 4 : 0)
+                                              | (engine_->Source() == PassthroughEngine::kUsb ? 8 : 0));
                 break;
             }
             case kCmdParams:
@@ -918,7 +1054,7 @@ namespace chompi
             case IDENT:
                 if (!info.crc_done)
                 {
-                    info.crc = Crc32(info.image, info.image_len);
+                    info.crc = crash::Crc32(info.image, info.image_len);
                     info.crc_done = true;
                 }
                 d[n++] = kVersion;
@@ -941,8 +1077,9 @@ namespace chompi
             {
                 d[n++] = group;
                 const size_t count_at = n++;
-                uint16_t values[16];
-                static_assert(kNumFxParams <= 16 && kNumFx <= 16 && sizeof(masterfile::kLines) / sizeof(masterfile::kLines[0]) <= 16, "DevValues' groups fit");
+                uint16_t values[20];
+                static_assert(kNumFxParams <= 20 && kNumFx <= 20 && sizeof(masterfile::kLines) / sizeof(masterfile::kLines[0]) <= 20
+                                  && 5 + 2 * 20 <= MidiControl::kMaxReply, "DevValues' groups fit");
                 const size_t count = DevValues(group, values);
                 status = count ? OK : BAD;
                 for (size_t i = 0; i < count; i++)
@@ -1019,6 +1156,61 @@ namespace chompi
                     n = Put7s(d, n, b, 2);
                 for (size_t i = 0; i < 6; i++)
                     n = Put7s(d, n, hw_->mp_buff_[i], 2);
+                break;
+            }
+            case CRASH:
+            {
+                // after a power-off the backup SRAM holds noise: zeros for that
+                const bool valid = crash::Valid(info.crash->record);
+                const crash::Record r = valid ? info.crash->record : crash::Record{};
+                if (group == 2)
+                    crash::Clear(info.crash->record);
+                if (group > 2)
+                    status = BAD;
+                else if (group == 2)
+                    d[n++] = 0;
+                else if (group == 0)
+                {
+                    // the option bytes whether or not a crash is recorded
+                    d[n++] = valid ? kCrashValid : 0;
+                    d[n++] = static_cast<uint8_t>(r.kind);
+                    const uint32_t words[] = {r.count, r.ms, r.crc, r.len, r.rsr, r.sp, info.option_bytes};
+                    const uint8_t groups[] = {3, 5, 5, 3, 5, 5, 5};
+                    for (size_t i = 0; i < sizeof(groups); i++)
+                        n = Put7s(d, n, words[i], groups[i]);
+                }
+                else
+                    for (uint32_t w : {r.pc, r.lr, r.xpsr, r.cfsr, r.hfsr, r.mmfar, r.bfar})
+                        n = Put7s(d, n, w, 5);
+                break;
+            }
+#if FRIZZ_BENCH
+            case TEST:
+                // the audio callback's take theirs as they come (MidiControl::SysEx)
+                if (group == kHangMain)
+                    info.hang = true;
+                else if (group == kFaultMain)
+                    d[n++] = static_cast<uint8_t>(*reinterpret_cast<volatile uint32_t*>(0x2FFF0000u) & 0x7F);
+                else
+                    status = BAD;
+                break;
+#else
+            case TEST:
+                status = NOT_HERE;
+                break;
+#endif
+            case LOOPS:
+            {
+                const int got = info.loops ? info.loops(q.arg, q.len, d + n) : 0;
+                status = !info.loops ? NOT_HERE : (got < 0 ? BAD : OK);
+                n += got > 0 ? static_cast<size_t>(got) : 0;
+                break;
+            }
+            case USB:
+            {
+                const int got = info.usb ? info.usb(q.arg, q.len, d + n) : 0;
+                status = !info.usb ? NOT_HERE : (got < 0 ? BAD : OK);
+                n += got > 0 ? static_cast<size_t>(got) : 0;
                 break;
             }
             default:
@@ -1202,24 +1394,6 @@ namespace chompi
             return true;
         }
 
-        /** zlib's CRC-32 of the image as loaded, which the host works out from the .bin
-         *  (tools/builds.py): a nibble at a time, from a table of 16 */
-        static uint32_t Crc32(const uint8_t* p, size_t len)
-        {
-            static const uint32_t kNibble[16] = {
-                0x00000000, 0x1DB71064, 0x3B6E20C8, 0x26D930AC, 0x76DC4190, 0x6B6B51F4,
-                0x4DB26158, 0x5005713C, 0xEDB88320, 0xF00F9344, 0xD6D6A3E8, 0xCB61B38C,
-                0x9B64C2B0, 0x86D3D2D4, 0xA00AE278, 0xBDBDF21C};
-            uint32_t crc = 0xFFFFFFFFu;
-            for (size_t i = 0; i < len; i++)
-            {
-                crc ^= p[i];
-                crc = (crc >> 4) ^ kNibble[crc & 15];
-                crc = (crc >> 4) ^ kNibble[crc & 15];
-            }
-            return ~crc;
-        }
-
         /** A scene's part for kCmdSceneGet: kFxPerPart effects' knobs on one page, 14 bits
          *  each (parts 0-3 page 1, 4-7 page 2), or (the last) whether it's used and its
          *  latches */
@@ -1285,6 +1459,10 @@ namespace chompi
          *  takes back (FxControls::LateSelect); otherwise the FX keys held will latch */
         bool ShiftPressed()
         {
+#if !FRIZZ_BENCH
+            if (loops_shown_)
+                return fx_.ShiftPressed(); // its white keys are loops: no select
+#endif
             const uint16_t shift = static_cast<uint16_t>(Hardware::SwId::KEY_26);
             bool select = Grace(static_cast<uint16_t>(kCompKey), true, shift);
             for (size_t fx = 0; fx < kNumFx; fx++)
@@ -1302,26 +1480,55 @@ namespace chompi
             return true;
         }
         inline void ShiftUsed() { fx_.ShiftUsed(); }
-        /** CC 81: the sequence stopped where it is */
+        /** CC 81: the sequence stopped where it is, and the whole plan with it: a loop planned
+         *  alone too (#259) */
         bool FreezeMorph()
         {
             ScopedIrqBlocker irq;
+#if !FRIZZ_BENCH
+            loops_.Cancel();
+#endif
             return scene_ctl_.FreezeMorph();
         }
         /** SHIFT let go: a sequence started with it runs now, its bars counted from here
-         *  (FxMorph::Release), or the hand's crossfader ends where it is
-         *  (SceneControls::EndFade). One on MIDI's crossfader (CC 80) stays MIDI's */
+         *  (FxMorph::Release), or in a hold that began with a white key to the loop's pass end
+         *  (ReleaseFxMorphAt, LoopControls::WithScene); or the hand's crossfader ends where it
+         *  is (SceneControls::EndFade), its loops to the nearer side. One on MIDI's crossfader
+         *  (CC 80) stays MIDI's */
         void ReleaseMorph()
         {
             ScopedIrqBlocker irq;
+#if !FRIZZ_BENCH
+            const bool passes = loops_.WithScene() && scene_ctl_.HoldSequence();
+            loops_.ShiftUp(scene_ctl_.FaderPos());
+            if (!(scene_ctl_.ShiftUp() && scene_ctl_.EndFade()))
+            {
+                if (passes)
+                    engine_->ReleaseFxMorphAt(loops_.At());
+                else
+                    engine_->ReleaseFxMorph();
+            }
+#else
             if (!(scene_ctl_.ShiftUp() && scene_ctl_.EndFade()))
                 engine_->ReleaseFxMorph();
+#endif
             hand_fader_ = false;
         }
         inline void Refused() { loop_refused_.Start(System::GetNow()); }
         inline Looper::State LooperState() const { return engine_->looper.GetState(); }
         inline bool CanRecordQuantized() { return engine_->looper.CanRecordQuantized(); }
-        inline void StartRecording(bool quantized) { engine_->looper.StartRecording(quantized); }
+        inline void StartRecording(bool quantized)
+        {
+#if !FRIZZ_BENCH
+            // a loop from the card still landing in the recording's buffer (LoopControls.h)
+            if (loops_.WritingRec())
+            {
+                Refused();
+                return;
+            }
+#endif
+            engine_->looper.StartRecording(quantized);
+        }
         inline void StopRecording() { engine_->looper.StopRecording(); }
         inline void TogglePlay() { engine_->looper.TogglePlay(); }
         inline void Erase() { engine_->looper.Erase(); }
@@ -1338,6 +1545,174 @@ namespace chompi
                 select_flash_.Start(System::GetNow(), kSelectFlashMs);
         }
 
+#if !FRIZZ_BENCH
+        // ---- the Loops page (#70, LoopControls.h) ----
+
+        /** A key the hand pressed or let go there (kLoopsKeyBase's): the play page's own as
+         *  on it, the banks, the loops; the scene modes and the knobs' presses nothing */
+        bool LoopsKey(uint16_t key, uint8_t presses)
+        {
+            using S = Hardware::SwId;
+            bool own = key == static_cast<uint16_t>(S::KEY_26) || key == static_cast<uint16_t>(S::KEY_27)
+                       || key == static_cast<uint16_t>(S::KEY_28) || key == ENC_5_SW
+                       || key == static_cast<uint16_t>(S::ENC_6_SW);
+            for (Hardware::SwId scene : kSceneKeys)
+                own = own || key == static_cast<uint16_t>(scene);
+            if (own)
+                return OnButton(key, presses, false);
+            if (presses != 1)
+                return true;
+            if (key == static_cast<uint16_t>(S::KEY_16) || key == static_cast<uint16_t>(S::KEY_17))
+            {
+                // SHIFT + the page's key goes home, SHIFT + the other's to the other page
+                if (Shift())
+                {
+                    keys_.Used();
+                    const bool cubbi = key == static_cast<uint16_t>(S::KEY_17);
+                    ShowLoops(cubbi != loops_.Cubbi(), cubbi);
+                }
+                else if (!loops_.StepBank(key == static_cast<uint16_t>(S::KEY_16) ? -1 : 1))
+                {
+                    bank_refused_key_ = key;
+                    bank_refused_.Start(System::GetNow()); // no bank further that way
+                }
+                return true;
+            }
+            for (size_t w = 0; w < kNumWhiteKeys; w++)
+                if (key == static_cast<uint16_t>(kWhiteKeys[w]))
+                {
+                    keys_.Used();
+                    LoopKeyPressed(w);
+                }
+            return true;
+        }
+
+        /** A white key there: its loop, at once or planned (LoopControls::Press). SHIFT + the
+         *  planned one in a later hold cancels the plan, its scene sequence stopping where it is */
+        void LoopKeyPressed(size_t slot)
+        {
+            LoopControls::Key key;
+            {
+                ScopedIrqBlocker irq;
+                key = loops_.Press(slot, Shift(), scene_ctl_.HoldSequence(), scene_ctl_.HandFader(),
+                                   scene_ctl_.HoldSpent());
+                if (key == LoopControls::Key::CANCELLED)
+                {
+                    scene_ctl_.FreezeMorph();
+                    scene_ctl_.Spend();
+                }
+            }
+            if (key == LoopControls::Key::REFUSED)
+                LoopRefused(slot);
+        }
+
+        void LoopRefused(size_t slot)
+        {
+            loop_refused_slot_ = slot;
+            loop_refused_key_.Start(System::GetNow());
+        }
+
+        /** The Loops page or the Cubbi page opened (a scene mode ends; without a loop on it
+         *  the bank keys blink red), or left */
+        void ShowLoops(bool on, bool cubbi = false)
+        {
+            ResetSmtLeds(); // the keys a page doesn't draw would keep the other's colours
+            loops_shown_ = on;
+            loop_refused_key_.Stop();
+            bank_refused_.Stop();
+            if (on)
+            {
+                scene_ctl_.Cancel();
+                if (!loops_.Show(cubbi))
+                {
+                    bank_refused_key_ = kBothBankKeys;
+                    bank_refused_.Start(System::GetNow());
+                }
+            }
+        }
+
+        static const float* BankColor(size_t bank)
+        {
+            return bank < loops::kCubbiBank ? kBankColors[bank] : kCubbiColors[bank - loops::kCubbiBank];
+        }
+
+        /** SHIFT went down or up (held: its press was seen): two clean taps on a sub-page, each
+         *  and the gap between them within kDoubleTapMs, go home. Anything else meanwhile
+         *  (OnButton, OnEncoderTurned) isn't a tap */
+        void ShiftTap(bool down, bool held)
+        {
+            const int k = static_cast<int>(Hardware::SwId::KEY_26);
+            if (down)
+            {
+                tap_two_ = tap_one_ && edge_ms_[1][k] - tap_up_ <= kDoubleTapMs;
+                tap_one_ = false;
+                tap_clean_ = true;
+                return;
+            }
+            const bool tap = held && tap_clean_ && edge_ms_[0][k] - edge_ms_[1][k] <= kDoubleTapMs;
+            tap_clean_ = false;
+            tap_one_ = tap && !tap_two_;
+            tap_up_ = edge_ms_[0][k];
+            if (tap && tap_two_ && loops_shown_)
+                ShowLoops(false);
+        }
+
+        /** The Loops page's keys: the slots in the bank's colour, C# and D# in the colours of
+         *  the banks they lead to (dark at the end); knobs 1-4 dark (PthLedsOff) */
+        void DrawLoopsLeds(uint32_t now)
+        {
+            // the limiting it sees meanwhile is old once the play page shows the key again
+            engine_->TakeLimiterGain();
+            const float* color = BankColor(loops_.Bank());
+            const uint32_t pos = engine_->FxClockPosition();
+            const bool beat = pos % kPulsesPerBeat < kPulsesPerBeat / 2;
+            for (size_t w = 0; w < kNumWhiteKeys; w++)
+            {
+                const float* c = color;
+                float level = 0.f;
+                if (w == loop_refused_slot_ && loop_refused_key_.Active(now))
+                {
+                    c = red;
+                    level = loop_refused_key_.BlinkLit(now) ? 1.f : 0.f;
+                }
+                else
+                    switch (loops_.SlotLed(w))
+                    {
+                    case LoopControls::Led::DARK:
+                        break;
+                    case LoopControls::Led::BAD:
+                        c = red;
+                        level = kFxOffLevel;
+                        break;
+                    case LoopControls::Led::FILLED:
+                        level = kFxOffLevel;
+                        break;
+                    case LoopControls::Led::PLAYING:
+                        level = 1.f;
+                        break;
+                    case LoopControls::Led::PLANNED:
+                        level = beat ? 1.f : 0.f; // the waiting scene key's rhythm
+                        break;
+                    case LoopControls::Led::LOADING:
+                        level = BlinkOn(now, kLoadingBlinkMs) ? 1.f : 0.f;
+                        break;
+                    }
+                SmtLed(KeyLedOf(kWhiteKeys[w]), c, level);
+            }
+            // C# and D# in the colour of the bank they lead to, dark at the end
+            for (Hardware::SwId key : {Hardware::SwId::KEY_16, Hardware::SwId::KEY_17})
+            {
+                const int to = loops_.Neighbour(key == Hardware::SwId::KEY_16 ? -1 : 1);
+                if ((static_cast<uint16_t>(key) == bank_refused_key_ || bank_refused_key_ == kBothBankKeys)
+                    && bank_refused_.Active(now))
+                    SmtLed(KeyLedOf(key), red, bank_refused_.BlinkLit(now) ? 1.f : 0.f);
+                else
+                    SmtLed(KeyLedOf(key), to == LoopControls::kNone ? color : BankColor(static_cast<size_t>(to)),
+                           to == LoopControls::kNone ? 0.f : 1.f);
+            }
+        }
+#endif
+
         /** Once per frame, before drawing: what follows from time and the looper's state */
         void Update(uint32_t now)
         {
@@ -1346,8 +1721,21 @@ namespace chompi
             {
                 ScopedIrqBlocker irq;
                 if (scene_ctl_.Tick(now))
+                {
                     hand_fader_ = true;
+#if !FRIZZ_BENCH
+                    loops_.FaderTook();
+#endif
+                }
             }
+#if !FRIZZ_BENCH
+            // a loop from the card started on an empty looper: wet, as a recording closing
+            if (loops_.TakeStarted())
+                SetMix(1.f);
+            const int failed = loops_.TakeFailed();
+            if (failed != LoopControls::kNone && static_cast<size_t>(failed) / loops::kSlots == loops_.Bank())
+                LoopRefused(static_cast<size_t>(failed) % loops::kSlots);
+#endif
 
             // an erase starting, now or at the loop's end: the input fades in while the loop
             // fades out. A fade too short to be seen still ends in an empty looper.
@@ -1588,9 +1976,16 @@ namespace chompi
             {
                 // a recall within one audio block
                 ScopedIrqBlocker irq;
+#if !FRIZZ_BENCH
+                result = scene_ctl_.Press(slot, shift, loops_.HoldPasses());
+#else
                 result = scene_ctl_.Press(slot, shift);
+#endif
                 if (result == SceneControls<PassthroughEngine>::Slot::MORPH)
                     hand_fader_ = false; // a new morph: no fader has it yet
+#if !FRIZZ_BENCH
+                loops_.Scene(result); // the loop planned with it, or ended with it
+#endif
             }
             if (result == SceneControls<PassthroughEngine>::Slot::REFUSED)
                 SceneRefusedBlink(slot);
@@ -1636,7 +2031,8 @@ namespace chompi
             const SceneMode mode = scene_ctl_.Mode();
             const float* mode_color = SceneModeColor();
             for (const SceneModeKey& key : kSceneModeKeys)
-                SmtLed(KeyLedOf(key.key), key.color, mode == key.mode ? 1.f : kFxOffLevel);
+                SmtLed(KeyLedOf(key.key), key.color,
+                       LoopsShown() ? 0.f : mode == key.mode ? 1.f : kFxOffLevel);
 
             const bool blink_on = BlinkOn(now, kPendingBlinkMs);
             for (size_t slot = 0; slot < kNumSlots; slot++)
@@ -1935,7 +2331,12 @@ namespace chompi
                     ScopedIrqBlocker irq;
                     scenes = scene_ctl_.TransportTurned(turns, System::GetNow());
                     if (scene_ctl_.HandFader())
+                    {
                         hand_fader_ = true;
+#if !FRIZZ_BENCH
+                        loops_.FaderTook();
+#endif
+                    }
                 }
                 if (scenes)
                 {
@@ -2124,6 +2525,20 @@ namespace chompi
         LedSignal page_flash_;      // a page picked: its number in blinks
         LedSignal knob_page_flash_; // the FX knobs' page turned: its number in blinks
         size_t knob_flash_page_ = 0; // the page knob_page_flash_ blinks for
+
+        volatile bool loops_shown_ = false; // the Loops page or the Cubbi page (#70, loops_.Cubbi())
+#if !FRIZZ_BENCH
+        LoopControls loops_;
+        int loop_fed_ = LoopControls::kNone; // a loop switched to, for MIDI feedback (#259)
+        LedSignal loop_refused_key_;  // a loop refused, on its key
+        size_t loop_refused_slot_ = 0;
+        LedSignal bank_refused_;      // no bank further, on its key (both: no loop on the page)
+        uint16_t bank_refused_key_ = 0;
+        uint32_t tap_up_ = 0;         // SHIFT's last clean tap let go
+        bool tap_one_ = false;        // one clean tap, the next may make it two
+        bool tap_two_ = false;        // this press is the second
+        bool tap_clean_ = false;      // nothing else since SHIFT went down
+#endif
     };
 
 

@@ -1,0 +1,42 @@
+dwc2: edpt_disable() checks again that an IN endpoint is enabled before setting EPDIS
+
+edpt_disable() checks DIEPCTL.EPENA, sets SNAK and waits for INEPNE. An isochronous
+IN transfer can complete in that window, and the core then clears EPENA itself.
+Setting EPDIS on an endpoint that is no longer enabled never raises EPDISD, so the
+wait loop that follows never ends: the USB stack hangs inside the disable.
+
+The fix checks EPENA again after SNAK has taken effect, and sets EPDIS only if the
+endpoint is still enabled. Otherwise it applies the stall mask alone, as the
+not-enabled branch above does.
+
+Seen with lost-tty/CHOMPI's UAC2 device (STM32H750, OTG_HS on its full-speed PHY),
+where the IN endpoint's alt setting was switched while a stream ran. FRIZZ carries
+it for the same reason. Upstream master (4c195b7, 2026-10-14) checks EPENA before
+SNAK, not after, so the window is still open there.
+
+Upstream candidate: yes, small and self-contained.
+
+--- a/src/portable/synopsys/dwc2/dcd_dwc2.c	2026-10-14 13:10:53.446221642 +0200
++++ b/src/portable/synopsys/dwc2/dcd_dwc2.c	2026-10-14 13:16:05.623623043 +0200
+@@ -321,11 +321,17 @@
+       dep->diepctl |= DIEPCTL_SNAK;
+       while ((dep->diepint & DIEPINT_INEPNE) == 0) {}
+ 
+-      // Disable the endpoint.
+-      dep->diepctl |= DIEPCTL_EPDIS | stall_mask;
+-      while ((dep->diepint & DIEPINT_EPDISD_Msk) == 0) {}
++      // FRIZZ (patches/0001): the transfer may have completed while SNAK took effect, and EPDIS set on an
++      // endpoint that is no longer enabled never raises EPDISD: check again before disabling it.
++      if (!edpt_is_enabled(dep)) {
++        dep->diepctl |= stall_mask;
++      } else {
++        // Disable the endpoint.
++        dep->diepctl |= DIEPCTL_EPDIS | stall_mask;
++        while ((dep->diepint & DIEPINT_EPDISD_Msk) == 0) {}
+ 
+-      dep->diepint = DIEPINT_EPDISD;
++        dep->diepint = DIEPINT_EPDISD;
++      }
+     }
+ 
+     // Flush the FIFO, and wait until we have confirmed it cleared.

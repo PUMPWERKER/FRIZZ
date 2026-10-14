@@ -10,11 +10,19 @@
 --   ID tempo BPM                      the project's tempo
 --   ID loop BEAT BEAT | loop off      the loop range, repeat on / off
 --   ID lane LENGTH B,S,D1,D2 ...      a track sending to the device on the events' own channels,
---                                     a MIDI item of LENGTH beats from 0 with those CCs
+--                                     a MIDI item of LENGTH beats from 0 with those CCs, and
+--                                     notes: a note on (0x9n) lasts until its note off
 --   ID monitor                        a track record-armed on the device's input, monitored:
 --                                     what comes in goes out again
 --   ID clear                          every track deleted
 --   ID trace on | off                 the play position logged every time ("pos")
+--   ID media PATH BEATS               a track playing the WAV at PATH from 0, looped over BEATS,
+--                                     to REAPER's outputs 3/4 only (not the master)
+--   ID rec                            a track recording REAPER's input 1 (mono), armed, not
+--                                     monitored, sent nowhere; its files into PLAN.recdir
+--   ID record                         the transport's record button
+--   ID takes                          the takes recorded since the last time logged ("take"),
+--                                     their items deleted (the files stay)
 --   ID send HEX                       bytes to the device (SendMIDIMessageToHardware), SysEx
 --                                     too; one a time round, so a key's press and release
 --                                     never go in one USB packet
@@ -26,7 +34,9 @@
 -- INDEX NAME", "T audio MODE SRATE BSIZE", "T sync SYNC INPUT clock MASK" (the project's
 -- projsmptesync and projsmpteinput, reaper.ini's midiouts_clock, as REAPER has them), "T cmd ID
 -- NAME pos SECONDS BEATS state S", "T in HEX", "T pos SECONDS BEATS state S rate RATE bpm BPM"
--- (the play rate, the tempo at the position), "T error TEXT", "T done".
+-- (the play rate, the tempo at the position), "T take POSITION OFFSET LENGTH FILE" (a recorded
+-- take: where its item starts on the project's time line, s, where in FILE it starts, its
+-- length), "T error TEXT", "T done".
 local R = reaper
 local out = assert(io.open(PLAN.log, "w"))
 local t0 = R.time_precise()
@@ -36,10 +46,15 @@ local function log(fmt, ...)
     out:flush()
 end
 
+local recorded = false
+
 local function quit()
     log("done")
     out:close()
+    -- no tracks left: a project holding a recording asks about its files on quitting
+    for i = R.CountTracks(0) - 1, 0, -1 do R.DeleteTrack(R.GetTrack(0, i)) end
     R.Main_SaveProjectEx(0, PLAN.project, 0)
+    if recorded then R.Main_openProject("noprompt:" .. PLAN.project) end -- forgets its recordings
     R.Main_OnCommand(40004, 0) -- File: Quit
 end
 
@@ -87,6 +102,7 @@ if not (check("out", PLAN.out, PLAN.out_name) and check("in", PLAN.input, PLAN.i
 end
 
 R.SetMediaTrackInfo_Value(R.GetMasterTrack(0), "B_MUTE", 1)
+R.GetSetProjectInfo_String(0, "RECORD_PATH", PLAN.recdir, true)
 R.GetSetRepeat(0)
 R.SetEditCurPos(0, false, false)
 
@@ -133,11 +149,28 @@ local function run(w, sent)
         local tr = new_track()
         local item = R.CreateNewMIDIItemInProj(tr, 0, tonumber(w[3]), true) -- in beats
         local take = R.GetActiveTake(item)
+        local ev = {}
         for i = 4, #w do
             local b, s, d1, d2 = w[i]:match("([^,]+),([^,]+),([^,]+),([^,]+)")
-            local ppq = R.MIDI_GetPPQPosFromProjQN(take, tonumber(b))
-            s = tonumber(s)
-            R.MIDI_InsertCC(take, false, false, ppq, s & 0xF0, s & 0x0F, tonumber(d1), tonumber(d2))
+            ev[#ev + 1] = {tonumber(b), tonumber(s), tonumber(d1), tonumber(d2)}
+        end
+        for i, e in ipairs(ev) do
+            local ppq = R.MIDI_GetPPQPosFromProjQN(take, e[1])
+            if e[2] & 0xF0 == 0x90 and e[4] > 0 then
+                -- a note: on until its note off (0x80, or 0x90 at velocity 0) later in the list
+                local off = e[1] + .25
+                for k = i + 1, #ev do
+                    local f = ev[k]
+                    if f[3] == e[3] and (f[2] == (e[2] & 0x0F | 0x80) or f[2] == e[2] and f[4] == 0) then
+                        off = f[1]
+                        break
+                    end
+                end
+                R.MIDI_InsertNote(take, false, false, ppq, R.MIDI_GetPPQPosFromProjQN(take, off), e[2] & 0x0F,
+                    e[3], e[4], true)
+            elseif e[2] & 0xF0 ~= 0x80 and e[2] & 0xF0 ~= 0x90 then
+                R.MIDI_InsertCC(take, false, false, ppq, e[2] & 0xF0, e[2] & 0x0F, e[3], e[4])
+            end
         end
         R.MIDI_Sort(take)
     elseif name == "monitor" then
@@ -150,7 +183,49 @@ local function run(w, sent)
         for i = R.CountTracks(0) - 1, 0, -1 do R.DeleteTrack(R.GetTrack(0, i)) end
     elseif name == "trace" then
         tracing = w[3] == "on"
-
+    elseif name == "media" then
+        local n = R.CountTracks(0)
+        R.InsertTrackAtIndex(n, false)
+        local tr = R.GetTrack(0, n)
+        R.SetMediaTrackInfo_Value(tr, "B_MAINSEND", 0)
+        local send = R.CreateTrackSend(tr, nil) -- a hardware output
+        R.SetTrackSendInfo_Value(tr, 1, send, "I_DSTCHAN", 2) -- outputs 3/4
+        local item = R.AddMediaItemToTrack(tr)
+        local take = R.AddTakeToMediaItem(item)
+        R.SetMediaItemTake_Source(take, R.PCM_Source_CreateFromFile(w[3]))
+        R.SetMediaItemInfo_Value(item, "D_POSITION", 0)
+        R.SetMediaItemInfo_Value(item, "D_LENGTH", R.TimeMap2_QNToTime(0, tonumber(w[4])))
+        R.SetMediaItemInfo_Value(item, "B_LOOPSRC", 1)
+        R.UpdateArrange()
+    elseif name == "rec" then
+        local n = R.CountTracks(0)
+        R.InsertTrackAtIndex(n, false)
+        local tr = R.GetTrack(0, n)
+        R.SetMediaTrackInfo_Value(tr, "B_MAINSEND", 0)
+        R.SetMediaTrackInfo_Value(tr, "I_RECINPUT", 0) -- input 1, mono
+        R.SetMediaTrackInfo_Value(tr, "I_RECMODE", 0) -- the input as it comes
+        R.SetMediaTrackInfo_Value(tr, "I_RECMON", 0) -- not monitored: nothing goes out again
+        R.SetMediaTrackInfo_Value(tr, "I_RECARM", 1)
+    elseif name == "record" then
+        R.Main_OnCommand(1013, 0) -- Transport: Record
+        recorded = true
+    elseif name == "takes" then
+        for i = R.CountMediaItems(0) - 1, 0, -1 do
+            local item = R.GetMediaItem(0, i)
+            local tr = R.GetMediaItem_Track(item)
+            if R.GetMediaTrackInfo_Value(tr, "I_RECARM") == 1 then
+                for k = 0, R.CountTakes(item) - 1 do
+                    local take = R.GetTake(item, k)
+                    if take then
+                        local file = R.GetMediaSourceFileName(R.GetMediaItemTake_Source(take), "")
+                        log("take %.6f %.6f %.6f %s", R.GetMediaItemInfo_Value(item, "D_POSITION"),
+                            R.GetMediaItemTakeInfo_Value(take, "D_STARTOFFS"),
+                            R.GetMediaItemInfo_Value(item, "D_LENGTH"), file)
+                    end
+                end
+                R.DeleteTrackMediaItem(tr, item) -- told once: the next recording on a clear track
+            end
+        end
     end
     local pos = R.GetPlayState() & 1 == 1 and R.GetPlayPosition() or R.GetCursorPosition()
     log("cmd %s %s pos %.4f %.4f state %d", w[1], name, pos, beats(pos), R.GetPlayState())

@@ -32,11 +32,11 @@ static const int kTransportRevLed = 5, kTransportFwdLed = 6, kVolumeLed = 9;
 static const int kSlot1Led = 3, kCompKeyLed = 10, kTapeStopKeyLed = 14;
 // the settings page's (SettingsPage.h): white keys 1, 3, 11, 14, 15 (channels; the 15th is 15
 // and 16), the lower octave's D#, F#, G#, A#, the upper octave's C#, F#, G# and A#: the input's
-// source (SHIFT: mono), effects and live (#177)
+// source (SHIFT: mono), live and effects (#177, #243)
 static const int kChannel1Led = 24, kChannel3Led = 22, kChannel11Led = 14, kChannel14Led = 11,
                  kChannel1516Led = 10, kBlockTrsKeyLed = 1, kTransportKeyLed = 2, kFactorKeyLed = 3,
                  kSourceKeyLed = 4, kMidiOutKeyLed = 5, kMonoKeyLed = 7, kInSourceKeyLed = 7,
-                 kInFxKeyLed = 8, kLiveKeyLed = 9;
+                 kLiveKeyLed = 8, kInFxKeyLed = 9;
 static const int kNumFxProbe = 15; // kCmdParams' effects and the compressor
 static const int kFeedbackKeyLed = 6; // the settings page's upper D#: MIDI feedback
 static const int kSaveKeyLed = 7; // KEY_23, the play page's SAVE
@@ -56,15 +56,32 @@ static float last_out[2] = {0.f, 0.f}, max_step = 0.f; // the master out's large
 static float hp_rms = 0.f; // the headphones' (left) RMS over the last RunMs
 static float out_peak = 0.f; // the master out's largest sample, L or R, since it was set to 0
 static float mic_amp = 0.f, mic_freq = 1000.f, mic_phase = 0.f; // a sine into the mic
+// the computer over USB (#196): while usb_playing it plays a sine of usb_amp into FRIZZ (both
+// sides alike); what it records of FRIZZ, while SetUsbRecording, kept (L R)
+static bool usb_playing = false;
+static float usb_amp = 0.f, usb_freq = 500.f, usb_phase = 0.f;
+static std::vector<float> usb_recorded;
+// the master out (L) and what the computer recorded (L), each against AUX's sine and the
+// computer's, summed sample by sample: their sign is the polarity (#209); since set to 0
+static double out_x_aux = 0., out_x_usb = 0., rec_x_aux = 0., rec_x_usb = 0.;
 
 /** Runs blocks (half a ms each) with a sine (or silence) into AUX, and one into the mic
  *  while mic_amp > 0; the master out's RMS over the time. RunMs: as many ms */
 static float RunBlocks(uint32_t blocks)
 {
-    float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
+    float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels], usb[kBlockSize * 2];
     double sum = 0., hp_sum = 0.;
     for (uint32_t b = 0; b < blocks; b++)
     {
+        if (usb_playing)
+        {
+            for (size_t i = 0; i < kBlockSize; i++)
+            {
+                usb[i * 2] = usb[i * 2 + 1] = usb_amp * sinf(usb_phase);
+                usb_phase = fmodf(usb_phase + 2.f * float(M_PI) * usb_freq / kSampleRate, 2.f * float(M_PI));
+            }
+            SetUsbAudioIn(usb);
+        }
         while (clock_bpm > 0.f && clock_next <= NowMs())
         {
             Midi(0xF8);
@@ -84,6 +101,19 @@ static float RunBlocks(uint32_t blocks)
             mic_phase = fmodf(mic_phase + 2.f * float(M_PI) * mic_freq / kSampleRate, 2.f * float(M_PI));
         }
         Run(1, in, out);
+        const std::vector<float> rec = TakeUsbAudioOut();
+        usb_recorded.insert(usb_recorded.end(), rec.begin(), rec.end());
+        for (size_t i = 0; i < kBlockSize; i++)
+        {
+            const float a = in[i * kChannels + 2], u = usb_playing ? usb[i * 2] : 0.f;
+            out_x_aux += out[i * kChannels + 2] * a;
+            out_x_usb += out[i * kChannels + 2] * u;
+            if (rec.size() == kBlockSize * 2)
+            {
+                rec_x_aux += rec[i * 2] * a;
+                rec_x_usb += rec[i * 2] * u;
+            }
+        }
         for (size_t i = 0; i < kBlockSize; i++)
         {
             const float o = out[i * kChannels + 2];
@@ -277,6 +307,21 @@ static void Save(int slot)
 }
 static bool Same(const Rgb& a, const Rgb& b) { return a.r == b.r && a.g == b.g && a.b == b.b; }
 
+/** Runs to just past the tempo's next bar line (TempoClock.h, 12 pulses a beat, 4 a bar), so a
+ *  morph started then lands a whole bar on, whatever the grid's phase since power-on */
+static void ToBarLine()
+{
+    uint32_t was = Probe().position;
+    for (int ms = 0; ms < 4000; ms++)
+    {
+        RunMs(1);
+        const uint32_t now = Probe().position;
+        if (now != was && now % 48 == 0)
+            return;
+        was = now;
+    }
+}
+
 // MIDI (MidiControl.h): bytes into the jack, or over USB; FRIZZ listens on channel 16 at first
 static void Trs(std::initializer_list<int> bytes)
 {
@@ -394,23 +439,212 @@ static int LastCc(const std::vector<std::array<int, 3>>& v, int status, int cc)
 /** A knob's 0-1 as MIDI feedback's 7 bits (MidiFeedback.h's KnobTo7) */
 static int Knob7(float k) { return k <= .5f ? static_cast<int>(k * 128.f + .5f) : static_cast<int>(64.f + (k - .5f) * 126.f + .5f); }
 
+// ---- the Loops page (#70, LoopControls.h): loops from the card ----
+// the white keys left to right, the bank keys (the lower C#, D#), their LEDs (PanelKeys.h)
+static const char* const kLoopKeys[15] = {"KEY_1", "KEY_2",  "KEY_3",  "KEY_4",  "KEY_5",
+                                          "KEY_6", "KEY_7",  "KEY_8",  "KEY_9",  "KEY_10",
+                                          "KEY_11", "KEY_12", "KEY_13", "KEY_14", "KEY_15"};
+static int LoopLed(int slot) { return 24 - slot; }
+static const int kBankDownLed = 0, kBankUpLed = 1;
+// a slot's LED in its bank's colour: lit (full scale 252), dim (kFxOffLevel, 36), dark
+static const int kLoopLit = 252, kLoopDim = 36;
+/** An LED in colour (0..1) at level (full scale), within a few steps */
+static bool Shows(const Rgb& c, const float* color, int level, int within = 6)
+{
+    auto near = [&](int got, float want) { return std::abs(got - static_cast<int>(want * level + .5f)) <= within; };
+    return near(c.r, color[0]) && near(c.g, color[1]) && near(c.b, color[2]);
+}
+static const float kOrange[3] = {1.f, .6f, .24f}, kGreen[3] = {0.f, 1.f, 0.f}, kRed[3] = {1.f, 0.f, 0.f},
+                   kWhite[3] = {1.f, 1.f, 1.f};
+
+/** Loops on the card ("a1" and the file, in /FRIZZ; a path with a "/", as it is), then
+ *  scanned again (LoopLoader's SysEx) */
+static void PutLoops(const std::vector<std::pair<std::string, std::string>>& files)
+{
+    for (const auto& f : files)
+        CardFiles()[f.first.find('/') == std::string::npos ? "/FRIZZ/" + f.first + ".wav" : f.first] = f.second;
+    Ask({0x3E, 0x0D, 1, 3});
+    RunMs(300);
+}
+/** SHIFT + the lower C#: the Loops page opened, or from it home */
+static void LoopsPage()
+{
+    Keys({"+KEY_26", "60", "+KEY_16", "60", "-KEY_16", "60", "-KEY_26", "200"});
+}
+/** SHIFT + the lower D#: the Cubbi page opened, or from it home */
+static void CubbiPage()
+{
+    Keys({"+KEY_26", "60", "+KEY_17", "60", "-KEY_17", "60", "-KEY_26", "200"});
+}
+// TAPE's bank colours (its NormalPage.h), the Cubbi page's a-e
+static const float kTapePurple[3] = {.58f, .05f, 1.f}, kTapeTeal[3] = {.14f, 1.f, .92f},
+                   kTapeDarkOrange[3] = {.77f, .38f, .06f}, kTapeYellowGreen[3] = {.706f, 1.f, 0.f};
+/** SHIFT + key (the lower C# or D#) opening a page: the red blinks on the bank keys' LEDs
+ *  (both: the page has no loop) over 800 ms from the press, the key let go after 60 ms, SHIFT
+ *  after 120 */
+static void OpenCounting(const char* key, int& down, int& up)
+{
+    Press("KEY_26", true);
+    RunMs(60);
+    Press(key, true);
+    down = up = 0;
+    bool was_down = false, was_up = false;
+    for (int t = 0; t < 800; t++)
+    {
+        if (t == 60)
+            Press(key, false);
+        if (t == 120)
+            Press("KEY_26", false);
+        RunMs(1);
+        const Rgb dn = SmtLedFull(kBankDownLed), u = SmtLedFull(kBankUpLed);
+        const bool ld = dn.r > 128 && dn.g == 0 && dn.b == 0, lu = u.r > 128 && u.g == 0 && u.b == 0;
+        down += ld && !was_down;
+        up += lu && !was_up;
+        was_down = ld;
+        was_up = lu;
+    }
+}
+/** Two clean taps of SHIFT, gap ms between them */
+static void DoubleTap(uint32_t gap = 100)
+{
+    Tap("KEY_26", 60);
+    RunMs(gap);
+    Tap("KEY_26", 60);
+    RunMs(200);
+}
+/** SHIFT held, keys tapped (each 60 ms, 60 ms apart; "ENC_5_SW" the transport's press, "T3" the
+ *  transport turned 3 detents, a number waits), SHIFT let go */
+static void ShiftWith(const std::vector<const char*>& keys)
+{
+    Press("KEY_26", true);
+    RunMs(60);
+    for (const char* k : keys)
+    {
+        if (k[0] == 'T')
+            Turn(5, atoi(k + 1));
+        else if (isdigit(static_cast<unsigned char>(k[0])))
+            RunMs(static_cast<uint32_t>(atoi(k)));
+        else
+            Tap(k);
+        RunMs(60);
+    }
+    Press("KEY_26", false);
+}
+/** The transport turned n detents, one at a time (a step of the speed takes 2, of SHIFT's
+ *  ladder 4), with SHIFT held for shift */
+static void Detents(int n, bool shift = false)
+{
+    if (shift)
+        Press("KEY_26", true);
+    RunMs(30);
+    for (int i = 0; i < abs(n); i++)
+    {
+        Turn(5, n > 0 ? 1 : -1);
+        RunMs(20); // one event each
+    }
+    if (shift)
+        Press("KEY_26", false);
+    RunMs(30);
+}
+/** Whether the Loops page or the Cubbi page shows (SHIFT's LED, not held, dim in a bank's
+ *  colour; dark on the play page) */
+static bool LoopsShown() { return Max(PthLedFull(kChompiKeyLed)) > 0; }
+/** The bank shown, by its colour: SHIFT's LED, dim (a PTH LED: in steps of 11) */
+static bool BankShown(const float* color) { return Shows(PthLedFull(kChompiKeyLed), color, kLoopDim, 12); }
+/** Runs ms by ms until the loop's length is frames (Probe), at most max ms: the ms it took,
+ *  -1 if it never was; pos_before: where the loop that played was the ms before */
+static int UntilLength(size_t frames, int max, float* pos_before = nullptr)
+{
+    float pos = Probe().loop_pos;
+    for (int ms = 0; ms < max; ms++)
+    {
+        RunMs(1);
+        const ClockState st = Probe();
+        if (st.loop_length == frames && st.loop_state >= 2)
+        {
+            if (pos_before)
+                *pos_before = pos;
+            return ms;
+        }
+        pos = st.loop_pos;
+    }
+    return -1;
+}
+/** The master out over ms with no input: its left and right, and how often the left changes
+ *  sign */
+static void MasterOut(uint32_t ms, std::vector<float>& l, std::vector<float>& r)
+{
+    float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
+    l.clear();
+    r.clear();
+    for (uint32_t b = 0; b < ms * 2; b++)
+    {
+        Run(1, in, out);
+        for (size_t i = 0; i < kBlockSize; i++)
+        {
+            l.push_back(out[i * kChannels + 2]);
+            r.push_back(out[i * kChannels + 3]);
+        }
+    }
+}
+/** The level of a tone of hz in v (best a whole number of its periods long) */
+static float ToneLevel(const std::vector<float>& v, float hz)
+{
+    double si = 0., co = 0.;
+    for (size_t i = 0; i < v.size(); i++)
+    {
+        const double ph = 2. * M_PI * hz * static_cast<double>(i) / kSampleRate;
+        si += v[i] * sin(ph);
+        co += v[i] * cos(ph);
+    }
+    return v.empty() ? 0.f : static_cast<float>(2. * sqrt(si * si + co * co) / static_cast<double>(v.size()));
+}
+static int SignChanges(const std::vector<float>& v)
+{
+    int n = 0;
+    for (size_t i = 1; i < v.size(); i++)
+        n += (v[i] >= 0.f) != (v[i - 1] >= 0.f);
+    return n;
+}
+
 int main()
 {
+    // power-on to playable in about a second (#195): on the twin main() reads the keys from
+    // ~0.4 s to ~0.9 s, the ripple runs meanwhile, then the play page and the sound
     cases.push_back({"boot", [] {
-        const float booting = RunMs(1000);
-        Check(booting == 0.f, "boot: the outputs stay muted while the boot animation runs");
-        RunMs(kReadyMs - 1000);
-        Check(RunMs(200) > .05f, "boot: then the input reaches the master out");
+        const float booting = RunMs(850);
+        Check(booting == 0.f, "boot: the outputs stay muted while the boot ripple runs");
+        RunMs(150);
+        Check(RunMs(200) > .05f, "boot: then the input reaches the master out, after 1 s");
+        Tap("ENC_6_SW");
+        RunMs(100);
+        Check(Ask({0x20}).size() > 12 && Ask({0x20})[12] == 1,
+              "boot: and the play page takes keys: VOLUME's press steps to the input gain's page");
+        RunMs(kReadyMs);
         bool all_dim = true;
         for (int led : {24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 13, 12})
             all_dim &= Max(SmtLedFull(led)) > 0 && Max(SmtLedFull(led)) < 80;
         Check(all_dim, "boot: every FX key glows dimly in its colour");
     }});
 
-    // VOLUME pressed during the boot animation and let go on the play page: no page change,
-    // as the boot page had the press
+    // the boot ripple (#195): light blue, from SHIFT outwards by where the LEDs sit, gone
+    // when the play page opens. On the twin the audio starts at ~0.4 s, the ripple with it
+    cases.push_back({"boot-ripple", [] {
+        auto light_blue = [](const Rgb& c) { return c.b > 100 && c.g > c.r && c.b >= c.g; };
+        RunMs(450);
+        // the CHOMPI key's LED and the dark key beside SHIFT, ~24 mm from it; VOLUME's 259 mm
+        const bool near = light_blue(PthLedFull(0)) && light_blue(SmtLedFull(1));
+        Check(near && Max(PthLedFull(kVolumeLed)) == 0,
+              "boot-ripple: first the LEDs next to SHIFT light up light blue, the far ones dark");
+        RunMs(300);
+        Check(light_blue(PthLedFull(8)) && Max(PthLedFull(0)) == 0 && Max(SmtLedFull(1)) == 0,
+              "boot-ripple: then the ring has reached the far side, the middle dark again");
+    }});
+
+    // VOLUME pressed during the boot ripple and let go on the play page: no page change, as
+    // the boot page had the press
     cases.push_back({"boot-volume", [] {
-        RunMs(1000);
+        RunMs(600);
         Press("ENC_6_SW", true);
         RunMs(kReadyMs);
         Press("ENC_6_SW", false);
@@ -422,6 +656,24 @@ int main()
         RunMs(300);
         Check(Ask({0x20}).size() > 12 && Ask({0x20})[12] == 1,
               "boot-volume: then a press steps to the input gain's page");
+    }});
+
+    // keys held from power-on, through main()'s read for shipping mode and the ripple, let go
+    // on the play page: neither the press nor the release does anything there
+    cases.push_back({"boot-held", [] {
+        Press("KEY_28", true);
+        Press("KEY_1", true);
+        RunMs(1500);
+        const bool dark = Max(PthLedFull(kLoopLed)) == 0;
+        Press("KEY_28", false);
+        Press("KEY_1", false);
+        RunMs(300);
+        Check(dark && Max(PthLedFull(kLoopLed)) == 0, "boot-held: LOOP held from power-on records nothing");
+        Check(LatchedFx(Ask({0x20})) == 0, "boot-held: an FX key held from power-on latches nothing");
+        Tap("KEY_28");
+        RunMs(100);
+        const Rgb rec = PthLedFull(kLoopLed);
+        Check(rec.r > 100 && rec.g == 0 && rec.b == 0, "boot-held: the next LOOP records");
     }});
 
     cases.push_back({"hold", [] {
@@ -490,6 +742,11 @@ int main()
             const char* what;
             bool latched_before, latched_after;
             std::vector<const char*> keys;
+            // run in both phases of MainLoop's 2 ms tick: a release bouncing back 6 ms on is
+            // taken back in each. 7 ms on, the bounce's press comes kShiftGraceMs after the
+            // release itself, taken back or not by the ms phase, and either is right (#202,
+            // not planned): not checked
+            bool both_phases = false;
         };
         const std::vector<Seq> seqs = {
             {"SHIFT let go 1 ms after the key's contact", true, true,
@@ -518,15 +775,15 @@ int main()
             {"the key bouncing 4 ms, SHIFT let go at its 2nd", true, true,
              {"+KEY_26", "50", "+KEY_5", "1", "-KEY_5", "1", "-KEY_26", "+KEY_5", "1", "-KEY_5",
               "1", "+KEY_5", "150", "-KEY_5"}},
-            {"select, SHIFT up, the key's release touching again 7 ms on", true, true,
-             {"+KEY_26", "50", "+KEY_5", "100", "-KEY_26", "100", "-KEY_5", "7", "+KEY_5", "1",
-              "-KEY_5"}},
+            {"select, SHIFT up, the key's release touching again 6 ms on", true, true,
+             {"+KEY_26", "50", "+KEY_5", "100", "-KEY_26", "100", "-KEY_5", "6", "+KEY_5", "1",
+              "-KEY_5"}, true},
             {"select, the key's release touching again 7 ms on, SHIFT held", true, true,
              {"+KEY_26", "50", "+KEY_5", "100", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5", "100",
               "-KEY_26"}},
-            {"the latch gesture, its release touching again 7 ms on", false, true,
-             {"+KEY_5", "100", "+KEY_26", "100", "-KEY_26", "100", "-KEY_5", "7", "+KEY_5", "1",
-              "-KEY_5"}},
+            {"the latch gesture, its release touching again 6 ms on", false, true,
+             {"+KEY_5", "100", "+KEY_26", "100", "-KEY_26", "100", "-KEY_5", "6", "+KEY_5", "1",
+              "-KEY_5"}, true},
             {"a plain tap", true, false, {"+KEY_5", "60", "-KEY_5"}},
             {"a plain tap, its release touching again 7 ms on", true, false,
              {"+KEY_5", "60", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5"}},
@@ -538,19 +795,27 @@ int main()
         };
         for (const Seq& s : seqs)
         {
-            if (((LatchedFx(Ask({0x20})) & filter) != 0) != s.latched_before)
-                Latch("KEY_5");
-            Tap("KEY_2"); // the shifter on the knobs
-            RunMs(300);
-            const unsigned before = LatchedFx(Ask({0x20}));
-            Keys(s.keys);
-            RunMs(400);
-            const std::string st = Ask({0x20});
             const bool comp = strstr(s.what, "compressor") != nullptr;
-            Check(((before & filter) != 0) == s.latched_before && ((LatchedFx(st) & filter) != 0) == s.latched_after
-                      && st.size() > 4 && st[4] == (comp ? 14 : 4),
-                  (std::string("select-grace: ") + s.what + (s.latched_after ? ": latched" : ": unlatched")
-                   + (comp ? ", the compressor selected" : ", the filter selected")).c_str());
+            // both_phases twice, a ms apart: once in each phase of MainLoop's 2 ms tick
+            bool ok = true;
+            for (int pad = 0; pad < (s.both_phases ? 2 : 1); pad++)
+            {
+                if (((LatchedFx(Ask({0x20})) & filter) != 0) != s.latched_before)
+                    Latch("KEY_5");
+                Tap("KEY_2"); // the shifter on the knobs
+                RunMs(300 + pad);
+                const unsigned before = LatchedFx(Ask({0x20}));
+                Keys(s.keys);
+                RunMs(400);
+                const std::string st = Ask({0x20});
+                ok = ok && ((before & filter) != 0) == s.latched_before
+                     && ((LatchedFx(st) & filter) != 0) == s.latched_after && st.size() > 4
+                     && st[4] == (comp ? 14 : 4);
+            }
+            Check(ok, (std::string("select-grace: ") + s.what + (s.latched_after ? ": latched" : ": unlatched")
+                       + (comp ? ", the compressor selected" : ", the filter selected")
+                       + (s.both_phases ? " (in either ms phase)" : ""))
+                          .c_str());
         }
     }});
 
@@ -1154,15 +1419,16 @@ int main()
         RunMs(1000);
         Check(Card("/FRIZZ/frizz_scenes.txt") == scenes && Max(SmtLedFull(0)) == 0,
               "scene-keys: in SAVE they pick no slot: CHOMPI saves nothing");
-        // a slot picked, CHOMPI held and one of them tapped: a key without a function is no
-        // SHIFT combo (NormalPage::OnButton), so CHOMPI let go confirms, as the upper C# and D#
-        // did before
+        // a slot picked, CHOMPI held and the lower C# tapped: the Loops page since #70, which
+        // ends the mode, so CHOMPI let go confirms nothing; SHIFT + it again goes home
         Tap(kSceneKeys[2]);
         RunMs(300);
         Keys({"+KEY_26", "100", "+KEY_16", "60", "-KEY_16", "100", "-KEY_26", "1000"});
         const std::string combo = Ask({0x20});
-        Check(Card("/FRIZZ/frizz_scenes.txt") != scenes && combo.size() > 7 && combo[7] == 0,
-              "scene-keys: SAVE, a slot picked, CHOMPI + the lower C#: no combo, CHOMPI confirms");
+        Keys({"+KEY_26", "100", "+KEY_16", "60", "-KEY_16", "100", "-KEY_26", "300"});
+        Check(Card("/FRIZZ/frizz_scenes.txt") == scenes && combo.size() > 7 && combo[7] == 0,
+              "scene-keys: SAVE, a slot picked, CHOMPI + the lower C#: the Loops page, the mode "
+              "ended, nothing saved");
         // the settings page lights them (every channel, the block over the jack): back on the
         // play page they're dark again
         SetToggle(true);
@@ -1989,7 +2255,7 @@ int main()
         const Rgb dim = SmtLed(kFilterKeyLed);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_24"); // the upper G#: the source's effects now
+        Tap("KEY_24"); // the upper G#: the source live now
         RunMs(3000);
         Check(brightness_saved(75), "settings-brightness-old: a file's 75 % loads, and the upper G# leaves it");
         TurnBrightness(5);
@@ -2711,6 +2977,1160 @@ int main()
               "restart: under a stream of compressor CCs, within a second of being asked");
     }});
 
+    // the loop loader (LoopLoader.h, #70) in MainLoop beside the card's other users: a
+    // 16-bar loop loading while a scene is saved and a bug report written. They get the card
+    // between its runs, never in one (no FatFs call while a run's DMA has the card), and the
+    // loop lands byte for byte
+    cases.push_back({"loops-shared", [] {
+        RunMs(kReadyMs);
+        const uint32_t bytes = 3686400u * 4;
+        std::string wav = "RIFF";
+        auto u32 = [&](uint32_t v) {
+            for (int i = 0; i < 4; i++)
+                wav.push_back(static_cast<char>(v >> (8 * i)));
+        };
+        u32(36 + bytes);
+        wav += "WAVEfmt ";
+        for (uint32_t v : {16u, 1u | 2u << 16, 48000u, 192000u, 4u | 16u << 16})
+            u32(v);
+        wav += "data";
+        u32(bytes);
+        uint32_t x = 1, crc = 0xFFFFFFFFu;
+        for (uint32_t i = 0; i < bytes; i++)
+        {
+            x = x * 1103515245u + 12345u;
+            const uint8_t b = static_cast<uint8_t>(x >> 16);
+            wav.push_back(static_cast<char>(b));
+            crc ^= b;
+            for (int k = 0; k < 8; k++)
+                crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1)));
+        }
+        crc = ~crc;
+        CardFiles()["/FRIZZ/a1.wav"] = wav;
+        const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
+        // each run takes ~40 ms: the load ~4.7 s, the save and the report inside it
+        SetCardRawPolls(4000);
+        Ask({0x3E, 0x0D, 1, 3}); // scan again
+        RunMs(300);
+        const std::string started = Ask({0x3E, 0x0D, 2, 4, 0, 0, 0});
+        RunMs(200);
+        Save(4);
+        SetToggle(true); // the settings page: SHIFT + VOLUME held 2 s, a bug report
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(2100);
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(100);
+        SetToggle(false);
+        const std::string during = Ask({0x3E, 0x0D, 3, 0});
+        std::string status;
+        for (int i = 0; i < 100; i++)
+        {
+            RunMs(100);
+            status = Ask({0x3E, 0x0D, 4, 0});
+            if (status.size() > 3 && status[3] != 2) // no longer loading
+                break;
+        }
+        Ask({0x3E, 0x0D, 5, 5, 1}); // the CRC of what loaded
+        RunMs(1000);
+        const std::string got = Ask({0x3E, 0x0D, 6, 5});
+        Check(started.size() == 3 && started[2] == 0 && during.size() > 3 && during[3] == 2,
+              "loops-shared: the load started, and still ran after the save and the report");
+        Check(status.size() > 3 && status[3] == 3 && got.size() >= 9 && DevNum(got, 4, 5) == crc,
+              "loops-shared: 16 bars at 50 BPM loaded, its CRC-32 the file's");
+        Check(Card("/FRIZZ/frizz_scenes.txt") != scenes && !Card("/FRIZZ/bug-1.txt").empty(),
+              "loops-shared: the scene saved and the bug report written meanwhile");
+        Check(CardRawClash() == 0 && CardOpenFiles() == 0,
+              "loops-shared: no FatFs call while a run had the card, nothing left open");
+    }});
+
+    // the Loops page (#70): SHIFT + the lower C# opens it, SHIFT + it or a double tap of SHIFT
+    // goes home; its LEDs, the banks
+    cases.push_back({"loops-page", [] {
+        RunMs(kReadyMs);
+        std::string w44 = SineWav(4800, 2, 220.f);
+        const uint32_t rate = 44100;
+        memcpy(&w44[24], &rate, 4);
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a4", w44}, {"c1", SineWav(48000, 1, 440.f)}});
+        const bool dark = Max(SmtLedFull(kBankDownLed)) == 0 && Max(PthLedFull(kChompiKeyLed)) == 0;
+        Tap(kSaveKey); // a scene mode, which opening the page ends
+        RunMs(100);
+        LoopsPage();
+        const Rgb shift = PthLedFull(kChompiKeyLed), down = SmtLedFull(kBankDownLed),
+                  up = SmtLedFull(kBankUpLed), s1 = SmtLedFull(LoopLed(0)),
+                  s3 = SmtLedFull(LoopLed(2)), s4 = SmtLedFull(LoopLed(3));
+        int knobs = 0;
+        for (int k = 1; k <= 4; k++)
+            knobs = std::max(knobs, Max(PthLedFull(k)));
+        printf("      SHIFT %s, C# %s, D# %s, slots %s %s %s, knobs %d, SAVE %s\n", Hex(shift).c_str(),
+               Hex(down).c_str(), Hex(up).c_str(), Hex(s1).c_str(), Hex(s3).c_str(),
+               Hex(s4).c_str(), knobs, Hex(SmtLedFull(kSaveKeyLed)).c_str());
+        Check(dark && Max(down) == 0 && Shows(up, kGreen, kLoopLit)
+                  && Shows(shift, kOrange, kLoopDim, 12), // a PTH LED: in steps of 11
+              "loops-page: SHIFT + the lower C# opens it at A: SHIFT's LED dim in A's orange, C# "
+              "dark (no bank before A), D# in C's green (B is empty), where it leads");
+        Check(Shows(s1, kOrange, kLoopDim) && Max(s3) == 0 && Shows(s4, kRed, kLoopDim) && knobs == 0
+                  && Max(SmtLedFull(kSaveKeyLed)) == 0 && Ask({0x20})[7] == 0,
+              "loops-page: A's loops dim, an empty slot dark, a refused file dim red; knobs 1-4 "
+              "and the scene modes dark, SAVE ended");
+        Press("KEY_26", true);
+        RunMs(60);
+        const Rgb held = PthLedFull(kChompiKeyLed);
+        Press("KEY_26", false);
+        RunMs(100);
+        Check(Shows(held, kWhite, kLoopLit), "loops-page: SHIFT held: its LED white");
+
+        // the banks: B is empty, so D# goes to C, then no further: 3 red blinks; C# back to A,
+        // and none before it
+        Tap("KEY_17");
+        RunMs(100);
+        const Rgb c = PthLedFull(kChompiKeyLed), c1 = SmtLedFull(LoopLed(0)),
+                  c_down = SmtLedFull(kBankDownLed), c_up = SmtLedFull(kBankUpLed);
+        const int past_h = RedBlinks("KEY_17", kBankUpLed);
+        const bool c_dark = Max(SmtLedFull(kBankUpLed)) == 0;
+        Tap("KEY_16");
+        RunMs(100);
+        const bool back = BankShown(kOrange) && Shows(SmtLedFull(kBankUpLed), kGreen, kLoopLit);
+        const int past_a = RedBlinks("KEY_16", kBankDownLed);
+        printf("      bank C %s, its slot 1 %s, C# %s, D# %s; blinks past the last %d, the first %d\n",
+               Hex(c).c_str(), Hex(c1).c_str(), Hex(c_down).c_str(), Hex(c_up).c_str(), past_h, past_a);
+        Check(Shows(c, kGreen, kLoopDim, 12) && Shows(c1, kGreen, kLoopDim) && Shows(c_down, kOrange, kLoopLit)
+                  && Max(c_up) == 0 && past_h == 3 && c_dark && back && past_a == 3,
+              "loops-page: D# skips the empty bank B to C (green), where C# shows A's orange and D# "
+              "is dark; C# back to A; 3 red blinks past either end, the key dark again after");
+
+        // SHIFT + D# the Cubbi page (none on the card: its bank keys blink red), SHIFT + C#
+        // back to the Loops page, SHIFT + C# home
+        int empty_down = 0, empty = 0;
+        OpenCounting("KEY_17", empty_down, empty);
+        const bool cubbi = BankShown(kTapePurple) && Max(SmtLedFull(LoopLed(0))) == 0
+                           && Max(SmtLedFull(kBankDownLed)) == 0 && Max(SmtLedFull(kBankUpLed)) == 0;
+        LoopsPage();
+        const bool back_a = BankShown(kOrange);
+        LoopsPage();
+        const bool home = !LoopsShown() && Max(PthLedFull(kChompiKeyLed)) == 0;
+        printf("      the Cubbi page: %d red blinks, then a's purple %d; back %d, home %d\n", empty, cubbi, back_a, home);
+        Check(empty == 3 && empty_down == 3 && cubbi && back_a && home,
+              "loops-page: SHIFT + D# the Cubbi page there (no cubbis: 3 red blinks), SHIFT + C# "
+              "the Loops page again, SHIFT + C# home");
+
+        // a double tap of SHIFT goes home; on the play page it does nothing
+        LoopsPage();
+        DoubleTap();
+        const bool tapped = !LoopsShown();
+        DoubleTap();
+        Check(tapped && !LoopsShown() && Max(PthLedFull(kChompiKeyLed)) == 0,
+              "loops-page: a double tap of SHIFT goes home; on the play page it does nothing");
+        // not a double tap: the taps too far apart, a tap held too long, a key between them
+        LoopsPage();
+        RunMs(500);
+        DoubleTap(500);
+        const bool slow = LoopsShown();
+        RunMs(500);
+        Keys({"+KEY_26", "500", "-KEY_26", "100", "+KEY_26", "60", "-KEY_26", "500"});
+        const bool held_long = LoopsShown();
+        Keys({"+KEY_26", "60", "-KEY_26", "40", "+KEY_25", "40", "-KEY_25", "40", "+KEY_26", "60",
+              "-KEY_26", "500"});
+        const bool keyed = LoopsShown();
+        Keys({"+KEY_26", "60", "-KEY_26", "40"});
+        Turn(1, 1);
+        Keys({"20", "+KEY_26", "60", "-KEY_26", "200"});
+        const bool turned = LoopsShown();
+        printf("      still on the page: %d %d %d %d\n", slow, held_long, keyed, turned);
+        Check(slow && held_long && keyed && turned,
+              "loops-page: no double tap 500 ms apart, with a tap held 500 ms, nor with a key or a "
+              "knob's turn between the taps");
+    }});
+
+    // the Cubbi page (#70): TAPE's cubbis, in /TAPE or else the card's root, on their own page,
+    // SHIFT + the lower D#; TAPE's bank colours; the same keys as the Loops page, one plan
+    cases.push_back({"cubbi-page", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        std::string w44 = SineWav(4800, 2, 220.f);
+        const uint32_t rate = 44100;
+        memcpy(&w44[24], &rate, 4);
+        // stock TAPE: the root (no /TAPE); its doubles and jammis aren't loops
+        PutLoops({{"/cubbi_a1.wav", SineWav(96000, 2, 220.f)}, {"/cubbi_a2_double.wav", SineWav(48000, 2, 220.f)},
+                  {"/jammi_a4.wav", SineWav(48000, 2, 330.f)}, {"/CUBBI_A3.WAV", SineWav(72000, 2, 330.f)},
+                  {"/cubbi_b15.wav", w44}, {"/cubbi_c2.wav", SineWav(48000, 1, 440.f)},
+                  {"a1", SineWav(192000, 2, 165.f)}});
+        CubbiPage();
+        const Rgb shift = PthLedFull(kChompiKeyLed), down = SmtLedFull(kBankDownLed), up = SmtLedFull(kBankUpLed);
+        const Rgb s1 = SmtLedFull(LoopLed(0)), s2 = SmtLedFull(LoopLed(1)), s3 = SmtLedFull(LoopLed(2)),
+                  s4 = SmtLedFull(LoopLed(3));
+        printf("      SHIFT %s, C# %s, D# %s, slots %s %s %s %s\n", Hex(shift).c_str(), Hex(down).c_str(),
+               Hex(up).c_str(), Hex(s1).c_str(), Hex(s2).c_str(), Hex(s3).c_str(), Hex(s4).c_str());
+        Check(LoopsShown() && Max(down) == 0 && Shows(up, kOrange, kLoopLit)
+                  && Shows(shift, kTapePurple, kLoopDim, 12),
+              "cubbi-page: SHIFT + the lower D# opens it at bank a: SHIFT's LED dim in TAPE's "
+              "purple, C# dark, D# in b's orange");
+        Check(Shows(s1, kTapePurple, kLoopDim) && Max(s2) == 0 && Shows(s3, kTapePurple, kLoopDim) && Max(s4) == 0,
+              "cubbi-page: the root's cubbi_a1 and CUBBI_A3 dim; a _double's and a jammi's keys dark");
+        Tap("KEY_17");
+        RunMs(100);
+        const Rgb b = PthLedFull(kChompiKeyLed), b15 = SmtLedFull(LoopLed(14));
+        const bool b_keys = Shows(SmtLedFull(kBankDownLed), kTapePurple, kLoopLit)
+                            && Shows(SmtLedFull(kBankUpLed), kTapeTeal, kLoopLit);
+        Tap("KEY_17");
+        RunMs(100);
+        const Rgb c = PthLedFull(kChompiKeyLed), c2 = SmtLedFull(LoopLed(1));
+        const bool c_keys = Shows(SmtLedFull(kBankDownLed), kOrange, kLoopLit) && Max(SmtLedFull(kBankUpLed)) == 0;
+        const int past_e = RedBlinks("KEY_17", kBankUpLed);
+        printf("      bank b %s, its 15 %s; bank c %s, its 2 %s; past it %d\n", Hex(b).c_str(), Hex(b15).c_str(),
+               Hex(c).c_str(), Hex(c2).c_str(), past_e);
+        Check(Shows(b, kOrange, kLoopDim, 12) && Shows(b15, kRed, kLoopDim) && b_keys
+                  && Shows(c, kTapeTeal, kLoopDim, 12) && Shows(c2, kTapeTeal, kLoopDim) && c_keys && past_e == 3,
+              "cubbi-page: D#: bank b orange (cubbi_b15 at 44.1 kHz dim red; C# a's purple, D# c's "
+              "teal), c TAPE's teal (mono cubbi_c2 dim; C# b's orange, D# dark); d and e empty: 3 "
+              "red blinks");
+
+        // SHIFT + C#: the Loops page (FRIZZ's a, orange); SHIFT + D# back, at c still; SHIFT + D#
+        // home; a double tap home from it too
+        LoopsPage();
+        const bool loops = BankShown(kOrange) && Shows(SmtLedFull(LoopLed(0)), kOrange, kLoopDim)
+                           && Max(SmtLedFull(LoopLed(2))) == 0;
+        CubbiPage();
+        const bool again_c = BankShown(kTapeTeal);
+        CubbiPage();
+        const bool home = !LoopsShown() && Max(PthLedFull(kChompiKeyLed)) == 0;
+        CubbiPage();
+        DoubleTap();
+        const bool tapped = !LoopsShown();
+        printf("      Loops page %d, Cubbi page at c %d, home %d, double tap %d\n", loops, again_c, home, tapped);
+        Check(loops && again_c && home && tapped,
+              "cubbi-page: SHIFT + C# goes to the Loops page and SHIFT + D# back (the bank it "
+              "showed), SHIFT + D# on it home, a double tap home");
+
+        // a cubbi plays as a loop: at once from an empty looper, its tempo guessed (2 s: 120 BPM)
+        CubbiPage();
+        Tap("KEY_16");
+        RunMs(100);
+        Tap("KEY_16");
+        RunMs(100);
+        Tap(kLoopKeys[0]);
+        const int first = UntilLength(96000, 1000);
+        RunMs(300);
+        const ClockState a = Probe();
+        const Rgb lit = SmtLedFull(LoopLed(0));
+        printf("      cubbi_a1 after %d ms, %d BPM, key %s\n", first, a.tempo, Hex(lit).c_str());
+        Check(first >= 0 && a.loop_state == 2 && a.tempo == 120 && Shows(lit, kTapePurple, kLoopLit),
+              "cubbi-page: a white key: its cubbi plays at once (2 s, 120 BPM guessed), its key bright");
+
+        // one plan for both pages: SHIFT + a FRIZZ loop planned, then a cubbi at once replaces it
+        LoopsPage();
+        ShiftWith({kLoopKeys[0]});
+        RunMs(100);
+        const bool planned = LoopsShown();
+        CubbiPage();
+        Tap(kLoopKeys[2]);
+        const int third = UntilLength(72000, 1000);
+        RunMs(2500); // past the end of the pass the FRIZZ loop was planned for
+        const ClockState d = Probe();
+        printf("      cubbi_a3 after %d ms, then length %zu\n", third, static_cast<size_t>(d.loop_length));
+        Check(planned && third >= 0 && d.loop_length == 72000,
+              "cubbi-page: a cubbi at once replaces a FRIZZ loop planned on the Loops page: one plan");
+
+        // /TAPE there (the launcher's TAPE): its cubbis, not the root's
+        PutLoops({{"/TAPE/cubbi_a5.wav", SineWav(48000, 2, 220.f)}});
+        const bool tape = Shows(SmtLedFull(LoopLed(4)), kTapePurple, kLoopDim) && Max(SmtLedFull(LoopLed(0))) == 0;
+        Tap("KEY_17");
+        RunMs(100);
+        const bool no_b = BankShown(kTapePurple) && Max(SmtLedFull(kBankUpLed)) == 0; // b and c are the root's
+        CardFiles().erase("/TAPE/cubbi_a5.wav");
+        CardFiles()["/TAPE/presets.json"] = "{}";
+        PutLoops({});
+        int lit_keys = 0;
+        for (int k = 0; k < 15; k++)
+            lit_keys += k != 2 && Max(SmtLedFull(LoopLed(k))) > 0; // cubbi_a3 plays on, its key bright
+        printf("      /TAPE: its cubbi_a5 %d, no bank b %d; a /TAPE without cubbis: %d keys lit\n", tape, no_b, lit_keys);
+        Check(tape && no_b && lit_keys == 0,
+              "cubbi-page: with /TAPE, its cubbis and not the root's; a /TAPE without any hides "
+              "the root's, as the launcher's TAPE does");
+        CubbiPage();
+    }});
+
+    // a page without a loop: it opens, its keys dark, both bank keys blink red 3 times
+    cases.push_back({"cubbi-empty", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"/TAPE/jammi_a1.wav", SineWav(4800, 2, 220.f)}, {"/cubbi_a1.wav", SineWav(4800, 2, 220.f)}});
+        int down = 0, up = 0;
+        OpenCounting("KEY_17", down, up);
+        int lit_keys = 0;
+        for (int k = 0; k < 15; k++)
+            lit_keys += Max(SmtLedFull(LoopLed(k))) > 0;
+        const bool purple = BankShown(kTapePurple) && Max(SmtLedFull(kBankDownLed)) == 0
+                            && Max(SmtLedFull(kBankUpLed)) == 0;
+        const int more = RedBlinks("KEY_17", kBankUpLed);
+        Tap(kLoopKeys[0]);
+        RunMs(100);
+        printf("      red blinks C# %d, D# %d, then purple %d, keys lit %d, D# again %d\n", down, up, purple, lit_keys, more);
+        Check(LoopsShown() && down == 3 && up == 3 && purple && lit_keys == 0 && more == 3 && Probe().loop_state == 0,
+              "cubbi-empty: no cubbi in /TAPE (the root's not read): the page opens, its keys dark, "
+              "C# and D# blink red 3 times together, then SHIFT dim purple and both dark; D# blinks red, a key plays nothing");
+        int loops_down = 0, loops_up = 0;
+        OpenCounting("KEY_16", loops_down, loops_up);
+        Check(loops_down == 3 && loops_up == 3 && BankShown(kOrange),
+              "cubbi-empty: the Loops page without FRIZZ loops the same: 3 red blinks, then a's orange");
+    }});
+
+    // SHIFT + a white key, tapped twice: at the end of the second pass after SHIFT's release,
+    // gapless, its key blinking on the beat meanwhile
+    cases.push_back({"loops-passes", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 500);
+        RunMs(600);
+        ShiftWith({kLoopKeys[1], kLoopKeys[1]});
+        std::vector<int> wraps, led;
+        int switched = -1;
+        float pos = Probe().loop_pos, before = 0.f;
+        max_step = 0.f;
+        for (int ms = 0; ms < 6000 && switched < 0; ms++)
+        {
+            RunMs(1);
+            const ClockState st = Probe();
+            if (st.loop_length == 72000)
+            {
+                switched = ms;
+                before = pos;
+            }
+            else if (st.loop_pos < pos - .5f)
+                wraps.push_back(ms);
+            pos = st.loop_pos;
+            led.push_back(Max(SmtLedFull(LoopLed(1))));
+        }
+        RunMs(50);
+        // loaded long before: the beat's halves, 250 ms each at 120 BPM
+        const std::vector<int> runs = Runs(std::vector<int>(led.begin() + 500, led.end()), 100);
+        const bool on_beat = runs.size() >= 4 && std::all_of(runs.begin(), runs.end(),
+                                                             [](int r) { return r >= 230 && r <= 270; }); // the LEDs' frames: ~16 ms
+        printf("      wraps after the release at %d ms, the switch at %d ms (from %.4f), step %.4f, "
+               "blinks of %d ms\n", wraps.empty() ? -1 : wraps[0], switched, before, max_step,
+               runs.empty() ? 0 : runs[0]);
+        Check(wraps.size() == 1 && switched >= wraps[0] + 1990 && switched <= wraps[0] + 2010 && before > .99f,
+              "loops-passes: SHIFT + a white key x2: at the end of the 2nd pass after SHIFT let go");
+        Check(max_step < .01f && on_beat, "loops-passes: gapless, its key blinking on the beat while it waits");
+    }});
+
+    // a loop joins a scene sequence in one SHIFT hold, the scene key first: lands where the
+    // morph lands, with a drop or a build-up's drop. A/03, 2 bars at 120 BPM, has a bar line
+    // halfway. (A white key first counts passes: loops-first; the crossfader: loops-fader)
+    cases.push_back({"loops-scene", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        Latch("KEY_5"); // the filter, saved in scene 1, then the blank scene again
+        Save(1);
+        Tap(kSceneKeys[0]);
+        RunMs(200);
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a3", SineWav(192000, 2, 220.f)}});
+        LoopsPage();
+        auto start = [](float at) { // A/03 playing, at its position at
+            Tap(kLoopKeys[2]);
+            UntilLength(192000, 1000);
+            while (Probe().loop_pos < at)
+                RunMs(1);
+        };
+        auto on_line = [](float pos) { return std::fabs(pos * 2.f - std::round(pos * 2.f)) < .01f; };
+        start(.05f);
+        ShiftWith({kSceneKeys[1], kLoopKeys[0]});
+        float before = 0.f;
+        const int morph = UntilLength(96000, 3000, &before);
+        RunMs(20);
+        const bool landed = (LatchedFx(Ask({0x20})) >> 4 & 1) == 1;
+        printf("      the morph: switched from %.4f\n", before);
+        Check(morph >= 0 && before > .49f && before < .51f && landed,
+              "loops-scene: SHIFT + scene + white key: the loop lands with the morph, on its bar line");
+        start(.05f);
+        ShiftWith({kSceneKeys[0], "ENC_5_SW", kLoopKeys[1]});
+        const int drop = UntilLength(72000, 3000, &before);
+        printf("      the drop: from %.4f\n", before);
+        Check(drop >= 0 && on_line(before) && (LatchedFx(Ask({0x20})) >> 4 & 1) == 0,
+              "loops-scene: with a drop: on the drop's bar line");
+        start(.05f);
+        ShiftWith({kSceneKeys[1], kSceneKeys[0], kLoopKeys[0]});
+        const int build = UntilLength(96000, 3000, &before);
+        printf("      the build-up: from %.4f\n", before);
+        Check(build >= 0 && before > .49f && before < .51f, "loops-scene: with a build-up's drop: on its line");
+        // the white key only says which loop: tapped again, or another after it, counts nothing
+        start(.05f);
+        ShiftWith({kSceneKeys[1], kLoopKeys[1], kLoopKeys[1], kLoopKeys[0]});
+        const int last = UntilLength(96000, 3000, &before);
+        printf("      A, then A/02 twice and A/01: A/01 from %.4f\n", before);
+        Check(last >= 0 && before > .49f && before < .51f,
+              "loops-scene: the scene key first: white keys after it count nothing, the last one "
+              "lands with the morph on its bar line");
+    }});
+
+    // SHIFT + any blinking key cancels the plan: the loop's (a later hold), its scene stopping
+    // where it is; a loop alone's; the scene key's, taking the loop with it
+    cases.push_back({"loops-cancel", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        Latch("KEY_5");
+        Save(1);
+        Tap(kSceneKeys[0]);
+        RunMs(200);
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a3", SineWav(192000, 2, 220.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[2]);
+        UntilLength(192000, 1000);
+        RunMs(100);
+        ShiftWith({kSceneKeys[1], kSceneKeys[1], kLoopKeys[0]});
+        RunMs(300);
+        ShiftWith({kLoopKeys[0]});
+        const int kept = UntilLength(96000, 5000);
+        const std::string st = Ask({0x20});
+        Check(kept < 0 && st.size() > 6 && (st[6] & 2) == 0 && Shows(SmtLedFull(LoopLed(0)), kOrange, kLoopDim),
+              "loops-cancel: SHIFT + the planned loop's key: no switch, the morph stopped, the key dim");
+        ShiftWith({kLoopKeys[0], kLoopKeys[0], kLoopKeys[0]});
+        RunMs(300);
+        ShiftWith({kLoopKeys[0]});
+        Check(UntilLength(96000, 9000) < 0, "loops-cancel: a loop alone's too");
+        ShiftWith({kSceneKeys[1], kLoopKeys[0]});
+        RunMs(300);
+        ShiftWith({kSceneKeys[1]});
+        Check(UntilLength(96000, 5000) < 0, "loops-cancel: SHIFT + the blinking scene key takes the loop with it");
+    }});
+
+    // a plan runs on when the page is left; the looper's keys act on a loaded loop as on a
+    // recorded one, and LOOP's erase takes a plan with it; a white key while it records, a
+    // refused file and an empty slot blink red 3 times
+    cases.push_back({"loops-looper", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        std::string w24 = SineWav(4800, 2, 220.f);
+        w24[34] = 24; // bits per sample
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)}, {"a4", w24}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 500);
+        ShiftWith({kLoopKeys[1]});
+        RunMs(450);
+        DoubleTap();
+        const bool home = !LoopsShown();
+        const int left = UntilLength(72000, 2500);
+        printf("      home %d, switched after %d ms\n", home, left);
+        Check(home && left >= 0, "loops-looper: a plan lands with the page left");
+        Tap("KEY_27"); // PLAY: paused
+        RunMs(100);
+        const int paused = Probe().loop_state;
+        Tap("KEY_27");
+        RunMs(100);
+        Turn(5, 2); // a semitone up
+        RunMs(400);
+        const float speed = Probe().loop_speed;
+        Check(paused == 3 && Probe().loop_state == 2 && speed > 1.05f && speed < 1.07f,
+              "loops-looper: PLAY pauses and plays the loaded loop, the transport turns its speed");
+        LoopsPage();
+        ShiftWith({kLoopKeys[0]});
+        Tap("KEY_28"); // LOOP: erased, and the plan with it
+        RunMs(300);
+        const int erased = Probe().loop_state;
+        RunMs(2500);
+        Check(erased == 0 && Probe().loop_state == 0, "loops-looper: LOOP erases it, and the plan with it");
+        Tap("KEY_28");
+        RunMs(200);
+        const int recording = Probe().loop_state;
+        const int while_rec = RedBlinks(kLoopKeys[0], LoopLed(0));
+        printf("      recording %d, blinks %d\n", recording, while_rec);
+        Tap("KEY_28");
+        RunMs(200);
+        const ClockState rec = Probe();
+        Check(while_rec == 3 && rec.loop_state == 2 && rec.loop_length != 96000
+                  && Shows(SmtLedFull(LoopLed(0)), kOrange, kLoopDim),
+              "loops-looper: a white key while LOOP records blinks red 3 times; the recording plays");
+        Check(RedBlinks(kLoopKeys[3], LoopLed(3)) == 3 && RedBlinks(kLoopKeys[5], LoopLed(5)) == 3
+                  && Probe().loop_length == rec.loop_length,
+              "loops-looper: a refused file's key and an empty slot's blink red 3 times");
+    }});
+
+    // a mono loop is spread to stereo where it landed before it may play; one not loaded by its
+    // drop lets the scene land and follows at the next bar line it's ready for
+    cases.push_back({"loops-load", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        Latch("KEY_5");
+        Save(1);
+        Tap(kSceneKeys[0]);
+        RunMs(200);
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a3", SineWav(192000, 2, 220.f)},
+                  {"a5", SineWav(2880000, 1, 440.f)}, {"a6", SineWav(480000, 2, 330.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 500);
+        ShiftWith({kLoopKeys[4]}); // 60 s mono, at the end of this pass
+        const bool loading = Max(SmtLedFull(LoopLed(4))) > 0 || Max(Peak(LoopLed(4), 150)) > 0;
+        const int mono = UntilLength(2880000, 3000);
+        RunMs(20); // past the crossfade from A/01
+        std::vector<float> l, r;
+        MasterOut(50, l, r);
+        float apart = 0.f;
+        for (size_t i = 0; i < l.size(); i++)
+            apart = std::max(apart, std::fabs(l[i] - r[i]));
+        const int changes = SignChanges(l);
+        printf("      mono after %d ms: L-R %.5f, sign changes in 50 ms %d\n", mono, apart, changes);
+        Check(loading && mono >= 0 && apart < 1e-4f && changes >= 43 && changes <= 45,
+              "loops-load: a mono loop: both sides the same 440 Hz from the first block it plays");
+        Tap(kLoopKeys[2]);
+        UntilLength(192000, 1000);
+        while (Probe().loop_pos < .3f)
+            RunMs(1);
+        SetCardRawPolls(4000); // ~40 ms a run: 1.9 MB in ~0.6 s
+        ShiftWith({kSceneKeys[1], "ENC_5_SW", kLoopKeys[5]});
+        bool drop_first = false;
+        float before = 0.f;
+        int late = -1;
+        for (int ms = 0; ms < 4000 && late < 0; ms++)
+        {
+            float pos = Probe().loop_pos;
+            if (UntilLength(480000, 1, &pos) >= 0)
+            {
+                late = ms;
+                before = pos;
+            }
+            drop_first = drop_first || (LatchedFx(Ask({0x20})) >> 4 & 1);
+        }
+        printf("      the drop landed first: %d; the loop after %d ms, from %.4f\n", drop_first, late, before);
+        Check(drop_first && late > 0 && before > .99f,
+              "loops-load: the scene drops on its line; the loop, still loading, at the next one");
+    }});
+
+    // MIDI's notes still play the effects on the Loops page, and pick no loops; an effect held
+    // on the play page lets go there
+    cases.push_back({"loops-midi", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a5", SineWav(96000, 2, 220.f)}});
+        LoopsPage();
+        Trs({kNoteOn, kFilterNote, 100});
+        RunMs(100);
+        const std::string held = Ask({0x20});
+        Trs({kNoteOff, kFilterNote, 0});
+        RunMs(100);
+        Check(held.size() > 11 && (held[11] >> 4 & 1) && Probe().loop_state == 0,
+              "loops-midi: the filter's note punches it in there, and plays no loop");
+        LoopsPage();
+        Press("KEY_5", true);
+        RunMs(100);
+        LoopsPage();
+        const bool shown = LoopsShown();
+        Press("KEY_5", false);
+        RunMs(100);
+        const std::string after = Ask({0x20});
+        Check(shown && after.size() > 11 && (after[11] >> 4 & 1) == 0 && Probe().loop_state == 0,
+              "loops-midi: the filter held by hand on the play page lets go on the Loops page");
+    }});
+
+    // loops over MIDI (#259): CC 0 picks the program changes' bank (0 the scenes, 1-8 FRIZZ's
+    // a-h, 9-13 the cubbis a-e), a program change 0-14 the key; CC 54 when: 0 at once, 1-8 at
+    // the n-th pass end, 127 with the waiting scene sequence (at once if none); CC 81 cancels
+    // all of it. From the play page, no Loops page needed. MIDI feedback sends a switch the
+    // hand made as CC 0, the program change and CC 0 = 0, and none MIDI made
+    cases.push_back({"loops-pc", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        Latch("KEY_5"); // the filter, saved in scene 1, then the blank scene again
+        Save(1);
+        Tap(kSceneKeys[0]);
+        RunMs(200);
+        PutLoops({{"a1", SineWav(192000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a3", SineWav(96000, 2, 440.f)}, {"/cubbi_a1.wav", SineWav(120000, 2, 275.f)}});
+        // bank 1 (a), program 1: A/02 at once, on the play page
+        Trs({kCC, 0, 1});
+        Trs({kPC, 1});
+        const int a2 = UntilLength(72000, 1000);
+        // bank 9: the cubbis' a, program 0
+        Trs({kCC, 0, 9});
+        Trs({kPC, 0});
+        const int cubbi = UntilLength(120000, 1000);
+        // bank 0: program 1 recalls scene 1 again, no loop; bank 14 nothing; an empty slot nothing
+        Trs({kCC, 0, 0});
+        Trs({kPC, 1});
+        RunMs(100);
+        const bool scene = (LatchedFx(Ask({0x20})) >> 4 & 1) == 1 && Probe().loop_length == 120000;
+        Tap(kSceneKeys[0]);
+        RunMs(100);
+        Trs({kCC, 0, 14});
+        Trs({kPC, 0});
+        RunMs(100);
+        const bool none = (LatchedFx(Ask({0x20})) >> 4 & 1) == 0 && Probe().loop_length == 120000;
+        Trs({kCC, 0, 1});
+        Trs({kPC, 9});
+        RunMs(300);
+        printf("      A/02 after %d ms, cubbi_a1 after %d ms; bank 0's scene %d, bank 14 and an empty key nothing %d\n",
+               a2, cubbi, scene, none && Probe().loop_length == 120000);
+        Check(LoopsShown() == false && a2 >= 0 && cubbi >= 0 && scene && none && Probe().loop_length == 120000,
+              "loops-pc: CC 0 + a program change: a FRIZZ loop (bank 1), a cubbi (bank 9), at once "
+              "from the play page; bank 0 the scenes; bank 14 or an empty key nothing");
+        // CC 54 = 2: at the end of the second pass
+        Trs({kPC, 0}); // A/01, at once (CC 54 still 0)
+        UntilLength(192000, 1000);
+        for (int ms = 0; ms < 5000 && (Probe().loop_pos < .05f || Probe().loop_pos > .5f); ms++)
+            RunMs(1);
+        Trs({kCC, 54, 2});
+        Trs({kPC, 2});
+        int wraps = 0;
+        float pos = Probe().loop_pos, before = 0.f;
+        int at = -1;
+        for (int ms = 0; ms < 9000 && at < 0; ms++)
+        {
+            RunMs(1);
+            const ClockState st = Probe();
+            if (st.loop_length == 96000)
+            {
+                at = ms;
+                before = pos;
+            }
+            else
+                wraps += st.loop_pos < pos - .5f;
+            pos = st.loop_pos;
+        }
+        printf("      CC 54 = 2: %d wraps first, switched from %.4f\n", wraps, before);
+        Check(at >= 0 && wraps == 1 && before > .99f, "loops-pc: CC 54 = 2: at the end of the second pass, gapless");
+        // CC 81 cancels a loop planned alone
+        Trs({kCC, 54, 1});
+        Trs({kPC, 0});
+        RunMs(200);
+        Trs({kCC, 81, 127});
+        Trs({kCC, 81, 0});
+        Check(UntilLength(192000, 4000) < 0, "loops-pc: CC 81 cancels a loop planned at the pass end");
+        // CC 54 = 127: with the morph waiting (CC 9 = 1, CC 3 to scene 1), on its bar line
+        Trs({kCC, 54, 127});
+        Trs({kPC, 0});
+        const int none_waits = UntilLength(192000, 100);
+        for (int ms = 0; ms < 5000 && (Probe().loop_pos < .05f || Probe().loop_pos > .3f); ms++)
+            RunMs(1);
+        Trs({kCC, 9, 1});
+        Trs({kCC, 3, 1});
+        Trs({kPC, 1});
+        const int with = UntilLength(72000, 3000, &before);
+        RunMs(20);
+        printf("      CC 54 = 127: none waiting at once (%d ms); with the morph from %.4f\n", none_waits, before);
+        Check(none_waits >= 0 && with >= 0 && before > .49f && before < .51f
+                  && (LatchedFx(Ask({0x20})) >> 4 & 1) == 1,
+              "loops-pc: CC 54 = 127: at once with no sequence waiting; with CC 3's morph, where it "
+              "lands, on its bar line");
+        Trs({kCC, 54, 0});
+        // MIDI feedback on (MIDI out to the jack and USB, the settings page's upper D#)
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 3, 2, 0xF7});
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_22");
+        RunMs(100);
+        SetToggle(false);
+        RunMs(300);
+        auto out = [] { // the jack's bytes since the last look, but the clock's, in hex
+            std::string s;
+            char b[4];
+            for (const MidiOutByte& m : TakeMidiOut())
+                if (!m.usb && m.byte < 0xF8)
+                {
+                    snprintf(b, sizeof(b), " %02X", m.byte);
+                    s += b;
+                }
+            return s;
+        };
+        auto usb = [] {
+            std::string s;
+            char b[4];
+            for (unsigned char c : TakeUsbOut())
+                if (c < 0xF8)
+                {
+                    snprintf(b, sizeof(b), " %02X", c);
+                    s += b;
+                }
+            return s;
+        };
+        out();
+        usb();
+        Trs({kCC, 0, 1});
+        Trs({kPC, 2});
+        UntilLength(96000, 1000);
+        RunMs(200);
+        const std::string from_midi = out();
+        usb();
+        LoopsPage();
+        Tap(kLoopKeys[1]); // A/02 by hand
+        UntilLength(72000, 1000);
+        RunMs(200);
+        const std::string jack = out(), over_usb = usb();
+        printf("      by MIDI:%s\n      by hand: the jack%s, USB%s\n", from_midi.c_str(), jack.c_str(), over_usb.c_str());
+        Check(from_midi.find(" CF") == std::string::npos
+                  && jack.find(" BF 00 01 CF 01 BF 00 00") != std::string::npos
+                  && over_usb.find(" BF 00 01 CF 01 BF 00 00") != std::string::npos,
+              "loops-pc: MIDI feedback: a switch by hand goes out as CC 0 = 1, program 1, CC 0 = 0, "
+              "on the jack and USB; one by MIDI doesn't go back");
+    }});
+
+    // a white key alone: at once. From an empty looper it plays, wet; from a loop, with a 10 ms
+    // crossfade; back to the last loop without a load; the loop sets the tempo
+    cases.push_back({"loops-now", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a3", SineWav(345600, 2, 220.f, 12)}}); // 3 bars at 100 BPM
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        const int first = UntilLength(96000, 1000);
+        RunMs(300);
+        const float wet = RunMs(200);
+        const ClockState a = Probe();
+        const Rgb lit = SmtLedFull(LoopLed(0));
+        printf("      A/01 after %d ms, out %.3f, %d BPM, key %s\n", first, wet, a.tempo, Hex(lit).c_str());
+        Check(first >= 0 && a.loop_state == 2 && wet > .02f && a.tempo == 120 && Shows(lit, kOrange, kLoopLit),
+              "loops-now: a white key on an empty looper: its loop plays at once, wet, 120 BPM "
+              "(2 s, 4 beats guessed), its key bright");
+        max_step = 0.f;
+        Tap(kLoopKeys[1]);
+        const int second = UntilLength(72000, 1000);
+        RunMs(100);
+        const float step = max_step;
+        const ClockState b = Probe();
+        printf("      A/02 after %d ms, largest step %.4f, %d BPM\n", second, step, b.tempo);
+        Check(second >= 0 && b.tempo == 160 && step < .01f && Shows(SmtLedFull(LoopLed(0)), kOrange, kLoopDim),
+              "loops-now: another: at once, crossfaded (no step), 160 BPM (1.5 s: the power of two "
+              "nearest 120 BPM, 4 beats)");
+        Tap(kLoopKeys[0]);
+        const int again = UntilLength(96000, 1000);
+        Check(again >= 0 && again <= 2, "loops-now: the one before again: no load, within a block");
+        RunMs(700);
+        const float was = Probe().loop_pos;
+        Press(kLoopKeys[0], true);
+        RunMs(30); // the key's debouncing, then a block
+        const float pos = Probe().loop_pos;
+        Press(kLoopKeys[0], false);
+        printf("      started again: from %.4f at %.4f\n", was, pos);
+        Check(was > .2f && pos < .015f, "loops-now: the loop's own key again starts it again");
+        Tap(kLoopKeys[2]);
+        const int acid = UntilLength(345600, 2000);
+        RunMs(100);
+        const ClockState c = Probe();
+        printf("      A/03 after %d ms: %.2f BPM\n", acid, c.fx_bpm);
+        Check(acid >= 0 && std::fabs(c.fx_bpm - 100.f) < .1f,
+              "loops-now: an acid chunk's 12 beats set 100 BPM for 3 bars of 7.2 s");
+    }});
+
+    // the tape runs on across loops (#70): a switch keeps the speed and the direction, at once
+    // and planned, and a standstill; the new loop's tempo its own times the speed. A new
+    // recording starts at 1x
+    cases.push_back({"loops-tape", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 500);
+        Turn(5, 4); // two semitones up (2 detents each)
+        RunMs(1500);
+        Tap(kLoopKeys[1]);
+        UntilLength(72000, 500);
+        RunMs(300);
+        const ClockState a = Probe();
+        const float up = std::pow(2.f, 2.f / 12.f);
+        printf("      at once: speed %.4f, %.2f BPM\n", a.loop_speed, a.fx_bpm);
+        Check(std::fabs(a.loop_speed - up) < .002f && std::fabs(a.fx_bpm - 160.f * up) < .5f,
+              "loops-tape: a switch at once keeps the speed (+2 semitones): A/02 at 160 BPM x it");
+        ShiftWith({kLoopKeys[0]});
+        float before = 0.f;
+        const int planned = UntilLength(96000, 2500, &before);
+        RunMs(100);
+        const float planned_speed = Probe().loop_speed;
+        Check(planned >= 0 && before > .99f && std::fabs(planned_speed - up) < .002f,
+              "loops-tape: and at the end of the pass, gapless");
+        // reverse at 1x: SHIFT + the transport, the ladder (4 detents a step) down through 1/16x
+        // and back up
+        Tap("ENC_5_SW"); // 1x
+        Detents(-68, true);
+        RunMs(3000);
+        const float back = Probe().loop_speed;
+        Tap(kLoopKeys[1]);
+        UntilLength(72000, 500);
+        RunMs(200);
+        const float p0 = Probe().loop_pos;
+        RunMs(200);
+        const ClockState b = Probe();
+        printf("      reverse: %.4f, after the switch %.4f, from %.4f to %.4f\n", back, b.loop_speed, p0, b.loop_pos);
+        Check(back < -.99f && std::fabs(b.loop_speed - back) < .002f && (b.loop_pos < p0 || b.loop_pos > p0 + .5f),
+              "loops-tape: in reverse the new loop starts in reverse");
+        // planned in reverse: at the loop point, the new loop from its end; the clock's beat 1
+        // (pulse 0) on the line, as the old loop crossed it
+        ShiftWith({kLoopKeys[0]});
+        std::vector<uint32_t> seen; // the pulses, as they change
+        int at = -1;
+        for (int ms = 0; ms < 2500 && (at < 0 || static_cast<int>(seen.size()) < at + 4); ms++)
+        {
+            RunMs(1);
+            const ClockState st = Probe();
+            if (seen.empty() || seen.back() != st.position)
+                seen.push_back(st.position);
+            if (at < 0 && st.loop_length == 96000)
+                at = static_cast<int>(seen.size()) - 1;
+        }
+        std::string around;
+        for (int i = std::max(0, at - 4); i < static_cast<int>(seen.size()); i++)
+            around += " " + std::to_string(seen[i]);
+        const bool line = at >= 2 && std::find(seen.begin() + at - 2, seen.end(), 0u) != seen.end()
+                          && seen[at - 2] == 2 && std::fabs(Probe().loop_speed + 1.f) < .002f;
+        printf("      planned in reverse: the pulses around the switch:%s\n", around.c_str());
+        Check(line, "loops-tape: planned in reverse: the pass end's pulse 0 (beat 1) is counted, 2 1 0 47 ...");
+        // a standstill: the semitones down into the hold zone (#174)
+        Tap("ENC_5_SW");
+        RunMs(1000);
+        Detents(-100);
+        RunMs(4000);
+        const float stood = Probe().loop_speed;
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 500);
+        const float s0 = Probe().loop_pos;
+        RunMs(500);
+        const ClockState c = Probe();
+        printf("      standing %.5f: after the switch %.5f, at %.4f then %.4f\n", stood, c.loop_speed, s0, c.loop_pos);
+        Check(stood == 0.f && c.loop_speed == 0.f && c.loop_pos == s0 && c.loop_length == 96000,
+              "loops-tape: at a standstill the new loop stands too");
+        // LOOP: erased, then a recording, which starts at 1x
+        Tap("KEY_28");
+        RunMs(500);
+        amp = .3f;
+        Tap("KEY_28");
+        RunMs(1000);
+        Tap("KEY_28");
+        RunMs(300);
+        const ClockState d = Probe();
+        amp = 0.f;
+        Check(d.loop_state == 2 && d.loop_speed == 1.f && d.loop_length != 96000,
+              "loops-tape: a new recording (LOOP) still starts at 1x");
+    }});
+
+    // phase by time (#70): a switch at once starts the new loop as far into its pass as the old
+    // one is into its own, modulo its length; with two loops at one tempo (4 and 8 bars at
+    // 120 BPM) on the beat. Paused or retriggered: from the start
+    cases.push_back({"loops-phase", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(384000, 2, 220.f)}, {"a2", SineWav(768000, 2, 330.f)}});
+        LoopsPage();
+        // the old loop's place by time at the switch, against where the new one is after it
+        auto phase = [](size_t from, size_t to, const char* key, bool back) {
+            const ClockState a = Probe();
+            const uint32_t t0 = NowMs();
+            Tap(key);
+            UntilLength(to, 2000);
+            RunMs(50);
+            const ClockState b = Probe();
+            const double dt = (NowMs() - t0) * 48.;
+            double old = a.loop_pos * from + (back ? -dt : dt);
+            while (old < 0.)
+                old += from;
+            old = fmod(old, from);
+            // in reverse a pass runs from its end: the frames left to its start
+            const double want = back ? to - fmod(from - old, static_cast<double>(to)) : fmod(old, static_cast<double>(to));
+            double d = fmod(std::fabs(want - b.loop_pos * to), static_cast<double>(to));
+            d = std::min(d, to - d);
+            printf("      %zu -> %zu frames: the old one at %.0f, the new one at %.0f, want %.0f (%.0f apart)\n",
+                   from, to, a.loop_pos * from, b.loop_pos * to, want, d);
+            return d;
+        };
+        Tap(kLoopKeys[1]);
+        UntilLength(768000, 2000);
+        RunMs(11200); // 5.6 bars into the 8
+        const double eight_four = phase(768000, 384000, kLoopKeys[0], false);
+        const int tempo_a = Probe().tempo;
+        RunMs(2500);
+        const double four_eight = phase(384000, 768000, kLoopKeys[1], false);
+        Check(eight_four < 100. && four_eight < 100. && tempo_a == 120 && Probe().tempo == 120,
+              "loops-phase: at once, 8 bars to 4 and back: the new loop as far into its pass as the "
+              "old one, mod its length; 120 BPM throughout");
+        Detents(-68, true); // reverse, 1x (the ladder)
+        RunMs(3000);
+        const double reverse = phase(768000, 384000, kLoopKeys[0], true);
+        Check(reverse < 100., "loops-phase: in reverse, as far from its end");
+        Tap("ENC_5_SW"); // 1x forward
+        Tap("KEY_27"); // paused
+        RunMs(100);
+        Tap(kLoopKeys[1]);
+        UntilLength(768000, 2000);
+        RunMs(100);
+        const ClockState p = Probe();
+        Check(p.loop_state == 3 && p.loop_pos == 0.f, "loops-phase: paused, the new loop waits at its start");
+    }});
+
+    // a white key first in a SHIFT hold counts passes (#70, #175's "the first key holds"): its
+    // scene keys after it land with it at the n-th pass end, a morph, a build-up's drop or a
+    // drop; their taps count nothing. A/01, 2 bars at 120 BPM, has a bar line halfway
+    cases.push_back({"loops-first", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        Latch("KEY_5"); // the filter, saved in scene 1, then the blank scene again
+        Save(1);
+        Tap(kSceneKeys[0]);
+        RunMs(200);
+        PutLoops({{"a1", SineWav(192000, 2, 220.f)}, {"a2", SineWav(96000, 2, 330.f)},
+                  {"a3", SineWav(72000, 2, 440.f)}});
+        LoopsPage();
+        auto start = [](float at) { // A/01 playing, at its position at
+            Tap(kLoopKeys[0]);
+            UntilLength(192000, 1000);
+            while (Probe().loop_pos < at)
+                RunMs(1);
+        };
+        auto morphing = [] { return (Ask({0x20})[6] & 2) != 0; };
+        auto filter = [] { return (LatchedFx(Ask({0x20})) >> 4 & 1) == 1; };
+        // the loop and a morph, at the end of the pass, not on the bar line halfway
+        start(.05f);
+        ShiftWith({kLoopKeys[1], kSceneKeys[1], kSceneKeys[1], kSceneKeys[1]});
+        while (Probe().loop_pos < .6f)
+            RunMs(1);
+        const bool on_past_line = morphing();
+        float before = 0.f;
+        const int morph = UntilLength(96000, 3000, &before);
+        RunMs(20);
+        const bool landed = !morphing() && filter();
+        printf("      a morph: running past the bar line %d, the switch from %.4f, landed %d\n", on_past_line, before, landed);
+        Check(on_past_line && morph >= 0 && before > .99f && landed,
+              "loops-first: SHIFT + a white key, then a scene key (tapped 3 times): the morph and "
+              "the loop land together at the end of the pass, the scene key's taps no bars");
+        // tapped twice: at the end of the second pass after SHIFT's release
+        Tap(kSceneKeys[0]);
+        start(.05f);
+        ShiftWith({kLoopKeys[1], kLoopKeys[1], kSceneKeys[1]});
+        int wraps = 0;
+        float pos = Probe().loop_pos;
+        for (int ms = 0; ms < 9000 && Probe().loop_length != 96000; ms++)
+        {
+            RunMs(1);
+            const ClockState st = Probe();
+            wraps += st.loop_length == 192000 && st.loop_pos < pos - .5f;
+            pos = st.loop_pos;
+        }
+        RunMs(20);
+        printf("      tapped twice: %d wraps, length %zu, filter %d, morphing %d\n", wraps,
+               static_cast<size_t>(Probe().loop_length), filter(), morphing());
+        Check(wraps == 1 && Probe().loop_length == 96000 && filter() && !morphing(),
+              "loops-first: the white key tapped twice: both at the end of the second pass");
+        // a build-up to A, B dropping at the pass end
+        start(.05f);
+        ShiftWith({kLoopKeys[1], kSceneKeys[1], kSceneKeys[0]});
+        UntilLength(96000, 4000, &before);
+        RunMs(20);
+        Check(before > .99f && !filter() && !morphing(),
+              "loops-first: a build-up to A, B (the blank scene) dropping with the loop at the pass end");
+        // a drop: A at the pass end, not on the bar line before
+        start(.05f);
+        ShiftWith({kLoopKeys[2], kSceneKeys[1], "ENC_5_SW"});
+        while (Probe().loop_pos < .9f)
+            RunMs(1);
+        const bool not_yet = morphing();
+        UntilLength(72000, 3000, &before);
+        RunMs(20);
+        printf("      a drop: waiting past the bar line %d, the switch from %.4f, filter %d\n", not_yet, before, filter());
+        Check(not_yet && before > .99f && filter() && !morphing(),
+              "loops-first: a drop: A drops with the loop at the pass end");
+        // another white key after A: it replaces the loop, A lands with it
+        Tap(kSceneKeys[0]);
+        start(.05f);
+        ShiftWith({kLoopKeys[2], kSceneKeys[1], kLoopKeys[1]});
+        UntilLength(96000, 4000, &before);
+        RunMs(20);
+        Check(before > .99f && filter() && !morphing(),
+              "loops-first: another white key after A replaces the loop; A lands with it");
+        // no scene key: SHIFT + the transport turns the speed (the ladder), the switch stays
+        Tap(kSceneKeys[0]);
+        start(.05f);
+        ShiftWith({kLoopKeys[1], "T1", "T1", "T1", "T1"}); // the ladder: 4 detents a step
+        UntilLength(96000, 4000, &before);
+        RunMs(200);
+        const float fifth = Probe().loop_speed;
+        printf("      SHIFT + white key + a turn: speed %.4f, the switch from %.4f\n", fifth, before);
+        Check(before > .99f && std::fabs(fifth - std::pow(2.f, 7.f / 12.f)) < .002f,
+              "loops-first: with no scene key, SHIFT + the transport turns the speed (a fifth up); "
+              "the switch stays at the pass end");
+        // SHIFT + the blinking white key in a later hold cancels both: the loop doesn't switch,
+        // the morph stops where it is
+        Tap(kSceneKeys[0]);
+        start(.05f);
+        ShiftWith({kLoopKeys[1], kSceneKeys[1]});
+        RunMs(300);
+        ShiftWith({kLoopKeys[1]});
+        const bool stopped = !morphing();
+        Check(stopped && UntilLength(96000, 5000) < 0,
+              "loops-first: SHIFT + the blinking white key in a later hold cancels the loop and "
+              "its scene");
+        // the loop erased while the scene waits for its pass end: it lands on the next bar line
+        ShiftWith({"ENC_5_SW"}); // 1x again
+        start(.05f);
+        ShiftWith({kLoopKeys[1], kSceneKeys[1]});
+        RunMs(300);
+        Tap("KEY_28");
+        RunMs(2600);
+        Check(!morphing() && filter() && Probe().loop_state == 0,
+              "loops-first: the loop erased meanwhile: the scene lands on the next bar line");
+    }});
+
+    // the crossfader with two loops (#70): SHIFT + a scene key, the transport turned, a white
+    // key: the fader mixes the two loops as the two scenes, equal power; the tempo the old
+    // loop's until SHIFT is let go, then the nearer side wins: from the middle on the new loop,
+    // by time where it is. Another white key replaces the new side; a recall drops it
+    cases.push_back({"loops-fader", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        Save(1); // nothing latched: the scenes leave the loops as they are
+        Tap(kSceneKeys[0]);
+        RunMs(200);
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a3", SineWav(96000, 2, 440.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 500);
+        RunMs(300);
+        // the levels of the three loops' tones in the master out, over 100 ms
+        auto tones = [](float& t220, float& t330, float& t440) {
+            std::vector<float> l, r;
+            MasterOut(100, l, r);
+            t220 = ToneLevel(l, 220.f);
+            t330 = ToneLevel(l, 330.f);
+            t440 = ToneLevel(l, 440.f);
+        };
+        auto hold = [](int detents) { // SHIFT + scene 1, the fader turned to detents/24
+            Press("KEY_26", true);
+            RunMs(60);
+            Tap(kSceneKeys[1]);
+            RunMs(60);
+            Turn(5, detents);
+            RunMs(250);
+        };
+        float alone = 0.f, x330 = 0.f, x440 = 0.f;
+        tones(alone, x330, x440);
+        hold(12);
+        Tap(kLoopKeys[1]);
+        RunMs(200);
+        float m220, m330, m440;
+        tones(m220, m330, m440);
+        const ClockState a = Probe();
+        printf("      A/01 alone %.3f; at the middle 220 Hz %.3f, 330 Hz %.3f; %d BPM, length %zu\n", alone,
+               m220, m330, a.tempo, a.loop_length);
+        Check(m330 > .6f * alone && std::fabs(m220 / m330 - 1.f) < .1f && std::fabs(m220 / alone - .707f) < .05f
+                  && a.tempo == 120 && a.loop_length == 96000,
+              "loops-fader: a white key on the crossfader: both loops, mixed equal power (at the "
+              "middle each -3 dB); the tempo still the old loop's");
+        Turn(5, 12);
+        RunMs(300); // the detents play out, then the glide
+        float r220, r330, r440;
+        tones(r220, r330, r440);
+        Turn(5, -18);
+        RunMs(300);
+        float q220, q330, q440;
+        tones(q220, q330, q440);
+        printf("      right 220 %.3f 330 %.3f; a quarter 220 %.3f 330 %.3f\n", r220, r330, q220, q330);
+        Check(r220 < .02f * alone && r330 > .6f * alone && q220 / q330 > 2.25f && q220 / q330 < 2.6f,
+              "loops-fader: fully right only the new loop; a quarter of the way the old one 2.4x the new "
+              "(cos/sin of pi/8)");
+        Press("KEY_26", false); // let go at a quarter: the old loop stays
+        RunMs(300);
+        tones(q220, q330, q440);
+        Check(Probe().loop_length == 96000 && Probe().tempo == 120 && q330 < .02f * alone,
+              "loops-fader: let go below the middle: the old loop plays on, the new one's gone");
+        // let go in the middle (there from the right: the detents add up to a hair under it):
+        // the new loop, by time where it was, with its tempo
+        hold(24);
+        Turn(5, -12);
+        RunMs(100);
+        Tap(kLoopKeys[1]);
+        RunMs(300);
+        const ClockState b0 = Probe();
+        const uint32_t t0 = NowMs();
+        Press("KEY_26", false);
+        const int took = UntilLength(72000, 100);
+        RunMs(100);
+        const ClockState b = Probe();
+        const double want = fmod(b0.loop_pos * 96000. + (NowMs() - t0) * 48., 72000.);
+        double d = std::fabs(want - b.loop_pos * 72000.);
+        d = std::min(d, 72000. - d);
+        printf("      the middle: taken after %d ms, %d BPM, at %.0f, want %.0f\n", took, b.tempo, b.loop_pos * 72000., want);
+        Check(took >= 0 && b.tempo == 160 && d < 100.,
+              "loops-fader: let go at the middle: the new loop takes over where it is, phase by "
+              "time, and sets the tempo (160 BPM)");
+        // fully right: the new loop (A/01 again)
+        hold(24);
+        Tap(kLoopKeys[0]);
+        RunMs(200);
+        Press("KEY_26", false);
+        Check(UntilLength(96000, 100) >= 0, "loops-fader: let go fully right: the new loop");
+        // another white key replaces the new side; the same again, or the old loop's, nothing
+        hold(12);
+        Tap(kLoopKeys[1]);
+        RunMs(200);
+        Tap(kLoopKeys[2]);
+        RunMs(300);
+        Tap(kLoopKeys[2]);
+        RunMs(60);
+        Tap(kLoopKeys[0]);
+        RunMs(100);
+        float n220, n330, n440;
+        tones(n220, n330, n440);
+        printf("      replaced: 220 %.3f 330 %.3f 440 %.3f\n", n220, n330, n440);
+        Check(n330 < .02f * alone && n440 > .6f * alone && std::fabs(n220 / n440 - 1.f) < .1f,
+              "loops-fader: another white key replaces the new side (A/03 for A/02); it again, or "
+              "the old loop's key, does nothing");
+        // a program change's recall meanwhile: the new loop goes
+        Trs({kPC, 0});
+        RunMs(300);
+        tones(n220, n330, n440);
+        Press("KEY_26", false);
+        RunMs(300);
+        Check(n440 < .02f * alone && Probe().loop_length == 96000,
+              "loops-fader: a recall (a program change) during the hold drops the new loop");
+        // a white key first, then the scene key and the transport turned: the crossfader too,
+        // the passes void: let go in the middle, the new loop at once
+        Press("KEY_26", true);
+        RunMs(60);
+        Tap(kLoopKeys[1]);
+        RunMs(60);
+        Tap(kSceneKeys[1]);
+        RunMs(60);
+        Turn(5, 12);
+        RunMs(300);
+        tones(m220, m330, m440);
+        while (Probe().loop_pos > .3f) // away from the pass end
+            RunMs(1);
+        Press("KEY_26", false);
+        const int first = UntilLength(72000, 100);
+        printf("      a white key first: 220 %.3f 330 %.3f, taken after %d ms\n", m220, m330, first);
+        Check(std::fabs(m220 / m330 - 1.f) < .1f && first >= 0,
+              "loops-fader: a white key first, then a scene key and the transport turned: the "
+              "crossfader with both loops; let go in the middle, the new one at once");
+        // at the tape's speed: two semitones up, the new loop joins at it, by time, and keeps it
+        Detents(4);
+        RunMs(1500);
+        hold(12);
+        while (Probe().loop_pos < .1f || Probe().loop_pos > .4f) // the old loop away from its end
+            RunMs(1);
+        const ClockState s0 = Probe();
+        const uint32_t ts = NowMs();
+        Tap(kLoopKeys[0]);
+        RunMs(300);
+        Press("KEY_26", false);
+        const int sped = UntilLength(96000, 100);
+        RunMs(100);
+        const ClockState s1 = Probe();
+        const double fast = std::pow(2., 2. / 12.);
+        const double at_speed = fmod(s0.loop_pos * 72000. + (NowMs() - ts) * 48. * fast, 96000.);
+        double ds = std::fabs(at_speed - s1.loop_pos * 96000.);
+        ds = std::min(ds, 96000. - ds);
+        printf("      at +2 semitones: taken after %d ms, speed %.4f, at %.0f, want %.0f\n", sped, s1.loop_speed,
+               s1.loop_pos * 96000., at_speed);
+        Check(sped >= 0 && std::fabs(s1.loop_speed - fast) < .002f && ds < 150.,
+              "loops-fader: at +2 semitones the new loop joins at the tape's speed, by time, and "
+              "keeps it once it takes over");
+    }});
+
     // the event log (EventLog.h): a session, SHIFT + VOLUME held on the settings page, its
     // file on the card
     cases.push_back({"bug-log", [] {
@@ -3270,6 +4690,7 @@ int main()
             once = once && c.second == 1;
         Check(latch_off && once, "midi-feedback-scenes: a recall sends what changed, each once");
         // a morph to scene 1: nothing of the filter's while it glides, where it lands after
+        ToBarLine();
         Press("KEY_26", true);
         RunMs(60);
         Tap(kSceneKeys[1]);
@@ -3537,13 +4958,14 @@ int main()
         const std::string settings = Ask({0x3E, 2, 14, 0x23});
         Check(factor.size() == 5 && factor[2] == 0 && dim.size() == 5 && dim[2] == 1,
               "midi dev: SET a setting, a value it doesn't take refused");
-        Check(settings.size() == 5 + 30 && settings[4] == 15 && settings[11] == 1 && settings[12] == 200 - 128
+        Check(settings.size() == 5 + 38 && settings[4] == 19 && settings[11] == 1 && settings[12] == 200 - 128
                   && settings[17] == 0 && settings[18] == 100 && settings[7] == 0 && settings[8] == 16
                   && settings[19] == 0 && settings[20] == 1 && settings[21] == 0 && settings[22] == 0
                   && settings[24] == 0 && settings[26] == 75 && settings[28] == 75
-                  && settings[30] == 0 && settings[32] == 1 && settings[34] == 0,
-              "midi dev: GET the settings: the clock factor x2, the LEDs at 100 %, channel 16, the effect channels over the jack, no feedback, AUX through the effects, both input gains 75 %, the mic through them, AUX live, the mic not");
-        Check(Ask({0x3E, 3, 15, 0x23, 15, 0, 1})[2] == 1 && Ask({0x3E, 2, 16, 0x30})[2] == 1
+                  && settings[30] == 0 && settings[32] == 1 && settings[34] == 0
+                  && settings[36] == 75 && settings[38] == 0 && settings[40] == 1 && settings[42] == 1,
+              "midi dev: GET the settings: the clock factor x2, the LEDs at 100 %, channel 16, the effect channels over the jack, no feedback, AUX through the effects, the input gains 75 %, the mic through them, AUX live, the mic not; USB live through them, USB audio on (#196)");
+        Check(Ask({0x3E, 3, 15, 0x23, 19, 0, 1})[2] == 1 && Ask({0x3E, 2, 16, 0x30})[2] == 1
                   && Ask({0x3E, 0x30, 17})[2] == 1,
               "midi dev: no such setting, group or sub-command: refused, answered");
         RunMs(2500);
@@ -3815,6 +5237,7 @@ int main()
         Trs({kPC, 0});
         RunMs(500);
         Check(fabsf(RunMs(300) - dry) < dry * .05f, "midi scenes: program change 0, the blank scene");
+        ToBarLine();
         Trs({kCC, 3, 1}); // morph to it: over a bar at 120 BPM, 2 s
         RunMs(200);
         const float midway = RunMs(100);
@@ -4540,11 +5963,193 @@ int main()
         Check(param(3) == 0.f && param(5) == 1.f, "cc-stereo: CC 17 turns the grain");
     }});
 
+    // the shifter latched alone, CC 14 on its channel from down to up while it plays (#221):
+    // −7 → +7, −12 → +7, +12 → −12 → +7. In beta.2 it could stop shifting at the jump and play
+    // its input unshifted until it went off, depending on the moment: the time between the CCs
+    // scanned, 37 ms a step (53 before the −12), the shifter off and on between the moments.
+    // Each jump then heard on the headphones for 200 ms, L and R: a 311 Hz sine shifted a
+    // fifth up is 466 Hz
+    {
+        // the power at f0 and f1 of the headphones' L and R over ms, Goertzel
+        static auto power = [](uint32_t ms, float f0, float f1, float (*p)[2]) {
+            float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
+            const float k[2] = {2.f * cosf(2.f * float(M_PI) * f0 / kSampleRate),
+                                2.f * cosf(2.f * float(M_PI) * f1 / kSampleRate)};
+            float s[2][2][2] = {}; // per channel, per frequency: the last two states
+            for (uint32_t b = 0; b < ms * 2; b++)
+            {
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    in[i * kChannels + 2] = in[i * kChannels + 3] = amp * sinf(phase);
+                    phase = fmodf(phase + 2.f * float(M_PI) * freq / kSampleRate, 2.f * float(M_PI));
+                }
+                Run(1, in, out);
+                for (size_t i = 0; i < kBlockSize; i++)
+                    for (int c = 0; c < 2; c++)
+                        for (int f = 0; f < 2; f++)
+                        {
+                            const float v = out[i * kChannels + c] + k[f] * s[c][f][0] - s[c][f][1];
+                            s[c][f][1] = s[c][f][0];
+                            s[c][f][0] = v;
+                        }
+            }
+            for (int c = 0; c < 2; c++)
+                for (int f = 0; f < 2; f++)
+                    p[c][f] = s[c][f][0] * s[c][f][0] + s[c][f][1] * s[c][f][1]
+                              - k[f] * s[c][f][0] * s[c][f][1];
+        };
+        struct Jump
+        {
+            const char *id, *name;
+            std::vector<int> from; // the CCs before +7, each held for the scanned time
+        };
+        static const Jump jumps[] = {{"7", "-7 to +7", {26}},
+                                     {"12", "-12 to +7", {0}},
+                                     {"12-12", "+12 to -12 to +7", {127, 0}}};
+        for (const Jump& j : jumps)
+            cases.push_back({std::string("shifter-down-up-") + j.id, [&j] {
+                RunMs(kReadyMs);
+                freq = 311.f;
+                Latch("KEY_2");
+                RunMs(420);
+                int stuck[2] = {0, 0}, tries = 0, unlatched = 0;
+                for (uint32_t k = 0; k < 16; k++)
+                {
+                    for (size_t i = 0; i < j.from.size(); i++)
+                    {
+                        Trs({0xB1, 14, j.from[i]});
+                        RunMs(400 + k * (i + 1 < j.from.size() ? 53 : 37));
+                    }
+                    Trs({0xB1, 14, 101}); // +7
+                    RunMs(300);
+                    float p[2][2];
+                    power(200, 311.f, 466.f, p);
+                    tries++;
+                    for (int c = 0; c < 2; c++)
+                        stuck[c] += p[c][0] > p[c][1];
+                    // off and on again, which ends a stuck shifter: each moment on its own
+                    Latch("KEY_2");
+                    RunMs(300);
+                    unlatched += !(LatchedFx(Ask({0x20})) & 2);
+                    Latch("KEY_2");
+                    RunMs(420);
+                }
+                printf("      unshifted after the jump in %d (L) and %d (R) of %d\n", stuck[0], stuck[1], tries);
+                Check(unlatched == tries, "shifter-down-up: off between the moments");
+                Check(stuck[0] == 0 && stuck[1] == 0,
+                      (std::string("shifter-down-up: ") + j.name + ", at every moment: both channels shift after the jump (#221)").c_str());
+            }});
+    }
+
+    // the shifter at stereo 0 on a mono source (a sine and noise) whose two channels differ by
+    // a hair, as AUX's analog paths on the device (#223): noise 60 dB below full scale on the
+    // right only. The headphones' L and R stay the same signal, correlated as the inputs are,
+    // through +7, −7, +12 and −12 (CC 14 on its channel), 1.5 s each after a second to settle.
+    // Each channel searching its splices on its own, the hair picked other lags, and the two
+    // read from other places from there on
+    {
+        // ms of the sine and noise into AUX, the hair on the right; the headphones' L/R
+        // correlation over them
+        static auto run = [](uint32_t ms) {
+            static uint32_t noise = 223, hair = 221;
+            float in[kBlockSize * kChannels] = {}, out[kBlockSize * kChannels];
+            double ll = 0., rr = 0., lr = 0.;
+            for (uint32_t b = 0; b < ms * 2; b++)
+            {
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    noise = noise * 1664525u + 1013904223u;
+                    hair = hair * 1664525u + 1013904223u;
+                    const float s = amp * sinf(phase)
+                                    + .05f * (static_cast<float>(noise >> 8) / 8388608.f - 1.f);
+                    phase = fmodf(phase + 2.f * float(M_PI) * freq / kSampleRate, 2.f * float(M_PI));
+                    in[i * kChannels + 2] = s;
+                    in[i * kChannels + 3] = s + 1e-3f * (static_cast<float>(hair >> 8) / 8388608.f - 1.f);
+                }
+                Run(1, in, out);
+                for (size_t i = 0; i < kBlockSize; i++)
+                {
+                    const double l = out[i * kChannels], r = out[i * kChannels + 1];
+                    ll += l * l;
+                    rr += r * r;
+                    lr += l * r;
+                }
+            }
+            return static_cast<float>(lr / sqrt(ll * rr + 1e-30));
+        };
+        cases.push_back({"shifter-stereo-0", [] {
+            RunMs(kReadyMs);
+            freq = 311.f;
+            Latch("KEY_2");
+            run(500);
+            float worst = 1.f;
+            for (int cc : {101, 26, 127, 0})
+            {
+                Trs({0xB1, 14, cc});
+                run(1000);
+                const float r = run(1500);
+                printf("      shift %+d: L/R correlation %.6f\n", cc == 101 ? 7 : cc == 26 ? -7 : cc ? 12 : -12, r);
+                worst = std::min(worst, r);
+            }
+            Check(worst > .9999f, "shifter-stereo-0: L and R the same signal at every shift, a hair apart at the input (#223)");
+            freq = 220.f;
+        }});
+        // and set apart by a stereo offset (CC 19, page 2's knob 2, at .25) and back to 0
+        // while it plays: the right channel fades to the left's taps over a life and takes
+        // them (Relock, #226). Before, they stayed apart until the next punch-in, where the
+        // right channel takes the left's taps, unheard, before its fade-in, or the shift leaving
+        // the centre, where the output was dry (Move): those still lock them too
+        cases.push_back({"shifter-stereo-relock", [] {
+            RunMs(kReadyMs);
+            freq = 311.f;
+            Latch("KEY_2");
+            Trs({0xB1, 14, 101}); // +7
+            run(1000);
+            Trs({0xB1, 19, 32});
+            run(1000);
+            const float apart = run(1500);
+            Trs({0xB1, 19, 0});
+            run(1000);
+            const float back = run(1500);
+            printf("      stereo .25: L/R correlation %.6f; back to 0, playing on: %.6f\n", apart, back);
+            Check(apart < .999f && back > .9999f,
+                  "shifter-stereo-relock: apart at stereo .25, back at 0 while it plays: L and R the same again (#226)");
+            Trs({0xB1, 19, 32});
+            run(1500);
+            Trs({0xB1, 19, 0});
+            Latch("KEY_2");
+            run(300);
+            const bool off = !(LatchedFx(Ask({0x20})) & 2);
+            Latch("KEY_2");
+            run(1000);
+            const float together = run(1500);
+            printf("      apart, back to 0 and punched out and in at once: %.6f\n", together);
+            Check(off && together > .9999f,
+                  "shifter-stereo-relock: back at stereo 0 and punched out and in: L and R the same again (#223)");
+            // apart again, then the shift to the centre for a second (the output dry) and up:
+            // the same again as it leaves the centre
+            Trs({0xB1, 19, 32});
+            run(1500);
+            Trs({0xB1, 14, 64});
+            run(300);
+            Trs({0xB1, 19, 0});
+            run(700);
+            Trs({0xB1, 14, 101});
+            run(1000);
+            const float centre = run(1500);
+            printf("      apart, to the centre, stereo 0 there, to +7: %.6f\n", centre);
+            Check(centre > .9999f,
+                  "shifter-stereo-relock: apart, then stereo 0 at the centre (dry): L and R the same again as it leaves (#223)");
+            freq = 220.f;
+        }});
+    }
+
     // ---- the built-in mic (#113): AUX's jack picks the source at power-on and on each change,
     // the settings page's upper F# the other until the next (#177); TAPE's gain and filter ----
     static const int kInputKeyLed = kInSourceKeyLed; // the settings page's upper F#: the source
     static auto green_led = [](const Rgb& c) { return c.g > 150 && c.r < 40 && c.b < 40; };
     static auto magenta_led = [](const Rgb& c) { return c.r > 150 && c.b > 150 && c.g < 40; };
+    static auto blue_led = [](const Rgb& c) { return c.b > 150 && c.r < 40 && c.g < 40; };
     // what the input carries of AUX's sine on its own, then of the mic's on its own: on the
     // headphones' cue, the input alone, as the mic isn't live unless asked for (#177)
     static auto heard = [](float& aux, float& mic) {
@@ -4607,8 +6212,8 @@ int main()
         Check(is_aux("plugged again"), "mic-jack: plugged in again: AUX");
     }});
 
-    // the upper F# (#177): the source, AUX, the mic, round again, not to the card; the jack
-    // picks again at its next change
+    // the upper F# (#177): the source, AUX, the mic, USB (#196), round again, not to the card;
+    // the jack picks again at its next change
     static auto white_led = [](const Rgb& c) { return c.r > 150 && c.g > 150 && c.b > 150; };
     cases.push_back({"mic-key", [] {
         mic_amp = .1f;
@@ -4622,8 +6227,11 @@ int main()
               "mic-key: the upper F# with a cable in: the mic, its key magenta");
         Tap("KEY_23");
         RunMs(100);
-        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("the key twice"),
-              "mic-key: again: AUX, its key green");
+        Check(blue_led(SmtLedFull(kInputKeyLed)), "mic-key: again: USB, its key blue (#196)");
+        Tap("KEY_23");
+        RunMs(100);
+        Check(green_led(SmtLedFull(kInputKeyLed)) && is_aux("the key three times"),
+              "mic-key: and again: AUX, its key green");
         Tap("KEY_23");
         RunMs(3000);
         Check(Card("/FRIZZ/frizz_master.txt") == card, "mic-key: the source isn't saved");
@@ -4927,11 +6535,11 @@ int main()
         const bool aux_through_keys = green_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed)
                                       && green_led(SmtLedFull(kInSourceKeyLed));
         const Heard aux_through = heard_on_master();
-        Tap("KEY_24"); // dry
+        Tap("KEY_25"); // dry
         RunMs(100);
         const bool aux_dry_keys = white_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
         const Heard aux_dry = heard_on_master();
-        Tap("KEY_25"); // off
+        Tap("KEY_24"); // off
         RunMs(100);
         const bool aux_off_keys = key_dark(kInFxKeyLed) && key_dim(kLiveKeyLed);
         const Heard aux_off = heard_on_master();
@@ -4941,12 +6549,12 @@ int main()
                aux_off.phones);
         Check(aux_through_keys && aux_through.master > .01f && aux_through.stopped < aux_through.master * .01f
                   && aux_through.phones > .01f,
-              "input-combos: AUX through the effects, live (F# green, G# green, A# lit): through the effects");
+              "input-combos: AUX through the effects, live (F# green, G# lit, A# green): through the effects");
         Check(aux_dry_keys && fabsf(aux_dry.stopped - aux_dry.master) < aux_dry.master * .001f
                   && aux_dry.master > .01f && aux_dry.phones > .01f,
-              "input-combos: AUX dry, live (G# white): past the effects");
+              "input-combos: AUX dry, live (A# white): past the effects");
         Check(aux_off_keys && aux_off.master < 1e-5f && aux_off.stopped < 1e-5f && aux_off.phones > .01f,
-              "input-combos: AUX not live (G# dark, A# dim): silent on the master, on the headphones' input feed");
+              "input-combos: AUX not live (G# dim, A# dark): silent on the master, on the headphones' input feed");
 
         amp = 0.f;
         mic_amp = .05f;
@@ -4955,11 +6563,11 @@ int main()
         const bool mic_off_keys = magenta_led(SmtLedFull(kInSourceKeyLed)) && key_dark(kInFxKeyLed)
                                   && key_dim(kLiveKeyLed);
         const Heard mic_off = heard_on_master();
-        Tap("KEY_25"); // live
+        Tap("KEY_24"); // live
         RunMs(100);
         const bool mic_through_keys = green_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
         const Heard mic_through = heard_on_master();
-        Tap("KEY_24"); // dry
+        Tap("KEY_25"); // dry
         RunMs(100);
         const bool mic_dry_keys = white_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
         const Heard mic_dry = heard_on_master();
@@ -4967,7 +6575,7 @@ int main()
                mic_off.master, mic_off.stopped, mic_off.phones, mic_through.master, mic_through.stopped,
                mic_through.phones, mic_dry.master, mic_dry.stopped, mic_dry.phones);
         Check(mic_off_keys && mic_off.master < 1e-5f && mic_off.phones > .01f,
-              "input-combos: the mic as it starts, not live (F# magenta, G# dark, A# dim): on the headphones' input feed only");
+              "input-combos: the mic as it starts, not live (F# magenta, G# dim, A# dark): on the headphones' input feed only");
         Check(mic_through_keys && mic_through.master > .01f && mic_through.stopped < mic_through.master * .01f,
               "input-combos: the mic live, through the effects: the tape stop has it");
         Check(mic_dry_keys && mic_dry.master > .01f && fabsf(mic_dry.stopped - mic_dry.master) < mic_dry.master * .001f,
@@ -4980,22 +6588,22 @@ int main()
         RunMs(kReadyMs);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_24"); // AUX dry
+        Tap("KEY_25"); // AUX dry
         RunMs(100);
-        Tap("KEY_25"); // AUX off
+        Tap("KEY_24"); // AUX off
         RunMs(100);
         SetJack(false); // the mic: its own, through and off
         RunMs(100);
         const bool mic_own = magenta_led(SmtLedFull(kInSourceKeyLed)) && key_dark(kInFxKeyLed)
                              && key_dim(kLiveKeyLed);
-        Tap("KEY_25"); // the mic live
+        Tap("KEY_24"); // the mic live
         RunMs(100);
         const bool mic_live = green_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
         SetJack(true); // AUX: dry and off, as left
         RunMs(100);
         const bool aux_kept = green_led(SmtLedFull(kInSourceKeyLed)) && key_dark(kInFxKeyLed)
                               && key_dim(kLiveKeyLed);
-        Tap("KEY_25"); // AUX live again: dry, as left
+        Tap("KEY_24"); // AUX live again: dry, as left
         RunMs(100);
         const bool aux_dry = white_led(SmtLedFull(kInFxKeyLed)) && key_lit(kLiveKeyLed);
         Tap("KEY_23"); // F#: the mic, live through the effects, as left
@@ -5005,8 +6613,8 @@ int main()
         RunMs(3000);
         const std::string card = Card("/FRIZZ/frizz_master.txt");
         Check(mic_own, "input-per-source: AUX dry and off, the jack pulled: the mic's own, through the effects, not live");
-        Check(mic_live, "input-per-source: the mic's A#: live, its G# lit green");
-        Check(aux_kept, "input-per-source: the cable back: AUX's as it was left, off, G# dark");
+        Check(mic_live, "input-per-source: the mic's G#: live, its A# lit green");
+        Check(aux_kept, "input-per-source: the cable back: AUX's as it was left, off, A# dark");
         Check(aux_dry, "input-per-source: AUX live again: dry, as it was left");
         Check(mic_kept, "input-per-source: F# to the mic: live through the effects, as it was left");
         Check(card.find("\naux_dry 1\n") != std::string::npos && card.find("\nmic_dry 0\n") != std::string::npos
@@ -5030,15 +6638,15 @@ int main()
         Check(mic && aux, "input-per-source-boot: from the card: the mic dry and live, AUX off");
     }});
 
-    // the upper G# while dark (not live): it changes nothing and blinks red 3 times
+    // the upper A# while dark (not live): it changes nothing and blinks red 3 times
     cases.push_back({"input-dark-fx", [] {
         RunMs(kReadyMs);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_25"); // AUX off: G# dark
+        Tap("KEY_24"); // AUX off: A# dark
         RunMs(3000);
         const std::string card = Card("/FRIZZ/frizz_master.txt");
-        Tap("KEY_24");
+        Tap("KEY_25");
         int blinks = 0;
         bool was_red = false;
         for (int t = 0; t < 2000; t++)
@@ -5051,11 +6659,35 @@ int main()
         }
         const bool dark = key_dark(kInFxKeyLed);
         RunMs(2000);
-        Tap("KEY_25"); // live again: through, as it was
+        Tap("KEY_24"); // live again: through, as it was
         RunMs(100);
-        Check(blinks == 3 && dark, "input-dark-fx: G# dark pressed: 3 red blinks, then dark again");
+        Check(blinks == 3 && dark, "input-dark-fx: A# dark pressed: 3 red blinks, then dark again");
         Check(Card("/FRIZZ/frizz_master.txt") == card && green_led(SmtLedFull(kInFxKeyLed)),
               "input-dark-fx: and it changed nothing: through the effects when live again, the card as it was");
+    }});
+
+    // the input's keys left to right (#243): the source, whether you hear it, then how. The mic
+    // picked on F#, G# puts it live, and only then A# wakes up and picks through or past
+    cases.push_back({"input-key-order", [] {
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23"); // F#: the mic, not live
+        RunMs(100);
+        const bool mic_off = magenta_led(SmtLedFull(kInSourceKeyLed)) && key_dim(kLiveKeyLed)
+                             && key_dark(kInFxKeyLed);
+        Tap("KEY_24"); // G#: live
+        RunMs(100);
+        const bool mic_live = key_lit(kLiveKeyLed) && green_led(SmtLedFull(kInFxKeyLed));
+        Tap("KEY_25"); // A#: past the effects
+        RunMs(100);
+        const bool mic_dry = key_lit(kLiveKeyLed) && white_led(SmtLedFull(kInFxKeyLed));
+        Tap("KEY_25"); // A#: through them again
+        RunMs(100);
+        const bool mic_through = key_lit(kLiveKeyLed) && green_led(SmtLedFull(kInFxKeyLed));
+        Check(mic_off, "input-key-order: F# to the mic: G# dim (not live), A# dark");
+        Check(mic_live, "input-key-order: G# puts the mic live: G# lit, A# green (through the effects)");
+        Check(mic_dry && mic_through, "input-key-order: A# then picks past the effects (white) and through (green)");
     }});
 
     // #168: the mic not live leaks nothing onto the master while the jack switches the source
@@ -5184,7 +6816,7 @@ int main()
         Check(turned.b > 40 && Max(after) < 40, "input-vu: a turn shows the gain for a second, then the meter");
     }});
 
-    // MIDI feedback (#109): the upper F#, G# and A# send CC 84, 116 and 117 (#177); what came
+    // MIDI feedback (#109): the upper F#, G# and A# send CC 84, 117 and 116 (#177, #243); what came
     // isn't sent back
     cases.push_back({"source-feedback", [] {
         RunMs(kReadyMs);
@@ -5195,18 +6827,23 @@ int main()
         RunMs(300);
         TrsCcs();
         UsbCcs();
-        Tap("KEY_24"); // AUX dry
+        Tap("KEY_25"); // AUX dry
         RunMs(300);
         Check(HasCc(TrsCcs(), 0xBF, kDryCC, 127) && HasCc(UsbCcs(), 0xBF, kDryCC, 127),
-              "source-feedback: the upper G# to AUX dry sends CC 116 at 127");
-        Tap("KEY_25"); // AUX not live
+              "source-feedback: the upper A# to AUX dry sends CC 116 at 127");
+        Tap("KEY_24"); // AUX not live
         RunMs(300);
-        Check(HasCc(UsbCcs(), 0xBF, kLiveCC, 0), "source-feedback: the upper A# AUX off sends CC 117 at 0");
+        Check(HasCc(UsbCcs(), 0xBF, kLiveCC, 0), "source-feedback: the upper G# AUX off sends CC 117 at 0");
         Tap("KEY_23"); // the mic: its own, through and not live
         RunMs(300);
         const auto ccs = UsbCcs();
-        Check(HasCc(ccs, 0xBF, kSourceCC, 127) && HasCc(ccs, 0xBF, kDryCC, 0) && !HasCc(ccs, 0xBF, kLiveCC, 127),
-              "source-feedback: the upper F# to the mic sends CC 84 at 127 and the mic's CC 116 at 0");
+        Check(HasCc(ccs, 0xBF, kSourceCC, 64) && HasCc(ccs, 0xBF, kDryCC, 0) && !HasCc(ccs, 0xBF, kLiveCC, 127),
+              "source-feedback: the upper F# to the mic sends CC 84 at 64, its third's middle (#196), and the mic's CC 116 at 0");
+        Tap("KEY_23"); // USB: its own, through and live
+        RunMs(300);
+        const auto usb = UsbCcs();
+        Check(HasCc(usb, 0xBF, kSourceCC, 127) && HasCc(usb, 0xBF, kLiveCC, 127) && !HasCc(usb, 0xBF, kDryCC, 127),
+              "source-feedback: the upper F# to USB sends CC 84 at 127 and USB's CC 117 at 127, live (#196)");
         Usb({kCC, kSourceCC, 0}); // AUX
         RunMs(300);
         const auto back = UsbCcs(), trs = TrsCcs();
@@ -5216,7 +6853,450 @@ int main()
               "source-feedback: CC 84 picks AUX, and isn't sent back; AUX's own CC 116 (dry) is");
         SetJack(false); // the jack: the mic
         RunMs(300);
-        Check(HasCc(UsbCcs(), 0xBF, kSourceCC, 127), "source-feedback: the jack's mic sends it too");
+        Check(HasCc(UsbCcs(), 0xBF, kSourceCC, 64), "source-feedback: the jack's mic sends it too");
+    }});
+
+    // ---- USB audio (#196): the computer's audio the third source, the master before VOLUME
+    // back to it, the switch, the card lent ----
+    // the master's RMS with only the computer playing, and with only AUX
+    static auto heard_usb = [](float& aux, float& usb) {
+        const float a = amp, u = usb_amp;
+        amp = 0.f;
+        usb_amp = .1f;
+        usb_playing = true;
+        RunMs(50);
+        usb = RunMs(200);
+        usb_playing = false;
+        amp = a ? a : .1f;
+        RunMs(50);
+        aux = RunMs(200);
+        amp = a;
+        usb_amp = u;
+    };
+    // the upper F# round: AUX, the mic, USB (blue), AUX; USB heard, at AUX's level and in its
+    // phase, AUX not; the computer silent, silence
+    cases.push_back({"usb-source", [] {
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        const bool aux = green_led(SmtLedFull(kInSourceKeyLed));
+        Tap("KEY_23");
+        RunMs(100);
+        const bool mic = magenta_led(SmtLedFull(kInSourceKeyLed));
+        Tap("KEY_23");
+        RunMs(100);
+        const bool usb = blue_led(SmtLedFull(kInSourceKeyLed)) && key_lit(kLiveKeyLed)
+                         && green_led(SmtLedFull(kInFxKeyLed));
+        float aux_rms, usb_rms;
+        heard_usb(aux_rms, usb_rms);
+        amp = 0.f;
+        usb_playing = false;
+        RunMs(100);
+        const float quiet = RunMs(200);
+        // the same sine into AUX (by the key, past the mic) and from the computer: the same level,
+        // at 1 kHz, where AUX's DC blocker takes nothing off (at 220 Hz 5 %)
+        usb_amp = .1f;
+        freq = usb_freq = 1000.f;
+        usb_playing = true;
+        RunMs(100);
+        out_x_usb = 0.;
+        const float usb_level = RunMs(500);
+        const double usb_phase = out_x_usb;
+        usb_playing = false;
+        Tap("KEY_23"); // AUX
+        RunMs(100);
+        const bool aux_again = green_led(SmtLedFull(kInSourceKeyLed));
+        amp = .1f;
+        RunMs(100);
+        out_x_aux = 0.;
+        const float aux_level = RunMs(500);
+        const double aux_phase = out_x_aux;
+        amp = .3f;
+        freq = 220.f;
+        printf("      USB: the computer %.4f, AUX unheard %.4f, nothing %.6f; the same sine: USB %.4f, AUX %.4f; "
+               "their phase against the master: USB %+.1f, AUX %+.1f\n",
+               usb_rms, aux_rms, quiet, usb_level, aux_level, usb_phase, aux_phase);
+        Check(aux && mic && usb && aux_again,
+              "usb-source: the upper F#: AUX green, the mic magenta, USB blue (live through the effects), AUX again");
+        Check(usb_rms > .01f && aux_rms < usb_rms * .01f, "usb-source: USB the source: the computer heard, AUX not");
+        Check(quiet < 1e-4f, "usb-source: the computer playing nothing: silence");
+        Check(fabsf(usb_level - aux_level) < aux_level * .02f,
+              "usb-source: the computer's sine as loud as the same sine into AUX");
+        // AUX's converter turns its jack's signal (#209), the computer's comes as it is: against
+        // the line out, the two of opposite signs are in phase at the jacks
+        Check(usb_phase * aux_phase < 0., "usb-source: and in phase with AUX's jack (#209)");
+    }});
+
+    // USB, once picked, stays when a cable goes in or out of AUX; AUX picked again, the jack
+    // decides again
+    cases.push_back({"usb-jack", [] {
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23");
+        RunMs(100);
+        Tap("KEY_23"); // USB
+        RunMs(100);
+        SetJack(false);
+        RunMs(100);
+        float aux, usb;
+        heard_usb(aux, usb);
+        const bool out = blue_led(SmtLedFull(kInSourceKeyLed)) && usb > .01f;
+        SetJack(true);
+        RunMs(100);
+        heard_usb(aux, usb);
+        const bool in = blue_led(SmtLedFull(kInSourceKeyLed)) && usb > .01f && aux < usb * .01f;
+        Tap("KEY_23"); // AUX
+        RunMs(100);
+        SetJack(false);
+        RunMs(100);
+        const bool mic = magenta_led(SmtLedFull(kInSourceKeyLed));
+        Check(out, "usb-jack: USB picked, the cable pulled: still USB, the mic doesn't take over");
+        Check(in, "usb-jack: plugged in again: still USB, AUX unheard");
+        Check(mic, "usb-jack: AUX picked again, the cable pulled: the mic, as before");
+    }});
+
+    // the looper records USB as it does AUX and the mic
+    cases.push_back({"usb-loop", [] {
+        amp = 0.f;
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23");
+        RunMs(100);
+        Tap("KEY_23"); // USB
+        RunMs(100);
+        SetToggle(false);
+        RunMs(300);
+        usb_amp = .1f;
+        usb_playing = true;
+        RunMs(200);
+        Tap("KEY_28"); // record
+        RunMs(2000);
+        Tap("KEY_28"); // play
+        RunMs(300);
+        usb_playing = false;
+        RunMs(300);
+        const float loop = RunMs(500);
+        printf("      the loop recorded from USB: %.4f\n", loop);
+        Check(Probe().loop_state == 2 && loop > .01f, "usb-loop: the looper records USB, and plays it once the computer stops");
+    }});
+
+    // what the computer records: the master before VOLUME, VOLUME's knob doesn't change it; in
+    // phase with what came in (USB) and with AUX's jack; nothing while it doesn't record
+    cases.push_back({"usb-record", [] {
+        RunMs(kReadyMs);
+        amp = .1f;
+        RunMs(300);
+        usb_recorded.clear();
+        RunMs(300);
+        const bool none = usb_recorded.empty();
+        SetUsbRecording(true);
+        RunMs(100);
+        auto rms = [] {
+            double sum = 0.;
+            for (size_t i = 0; i < usb_recorded.size(); i += 2)
+                sum += usb_recorded[i] * usb_recorded[i];
+            return usb_recorded.empty() ? 0.f : static_cast<float>(sqrt(sum / (usb_recorded.size() / 2)));
+        };
+        usb_recorded.clear();
+        rec_x_aux = 0.;
+        const float line_full = RunMs(500);
+        const float rec_full = rms();
+        const double aux_phase = rec_x_aux;
+        Usb({kCC, 85, 30}); // VOLUME down
+        RunMs(300);
+        usb_recorded.clear();
+        const float line_down = RunMs(500);
+        const float rec_down = rms();
+        // the computer's sine back to it, USB the source
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23");
+        RunMs(100);
+        Tap("KEY_23");
+        RunMs(100);
+        amp = 0.f;
+        usb_amp = .1f;
+        usb_playing = true;
+        RunMs(300);
+        rec_x_usb = 0.;
+        usb_recorded.clear();
+        RunMs(500);
+        const double usb_phase = rec_x_usb;
+        const float round_trip = rms();
+        usb_playing = false;
+        SetUsbRecording(false);
+        RunMs(100);
+        usb_recorded.clear();
+        RunMs(300);
+        const bool stopped = usb_recorded.empty();
+        amp = .3f;
+        printf("      recorded %.4f (line out %.4f), VOLUME down %.4f (line out %.4f); its phase against AUX's "
+               "sine %+.1f, against the computer's %+.1f; the computer's 0.0707 back at %.4f\n",
+               rec_full, line_full, rec_down, line_down, aux_phase, usb_phase, round_trip);
+        Check(none && stopped, "usb-record: nothing goes to the computer while it doesn't record");
+        Check(rec_full > .01f && fabsf(rec_down - rec_full) < rec_full * .01f && line_down < line_full * .7f,
+              "usb-record: the master before VOLUME: VOLUME down, the line out drops, the recording doesn't");
+        Check(aux_phase < 0., "usb-record: turned as the line out's jack turns it: against AUX's converter, as AUX's jack is (#209)");
+        Check(usb_phase > 0. && round_trip > .02f, "usb-record: the computer's own audio comes back in its phase");
+    }});
+
+    // SHIFT + the upper F# with USB: USB audio off (FRIZZ leaves the bus and comes back without
+    // the sound card), F# dim blue, USB silent, saved; on again; with SHIFT held F# shows it.
+    // With AUX or the mic, SHIFT + F# is still AUX mono
+    cases.push_back({"usb-switch", [] {
+        RunMs(kReadyMs);
+        const int enumerated = UsbEnumerations();
+        const bool on_at_boot = UsbAudioOn();
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23"); // the mic: SHIFT + F# is mono
+        RunMs(100);
+        TapMono();
+        RunMs(100);
+        const bool mono_on_mic = UsbAudioOn() && UsbEnumerations() == enumerated;
+        Tap("KEY_23"); // USB
+        RunMs(100);
+        Press("KEY_26", true);
+        RunMs(100);
+        const bool shows_on = white_led(SmtLedFull(kInSourceKeyLed));
+        Tap("KEY_23");
+        RunMs(100);
+        const bool shows_off = key_dim(kInSourceKeyLed);
+        Press("KEY_26", false);
+        RunMs(200);
+        const bool away = !UsbAudioOn();
+        RunMs(400);
+        const bool back_without = !UsbAudioOn() && UsbEnumerations() == enumerated + 1;
+        const bool dim_blue = key_dim(kInSourceKeyLed) && SmtLedFull(kInSourceKeyLed).b > SmtLedFull(kInSourceKeyLed).r;
+        float aux, usb;
+        heard_usb(aux, usb);
+        RunMs(2500);
+        const bool saved = Card("/FRIZZ/frizz_master.txt").find("\nusb_audio 0\n") != std::string::npos
+                           && Card("/FRIZZ/frizz_master.txt").find("\nmono 1\n") != std::string::npos;
+        TapMono(); // on again
+        RunMs(600);
+        const bool on_again = UsbAudioOn() && UsbEnumerations() == enumerated + 2
+                              && blue_led(SmtLedFull(kInSourceKeyLed));
+        RunMs(2500);
+        printf("      USB audio off: the computer %.6f, AUX %.4f\n", usb, aux);
+        Check(on_at_boot, "usb-switch: USB audio on out of the box");
+        Check(mono_on_mic, "usb-switch: with the mic, SHIFT + F# is AUX mono, as before: no switch");
+        Check(shows_on && shows_off, "usb-switch: with SHIFT held, F# shows USB audio: lit on, dim off");
+        Check(away && back_without, "usb-switch: off, FRIZZ leaves the bus and comes back without the sound card");
+        Check(dim_blue && usb < 1e-4f, "usb-switch: USB still the source, F# dim blue, silent");
+        Check(saved, "usb-switch: USB audio off on the card");
+        Check(on_again, "usb-switch: SHIFT + F# again: back with the sound card, F# blue");
+        Check(Card("/FRIZZ/frizz_master.txt").find("\nusb_audio 1\n") != std::string::npos,
+              "usb-switch: and that on the card");
+    }});
+
+    // ... and from the card at power-on: FRIZZ comes up without the sound card
+    cases.push_back({"usb-switch-boot", [] {
+        CardFiles()["/FRIZZ/frizz_master.txt"] = "FRIZZ master 1\nusb_audio 0\ngain_usb 40\nusb_live 0\n";
+        RunMs(kReadyMs);
+        const bool off = !UsbAudioOn() && UsbEnumerations() == 1;
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23");
+        RunMs(100);
+        Tap("KEY_23"); // USB: its own from the card, not live
+        RunMs(100);
+        Check(off, "usb-switch-boot: usb_audio 0 on the card: FRIZZ on the bus once, without the sound card");
+        Check(key_dim(kInSourceKeyLed) && key_dim(kLiveKeyLed) && key_dark(kInFxKeyLed),
+              "usb-switch-boot: USB picked: F# dim blue, its own from the card, not live");
+    }});
+
+    // the card lent to the computer: SHIFT + LOOP held 2 s on the settings page, LOOP blue;
+    // the gesture again, an eject, or the computer gone takes it back; meanwhile a scene save
+    // waits, and comes once it's back
+    static auto lend_gesture = [] {
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("KEY_28", true);
+        RunMs(2100);
+        Press("KEY_28", false);
+        Press("KEY_26", false);
+        RunMs(200);
+    };
+    static auto loop_blinks_red = [](uint32_t ms) {
+        int blinks = 0;
+        bool was = false;
+        for (uint32_t t = 0; t < ms; t++)
+        {
+            RunMs(1);
+            const Rgb c = PthLedFull(kLoopLed);
+            const bool red = c.r > 150 && c.g < 40 && c.b < 40;
+            blinks += red && !was;
+            was = red;
+        }
+        return blinks;
+    };
+    cases.push_back({"card-lend", [] {
+        RunMs(kReadyMs);
+        RunMs(3000); // the loops' scan done
+        SetToggle(true);
+        RunMs(300);
+        const bool dark = Max(PthLedFull(kLoopLed)) == 0;
+        lend_gesture();
+        const Rgb lent = PthLedFull(kLoopLed);
+        const bool is_lent = CardLent() && lent.b > 150 && lent.r < 40 && lent.g < 40
+                             && Max(PthLedFull(kChompiKeyLed)) == 0;
+        // a scene saved meanwhile waits for the card
+        SetToggle(false);
+        RunMs(300);
+        const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
+        Latch("KEY_5");
+        Save(1);
+        RunMs(1000);
+        const bool waited = Card("/FRIZZ/frizz_scenes.txt") == scenes;
+        SetToggle(true);
+        RunMs(300);
+        lend_gesture(); // back
+        const bool back = !CardLent() && Max(PthLedFull(kLoopLed)) == 0;
+        RunMs(1000);
+        const bool saved = Card("/FRIZZ/frizz_scenes.txt") != scenes;
+        RunMs(3000);
+        lend_gesture();
+        const bool again = CardLent();
+        EjectCard();
+        RunMs(300);
+        const bool ejected = !CardLent();
+        RunMs(3000);
+        lend_gesture();
+        SetUsbHost(false); // unplugged
+        RunMs(300);
+        const bool unplugged = !CardLent();
+        Check(dark, "card-lend: LOOP dark on the settings page");
+        Check(is_lent, "card-lend: SHIFT + LOOP held 2 s: lent, LOOP blue, SHIFT's LED its own (dark once let go)");
+        Check(waited, "card-lend: a scene saved while it's lent waits");
+        Check(back && saved, "card-lend: the gesture again takes it back, LOOP dark, and the save comes");
+        Check(again && ejected, "card-lend: ejected on the computer: taken back");
+        Check(unplugged, "card-lend: the computer gone: taken back");
+    }});
+
+    // refused, LOOP blinking red 3 times: without a computer, while LOOP records, while a bug
+    // report is written
+    cases.push_back({"card-lend-refused", [] {
+        RunMs(kReadyMs);
+        RunMs(3000);
+        SetToggle(true);
+        RunMs(300);
+        SetUsbHost(false);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("KEY_28", true);
+        RunMs(1950);
+        const int no_host = loop_blinks_red(1000);
+        Press("KEY_28", false);
+        Press("KEY_26", false);
+        const bool not_lent = !CardLent();
+        SetUsbHost(true);
+        RunMs(500);
+        SetToggle(false);
+        RunMs(300);
+        Tap("KEY_28"); // record
+        RunMs(300);
+        SetToggle(true);
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("KEY_28", true);
+        RunMs(1950);
+        const int recording = loop_blinks_red(1000);
+        Press("KEY_28", false);
+        Press("KEY_26", false);
+        const bool not_lent_rec = !CardLent();
+        RunMs(300);
+        SetToggle(false);
+        RunMs(300);
+        Tap("KEY_28"); // play
+        RunMs(300);
+        // a bug report, written slowly, then the gesture while it is
+        SetCardWriteMs(1500);
+        SetToggle(true);
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(2100);
+        Press("ENC_6_SW", false);
+        Press("KEY_28", true);
+        RunMs(2500);
+        Press("KEY_28", false);
+        Press("KEY_26", false);
+        // the LEDs stand still while the card is written (SetCardWriteMs holds MainLoop), so the
+        // blinks may not show here: not lent is what counts
+        const bool not_lent_writing = !CardLent();
+        SetCardWriteMs(0);
+        RunMs(10000);
+        const bool written = Card("/FRIZZ/bug-1.txt").size() > 100;
+        lend_gesture(); // once it's written: lent
+        const bool lent_after = CardLent();
+        printf("      red blinks: no computer %d, recording %d; writing: lent %d, the report %zu B, lent after %d\n", no_host, recording, !not_lent_writing, Card("/FRIZZ/bug-1.txt").size(), lent_after);
+        Check(no_host == 3 && not_lent, "card-lend-refused: without a computer: 3 red blinks, not lent");
+        Check(recording == 3 && not_lent_rec, "card-lend-refused: while LOOP records: 3 red blinks, not lent");
+        Check(not_lent_writing && written && lent_after,
+              "card-lend-refused: while a bug report is written: not lent; once it's written, lent");
+    }});
+
+    // ... and while a loop loads from the card (as during the loops' scan, LoopLoader::Busy):
+    // refused, 3 red blinks; once it's loaded, lent
+    cases.push_back({"card-lend-loading", [] {
+        PutLoops({{"a1", SineWav(75 * 48000, 2, 220.f)}}); // 75 s, 14.4 MB: the load ~4.6 s
+        RunMs(kReadyMs);
+        RunMs(3000);
+        SetCardRawPolls(4000); // each raw read ~40 ms: the load takes many seconds
+        Ask({0x3E, 0x0D, 1, 4, 0, 0, 0}); // load a1
+        RunMs(300);
+        SetToggle(true);
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("KEY_28", true);
+        RunMs(1950);
+        const int loading = loop_blinks_red(1000);
+        Press("KEY_28", false);
+        Press("KEY_26", false);
+        const bool not_lent = !CardLent();
+        SetCardRawPolls(2);
+        RunMs(15000);
+        lend_gesture();
+        printf("      red blinks while a loop loads: %d\n", loading);
+        Check(loading == 3 && not_lent, "card-lend-loading: while a loop loads: 3 red blinks, not lent");
+        Check(CardLent(), "card-lend-loading: once it's loaded, lent");
+    }});
+
+    // the card lent: SHIFT + F# with USB doesn't switch USB audio, F# blinks red 3 times
+    cases.push_back({"usb-switch-lent", [] {
+        RunMs(kReadyMs);
+        RunMs(3000);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23");
+        RunMs(100);
+        Tap("KEY_23"); // USB
+        RunMs(100);
+        lend_gesture();
+        const int enumerated = UsbEnumerations();
+        Press("KEY_26", true);
+        RunMs(60);
+        Tap("KEY_23");
+        int blinks = 0;
+        bool was = false;
+        for (int t = 0; t < 1000; t++)
+        {
+            RunMs(1);
+            const Rgb c = SmtLedFull(kInSourceKeyLed);
+            const bool red = c.r > 150 && c.g < 40 && c.b < 40;
+            blinks += red && !was;
+            was = red;
+        }
+        Press("KEY_26", false);
+        RunMs(600);
+        Check(CardLent() && UsbAudioOn() && UsbEnumerations() == enumerated && blinks == 3,
+              "usb-switch-lent: the card lent: SHIFT + F# with USB blinks red 3 times, USB audio stays on");
     }});
 
     // a bug report knows AUX's jack: as it was at power-on, and each change; its replay plays
@@ -5230,7 +7310,9 @@ int main()
         RunMs(500);
         SetToggle(true);
         RunMs(300);
-        Tap("KEY_23"); // AUX, by hand
+        Tap("KEY_23"); // USB, then AUX, by hand
+        RunMs(300);
+        Tap("KEY_23");
         RunMs(300);
         Press("KEY_26", true);
         RunMs(100);
@@ -6153,6 +8235,55 @@ int main()
         }});
     }
 
+    // a script's set (twin/README.md): the developers' SET over USB, its answer kept from
+    // replies and expect usb, which still get what came before and after it; one FRIZZ refuses
+    // or the script can't send fails its line
+    cases.push_back({"script-set", [] {
+        std::istringstream script(
+            "booted\n"
+            "usb F0 7D 43 48 3E 02 01 20 F7\n" // GET comp, before the set
+            "set comp 0 0.25\n"
+            "set comp 3 1\n"
+            "expect usb F0 7D 43 48 7E 02 01 00 20 08 00 00 40 00 40 00 40 00 7F 7F 00 00 00 00 00 00 F7\n"
+            "usb F0 7D 43 48 3E 02 02 20 F7\n"
+            "wait 20\n"
+            "expect usb F0 7D 43 48 7E 02 02 00 20 08 20 00 40 00 40 00 7F 7F 7F 7F 00 00 00 00 00 00 F7\n"
+            "set settings led_brightness 50\n"
+            "set latch filter on\n"
+            "set comp 0 2\n"        // not a knob's 0-1
+            "set settings 99 1\n"   // no such setting: FRIZZ refuses
+            "set nothing 0 0\n");
+        Check(PlayScript(script, nullptr, nullptr) == 3,
+              "script-set: set sets the compressor's knobs, a setting, a latch; its answers stay out of expect usb; "
+              "a value, setting or group that isn't fails its line");
+    }});
+
+    // a card as a player's may be: the compressor's page 1 and most settings not as the factory
+    // has them, the LEDs at full though (the twin's expect led doesn't dim). The device's scenarios start
+    // from the player's card (#214): each sets what it depends on first
+    static const std::string kPlayersCard = "card file /FRIZZ/frizz_master.txt\n|FRIZZ master 1\n"
+                                            "|compressor2 300000 900000 100000 750000 1000000 0 0 0\n"
+                                            "|mono 1\n|midi_channel 0\n|midi_transport 1\n|clock_factor 50\n"
+                                            "|clock_source 1\n|midi_out 0\n|led_brightness 100\n"
+                                            "|midi_block_trs 0\n|midi_feedback 0\n|aux_dry 1\n|gain_aux 40\n"
+                                            "|gain_mic 40\n|mic_dry 1\n|aux_live 0\n|mic_live 1\n";
+    // comp.txt without its sets: the turns start from the card's knobs, its four LEDs another
+    // colour, as on the device before (#214)
+    cases.push_back({"script-comp-turns", [] {
+        std::ifstream comp(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/') + 1)
+                           + "../twin/scenarios/comp.txt");
+        std::string text = kPlayersCard, line;
+        int sets = 0;
+        while (std::getline(comp, line))
+            if (line.rfind("set comp ", 0) == 0)
+                sets++;
+            else
+                text += line + "\n";
+        std::istringstream script(text);
+        Check(sets == 4 && PlayScript(script, nullptr, nullptr) == 4,
+              "script-comp-turns: comp.txt without its four sets, on a player's card: its four LEDs fail (#214)");
+    }});
+
     // every scenario of ../twin/scenarios played from power-on, its expect lines holding
     static std::vector<std::string> scenarios;
     {
@@ -6177,6 +8308,12 @@ int main()
             const int failed = PlayScript(script, nullptr, nullptr);
             Check(failed == 0, (path.substr(path.rfind('/') + 1) + ": played from power-on, every expect holds").c_str());
         }});
+        cases.push_back({"card:" + file.substr(0, file.size() - 4), [path] {
+            std::ifstream file(path);
+            std::istringstream script(kPlayersCard + std::string(std::istreambuf_iterator<char>(file), {}));
+            Check(PlayScript(script, nullptr, nullptr) == 0,
+                  (path.substr(path.rfind('/') + 1) + ": and on a player's card (#214)").c_str());
+        }});
     }
 
     // the cases that take the card one before them kept (KeepCard, TakeCard)
@@ -6184,9 +8321,10 @@ int main()
     Chain({"card-1", "card-2", "card-3", "bug-log", "bug-full", "bug-replay"});
     Chain({"midi-transport", "midi-kept"});
     Chain({"mic-bug-log", "bug-replay-mic"});
-    // a replay boots by its script
+    // a replay, a scenario and a script- case boot by their script
     RunAllCases([](const Case& c) {
-        return c.name.compare(0, 10, "bug-replay") != 0 && c.name.compare(0, 9, "scenario:") != 0;
+        return c.name.compare(0, 10, "bug-replay") != 0 && c.name.compare(0, 9, "scenario:") != 0
+               && c.name.compare(0, 5, "card:") != 0 && c.name.compare(0, 7, "script-") != 0;
     });
     return Finish();
 }

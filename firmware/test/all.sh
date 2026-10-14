@@ -1,9 +1,12 @@
 #!/bin/bash
 # all.sh: runs every host check on the working tree: the engine against HEAD (check.sh), then
-# each unit check (every NAME.cpp but the harness). Prints one line per check and exits 0 when
+# each unit check (every NAME.cpp but the harness), and doclinks: the docs the website is built
+# from (../tools/doclinks.py --all: its checks and its selftest). Prints one line per check and exits 0 when
 # all pass, with the faults the checks know of (Known() in check.h) listed under theirs. A
 # changed sound (check.sh not bit-identical) counts as a failure: run ./check.sh to
-# see what changed.
+# see what changed. A run of a tool against the twin (midisuite, reaper) that failed with the
+# twin far behind the wall clock and passed when run again is listed as FLAKY under its check
+# (ptytwin.h's Twice(), #183).
 #
 # The checks run side by side, one per core (JOBS=N sets how many), once DaisySP and the twins
 # they share are built; their lines come in the order above. The ones on the twin go first,
@@ -29,12 +32,16 @@ for t in $(units); do
 done
 
 on_twin=$(for t in $(units); do grep -q '#include "twin.h"' "$T/$t.cpp" && echo "$t"; done)
-others=$(for t in check $(units); do echo "$on_twin" | grep -qx "$t" || echo "$t"; done)
+others=$(for t in check doclinks $(units); do echo "$on_twin" | grep -qx "$t" || echo "$t"; done)
 run()
 {
     local t=$1 nice=
     echo "$first" | grep -qx "$t" || nice="nice -n 10"
-    if [ "$t" = check ]; then $nice "$T/check.sh"; else $nice "$T/unit.sh" "$t"; fi > "$OUT/$t.out" 2>&1
+    case $t in
+        check) $nice "$T/check.sh" ;;
+        doclinks) python3 "$T/../tools/doclinks.py" --all ;;
+        *) $nice "$T/unit.sh" "$t" ;;
+    esac > "$OUT/$t.out" 2>&1
     echo $? > "$OUT/$t.rc"
 }
 first=$(printf '%s\n' remote midisuite reaper bench | grep -x -f <(units))
@@ -45,12 +52,12 @@ done
 wait
 
 failed=
-for t in check $(units); do
+for t in check doclinks $(units); do
     out=$(cat "$OUT/$t.out" 2>/dev/null)
     rc=$(cat "$OUT/$t.rc" 2>/dev/null)
     if [ "$rc" = 0 ]; then
         echo "ok    $t: $(echo "$out" | tail -1)$(echo "$out" | grep -m1 -E '^[0-9]+ known$' | sed 's/^/, /')"
-        echo "$out" | grep "^KNOWN" | sed 's/^/      /'
+        echo "$out" | grep -E "^(KNOWN|FLAKY)" | sed 's/^/      /'
         continue
     fi
     failed="$failed $t"

@@ -94,6 +94,25 @@ inline uint32_t FitBeats(size_t length, float sample_rate, float bpm)
     return beats < 1.5f ? 1 : static_cast<uint32_t>(beats + .5f);
 }
 
+/** The beats to give a loop from the card (#70), which knows none: a power of two, the one
+ *  nearest bpm by ratio within kMinBpm-kMaxBpm; a guess (GuessBeats) if none is in it */
+inline uint32_t NearestBeats(size_t length, float sample_rate, float bpm)
+{
+    uint32_t best = 0;
+    float best_d = 0.f;
+    for (uint32_t beats = 1; beats <= 1024; beats *= 2)
+    {
+        const float b = LoopBpm(length, sample_rate, beats);
+        const float d = fmaxf(b / bpm, bpm / b); // the ratio's distance, either way
+        if (b >= kMinBpm && b <= kMaxBpm && (!best || d < best_d))
+        {
+            best = beats;
+            best_d = d;
+        }
+    }
+    return best ? best : GuessBeats(length, sample_rate);
+}
+
 class TempoClock
 {
 public:
@@ -115,16 +134,31 @@ public:
         dir_ = 1;
     }
 
-    /** A loop closed: it's the clock from now on, length frames holding beats beats */
-    void SetLoop(size_t length, uint32_t beats)
+    /** A loop closed: it's the clock from now on, length frames holding beats beats. from:
+     *  where it starts, 0-1, 1 its end running in reverse (a loop from the card, switched to
+     *  by time or in reverse, Looper::SwitchedAt) */
+    void SetLoop(size_t length, uint32_t beats, float from = 0.f)
     {
         SyncFactor();
         loop_length_ = length;
         SetLoopBeats(beats);
-        // one step before the start, so the first block pulses beat 1
         pass_ = 0;
-        loop_pos_ = 0.f;
-        loop_idx_ = grid_pulses_ - 1;
+        loop_pos_ = from;
+        if (from >= 1.f)
+        {
+            // at its end in reverse: the next block crosses its start's line (beat 1), down
+            // from the last pass of the grid
+            pass_ = grid_pulses_ != loop_pulses_ ? 1 : 0;
+            loop_idx_ = 0;
+        }
+        else
+        {
+            // on a pulse (its start): one step before it, so the first block pulses it (beat 1);
+            // between two, the one passed is past
+            const float at = from * static_cast<float>(loop_pulses_);
+            const uint32_t idx = PulseIndex(from);
+            loop_idx_ = at == static_cast<float>(idx) ? (idx + grid_pulses_ - 1) % grid_pulses_ : idx;
+        }
         paused_ = false;
     }
 
@@ -150,6 +184,9 @@ public:
     /** The tempo without a loop and before the factor: the clock's as sent or the free one,
      *  for fitting a new loop to */
     inline float GetBpm() const { return bpm_; }
+    /** The loop's tempo at 1x before the factor, or without one GetBpm: what a loop from the
+     *  card is fitted to (NearestBeats) */
+    inline float FitBpm() const { return HasLoop() ? loop_bpm_ : bpm_; }
     /** Whether a tap would be taken: with a loop always, otherwise only without MIDI clock */
     inline bool CanTap() const { return HasLoop() || !midi_clock_->HasClock(); }
 
@@ -257,6 +294,13 @@ public:
         const uint32_t to_bar = kPulsesPerBar - idx % kPulsesPerBar;
         const uint32_t to_wrap = grid_pulses_ - idx;
         return to_bar < to_wrap ? to_bar : to_wrap;
+    }
+    /** With a loop: the pulses from the last one to its end (the next wrap), the way it runs;
+     *  an estimate, as PulsesToBarLine */
+    uint32_t PulsesToLoopEnd() const
+    {
+        const uint32_t idx = (paused_ ? free_idx_ : loop_idx_) % loop_pulses_;
+        return !paused_ && dir_ < 0 ? idx + 1 : loop_pulses_ - idx;
     }
     /** The pulses between two bar lines: a bar, or a loop shorter than one */
     inline uint32_t PulsesPerBarLine() const

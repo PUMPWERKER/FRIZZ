@@ -29,6 +29,8 @@ in the source files, must be preserved in any redistribution.
 | **CMSIS** | © ARM Limited | Apache-2.0 | `cube_dfu/Drivers/CMSIS/` (with its `LICENSE.txt`) in `reference/firmware/chompi-bootloader-v6.4-beta/` and in each stock firmware's `code/Chompi_Bootloader/` under `reference/firmware/` |
 | **Kastle 2 FX Wizard** (freezer, slicer, flanger, shifter, resonator comb, crusher XOR and dive) | © 2024 Marek Mach, Vaclav Mach (Bastl Instruments) | MIT | ported to `firmware/code/src/` (`FxFreezer.h`, `FxSlicer.h`, `FxFlanger.h`, `FxShifter.h`, `FxResonator.h`, and the crusher's in `FxCrusher.h`), with the license in `LICENSE-kastle2` next to them |
 | **CHOMPI launcher's `midi-send.py`** | © 2026 CHOMPI Club; by ugrossek (chomplex music theory), from [sfaber02/CHOMPI-MULTI-FIRMWARE](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE) (launcher v1.5) | MIT | `firmware/tools/midi_send.py`, unchanged but for a note of where it's from; `firmware/flash.py` and `firmware/tools/chompi.py` use it |
+| **TinyUSB** 0.21.0 | © Ha Thach (tinyusb.org) | MIT | `firmware/code/libs/tinyusb/` (`src/` with the DWC2 driver as its only port, with its `LICENSE`): upstream's tag 0.21.0 byte for byte but for FRIZZ's two patches, each a file in `patches/` and marked `FRIZZ` in the source (`VERSION` lists them). FRIZZ's USB, `firmware/code/src/UsbDevice.cpp` (#196) |
+| **lost-tty/CHOMPI ("MIXTAPE")**, USB audio and MIDI for TAPE | © 2026 CHOMPI Club; by nils (lost-tty), from [lost-tty/CHOMPI](https://github.com/lost-tty/CHOMPI) (commits a56545b, ab95f98) | MIT | the shape of FRIZZ's USB glue, each file saying what it takes in its head: `firmware/code/src/UsbDevice.cpp` (the PHY's bring-up, CRS, TinyUSB's task on TIM7, the audio FIFOs' glue, the drive's callbacks), `UsbMidiTransport.h` (libDaisy's MIDI transport on TinyUSB), `usb_descriptors.c` and `tusb_config.h` (how the functions sit together), `CardLend.h` (the card as a drive), and the `dcd_dwc2.c` fix in TinyUSB's `patches/0002` |
 | **STM32 HAL, USB Device/Host middleware, FatFs** | © STMicroelectronics | ST Ultimate Liberty / BSD-3-Clause, per file headers | the same `cube_dfu/` folders |
 
 ## libDaisy is Electrosmith's CHOMPI adaptation
@@ -59,7 +61,7 @@ In TEMPO and WAVE:
   compilation: the firmware builds against pristine upstream, but its MIDI output timing won't
   match the released firmware. Keep the vendored file.
 
-FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with three changes:
+FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with seven changes:
 - `src/usbd/usbd_desc.c` names the USB product "FrizZ".
 - `src/hid/midi_parser.cpp` follows MIDI 1.0 where WAVE's didn't:
   - A real-time byte (a clock tick, 0xF8-0xFF) inside a SysEx or another message is passed on,
@@ -72,15 +74,50 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with three changes:
     (#166).
 - `src/hid/usb_midi.cpp` sends a Song Position over USB once: WAVE's packed it, then fell
   through into its SysEx branch and packed it again, so hosts read it twice (#157).
+- `src/usbd/usbd_conf.c` starts EP0 IN afresh on every SETUP (`HAL_PCD_SetupStageCallback`):
+  it clears a STALL left from the transfer before and flushes EP0's TxFIFO. ST's USB core
+  stalls EP0 IN when the last packet of a reply is done; when the USB interrupt was answered
+  late (the audio DMA's has the same priority) and the host's next SETUP had already come in,
+  that STALL held into the next transfer, its reply stayed in the FIFO, and every reply after
+  it went out one late: the USB names garbled (#88).
+- `src/sys/fatfs.cpp` and `src/sys/system.cpp` leave out the USB host: `FatFSInterface` no
+  longer links a USB stick's driver for `MEDIA_USB` (FRIZZ mounts the SD card only), and the
+  OTG_HS interrupt handlers call only the device's handler (`HAL_PCD_IRQHandler`), not the
+  host's. ST's USB host stack (`usbh_*`, `usb_host`, `stm32h7xx_hal_hcd`) isn't linked any
+  more: 6.4 KB of code and 0.7 KB of data (#196).
+- `src/sys/system.cpp` has no OTG_HS interrupt handlers at all: FRIZZ's USB-C port runs on
+  TinyUSB, whose handler is FRIZZ's own (`firmware/code/src/UsbDevice.cpp`), so ST's device
+  stack isn't linked either; libDaisy's own USB on that port (`UsbHandle`, `MidiUsbHandler`)
+  doesn't work in this copy (#196). The usbd changes below stay in the source and the archive,
+  unused by FRIZZ.bin.
+- `src/usbd/usbd_conf.h` and `src/usbd/usbd_conf.c` give the CDC class its handle (540 B) from a
+  static buffer, `USBD_static_malloc`, as ST's own templates do, instead of `malloc`: newlib's
+  `_sbrk` grows the heap from the end of `.bss` without a bound, so with internal RAM full it
+  would run past it at boot (a freeze in the fork lost-tty/CHOMPI), where the buffer fails the link.
+  One handle, for FRIZZ's one USB device; it's the same buffer on every Init, and freeing it
+  does nothing (#196).
 
-Its prebuilt `build/libdaisy.a` is WAVE's with only those three objects, `usbd_desc.o`,
-`midi_parser.o` and `usb_midi.o`, rebuilt from them. They were built with GCC 10.3 and
-libDaisy's own flags (`make build/midi_parser.o` in its folder, then `arm-none-eabi-ar r
-build/libdaisy.a build/midi_parser.o`). These reproduce WAVE's objects from WAVE's source: the
-same code, only the debug information's paths differ, and FRIZZ.bin comes out byte for byte
-the same (checked for `usb_midi.o`, #157; `midi_parser.o` rebuilt from the source before #166
-disassembles as the archive's). A changed `libdaisy.a` (or `libdaisysp.a`) links
-FRIZZ again on the next `make` (#161).
+Its prebuilt `build/libdaisy.a` is WAVE's with only the objects of those changes rebuilt:
+`usbd_desc.o`, `midi_parser.o`, `usb_midi.o`, `usbd_conf.o`, `fatfs.o`, `system.o` (twice, the
+second time without the handlers: from the source before, it disassembled as the archive's) and
+`usbd_cdc.o` (whose code changes with `usbd_conf.h`'s macro; of the other objects that include
+it none does). They were built with GCC 10.3 and libDaisy's own flags (`make
+build/src/hid/midi_parser.o` in its folder, then `arm-none-eabi-ar r build/libdaisy.a
+build/src/hid/midi_parser.o`; delete the object first to rebuild it, `make -B` fails on the
+`build` folder). The loose objects in `build/src/` stay WAVE's: only the archive is linked.
+These reproduce WAVE's objects from WAVE's source: the same code, only the debug information's
+paths differ, and FRIZZ.bin comes out byte for byte the same (checked for `usb_midi.o`, #157,
+and `usbd_conf.o`, #88; `midi_parser.o` rebuilt from the source before #166, and `fatfs.o`,
+`system.o` and every object that includes `usbd_conf.h`, rebuilt from the source before #196,
+disassemble as the archive's). A changed `libdaisy.a` (or `libdaisysp.a`) links FRIZZ again on
+the next `make` (#161).
+
+FRIZZ doesn't use `src/util/sd_diskio.c`'s `SD_read` and `SD_write` (they stay in the archive,
+unchanged): its own, `firmware/code/src/SdDisk.h`, take their place in FatFs's driver table
+after `FatFSInterface::Init` (`SdDiskLink`, #213), the rest of the driver (`SD_initialize`,
+`SD_status`, `SD_ioctl`) being sd_diskio.c's. They make the same transfers, but end a wait on
+an SD error after 1 s and recover the card, where sd_diskio.c waited 30 s. `firmware/test/sddisk.cpp`
+runs both, with FatFs, on the host.
 
 The bootloader's copy, `reference/firmware/chompi-bootloader-v6.4-beta/libs/libDaisy/`, is the same adaptation plus
 the changes that bootloader needs, listed in its `LIBDAISY_PATCH.md`.

@@ -14,10 +14,10 @@ box and looper for whatever you plug into its AUX input, or for its built-in mic
   at once, drop to them hard on the next bar line, morph to them on the bar line or crossfade
   by hand on the transport knob, copy and delete them. Kept on the SD card. A fifth key clears every effect at once.
 - **An input/loop mix** between the live input and the loop, plus input gain, output gain and a
-  headphone feed that can carry the dry input alone, all on the VOLUME knob.
+  headphone feed that can carry the input alone, all on the VOLUME knob.
 - **Two inputs:** AUX, or the built-in microphone while no cable is in AUX, each with its own
-  input gain. Either can go through the effects or **dry** past them (a drum machine or a
-  finished song next to your loop), and be live on the outputs or only recorded.
+  input gain. Either can go through the effects or **past them** (a drum machine or a
+  finished song next to your loop), and be monitored on the outputs or only recorded.
 - **A master compressor** on its own key, and a safety limiter on every output.
 - **MIDI** over TRS or USB: clock for quantized loops and the tempo-synced effects, notes
   playing the keys, CCs setting every parameter, program changes recalling scenes, a MIDI
@@ -33,7 +33,7 @@ and you can go back to the stock firmware the same way.
 | | |
 |---|---|
 | [**Install**](INSTALL.md) | Put FRIZZ on your CHOMPI, and go back to stock firmware |
-| [**Quick guide**](QUICKSTART.md) | Your first loop and your first effects in ten minutes |
+| [**Quick start**](QUICKSTART.md) | Your first loop and your first effects in ten minutes |
 | [**Manual**](MANUAL.md) | Every control, every effect, every knob |
 
 ## For developers
@@ -43,6 +43,27 @@ and you can go back to the stock firmware the same way.
 | [`firmware/`](firmware/) | The FRIZZ source. Its [README](firmware/README.md) covers the toolchain, the build, the host test harness and debugging |
 | [`docs/`](docs/) | Design notes: the looper spec and an overview of the effects across the CHOMPI firmwares |
 | [`reference/`](reference/) | The original CHOMPI open-source release, kept unchanged: the stock TAPE, TEMPO and WAVE firmwares, the factory SD cards, the bootloader and the hardware files |
+
+## How FRIZZ is made
+
+FRIZZ is written with the help of AI coding agents (Anthropic's Claude Code), and most commits
+say so (`Co-Authored-By: Claude`). The design is mine: what FRIZZ does, its controls and
+gestures, how it should sound and feel, and what goes into a release. The agents write most of
+the code and the tests and propose details, which I accept or change. Nothing goes in on trust
+alone:
+
+- **On the computer:** a virtual CHOMPI ([`firmware/twin/`](firmware/twin/)) runs the whole
+  firmware, unchanged, and the host checks ([`firmware/test/`](firmware/test/)) hold it to
+  about 2,700 individual checks in 35 test programs (keys, LEDs, MIDI, timing, the card, the
+  audio), plus 31 scenarios played from power-on and a bit-for-bit comparison of the engine's
+  sound.
+- **On the CHOMPI:** every firmware change runs on the device before it's merged, with its
+  CPU load measured against the last one.
+- **By ear and hand:** every release is played with real gear first, from a public
+  release-test checklist (the issues labelled `release test`).
+
+The decisions behind each feature are in the [issues](https://github.com/ZUHcYa/FrizZ/issues)
+and pull requests.
 
 ## Credits and license
 

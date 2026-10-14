@@ -18,11 +18,15 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "../code/src/Crash.h"
 #include "check.h"
 #include "script.h"
 #include "twin.h"
 
 using namespace twin;
+
+// the firmware's crash record (chompi_main.cpp), an ordinary static on the twin
+extern chompi::crash::Backup crash_mem;
 
 static const int kFilterKeyLed = 20;
 static const int kPlayLed = 7; // PanelLeds.h
@@ -194,6 +198,33 @@ static void Write(const std::string& path, const std::string& text)
     std::ofstream(path) << text;
 }
 
+/** A WAV of 16-bit PCM: frames of a pattern, at rate, in channels */
+static std::string LoopWav(uint32_t frames, uint32_t rate, uint16_t channels)
+{
+    auto u32 = [](std::string& w, uint32_t v) {
+        for (int i = 0; i < 4; i++)
+            w.push_back(static_cast<char>(v >> (8 * i)));
+    };
+    const uint32_t bytes = frames * channels * 2;
+    std::string w = "RIFF";
+    u32(w, 36 + bytes);
+    w += "WAVEfmt ";
+    u32(w, 16);
+    u32(w, 1 | channels << 16);
+    u32(w, rate);
+    u32(w, rate * channels * 2);
+    u32(w, channels * 2 | 16 << 16);
+    w += "data";
+    u32(w, bytes);
+    uint32_t x = 12345;
+    for (uint32_t i = 0; i < bytes; i++)
+    {
+        x = x * 1103515245u + 12345u;
+        w.push_back(static_cast<char>(x >> 16));
+    }
+    return w;
+}
+
 static std::string Read(const std::string& path)
 {
     std::ifstream f(path);
@@ -332,6 +363,29 @@ chompi.forget()
               && Has(out, "fix-name 15: exit: slot 15 isn't FRIZZ's"),
           "tools: chompi.py fix-name starts the slot noted as running again; FRIZZ's slots and the bench's only");
     if (rc != 0 || !Has(out, "fix-name 15"))
+        printf("%s\n", out.c_str());
+
+    // RUN sent, and the launcher gone from USB before its reply is read (it started the slot,
+    // reset and enumerated again): said, not a traceback, the caller waits as usual; another
+    // error still stops it (#203)
+    rc = Python(R"(
+import contextlib, errno, chompi
+class Gone:
+    def __init__(self, no): self.no = no
+    def call(self, *rest, **kw): raise OSError(self.no, "gone")
+for no in (errno.ENODEV, errno.EACCES):
+    chompi.link = contextlib.contextmanager(lambda node, no=no: (yield Gone(no)))
+    try:
+        chompi.send_run("n", 12)
+        print("run %d: carried on" % no, flush=True)
+    except OSError as e:
+        print("run %d: raised %d" % (no, e.errno), flush=True)
+)", out);
+    Check(rc == 0 && Has(out, "the launcher left USB before it answered RUN: it is starting slot 12 (#203)")
+              && Has(out, "starting slot 12 ...") && Has(out, "run 19: carried on\n")
+              && Has(out, "run 13: raised 13\n"),
+          "tools: a launcher gone from USB before RUN's reply is taken as starting the slot (#203)");
+    if (rc != 0 || !Has(out, "run 19: carried on"))
         printf("%s\n", out.c_str());
 
     // card.py: a mount that fails still ejects the card and starts FRIZZ; mount alone needs a
@@ -482,6 +536,59 @@ remote.play(Starting(), "wait.txt", True)
     if (rc != 0 || !Has(out, "worst mean 43.5%"))
         printf("%s\n", out.c_str());
     unlink((tmp_dir + "/wait.txt").c_str());
+
+    // input sine as SIGNAL (#219): on at its line, input off and input wav turn it off, the
+    // script's end, an error or Ctrl-C turn it off; a FRIZZ without SIGNAL skips the lines
+    const char* const kSignal = R"(
+import remote
+class Stub(remote.Frizz):
+    def __init__(self, answer=0, stop_at=None):
+        self.held, self.sent, self.answer, self.stop_at = set(), [], answer, stop_at
+    def send(self, cmd, payload=b""):
+        pass
+    def raw(self, data):
+        if self.stop_at:
+            raise self.stop_at()
+    def dev(self, sub, args=(), retries=3):
+        self.sent.append((sub, list(args)))
+        return None if self.answer is None else (self.answer, b"")
+def run(name, text, **kw):
+    open("signal.txt", "w").write(text)
+    f = Stub(**kw)
+    try:
+        got = remote.play(f, "signal.txt", False)
+    except BaseException as e:
+        got = type(e).__name__
+    print(name, got, [a for sub, a in f.sent if sub == remote.chompi.SIGNAL], flush=True)
+run("on", "input sine 220 0.3\nwait 10\n")
+run("off", "input sine 330 0.8\nwait 10\ninput off\nwait 10\n")
+run("wav", "input sine 110 1\ninput wav loop.wav\nwait 10\n")
+run("only-wav", "input wav loop.wav\ninput off\n")
+run("none", "wait 10\n")
+run("interrupted", "input sine 220 0.02\nmidi 90 3C 64\n", stop_at=KeyboardInterrupt)
+run("broken", "input sine 220 0.3\nwait x\n")
+run("zero", "input sine 0 0.3\n")
+run("old", "input sine 220 0.3\ninput sine 220 0.3\n", answer=None)
+)";
+    rc = Python(kSignal, out);
+    Check(rc == 0 && Has(out, "on 0 [[1, 1, 92, 38, 51], [0]]\n")
+              && Has(out, "off 0 [[1, 2, 74, 102, 50], [0]]\n")
+              && Has(out, "input: the test signal (SIGNAL) in AUX's place, and the mic's"),
+          "remote: play sends input sine as SIGNAL, and SIGNAL off at input off or the script's end (#219)");
+    Check(Has(out, "wav 0 [[1, 0, 110, 127, 127], [0]]\n")
+              && Has(out, "skipped (twin only): input wav (the device's test signal plays a sine): the signal off")
+              && Has(out, "only-wav 0 []\n") && Has(out, "none 0 []\n"),
+          "remote: input wav turns the signal off, skipped; a script without input sends no SIGNAL");
+    Check(Has(out, "interrupted KeyboardInterrupt [[1, 1, 92, 2, 72], [0]]\n")
+              && Has(out, "broken ValueError [[1, 1, 92, 38, 51], [0]]\n"),
+          "remote: a script interrupted (Ctrl-C) or broken off turns its signal off");
+    Check(Has(out, "zero 1 []\n") && Has(out, "line 1: input sine 0 0.3: 1-16383 Hz")
+              && Has(out, "old 0 [[1, 1, 92, 38, 51]]\n")
+              && Has(out, "skipped (twin only): input, a FRIZZ without SIGNAL"),
+          "remote: a frequency out of range fails its line; a FRIZZ without SIGNAL skips input, asked once");
+    if (rc != 0 || !Has(out, "on 0 "))
+        printf("%s\n", out.c_str());
+    unlink((tmp_dir + "/signal.txt").c_str());
 
     // expect led at the brightness that fits every line so far: one that fits only 100 %
     // after one that fits only 50 % fails, saying at which it looked (#94)
@@ -674,6 +781,107 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     if (rc != 0)
         printf("%s\n", out.c_str());
 
+    // the loop loader (#70): slots put on the card and scanned again, one loaded and checked
+    // against its file, a fault provoked, the write test, which leaves nothing behind
+    {
+        const std::string a01 = LoopWav(96000, 48000, 2), wav = tmp_dir + "/a01.wav";
+        std::ofstream(wav, std::ios::binary) << a01;
+        CardFiles()["/FRIZZ/a1.wav"] = a01;
+        CardFiles()["/FRIZZ/c15.WAV"] = LoopWav(1000, 44100, 2);
+        CardFiles()["/cubbi_b2.wav"] = LoopWav(1000, 48000, 2);
+        rc = Remote({"loops", "--scan"}, out);
+        Check(rc == 0 && Has(out, "a1  stereo, 96000 frames (2.00 s), its data at 44\n")
+                  && Has(out, "c15  not 48 kHz\n") && Has(out, "cubbi_b2  stereo") && Has(out, "3 slots filled"),
+              "remote: loops --scan lists the slots on the card, a refused one with why");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        rc = Remote({"loops", "load", "a", "1", "--check", wav}, out);
+        Check(rc == 0 && Has(out, "a1 loaded: 0.38 of 0.38 MB in ") && Has(out, ", 3 runs, the file in 1 fragment\n")
+                  && Has(out, "the audio callback meanwhile: max ") && Has(out, "a01.wav's data 0x")
+                  && Has(out, ": the same"),
+              "remote: loops load reads a slot in runs, its CRC-32 the file's data's");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        rc = Remote({"loops", "load", "A", "1", "--fault", "past-end"}, out);
+        Check(rc == 1 && Has(out, "a1 failed, card error: 0.26 of 0.38 MB") && Has(out, "SD error 0x2000000")
+                  && Has(out, "card recovered 1 times"),
+              "remote: a load's fault provoked: it stops at once, why, the card recovered");
+        if (rc != 1)
+            printf("%s\n", out.c_str());
+        CardFiles().erase("/FRIZZ/a1.wav");
+        CardFiles().erase("/FRIZZ/c15.WAV");
+        CardFiles().erase("/cubbi_b2.wav");
+        const size_t files = CardFiles().size();
+        rc = Remote({"loops", "write", "16", "300"}, out);
+        bool left = false;
+        for (const auto& f : CardFiles())
+            left = left || f.first.find("/FRIZZ/T") != std::string::npos;
+        Check(rc == 0 && Has(out, "write test, 16 KB in 300-byte writes: passed") && !left
+                  && CardFiles().size() == files,
+              "remote: loops write writes, renames, reads back and deletes a file in /FRIZZ/T");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        unlink(wav.c_str());
+    }
+    // the crash record (#105): none on the twin; one as the fault handler writes it, read back
+    // and cleared; a watchdog's, as the next start records it
+    rc = Remote({"crash"}, out);
+    Check(rc == 0 && Has(out, "crash      none recorded") && Has(out, "no option bytes (the twin)"),
+          "remote: crash says none is recorded");
+    {
+        using namespace chompi;
+        const uint32_t frame[8] = {0, 0, 0, 0, 0, 0x24001235, 0x24004214, 0x01000003};
+        const uint32_t fault[4] = {0x8200, 0x40000000, 0, 0x2FFF0000};
+        crash::Write(crash_mem.record, crash::HARD_FAULT, crash_mem.running, 12345, 0x00A00000, frame, fault);
+    }
+    rc = Remote({"crash"}, out);
+    Check(rc == 0 && Has(out, "crash      HardFault, 1 since cleared\nbuild      FRIZZ, crc32 00000000, 0 B")
+              && Has(out, "when       12.345 s up (that start's RCC_RSR 00a00000: brown-out, power-on)")
+              && Has(out, "PC         24004214\nLR         24001235\nxPSR       01000003 (exception 3)")
+              && Has(out, "CFSR       00008200 PRECISERR BFARVALID\nHFSR       40000000 FORCED\nBFAR       2fff0000")
+              && !Has(out, "MMFAR") && Has(out, " -f -C -i -e FRIZZ.elf (make in a checkout") && Has(out, "24004214 24001234"),
+          "remote: crash reads a fault's record: the build, when, the registers, the faults' bits, addr2line");
+    if (rc != 0 || !Has(out, "24004214 24001234"))
+        printf("%s\n", out.c_str());
+    rc = Remote({"crash", "--clear"}, out);
+    std::string after;
+    rc |= Remote({"crash"}, after);
+    Check(rc == 0 && Has(out, "HardFault") && Has(out, "\ncleared") && Has(after, "none recorded"),
+          "remote: crash --clear clears it");
+    {
+        using namespace chompi;
+        const crash::Running running = crash_mem.running;
+        const uint32_t alive = running.alive_ms;
+        crash::Boot(crash_mem, crash::kIwdgResetFlag | 1u << 24, 0x1234, 99);
+        rc = Remote({"crash"}, out);
+        char when[96];
+        snprintf(when, sizeof(when), "MainLoop last ran at %.3f s up; RCC_RSR 05000000 (software, watchdog)",
+                 alive / 1000.);
+        Check(rc == 0 && Has(out, "crash      the watchdog: the audio callback stopped for 1 s, 1 since cleared")
+                  && Has(out, when) && !Has(out, "PC ") && crash_mem.running.crc == 0x1234,
+              "remote: a watchdog reset is recorded at the next start, with when MainLoop last ran");
+        if (rc != 0 || !Has(out, when))
+            printf("%s\n%s\n", out.c_str(), when);
+        crash::Boot(crash_mem, 1u << 24, 0, 0);
+        Check(crash::Valid(crash_mem.record) && crash_mem.record.kind == crash::WATCHDOG,
+              "crash: a start without the watchdog's flag keeps the record");
+        crash_mem.running = running;
+        crash::Clear(crash_mem.record);
+    }
+    rc = Remote({"crash-test", "fault-main"}, out);
+    Check(rc != 0 && Has(out, "TEST: not in this build"), "remote: crash-test, on FRIZZ: not in this build");
+
+    // RESET, taken in the audio callback as it comes: with the wrong key nothing, with
+    // remote.py's the chip's reset (the twin notes it)
+    for (uint8_t b : {0xF0, 0x7D, 0x43, 0x48, 0x3E, 0x0A, 0x01, 0x52, 0x53, 0x53, 0xF7})
+        UsbMidi(b);
+    RunMs(20);
+    const bool kept_running = !Restarted();
+    rc = Remote({"reset", "--no-wait"}, out);
+    RunMs(20);
+    Check(rc == 0 && kept_running && Restarted() && Has(out, "RESET sent"),
+          "remote: reset resets the chip from the audio callback; not without its key");
+
     // a script played on the device: the filter's key held, its LED expected as the twin
     // shows it held and let go, with the load
     const std::string off = Hex(SmtLedFull(kFilterKeyLed));
@@ -683,12 +891,19 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Press("KEY_5", false);
     RunMs(300);
     const std::string script = tmp_dir + "/script.txt";
-    Write(script, "input sine 220 0.3\nbooted\nat 100\ndown KEY_5\nwait 300\nexpect led smt 20 " + on +
-                      "\nup KEY_5\nwait 300\nexpect led smt 20 " + off + "\n");
+    // (the filter key's LED shows the input's level, here none: the test signal only after, #219)
+    Write(script, "booted\nat 100\ndown KEY_5\nwait 300\nexpect led smt 20 " + on +
+                      "\nup KEY_5\nwait 300\nexpect led smt 20 " + off + "\ninput sine 220 0.3\nwait 300\n");
     rc = Remote({"play", script, "--cpu"}, out);
-    Check(rc == 0 && on != off && Has(out, "skipped (twin only): input") && Has(out, "load: worst max"),
+    Check(rc == 0 && on != off && Has(out, "input: the test signal (SIGNAL) in AUX's place")
+              && !Has(out, "skipped (twin only): input") && Has(out, "load: worst max"),
           "remote: play holds a key over SysEx, its LED as expected, and reports the load");
     if (rc != 0)
+        printf("%s\n", out.c_str());
+    rc = Remote({"levels"}, out);
+    Check(rc == 0 && Has(out, "AUX L         0.0000     silent"),
+          "remote: play's input sine went as the test signal, off again at the script's end (#219)");
+    if (rc != 0 || !Has(out, "AUX L         0.0000"))
         printf("%s\n", out.c_str());
     Write(script, "booted\ndown KEY_5\nwait 300\nexpect led smt 20 " + off + "\nup KEY_5\n");
     rc = Remote({"play", script}, out);
@@ -738,7 +953,8 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     if (after_error != off || !Has(out, "page       play"))
         printf("%s\n%s\n", broke.c_str(), out.c_str());
     // (stderr's "skipped" says when it's there, in the wait)
-    Write(script, "booted\ndown KEY_5\nwait 100\ntoggle 1\nbattery 3.0\nwait 5000\nup KEY_5\n");
+    Write(script, "booted\ninput sine 1000 0.5\ndown KEY_5\nwait 100\ntoggle 1\nbattery 3.0\n"
+                  "wait 5000\nup KEY_5\n");
     rc = Remote({"play", script, "--cpu"}, out, "skipped (twin only): battery");
     const std::string interrupted = out;
     RunMs(100);
@@ -749,28 +965,54 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
           "remote: and so does one interrupted (Ctrl-C)");
     if (after_interrupt != off || !Has(out, "page       play"))
         printf("%s\n%s\n", interrupted.c_str(), out.c_str());
+    rc = Remote({"levels"}, out);
+    Check(rc == 0 && Has(interrupted, "input: the test signal") && Has(out, "AUX L         0.0000     silent"),
+          "remote: and turns its test signal off (#219)");
+    if (rc != 0 || !Has(out, "AUX L         0.0000"))
+        printf("%s\n%s\n", interrupted.c_str(), out.c_str());
 
     // the mode switch over SysEx (kCmdSwitch): up shows the settings page, and SysEx keys
-    // reach it as the hand's do; `switch hand` gives the real switch back. The guard of a FRIZZ
-    // from before PERSIST (card_use), as --save keeps it
+    // reach it as the hand's do; `switch hand` gives the real switch back
     Remote({"switch", "up"}, out);
     rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, "page       settings; the mode switch stands down, SysEx holds it up"),
           "remote: switch up shows the settings page, and state says so");
-    Write(script, "booted\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n"); // SHIFT + the upper F#: mono
+    // play starts with the switch down, as the twin starts, whatever the device shows (#253):
+    // the script's keys reach the play page, and the switch is the hand's again after
+    Write(script, "booted\ndown KEY_5\nwait 300\nexpect led smt 20 " + on + "\nup KEY_5\n");
+    rc = Remote({"play", script}, out);
+    const std::string held_up = out;
+    Remote({"state"}, out);
+    Check(rc == 0 && Has(out, "page       play; the mode switch stands down\n"),
+          "remote: play puts a switch SysEx holds up down, as the twin starts, then the hand's (#253)");
+    if (rc != 0 || !Has(out, "page       play"))
+        printf("%s\n%s\n", held_up.c_str(), out.c_str());
+    SetToggle(true);
+    RunMs(300);
+    rc = Remote({"play", script}, out);
+    const std::string hand_up = out;
+    Remote({"state"}, out);
+    Check(rc == 0 && Has(out, "page       settings; the mode switch stands up"),
+          "remote: and the hand's switch up: the keys still reach the play page, the hand's after (#253)");
+    if (rc != 0 || !Has(out, "page       settings"))
+        printf("%s\n%s\n", hand_up.c_str(), out.c_str());
+    SetToggle(false);
+    RunMs(300);
+    // the guard of a FRIZZ from before PERSIST (card_use), as --save keeps it: a key on the
+    // settings page the script toggles up to
+    Write(script, "booted\ntoggle 1\nwait 100\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n"); // SHIFT + the upper F#: mono
     rc = Remote({"play", script, "--save"}, out);
     const std::string refused = out;
     Remote({"state"}, out);
-    Check(rc != 0 && Has(refused, "line 2: down KEY_26 on the settings page") && Has(refused, "--force")
+    Check(rc != 0 && Has(refused, "line 4: down KEY_26 on the settings page") && Has(refused, "--force")
               && !Has(out, ", mono"),
-          "remote: play refuses a key on the settings page the device shows, saying why, and sends none (#58)");
+          "remote: play refuses a key on the settings page, saying why, and sends none (#58)");
     if (rc == 0 || !Has(refused, "--force"))
         printf("%s\n", refused.c_str());
     Remote({"play", script, "--save", "--force"}, out);
-    Remote({"switch", "hand"}, out);
     rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, ", mono") && Has(out, "page       play; the mode switch stands down\n"),
-          "remote: a SysEx key there sets mono; switch hand, the play page again");
+          "remote: a SysEx key there sets mono; the play page again after the script");
     // a script's toggle: up and down over SysEx, the real switch again at its end
     Write(script, "booted\ntoggle 1\nwait 100\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n"
                   "toggle 0\nwait 100\n");
@@ -790,11 +1032,11 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc == 0, "remote: a script that toggles up and down again, no key there, plays");
     if (rc != 0)
         printf("%s\n", out.c_str());
-    // the input's key up there (the upper A#) saves AUX's variant now (#152): refused too
-    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_25\nwait 100\ntap KEY_25\nwait 100\ntoggle 0\nwait 100\n");
+    // the input's key up there (the upper G#, live, #243) saves AUX's variant now (#152): refused too
+    Write(script, "booted\ntoggle 1\nwait 100\ntap KEY_24\nwait 100\ntap KEY_24\nwait 100\ntoggle 0\nwait 100\n");
     rc = Remote({"play", script, "--save"}, out);
-    Check(rc != 0 && Has(out, "line 4: tap KEY_25 on the settings page"),
-          "remote: and one that taps A# (live) there is refused: each source's is saved (#177)");
+    Check(rc != 0 && Has(out, "line 4: tap KEY_24 on the settings page"),
+          "remote: and one that taps G# (live) there is refused: each source's is saved (#177)");
     // VOLUME's page 2 on the play page, the input gain, is saved too (#152); page 1 isn't
     Write(script, "booted\nturn 6 -2\nwait 100\ntap ENC_6_SW\nwait 100\nturn 6 2\nwait 100\n");
     rc = Remote({"play", script, "--save"}, out);
@@ -858,6 +1100,34 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     if (rc == 0 || !Has(refused_save, "frizz_scenes"))
         printf("%s\n", refused_save.c_str());
 
+    // a script's set (twin/README.md) goes as the developers' SET, in RAM as the rest (#214);
+    // one FRIZZ refuses, or that can't be sent, fails its line. The old guard (--save) refuses
+    // a set FRIZZ would save: the compressor's knobs, a setting, the input gain; not an effect's
+    Write(script, "booted\nset comp 0 0.3\nset settings led_brightness 100\nwait 100\n");
+    rc = Remote({"play", script}, out);
+    const std::string set_played = out;
+    Remote({"get", "comp"}, out);
+    Check(rc == 0 && Has(out, "page 1  0.3000  0.5000"),
+          "remote: play's set sets the compressor's knob 1 to 0.3 (#214)");
+    if (rc != 0 || !Has(out, "0.3000"))
+        printf("%s\n%s\n", set_played.c_str(), out.c_str());
+    Write(script, "booted\nset comp 0 0\nset comp 0 2\nset settings 99 1\nset nothing 0 0\nwait 100\n");
+    rc = Remote({"play", script}, out);
+    const std::string set_failed = out;
+    Remote({"get", "comp"}, out);
+    Check(rc == 1 && Has(set_failed, "line 3: set comp 0 2: a knob's value is 0-1")
+              && Has(set_failed, "line 4: set settings 99 1: refused") && Has(set_failed, "line 5: set nothing 0 0: no group")
+              && Has(out, "page 1  0.0000  0.5000"),
+          "remote: a set out of range, refused or of no group fails its line; the others are set");
+    if (rc != 1)
+        printf("%s\n", set_failed.c_str());
+    Write(script, "booted\nset filter 0 0.5\nset comp 1 0.5\nwait 100\n");
+    rc = Remote({"play", script, "--save"}, out);
+    Check(rc != 0 && Has(out, "line 3: set comp 1 0.5") && Has(out, "/FRIZZ/frizz_master.txt"),
+          "remote: and with --save a set of the compressor is refused, naming the master file; an effect's isn't");
+    if (rc == 0)
+        printf("%s\n", out.c_str());
+
     // a setter FRIZZ saves keeps the card out of it the same way, unless --save (#171): the
     // channel changes in RAM, the master file stays as it was; --save after that can't write
     {
@@ -908,6 +1178,9 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc |= Remote({"get", "settings"}, out);
     Check(rc == 0 && Has(out, "clock_factor    50\n") && Has(out, "midi_channel    5\n"),
           "remote: set the clock factor, get reads every setting");
+    // the settings' 19 values come in an answer of 49 bytes, two USB transfers (#196)
+    Check(rc == 0 && Has(out, "usb_live        1\n") && Has(out, "usb_audio       1\n") && !Has(out, "?"),
+          "remote: and the last ones, USB's, from an answer longer than a USB transfer");
     rc = Remote({"set", "settings", "led_brightness", "20"}, out);
     Check(rc != 0 && Has(out, "refused"), "remote: a value a setting doesn't take is refused");
     rc = Remote({"set", "volume", "mix", "1"}, out);
@@ -918,7 +1191,8 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc = Remote({"load"}, out);
     Check(rc == 0 && Has(out, "over 100 %: 0 blocks"), "remote: load counts the blocks over 100 %");
 
-    // a FRIZZ from before PERSIST (no answer): the old guard, refusing
+    // a FRIZZ from before PERSIST (no answer): the old guard, refusing. The page the device
+    // shows doesn't count (play puts the switch down, #253): the script's toggle does
     rc = Python(R"(
 import sys, remote
 class Old:
@@ -927,14 +1201,14 @@ class Old:
     def state(self):
         return bytes([0, 0, 0, 0, 0, 0, 64, 0]) + bytes(20)
 remote.Frizz = lambda device: Old()
-open("s.txt", "w").write("booted\ntap KEY_18\n")
+open("s.txt", "w").write("booted\ntoggle 1\ntap KEY_18\n")
 sys.argv = ["remote.py", "--device", "x", "play", "s.txt"]
 try:
     remote.main()
 except SystemExit as e:
     print("exit:", e)
 )", out);
-    Check(Has(out, "a FRIZZ from before PERSIST") && Has(out, "exit: line 2: tap KEY_18 on the settings page"),
+    Check(Has(out, "a FRIZZ from before PERSIST") && Has(out, "exit: line 3: tap KEY_18 on the settings page"),
           "remote: a FRIZZ from before PERSIST is guarded as before (#58)");
     if (!Has(out, "exit: line 2"))
         printf("%s\n", out.c_str());
@@ -1033,6 +1307,7 @@ log = []
 seq = [("other", "x"), ("other", "x"), ("frizz", "node")]
 chompi.state = lambda device=None: seq.pop(0) if len(seq) > 1 else seq[0]
 chompi.restart = lambda node: log.append("restart " + node)
+chompi.reached = lambda *rest: True
 chompi.wait_for = lambda wanted, *rest, **kw: log.append("wait " + wanted) or "l"
 print(chompi.to_launcher(), log)
 )", out);
@@ -1042,6 +1317,47 @@ print(chompi.to_launcher(), log)
     Check(Has(out, "l ['restart node', 'wait launcher']"),
           "tools: a FRIZZ silent for a while is restarted once it answers, not taken for another firmware");
     if (rc != 0 || !Has(out, "same") || !Has(out, "waiting\n"))
+        printf("%s\n", out.c_str());
+
+    // the rescue (#105): a FRIZZ that took the restart but doesn't get to the launcher, or
+    // one silent for BUSY s by its names, is RESET from its audio callback before the power
+    // switch is asked for; another firmware never is. FRIZZ is told by its USB names
+    rc = Python(R"(
+import os, time, chompi
+time.sleep = lambda s: None
+chompi.BUSY = 0
+log = []
+def case(name, states, names, reaches=False):
+    seq = list(states)
+    chompi.state = lambda device=None: seq.pop(0) if len(seq) > 1 else seq[0]
+    chompi.restart = lambda node, hard=False: log.append(("RESET " if hard else "restart ") + node)
+    chompi.frizz_node = lambda node: names
+    chompi.reached = lambda wanted, *rest: log.append("reached? " + wanted) or reaches
+    chompi.wait_for = lambda wanted, timeout, device=None, hint=None, **kw: log.append("wait %s: %s" % (wanted, hint)) or "l"
+    log.clear()
+    chompi.to_launcher()
+    print("%s: %s" % (name, log), flush=True)
+case("restarts", [("frizz", "node")], True, True)
+case("restart hangs", [("frizz", "node")], True)
+case("silent", [("other", "node")], True)
+case("another", [("other", "node")], False)
+os.makedirs("asound", exist_ok=True)
+open("asound/cards", "w").write(" 3 [FrizZ          ]: USB-Audio - FrizZ\n                      Electrosmith FrizZ at usb-0000:00:14.0-2, full speed\n"
+                                " 4 [Seed           ]: USB-Audio - Daisy Seed Built In\n                      Electrosmith Daisy Seed Built In at usb-0000:00:14.0-3\n")
+chompi.ASOUND = "asound"
+import importlib
+frizz_node = importlib.reload(chompi).frizz_node
+chompi.ASOUND = "asound"
+print("names:", frizz_node("/dev/snd/midiC3D0"), frizz_node("/dev/snd/midiC4D0"), frizz_node(None))
+)", out);
+    Check(rc == 0 && Has(out, "restarts: ['restart node', 'reached? launcher', 'wait launcher: no launcher yet")
+              && Has(out, "restart hangs: ['restart node', 'reached? launcher', 'RESET node', 'wait launcher: no launcher yet")
+              && Has(out, "FRIZZ hasn't restarted: resetting it from its audio callback (RESET)"),
+          "tools: a FRIZZ that doesn't get to the launcher after its restart is RESET from its audio callback (#105)");
+    Check(Has(out, "silent: ['RESET node', \"wait launcher: still no launcher: FRIZZ's audio callback hangs too")
+              && Has(out, "another: ['wait launcher: None']") && Has(out, "names: True False False"),
+          "tools: a silent FRIZZ, by its USB names, is RESET before the power switch is asked for; another firmware isn't");
+    if (rc != 0 || !Has(out, "names: True False"))
         printf("%s\n", out.c_str());
 
     // after a script played RAM only, a FRIZZ slot other than the test slot is started again
@@ -1157,6 +1473,42 @@ kept[0] = True
               "tools: a FRIZZ that restarted during play or a setter (IDENT: no longer RAM only) fails, saying so (#171)");
     }
     if (rc != 0 || !Has(out, "start 10") || failures)
+        printf("%s\n", out.c_str());
+
+    // play --fresh: the slot started again first, then the switch down (a restart drops what
+    // SysEx held, #253), the hand's again at the end
+    rc = Python(R"(
+import argparse, sys, chompi, remote
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr = sys.stdout
+def to_frizz(slot=None, timeout=120, device=None, again=False):
+    chompi.frizz_slot = 12
+    print("to_frizz again", again)
+    return "node"
+chompi.to_frizz = to_frizz
+class F:
+    class link:
+        fd = None
+    def __init__(self, device):
+        pass
+    def ram_only(self):
+        return True
+    def dev(self, sub, args=()):
+        return 0, bytes(25) + bytes([1])
+    def send(self, cmd, payload=b""):
+        print("sent 0x%02X %s" % (cmd, list(payload)))
+    def release(self):
+        print("released")
+remote.Frizz = F
+remote.os.close = lambda fd: None
+open("x.txt", "w").write("booted\nwait 10\n")
+remote.run(argparse.Namespace(cmd="play", script="x.txt", cpu=False, fresh=True, save=False,
+                              force=False, slot=None, device=None, no_start=False))
+)", out);
+    Check(rc == 0 && Has(out, "to_frizz again True\n") && Has(out, "sent 0x14 [1]\nreleased\nsent 0x14 [0]\n")
+              && out.find("to_frizz again True") < out.find("sent 0x14 [1]"),
+          "tools: play --fresh starts the slot again first, then puts the switch down; the hand's at the end (#253)");
+    if (rc != 0 || !Has(out, "sent 0x14 [1]"))
         printf("%s\n", out.c_str());
 
     // keys 10 and 13 are the user's (#171): flash.py sends there only when the key is named, and

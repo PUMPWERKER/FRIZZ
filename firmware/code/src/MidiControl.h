@@ -1,7 +1,7 @@
 /** @file MidiControl.h
  *  @brief FRIZZ played and inspected over MIDI (MANUAL.md, "MIDI"): notes press the keys,
- *  CCs set a knob or a latch outright, program changes recall scenes, the transport plays the
- *  loop, and FRIZZ's own SysEx presses keys, turns knobs and asks what the device shows, for a
+ *  CCs set a knob or a latch outright, program changes recall scenes (or, after a bank select,
+ *  pick a loop from the card, #259), the transport plays the loop, and FRIZZ's own SysEx presses keys, turns knobs and asks what the device shows, for a
  *  computer to test it (firmware/remote.py).
  *
  *  Channels (#97): the one set (MasterSettings::midi_channel, 16 at first) is the global
@@ -41,13 +41,17 @@
  *  USB only, answered F0 7D 43 48 7E SUB SEQ STATUS DATA F7, SEQ the request's, so a tool
  *  matches its answer. It has a queue of its own (kDevQueue), apart from the other queries'
  *  one slot, and every request taken is answered, with a status if nothing else: a tool that
- *  gets no answer asks again, which every request can take (they set, never step).
+ *  gets no answer asks again, which every request can take (they set, never step). All but
+ *  RESET, which resets the chip here in the audio callback as it comes, so a tool can bring
+ *  back a FRIZZ whose MainLoop hangs, and which a tool sends once (a FRIZZ started again
+ *  meanwhile would take a second).
  */
 #pragma once
 #include <stdint.h>
 #include <string.h>
 #include "daisy.h"
 #include "hardware.h"
+#include "Crash.h"
 #include "EventLog.h"
 #include "MidiClock.h"
 #include "MidiFeedback.h"
@@ -76,15 +80,19 @@ static const uint8_t kKeyParams = 8; // an effect's knobs, both pages (kNumFxPar
 static const uint8_t kKnobCC = 14;  // 14-17 page 1's knobs 1-4, 18-21 page 2's
 static const uint8_t kLatchCC = 22; // 64 and up on, below off: acts as it crosses 64
 // The global channel's
+static const uint8_t kBankCC = 0;       // Bank Select (MSB): the program changes' bank, below
 static const uint8_t kMorphCC = 3;      // morph to the scene 0-4, as the value changes
 static const uint8_t kMorphBarsCC = 9;  // over how many bars, 1-8 (kMaxMorphBars)
 static const uint8_t kFocusCC = 23;     // 1-15: the white key whose knobs 14-22 reach
 static const uint8_t kCompCC = 24;      // 24-31: the compressor's knobs, as channel 15's 14-21
+static const uint8_t kLoopTimingCC = 54; // when a loop's program change switches (kTimingNow ...)
 static const uint8_t kFaderCC = 80;     // the crossfader: a running morph from its start to its scene
 static const uint8_t kStopMorphCC = 81; // stops a morph where it is, crossing 64 upward
 static const uint8_t kTapCC = 82;       // a tempo tap, crossing 64 upward
 static const uint8_t kDropCC = 83;      // a hard drop to the scene 0-4 on a bar line (CC 9's), as CC 3
-static const uint8_t kSourceCC = 84;    // the input's source: 0-63 AUX, 64-127 the mic (#177)
+static const uint8_t kSourceCC = 84;    // the input's source in thirds: 0-42 AUX, 43-85 the mic, 86-127 USB (#177, #196)
+static const uint8_t kSourceThird = 43; // a third of CC 84's values, kSourceThird apart
+static const uint8_t kSourceValues[3] = {0, 64, 127}; // what feedback sends for AUX, the mic, USB
 static const uint8_t kOutGainCC = 85, kInGainCC = 86, kMixCC = 87;
 static const uint8_t kHpCueCC = 89;     // the headphone feed as VOLUME's knob: 0 the input, 127 the master
 static const uint8_t kSpeedCC = 90;     // the loop's speed in semitones: 0 1/16x, 64 1x, 127 2x
@@ -93,7 +101,12 @@ static const uint8_t kDryCC = 116;      // the source's effects: 0-63 through, 6
 static const uint8_t kLiveCC = 117;     // the source live: 0-63 off, 64-127 on
 static const uint8_t kAllSoundOffCC = 120, kAllNotesOffCC = 123;
 static const uint8_t kMorphBarsMax = 8;
-// Free on purpose, so what hosts and keyboards send by themselves reaches nothing: 0/32, 1,
+// Program changes by the bank (CC 0, #259): 0 the scenes 0-4; 1-8 FRIZZ's loops a-h, 9-13
+// TAPE's cubbis a-e (LoopLoader's banks 0-12), 0-14 a white key's; others nothing
+static const uint8_t kLoopBanks = 13, kLoopPrograms = 15, kCubbiProgramBank = 9;
+// CC 54's values: at once, at the end of the 1st-8th pass, with the scene sequence waiting
+static const uint8_t kTimingNow = 0, kTimingPassesMax = 8, kTimingSequence = 127;
+// Free on purpose, so what hosts and keyboards send by themselves reaches nothing: 32, 1,
 // 2, 4, 7, 10, 11 and 64-79; 6/38 and 96-101, an (N)RPN's data and selects (a DAW's
 // pitch-bend range); 88; 91-95; 121 (Reset All Controllers) and the channel modes. 46-53, the
 // LSBs of 14-21, stay free for a 14-bit mode later
@@ -180,6 +193,16 @@ enum Sub : uint8_t
                  //    the seed, then chaos's, the slicer's, the delay's and wow & flutter's
                  //    states (5 each)
     BATTERY = 9, // -> the level, the charger's debounced bits, the last read, its raw status
+    RESET = 10,  // 'R' 'S' 'T': the chip reset in the audio callback as the SysEx comes, not
+                 //    waiting for MainLoop (a hung one) nor for the card; no answer
+    CRASH = 11,  // 0 -> the crash record (Crash.h): flags (kCrashValid), kind, count (3), ms,
+                 //    CRC-32 (5 each), length (3), RCC_RSR, SP, the option bytes (5 each);
+                 //    1 -> PC, LR, xPSR, CFSR, HFSR, MMFAR, BFAR (5 each); 2 clears it -> flags
+    TEST = 12,   // WHAT: the bench's (FRIZZ-bench.bin) faults on purpose, for the tools to
+                 //    check RESET, the crash record and the watchdog: kHangMain, kFaultMain,
+                 //    kHangAudio, kFaultAudio
+    LOOPS = 0x0D, // PART ...: the loop loader's (LoopLoader::Dev). FRIZZ.bin only
+    USB = 0x0E,   // PART ...: USB's counts, the card lent (chompi_main.cpp's UsbDev, #196)
 };
 enum Status : uint8_t
 {
@@ -198,6 +221,11 @@ static const uint8_t kGroupSettings = 0x23; // the card's settings, as masterfil
 static const uint8_t kRamOnly = 1;          // IDENT's flags: PERSIST 0 is on
 static const size_t kBenchChunk = 32;
 static const uint8_t kArmed = 1;            // LEVELS 1's flags: the peak meters just started
+static const uint8_t kResetKey[] = {'R', 'S', 'T'};
+static const uint8_t kCrashValid = 1;       // CRASH's flags: a crash recorded
+// TEST's: MainLoop hangs; reads where nothing is (a bus fault); the audio callback hangs;
+// runs an undefined instruction in it
+static const uint8_t kHangMain = 1, kFaultMain = 2, kHangAudio = 3, kFaultAudio = 4;
 
 /** SIGNAL's test signal in place of the input, and LEVELS' peak meters: off at power-on, in
  *  RAM only, until a restart. The audio callback reads `on` once a block, and off it costs
@@ -284,10 +312,17 @@ struct Info
     uint32_t crc = 0;                 // its CRC-32, once worked out (on the first IDENT)
     bool crc_done = false;
     volatile uint32_t passes = 0;     // MainLoop's
-    uint32_t reset_cause = 0;         // RCC_RSR at boot
+    uint32_t reset_cause = 0;         // RCC_RSR at boot, which FRIZZ then clears (Crash.h)
+    uint32_t option_bytes = 0;        // FLASH_OPTSR_CUR: IWDG1_SW, its freeze in Stop
+    crash::Backup* crash = nullptr;   // the crash record, in the backup SRAM
+    volatile bool hang = false;       // TEST's kHangMain: MainLoop stops
     uint32_t seed = 0;                // RESEED's last
     // the bench's answer to BENCH (Bench::Report) into d: its length, or -1 for NOT_YET
     int (*bench)(uint8_t part, uint32_t offset, uint8_t* d) = nullptr;
+    // the loop loader's to LOOPS (LoopLoader::Dev): its length, or -1 for BAD
+    int (*loops)(const uint8_t* arg, size_t len, uint8_t* d) = nullptr;
+    // USB's to USB: its length, or -1 for BAD
+    int (*usb)(const uint8_t* arg, size_t len, uint8_t* d) = nullptr;
 };
 } // namespace dev
 static const uint8_t kMidiHeader[] = {0x7D, 0x43, 0x48};
@@ -339,9 +374,11 @@ public:
             TAP,        // at ms
             PROGRAM,    // arg: the scene 0-4
             DROP,       // arg: as MORPH's, a drop (CC 83)
-            INPUT,      // arg: the source 0 (CC 84), its effects 1 (116), live 2 (117) | on << 2
+            INPUT,      // arg: the source 0 (CC 84), its effects 1 (116), live 2 (117) | its value << 2: CC 84's
+                        // the source (AUX 0, the mic 1, USB 2), the others' on 1
+            LOOP,       // arg: the loop, LoopLoader's bank * 15 + its key; arg2: CC 54's then
         };
-        uint8_t kind, arg;
+        uint8_t kind, arg, arg2;
         uint16_t ms; // when it came, System::GetNow()'s lower 16 bits
     };
     /** The transport, for the looper (Looper::Follow) */
@@ -551,8 +588,8 @@ public:
     /** MIDI feedback's bytes for the jack: the play page's, sent by MidiOut */
     FeedbackRing feedback_trs;
 
-    /** An answer to a query, over USB: F0, the header, cmd | 0x40, the data, F7. Kept to
-     *  16 USB packets (64 bytes), one transfer */
+    /** An answer to a query, over USB: F0, the header, cmd | 0x40, the data, F7. 17 USB
+     *  packets at most, two transfers: the settings' 19 values (#196) don't fit one */
     MIDI_CONTROL_ONCE void Reply(uint8_t cmd, const uint8_t* data, size_t len)
     {
         uint8_t msg[kMaxReply + 6];
@@ -568,7 +605,7 @@ public:
         msg[n++] = 0xF7;
         clock_->SendUsb(msg, n);
     }
-    static const size_t kMaxReply = 39; // + 6 = 45 bytes, 15 USB packets
+    static const size_t kMaxReply = 45; // + 6 = 51 bytes, 17 USB packets
 
 private:
     static void Listen(void* self, const MidiEvent& e, bool usb)
@@ -631,9 +668,14 @@ private:
                 return;
             break;
         case ProgramChange:
-            if (!global || d0 >= kNumSlots)
+            if (!global)
                 return;
-            Push(Event::PROGRAM, d0);
+            if (bank_ == 0 && d0 < kNumSlots)
+                Push(Event::PROGRAM, d0);
+            else if (bank_ && bank_ <= kLoopBanks && d0 < kLoopPrograms)
+                Push(Event::LOOP, static_cast<uint8_t>((bank_ - 1) * kLoopPrograms + d0), timing_);
+            else
+                return;
             break;
         default:
             return;
@@ -695,6 +737,12 @@ private:
         case kMorphBarsCC:
             morph_bars_ = v < 1 ? 1 : (v > kMorphBarsMax ? kMorphBarsMax : v);
             return true;
+        case kBankCC:
+            bank_ = v;
+            return true;
+        case kLoopTimingCC:
+            timing_ = v == kTimingSequence || v <= kTimingPassesMax ? v : kTimingPassesMax;
+            return true;
         case kStopMorphCC:
         case kTapCC:
         {
@@ -734,8 +782,9 @@ private:
         case kLiveCC:
             // in the order they came, not the latest of each: 116 and 117 are the source's
             // own, so one before a CC 84 is the source's before it (#177)
+            // which | its value << 2: the source 0-2 (PassthroughEngine's), else on 1
             return Push(Event::INPUT, static_cast<uint8_t>((cc == kSourceCC ? 0 : cc == kDryCC ? 1 : 2)
-                                                          | (v >= 64 ? 4 : 0)));
+                                                          | (cc == kSourceCC ? v / kSourceThird : v >= 64) << 2));
         default:
             return false;
         }
@@ -777,11 +826,11 @@ private:
     }
 
     /** Something that acts once, for MainLoop; false, dropped, if MainLoop is that far behind */
-    bool Push(uint8_t kind, uint8_t arg)
+    bool Push(uint8_t kind, uint8_t arg, uint8_t arg2 = 0)
     {
         if (static_cast<uint8_t>(event_write_ - event_read_) >= kEventQueue)
             return false;
-        events_[event_write_ % kEventQueue] = {kind, arg, static_cast<uint16_t>(daisy::System::GetNow())};
+        events_[event_write_ % kEventQueue] = {kind, arg, arg2, static_cast<uint16_t>(daisy::System::GetNow())};
         event_write_ = event_write_ + 1;
         return true;
     }
@@ -862,8 +911,24 @@ private:
             switch_ = arg[0];
             break;
         case kCmdDev:
+            if (!usb || n < 2)
+                return;
+            // here in the audio callback, as it comes: MainLoop may be what hangs
+            if (arg[0] == dev::RESET)
+            {
+                if (n == 2 + sizeof(dev::kResetKey) && memcmp(arg + 2, dev::kResetKey, sizeof(dev::kResetKey)) == 0)
+                    NVIC_SystemReset();
+                return;
+            }
+#if FRIZZ_BENCH
+            if (arg[0] == dev::TEST && n > 2 && arg[2] == dev::kHangAudio)
+                for (;;)
+                    __asm__ volatile("");
+            if (arg[0] == dev::TEST && n > 2 && arg[2] == dev::kFaultAudio)
+                __builtin_trap();
+#endif
             // over USB, where the answer goes; a full queue drops it, unanswered
-            if (!usb || n < 2 || static_cast<uint8_t>(dev_write_ - dev_read_) >= kDevQueue)
+            if (static_cast<uint8_t>(dev_write_ - dev_read_) >= kDevQueue)
                 return;
             {
                 DevQuery& q = dev_queue_[dev_write_ % kDevQueue];
@@ -942,6 +1007,8 @@ private:
     volatile uint8_t switch_ = 0;
     volatile bool block_trs_ = true;
     volatile bool feedback_ = false;
+    uint8_t bank_ = 0;   // CC 0's: the program changes' bank
+    uint8_t timing_ = 0; // CC 54's: a loop's program change's timing
 
     // by midimap::Value
     static const size_t kValueWords = (midimap::kNumValues + 31) / 32;

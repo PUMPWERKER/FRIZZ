@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 720" width="720" height="720" role="img" aria-labelledby="title desc">
+<title id="title">FRIZZ input</title>
+<desc id="desc">The input. AUX (stereo, or mono: its left to both sides), the built-in mic and USB (a computer's audio) each have their own input gain; AUX is then amplified 3× and its DC taken out, the mic 5×, DC blocked, highpassed at about 150 Hz and the same on both sides, USB 3× as AUX. Switch A (upper F#, or the AUX jack between AUX and the mic) picks the source, with a 5 ms crossfade. The source goes as it is to the looper and to the headphone feed. Switch B (upper G#), its monitoring, has it on the outputs or not, switch C (upper A#) sends it through the effects or past them. The input/loop mix sets the input's share against the loop's; the share past the effects joins after the compressor, before VOLUME.</desc>
+<style>svg{font-size:13px}text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
+<defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
+<rect width="720" height="720" fill="#131314"/>
+<circle cx="28" cy="90" r="5" class="b"/>
+<text x="20" y="72" class="t as" font-weight="bold">AUX IN</text>
+<polyline points="33,90 70,90" class="la" marker-end="url(#ma)"/>
+<rect x="70" y="66" width="90" height="48" class="b"/>
+<text x="115" y="86.5" class="t" font-weight="bold">STEREO</text>
+<text x="115" y="102.5" class="m" font-size="12">or mono</text>
+<circle cx="160" cy="66" r="9" class="g"/>
+<text x="160" y="70.5" class="gt" font-size="12" font-weight="bold">M</text>
+<polyline points="160,90 185,90" class="la" marker-end="url(#ma)"/>
+<rect x="185" y="66" width="100" height="48" class="b"/>
+<text x="235" y="86.5" class="t" font-weight="bold">INPUT GAIN</text>
+<text x="235" y="102.5" class="m" font-size="12">AUX's own</text>
+<polyline points="285,90 310,90" class="la" marker-end="url(#ma)"/>
+<rect x="310" y="66" width="100" height="48" class="b"/>
+<text x="360" y="86.5" class="t" font-weight="bold">× 3</text>
+<text x="360" y="102.5" class="m" font-size="12">DC block</text>
+<polyline points="410,90 550,90 550,125 562,125" class="la"/>
+<circle cx="28" cy="190" r="5" class="b"/>
+<text x="20" y="172" class="t as" font-weight="bold">MIC (built in)</text>
+<polyline points="33,190 185,190" class="ls" marker-end="url(#ms)"/>
+<rect x="185" y="166" width="100" height="48" class="b"/>
+<text x="235" y="186.5" class="t" font-weight="bold">INPUT GAIN</text>
+<text x="235" y="202.5" class="m" font-size="12">the mic's own</text>
+<polyline points="285,190 310,190" class="ls" marker-end="url(#ms)"/>
+<rect x="310" y="166" width="100" height="48" class="b"/>
+<text x="360" y="186.5" class="t" font-weight="bold">× 5</text>
+<text x="360" y="202.5" class="m" font-size="12">DC block</text>
+<polyline points="410,190 435,190" class="ls" marker-end="url(#ms)"/>
+<rect x="435" y="166" width="100" height="48" class="b"/>
+<text x="485" y="186.5" class="t" font-weight="bold">HIGHPASS</text>
+<text x="485" y="202.5" class="m" font-size="12">150 Hz, mono</text>
+<polyline points="535,190 550,190 550,155 562,155" class="ls"/>
+<circle cx="28" cy="290" r="5" class="b"/>
+<text x="20" y="272" class="t as" font-weight="bold">USB (a computer)</text>
+<polyline points="33,290 185,290" class="ls" marker-end="url(#ms)"/>
+<rect x="185" y="266" width="100" height="48" class="b"/>
+<text x="235" y="286.5" class="t" font-weight="bold">INPUT GAIN</text>
+<text x="235" y="302.5" class="m" font-size="12">USB's own</text>
+<polyline points="285,290 310,290" class="ls" marker-end="url(#ms)"/>
+<rect x="310" y="266" width="100" height="48" class="b"/>
+<text x="360" y="286.5" class="t" font-weight="bold">× 3</text>
+<text x="360" y="302.5" class="m" font-size="12">as AUX</text>
+<polyline points="410,290 556,290 556,185 562,185" class="ls"/>
+<circle cx="600" cy="155" r="2.5" class="b"/>
+<circle cx="565" cy="125" r="2.5" class="b"/>
+<circle cx="565" cy="155" r="2.5" class="b"/>
+<circle cx="565" cy="185" r="2.5" class="b"/>
+<path d="M600,155L569.6,132.9" class="sw"/>
+<circle cx="600" cy="104" r="9" class="g"/>
+<text x="600" y="108.5" class="gt" font-size="12" font-weight="bold">A</text>
+<text x="612" y="210" class="m" font-size="12">5 ms crossfade</text>
+<text x="560" y="34" class="m" font-size="12">the AUX jack: a cable in picks AUX, out the mic</text>
+<polyline points="583,42 583,128" class="lc" marker-end="url(#mc)"/>
+<polyline points="602,155 705,155 705,332 40,332 40,400" class="la"/>
+<polyline points="40,400 40,560" class="ls"/>
+<circle cx="40" cy="400" r="3" class="da"/>
+<polyline points="40,400 75,400" class="la"/>
+<circle cx="77.5" cy="400" r="2.5" class="b"/>
+<circle cx="102.5" cy="400" r="2.5" class="b"/>
+<path d="M79,399L101,389" class="sw"/>
+<circle cx="90" cy="376" r="9" class="g"/>
+<text x="90" y="380.5" class="gt" font-size="12" font-weight="bold">B</text>
+<polyline points="105,400 157,400" class="la"/>
+<circle cx="160" cy="400" r="2.5" class="b"/>
+<circle cx="195" cy="375" r="2.5" class="b"/>
+<circle cx="195" cy="425" r="2.5" class="b"/>
+<path d="M160,400L190.1,382.5" class="sw"/>
+<circle cx="170" cy="368" r="9" class="g"/>
+<text x="170" y="372.5" class="gt" font-size="12" font-weight="bold">C</text>
+<polyline points="197,375 330,375" class="la" marker-end="url(#ma)"/>
+<text x="263" y="368" class="m" font-size="12">through the effects</text>
+<polyline points="197,425 330,425" class="ls" marker-end="url(#ms)"/>
+<text x="263" y="418" class="m" font-size="12">past the effects</text>
+<polyline points="40,490 200,490" class="ls" marker-end="url(#ms)"/>
+<circle cx="40" cy="490" r="3" class="ds"/>
+<text x="120" y="482" class="m" font-size="12">meter: VOLUME page 2</text>
+<rect x="200" y="468" width="100" height="44" class="b"/>
+<text x="250" y="486.5" class="t" font-weight="bold">LOOPER</text>
+<text x="250" y="502.5" class="m" font-size="12">records it</text>
+<polyline points="300,490 330,490" class="ls" marker-end="url(#ms)"/>
+<text x="315" y="483" class="m" font-size="12">loop</text>
+<polyline points="40,560 470,560" class="ls" marker-end="url(#ms)"/>
+<text x="250" y="553" class="m" font-size="12">the source alone, whatever B and C say</text>
+<text x="478" y="564.5" class="t as">to the phones feed (VOLUME p. 3)</text>
+<rect x="330" y="355" width="140" height="157" class="b"/>
+<text x="400" y="398" class="t" font-weight="bold">MIX</text>
+<text x="400" y="414" class="m" font-size="12">SHIFT + VOLUME</text>
+<text x="400" y="430" class="m" font-size="12"></text>
+<text x="400" y="446" class="m" font-size="12">the input's share</text>
+<text x="400" y="462" class="m" font-size="12">against the loop's,</text>
+<text x="400" y="478" class="m" font-size="12">on both inputs</text>
+<polyline points="470,385 505,385" class="la" marker-end="url(#ma)"/>
+<text x="512" y="389.5" class="t as" font-weight="bold">to the effects</text>
+<text x="512" y="406" class="m as" font-size="12">and the compressor</text>
+<polyline points="470,455 505,455" class="ls" marker-end="url(#ms)"/>
+<text x="512" y="459.5" class="t as">past the effects:</text>
+<text x="512" y="476" class="m as" font-size="12">joins after the compressor</text>
+<circle cx="37" cy="606" r="9" class="g"/>
+<text x="37" y="610.5" class="gt" font-size="12" font-weight="bold">A</text>
+<text x="60" y="610" class="t as" font-size="12">upper F#: the source, AUX, the mic or USB. The AUX jack picks AUX or the mic</text>
+<circle cx="37" cy="628" r="9" class="g"/>
+<text x="37" y="632.5" class="gt" font-size="12" font-weight="bold">B</text>
+<text x="60" y="632" class="t as" font-size="12">upper G#: monitoring, on the outputs or not</text>
+<circle cx="37" cy="650" r="9" class="g"/>
+<text x="37" y="654.5" class="gt" font-size="12" font-weight="bold">C</text>
+<text x="60" y="654" class="t as" font-size="12">upper A#: through the effects, or past them and the compressor</text>
+<circle cx="37" cy="672" r="9" class="g"/>
+<text x="37" y="676.5" class="gt" font-size="12" font-weight="bold">M</text>
+<text x="60" y="676" class="t as" font-size="12">SHIFT + upper F#: AUX mono, its left channel to both sides</text>
+<text x="28" y="704" class="m as" font-size="12">On the settings page (mode switch up). Each source keeps its own gain, B and C.</text>
+</svg>

@@ -7,7 +7,9 @@
  *
  *  Held (SHIFT still down after the tap, Start's hold): nothing moves and the bar lines don't
  *  count, however long it's held; taps add bars. Release glides from where the sound still is
- *  to the next bar line from there, plus the bars tapped.
+ *  to the next bar line from there, plus the bars tapped. ReleaseAt instead lands it when the
+ *  engine says (LandNext): a loop's pass end, with a loop from the card (#70), the bar lines
+ *  not counted.
  *
  *  The glide follows the clock: the pulses counted since the start, plus the time since the
  *  last one, over the pulses expected to the landing. The landing itself is the bar line's
@@ -150,6 +152,7 @@ public:
         fader_ = 0.f;
         t0_ = t_ = 0.f;
         drop_ = false;
+        external_ = false;
         active_ = true;
     }
 
@@ -166,6 +169,25 @@ public:
                     + static_cast<float>((bars_left_ - 1) * pulses_per_bar);
     }
     inline bool Holding() const { return active_ && holding_; }
+    /** SHIFT let go: a held morph glides from here over pulses (an estimate) and lands when
+     *  LandNext says, the bar lines not counted (CountBars: they count again, to the next).
+     *  Call with the audio interrupt blocked */
+    void ReleaseAt(uint32_t pulses)
+    {
+        if (!active_ || !holding_ || manual_)
+            return;
+        holding_ = false;
+        external_ = true;
+        base_ = pos_;
+        expected_ = pos_ + static_cast<float>(pulses);
+    }
+    /** ReleaseAt's landing: in this block's Process */
+    inline void LandNext() { land_ = active_; }
+    inline void CountBars()
+    {
+        external_ = false;
+        bars_left_ = 1;
+    }
 
     /** One bar line more, up to kMaxMorphBars. The glide carries on from where it is, now
      *  over pulses_per_bar more pulses. False if it can't. Call with the audio interrupt
@@ -191,7 +213,7 @@ public:
             return;
         pulses_++;
         since_pulse_ = 0.f;
-        if (bar_line && !holding_ && !manual_ && --bars_left_ == 0)
+        if (bar_line && !holding_ && !manual_ && !external_ && --bars_left_ == 0)
             land_ = true;
     }
 
@@ -365,6 +387,7 @@ public:
         land_ = false;
         drop_ = false;
         active_ = false;
+        landings_++;
     }
 
     /** Stops it where it is (SHIFT + its blinking key, CC 81): the parameters stay where the
@@ -420,6 +443,8 @@ public:
     }
 
     inline bool Active() const { return active_; }
+    /** One more for each landing (Land), for a loop from the card landing with it (#70) */
+    inline uint32_t Landings() const { return landings_; }
 
 private:
     /** A fade-in's key comes on, its glide under way. In a build-up it's on now whatever the
@@ -508,6 +533,8 @@ private:
     volatile bool holding_ = false; // started held, not released yet
     volatile bool manual_ = false;  // on the crossfader (Fader)
     volatile bool drop_ = false;    // a drop: lands hard on drop_to_ (Drop)
+    bool external_ = false;         // lands on LandNext, not a bar line (ReleaseAt)
+    uint32_t landings_ = 0;
     float drop_to_[kNumFx][kNumFxParams]; // a drop's landing, as the plan's target a morph's
     volatile float fader_ = 0.f;    // its position, 0 the start to 1 the target
     uint16_t sent_on_ = 0;          // on the crossfader: the switched keys as sent

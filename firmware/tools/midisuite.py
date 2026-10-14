@@ -4,7 +4,7 @@ sections 7 and 8) on the device, unattended, with this computer as an idealised 
 step 1).
 
     ./midisuite.py [--slot 12] [--wiring auto|out|in|both|none] [--cases ID,ID ...]
-                   [--quick | --long] [--out FILE] [-v]
+                   [--quick | --long] [--out FILE] [--log FILE] [-v]
     ./midisuite.py --list
 
 Each case sends what a DAW or a sequencer would (a clock over USB or the TRS jack, Start /
@@ -13,7 +13,9 @@ keys and knobs), reads what FRIZZ makes of it (remote.py's STATE, GET, the LEDs,
 byte its MIDI out sends, timed as it comes), and judges it against a tolerance: PASS, FAIL,
 or SKIP when the wiring can't show it. It names the #55 item it covers. At the end a summary
 in Markdown for the PR (--out writes it to FILE too): the results, the cases still open with
-the other wiring, and what stays with the user (feel, ears, eyes, real gear).
+the other wiring, and what stays with the user (feel, ears, eyes, real gear). --log FILE
+appends every message that came during each case, with the time it came, to FILE: what a
+timing check judged, to look at afterwards (#146).
 
 The wiring: USB to the CHOMPI, and the audio interface's MIDI (tools/midiport.py's
 trs_midi(), FRIZZ_TRS_MIDI) on one TRS adapter, one way or the other:
@@ -71,7 +73,8 @@ EMPTY = {("flanger", 4), ("resonator", 4), ("comp", 5)} | {("chaos", i) for i in
 # the settings each case starts from: the global channel 16, the effect channels over TRS on,
 # AUX live through the effects and the mic through them, not live (#177), nothing else
 BASELINE = dict(midi_channel=16, midi_transport=0, clock_factor=100, clock_source=0, midi_out=0,
-                midi_block_trs=1, midi_feedback=0, aux_dry=0, aux_live=1, mic_dry=0, mic_live=0)
+                midi_block_trs=1, midi_feedback=0, aux_dry=0, aux_live=1, mic_dry=0, mic_live=0,
+                usb_dry=0, usb_live=1)
 SOURCES = dict(auto=0, trs=1, usb=2, internal=3)
 OUTS = dict(off=0, trs=1, all=2)
 
@@ -89,15 +92,17 @@ def knob7(v):
     return v / 128. if v <= 64 else .5 + .5 * (v - 64) / 63.
 
 
-def fit(times):
-    """A line through times (index -> time): (period, worst distance from it in s)"""
+def fit(times, timed=None):
+    """A line through times (index -> time): (period, worst distance from it in s), of those
+    timed says (all if None; None if it says none)"""
     n = len(times)
     if n < 3:
         return None, None
     mx, my = (n - 1) / 2., sum(times) / n
     sxx = sum((i - mx) ** 2 for i in range(n))
     slope = sum((i - mx) * (t - my) for i, t in enumerate(times)) / sxx
-    worst = max(abs(t - (my + slope * (i - mx))) for i, t in enumerate(times))
+    worst = max((abs(t - (my + slope * (i - mx))) for i, t in enumerate(times) if timed is None or timed[i]),
+                default=None)
     return slope, worst
 
 
@@ -125,21 +130,36 @@ class Skip(Exception):
 
 
 class Stopped(KeyboardInterrupt):
-    """SIGTERM or SIGHUP: stopped from outside, things put back as after Ctrl-C (a
-    KeyboardInterrupt, which run_case lets through), exiting 128 + the signal"""
+    """Ctrl-C, SIGTERM or SIGHUP: stopped from outside, things put back (a KeyboardInterrupt,
+    which run_case lets through), exiting 128 + the signal"""
     def __init__(self, signum):
         super().__init__(signum)
         self.signum = signum
 
 
+stop_signal = None  # the signal that stopped the run, once one came
+
+
 def stop_on_signals():
-    """SIGTERM and SIGHUP raise Stopped, once: putting things back isn't cut short by another"""
+    """Ctrl-C, SIGTERM and SIGHUP raise Stopped; SIGTERM and SIGHUP once: putting things back
+    isn't cut short by another"""
     def stop(n, _):
-        for sig in (signal.SIGTERM, signal.SIGHUP):
-            signal.signal(sig, signal.SIG_IGN)
+        global stop_signal
+        stop_signal = stop_signal or n
+        if n != signal.SIGINT:
+            for sig in (signal.SIGTERM, signal.SIGHUP):
+                signal.signal(sig, signal.SIG_IGN)
         raise Stopped(n)
-    for sig in (signal.SIGTERM, signal.SIGHUP):
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, stop)
+
+
+def stopped_meanwhile():
+    """Raises Stopped again if a signal came: where an error is caught, the stop may have
+    become another error on its way (raised in a threading.Condition's wait(), the lock isn't
+    taken back, and the with's release fails: \"cannot release un-acquired lock\", #183)"""
+    if stop_signal:
+        raise Stopped(stop_signal)
 
 
 def exit_code(failed, stopped):
@@ -341,6 +361,18 @@ def case(id, item, needs=(), literal=None):
 
 def ticks_after(log, t0, t1=None):
     return [t for t, m in log if m[0] == TICK and t >= t0 and (t1 is None or t <= t1)]
+
+
+def ticks_timed(log, t0, t1=None):
+    """ticks_after's ticks, and whether each was the last message of its read: a read brings
+    all that came since the last, each message with its time, so a tick with bytes behind it in
+    its read looks late by their time on the wire (two CCs on TRS: 1.9 ms, #146)"""
+    ticks, timed = [], []
+    for i, (t, m) in enumerate(log):
+        if m[0] == TICK and t >= t0 and (t1 is None or t <= t1):
+            ticks.append(t)
+            timed.append(not (i + 1 < len(log) and log[i + 1][0] == t))
+    return ticks, timed
 
 
 def count(log, byte, t0, t1=None):
@@ -582,7 +614,7 @@ def start_spp(r, factor):
     c.send([START])
     time.sleep(2 * beat)
     pos = r.state()["pos"]
-    r.check("playing, the DAW's Start: back to the loop's start", abs(pos - .25) <= .08 or
+    r.tcheck("playing, the DAW's Start: back to the loop's start", abs(pos - .25) <= .08 or
             abs(pos - .25) >= .92, "%.2f of the loop 2 beats later" % pos, "0.25 +-0.08")
     c.send([STOP])
     time.sleep(.3)
@@ -597,7 +629,7 @@ def start_spp(r, factor):
     time.sleep(2 * beat)
     s = r.state()
     want = (want + .25) % 1.
-    r.check("Continue: plays on from there", s["looper"] == 2 and abs(s["pos"] - want) <= .08,
+    r.tcheck("Continue: plays on from there", s["looper"] == 2 and abs(s["pos"] - want) <= .08,
             "%s at %.2f 2 beats later" % (remote.LOOPER[s["looper"]], s["pos"]), "playing at %.2f +-0.08" % want)
 
 
@@ -624,7 +656,7 @@ def start_free(r):
     time.sleep(.5)
     s = r.state()
     moved = (s["pos"] - before) % 1.
-    r.check("a free loop, the DAW's Start", s["looper"] == 2 and .1 <= moved <= .45,
+    r.tcheck("a free loop, the DAW's Start", s["looper"] == 2 and .1 <= moved <= .45,
             "%s, %.2f on in 0.5 s" % (remote.LOOPER[s["looper"]], moved), "plays on (~0.25 of a 2 s loop)")
 
 
@@ -802,7 +834,8 @@ def out_knobs(r):
     t0 = time.perf_counter()
     time.sleep(3.)
     t1 = time.perf_counter()
-    p0, w0 = fit(ticks_after(log, t0, t1))
+    before = ticks_timed(log, t0, t1)
+    p0, w0 = fit(*before)
     ccs = sum(1 for t, m in log if t >= t1 and m[0] & 0xF0 == 0xB0)
     end = time.monotonic() + 4.
     i = 0
@@ -813,14 +846,18 @@ def out_knobs(r):
         time.sleep(.02)
     t2 = time.perf_counter()
     time.sleep(.3)
-    p1, w1 = fit(ticks_after(log, t1 + .05, t2))
+    during = ticks_timed(log, t1 + .05, t2)
+    p1, w1 = fit(*during)  # the ticks timed alone in their reads
     ccs = sum(1 for t, m in log if t >= t1 and m[0] & 0xF0 == 0xB0) - ccs
     r.check("knobs turned fast for 4 s: feedback out of %s" % port.upper(), ccs >= 20, "%d CCs" % ccs, ">= 20")
     r.tcheck("the clock's rate meanwhile", p0 and p1 and abs(p1 / p0 - 1.) <= .001 * r.loose,
             "%.2f -> %.2f BPM" % (bpm_of(p0), bpm_of(p1)) if p0 and p1 else "-", "the same +-%g %%" % (.1 * r.loose))
-    r.tcheck("its ticks' timing", w0 is not None and w1 is not None and w1 <= w0 + .001 * r.slack,
-            "worst %.2f ms, before %.2f" % (w1 * 1000, w0 * 1000) if w0 is not None and w1 is not None else "-",
-            "within %g ms of without" % r.slack)
+    timed = [(sum(ts), len(ts)) for _, ts in (before, during)]
+    r.tcheck("its ticks' timing", w0 is not None and w1 is not None and w1 <= w0 + .001 * r.slack
+             and all(n >= 24 for n, _ in timed),
+             ("worst %.2f ms, before %.2f" % (w1 * 1000, w0 * 1000) if w0 is not None and w1 is not None else "-")
+             + " (%d of %d ticks timed, before %d of %d)" % (timed[1] + timed[0]),
+             "within %g ms of without, a beat's ticks at least alone in their reads" % r.slack)
 
 
 # ---- 8. MIDI control ----
@@ -1191,13 +1228,13 @@ def feedback(r):
 
 
 def input_bits(r):
-    """STATE's input byte (#177): the mic 1 (else AUX), its effects dry 2, it live 4"""
+    """STATE's input byte (#177): the mic 1 (else AUX), its effects dry 2, it live 4, USB 8 (#196)"""
     return r.f.state()[25]
 
 
-@case("input-cc", "8: CC 84 picks the input's source, CC 116 its effects, CC 117 it live, in the "
-      "order they came, each source its own; feedback sends them, not what came; CC 88 and 91, "
-      "as a keyboard sends them at power-on, do nothing (#177)")
+@case("input-cc", "8: CC 84 picks the input's source in thirds (AUX, the mic, USB, #196), CC 116 "
+      "its effects, CC 117 it live, in the order they came, each source its own; feedback sends "
+      "them, not what came; CC 88 and 91, as a keyboard sends them at power-on, do nothing (#177)")
 def input_cc(r):
     r.setting(midi_out=OUTS["all"], midi_feedback=1)
     log = r.usb.log
@@ -1222,32 +1259,37 @@ def input_cc(r):
     r.send_usb(cc(GLOBAL, 117, 0))
     time.sleep(.2)
     aux_off = input_bits(r)
-    r.send_usb(cc(GLOBAL, 116, 0) + cc(GLOBAL, 84, 127))
+    r.send_usb(cc(GLOBAL, 116, 0) + cc(GLOBAL, 84, 64))
     time.sleep(.2)
     mic = input_bits(r)
+    r.send_usb(cc(GLOBAL, 84, 127))
+    time.sleep(.2)
+    usb = input_bits(r)
     r.send_usb(cc(GLOBAL, 84, 0))
     time.sleep(.2)
     aux = input_bits(r)
     r.check("CC 116 at 127: AUX dry", aux_dry == 2 | (start & 4), aux_dry, 2 | (start & 4))
     r.check("CC 117 at 0: AUX not live", aux_off == 2, aux_off, 2)
-    r.check("CC 116 at 0, then CC 84 at 127 in one packet: the 116 AUX's, the mic its own", mic & 1 and aux == 0,
+    r.check("CC 116 at 0, then CC 84 at 64 in one packet: the 116 AUX's, the mic its own", mic & 1 and aux == 0,
             "the mic %d, AUX then %d" % (mic, aux), "the mic odd, AUX 0")
+    r.check("CC 84 at 127: USB, its own, live through the effects (#196)", usb & 8 and usb & 4 and not usb & 3,
+            usb, "USB, live: 12")
     time.sleep(.3)
     back = {(m[1], m[2]) for t, m in log if t >= t0 and len(m) == 3 and m[0] == 0xBF and m[1] in (84, 116, 117)}
     sent_back = sorted(k for k in back if k[0] == 84)
     r.check("what came isn't sent back: no CC 84", not sent_back, sent_back or "none", "none")
-    # the hand: the settings page's G# and A# go out as CC 116 and 117
+    # the hand: the settings page's G# and A# go out as CC 117 and 116 (#243)
     t1 = time.perf_counter()
     r.f.send(remote.SWITCH, [2])
     time.sleep(.3)
-    r.tap("KEY_25")  # AUX live again
+    r.tap("KEY_24")  # AUX live again
     time.sleep(.2)
-    r.tap("KEY_24")  # dry
+    r.tap("KEY_25")  # dry
     time.sleep(.3)
     r.f.send(remote.SWITCH, [0])
     time.sleep(.3)
     out = {(m[1], m[2]) for t, m in log if t >= t1 and len(m) == 3 and m[0] == 0xBF}
-    r.check("the settings page's A# and G#: CC 117 at 127 and CC 116 at 127 out", (117, 127) in out and (116, 127) in out,
+    r.check("the settings page's G# and A#: CC 117 at 127 and CC 116 at 127 out", (117, 127) in out and (116, 127) in out,
             sorted(k for k in out if k[0] in (84, 116, 117)) or "none", "(116, 127), (117, 127)")
     r.check("... and AUX live and dry", input_bits(r) == 6, input_bits(r), 6)
 
@@ -1375,6 +1417,7 @@ def card_lost(r):
     try:
         why = remote.in_ram(r.f)
     except (Exception, SystemExit) as e:
+        stopped_meanwhile()
         why = "IDENT: %s" % e
     r.lost = r.lost or why
     return why
@@ -1422,7 +1465,8 @@ def reset(r, snap, scenes):
     r.usb.echo = None
     r.f.release()
     r.f.send(remote.SWITCH, [0])
-    r.setting(**BASELINE)
+    # a FRIZZ from before USB audio (#196) has fewer settings: the ones it has
+    r.setting(**{k: v for k, v in BASELINE.items() if remote.SETTING_NAMES.index(k) < len(snap.settings)})
     r.erase()
     snap.restore(r, scenes)
     time.sleep(.6)  # the clock let go (0.5 s)
@@ -1444,8 +1488,10 @@ def run_case(r, c, snap):
     except Skip as e:
         status, detail = "SKIP", str(e)
     except (AssertionError, SystemExit) as e:
+        stopped_meanwhile()
         status, detail = "FAIL", "stopped: %s" % e
     except Exception:
+        stopped_meanwhile()
         status, detail = "FAIL", "error: " + traceback.format_exc().strip().splitlines()[-1]
         if r.args.verbose:
             traceback.print_exc()
@@ -1464,6 +1510,16 @@ def run_case(r, c, snap):
             status = "PASS" if all(ok for ok, *_ in r.checks) else "FAIL"
             detail = ""
     return status, detail
+
+
+def log_case(path, r, c, status, marks):
+    """What came during case c, after the taps' marks: a line a message, "usb" or "trs", the
+    time it came (perf_counter, s: one read's messages share it) and its bytes in hex"""
+    with open(path, "a") as f:
+        f.write("# %s %s %s\n" % (c.id, status, time.strftime("%Y-%m-%d %H:%M:%S")))
+        for port, tap, mark in (("usb", r.usb, marks[0]), ("trs", r.trs, marks[1])):
+            for t, m in tap.since(mark) if tap else ():
+                f.write("%s %.6f %s\n" % (port, t, m.hex(" ")))
 
 
 def summary(results, wiring, ident, args):
@@ -1533,6 +1589,7 @@ def main():
     ap.add_argument("--quick", action="store_true", help="the long cases short (the host check)")
     ap.add_argument("--long", action="store_true", help="the 'over a few minutes' cases for 3 minutes")
     ap.add_argument("--out", help="the summary into FILE too")
+    ap.add_argument("--log", help="every message that came during each case into FILE, timed (appended)")
     ap.add_argument("--list", action="store_true", help="the cases, what they need, and leave")
     ap.add_argument("-v", "--verbose", action="store_true", help="every check as it's made")
     a = ap.parse_args()
@@ -1556,8 +1613,11 @@ def main():
         r.wiring = detect_wiring(r) if a.wiring == "auto" else WIRINGS[a.wiring]
         print("wiring: %s%s" % (wiring_text(r.wiring), " (found)" if a.wiring == "auto" else ""), flush=True)
         for c in cases:
+            marks = (r.usb.mark(), r.trs.mark() if r.trs else 0)
             status, detail = run_case(r, c, snap)
             results.append((c, status, detail, r.checks, r.notes))
+            if a.log:
+                log_case(a.log, r, c, status, marks)
             print("%-4s %s%s%s" % (status, c.id, " (%.0f s)" % (time.monotonic() - r.started)
                                    if status != "SKIP" else "", ": " + detail if detail else ""), flush=True)
             for ok, what, got_, want in r.checks:
@@ -1568,8 +1628,10 @@ def main():
             if r.lost:
                 print("stopped: %s" % r.lost, file=sys.stderr)
                 break
-    except KeyboardInterrupt as e:
-        stopped = getattr(e, "signum", signal.SIGINT)
+    except (KeyboardInterrupt, Exception) as e:
+        if not isinstance(e, KeyboardInterrupt) and not stop_signal:
+            raise
+        stopped = getattr(e, "signum", None) or stop_signal or signal.SIGINT
         print("interrupted" if stopped == signal.SIGINT else "stopped (signal %d)" % stopped,
               file=sys.stderr)
     finally:

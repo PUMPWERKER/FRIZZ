@@ -1,0 +1,102 @@
+# The Loops page under load (#70): every effect with a sound but the tape stop, and the chaos
+# key, latched over loops from the card while they load and switch: a 16-bar loop loading
+# (~0.7 s on the device) and the 10 ms crossfades, which read two loops at once. For
+# remote.py play --cpu on the device, whose card holds the same files (tools/loopfiles.py
+# page). The tape stop stays off: latched it would silence the rest.
+card wav /FRIZZ/a1.wav 2 2 220
+card wav /FRIZZ/a2.wav 1.5 2 330
+card wav /FRIZZ/a3.wav 4 2 220
+card wav /FRIZZ/a4.wav 2 1 440
+card wav /FRIZZ/a5.wav 7.2 2 165 12
+card wav /FRIZZ/a15.wav 76.8 2 125
+card wav /FRIZZ/b1.wav 2 2 275
+input sine 220 0.3
+at 6000
+# A/01, at once, from the Loops page; home again to latch the effects
+down KEY_26
+wait 60
+tap KEY_16
+wait 60
+up KEY_26
+wait 300
+tap KEY_1
+wait 500
+down KEY_26
+wait 60
+tap KEY_16
+wait 60
+up KEY_26
+wait 300
+down KEY_1
+down KEY_2
+down KEY_3
+down KEY_4
+down KEY_5
+down KEY_6
+down KEY_7
+down KEY_8
+down KEY_9
+down KEY_11
+down KEY_12
+down KEY_13
+down KEY_14
+wait 100
+tap KEY_26
+wait 60
+up KEY_1
+up KEY_2
+up KEY_3
+up KEY_4
+up KEY_5
+up KEY_6
+up KEY_7
+up KEY_8
+up KEY_9
+up KEY_11
+up KEY_12
+up KEY_13
+up KEY_14
+wait 1000
+# the Loops page: the 16-bar loop, then one after the other, each loaded into the buffer the
+# looper doesn't read
+down KEY_26
+wait 60
+tap KEY_16
+wait 60
+up KEY_26
+wait 300
+tap KEY_15
+wait 2500
+tap KEY_3
+wait 1500
+tap KEY_2
+wait 1200
+tap KEY_15
+wait 2500
+tap KEY_5
+wait 2000
+tap KEY_4
+wait 1500
+# at the end of the pass, then back and forth between two loaded ones
+down KEY_26
+wait 60
+tap KEY_1
+wait 60
+up KEY_26
+wait 2500
+tap KEY_4
+wait 300
+tap KEY_1
+wait 300
+tap KEY_4
+wait 300
+tap KEY_1
+wait 1000
+expect led smt 24 fc983c
+# home: a double tap of SHIFT
+tap KEY_26
+wait 100
+tap KEY_26
+wait 300
+expect led pth 0 000000
+expect led smt 0 000000

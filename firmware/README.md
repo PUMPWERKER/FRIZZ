@@ -68,6 +68,11 @@ The output goes to `code/src/build/`:
 - `FRIZZ.elf`: the same firmware with debug info, for gdb
 
 `make BENCH=1` builds the CPU bench into `code/src/build-bench/` ([below](#measure-the-cpu-load)).
+`make USB_SAFETY=1` builds a development build for a new USB stack into `build-usbsafety/`:
+with `UsbDevice.h`'s `Watch()`, an enumeration that never finishes (10 s) or a computer that
+sends FRIZZ no MIDI for 60 s restarts into the launcher, a way back without the power switch.
+Use it for the first flash of a USB change, after `test/unit.sh usbtransport`; never hand it
+out (a computer that sends no MIDI is no fault).
 Neither is committed: a build is named by its md5, and `tools/builds.py` builds both and
 prints it (`tools/builds.py md5` only prints). That works because GCC 10.3 builds the same
 source to the same bytes on any machine; another compiler gives other bytes (and the risk
@@ -231,21 +236,36 @@ minutes). Mounting needs udisks, as any desktop has.
 longer than a block, which crackle), `settings`, `channel N`, `transport on|off`,
 `source auto|trs|usb|internal`, `out off|trs|all`, `scene get|put SLOT FILE`, the developers'
 `ident`, `ram-only`, `get GROUP`, `set GROUP INDEX VALUE`, `bench [--wait] [--out FILE]`,
-`probe`, `levels`, `signal sine|saw|noise HZ LEVEL` / `signal off`, `reseed [SEED]` and
-`battery` (below), and `play SCRIPT [--cpu] [--fresh]`, which plays a twin
+`probe`, `levels`, `signal sine|saw|noise HZ LEVEL` / `signal off`, `reseed [SEED]`,
+`battery`, `reset`, `crash [--clear]`, `crash-test` and `loops [--scan]` / `loops load BANK SLOT
+[--fault no-flow|past-end|cut-short|reinit] [--check WAV]` / `loops write KB CHUNK` (the loop
+loader, #70: a load's time, the audio callback's load meanwhile, MainLoop's longest step, its CRC
+against WAV's data) (below), and `play SCRIPT [--cpu] [--fresh]`, which plays a twin
 script (`twin/scenarios/`, a bug report) on the device: its keys and knobs over SysEx at the
 script's times, its MIDI and clock, its `expect led` lines checked against the device's LEDs, at the
 brightness the card's `led_brightness` sets (25-100 % by 5: the levels that fit every line,
-said when it isn't 100 %).
+said when it isn't 100 %). Its `input sine HZ AMP` goes as the developers' test signal
+(`SIGNAL`, below), which takes AUX's place where the twin's sine does, in the input the audio
+callback hands the engine, at the same full scale, so the effects hear what they hear on the
+twin (#219); `input off` and the script's end, however it ends, turn it off again. Unlike the
+twin's, it takes the mic's place too, its frequency is whole hertz and its phase starts
+afresh with each line. Its other inputs (`input wav`, `mic`, `jack`) and the rest only the
+twin has (the card, the battery, power-on) are skipped, saying so.
 With `--cpu` it reports the worst load FRIZZ.bin itself had, measured in the audio callback as
 the bench does, and how many blocks took longer than a block, so a scenario can be tried for
 crackles on the build that plays, not the bench's (it says how many readings went unanswered,
-if any). Whatever ends a script (an error, Ctrl-C), it lets go of the keys it holds and gives
-the mode switch back to the hand.
+if any). It starts with the mode switch down over SysEx, as the twin starts, whatever the
+hand left it at, so the script's keys reach the play page until its own `toggle` (#253).
+Whatever ends a script (an error, Ctrl-C), it lets go of the keys it holds, gives the mode
+switch back to the hand and turns the test signal off.
 
 A script plays on FRIZZ as it stands: a twin script starts from power-on, but on the device the
 scripts played before it since FRIZZ started have left the effect selected, its knobs, the
-page or a loop in RAM, so its `expect led` lines can fail after another one (#123).
+page or a loop in RAM, so its `expect led` lines can fail after another one (#123). And it
+starts from the player's card, not a fresh one: a script's `set GROUP INDEX VALUE` goes as
+the developers' `SET` (below), as `./remote.py set` sends it, so the scenarios set what they
+depend on first, the compressor's knobs or a setting, to what a fresh card has (#214); a `set`
+FRIZZ refuses fails its line.
 `play --fresh` first starts the slot again through the launcher, as `flash.py --run N` does:
 FRIZZ boots from the card, which a start doesn't write, with nothing left from before. Every
 `play` after the first since `flash.py` started the slot wants it (about 10 s each); a failed
@@ -261,7 +281,8 @@ page (`twin/scenarios/settings.txt`, most bug reports, #58; its upper G# and A# 
 each source's effects and live are saved, `mic.txt`, #152, #177), VOLUME turned on its page
 2, the input gain
 (`volume.txt`, #152), and the compressor's knobs (`comp.txt`: its key, then knobs 1-4, or with
-it in focus by CC 23; its CCs themselves never reach the card, #97) go to
+it in focus by CC 23; its CCs themselves never reach the card, #97), and a script's `set` of
+a setting, the compressor or the input gain (most scenarios' first lines, #214) go to
 `/FRIZZ/frizz_master.txt`, with no `.bak`; SAVE / COPY / DELETE confirmed (`scenes.txt`) or a
 scene put over SysEx to `/FRIZZ/frizz_scenes.txt`, whose `.bak` keeps only the one before
 (#78).
@@ -276,6 +297,10 @@ PERSIST 0) wrote what came after to the card, and the command fails, saying so. 
 device stands first (the page, what the knobs edit, the scene mode); `--force` plays it
 anyway. Linux only, Python 3, no packages, like `flash.py`.
 
+**The loop transfer** (`0x38`, the web app's: list, upload, move, delete the loops, copy a
+cubbi) is a protocol of its own, stable and versioned: [`docs/LOOP_PROTOCOL.md`](../docs/LOOP_PROTOCOL.md)
+(#278, specified, not built yet).
+
 **The developers' SysEx** (`0x3E`, `MidiControl.h`'s `namespace dev`) is for the tools, not
 for players (MANUAL.md lists it only briefly): `F0 7D 43 48 3E SUB SEQ ARGS F7`, over USB
 only, answered `F0 7D 43 48 7E SUB SEQ STATUS DATA F7`. SEQ comes back, so a tool matches its
@@ -288,7 +313,7 @@ first; a knob's value in 14 bits, as `0x21` has them.
 
 | SUB | Asks | Answers |
 |---|---|---|
-| `00` IDENT | — | version (1), kind (0 FRIZZ, 1 the bench), the image's CRC-32 (5 groups) and length (3) as the bootloader loaded it (`zlib.crc32` of the `.bin`; 0 on the twin), uptime ms (5), MainLoop's passes (5), `RCC_RSR` at boot (5, as the bootloader left it, not cleared), flags (1: RAM only) |
+| `00` IDENT | — | version (1), kind (0 FRIZZ, 1 the bench), the image's CRC-32 (5 groups) and length (3) as the bootloader loaded it (`zlib.crc32` of the `.bin`; 0 on the twin), uptime ms (5), MainLoop's passes (5), `RCC_RSR` at boot (5: the resets since FRIZZ last started, which clears it once read, so a watchdog reset can be told, below), flags (1: RAM only) |
 | `01` PERSIST | `00` | flags. From now until a restart nothing is written to the card: a scene saved, copied or deleted, the master settings, as if written (the page shows them saved). One way: a restart (`flash.py --run N`) writes again, reading the card as it was. Nor a bug report (`bug-N.txt`): SHIFT + VOLUME's hold then counts as failed (#171) |
 | `02` GET | GROUP | GROUP, COUNT, then COUNT values in 14 bits |
 | `03` SET | GROUP INDEX VALUE(2) | GROUP INDEX; applied in MainLoop through the setters the knobs and keys use, and saved as theirs are (unless RAM only) |
@@ -301,6 +326,17 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | `07` SIGNAL | WAVE FREQ(2) LEVEL(2) | WAVE. 1 sine, 2 saw, 3 noise at FREQ Hz (1-16383) and LEVEL (16383 full scale) in place of the mic and AUX, from where the engine takes them; `00` alone the input again |
 | `08` RESEED | SEED(5) or — | the seed, then the states (5 each) of chaos's, the slicer's, the delay's and wow & flutter's random numbers, each from its power-on seed xor SEED: 0 is power-on's. Without SEED it only reads |
 | `09` BATTERY | — | the level (0 full, on the cable; 1 above 3.3 V; 2 3-3.3 V; 3 below 3 V), the level the check last read, the check's step (0 resting, 1-2 reading at 3.3 V), 1 if the last read failed, the last 8 reads (2 each, the newest lowest) of the cable (VIN_GD), the battery below the threshold, a legacy cable and the input current limited, then the MP2722's status registers 0x11-0x16 (2 each) |
+| `0A` RESET | `52 53 54` ("RST") | no answer: the chip resets at once, into the launcher (without it, FRIZZ starts again). Taken in the audio callback as it comes, so it works with MainLoop hung; it doesn't wait for the card, as `10`'s restart does. Sent once: a FRIZZ that started again meanwhile would take a second one |
+| `0B` CRASH | `00` | flags (1: a crash recorded), its kind (1 the watchdog, else the exception: 3 HardFault, as every fault is, since MemManage, BusFault and UsageFault aren't enabled and escalate; CFSR tells which), how many since cleared (3), uptime ms at the fault (5; the watchdog's: MainLoop's last pass), the CRC-32 (5) and length (3) of the build that crashed, `RCC_RSR` at that start (5), SP (5), and `FLASH_OPTSR_CUR` (5), the option bytes, whether or not one is recorded; zeros for none |
+| | `01` | PC, LR, xPSR, CFSR, HFSR, MMFAR, BFAR (5 each) |
+| | `02` | clears it -> flags |
+| `0C` TEST | WHAT | the bench only (FRIZZ.bin answers status 2): 1 MainLoop hangs (after answering), 2 a bus fault in MainLoop (a read where nothing is), 3 the audio callback hangs, 4 an undefined instruction in it (3 and 4 unanswered, as they come) |
+| `0D` LOOPS | `00` | the loop loader (`LoopLoader.h`, #70; FRIZZ.bin only, status 2 in the bench): its state (0 idle, 1 scanning, 2 loading, 3 loaded, 4 failed, 5 checking, 6 writing, 7 written), the bank and slot loading, the result (`loops::Result`: why a load or the write test stopped, 0 if it didn't), the SD error (5, `HAL_SD_ERROR_*`), bytes read (4) of (4), ms (3: the load's, or the last scan's), runs (3), MainLoop's longest step since the last `00` in µs (3), the SDMMC's CLKCR (5), the card recovered (1) and set up again (1), the file's fragments (2) |
+| | `01` BANK | 1 while the scan runs, then the bank's 15 slots' results (0 empty, 1 mono, 2 stereo, more: refused, why). Banks 0-7 are FRIZZ's a-h (`/FRIZZ/a1.wav` …), 8-12 TAPE's cubbis a-e (`cubbi_a1.wav` … in `/TAPE`, else the root) |
+| | `02` BANK SLOT | the slot's result, frames (4), its data's offset in the file (5) |
+| | `03` / `04` BANK SLOT FAULTS | scans again / loads the slot (banks and slots from 0). FAULTS for a test: 1 the flow control off for it, 2 its third run read past the card's end, 4 its third run given no time, 8 the recovery after it sets the card up from scratch (`HAL_SD_DeInit`, `BSP_SD_Init`), 16 FatFs's next read as it opens the file given no time, 32 that read past the card's end (`SdDisk.h`, #213). Refused (status 1) while something runs |
+| | `05` [`01`] | the state, the CRC-32 (5) of the data loaded (zlib's); with `01` it starts, 16 KB a MainLoop pass |
+| | `06` KB(2) CHUNK(2) | the write test: KB (1-1024) written to `/FRIZZ/T/w.tmp` in CHUNK-byte writes, the `.bin` it replaces deleted, renamed, read back, compared, then the file and the folder deleted. KB's high group can carry a fault for a test, in FatFs's next write of more than a sector (its data, never the FAT or a folder): 16 given no time, 32 past the card's end |
 
 The groups of GET and SET: `00`-`1F` an effect's knobs by its FxId (`FxParams.h`: 0-3 page 1,
 4-7 page 2), `20` the compressor's, `21` the latches (index by FxId, 0 or 1), `22` VOLUME's
@@ -312,6 +348,14 @@ as `frizz_master.txt` has them.
 The groups don't follow the MIDI map (CCs), so a tool keeps working when it changes. SETs
 aren't in the event log: a bug report taken after them won't replay them.
 
+LOOPS reads out and drives the loop loader without its pages (#70): `remote.py loops` (below)
+and `tools/loopfiles.py`, which makes its test files and puts them on the card over USB storage
+(`card.py mount` in a hold), as `/FRIZZ/a1.wav` … `a13.wav` and `b1.wav` … `b15.wav`, a2 and
+a12-13 written in pieces so they lie in fragments; `loopfiles.py clean ROOT` deletes them
+again, only those whose bytes are its own. It never writes TAPE's cubbis (`/TAPE`, the root):
+those are the player's recordings. The write test writes the card whatever PERSIST says, only
+in `/FRIZZ/T`, and deletes what it wrote.
+
 PROBE to BATTERY are for tests without hands or an audio interface. All but SIGNAL and RESEED
 only read: BATTERY answers what the last reads left (the charger isn't asked, its voltage only
 known as above or below 3 V and 3.3 V). SIGNAL and the peak meters live in RAM until FRIZZ
@@ -321,6 +365,25 @@ count how many numbers each has drawn since the seed (`remote.py reseed`): two r
 same seed draw the same numbers. The reverb's modulation (DaisySP's ReverbSc, vendored) has
 random numbers of its own, which RESEED leaves running on from power-on. Neither is in the
 event log.
+
+**A hung or crashed FRIZZ** (#105, `Crash.h`). RESET brings back a FRIZZ whose MainLoop hangs
+without the power switch: `remote.py reset`, and `tools/chompi.py` sends it itself when FRIZZ
+doesn't get to the launcher (a restart taken but not done within 15 s, or FRIZZ by its USB
+names silent for 20 s), before it asks for the switch. A fault (HardFault, MemManage,
+BusFault, UsageFault) writes a record of its registers to the backup SRAM, through a vector
+table of FRIZZ's own in the DTCM (libDaisy's `HardFault_Handler` stops at a breakpoint, which
+locks the core up without a debugger), and resets the chip; nothing goes to the card. The
+watchdog (IWDG1) is fed only at the top of the audio callback and resets the chip once it
+hasn't run for 1 s: a MainLoop that hangs or blocks (a card failing for 30 s, a bug report)
+doesn't set it off. It starts once audio runs, after the boot's card reads and battery checks,
+and a reset stops it (the option bytes' `IWDG1_SW`: started by software; CRASH says), so the
+launcher and the other slots never run with it. The next FRIZZ start records a watchdog reset
+(`RCC_RSR`, which FRIZZ clears once read), with when MainLoop last ran.
+`remote.py crash` reads the record, whatever slot runs (the backup SRAM keeps it through the
+launcher and other builds, until a power-off or `--clear`): the kind, the build that crashed
+(by its CRC-32, as IDENT names builds) and the `addr2line` line for its PC and LR, with the
+`.elf` if that build is the one in `code/src/build/` or `build-bench/`. `remote.py crash-test`
+(the bench only) hangs or faults on purpose, to check all three on the device.
 
 **From the card:** copy `build/FRIZZ.bin` to the SD card and power on, as described in
 [`INSTALL.md`](../INSTALL.md). FRIZZ is a `BOOT_SRAM` app: CHOMPI's bootloader copies it from
@@ -333,12 +396,15 @@ then run `bin/install_bootloader.sh`.
 ## Measure timing and sound on the device
 
 `tools/measure.py` measures what the twin can't, on the real CHOMPI, with no hands at the
-panel. It needs an audio interface: its line outputs 3+4 into AUX, the CHOMPI's line out into
-its inputs 3+4 (the left, input 3, is recorded), its MIDI out into the TRS jack (found by name,
+panel. It needs an audio interface: its line outputs 3+4 into AUX, the CHOMPI's headphone out
+into its inputs 3+4 (the left, input 3, is recorded; the bench is wired so, the line out stays
+free), its MIDI out into the TRS jack (found by name,
 the Scarlett's `HiFi__Line4__sink` and `HiFi__Line8__source`; `FRIZZ_AUX_SINK`,
 `FRIZZ_LINE_SOURCE`, `FRIZZ_TRS_MIDI` set them). Outputs 1+2 are the user's monitors: the
 tools never play into them. In the Scarlett's mixer (alsa-scarlett-gui), line outputs 3+4 get
-PCM 3+4 directly, not a mix, or nothing played into `HiFi__Line4__sink` reaches AUX. Python 3 with numpy (a venv:
+PCM 3+4 directly, not a mix, or nothing played into `HiFi__Line4__sink` reaches AUX. Linux
+restores the mixer from `/var/lib/alsa/asound.state` whenever the interface is plugged in: once
+it's set, `sudo alsactl store` keeps it (it had reverted to Mix G/H, a loop through AUX). Python 3 with numpy (a venv:
 `python3 -m venv ~/.venvs/frizz && ~/.venvs/frizz/bin/pip install numpy`).
 
 ```bash
@@ -347,6 +413,7 @@ cd firmware/tools
 ~/.venvs/frizz/bin/python measure.py drift --bpm 174 --seconds 180    # a 1-bar loop against a TRS clock
 ~/.venvs/frizz/bin/python measure.py material --music a.wav b.wav --out music.wav
 ~/.venvs/frizz/bin/python measure.py fx KEY_13 --cc 17=100 --material music.wav --out rev-main
+~/.venvs/frizz/bin/python measure.py fx none --material music.wav --out dry   # nothing latched
 ~/.venvs/frizz/bin/python measure.py compare rev-main.f32 rev-branch.f32
 ```
 
@@ -361,10 +428,15 @@ cd firmware/tools
   Measure 3 minutes or more: a 1-bar loop is good to about ±1.5 ms a minute. The generated
   material never repeats, so a pass can't be matched to the wrong place (real music loops
   can be).
-- `fx` latches an effect and sets its level (the sends' level knobs start at 0: CC 113 the
-  delay, 117 the reverb), plays material into AUX and records the line out; `compare` gives
-  two recordings' level and octave bands, for an A/B of two builds. Real music
-  (`material --music`) is the better test here.
+- `fx` latches the effect alone over SysEx SET (by its key or its name; `none` latches
+  nothing, the dry line to compare against), reads the latches back and stops unless exactly
+  that one took (#187: the key held and SHIFT tapped over SysEx didn't always latch on the
+  device, and every effect recorded the dry line), sends the CCs on the effect's channel
+  (e.g. `--cc 21=80`, its Level), plays material into AUX and records the line out; it says
+  what was latched and the knobs FRIZZ has, and puts the latches and the effect's knobs back
+  afterwards. `compare` gives two recordings' level and octave bands, for an A/B of two
+  builds. Real music (`material --music`) is the better test here; level and bands don't
+  show an effect's timing (an echo's place), which takes a script of its own.
 
 `tools/loopclip.py [--source aux|signal]` asks whether the loop distorts where the live input
 doesn't (#152): a 1 kHz sine at rising levels, into AUX or as FRIZZ's own test signal
@@ -373,6 +445,36 @@ alone, the two recordings' THD side by side. Run it on an empty looper.
 
 For an A/B, send each build to the test slot in turn (`flash.py FILE --slot 12`) and measure
 from a fresh start each time; `remote.py load` and `remote.py play SCRIPT --cpu` give the load.
+
+### USB audio: the sound card and the drive
+
+FRIZZ is a USB Audio Class 1 sound card (`UsbDevice.h`, #196): ALSA's `hw:FrizZ`, 2 channels each
+way, `S24_3LE` at 48000. PipeWire opens it too: for the raw `hw:` tests set its profile off
+first and back after (`LANG=C pactl list cards short` names it
+`alsa_card.usb-Chompi_Club_FrizZ_…`; `pactl set-card-profile CARD off`, then
+`output:analog-stereo+input:analog-stereo`; `LANG=C`, as pactl's words are localised).
+`tools/usbaudio.py` measures it without packages:
+
+```bash
+cd firmware
+tools/usbaudio.py gen /tmp/440.wav --freq 440 --secs 120 --db -12   # a sine to play into FRIZZ
+aplay -D hw:FrizZ /tmp/440.wav & arecord -D hw:FrizZ -f S24_3LE -c2 -r48000 -d 118 /tmp/back.wav
+tools/usbaudio.py sine /tmp/back.wav    # level, frequency, glitches and phase steps
+tools/usbaudio.py rate FrizZ --secs 60  # the streams' rate against the computer's clock, the feedback
+tools/usbaudio.py stats                 # FRIZZ's own counts (kCmdDev's USB): blocks, FIFOs, the drive
+tools/usbaudio.py card on|off           # the card lent as a drive, or taken back (SHIFT + LOOP's way)
+tools/usbjitter.py --loads 40           # USB MIDI out's clock while cubbis load (#265)
+```
+
+- The loop through FRIZZ (`aplay` into the source USB, the master back) is the sample-exact
+  test: with USB the source and nothing else on, what comes back is the sine at 0.675 × its
+  level (75 % input gain × 3 × the line out's 0.3) and in phase. Use 440 Hz: at 997 Hz one
+  49-frame packet is about one period, so a lost one hides.
+- A lent card shows up as a drive with the label `CHOMPI-SD` and the vendor `FrizZ`
+  (`tools/chompi.py` tells it from the USB storage firmware's by that). Write only into a
+  folder of its own (`/USBTEST`) and list the root, `/FRIZZ` and `/TAPE` before and after.
+- A build with a new USB stack goes first as `make USB_SAFETY=1`, after `test/unit.sh
+  usbtransport`, and every hold chain ends in `; ./flash.py --run 10`.
 
 ### The MIDI suite: the release test's MIDI items, unattended
 
@@ -439,8 +541,10 @@ tools/midisuite.py --cases out-loop,start-spp -v    # a few, every check as it's
 Start / Stop / Continue / Song Position on play, stop, locating and a loop range's turns,
 automation lanes on the effect channels, a track monitoring FRIZZ's input, and its clock's
 jitter against a clock from this computer (#83); and the other way round, REAPER synced to
-FRIZZ's MIDI out (`daw-follows`, #150). Wiring A (the CHOMPI's TRS out into the
-interface's MIDI in) shows what FRIZZ passes on; without it the jitter is a SKIP.
+FRIZZ's MIDI out (`daw-follows`, #150); and with music (#55's DAW items by ear): REAPER
+playing a song into AUX and recording the line out (`daw-loop-audio`, `daw-loop-restart`,
+`daw-follows-audio`, below). Wiring A (the CHOMPI's TRS out into the interface's MIDI in)
+shows what FRIZZ passes on; without it the jitter is a SKIP.
 
 ```bash
 cd firmware && tools/chompi.py hold sh -c '
@@ -450,6 +554,10 @@ cd firmware && tools/chompi.py hold sh -c '
 tools/reaper.py --list                          # the cases
 tools/reaper.py --cases daw-transport -v        # one, with REAPER's log
 tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouched
+# the cases with music: numpy, so measure.py's venv
+~/.venvs/frizz/bin/python tools/reaper.py --audio jack \
+  --cases daw-loop-audio,daw-loop-restart,daw-follows-audio --out card/reaper-audio.md
+# daw-follows-audio's timing needs a song whose bars differ: --material generated
 ```
 
 - **One REAPER per audio mode** (`--audio jack,dummy`): the first runs every case, the last
@@ -466,7 +574,8 @@ tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouc
   (the license copied in), deleted after; a file in `~/.config/REAPER` or `~/Apps/REAPER`
   newer than the start fails the run. Its window shows for a moment, and an evaluation copy
   its notice. Nothing reaches Line 1/2: a silent project, the master muted, its JACK ports
-  linked to nothing (`jack_options=2`; a link fails the run). A REAPER that runs no script
+  linked to nothing (`jack_options=2`; a link fails the run), the music's REAPER only to AUX
+  and from the line out (below). A REAPER that runs no script
   within 20 s, or doesn't quit when asked, has a dialog in the way: killed, and said so.
 - **JACK** (through pipewire-jack, the default) takes FRIZZ's MIDI as PipeWire's bridge ports
   (`Midi-Bridge:FrizZ: MIDI 1`), as a desktop REAPER here does; **dummy** uses ALSA's raw node
@@ -488,6 +597,41 @@ tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouc
   project at 60 (3.3x, a try by hand), so x1/2 is judged with its project at 60. `--quick`
   (the host check) leaves out the x1/2 against 120, which is only noted, and listens 2 s to
   each clock factor instead of 4.
+- **With music** (`sound` cases): a REAPER of its own after the first, JACK only, its audio
+  linked by the tool and nothing else: its outputs 3/4 into AUX's sink (measure.py's
+  `FRIZZ_AUX_SINK`, the Scarlett's line outputs 3+4), the line out's left (`FRIZZ_LINE_SOURCE`)
+  into its input 1; any other link fails the run, and so does a Scarlett whose Analogue Output
+  3/4 isn't PCM 3/4 (read with amixer, never set). A track plays the song to outputs 3/4 alone
+  (no master), at a gain that puts its peak at -7 dBFS; a track records input 1, not monitored.
+  The song: `--material FILE`, a WAV of whole bars at 87 BPM (`FRIZZ_DAW_MATERIAL`; else the
+  longest WAV in `card/audio`, the main checkout's if this one has none; `generated`:
+  measure.py's notes and noise), kept out of git. They need numpy: without it they're a SKIP
+  saying so, the other cases run on. `--keep DIR` keeps the takes and the song (in `card/`).
+  - FRIZZ records its loop of 4 bars from notes on a track of REAPER's (PLAY 46 held, LOOP 47
+    on bar 4, channel 16), as a DAW user would: a quantized recording starts on the press
+    (MANUAL), so a press by SysEx lands wherever this computer is. The notes' track goes
+    once the loop is in.
+  - Each bar of the take is found in the song by correlation (GCC-PHAT, `measure.find()`)
+    near where the time line puts it: before the loop the song through FRIZZ live (the dry
+    signal: REAPER's latency compensation, about +38 ms off under pipewire-jack, plus the
+    CHOMPI's own), after it the loop, against the dry signal. The CHOMPI's line out is upside
+    down against AUX; the search takes either polarity and says which.
+  - `daw-loop-audio`: the loop over `--minutes` (2), bar by bar, its drift in ms a minute, its
+    length (PROBE) against 4 bars. `daw-loop-restart`: REAPER stopped and played from the
+    start, the playhead into the loop's middle, a loop range; at x1 and x1/2. After Start the
+    loop's start sits where its LOOP note put it, as REAPER's MIDI reaches FRIZZ against its
+    audio; the other restarts are judged against that. A loop range's turns each start where
+    REAPER's MIDI at the turn lands, on the edge of one of its blocks (0-21 ms at 1024
+    samples), so each turn is judged steady and within a block. `daw-follows-audio`: the loop
+    recorded, REAPER restarted synchronized to FRIZZ (as `daw-follows`), playing the song into
+    AUX, FRIZZ's mix in the middle (CC 87 64): the line out (pw-record; REAPER recording would
+    run on by itself, deaf to a Stop) carries the song as REAPER plays it and the loop, found
+    apart near where REAPER's trace puts the song; the transport turned into a standstill
+    (#174) and pressed back to 1x, the loop against the song before and after. A song whose
+    bars are all alike (a drum loop) can't be told from the loop: said so, not judged;
+    `--material generated` measures it.
+  - On the twin (`test/reaper.cpp`) the stand-in plays the song into the twin's AUX and records
+    its line out (`test/ptytwin.h`'s Audio), with measure.py's generated material.
 - **Stopped and restarted** as `midisuite.py`: Ctrl-C, SIGTERM or SIGHUP put things back and
   close REAPER first (exit 130, 143, 129), and a FRIZZ that restarted stops the run (#171).
 - `test/reaper.cpp` runs it on the twin with `test/reaper_stub.py` in REAPER's place, and
@@ -528,7 +672,9 @@ The segments: nothing on, each effect alone (its knobs moving every 0.25 s), the
 the inserts together, recording a loop, the loop alone, with the inserts, with the delay, with
 PR #7's scene 4 (shifter +7, folder, crusher, slicer, compressor at 1) and the delay, with the
 reverb, then everything, everything with every feedback at the top (the harness's STRESS), and
-the loop with everything. The sends come last because their tails run on (the delay's for 10
+the loop with everything; later ones the chaos key, AUX dry, the mic, the crossfader with two
+loops (the loop beside itself half a pass on, #70) and page 2 off its defaults (`Bench.h`
+lists them all). The sends come last because their tails run on (the delay's for 10
 s). The signal is the bench's own, so runs compare: a little tune in A minor at 120 BPM (Am F
 C G, an arpeggio, bass, kick, hi-hat), made by a few oscillators, so it costs no room for a
 recording. It's made for the next block after each measurement, so its own cost isn't in the
@@ -582,9 +728,15 @@ erase a stuck Seed, but the generic Daisy bootloader it offers is not CHOMPI's.
 ## Where things are in `code/src`
 
 ```
-chompi_main.cpp        entry point: audio callback, main loop, boot sequence, AUX's jack picking the input
-passthroughEngine.h    the engine: the input (AUX or the built-in mic) and its gain, the looper, input/loop mix ("dry/wet" in the code), punch-in FX,
-                       master compressor, output gain, headphone cue, safety limiter
+chompi_main.cpp        entry point: audio callback, main loop, boot sequence, AUX's jack picking the input,
+                       the card lent as a USB drive
+passthroughEngine.h    the engine: the input (AUX, the built-in mic or USB) and its gain, the looper, input/loop mix ("dry/wet" in the code), punch-in FX,
+                       master compressor, output gain, headphone cue, safety limiter, the master to USB
+UsbDevice.h / .cpp     FRIZZ's USB-C port on TinyUSB (../libs/tinyusb): the sound card (UAC1), MIDI,
+                       the card as a drive; TinyUSB's task on TIM7 (#196)
+usb_descriptors.c/.h   the USB descriptors, with and without the sound card; tusb_config.h TinyUSB's settings
+UsbMidiTransport.h     libDaisy's MIDI transport on TinyUSB (test/usbtransport.cpp)
+CardLend.h             the card lent to the computer: what the settings page shows and asks
 FxChain.h              the punch-in effects in their processing order, with a level meter each
 FxParams.h             each effect's knobs: how many, defaults, steps, coarse grids; the compressor's too
 FxSlots.h              each effect's key, LED and colours; the compressor's key
@@ -624,6 +776,8 @@ LedSignal.h            the play page's short LED signals: 3 red or white blinks,
 ui.h                   page plumbing: events, page switching
 EventLog.h             the bug report: every key, knob and MIDI event since power-on, written as
                        a twin script to /FRIZZ/bug-N.txt on SHIFT + VOLUME held (settings page)
+Crash.h                the crash record in the backup SRAM and the watchdog fed by the audio
+                       callback (#105; the fault handler is in chompi_main.cpp)
 Bench.h, BenchProfile.h
                        the CPU bench (only in FRIZZ-bench.bin, `make BENCH=1`) and its cycle marks
 limiter.h, EnvFollower.h
@@ -632,8 +786,7 @@ MicFilter.h            the built-in mic's highpass, TAPE's (without its notches)
 hardware.h             the CHOMPI hardware: encoders, keys, switches, LEDs, battery
 encoder.h / .cpp       encoder driver
 temp_led_stuff.h       LED driver (ui_utils.h: LED flush/clear helpers)
-BootPage.h, RainbowWavePage.h
-                       boot animation, rainbow-wave animation
+BootPage.h             boot animation: the ripple from SHIFT
 chompi_sram.lds        linker script (the firmware runs from SRAM, placed there by the bootloader)
 ```
 
@@ -644,6 +797,10 @@ chompi_sram.lds        linker script (the firmware runs from SRAM, placed there 
   creates on a new card) and writes it only from `MainLoop`, when a scene is saved, copied or
   deleted, 2 s after the compressor's knobs, the mono input or the MIDI settings were last
   changed (`SceneStore.h`), or for a bug report (`EventLog.h`).
+- **TinyUSB is called only from its task and the USB interrupt** (`UsbDevice.h`): MainLoop
+  posts what it wants (a transfer done, the bus left for a switch) and the task does it.
+  TinyUSB's lock masks the USB interrupt, not the task's timer, so a call from MainLoop could be
+  preempted in the middle of TinyUSB's event queue.
 - **MIDI is read in the audio callback, acted on in `MainLoop`.** `MidiControl.h` only notes
   what came (keys, detents, a table of controller values); the play page takes the rest in
   `MainLoop` and answers queries over USB from there, never from the interrupt.

@@ -420,15 +420,17 @@ bool UartTx(uint8_t byte)
     return true;
 }
 static bool usb_host = true;
-bool UsbHost() { return usb_host; }
+bool UsbHost();
 void SetUsbHost(bool host) { usb_host = host; }
+static bool in_usb_task = false; // TinyUSB's task's pass (usb::SetTaskHook), at the block's time
 void UsbTx(const uint8_t* data, size_t size)
 {
     usb_out.append(reinterpret_cast<const char*>(data), size);
     // MIDI out's (MidiOut.h): the clock, the transport, a Song Position; not SysEx
+    const uint64_t at = in_usb_task || main_ns < block_ns ? block_ns : main_ns;
     if (size > 0 && (data[0] == 0xF2 || data[0] >= 0xF8))
         for (size_t i = 0; i < size; i++)
-            midi_out.push_back({(main_ns > block_ns ? main_ns : block_ns) / 1e6, data[i], true});
+            midi_out.push_back({at / 1e6, data[i], true});
 }
 // what arrived since the last block, handed over at its start, as the UART's DMA and the USB
 // interrupt do before the audio callback polls them
@@ -441,11 +443,55 @@ static void Deliver(std::deque<uint8_t>& q, void (*rx)(uint8_t*, size_t, void*),
     rx(bytes.data(), bytes.size(), context);
 }
 
+// ======== USB (UsbDevice.h, #196) ========
+// The computer's side of FRIZZ's USB: on the bus with one layout or the other, away for a
+// switch, its audio both ways, the card lent. A firmware from before TinyUSB has none of it
+// (UsbDevice.h missing): MIDI over USB as libDaisy's, the rest idle
+static const float* usb_audio_in = nullptr; // SetUsbAudioIn's, for this Run()
+static const float* usb_block_in = nullptr; // this block's, interleaved L R
+static bool usb_recording = false;
+static std::vector<float> usb_audio_out;
+static struct
+{
+    bool started = false, audio = true;
+    uint64_t away_until_ns = 0; // a switch: off the bus until then
+    int enumerations = 0;
+    void (*hook)() = nullptr;
+    bool card_on = false, card_gone = false;
+} usb_dev;
+static const uint64_t kUsbAwayNs = 300000000; // as UsbDevice.cpp's kAwayTicks
+
+static bool UsbOnBus() { return usb_dev.started && block_ns >= usb_dev.away_until_ns; }
+bool UsbHost() { return usb_host && (UsbOnBus() || !usb_dev.started); }
+
 // ======== the API (twin.h) ========
+void SetUsbAudioIn(const float* lr) { usb_audio_in = lr; }
+void SetUsbRecording(bool on) { usb_recording = on; }
+std::vector<float> TakeUsbAudioOut()
+{
+    std::vector<float> out;
+    out.swap(usb_audio_out);
+    return out;
+}
+bool UsbAudioOn() { return usb_host && UsbOnBus() && usb_dev.audio; }
+int UsbEnumerations() { return usb_dev.enumerations; }
+#if __has_include("CardLend.h")
+bool CardLent() { return cardlend::Get().lent; }
+#else
+bool CardLent() { return false; }
+#endif
+void EjectCard()
+{
+    if (usb_dev.card_on)
+        usb_dev.card_gone = true;
+}
+
 std::map<std::string, std::string>& CardFiles() { return FakeCard::Get().files; }
 void SetCardPresent(bool present) { FakeCard::Get().present = present; }
 void SetCardSpace(size_t bytes) { FakeCard::Get().space = bytes; }
 int CardOpenFiles() { return FakeCard::Get().open; }
+void SetCardRawPolls(int polls) { FakeCard::Get().raw_polls = polls; }
+int CardRawClash() { return FakeCard::Get().raw_clash; }
 static uint64_t card_write_ns = 0;
 static void CardWriteTime(size_t) { DelayNs(card_write_ns); }
 void SetCardWriteMs(uint32_t ms)
@@ -501,8 +547,16 @@ void Run(size_t blocks, const float* in, float* out)
             Deliver(midi_in, uart_rx, uart_context);
             Deliver(usb_in, usb_rx, usb_context);
 
+            usb_block_in = usb_audio_in ? usb_audio_in + b * kBlockSize * 2 : nullptr;
             if (audio_cb)
                 audio_cb(in_ptr, out_ptr, kBlockSize);
+            // TinyUSB's task, which on the device runs at 4 kHz on its own timer: a pass a block
+            if (usb_dev.hook)
+            {
+                in_usb_task = true;
+                usb_dev.hook();
+                in_usb_task = false;
+            }
 
             window_end = block_ns + kBlockNs;
             if (!main_done && main_ns < window_end)
@@ -516,6 +570,7 @@ void Run(size_t blocks, const float* in, float* out)
 
         block_ns += kBlockNs;
     }
+    usb_audio_in = nullptr;
 }
 
 // ======== keys ========
@@ -666,3 +721,119 @@ void HoldMain(double ms) { main_ns = std::max(main_ns, block_ns) + static_cast<u
 
 bool Restarted() { return ::restarted; }
 } // namespace twin
+
+// ======== FRIZZ's USB device (UsbDevice.h), the twin's own ========
+#if __has_include("UsbDevice.h")
+namespace chompi
+{
+namespace usb
+{
+using twin::usb_dev;
+static Stats stats = {};
+static CardStats card_stats = {};
+// Receive's, as UsbDevice.cpp's: a 1 ms fade in as the computer starts, out over a block as
+// it stops (the device's FIFO priming isn't modelled: the computer's audio comes at once)
+static bool rx_was = false;
+static float rx_gain = 0.f, rx_last[kChannels] = {};
+static float rx_buf[kChannels][kMaxBlock];
+static const float* const rx_ptr[kChannels] = {rx_buf[0], rx_buf[1]};
+
+void Init() {}
+void Start(bool audio)
+{
+    usb_dev.started = true;
+    usb_dev.audio = audio;
+    usb_dev.enumerations++;
+}
+void SetAudio(bool audio)
+{
+    if (audio == usb_dev.audio)
+        return;
+    usb_dev.audio = audio;
+    usb_dev.away_until_ns = twin::block_ns + twin::kUsbAwayNs;
+    usb_dev.enumerations++;
+    if (usb_dev.card_on)
+        usb_dev.card_gone = true; // as tud_umount_cb
+}
+bool Audio() { return usb_dev.audio; }
+bool Host() { return twin::usb_host && twin::UsbOnBus(); }
+bool RxStreaming() { return twin::UsbAudioOn() && twin::usb_block_in; }
+bool TxStreaming() { return twin::UsbAudioOn() && twin::usb_recording; }
+
+const float* const* Receive(size_t size)
+{
+    const bool on = RxStreaming();
+    if (on && !rx_was)
+    {
+        rx_gain = 0.f;
+        stats.rx_starts++;
+    }
+    rx_was = on;
+    for (size_t c = 0; c < kChannels; c++)
+    {
+        if (on)
+        {
+            float gain = rx_gain;
+            for (size_t i = 0; i < size; i++)
+            {
+                gain = fminf(gain + 1000.f / twin::kSampleRate, 1.f);
+                rx_buf[c][i] = twin::usb_block_in[i * 2 + c] * gain;
+            }
+            rx_last[c] = rx_buf[c][size - 1];
+        }
+        else
+        {
+            for (size_t i = 0; i < size; i++)
+                rx_buf[c][i] = rx_last[c] * (1.f - (i + 1) * (1.f / size));
+            rx_last[c] = 0.f;
+        }
+    }
+    if (on)
+    {
+        rx_gain = fminf(rx_gain + size * 1000.f / twin::kSampleRate, 1.f);
+        stats.rx_blocks++;
+    }
+    return rx_ptr;
+}
+
+void Send(const float* const* to_host, size_t size)
+{
+    if (!TxStreaming())
+        return;
+    for (size_t i = 0; i < size; i++)
+        for (size_t c = 0; c < kChannels; c++)
+        {
+            const float x = to_host[c][i];
+            twin::usb_audio_out.push_back(x > 1.f ? 1.f : x < -1.f ? -1.f : x);
+        }
+    stats.tx_blocks++;
+}
+
+const Stats& GetStats()
+{
+    stats.enumerations = static_cast<uint32_t>(usb_dev.enumerations);
+    return stats;
+}
+void ResetFillRange() {}
+
+void SetCard(bool (*)(bool, uint8_t*, uint32_t, uint32_t), uint32_t (*)()) {}
+void CardMode(bool on)
+{
+    usb_dev.card_on = on;
+    usb_dev.card_gone = false;
+}
+bool InCardMode() { return usb_dev.card_on; }
+bool TakeCardGone()
+{
+    // ejected, or the computer gone (SetUsbHost(false): unplugged)
+    const bool gone = usb_dev.card_gone || (usb_dev.card_on && !Host());
+    usb_dev.card_gone = false;
+    return gone;
+}
+void CardTask() {}
+const CardStats& GetCardStats() { return card_stats; }
+
+void SetTaskHook(void (*hook)()) { usb_dev.hook = hook; }
+} // namespace usb
+} // namespace chompi
+#endif

@@ -25,6 +25,10 @@
  *    mic_dry 0
  *    aux_live 1
  *    mic_live 0
+ *    gain_usb 75
+ *    usb_dry 0
+ *    usb_live 1
+ *    usb_audio 1
  *
  *  clock_factor is the effects' tempo in percent of its source's, a MIDI clock's, a loop's
  *  or the tapped or last one (TempoClock.h): 50, 100 or 200;
@@ -37,7 +41,9 @@
  *  mic_dry whether that source goes past the effects rather than through them, aux_live and
  *  mic_live whether it's on the outputs at all (passthroughEngine.h, #177; a file from before
  *  has aux_dry only, the mic then was never live); gain_aux and gain_mic each source's input
- *  gain in percent, 0-100 (VOLUME's page 2). A number the setting doesn't take keeps the
+ *  gain in percent, 0-100 (VOLUME's page 2); gain_usb, usb_dry and usb_live the same for the
+ *  source USB, a computer's audio (#196); usb_audio whether FRIZZ is a USB sound card at all
+ *  (UsbDevice.h; off, MIDI and the card drive alone). A number the setting doesn't take keeps the
  *  default; a word where the number belongs makes the file unreadable (SceneStore.h keeps it
  *  as frizz_master.bak), rather than a garbled gain silencing an input. compressor2 has the compressor's eight parameters, both pages
  *  (MasterComp.h); a file from before has "compressor" with four, threshold, ratio, speed and
@@ -76,6 +82,10 @@ struct MasterSettings
     bool mic_dry;           // the mic past them, as aux_dry (#177)
     bool aux_live;          // AUX on the outputs
     bool mic_live;          // the mic on them: off unless asked for, a speaker would feed it back
+    uint8_t gain_usb;       // USB's input gain (#196)
+    bool usb_dry;           // USB past the effects
+    bool usb_live;          // USB on the outputs
+    bool usb_audio;         // FRIZZ a USB sound card (UsbDevice.h)
 
     /** Every setting on its default */
     void Reset()
@@ -96,6 +106,10 @@ struct MasterSettings
         mic_dry = false;
         aux_live = true;
         mic_live = false;
+        gain_usb = kDefaultInGain;
+        usb_dry = false;
+        usb_live = true;
+        usb_audio = true;
     }
 
     // the last channel, which a setup sending notes to other instruments uses least
@@ -146,6 +160,10 @@ static const Line kLines[] = {
     {"mic_dry", offsetof(MasterSettings, mic_dry), Line::SWITCH, 0, 0, 1},
     {"aux_live", offsetof(MasterSettings, aux_live), Line::SWITCH, 0, 0, 1},
     {"mic_live", offsetof(MasterSettings, mic_live), Line::SWITCH, 0, 0, 1},
+    {"gain_usb", offsetof(MasterSettings, gain_usb), Line::RANGE, 0, 0, 100},
+    {"usb_dry", offsetof(MasterSettings, usb_dry), Line::SWITCH, 0, 0, 1},
+    {"usb_live", offsetof(MasterSettings, usb_live), Line::SWITCH, 0, 0, 1},
+    {"usb_audio", offsetof(MasterSettings, usb_audio), Line::SWITCH, 0, 0, 1},
 };
 
 inline uint8_t* Field(MasterSettings& settings, const Line& line)

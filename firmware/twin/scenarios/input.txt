@@ -1,8 +1,14 @@
-# The input over MIDI (#177): CC 84 the source (0-63 AUX, 64-127 the mic), CC 116 the
-# source's effects (0-63 through, 64-127 dry), CC 117 it live (0-63 off, 64-127 on); in RAM
-# only. Each source keeps its own, shown on the settings page's upper F#, G# and A#. CC 88 and
-# 91 (a keyboard's own) reach nothing. On the device AUX has its cable in, as the twin has
+# The input over MIDI (#177): CC 84 the source in thirds (0-42 AUX, 43-85 the mic, 86-127
+# USB, #196), CC 116 the source's effects (0-63 through, 64-127 dry), CC 117 it live (0-63
+# off, 64-127 on); in RAM only. Each source keeps its own, shown on the settings page's upper
+# F#, G# and A#. CC 88 and 91 (a keyboard's own) reach nothing. On the device AUX has its
+# cable in, as the twin has
 input sine 220 0.3
+# what the card keeps, as a fresh card has it: the device's card holds the player's own (#214)
+set settings aux_dry 0
+set settings aux_live 1
+set settings mic_dry 0
+set settings mic_live 0
 at 6000
 # the global channel 16, whatever the device's card says (in RAM while remote.py plays)
 usb F0 7D 43 48 13 00 10 F7
@@ -12,8 +18,8 @@ wait 300
 toggle 1
 wait 300
 expect led smt 7 00fc00
-expect led smt 8 00fc00
-expect led smt 9 fcfcfc
+expect led smt 8 fcfcfc
+expect led smt 9 00fc00
 toggle 0
 # AUX dry, then off
 midi BF 74 7F
@@ -22,17 +28,17 @@ midi BF 75 00
 wait 300
 toggle 1
 wait 300
-expect led smt 8 000000
-expect led smt 9 242424
+expect led smt 8 242424
+expect led smt 9 000000
 toggle 0
 # the mic, its own: not live; then live and dry
-midi BF 54 7F
+midi BF 54 40
 wait 300
 toggle 1
 wait 300
 expect led smt 7 fc00fc
-expect led smt 8 000000
-expect led smt 9 242424
+expect led smt 8 242424
+expect led smt 9 000000
 toggle 0
 midi BF 75 7F BF 74 7F
 wait 1000
@@ -50,14 +56,14 @@ wait 300
 toggle 1
 wait 300
 expect led smt 7 00fc00
-expect led smt 8 000000
-expect led smt 9 242424
+expect led smt 8 242424
+expect led smt 9 000000
 toggle 0
 midi BF 75 7F BF 74 00
 wait 300
 toggle 1
 wait 300
-expect led smt 8 00fc00
-expect led smt 9 fcfcfc
+expect led smt 8 fcfcfc
+expect led smt 9 00fc00
 toggle 0
 wait 300

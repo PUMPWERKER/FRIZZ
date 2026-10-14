@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 248" width="480" height="248" role="img" aria-labelledby="title desc">
+<title id="title">The loop pages' keys</title>
+<desc id="desc">The Loops and Cubbi pages' keys. SHIFT + lower C#: open the Loops page; again, back to the play page. SHIFT + lower D#: open the Cubbi page; again, back to the play page. SHIFT tap SHIFT tap: back to the play page, from either. SHIFT + white key N taps: its loop at the end of the N-th pass.</desc>
+<style>svg{font-size:13px}text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
+<defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
+<rect width="480" height="248" fill="#131314"/>
+<rect x="20" y="15" width="57.8" height="26" rx="3" class="ba"/>
+<text x="48.9" y="32.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<text x="90.8" y="33" class="t" font-size="15" font-weight="bold">+</text>
+<rect x="105.8" y="15" width="70.6" height="26" rx="3" class="dk"/>
+<text x="141.1" y="32.5" class="t" font-size="12" font-weight="bold">lower C#</text>
+<text x="20" y="58" class="m as" font-size="12">Open the Loops page; again, back to the play page.</text>
+<rect x="20" y="73" width="57.8" height="26" rx="3" class="ba"/>
+<text x="48.9" y="90.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<text x="90.8" y="91" class="t" font-size="15" font-weight="bold">+</text>
+<rect x="105.8" y="73" width="70.6" height="26" rx="3" class="dk"/>
+<text x="141.1" y="90.5" class="t" font-size="12" font-weight="bold">lower D#</text>
+<text x="20" y="116" class="m as" font-size="12">Open the Cubbi page; again, back to the play page.</text>
+<rect x="20" y="131" width="57.8" height="26" rx="3" class="ba"/>
+<text x="48.9" y="148.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<text x="82.8" y="148.5" class="m as" font-size="12">tap</text>
+<rect x="106.6" y="131" width="57.8" height="26" rx="3" class="ba"/>
+<text x="135.5" y="148.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<text x="169.4" y="148.5" class="m as" font-size="12">tap</text>
+<text x="20" y="174" class="m as" font-size="12">Back to the play page, from either.</text>
+<rect x="20" y="189" width="57.8" height="26" rx="3" class="ba"/>
+<text x="48.9" y="206.5" class="t" font-size="12" font-weight="bold">SHIFT</text>
+<text x="90.8" y="207" class="t" font-size="15" font-weight="bold">+</text>
+<rect x="105.8" y="189" width="73.9" height="26" rx="3" class="wk"/>
+<text x="142.7" y="206.5" class="gt" font-size="12" font-weight="bold">white key</text>
+<text x="184.7" y="206.5" class="m as" font-size="12">N taps</text>
+<text x="20" y="232" class="m as" font-size="12">Its loop at the end of the N-th pass.</text>
+</svg>

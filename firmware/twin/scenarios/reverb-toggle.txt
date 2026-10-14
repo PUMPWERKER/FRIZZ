@@ -1,0 +1,83 @@
+# The reverb latched on and off quickly, ten times at 100-300 ms, as a player heard small
+# crackles doing it on beta.3: their scene 2's reverb (decay, diffusion and tone .6, Level at its
+# default) with the chaos key latched (its FX chance and scramble at 0, so it drops nothing), the
+# built-in mic live through the effects, and a loop of it playing. The latches go over the
+# developers' SET (remote.py set latch), which takes on the device every time; the key held and
+# SHIFT tapped there doesn't always (#187). The twin's output and a recording of the device's
+# headphones had no step around the latches, and the device's load stayed near 52 %. On the
+# device the test signal takes the mic's place (#245). Nothing is saved.
+input sine 220 0.05
+mic sine 220 0.05
+# what the card keeps, as a fresh card has it, but the mic live: the device's card holds the
+# player's own (#218)
+set settings mic_dry 0
+set settings mic_live 1
+set settings aux_dry 0
+set settings aux_live 1
+at 2000
+# the global channel 16, whatever the device's card says, and CC 84 on it: the mic the source
+usb F0 7D 43 48 13 00 10 F7
+midi BF 54 40
+wait 300
+set reverb 0 0.6
+set reverb 1 0.6
+set reverb 2 0.6
+set reverb 3 0
+set reverb 4 0
+set reverb 5 0
+set reverb 6 0.5
+set reverb 7 0.75
+set chaos 0 0
+set chaos 1 0
+set chaos 2 0.25
+set chaos 3 0
+set latch chaos on
+# a 2 s loop of the mic
+wait 200
+tap KEY_28
+wait 2000
+tap KEY_28
+wait 300
+wait 1000
+# the reverb on and off, ten times
+set latch reverb on
+wait 200
+set latch reverb off
+wait 150
+set latch reverb on
+wait 120
+set latch reverb off
+wait 200
+set latch reverb on
+wait 250
+set latch reverb off
+wait 100
+set latch reverb on
+wait 150
+set latch reverb off
+wait 150
+set latch reverb on
+wait 100
+set latch reverb off
+wait 300
+set latch reverb on
+wait 200
+set latch reverb off
+wait 120
+set latch reverb on
+wait 180
+set latch reverb off
+wait 200
+set latch reverb on
+wait 150
+set latch reverb off
+wait 150
+set latch reverb on
+wait 300
+set latch reverb off
+wait 100
+set latch reverb on
+wait 200
+set latch reverb off
+# its tail
+wait 3000
