@@ -90,6 +90,7 @@ void Init()
 #if FRIZZ_USB_AUDIO
     for(size_t c = 0; c < kRxChannels; c++)
         rx_ptr[c] = rx_buf[c];
+    ResetFillRange();
 #endif
 
     // PB14/PB15: the OTG_HS core's full speed PHY
@@ -215,6 +216,12 @@ void Watch(uint32_t now_ms)
 bool RxStreaming() { return rx_on; }
 
 const Stats& GetStats() { return stats; }
+
+void ResetFillRange()
+{
+    stats.rx_min = 0xFFFF;
+    stats.rx_max = 0;
+}
 
 static inline float Get24(const uint8_t* p) { return kJackPolarity * s242f(p[0] | p[1] << 8 | p[2] << 16); }
 
@@ -524,6 +531,25 @@ extern "C"
             chompi::usb::Post(chompi::usb::req_rx, chompi::usb::alt_rx = on);
         else if(itf == ITF_NUM_AUDIO_STREAMING_TX)
             chompi::usb::Post(chompi::usb::req_tx, chompi::usb::alt_tx = on);
+        return true;
+    }
+
+    // each packet from the host, in the USB interrupt, once it's in the OUT FIFO
+    bool tud_audio_rx_done_isr(uint8_t rhport, uint16_t n_bytes_received, uint8_t func_id, uint8_t ep_out,
+                               uint8_t cur_alt_setting)
+    {
+        (void)rhport;
+        (void)ep_out;
+        (void)cur_alt_setting;
+        chompi::usb::Stats& s = chompi::usb::stats;
+        const uint16_t frames = n_bytes_received / chompi::usb::kRxFrameBytes;
+        s.rx_packets++;
+        s.rx_short += frames < FRIZZ_USB_SAMPLE_RATE / 1000;
+        s.rx_long += frames > FRIZZ_USB_SAMPLE_RATE / 1000;
+        const uint16_t fill = tud_audio_n_available(func_id);
+        s.rx_full += fill >= CFG_TUD_AUDIO_FUNC_1_EP_OUT_SW_BUF_SZ;
+        s.rx_min = fill < s.rx_min ? fill : s.rx_min;
+        s.rx_max = fill > s.rx_max ? fill : s.rx_max;
         return true;
     }
 

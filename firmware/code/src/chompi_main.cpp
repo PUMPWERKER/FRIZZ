@@ -203,6 +203,15 @@ static int UsbDev(const uint8_t* arg, size_t len, uint8_t* d)
             n = UsbPut(d, n, v, 5);
         n = UsbPut(d, n, s.rx_fill, 2);
         n = UsbPut(d, n, s.tx_fill, 2);
+        if (len > 1 && arg[1] == 1) // 0 1: the host's packets instead
+        {
+            n = 1;
+            for (uint32_t v : {s.rx_packets, s.rx_short, s.rx_long, s.rx_full})
+                n = UsbPut(d, n, v, 5);
+            n = UsbPut(d, n, s.rx_min == 0xFFFF ? 0 : s.rx_min, 2);
+            n = UsbPut(d, n, s.rx_max, 2);
+            usb::ResetFillRange();
+        }
 #endif
         return static_cast<int>(n);
     }

@@ -66,7 +66,14 @@ struct Stats
     uint32_t tx_full;    // blocks dropped, the IN FIFO full
     uint16_t rx_fill;    // the OUT FIFO's bytes at the last block
     uint16_t tx_fill;    // the IN FIFO's
+    // the host's packets (the USB interrupt): how many, of fewer / exactly / more frames than
+    // a ms's 48 (the feedback at work), the OUT FIFO full after one (TinyUSB's is overwritable:
+    // a packet's worth lost), its fill's lowest and highest after a packet since the last ask
+    uint32_t rx_packets, rx_short, rx_long, rx_full;
+    uint16_t rx_min, rx_max;
 };
+/** The counts' fill extremes start again (kCmdDev's USB 0 asks) */
+void ResetFillRange();
 const Stats& GetStats();
 #endif
 
