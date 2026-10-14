@@ -185,6 +185,14 @@ inline bool SdRawRecover(bool& reinit, bool force = false)
 inline void SdRawFlowControl(bool) {}
 inline uint32_t SdRawClkcr() { return 0; }
 inline void SdDiskLink(const char*) {}
+// a sector of the FAT, as the loop transfer counts the free clusters (LoopTransfer.h)
+inline DRESULT SdDiskRead(BYTE, BYTE* buf, DWORD sector, UINT)
+{
+    if (!FakeCard::Get().present)
+        return RES_ERROR;
+    FakeCard::Get().FatRead(sector, buf);
+    return RES_OK;
+}
 // the twin lends no sectors: its card is files (FakeCard), the computer's side a stand-in
 inline bool SdDiskTransfer(bool, uint8_t*, uint32_t, uint32_t) { return false; }
 inline uint32_t SdDiskSectors() { return 0; }

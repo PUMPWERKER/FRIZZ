@@ -294,6 +294,51 @@ inline int SlotOf(const char* name, bool cubbi, size_t& bank)
     return s;
 }
 
+/** "a1" ... "h15", a FRIZZ slot's name, from p: the end */
+inline char* SlotName(char* p, size_t bank, size_t slot)
+{
+    *p++ = static_cast<char>('a' + bank);
+    if (slot >= 9)
+        *p++ = '1';
+    *p++ = static_cast<char>('0' + (slot + 1) % 10);
+    return p;
+}
+/** A swap's temp file, "/FRIZZ/a1-b2.swp": a1's file on its way to b2 (LoopTransfer.h,
+ *  docs/LOOP_PROTOCOL.md 5.6), into path (20 bytes) */
+inline void SwapPath(char* path, size_t from, size_t to)
+{
+    memcpy(path, "/FRIZZ/", 7);
+    char* p = SlotName(path + 7, from / kSlots, from % kSlots);
+    *p++ = '-';
+    p = SlotName(p, to / kSlots, to % kSlots);
+    memcpy(p, ".swp", 5);
+}
+/** A FRIZZ slot's name at p in any case ("a1" ... "H15", no leading zero): its id (bank * 15 +
+ *  slot), p past it; -1 for none */
+inline int SlotAt(const char*& p)
+{
+    const int b = (p[0] | 0x20) - 'a';
+    if (b < 0 || b >= static_cast<int>(kFrizzBanks) || p[1] < '1' || p[1] > '9')
+        return -1;
+    int s = p[1] - '0';
+    p += 2;
+    if (*p >= '0' && *p <= '9')
+        s = s * 10 + *p++ - '0';
+    return s <= static_cast<int>(kSlots) ? b * static_cast<int>(kSlots) + s - 1 : -1;
+}
+/** Whether name is a swap's temp file ("a1-b2.swp", any case): from, to its slots' ids */
+inline bool SwapOf(const char* name, int& from, int& to)
+{
+    from = SlotAt(name);
+    if (from < 0 || *name++ != '-')
+        return false;
+    to = SlotAt(name);
+    for (int k = 0; k < 5; k++)
+        if ((name[k] | (k < 4 ? 0x20 : 0)) != ".swp"[k])
+            return false;
+    return to >= 0 && to != from;
+}
+
 /** The loader's memory beside the buffer, in SDRAM (chompi_main.cpp): the header's window
  *  (the SDMMC's DMA lands there, so 32-byte aligned), the slots, FatFs's objects */
 struct Mem
@@ -343,6 +388,8 @@ public:
         ms_clock_ = ms;
         ticks_ = ticks;
         ticks_us_ = tick_freq / 1000000u;
+        // its memory isn't cleared at boot (SDRAM_NOINIT_LATER): no slot read before its scan
+        memset(mem_->slots, 0, sizeof(mem_->slots));
         Request(SCANNING);
     }
 
@@ -676,14 +723,45 @@ private:
                 f_closedir(&dir);
                 dir_open_ = false;
                 listed_ = true;
+                if (!cubbi)
+                    Repair();
                 return;
             }
             entries_++;
             size_t bank = 0;
-            if (!(mem_->info.fattrib & AM_DIR))
-                if (const int s = loops::SlotOf(mem_->info.fname, cubbi, bank))
-                    found_[bank] |= static_cast<uint16_t>(1u << (s - 1));
+            int from, to;
+            if (mem_->info.fattrib & AM_DIR)
+                ;
+            else if (const int s = loops::SlotOf(mem_->info.fname, cubbi, bank))
+                found_[bank] |= static_cast<uint16_t>(1u << (s - 1));
+            else if (!cubbi && swaps_ < kSwaps && loops::SwapOf(mem_->info.fname, from, to))
+            {
+                swap_[swaps_][0] = static_cast<uint8_t>(from);
+                swap_[swaps_++][1] = static_cast<uint8_t>(to);
+            }
         }
+    }
+
+    /** A swap a power cut interrupted (5.6), found in /FRIZZ's listing: its temp file to where
+     *  it was going if that's free (the swap finished), else back where it came from if that
+     *  is (undone), else left; never deleted, it holds a loop */
+    LOOP_LOADER_ONCE void Repair()
+    {
+        for (size_t i = 0; i < swaps_; i++)
+            for (const uint8_t id : {swap_[i][1], swap_[i][0]})
+            {
+                uint16_t& found = found_[id / loops::kSlots];
+                const uint16_t bit = static_cast<uint16_t>(1u << (id % loops::kSlots));
+                if (found & bit)
+                    continue;
+                char tmp[20], path[kPathLen];
+                loops::SwapPath(tmp, swap_[i][0], swap_[i][1]);
+                SlotPath(path, id / loops::kSlots, id % loops::kSlots);
+                if (f_rename(tmp, path) == FR_OK)
+                    found |= bit;
+                break;
+            }
+        swaps_ = 0;
     }
 
     /** Opens the slot's file and checks its header. The file is closed again, unless keep and
@@ -1043,6 +1121,8 @@ private:
     bool listed_ = false, dir_open_ = false, tape_ = false;
     uint32_t entries_ = 0;
     uint16_t found_[loops::kBanks] = {};
+    static const size_t kSwaps = 4; // swaps' temp files a scan puts right
+    uint8_t swap_[kSwaps][2] = {}, swaps_ = 0;
     // the load
     bool opened_ = false, mapping_ = false, inflight_ = false;
     uint8_t result_ = loops::EMPTY;
