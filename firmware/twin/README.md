@@ -27,7 +27,11 @@ What it can't show: anything about time on the chip. The CPU load (crackles), th
 memory placement, the codec, the card's speed. Those need the device (CLAUDE.md, *FRIZZ's
 audio callback is CPU-bound*). Nor races between the audio interrupt and `main()`: here the
 callback only comes between blocks, `main()` only gives way in `GetNow` and `System::Delay*`,
-the charger's I2C reply arrives at once and each LED chain's DMA finishes once per block.
+the charger's I2C reply arrives at once and each LED chain's DMA finishes once per block. A
+race found on the device can be forced at one place: the firmware marks it
+`FRIZZ_PREEMPT("name")` (nothing on the CHOMPI), and a check's `twin::PreemptAt("name")` brings
+the callback there each time `main()` passes it, unless a `ScopedIrqBlocker` holds it off
+(#302, `ui.cpp`'s `loops-switch-fade`).
 
 ## In the browser
 

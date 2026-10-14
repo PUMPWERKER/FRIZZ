@@ -451,12 +451,6 @@ static uint32_t usb_switch_at = 0;
 
 /** The card lent to the computer as a USB drive, or taken back, as the settings page or the
  *  developers' SysEx asked (CardLend.h), and the computer's transfers. True while it's lent */
-static void CardRemount()
-{
-    f_mount(&fsi.GetSDFileSystem(), fsi.GetSDPath(), 1);
-    EnterFrizzDir();
-}
-
 __attribute__((optimize("Os"))) static bool CardLendProcess(uint32_t now)
 {
     cardlend::State& card = cardlend::Get();
@@ -468,8 +462,10 @@ __attribute__((optimize("Os"))) static bool CardLendProcess(uint32_t now)
     {
         usb::CardMode(false);
         usb::CardTask(); // one the computer still waited on fails
-        CardRemount();
         card.lent = false;
+        // mounted afresh; what the computer changed of the scenes and the settings is read
+        // again, unless the device changed its own meanwhile (SceneStore::Reread)
+        ui.Reread(scene_store.Reread(ui.MasterWaiting()));
 #if !FRIZZ_BENCH
         loop_loader.Request(LoopLoader::SCANNING); // the computer may have changed them
 #endif

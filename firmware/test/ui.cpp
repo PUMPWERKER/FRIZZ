@@ -4001,6 +4001,66 @@ int main()
               "loops-now: an acid chunk's 12 beats set 100 BPM for 3 bars of 7.2 s");
     }});
 
+    // #302: a switch at once is crossfaded however MainLoop and the audio interrupt meet. The
+    // interrupt that switches may come between LoopControls reading the looper's switches
+    // and asking whether its switch still waits (twin::PreemptAt): that switch is counted
+    // once, not handed over again, which switched once more and dropped the fade-out. And a
+    // second switch within the first's 10 ms fade waits for it, rather than cutting it off
+    cases.push_back({"loops-switch-fade", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a3", SineWav(120000, 2, 275.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 1000);
+        RunMs(300);
+        // the interrupt between the two looks, each pass; by MIDI (CC 0 = 1, a program change,
+        // at once), with a load, then by hand without one
+        PreemptAt("loops-switched");
+        uint32_t was = Probe().loop_switches;
+        max_step = 0.f;
+        Trs({kCC, 0, 1});
+        Trs({kPC, 1});
+        const int midi = UntilLength(72000, 1000);
+        RunMs(100);
+        const float by_midi = max_step;
+        const uint32_t midi_switches = Probe().loop_switches - was;
+        was = Probe().loop_switches;
+        max_step = 0.f;
+        Tap(kLoopKeys[0]);
+        const int hand = UntilLength(96000, 1000);
+        RunMs(100);
+        const float by_hand = max_step;
+        const uint32_t hand_switches = Probe().loop_switches - was;
+        PreemptAt(nullptr);
+        printf("      interrupted: by MIDI after %d ms, %u switches, largest step %.4f; by hand after %d ms, "
+               "%u switches, largest step %.4f\n",
+               midi, midi_switches, by_midi, hand, hand_switches, by_hand);
+        Check(midi >= 0 && hand >= 0 && midi_switches == 1 && hand_switches == 1 && by_midi < .01f
+                  && by_hand < .01f,
+              "loops-switch-fade: the interrupt between LoopControls' looks: one switch, crossfaded "
+              "(no step), by MIDI and by hand");
+        // two at once 3 ms apart, both loaded (A/03 loaded beside A/01): back to A/01, then
+        // A/03 again while A/03 still fades out; the second waits for that fade
+        Tap(kLoopKeys[2]);
+        UntilLength(120000, 1000);
+        RunMs(300);
+        was = Probe().loop_switches;
+        max_step = 0.f;
+        Trs({kPC, 0});
+        RunMs(3);
+        Trs({kPC, 2});
+        RunMs(100);
+        const float twice = max_step;
+        const ClockState st = Probe();
+        printf("      A/01 then A/03 3 ms later: %u switches, A/03 playing %d, largest step %.4f\n",
+               st.loop_switches - was, st.loop_length == 120000, twice);
+        Check(st.loop_switches - was == 2 && st.loop_length == 120000 && twice < .01f,
+              "loops-switch-fade: a second switch within the first's fade waits for it: both "
+              "crossfaded (no step)");
+    }});
+
     // the tape runs on across loops (#70): a switch keeps the speed and the direction, at once
     // and planned, and a standstill; the new loop's tempo its own times the speed. A new
     // recording starts at 1x
@@ -7522,6 +7582,178 @@ int main()
         Check(recording == 3 && not_lent_rec, "card-lend-refused: while LOOP records: 3 red blinks, not lent");
         Check(not_lent_writing && written && lent_after,
               "card-lend-refused: while a bug report is written: not lent; once it's written, lent");
+    }});
+
+    // taken back, what the computer changed of FRIZZ's files is read again as at boot (#291,
+    // SceneStore::Reread): the settings at once, the input gain gliding to the file's; the
+    // scenes for their next recall, what plays stays; nothing written to the card
+    static auto lend = [](bool on) {
+        Ask({0x3E, 0x0E, 1, 2, on ? 1 : 0});
+        RunMs(300);
+    };
+    // a setting as the developers' GET has it (masterfile::kLines' index), -1 without an answer
+    static auto setting = [](int line) {
+        const std::string s = Ask({0x3E, 2, 1, 0x23});
+        return s.size() > static_cast<size_t>(6 + 2 * line)
+                   ? static_cast<uint8_t>(s[5 + 2 * line]) << 7 | static_cast<uint8_t>(s[6 + 2 * line])
+                   : -1;
+    };
+    // a scene slot as kCmdSceneGet's last part has it: used, its latches (bit 4 the filter's)
+    static auto slot_latches = [](int slot) {
+        const std::string s = Ask({0x30, slot, 8});
+        return s.size() == 5 && s[2] ? static_cast<uint8_t>(s[3]) << 7 | static_cast<uint8_t>(s[4]) : -1;
+    };
+    // the computer unlatches the filter in scene 1
+    static auto unlatch_filter = [](std::string file) {
+        const size_t at = file.find("\nfilter 1 ");
+        if (at != std::string::npos)
+            file[at + 8] = '0';
+        return file;
+    };
+    static const int kFilterBit = 1 << 4; // FxId 4
+    cases.push_back({"card-lend-reread", [] {
+        CardFiles()["/FRIZZ/frizz_master.txt"] = "FRIZZ master 1\n";
+        RunMs(kReadyMs);
+        Latch("KEY_5");
+        Save(1);
+        RunMs(1000);
+        const float before = RunMs(300);
+        lend(true);
+        const bool lent = CardLent();
+        const int enumerated = UsbEnumerations();
+        const std::string master = "FRIZZ master 1\nmidi_channel 5\nled_brightness 50\ngain_aux 25\n"
+                                   "compressor2 0 500000 500000 500000 1000000 0 400000 0\nusb_audio 0\n";
+        const std::string scenes = unlatch_filter(Card("/FRIZZ/frizz_scenes.txt"));
+        CardFiles()["/FRIZZ/frizz_master.txt"] = master;
+        CardFiles()["/FRIZZ/frizz_scenes.txt"] = scenes;
+        EjectCard();
+        const float first = RunMs(2);
+        RunMs(400);
+        const float after = RunMs(300);
+        const bool back = !CardLent();
+        const int channel = setting(1), leds = setting(6), gain = setting(10);
+        const std::string comp = Ask({0x3E, 2, 1, 0x20});
+        const float knob7 = comp.size() == 21 ? KnobOf(comp[17], comp[18]) : -1.f;
+        const bool usb_off = !UsbAudioOn() && UsbEnumerations() > enumerated;
+        const bool plays = LatchedFx(Ask({0x20})) & kFilterBit;
+        const int slot1 = slot_latches(1);
+        Tap(kSceneKeys[1]); // recalled: the computer's scene 1
+        RunMs(300);
+        const bool recalled = LatchedFx(Ask({0x20})) & kFilterBit;
+        RunMs(3000);
+        const bool untouched = Card("/FRIZZ/frizz_master.txt") == master && Card("/FRIZZ/frizz_scenes.txt") == scenes
+                               && Card("/FRIZZ/frizz_master.bak").empty() && Card("/FRIZZ/frizz_scenes.bak").empty();
+        printf("      lent %d, back %d: channel %d, LEDs %d %%, AUX %d %%, the compressor's knob 7 %.3f, USB audio off %d;"
+               " level %.4f, 2 ms after %.4f, then %.4f; filter plays %d, slot 1 latches %d, recalled %d\n",
+               lent, back, channel, leds, gain, knob7, usb_off, before, first, after, plays, slot1, recalled);
+        Check(lent && back && channel == 5 && leds == 50 && gain == 25 && fabsf(knob7 - .4f) < 1e-3f,
+              "card-lend-reread: taken back, the settings the computer changed apply");
+        Check(usb_off, "card-lend-reread: USB audio switched off the file's way, FRIZZ on the bus again");
+        Check(after < .7f * before && first > after + .5f * (before - after),
+              "card-lend-reread: the input gain glides to the file's, as a turn does");
+        Check(plays && slot1 >= 0 && !(slot1 & kFilterBit) && !recalled,
+              "card-lend-reread: the scene changed: what plays stays, its recall brings the computer's");
+        Check(untouched, "card-lend-reread: the card not written, no .bak");
+    }});
+
+    // the device changed its own meanwhile: it wins, the computer's files go to the .bak: a
+    // scene saved while lent (its save waiting), a setting changed just before it's taken back
+    // (in its rest)
+    cases.push_back({"card-lend-reread-device-wins", [] {
+        CardFiles()["/FRIZZ/frizz_master.txt"] = "FRIZZ master 1\n";
+        RunMs(kReadyMs);
+        Latch("KEY_5");
+        Save(1);
+        RunMs(1000);
+        lend(true);
+        const std::string master = "FRIZZ master 1\nmidi_channel 5\n";
+        const std::string scenes = unlatch_filter(Card("/FRIZZ/frizz_scenes.txt"));
+        CardFiles()["/FRIZZ/frizz_master.txt"] = master;
+        CardFiles()["/FRIZZ/frizz_scenes.txt"] = scenes;
+        Save(2); // the filter still latched
+        RunMs(500);
+        Ask({0x3E, 3, 1, 0x23, 3, 1, 200 - 128}); // clock_factor 200, in its rest
+        RunMs(100);
+        lend(false);
+        RunMs(3000);
+        const std::string now_scenes = Card("/FRIZZ/frizz_scenes.txt"), now_master = Card("/FRIZZ/frizz_master.txt");
+        const int channel = setting(1);
+        printf("      channel %d; scenes: slot 1 filter %d, slot 2 %d\n", channel,
+               SavedLatch(now_scenes, 1, "filter"), SavedLatch(now_scenes, 2, "filter"));
+        Check(Card("/FRIZZ/frizz_scenes.bak") == scenes && SavedLatch(now_scenes, 1, "filter") == 1
+                  && SavedLatch(now_scenes, 2, "filter") == 1,
+              "card-lend-reread-device-wins: a scene saved while lent: the device's scenes on the card, the computer's the .bak");
+        Check(Card("/FRIZZ/frizz_master.bak") == master && channel == 16
+                  && now_master.find("\nclock_factor 200\n") != std::string::npos
+                  && now_master.find("\nmidi_channel 16\n") != std::string::npos,
+              "card-lend-reread-device-wins: a setting in its rest: the device's settings, the computer's the .bak");
+    }});
+
+    // a file the computer left unreadable: the device's state stays, the file goes to the .bak
+    // and the device's own is written; one it deleted: the state stays, the next save writes it
+    cases.push_back({"card-lend-reread-bad", [] {
+        CardFiles()["/FRIZZ/frizz_master.txt"] = "FRIZZ master 1\n";
+        RunMs(kReadyMs);
+        Ask({0x3E, 3, 1, 0x23, 3, 1, 200 - 128}); // clock_factor 200
+        RunMs(2500);
+        Latch("KEY_5");
+        Save(1);
+        RunMs(1000);
+        lend(true);
+        const std::string master = "FRIZZ master 1\ngain_aux loud\n", scenes = "FRIZZ scenes 1\nlayout 99\n";
+        CardFiles()["/FRIZZ/frizz_master.txt"] = master;
+        CardFiles()["/FRIZZ/frizz_scenes.txt"] = scenes;
+        lend(false);
+        RunMs(1000);
+        const int factor = setting(3), slot1 = slot_latches(1);
+        const std::string now_master = Card("/FRIZZ/frizz_master.txt"), now_scenes = Card("/FRIZZ/frizz_scenes.txt");
+        Check(factor == 200 && slot1 >= 0 && (slot1 & kFilterBit),
+              "card-lend-reread-bad: unreadable files: the device's settings and scenes stay");
+        Check(Card("/FRIZZ/frizz_master.bak") == master && Card("/FRIZZ/frizz_scenes.bak") == scenes
+                  && now_master.find("\nclock_factor 200\n") != std::string::npos
+                  && SavedLatch(now_scenes, 1, "filter") == 1,
+              "card-lend-reread-bad: the computer's in the .bak, the device's written at once");
+        lend(true);
+        CardFiles().erase("/FRIZZ/frizz_master.txt");
+        lend(false);
+        RunMs(1000);
+        const bool gone = Card("/FRIZZ/frizz_master.txt").empty() && setting(3) == 200;
+        Ask({0x3E, 3, 1, 0x23, 6, 0, 50}); // the LEDs at 50 %
+        RunMs(2500);
+        const std::string again = Card("/FRIZZ/frizz_master.txt");
+        Check(gone && again.find("\nclock_factor 200\n") != std::string::npos,
+              "card-lend-reread-bad: deleted: the settings stay, the next save writes them");
+    }});
+
+    // what MIDI set without the card (CC 86's input gain) stays when the file is unchanged, and
+    // goes to the file's when the computer changed it, as after a start; with PERSIST 0 the
+    // device's change wins and the card stays as the computer left it
+    cases.push_back({"card-lend-reread-midi", [] {
+        CardFiles()["/FRIZZ/frizz_master.txt"] = "FRIZZ master 1\n";
+        RunMs(kReadyMs);
+        const std::string saved = Ask({0x20}).substr(17, 2);
+        Trs({kCC, 86, 100});
+        RunMs(100);
+        const std::string midi = Ask({0x20}).substr(17, 2);
+        lend(true);
+        lend(false);
+        const std::string same = Ask({0x20}).substr(17, 2);
+        lend(true);
+        CardFiles()["/FRIZZ/frizz_master.txt"] = "FRIZZ master 1\nled_brightness 50\n";
+        lend(false);
+        const std::string changed = Ask({0x20}).substr(17, 2);
+        Check(midi != saved && same == midi, "card-lend-reread-midi: the file unchanged: CC 86's gain stays");
+        Check(changed == saved && setting(6) == 50, "card-lend-reread-midi: the file changed: the gain goes to the file's");
+        Ask({0x3E, 1, 1, 0}); // PERSIST 0
+        lend(true);
+        const std::string master = "FRIZZ master 1\nmidi_channel 5\n";
+        CardFiles()["/FRIZZ/frizz_master.txt"] = master;
+        Ask({0x3E, 3, 1, 0x23, 3, 1, 200 - 128}); // clock_factor 200, in its rest
+        lend(false);
+        RunMs(3000);
+        Check(setting(1) == 16 && setting(3) == 200 && Card("/FRIZZ/frizz_master.txt") == master
+                  && Card("/FRIZZ/frizz_master.bak").empty(),
+              "card-lend-reread-midi: PERSIST 0: the device's settings, the card as the computer left it");
     }});
 
     // ... and while a loop loads from the card (as during the loops' scan, LoopLoader::Busy):
