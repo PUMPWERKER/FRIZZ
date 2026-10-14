@@ -9,7 +9,7 @@ from `build/FRIZZ.map`.
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 275,380 B (99 %) | **~3.1 KB** | all the code, and the initial values of `.data` |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 275,308 B (99 %) | **~3.2 KB** (the bench build ~2.1 KB) | all the code, and the initial values of `.data` |
 | `SRAM` (AXI SRAM) | 240 KB | 220,436 B (90 %) | ~25 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,752 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
@@ -34,6 +34,33 @@ slots' names and sizes beside the loader's (7 KB). Nothing of it needs a constru
 handling (`LoopTransfer::Do`, 2.4 KB); the next feature in `FRIZZ.bin` needs room made first
 (below: step 3 for the card code alone measured −4.1 KB in `FRIZZ.bin`, −4.5 KB in the bench
 build).
+
+**`FxChain::Run` in a translation unit of its own (#286).** The effects' per-sample code
+(`FxChainRun.h`) is compiled alone as `FxChain.cpp`, with the inline functions it doesn't
+inline (`Insert<>` for the freezer, crusher and tape stop, `Shifter::Process`,
+`Warble::Process`, `FxOutput::Slew`/`Begin`/`Join`, the delay's read, the reverb): 37.1 KB of
+code, `chompi_main.o` 121.9 KB. In one unit with everything else, `Run`'s machine code changed
+with code the audio never runs: #285's card code built `-Os` and #298's loop fixes (+580 B in
+`LoopTransfer.h`) each turned `Run`'s two `Shifter::Process` call sites into three, and only
+`Run`: `PassthroughEngine::Process`, `AudioCallback`, the `Insert<>`s and the effects' own
+code came out the same. A 2 KB function that never runs, added to `chompi_main.cpp`, didn't
+change it (only an address word moved): what moves it is real code. Since the split, both
+patches and that function leave `FxChain.o`'s code identical (`objdump -dr`), and `Run` and
+the 20 functions beside it in the ELF identical apart from the addresses of their constants,
+which sit after all the code. `FxChain.o` depends on the effects' headers, `FxCommon.h`,
+`BenchProfile.h`, `FrizzHot.h` and, through `FxTempoLfo.h`'s `TempoClock.h`, `MidiClock.h` and
+`UsbDevice.h`: a change there can still move it.
+
+The split itself changed `Run` once (three call sites each for `Shifter::Process` and
+`Warble::Process`, as #298 had them), and left the rest of the audio path as it was. Room:
+`FRIZZ.bin` −72 B (**~3.2 KB free**); the bench build +1,408 B (274,952 → 276,360 B, **~2.1 KB
+free**): in the small unit GCC leaves the filter's `Insert` out of line there
+(`max-inline-insns-single`; 3.5 KB beside a 1.8 KB smaller `Run`), where `FRIZZ.bin` inlines it
+as before. Data didn't move: `.data`, `.bss`, DTCM and SDRAM are at `main`'s addresses, symbol
+by symbol. That took the delay's output lines and the reverb's pre-delay declared only in
+`FxChain.cpp` (`FRIZZ_FXCHAIN_CPP`): weak definitions in a section of their own, ld kept a
+copy for each object (DTCM +6 KB, SDRAM +128 KB) and shifted `chompi_main.o`'s data behind
+them. With `make ITCM=1`, `Run` is in `.itcmram.fxchain` (`FRIZZ_HOT_RUN`, `FrizzHot.h`).
 
 **The loop loader (#70, for 1.1)** adds a second loop buffer, 16 bars at 50 BPM (14.75 MB,
 `.sdram_noinit.later`, linked after the loop and the event log so they keep their addresses),
@@ -141,7 +168,7 @@ Where the code goes (`.text` + `.rodata` by object, from the map):
 
 | | Bytes |
 |---|---|
-| FRIZZ itself (`chompi_main.o`: one translation unit, `-O3`) | 96,600 |
+| FRIZZ itself (`chompi_main.o` 121,900 and `FxChain.o` 37,100, `-O3`; 2026-10-14) | 159,000 |
 | libDaisy and the STM32 HAL | 87,700 |
 | FatFs (`ff.o`, `ccsbcs.o`, `diskio.o`) | 14,700 |
 | newlib-nano, libm, libgcc | 11,400 |
@@ -234,7 +261,9 @@ slower.
 core's fastest code memory, with no cache to miss. With
 `make ITCM=1` (built apart in `build-itcm/`, `build-bench-itcm/` with `BENCH=1`) the per-sample functions
 (`FxChain::Process` and `Run`, the effects that aren't inlined into them, `PassthroughEngine::Process`,
-the looper, the delay's read, the reverb, `AudioCallback`) are marked `FRIZZ_HOT` and run
+the looper, the delay's read, the reverb, `AudioCallback`) are marked `FRIZZ_HOT` (`Run`,
+`FRIZZ_HOT_RUN`, and `AudioCallback`, `FRIZZ_HOT_CALLBACK`, in sections of their own, as they
+aren't inline) and run
 from ITCM: `.itcmram` loads from `SRAM_EXEC` (`chompi_sram.lds`) and `main()` copies it
 (`CopyItcm`) before anything else. It saves no code room: the image still carries it. Calls
 out of it go through the linker's long-branch veneers. A function that runs every sample and
