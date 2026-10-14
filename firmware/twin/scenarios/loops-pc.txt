@@ -1,0 +1,52 @@
+# Loops over MIDI (#259): a bank select (CC 0) and a program change pick a loop from the card,
+# from the play page; CC 54 says when (0 at once, 1-8 at the n-th pass end); CC 81 cancels.
+# The same files as loops.txt (on the device the card's, tools/loopfiles.py page). On the
+# device the MIDI goes over USB, on the twin into USB too; the global channel 16.
+card wav /FRIZZ/a1.wav 2 2 220
+card wav /FRIZZ/a2.wav 1.5 2 330
+card wav /FRIZZ/a3.wav 4 2 220
+card wav /FRIZZ/b1.wav 2 2 275
+set settings midi_channel 16
+input sine 220 0.3
+at 6000
+# bank 1 (a), program 1: A/02 at once, on the play page
+usb BF 00 01
+usb CF 01
+wait 500
+# CC 54 = 1, program 0: A/01 at the end of A/02's pass (1.5 s)
+usb BF 36 01
+usb CF 00
+wait 300
+# the Loops page, bank a, to see it: A/02 bright until then, then A/01
+down KEY_26
+wait 60
+tap KEY_16
+wait 60
+up KEY_26
+wait 1500
+expect led smt 24 fc983c
+expect led smt 23 241408
+# bank 2 (b), CC 54 = 0, program 0: B/01 at once; bank a shown, A/01 dim
+usb BF 00 02
+usb BF 36 00
+usb CF 00
+wait 500
+expect led smt 24 241408
+# bank 1, CC 54 = 2, program 2 (A/03), then CC 81 across 64: nothing switches
+usb BF 00 01
+usb BF 36 02
+usb CF 02
+wait 300
+usb BF 51 7F
+usb BF 51 00
+wait 4500
+expect led smt 22 241408
+# bank 0 again: program changes are the scenes'
+usb BF 00 00
+usb BF 36 00
+# home: a double tap of SHIFT
+tap KEY_26
+wait 100
+tap KEY_26
+wait 300
+expect led pth 0 000000

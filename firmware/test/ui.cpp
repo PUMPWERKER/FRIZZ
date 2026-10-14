@@ -3543,7 +3543,7 @@ int main()
         // CC 54 = 2: at the end of the second pass
         Trs({kPC, 0}); // A/01, at once (CC 54 still 0)
         UntilLength(192000, 1000);
-        while (Probe().loop_pos < .05f || Probe().loop_pos > .5f)
+        for (int ms = 0; ms < 5000 && (Probe().loop_pos < .05f || Probe().loop_pos > .5f); ms++)
             RunMs(1);
         Trs({kCC, 54, 2});
         Trs({kPC, 2});
@@ -3576,7 +3576,7 @@ int main()
         Trs({kCC, 54, 127});
         Trs({kPC, 0});
         const int none_waits = UntilLength(192000, 100);
-        while (Probe().loop_pos < .05f || Probe().loop_pos > .3f)
+        for (int ms = 0; ms < 5000 && (Probe().loop_pos < .05f || Probe().loop_pos > .3f); ms++)
             RunMs(1);
         Trs({kCC, 9, 1});
         Trs({kCC, 3, 1});
