@@ -358,8 +358,10 @@ FRIZZ's 8 banks of 15 with each loop's name, and TAPE's cubbis. Then:
   lending the card [as a USB drive](#the-card-as-a-usb-drive) is several times faster (a card
   reader too).
 - **While FRIZZ records a loop, loads one or saves to the card,** an upload waits and goes on
-  by itself. Lending the card to the computer ends an upload, and so does switching
-  [USB audio](#usb-audio) on or off. A card too full for a loop refuses it.
+  by itself. Lending the card to the computer stops an upload: the page waits, and once the
+  card is back it sends that loop again from its start (the slot keeps its old loop until
+  then). Switching [USB audio](#usb-audio) on or off ends an upload. A card too full for a loop
+  refuses it.
 - **Nothing half is left:** an upload cut short (the tab closed, the cable pulled, the power
   off) leaves the slot as it was. If the CHOMPI doesn't answer (another firmware, or an
   older FRIZZ), the page says so.
@@ -1800,7 +1802,8 @@ lent). The loop and the effects play on meanwhile.
   FRIZZ's next save writes it again.
 - **While it's lent, FRIZZ leaves the card alone:** saving a scene or a setting waits until
   it's back, a loop can't be loaded from it, a bug report can't be written, and a
-  [Companion](#the-companion) upload running ends. A loop from the card you played just before
+  [Companion](#the-companion) upload running stops: the page waits and sends that loop again
+  from its start once the card is back. A loop from the card you played just before
   is usually still in memory and switches at once; one that has to be loaded waits until the
   card is back. Only the settings page shows it (LOOP blue); on the play page FRIZZ plays as
   always.

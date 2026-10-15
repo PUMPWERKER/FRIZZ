@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # From the CHOMPI multi-firmware launcher v1.5, github.com/sfaber02/CHOMPI-MULTI-FIRMWARE,
 # firmware/chompi-launcher/midi-send.py at dc7c747145, by ugrossek (chomplex music theory).
-# MIT licensed (see THIRD_PARTY.md); unchanged but for this note. firmware/flash.py uses it.
+# MIT licensed (see THIRD_PARTY.md); unchanged but for this note and the guard at its end, when
+# it's run by hand. firmware/flash.py uses it.
 """Send a firmware image to the CHOMPI launcher over USB MIDI, store it in a slot and run it.
 
 Power CHOMPI on so the launcher is up (picker, or any fault pulse), then:
@@ -325,4 +326,19 @@ def run(link, slot, slots):
 
 
 if __name__ == "__main__":
+    # FRIZZ's (THIRD_PARTY.md): run by hand, it takes the CHOMPI's lock (tools/chompi.py) and
+    # leaves the user's keys (10, 13), the storage firmware's (15) and the launcher to flash.py,
+    # which calls main() after its own checks, and to the launcher's web page
+    import chompi
+    chompi.claim()
+    guard = argparse.ArgumentParser(add_help=False)
+    guard.add_argument("--slot", type=int)
+    guard.add_argument("--clear", type=int)
+    guard.add_argument("--launcher", action="store_true")
+    asked = guard.parse_known_args()[0]
+    kept = sorted(set(chompi.USER_SLOTS) | {15, chompi.STORAGE_SLOT})
+    if asked.launcher or asked.slot in kept or asked.clear in kept:
+        sys.exit("midi_send.py by hand leaves keys %s and the launcher alone: flash.py sends to "
+                 "10 and 13 (a v* tag's build), the launcher's web page does the rest"
+                 % ", ".join(str(k) for k in kept))
     main()

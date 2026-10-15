@@ -10,32 +10,7 @@
 #include <fstream>
 #include <string>
 #include "check.h"
-
-static std::string firmware_dir, tmp_dir;
-
-static bool Has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
-
-/** python3 on CODE with tools/ and firmware/ on its path, the lock (tools/chompi.py) a file in
- *  the temp folder and not held, 20 s at most: never the CHOMPI's own (as remote.cpp's). Its
- *  exit code; out gets what it printed, stdout and stderr */
-static int Python(const std::string& code, std::string& out)
-{
-    const std::string file = tmp_dir + "/tools.py";
-    std::ofstream(file) << code;
-    const std::string cmd = "cd '" + tmp_dir + "' && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH='" + firmware_dir + "/tools:"
-                            + firmware_dir + "' FRIZZ_CHOMPI_LOCK='" + tmp_dir
-                            + "/lock' FRIZZ_CHOMPI_HELD= timeout -s KILL 20 python3 '" + file
-                            + "' 2>&1";
-    out.clear();
-    FILE* p = popen(cmd.c_str(), "r");
-    char buf[512];
-    size_t n;
-    while (p && (n = fread(buf, 1, sizeof(buf), p)) > 0)
-        out.append(buf, n);
-    const int status = p ? pclose(p) : -1;
-    unlink(file.c_str());
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-}
+#include "pytool.h"
 
 // The stand-in and a run of `measure.py fx ARGS`: prints what was latched while it recorded,
 // the CCs sent, the latches and the knobs afterwards, and the exit

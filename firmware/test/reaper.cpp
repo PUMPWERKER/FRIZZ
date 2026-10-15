@@ -19,7 +19,6 @@
 
 namespace
 {
-bool Has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
 
 // measure.py's venv, with numpy: the audio cases' python
 const std::string kVenv = std::string(getenv("HOME") ? getenv("HOME") : "") + "/.venvs/frizz/bin";
