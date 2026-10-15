@@ -1398,6 +1398,8 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, ", mono") && Has(out, "page       play; the mode switch stands down\n"),
           "remote: a SysEx key there sets mono; the play page again after the script");
+    if (!Has(out, ", mono") || !Has(out, "page       play"))
+        printf("%s\n", out.c_str());
     // a script's toggle: up and down over SysEx, the real switch again at its end
     Write(script, "booted\ntoggle 1\nwait 100\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n"
                   "toggle 0\nwait 100\n");
@@ -1411,6 +1413,21 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
           "remote: play's toggle 1 / toggle 0 reach the settings page (mono off again), the real switch after");
     if (!Has(out, "page       play"))
         printf("%s\n", out.c_str());
+    // the twin behind the wall clock as remote.py ends (all.sh's load): what it sent last, the
+    // keys let go and SWITCH 0 in play's finally, still reaches it (Exec catches up, #336)
+    Write(script, "booted\ntoggle 1\nwait 100\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n");
+    exec_late = 400;
+    Remote({"play", script, "--save", "--force"}, out);
+    exec_late = 0;
+    rc = Remote({"state"}, out);
+    Check(rc == 0 && Has(out, ", mono") && Has(out, "page       play; the mode switch stands down\n"),
+          "remote: the twin 400 ms behind as play ends: its last messages still reach it, mono and the play page (#336)");
+    if (!Has(out, ", mono") || !Has(out, "page       play"))
+        printf("%s\n", out.c_str());
+    Remote({"play", script, "--save", "--force"}, out); // mono off again
+    rc = Remote({"state"}, out);
+    Check(rc == 0 && !Has(out, ", mono") && Has(out, "page       play; the mode switch stands down\n"),
+          "remote: and mono off again, on time");
     // the settings page only looked at plays; a setting over SysEx doesn't
     Write(script, "booted\ntoggle 1\nwait 100\ntoggle 0\nwait 100\ntap KEY_18\n");
     rc = Remote({"play", script, "--save"}, out);
@@ -2074,10 +2091,9 @@ print("exit codes:", midisuite.exit_code(False, None), midisuite.exit_code(True,
     if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 
-    unlink(blank.c_str());
-    unlink(mine.c_str());
-    unlink(back.c_str());
-    unlink(script.c_str());
-    rmdir(tmp_dir.c_str());
+    // the folder whole: the cases leave more in it than these (the loops' WAVs, the card), and
+    // rmdir alone left ~200 KB in /tmp each run
+    if (system(("rm -rf '" + tmp_dir + "'").c_str()) != 0)
+        printf("could not remove %s\n", tmp_dir.c_str());
     return Finish();
 }

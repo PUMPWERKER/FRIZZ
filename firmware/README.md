@@ -71,7 +71,7 @@ The output goes to `code/src/build/`:
 `make USB_SAFETY=1` builds a development build for a new USB stack into `build-usbsafety/`:
 with `UsbDevice.h`'s `Watch()`, an enumeration that never finishes (10 s) or a computer that
 sends FRIZZ no MIDI for 60 s restarts into the launcher, a way back without the power switch.
-Use it for the first flash of a USB change, after `test/unit.sh usbtransport`; never hand it
+Use it for the first flash of a USB change, after `test/unit.sh usbtransport` and `usbdevice`; never hand it
 out (a computer that sends no MIDI is no fault).
 Neither is committed: a build is named by its md5, and `tools/builds.py` builds both and
 prints it (`tools/builds.py md5` only prints). That works because GCC 10.3 builds the same
@@ -747,7 +747,7 @@ chompi_main.cpp        entry point: audio callback, main loop, boot sequence, AU
 passthroughEngine.h    the engine: the input (AUX, the built-in mic or USB) and its gain, the looper, input/loop mix ("dry/wet" in the code), punch-in FX,
                        master compressor, output gain, headphone cue, safety limiter, the master to USB
 UsbDevice.h / .cpp     FRIZZ's USB-C port on TinyUSB (../libs/tinyusb): the sound card (UAC1), MIDI,
-                       the card as a drive; TinyUSB's task on TIM7 (#196)
+                       the card as a drive; TinyUSB's task on TIM7 (#196; test/usbdevice.cpp)
 usb_descriptors.c/.h   the USB descriptors, with and without the sound card; tusb_config.h TinyUSB's settings
 UsbMidiTransport.h     libDaisy's MIDI transport on TinyUSB (test/usbtransport.cpp)
 CardLend.h             the card lent to the computer: what the settings page shows and asks
