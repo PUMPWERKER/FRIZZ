@@ -1393,15 +1393,16 @@ def play(f, path, cpu):
                 f.key(args[0], False)
             elif cmd == "turn" and len(args) > 2:
                 # paced, MS a detent, in the background as the twin plays it: FRIZZ's knobs
-                # speed up when turned fast (#375), so a slow turn has to be slow here too
+                # speed up when turned fast (#375), so a slow turn has to be slow here too: MS
+                # after the last detent's send, never sooner. Not on a schedule, which after a
+                # late wake (a busy computer) sends the next ones early, a fast turn
                 def paced(enc=int(args[0]), detents=int(args[1]), ms=float(args[2])):
-                    nxt = time.monotonic()
-                    for _ in range(abs(detents)):
+                    for n in range(abs(detents)):
+                        if n:
+                            time.sleep(ms / 1000)
                         if stop.is_set():
                             return
                         f.send(TURN, [enc, (1 if detents > 0 else -1) & 0x7F])
-                        nxt += ms / 1000
-                        time.sleep(max(0.0, nxt - time.monotonic()))
                 turner = threading.Thread(target=paced, daemon=True)
                 turner.start()
                 threads.append(turner)

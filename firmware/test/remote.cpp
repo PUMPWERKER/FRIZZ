@@ -57,6 +57,17 @@ static bool DropChunk(const std::string& m)
     return true;
 }
 
+// the twin's time each TURN of knob 4 came in (F0 7D 43 48 12 04 DIR F7), seen on the way
+// while usb_drop is SeeTurn (nothing lost): the gaps the firmware measures (ui.h's Gap)
+static std::vector<uint32_t> turns_at;
+
+static bool SeeTurn(const std::string& m)
+{
+    if (m.size() == 8 && !m.compare(0, 6, "\xF0\x7D\x43\x48\x12\x04"))
+        turns_at.push_back(NowMs());
+    return false;
+}
+
 /** Runs ms of silence, as fast as the twin goes: what remote.py left on the pty in, the twin's
  *  answers out */
 static void RunMs(uint32_t ms)
@@ -1015,6 +1026,33 @@ remote.play(Stub(True), "wait.txt", True)
     if (rc != 0)
         printf("%s\n", out.c_str());
 
+    // play's paced turn after a late wake (a busy computer: here its first send takes 300 ms):
+    // the next detent still MS after it, not sooner, which FRIZZ would take as a fast turn
+    const char* const kPaced = R"(
+import time, remote
+class Late(remote.Frizz):
+    def __init__(self):
+        self.held, self.at = set(), []
+    def send(self, cmd, payload=b""):
+        if cmd == remote.TURN:
+            self.at.append(time.monotonic())
+            if len(self.at) == 1:
+                time.sleep(0.3)
+    def raw(self, data):
+        pass
+    def ask(self, cmd, payload=b"", required=True):
+        return None
+open("paced.txt", "w").write("turn 4 -4 200\nwait 1500\n")
+f = Late()
+remote.play(f, "paced.txt", False)
+gaps = [round((b - a) * 1000) for a, b in zip(f.at, f.at[1:])]
+print("gaps", gaps, "slow", len(f.at) == 4 and min(gaps) >= 200)
+)";
+    rc = Python(kPaced, out);
+    Check(rc == 0 && Has(out, "slow True"), "remote: play's paced turn keeps MS after a late detent, never less (#375)");
+    if (rc != 0 || !Has(out, "slow True"))
+        printf("%s\n", out.c_str());
+
     // play --cpu right after a start: FRIZZ answers 0 / 0 until its first block, then two
     // readings over its start (90 / 48.1, 49.3 / 49.1), then the scenario's (60 / 43.5); the
     // start isn't the worst (#147)
@@ -1811,21 +1849,51 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     if (rc != 0)
         printf("%s\n", out.c_str());
     // play's turn paced (#375): a detent every MS ms is a slow turn, 1% each; a plain turn
-    // goes at once, one a block, a fast one
-    rc = Remote({"set", "filter", "0", "0.5"}, out);
-    Write(script, "booted\ntap KEY_5\nwait 100\nturn 4 -5 200\nwait 1300\n");
-    rc |= Remote({"play", script}, out);
+    // goes at once, one a block, a fast one. The slow one is judged by the gaps the firmware
+    // measured (ui.h's Gap), the twin's time each TURN came in: on a busy computer (all.sh on
+    // Actions' runner) the pty's reader can stall and take two detents late and together, a
+    // fast turn to the firmware whatever remote.py sent. Paced far from kFxAccelSlowMs, and a
+    // turn that still came in faster is played again, said in a line FLAKY, as Twice() does
+    // (#183): it fails only if it came in fast twice, or slow and the value is off
+    const uint32_t kPaceMs = 400, kSlowMs = 125; // FxControls.h's kFxAccelSlowMs
+    std::string turns;
+    uint32_t shortest = 0;
+    bool slow = false;
+    usb_drop = SeeTurn;
+    for (int attempt = 0; attempt < 2 && !slow; attempt++)
+    {
+        if (attempt)
+            printf("FLAKY  remote: play's slow turn came in %u ms apart (%s), the twin's reader behind: "
+                   "run again\n", shortest, turns.c_str());
+        turns_at.clear();
+        rc = Remote({"set", "filter", "0", "0.5"}, out);
+        Write(script, "booted\ntap KEY_5\nwait 100\nturn 4 -5 " + std::to_string(kPaceMs) + "\nwait 2400\n");
+        rc |= Remote({"play", script}, out);
+        turns.clear();
+        shortest = kPaceMs;
+        for (size_t i = 0; i < turns_at.size(); i++)
+        {
+            turns += (i ? " " : "") + std::to_string(turns_at[i] - turns_at[0]);
+            if (i)
+                shortest = std::min(shortest, turns_at[i] - turns_at[i - 1]);
+        }
+        slow = turns_at.size() == 5 && shortest >= kSlowMs;
+    }
+    usb_drop = nullptr;
     rc |= Remote({"get", "filter"}, out);
-    Check(rc == 0 && out.find("0.4500") == out.find("page 1  ") + 8,
+    Check(rc == 0 && slow && out.find("0.4500") == out.find("page 1  ") + 8,
           "remote: play's turn ENC N MS turns slowly, 1% a detent");
-    if (rc != 0)
-        printf("%s\n", out.c_str());
+    if (rc != 0 || !slow || out.find("0.4500") != out.find("page 1  ") + 8)
+        printf("the detents came in at %s ms\n%s\n", turns.c_str(), out.c_str());
+    // from 0.45 set, not the slow turn's: one SysEx of 5 detents, one a block, the first turned
+    // back (slow), the others 0 ms apart
+    rc = Remote({"set", "filter", "0", "0.45"}, out);
     Write(script, "booted\ntap KEY_5\nwait 100\nturn 4 5\nwait 300\n");
-    rc = Remote({"play", script}, out);
+    rc |= Remote({"play", script}, out);
     rc |= Remote({"get", "filter"}, out);
     Check(rc == 0 && out.find("0.6600") == out.find("page 1  ") + 8,
           "remote: and its plain turn fast: 1%, then 5% a detent");
-    if (rc != 0)
+    if (rc != 0 || out.find("0.6600") != out.find("page 1  ") + 8)
         printf("%s\n", out.c_str());
     rc = Remote({"set", "settings", "clock_factor", "50"}, out);
     rc |= Remote({"get", "settings"}, out);

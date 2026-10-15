@@ -67,7 +67,12 @@ bool trs_in = true, trs_out = true; // the TRS adapter: the interface's out into
 // A SysEx message the tool sent over USB, F0 to F7: lost on the way if this says so, as a USB
 // MIDI packet can be (remote.cpp's lost CHUNKs). Unset, every byte goes through as it comes
 std::function<bool(const std::string&)> usb_drop;
-long lag = 0; // the most the twin fell behind the wall clock, ms
+// The most the twin's timing fell behind the wall clock, ms: the twin itself, the reader that
+// stamps what the tool sends (a stall there takes bytes late and together) or the tool's own
+// sender (its line "sent up to N ms late", midiport.py's Clock: a late wake sends ticks
+// together), whichever was worst
+long lag = 0;
+std::atomic<long> reader_stall{0}; // the reader's part of it, ms
 long exec_late = 0; // Exec keeps the twin this far behind the wall clock, ms: a load's lag on purpose
 // Behind by more than this, the twin's timing isn't the wall clock's: a case that failed on
 // timing alone ([timing], "failed on timing alone") isn't judged
@@ -89,11 +94,11 @@ __attribute__((unused)) std::vector<std::string> Unjudged(const std::string& out
     return ids;
 }
 
-/** attempt() (a tool's run against the twin: true if it passed), and once more if it didn't
- *  with the twin more than kLagMs behind the wall clock: so far behind (hundreds of ms on a
- *  machine whose cores are all busy) its answers can come after the tool stopped waiting for
- *  them, beyond what Unjudged() covers. Said in a line FLAKY (all.sh lists them); a run that
- *  fails twice, or once with the twin on time, fails (#183) */
+/** attempt() (a tool's run against the twin: true if it passed, false too if a case was left
+ *  unjudged), and once more if it didn't with the twin more than kLagMs behind the wall clock:
+ *  so far behind (hundreds of ms on a machine whose cores are all busy) its answers can come
+ *  after the tool stopped waiting for them, beyond what Unjudged() covers. Said in a line FLAKY
+ *  (all.sh lists them); a run that fails twice, or once with the twin on time, fails (#183) */
 template <class Attempt>
 void Twice(const std::string& name, Attempt attempt)
 {
@@ -101,6 +106,18 @@ void Twice(const std::string& name, Attempt attempt)
         return;
     printf("FLAKY  %s: failed with the twin %ld ms behind the wall clock, run again\n", name.c_str(), lag);
     attempt();
+}
+
+/** After Twice(): the cases out still leaves unjudged (Unjudged()), each a line to fail by. One
+ *  the twin's timing couldn't judge twice running isn't passed: a fault on timing could hide
+ *  behind the load for good */
+__attribute__((unused)) std::vector<std::string> NotJudged(const std::string& name, const std::string& out)
+{
+    std::vector<std::string> lines;
+    for (const std::string& id : Unjudged(out))
+        lines.push_back(name + ": " + id + " failed on timing alone twice, the twin " + std::to_string(lag)
+                        + " ms behind: not judged, a fault on timing could hide behind the load");
+    return lines;
 }
 
 /** A byte the suite sent, and when it came, in ms of the wall clock since the run started */
@@ -125,12 +142,17 @@ std::atomic<bool> reading{false};
 void Reader(std::chrono::steady_clock::time_point start)
 {
     double trs_free = 0.; // when the jack's line is free for the next byte, ms
+    long last = 0;        // the last round's time, ms: a round takes about 1 ms (poll's wait)
     while (reading)
     {
         pollfd fds[2] = {{usb.fd, POLLIN, 0}, {trs.fd, POLLIN, 0}}; // one < 0: not polled
-        if (poll(fds, 2, 1) <= 0)
-            continue;
+        const int ready = poll(fds, 2, 1);
         const long ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+        if (ms - last - 1 > reader_stall)
+            reader_stall = ms - last - 1;
+        last = ms;
+        if (ready <= 0)
+            continue;
         for (int p = 0; p < 2; p++)
         {
             if (fds[p].fd < 0)
@@ -352,6 +374,22 @@ struct Audio
     }
 };
 
+/** The most a tool's sender said it was late in out ("sent up to N ms late", midiport.py's
+ *  Clock), ms rounded up; 0 if it said nothing */
+long SentLate(const std::string& out)
+{
+    const std::string tag = "sent up to ";
+    long most = 0;
+    for (size_t at = out.find(tag); at != std::string::npos; at = out.find(tag, at + 1))
+    {
+        char* end = nullptr;
+        const double ms = strtod(out.c_str() + at + tag.size(), &end);
+        if (end && !strncmp(end, " ms late", 8))
+            most = std::max(most, long(std::ceil(ms)));
+    }
+    return most;
+}
+
 /** CMD (sh -c) against the twin, its ptys open, at the wall clock's pace from the twin's time
  *  now until it's done (limit s at most), with env's NAME=VALUE pairs set and the CHOMPI's lock
  *  shared (the twin isn't the CHOMPI): its exit code; out gets what it printed, "(timed out)"
@@ -384,6 +422,7 @@ int Exec(const std::string& cmd, std::string& out, int limit,
     fcntl(pipe_fd[0], F_SETFL, O_NONBLOCK);
     out.clear();
     lag = 0;
+    reader_stall = 0;
     const auto start = std::chrono::steady_clock::now();
     arrivals.clear();
     trs_arrivals.clear();
@@ -471,6 +510,7 @@ int Exec(const std::string& cmd, std::string& out, int limit,
     while ((n = read(pipe_fd[0], buf, sizeof(buf))) > 0)
         out.append(buf, n);
     close(pipe_fd[0]);
+    lag = std::max({lag, long(reader_stall), SentLate(out)});
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 

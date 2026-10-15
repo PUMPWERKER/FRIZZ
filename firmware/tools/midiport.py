@@ -44,6 +44,9 @@ def spp(sixteenths):
     return bytes([SPP, sixteenths & 0x7F, sixteenths >> 7 & 0x7F])
 
 
+LATE = [0.]  # how much later than meant a Clock's tick went at worst, s (Clock.late)
+
+
 class Clock:
     """24 ticks a beat at bpm from a thread, through write(bytes). mode: single, or as a host
     that batches (pairs: two ticks in one write every 2 ticks' time), catches up (catchup:
@@ -52,7 +55,9 @@ class Clock:
     send() puts bytes (Start, Song Position ...) in front of the next tick, in the same write,
     as a DAW does; tail, if set, those right behind it: tail(n) the bytes after tick n (from
     0), as a sequencer's chord or automation on the same cable (#322). bpm and tail can be
-    changed on the go. ticks keeps when each tick went"""
+    changed on the go. ticks keeps when each tick went; late how much later than meant one went
+    at worst (a late wake: a busy computer, the ones behind it then close), s, and LATE[0] the
+    same over every Clock"""
 
     def __init__(self, write, bpm, mode="single", jitter=0., seed=1):
         self.write, self.bpm, self.mode, self.jitter = write, float(bpm), mode, jitter
@@ -63,6 +68,7 @@ class Clock:
         self.pending = b""
         self.tail = None
         self.sent = 0  # ticks so far, tail's n
+        self.late = 0.
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.thread.start()
 
@@ -80,28 +86,31 @@ class Clock:
         self.ticks.extend([now] * n)
         self.write(data)
 
+    def _at(self, t, n):
+        """n ticks out at t, on time or as late as this thread woke"""
+        wait_until(t)
+        self.late = max(self.late, time.perf_counter() - t)
+        LATE[0] = max(LATE[0], self.late)
+        self._out(n)
+
     def run(self):
         t = time.perf_counter() + .05
         n = 0
         while not self.stop:
             period = 60. / (self.bpm * 24.)
             if self.mode == "pairs":
-                wait_until(t + period)
-                self._out(2)
+                self._at(t + period, 2)
                 t += 2 * period
                 n += 2
             elif self.mode == "catchup":
-                wait_until(t + period - .001)
-                self._out(1)
-                wait_until(t + period)
-                self._out(1)
+                self._at(t + period - .001, 1)
+                self._at(t + period, 1)
                 t += 2 * period
                 n += 2
             else:
                 late = .010 if self.mode == "late" and n % 48 == 47 else 0.
                 wobble = self.rng.uniform(-self.jitter, self.jitter) / 1000. if self.jitter else 0.
-                wait_until(t + late + wobble)
-                self._out(1)
+                self._at(t + late + wobble, 1)
                 t += period
                 n += 1
 
