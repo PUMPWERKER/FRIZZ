@@ -1224,18 +1224,18 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
               && Has(Card("/FRIZZ/frizz_master.txt"), "clock_source 2\nmidi_out 1\n"),
           "remote: and they go to the card");
 
-    // MIDI out over USB: its clock comes in with the answers, and remote.py reads past it. The
-    // ticks of 200 ms wait on the pty ahead of them (on the twin's clock remote.py's start takes
-    // none of its time, and a query a few ms)
+    // MIDI out over USB: its ticks come in with the answers, and remote.py reads past them: the
+    // ticks of 200 ms queued on the pty ahead of the answers (on the twin's clock remote.py's
+    // start takes none of its time, and a query a few ms, between two ticks)
     Remote({"out", "all", "--save"}, out);
     TakeMidiOut();
     RunMs(200);
-    rc = Remote({"state"}, out);
     size_t usb_ticks = 0;
     for (const MidiOutByte& b : TakeMidiOut())
         usb_ticks += b.usb && b.byte == 0xF8;
+    rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, "looper     empty") && usb_ticks > 0,
-          "remote: with MIDI out over USB, its clock comes in between, and state still reads");
+          "remote: with MIDI out over USB, its ticks queued ahead of the answers, state still reads");
     if (rc != 0)
         printf("%s\n", out.c_str());
     Remote({"out", "off", "--save"}, out);
