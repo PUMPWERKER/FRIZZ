@@ -2964,6 +2964,28 @@ int main()
         KeepCard();
     }});
 
+    // the card didn't answer once, and FatFs mounted it again by itself (in its next f_open),
+    // which takes it back to the root: the saves after it still go to /FRIZZ, none to the root
+    cases.push_back({"card-glitch", [] {
+        RunMs(kReadyMs);
+        RunMs(3000);
+        Latch("KEY_6");
+        Save(2);
+        RunMs(500);
+        const bool first = SavedLatch(Card("/FRIZZ/frizz_scenes.txt"), 2, "flanger") == 1;
+        CardGlitch();
+        Save(3);
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 0, 7, 0xF7}); // the channel: 7
+        RunMs(3000);
+        int in_root = 0;
+        for (const auto& f : CardFiles())
+            in_root += f.first.rfind('/') == 0;
+        printf("      files in the root: %d\n", in_root);
+        Check(first && SavedLatch(Card("/FRIZZ/frizz_scenes.txt"), 3, "flanger") == 1
+                  && Card("/FRIZZ/frizz_master.txt").find("midi_channel 7\n") != std::string::npos && in_root == 0,
+              "card-glitch: after FatFs remounted the card itself, the scene and the setting saved in /FRIZZ, not the root");
+    }});
+
     // the mount fails at boot (FRIZZ itself came from the card): a save flashes red, and once
     // the card answers, the session still doesn't write it, scenes or compressor
     cases.push_back({"card-2", [] {
@@ -3061,8 +3083,16 @@ int main()
         RunMs(100);
         for (uint8_t b : {0xF0, 0x7D, 0x43, 0x48, 0x10, 0xF7})
             Midi(b);
-        RunMs(200);
-        Check(Restarted() && Card("/FRIZZ/frizz_master.txt").find("midi_channel 5\n") != std::string::npos,
+        // the card as it was at the reset (the twin runs on after it), whichever millisecond
+        // the restart came in (on an even one it once reset at once)
+        std::string master;
+        for (int i = 0; i < 200 && master.empty(); i++)
+        {
+            RunMs(1);
+            if (Restarted())
+                master = Card("/FRIZZ/frizz_master.txt") + " ";
+        }
+        Check(Restarted() && master.find("midi_channel 5\n") != std::string::npos,
               "restart: a setting changed just before is on the card when it restarts");
     }});
 
@@ -3088,6 +3118,37 @@ int main()
         printf("      restarted %u ms after it was asked for\n", took);
         Check(asked && Restarted() && took <= 1200,
               "restart: under a stream of compressor CCs, within a second of being asked");
+    }});
+
+    // a restart while the card is lent to the computer: taken back first, as the gesture takes
+    // it, and what waited for the card saved before the reset
+    cases.push_back({"restart-lent", [] {
+        RunMs(kReadyMs);
+        RunMs(3000);
+        Ask({0x3E, 0x0E, 1, 2, 1}); // lent
+        RunMs(300);
+        const bool lent = CardLent();
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 0, 5, 0xF7}); // the channel: 5, waiting for the card
+        RunMs(100);
+
+        for (uint8_t b : {0xF0, 0x7D, 0x43, 0x48, 0x10, 0xF7})
+            Midi(b);
+        bool lent_then = true;
+        for (int i = 0; i < 1500; i++)
+        {
+            RunMs(1);
+            if (Restarted())
+            {
+                lent_then = CardLent();
+                break;
+            }
+        }
+        // as it was at the reset: the twin runs on after it
+        const std::string master = Card("/FRIZZ/frizz_master.txt");
+        Check(lent && Restarted() && !lent_then,
+              "restart-lent: a restart with the card lent takes it back first");
+        Check(master.find("midi_channel 5\n") != std::string::npos,
+              "restart-lent: a setting that waited for the card is on it when it restarts");
     }});
 
     // the loop loader (LoopLoader.h, #70) in MainLoop beside the card's other users: a
@@ -3757,6 +3818,56 @@ int main()
               "loops-xfer-playing: a5 replaced while it plays: its key dim, not lit, the old loop plays on");
     }});
 
+    // the card lent and taken back (#332): the playing loop's key stays bright while its file
+    // is untouched, and goes dim once the computer replaced it, as after the loop transfer's
+    // replace; the old loop plays on
+    cases.push_back({"loops-lent-replaced", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(48000, 2, 220.f)}, {"a2", SineWav(24000, 2, 330.f)}});
+        LoopsPage();
+        auto lit = [](int slot) { return Shows(SmtLedFull(LoopLed(slot)), kOrange, kLoopLit); };
+        auto dim = [](int slot) { return Shows(SmtLedFull(LoopLed(slot)), kOrange, kLoopDim); };
+        auto lend = [](bool on) {
+            Ask({0x3E, 0x0E, 1, 2, static_cast<uint8_t>(on ? 1 : 0)});
+            RunMs(on ? 300 : 5000); // back, and the loops scanned again
+        };
+        Tap(kLoopKeys[0]);
+        UntilLength(48000, 1000);
+        RunMs(100);
+        lend(true);
+        CardFiles()["/FRIZZ/a2.wav"] = SineWav(12000, 2, 660.f); // not the one playing
+        lend(false);
+        const bool kept = lit(0) && dim(1) && !CardLent();
+        lend(true);
+        CardFiles()["/FRIZZ/a1.wav"] = SineWav(12000, 2, 660.f);
+        lend(false);
+        printf("      a2 replaced: a1 %s; a1 replaced: a1 %s, the loop %zu frames\n", kept ? "bright" : "not bright",
+               Hex(SmtLedFull(LoopLed(0))).c_str(), static_cast<size_t>(Probe().loop_length));
+        Check(kept && dim(0) && !CardLent() && Probe().loop_length == 48000,
+              "loops-lent-replaced: taken back, the playing a1 stays bright while only a2 changed; once the "
+              "computer replaced a1, its key is dim and the old loop plays on");
+        Tap(kLoopKeys[0]);
+        Check(UntilLength(12000, 2000) >= 0, "loops-lent-replaced: a tap on a1 loads its new loop");
+    }});
+
+    // SLOT's flags for a cubbi too (docs/LOOP_PROTOCOL.md 3.3): one the Cubbi page plays
+    cases.push_back({"loops-xfer-cubbi", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"/TAPE/cubbi_a1.wav", SineWav(48000, 2, 220.f)}, {"/TAPE/cubbi_a2.wav", SineWav(24000, 2, 330.f)}});
+        CubbiPage();
+        Tap(kLoopKeys[0]);
+        const int played = UntilLength(48000, 1000);
+        RunMs(100);
+        std::string d1, d2;
+        const int s1 = Xfer(0x03, {8, 0}, &d1), s2 = Xfer(0x03, {8, 1}, &d2); // kCubbiBank 8
+        const int f1 = d1.size() > 14 ? d1[14] : -1, f2 = d2.size() > 14 ? d2[14] : -1;
+        printf("      cubbi_a1 after %d ms; SLOT flags a1 %d, a2 %d\n", played, f1, f2);
+        Check(played >= 0 && s1 == 0 && s2 == 0 && f1 == (2 | 4) && f2 == 0,
+              "loops-xfer-cubbi: the cubbi playing: SLOT says it plays and is ready; the other neither");
+    }});
+
     // the card lent (#292, CardLend.h): a loop already loaded switches at once, it needs no
     // card; one that needs loading waits for the card, which then loads it once it's scanned
     cases.push_back({"loops-lent", [] {
@@ -3827,6 +3938,45 @@ int main()
         Tap(kLoopKeys[0]);
         const int a1 = UntilLength(12000, 2000);
         Check(a3 >= 0 && a1 >= 0, "loops-lent-changed: a3 loads, and a1's new loop on a tap");
+    }});
+
+    // the developers' LOOPS while the card is lent: a load (or the write test) asked for then is
+    // refused; one taken would hold the loader busy past the take-back, which then wouldn't
+    // scan, and a loop the computer put there would stay unseen
+    cases.push_back({"loops-lent-dev", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a1", SineWav(4800, 2, 220.f)}});
+        Ask({0x3E, 0x0E, 1, 2, 1});
+        RunMs(300);
+        const bool lent = CardLent();
+        CardFiles()["/FRIZZ/a2.wav"] = SineWav(4800, 2, 330.f); // the computer's
+        const std::string load = Ask({0x3E, 0x0D, 1, 4, 0, 0, 0}); // load a1
+        Ask({0x3E, 0x0E, 1, 2, 0});
+        RunMs(1000);
+        const std::string bank = Ask({0x3E, 0x0D, 1, 1, 0});
+        printf("      lent %d; the load %s; a2 after the take-back: %d\n", lent,
+               load.size() > 2 && load[2] == 0 ? "taken" : "refused", bank.size() > 5 ? bank[5] : -1);
+        Check(lent && load.size() > 2 && load[2] != 0, "loops-lent-dev: LOOPS 4 refused while the card is lent");
+        Check(!CardLent() && bank.size() > 5 && bank[5] != 0,
+              "loops-lent-dev: taken back, the card is scanned: the computer's a2 is there");
+    }});
+
+    // a card error while the scan lists /FRIZZ: listed again from there, not ended as if the
+    // folder had no more loops
+    cases.push_back({"loops-scan-error", [] {
+        RunMs(kReadyMs);
+        RunMs(3000);
+        for (const char* name : {"/FRIZZ/a1.wav", "/FRIZZ/a2.wav", "/FRIZZ/a3.wav", "/FRIZZ/a4.wav", "/FRIZZ/a5.wav"})
+            CardFiles()[name] = SineWav(4800, 2, 220.f);
+        CardReaddirFail(2); // the second entry
+        Ask({0x3E, 0x0D, 1, 3});
+        RunMs(1000);
+        const std::string bank = Ask({0x3E, 0x0D, 1, 1, 0});
+        int found = 0;
+        for (size_t s = 0; s < 5; s++)
+            found += bank.size() > 4 + s && bank[4 + s] != 0;
+        printf("      loops found after the error: %d of 5\n", found);
+        Check(found == 5, "loops-scan-error: a listing error mid-folder: every loop still found");
     }});
 
     // MIDI's notes still play the effects on the Loops page, and pick no loops; an effect held
@@ -4041,6 +4191,41 @@ int main()
         printf("      A/03 after %d ms: %.2f BPM\n", acid, c.fx_bpm);
         Check(acid >= 0 && std::fabs(c.fx_bpm - 100.f) < .1f,
               "loops-now: an acid chunk's 12 beats set 100 BPM for 3 bars of 7.2 s");
+    }});
+
+    // a WAV whose samples start on a sector (CoreAudio's FLLR chunk pads them to 4096), loaded
+    // into the recording's buffer (the second loop): its key bright and starting it again as
+    // any other's
+    cases.push_back({"loops-sector", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        auto padded = [](uint32_t frames, float freq) {
+            std::string w = SineWav(frames, 2, freq);
+            const std::string fllr = std::string("FLLR") + std::string("\xCC\x0F\0\0", 4) + std::string(4044, '\0');
+            w.insert(36, fllr); // after fmt: "data" at 4088, its samples at 4096
+            const uint32_t riff = static_cast<uint32_t>(w.size() - 8);
+            memcpy(&w[4], &riff, 4);
+            return w;
+        };
+        PutLoops({{"a1", padded(96000, 220.f)}, {"a2", padded(72000, 330.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        const int first = UntilLength(96000, 1000);
+        RunMs(300);
+        Tap(kLoopKeys[1]);
+        const int second = UntilLength(72000, 1000);
+        RunMs(700);
+        const Rgb lit = SmtLedFull(LoopLed(1));
+        const float was = Probe().loop_pos;
+        Press(kLoopKeys[1], true);
+        RunMs(30); // the key's debouncing, then a block
+        const float pos = Probe().loop_pos;
+        Press(kLoopKeys[1], false);
+        printf("      A/01 after %d ms, A/02 after %d ms, key %s, started again from %.4f at %.4f\n", first,
+               second, Hex(lit).c_str(), was, pos);
+        Check(first >= 0 && second >= 0 && Shows(lit, kOrange, kLoopLit) && was > .2f && pos < .015f,
+              "loops-sector: a loop whose samples start on a sector, in the recording's buffer: its "
+              "key bright, and the key starts it again");
     }});
 
     // #302: a switch at once is crossfaded however MainLoop and the audio interrupt meet. The
@@ -7475,6 +7660,38 @@ int main()
         Check(on_again, "usb-switch: SHIFT + F# again: back with the sound card, F# blue");
         Check(Card("/FRIZZ/frizz_master.txt").find("\nusb_audio 1\n") != std::string::npos,
               "usb-switch: and that on the card");
+    }});
+
+    // the switch waits kUsbSwitchMs (100 ms) before FRIZZ leaves the bus, so an answer to the
+    // SET still goes out first, whichever millisecond it was asked in (on an even one it once
+    // went at once)
+    cases.push_back({"usb-switch-wait", [] {
+        RunMs(kReadyMs);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23"); // the mic
+        RunMs(100);
+        Tap("KEY_23"); // USB
+        RunMs(100);
+        int took[2] = {-1, -1};
+        for (int round = 0; round < 2; round++)
+        {
+            const int enumerated = UsbEnumerations();
+            Press("KEY_26", true);
+            RunMs(100 + round); // the other parity the second time
+            Press("KEY_23", true);
+            for (int ms = 0; ms < 400 && took[round] < 0; ms++)
+            {
+                RunMs(1);
+                if (UsbEnumerations() != enumerated)
+                    took[round] = ms;
+            }
+            Press("KEY_23", false);
+            Press("KEY_26", false);
+            RunMs(1000);
+        }
+        printf("      the switch after %d and %d ms\n", took[0], took[1]);
+        Check(took[0] >= 95 && took[1] >= 95, "usb-switch-wait: FRIZZ leaves the bus 100 ms after the switch, not at once");
     }});
 
     // ... and from the card at power-on: FRIZZ comes up without the sound card
