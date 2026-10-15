@@ -110,7 +110,6 @@ public:
     void Start(uint32_t now, bool toggle, bool jack)
     {
         jack_at_start_ = jack;
-        // where SceneStore has them (At): /FRIZZ, or the root on a card where it couldn't be made
         Snapshot(kSceneFile, mem_->scenes, kSceneFileMax);
         Snapshot(kMasterFile, mem_->master, kMasterFileMax);
         toggle_ = toggle_at_start_ = toggle;
@@ -289,7 +288,7 @@ private:
         static_assert(sizeof(text_) >= kSceneFileMax && kSceneFileMax >= kMasterFileMax,
                       "a snapshot fits text_");
         to[0] = '\0';
-        if (f_open(&file_, At(name), FA_READ) != FR_OK)
+        if (f_open(&file_, name, FA_READ) != FR_OK)
             return;
         UINT len = 0;
         const FRESULT res = f_read(&file_, text_, size - 1, &len);
@@ -390,7 +389,7 @@ private:
         for (number_ = 1; number_ < 1000; number_++)
         {
             pos_ = 0;
-            Put(At("/FRIZZ/bug-")); // a whole path: FatFs goes back to the root at a mount (SceneStore.h)
+            Put("/FRIZZ/bug-"); // a whole path: FatFs goes back to the root at a mount (SceneStore.h)
             PutNum(number_);
             Put(".txt");
             memcpy(name, text_, pos_);
