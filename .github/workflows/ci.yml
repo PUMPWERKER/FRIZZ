@@ -1,8 +1,11 @@
-# CI: stage 1 (the host checks and the virtual CHOMPI) and the firmware's two builds, on every
+# CI: stage 1a (the host checks and the virtual CHOMPI) and the firmware's two builds, on every
 # pull request and every push to main (CLAUDE.md, "Testing has three stages"). Nothing here
-# reaches a CHOMPI (FRIZZ_NO_DEVICE); stage 2, on the device, stays with the sessions.
+# reaches a CHOMPI (FRIZZ_NO_DEVICE); stage 2, on the device, stays with the sessions. No check
+# here is required for a merge: when Actions is down, the same runs go on locally.
 #
-# - checks:  firmware/test/all.sh, every host check (doclinks among them)
+# - checks:  firmware/test/all.sh, every host check (doclinks among them), with numpy for
+#            reaper's cases with music; what a check still can't run here it lists as
+#            "SKIP: local only" (stage 1b, CLAUDE.md)
 # - docs:    firmware/tools/doclinks.py, the docs the website is built from, on its own so a
 #            docs PR hears back in seconds
 # - compare: firmware/twin/compare.sh against the PR's base, its output in the job summary; a
@@ -30,15 +33,17 @@ env:
 
 jobs:
   checks:
-    name: Stage 1 (all.sh)
+    name: Stage 1a (all.sh)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0   # check.sh builds the engine at HEAD
+      - name: numpy for reaper's cases with music (measure.py's venv, firmware/README.md)
+        run: python3 -m venv ~/.venvs/frizz && ~/.venvs/frizz/bin/pip install -q --only-binary=:all: numpy==2.5.3
       - name: Tools
-        run: g++ --version | head -1; python3 --version; nproc; free -h
+        run: g++ --version | head -1; python3 --version; ~/.venvs/frizz/bin/python -c 'import numpy; print("numpy", numpy.__version__)'; nproc; free -h
       - name: all.sh
         run: firmware/test/all.sh
       - name: Keep the checks' output

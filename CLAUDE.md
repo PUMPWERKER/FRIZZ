@@ -119,7 +119,22 @@ and commit and push there.
 **Testing has three stages** (decided 2026-10-10):
 
 1. **Every branch, on the host and the virtual CHOMPI:** `firmware/test/all.sh`, new cases for
-   what changed, `compare.sh` with every difference explained (below).
+   what changed, `compare.sh` with every difference explained (below). Since 2026-10-15 (the
+   user's decision) in two parts, with CI on GitHub Actions (`.github/workflows/ci.yml`):
+   - **1a, on Actions, at each push:** `all.sh`, `doclinks.py` and `compare.sh` against the
+     PR's base run there, and both builds with ARM's GCC 10.3, their md5 and memory tables in
+     the job summary (the build of the branch's head, the md5 its stage 2 names; CI's and a
+     local build's are byte for byte the same). Before the merge the run on the PR's last
+     push is green, and the PR explains every difference in its `compare.sh` output under
+     *Checked on the twin*, linking the run. A difference doesn't fail the run; a scenario
+     the twin couldn't play does.
+   - **1b, locally:** what a check can't run on Actions, which `all.sh` lists under it as
+     `SKIP: local only (what's missing)`, and the firmware's build for the device (stage 2).
+   - **While working**, `./unit.sh NAME` for the checks of the part changed: cheap, no host
+     lock, alongside other sessions.
+   - **Without Actions** (down, or no run on the head) everything runs locally as before,
+     under the host lock (*Tests*, below). No check is required on GitHub: merging and
+     releases never wait for Actions.
 2. **Every firmware branch, on the device, by the session, without the user:** its build to
    the test slot (12), a bench run, its scenarios played there, and `measure.py` where the
    change is about timing or sound and the audio interface is wired (*The CHOMPI is shared*,
@@ -130,6 +145,11 @@ and commit and push there.
 A branch merges into `main` once stages 1 and 2 pass and are in its PR. **The user presses
 merge**; sessions never merge into `main`. `main` is therefore checked, not played: what the
 user has tested is a release tag.
+
+**Broken checks come first** (decided 2026-10-15): when CI or a check of any stage fails
+because of the check itself (the workflows, `all.sh` and the host checks, the twin, the device
+tools), its fix goes before other work, and the supervising session may merge it without the
+user. A firmware bug that a check finds is an ordinary fix branch.
 
 **One worktree per branch.** Several sessions work on this repo at once, so never switch
 branches in the main checkout (`~/git-projects/FrizZ` stays on `main`). Work on a branch in its
@@ -164,11 +184,12 @@ are on GitHub's Releases page. `firmware/tools/install-hooks.sh` installs a pre-
 that refuses commits on `main` and warns when `firmware/code/` is staged without
 `CHANGELOG.md`.
 
-Every commit that changes `firmware/code/`, `firmware/test/` or `firmware/twin/` first passes
-`firmware/test/all.sh`. A check that fails is fixed, or, when the change is meant to alter
-what it checks, updated in the same commit, saying so in the commit message and in the PR. A
-refactor must leave `firmware/test/check.sh` and `firmware/twin/compare.sh` at
-`bit-identical`.
+Every PR that changes `firmware/code/`, `firmware/test/` or `firmware/twin/` passes
+`firmware/test/all.sh` before it merges, on Actions or locally (stage 1 above, changed
+2026-10-15 from every commit). A check that fails is fixed, or, when the change is meant to
+alter what it checks, updated in the same commit, saying so in the commit message and in the
+PR. A refactor must leave `firmware/test/check.sh` and `firmware/twin/compare.sh` at
+`bit-identical`, the Action's runs of them or local ones.
 
 **Open topics are GitHub issues** (`gh issue`): a bug, a fault found by a check, a decision
 the user still has to make, a test gap, an idea for later. A new finding becomes an issue (the
@@ -191,7 +212,7 @@ working on a branch:
 - **A pull request per branch into `main`**, opened (as a draft is fine) once the branch is
   pushed. Its description lists what changed and three sections, kept current
   (`gh pr edit`) with every commit:
-  - **Checked on the twin** (stage 1, below).
+  - **Checked on the twin** (stage 1, below), with a link to the Actions run.
   - **Checked on the device** (stage 2): which build ran (the md5 `flash.py` prints for
     what it sends, the bench build's too), the bench's `cpu.txt` against
     `main`'s (`firmware/bin/cpu.txt`), the scenarios played with `remote.py play --cpu` and
@@ -212,7 +233,8 @@ working on a branch:
   adds a case to `firmware/test/ui.cpp` (or `sync.cpp`/`midi.cpp`), and
   `firmware/twin/ui-at.sh origin/main` shows it failing without the change. `git fetch`
   first: the local `main` can lag. `firmware/twin/compare.sh origin/main HEAD` goes into the
-  PR with every difference explained. The PR lists those under **Checked on the twin** (no
+  PR with every difference explained (the Action's run of it, in its job summary, or a local
+  one). The PR lists those under **Checked on the twin** (no
   boxes); what only the device shows goes to stage 2, what only the user can judge to the
   release test.
 
@@ -263,6 +285,14 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   it's cut, from the clean worktree of its tag: `./flash.py --slot 11` (or `--slot 10`) there.
   `flash.py` sends to 10 or 11 nothing else: only when the key is named, and only the build of
   a clean `v*` tag's checkout.
+- **CI checks the release's build** (`.github/workflows/release.yml`): a pushed `v*` tag is
+  built there too, refused unless it is `kFrizzVersion`'s. If the tag's release (or a draft of
+  it) carries a `FRIZZ.bin`, CI's must have the same md5, or the run fails loudly; one without
+  gets CI's attached; with no release yet, CI makes a draft (a pre-release for `-beta.N`) with
+  `FRIZZ.bin` and its md5, never published, never Latest, and `beta` is never touched. A
+  release never waits for it: make it as above, right after pushing the tag (`gh release
+  create <tag> --verify-tag …`); should CI's draft be there first, finish that one (`gh release
+  edit`) instead of making a second.
 
 ## The CHOMPI is shared: the lock and the slots
 
@@ -354,12 +384,15 @@ checks need only `g++` and `python3`; the browser twin needs Emscripten in `~/op
 
 ## Tests: the host checks and the virtual CHOMPI
 
-`firmware/test/all.sh` runs everything, side by side (about a minute; the first run ~80 s): `check.sh` (the engine against HEAD;
+`firmware/test/all.sh` runs everything, side by side (about a minute; the first run ~80 s; on
+Actions ~4 minutes, stage 1a): `check.sh` (the engine against HEAD;
 a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
 `pitch`, `tape`, `block`, `crusher`, `freezer`, `scenes`, `store`, `clicks`, `delay`, `controls`, `keys`, `looper`, `tempo`,
 `comp`, `level`, `sleep`, `inserts`, `resonator`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `splice`, `usbmidi`, `routing`, `measure`, `loops`, `loopxfer`, `sddisk`, `twinlib`, `compare`, `rtalloc`, `usbtransport`, `usbdevice`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
 `NAME.cpp`; [`firmware/test/README.md`](firmware/test/README.md) says what each covers.
-`check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail.
+`check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail. A check
+that needs something only a developer's machine has prints `SKIP: local only (what's
+missing)` and checks what it can without; `all.sh` lists those lines under it (stage 1b).
 
 **Several sessions on one machine:** heavy host runs (`all.sh`, `compare.sh`, `check.sh`,
 `ui-at.sh`, `tools/builds.py`, the twin's and the host checks' builds) go one at a time, under
