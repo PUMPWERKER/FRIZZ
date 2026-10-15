@@ -33,7 +33,8 @@ empty slots of bank h:
     tools/loopcap.py make DIR && for s in 13 14 15; do ./remote.py loops put DIR/h$s.wav h $s; done
 and take them out after (./remote.py loops rm h 13 ...), the listing (loops ls) before and
 after the same. Each run starts from a fresh start of the slot (./flash.py --run 12): it
-assumes the play page, an empty looper and nothing latched. PERSIST 0 first, so the settings it
+assumes the play page, an empty looper and nothing latched; feedback's playback starts the slot
+again itself. PERSIST 0 first, so the settings it
 changes (MIDI out, the feedback) stay in RAM. The capture: hw:FrizZ, PipeWire's profile off
 meanwhile; the send times and the capture lined up by a 6 kHz marker of FRIZZ's own test
 signal (SIGNAL) at the start. numpy for analyze (measure.py's venv)."""
@@ -398,12 +399,13 @@ def judge(ev, res):
 class Run:
     """FRIZZ (remote.Frizz), the capture and the send times of one run"""
 
-    def __init__(self, out):
+    def __init__(self, out, fresh=False):
         import chompi
         import remote
         self.remote, self.chompi = remote, chompi
         self.out = out
-        self.f = remote.Frizz(chompi.find_device())
+        # fresh: the slot started again first, as from power-on (remote.py play --fresh)
+        self.f = remote.Frizz(chompi.to_frizz(again=True) if fresh else chompi.find_device())
         if not self.f.ram_only():
             sys.exit("PERSIST 0 refused: nothing sent")
         st = dict(zip(remote.SETTING_NAMES, remote.dev_get(self.f, remote.GROUP_SETTINGS)))
@@ -608,8 +610,11 @@ def cmd_feedback(a):
     take1 = run.out + ".wav"
     run.f.link.close()  # ALSA's raw MIDI takes one opener: the second run's
     # again: the take played back into FRIZZ, from its first message on, the Loops page shown,
-    # as long after the capture's start as by hand
-    run2 = Run(a.out + "-back")
+    # as long after the capture's start as by hand; from a fresh start, as the first run: the
+    # loop the hand left would play on, the take's first switch would keep its place in the
+    # pass (so a later one at the pass end lands elsewhere), and the mix, wet, would hide the
+    # marker
+    run2 = Run(a.out + "-back", fresh=True)
     try:
         run2.start(a.secs)
         run2.loops_page()

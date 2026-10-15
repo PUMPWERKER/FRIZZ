@@ -53,8 +53,8 @@ wait 500
 turn 1 -100
 wait 1500
 # page 2: freeze and the pre-delay at 0, Band at its centre
-expect led pth 1 00d1fd
-expect led pth 2 00d1fd
+expect led pth 1 00fd84
+expect led pth 2 00fd84
 expect led pth 3 fdfdfd
 # both off: the tails ring out
 tap KEY_12

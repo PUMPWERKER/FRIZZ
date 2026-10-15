@@ -703,7 +703,8 @@ The FX keys are coloured by their place in the signal chain: the keys of a stage
 colour, the two of a pair in neighbouring shades (the freezer purple and the shifter indigo,
 the folder scarlet and the crusher orange, the flanger light blue and the phaser blue, wow &
 flutter red and the tape stop rose, the delay green and the reverb teal), and the next stage
-in a colour well apart. The chaos key, which has no place in the chain, is magenta.
+in a colour well apart. The phaser's second mode, the frequency shifter, turns its key ice
+blue. The chaos key, which has no place in the chain, is magenta.
 
 The FX keys are dimly lit in their effect's colour while off and at full brightness while
 on, where the audio coming out of the effect pushes the colour towards white, from -30 dBFS
@@ -713,10 +714,11 @@ the effect's colours; a knob the effect doesn't use is dark and does nothing. Va
 power-off unless they're saved in a [scene](#fx-scenes).
 
 The knob LEDs use white for one thing only, a neutral point. A knob with a centre (the
-shifter's shift and grain, the filter's cutoff, the delay's random and damping, every Band)
+shifter's shift and grain, the filter's cutoff, the delay's random and damping, every Band,
+the frequency shifter's direction, the finalizer's Input and its EQ and Width bands)
 is white there, blue below and orange above, the same on every effect, so you can see at a
-glance which way a knob is off. Every other knob goes from the effect's first colour to its
-second. The phaser's rate shows which half it's in: its own colours while it runs free,
+glance which way a knob is off. Every other knob starts in its key's colour and goes to a
+second one, well apart from it. The phaser's rate shows which half it's in: its own colours while it runs free,
 green to yellow once it follows the tempo. Page 2's knob 4 shows what the effect puts out
 instead of its value (see [Page 2](#page-2)).
 
@@ -869,7 +871,7 @@ Feedback shifts again on every pass.
 - Two overlapping taps keep the pitch within about a cent of the interval, without wobble or
   buzz. The grain is how long each tap reads before it starts over.
 - LEDs: the key is indigo; the shift and the grain go blue (down) through white (the centre) to
-  orange (up), as every knob with a centre does, feedback and swoop blue to red.
+  orange (up), as every knob with a centre does, feedback and swoop indigo to red.
 
 ## Folder
 <!-- summary: A wavefolder: past the fold point the signal mirrors back on itself, for bright, gritty overtones. -->
@@ -898,7 +900,7 @@ gritty overtones.
 - **Aliasing:** the sine fold stays clean; the triangle adds some grit on bright material
   high up the drive (the numbers are in [Audio](#audio)).
 - In the resonator's loop, the folder folds the ringing on every trip.
-- LEDs: the key is scarlet; the knobs go magenta to orange.
+- LEDs: the key is scarlet; the knobs go scarlet to azure.
 
 ## Crusher
 <!-- summary: Fewer bits and a lower sample rate, down to 480 Hz, with a dive on every press. -->
@@ -923,7 +925,7 @@ White key 4. Fewer bits and a lower sample rate, down to 480 Hz, with a dive on 
   level, so on a quiet sound they come out louder than it (XOR at full on a sound 40 dB down:
   about 22 dB louder). Nothing turns that down by itself: page 2's Level and Mix are there
   for it.
-- LEDs: the key is orange; the knobs go yellow to red.
+- LEDs: the key is orange; the knobs go orange to violet.
 
 ## Filter
 <!-- summary: A DJ filter, lowpass one way and highpass the other, with an LFO on the cutoff that follows the tempo. -->
@@ -995,7 +997,7 @@ SP-404MK2's Phaser and the Elektron Tonverk's Phase 98). Its second mode is a
   then 1/8, 1/4, 1/2, a bar, 2 bars and 4 bars at the top, a cycle each. So turning right goes
   faster in the free half, and from the centre on, slower again, through the divisions; the
   two halves meet where both are fast. The knob's LED shows the half: the phaser's colours
-  (violet to orange) while free, green on 1/16 to yellow on 4 bars once synced.
+  (blue to orange) while free, green on 1/16 to yellow on 4 bars once synced.
   - Turning it by hand: 1% a detent in the free half (more turned fast, as every knob), a
     division per 3 detents in the synced half. Turning up out of the free half stops on 1/16
     first; turning down from 1/16 takes 3 detents back into the free half, just below the
@@ -1022,7 +1024,7 @@ SP-404MK2's Phaser and the Elektron Tonverk's Phase 98). Its second mode is a
   feedback from the end of the chain back into it. They cut three notches into the sound, the
   middle one on the sweep's frequency, one about two octaves below it and one about two above;
   a triangle LFO sweeps them up and down in octaves around the centre (knob 4).
-- LEDs: the key is blue; the knobs go violet to orange, the rate's synced half green to
+- LEDs: the key is blue; the knobs go blue to orange, the rate's synced half green to
   yellow.
 
 ### Frequency shifter
@@ -1083,7 +1085,7 @@ metallic and bell-like. After Mutable Instruments' Warps.
   signals 90 degrees apart; a carrier at the shift's frequency multiplies them, and their
   difference or sum is the sound moved up or down alone. The other direction stays about 40 dB
   down from 25 Hz to 19 kHz.
-- LEDs in frequency-shifter mode: the key is ice blue; the knobs go azure to orange, the shift's
+- LEDs in frequency-shifter mode: the key is ice blue; the knobs go ice blue to orange, the shift's
   synced half green to yellow, the direction blue, white and orange.
 
 ## Resonator
@@ -1116,7 +1118,7 @@ the inserts in between on every trip.
 - The loop holds a soft clipper, a lowpass (Tone) and a 50 Hz highpass, so it saturates
   rather than runs away, whatever is inside it. It turns the input down as the feedback goes
   up, by half at the most.
-- LEDs: the key is lime; the knobs go orange to light blue.
+- LEDs: the key is lime; the knobs go lime to light blue.
 
 ## Slicer
 <!-- summary: Chops the sound in 16th-note patterns, locked to the tempo. -->
@@ -1163,7 +1165,7 @@ tape's dropouts.
   roller's. It brings the effect in over the first quarter of its knob, so it works without
   the wow.
 - **Tone** darkens what comes off the tape, not the untouched sound.
-- LEDs: the key is red; the knobs go teal to purple.
+- LEDs: the key is red; the knobs go red to purple.
 
 ## Tape stop
 <!-- summary: Winds the tape down to a standstill while you hold the key, and spins it back up when you let go. -->
@@ -1197,7 +1199,7 @@ up when you let go.
   latched tape stop, or a scene that latches one, keeps the input/loop mix silent, and the
   sends get nothing new, until it's unlatched. Page 2's Mix and Level stay on while it spins
   up after you let go.
-- LEDs: the key is rose; the knobs go amber to red.
+- LEDs: the key is rose; the knobs go rose to azure.
 
 ## Delay
 <!-- summary: Echoes in time with the tempo, with random events and shimmer. They keep ringing after you let go. -->
@@ -1248,7 +1250,7 @@ White key 13. From a room to a long wash; the tail rings on after you let go.
 - Its first diffusion moves a little all the time, as in Mutable Instruments' Clouds and
   Elements, so the same hit rings a little differently each time: a smooth tail rather than a
   metallic one.
-- LEDs: the key is teal; the knobs go light blue to purple. On page 2, knob 4's LED shows
+- LEDs: the key is teal; the knobs go teal to purple. On page 2, knob 4's LED shows
   the room coming back (see [Page 2](#page-2)).
 
 ## Chaos key
@@ -1288,7 +1290,7 @@ latch, part of scenes and morphs. It has no page 2: a knob press does nothing.
 - Effects that react to coming on do so each time chaos lets them back in: the freezer
   grabs, the tape stop stops, the slicer attacks. A latched tape stop under chaos makes
   random stops.
-- LEDs: the key is magenta; the knobs go light blue to rose.
+- LEDs: the key is magenta; the knobs go magenta to light blue.
 
 ## Finalizer
 <!-- summary: A master section on key 15: input and drive, a 3-band EQ, compression and width, and a limiter that makes it loud. -->
@@ -1451,7 +1453,9 @@ all three.
   Level, the finalizer's Input or Loud. Loud's own limiter keeps it from showing at VOLUME
   full.
 - **The knob LEDs** are meters while the knobs rest (above, module by module); a knob you turn
-  shows its value for a moment, from light blue (0%) to orange (100%), then the meter again.
+  shows its value for a moment, then the meter again: Drive, Type, Loud, the characters and
+  Depth from light blue (0%) to orange (100%); the knobs with a centre, Input and the EQ and
+  Width bands, blue below it, white on it and orange above.
   Knobs 2 and 3 of Level and knob 4 of Comp always show their values. The output's own meter
   stays VOLUME's.
 - **Level:** 0 dB at the input is an AUX signal about 7 dB below full scale, at the default
@@ -1461,7 +1465,7 @@ all three.
   when the card can't be written, the key blinks red 3 times instead, and FRIZZ tries again
   2 s later, up to 3 times; the settings then last until power-off.
 - LEDs: the key is white, yellow, cyan or magenta, by its module; the knobs go light blue to
-  orange.
+  orange, and those with a centre (Input, the EQ and Width bands) blue, white on it, orange.
 
 <!-- part: Scenes and settings -->
 
@@ -1875,7 +1879,8 @@ the headphones' feed, turned left, you still do).
 the mic monitored through the effects, a delay or a reverb rings out their clicks. For clean
 takes use AUX; with the mic, record the loop first, then switch its monitoring off before you
 play the effects over it. FRIZZ treats it as TAPE does: 5× the input gain
-(AUX gets 3×), its DC taken out, and a highpass at about 150 Hz. VOLUME's page 2 sets the
+(AUX gets 3×) and a highpass at about 150 Hz; its DC is taken out as AUX's is, from about
+8 Hz down. VOLUME's page 2 sets the
 input gain of the source heard: each source has its own, saved. A
 switch of the source, of the upper G# or of the upper A# fades over 5 ms, so it doesn't
 click; the source going out fades out of the outputs while the one coming in fades in, so a
@@ -2588,9 +2593,10 @@ working hard, for example) can need more time than there is, which is heard as c
 switching one of them off clears it.
 
 Measured on a build that runs a set of combinations by itself, as a share of the time each
-block has: FRIZZ alone about 30%, one effect at most about 45%, all the inserts with a loop
-about 70%, every effect at once about 85%. The finalizer with every module working takes about
-13% more, its compressors alone (Depth up) about 5%; at its defaults nothing. Every effect at
+block has, in the busiest block: FRIZZ alone about 30%, one effect at most about 45%, all the
+inserts with a loop about 70%, every effect at once about 85%. On average the finalizer with
+every module working takes about 13% more, its compressors alone (Depth up) about 5%; at its
+defaults nothing. Every effect at
 once with a loop, and every effect's page 2 turned off its defaults (Mix, Band and Level),
 needs more than there is.
 

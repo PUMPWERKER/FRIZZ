@@ -20,6 +20,7 @@
 #include "check.h"
 #include "script.h"
 #include "twin.h"
+#include "../code/src/LedColors.h" // the key colours (FxSlots.h): knob-starts
 
 using namespace twin;
 
@@ -1120,6 +1121,47 @@ int main()
         Tap("ENC_4_SW"); // page 2: Band at its centre, white, once its number has blinked
         RunMs(500);
         Check(white(PthLedFull(kKnob1Led + 2)), "knob-colors: page 2's Band at its centre, white");
+    }});
+
+    // each effect's knob LEDs start in its key's colour (FxSlots.h, the user's decision of
+    // 2026-10-15): every knob turned to 0, one without a centre shows it at full; the frequency
+    // shifter's in its own key's ice blue
+    cases.push_back({"knob-starts", [] {
+        using namespace chompi;
+        struct Key { const char* key; const float* colour; bool shifter; };
+        static const Key keys[] = {
+            {"KEY_1", purple, false}, {"KEY_2", indigo, false},  {"KEY_3", scarlet, false},
+            {"KEY_4", orange, false}, {"KEY_5", pink, false},    {"KEY_6", med_blue, false},
+            {"KEY_7", blue, false},   {"KEY_8", lime, false},    {"KEY_9", yellow, false},
+            {"KEY_10", red, false},   {"KEY_11", rose, false},   {"KEY_12", green, false},
+            {"KEY_13", teal, false},  {"KEY_14", magenta, false}, {"KEY_7", ice_blue, true},
+        };
+        static const int kEncoders[4] = {kKnob1Encoder, 1, 2, 3}; // knobs 1-4: SW4, SW1-3
+        RunMs(kReadyMs);
+        std::string bad;
+        for (const Key& k : keys)
+        {
+            if (k.shifter)
+                Trs({0xB6, 23, 127}); // the phaser's channel: the frequency shifter
+            Tap(k.key);
+            RunMs(200);
+            for (int e : kEncoders)
+                Turn(e, -100);
+            RunMs(4 * 900);
+            bool shows = false;
+            std::string leds;
+            for (int knob = 0; knob < 4; knob++)
+            {
+                const Rgb c = PthLedFull(kKnob1Led + knob);
+                shows |= Shows(c, k.colour, 253, 12); // the LEDs' curve takes up to ~10 off a half-lit channel
+                leds += " " + Hex(c);
+            }
+            if (!shows)
+                bad += std::string("; ") + k.key + (k.shifter ? " (frequency shifter)" : "") + ":" + leds;
+        }
+        if (!bad.empty())
+            printf("      %s\n", bad.c_str() + 2);
+        Check(bad.empty(), "knob-starts: each effect's knobs at 0 in its key's colour");
     }});
 
     // knobs 1-4 speed up when turned fast (#375): 1% a detent slowly, up to 5% fast, back to 1%
@@ -6099,7 +6141,21 @@ int main()
         Press("KEY_5", false);
         Check(fx.size() == 31 && DevNum(fx, 3 + 2 * 4, 2) > 100 && DevNum(fx, 3 + 2 * 11, 2) == 0,
               "midi dev: LEVELS 0, the effects' meters: the filter's lit, the reverb's not");
-        Check(Ask({0x3E, 6, 6, 2})[2] == 1, "midi dev: LEVELS 2 refused");
+        // LEVELS 2, the finalizer's meters (#408): the input's peak and the bands', their
+        // reductions, correlations and the limiter's, 11 values; a part 3 refused. The input's
+        // peak is metered while key 15 shows Level, asleep too: the focus there (CC 23 = 15)
+        sine = true;
+        Trs({kCC, 23, 15});
+        RunMs(200);
+        Ask({0x3E, 6, 6, 2});
+        RunMs(200);
+        const std::string fin = Ask({0x3E, 6, 7, 2});
+        printf("      LEVELS 2: %zu bytes, status %d, input peak %.3f, limiter %.2f dB\n", fin.size(),
+               fin.size() > 2 ? fin[2] : -1, fin.size() >= 25 ? DevNum(fin, 3, 2) / 8192. : -1.,
+               fin.size() >= 25 ? DevNum(fin, 23, 2) / 100. : -1.);
+        Check(fin.size() == 25 && fin[2] == 0 && DevNum(fin, 3, 2) > 300,
+              "midi dev: LEVELS 2, the finalizer's 11 meters: its input's peak from AUX's sine");
+        Check(Ask({0x3E, 6, 8, 3})[2] == 1, "midi dev: LEVELS 3 refused");
     }});
 
     cases.push_back({"midi-dev-signal", [] {
@@ -7064,11 +7120,11 @@ int main()
         printf("      its key %02x%02x%02x\n", key.r, key.g, key.b);
         Check(key.b > 200 && key.b > key.r && key.r == key.g, "phaser: its key lit, blue");
 
-        // knob 1, the rate, at .25: free, between violet and orange; synced over CC 14 on its
+        // knob 1, the rate, at .25: free, between blue and orange; synced over CC 14 on its
         // channel, 7: green
         const Rgb free_rate = PthLedFull(kKnob1Led);
-        Check(free_rate.r > 120 && free_rate.b > 120 && free_rate.g > 30 && free_rate.g < 120,
-              "phaser: its rate free, knob 1's LED between violet and orange");
+        Check(free_rate.r > 80 && free_rate.r < 180 && free_rate.b > 120 && free_rate.g > 30 && free_rate.g < 120,
+              "phaser: its rate free, knob 1's LED between blue and orange");
         Trs({0xB6, 14, 64}); // the centre
         RunMs(100);
         const std::string params = Ask({0x21, 12});

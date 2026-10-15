@@ -96,8 +96,9 @@ it doesn't matter which firmware the CHOMPI runs now.
 ## Credits
 
 FRIZZ builds on the [CHOMPI open-source release](https://github.com/CHOMPI-Club/CHOMPI) by
-CHOMPI Club and runs on Electrosmith's Daisy platform. Several effects are ported from Bastl
-Instruments' Kastle 2 FX Wizard. USB audio and the card drive build on lost-tty's
-[MIXTAPE](https://github.com/lost-tty/CHOMPI), USB audio for TAPE (MIT). Thanks to
+CHOMPI Club and runs on Electrosmith's Daisy platform. Several effects come from Bastl
+Instruments' Kastle 2 FX Wizard, the reverb and the frequency shifter from Mutable
+Instruments (MIT). USB audio and the card drive build on lost-tty's
+[MIXTAPE](https://github.com/lost-tty/CHOMPI) (MIT). Thanks to
 [sfaber02](https://github.com/sfaber02) for the mono input switch and
 [ugrossek](https://github.com/ugrossek) for the launcher's MIDI sender in FRIZZ's tools.
