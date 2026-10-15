@@ -4358,6 +4358,165 @@ int main()
               "on the jack and USB; one by MIDI doesn't go back");
     }});
 
+    // MIDI feedback of a loop planned at the pass end by hand (#400): told as SHIFT lets go
+    // (CC 0, CC 54 = the passes, the program change, CC 54 = 0, CC 0 = 0), nothing as it
+    // switches. Played back from the jack's take at its times, it lands on the same pass end;
+    // sent as it switched (before #400), it switched at once from there, a load late. A plan
+    // told, cancelled by hand: CC 81 up and down again; cancelled by MIDI: nothing back
+    cases.push_back({"loops-feedback-plan", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(72000, 2, 330.f)},
+                  {"a3", SineWav(120000, 2, 440.f)}});
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 3, 2, 0xF7}); // MIDI out to the jack and USB
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_22"); // MIDI feedback on
+        RunMs(100);
+        SetToggle(false);
+        RunMs(300);
+        LoopsPage();
+        // the jack's messages (but the clock's), each at its last byte's time
+        struct Msg
+        {
+            double ms;
+            std::vector<int> bytes;
+        };
+        auto take = [] {
+            std::vector<Msg> msgs;
+            for (const MidiOutByte& b : TakeMidiOut())
+                if (!b.usb && b.byte < 0xF8 && (b.byte & 0x80))
+                    msgs.push_back({b.ms, {b.byte}});
+                else if (!b.usb && b.byte < 0x80 && !msgs.empty())
+                {
+                    msgs.back().bytes.push_back(b.byte);
+                    msgs.back().ms = b.ms;
+                }
+            return msgs;
+        };
+        auto hex = [](const std::vector<Msg>& msgs) {
+            std::string s;
+            char b[4];
+            for (const Msg& m : msgs)
+                for (int c : m.bytes)
+                {
+                    snprintf(b, sizeof(b), " %02X", c);
+                    s += b;
+                }
+            return s;
+        };
+        auto usb = [] {
+            std::string s;
+            char b[4];
+            for (unsigned char c : TakeUsbOut())
+                if (c < 0xF8)
+                {
+                    snprintf(b, sizeof(b), " %02X", c);
+                    s += b;
+                }
+            return s;
+        };
+        // A/01 again from its start (its own key): the ms it did. Its feedback gone out after
+        auto from_top = [] {
+            float pos = Probe().loop_pos;
+            Press(kLoopKeys[0], true);
+            for (int ms = 0; ms < 200; ms++)
+            {
+                RunMs(1);
+                if (Probe().loop_pos < pos - .1f)
+                    break;
+                pos = Probe().loop_pos;
+            }
+            const double at = BlockMs();
+            Press(kLoopKeys[0], false);
+            RunMs(50);
+            return at;
+        };
+        // until A/02 plays, the messages of msgs sent over USB at their times from start (msgs
+        // from from): the ms from start it switched, -1 if not in 6 s; where A/01 was before
+        auto until_a2 = [](const std::vector<Msg>& msgs, double from, double start, float& before) {
+            size_t next = 0;
+            float pos = Probe().loop_pos;
+            for (int ms = 0; ms < 6000; ms++)
+            {
+                for (; next < msgs.size() && BlockMs() - start >= msgs[next].ms - from; next++)
+                    Usb(msgs[next].bytes);
+                RunMs(1);
+                const ClockState st = Probe();
+                if (st.loop_length == 72000)
+                {
+                    before = pos;
+                    return BlockMs() - start;
+                }
+                pos = st.loop_pos;
+            }
+            return -1.;
+        };
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 1000);
+        RunMs(300);
+        const double start = from_top();
+        take();
+        usb();
+        RunMs(450);
+        ShiftWith({kLoopKeys[1], kLoopKeys[1]}); // A/02 at the end of the 2nd pass from here
+        const double released = BlockMs();
+        float before = 0.f;
+        const double by_hand = until_a2({}, 0., start, before);
+        RunMs(300);
+        const std::vector<Msg> told = take();
+        const std::string over_usb = usb();
+        const double first = told.empty() ? -1. : told[0].ms - released;
+        const bool after = !told.empty() && told.back().ms - released > 100.;
+        printf("      by hand: SHIFT let go at %.1f ms, A/02 at %.1f ms from %.4f; told%s %.1f ms after the "
+               "release, USB%s\n", released - start, by_hand, before, hex(told).c_str(), first, over_usb.c_str());
+        Check(by_hand > 3990. && by_hand < 4010. && before > .99f,
+              "loops-feedback-plan: by hand, SHIFT + A/02 x2: at the end of the 2nd pass after SHIFT let go");
+        const std::string plan = " BF 00 01 BF 36 02 CF 01 BF 36 00 BF 00 00";
+        Check(hex(told) == plan && over_usb == plan && first >= 0. && first < 20. && !after,
+              "loops-feedback-plan: MIDI feedback tells the plan as SHIFT lets go, on the jack and USB: CC 0 = 1, "
+              "CC 54 = 2, program 1, CC 54 = 0, CC 0 = 0; nothing as it switches");
+        // A/02 out of the buffers (A/03 loads over A/01, then A/01 over A/02), A/01 from its
+        // start again: the jack's take played back over USB at its times
+        Tap(kLoopKeys[2]);
+        UntilLength(120000, 1000);
+        RunMs(300);
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 1000);
+        RunMs(300);
+        const double again = from_top();
+        take();
+        usb();
+        const double played = until_a2(told, start, again, before);
+        printf("      played back: A/02 at %.1f ms from %.4f (by hand %.1f)\n", played, before, by_hand);
+        Check(played >= 0. && std::fabs(played - by_hand) <= 2. && before > .99f,
+              "loops-feedback-plan: the take played back lands on the same pass end as by hand");
+        // planned again, cancelled by hand (SHIFT + its key in a later hold); then by MIDI
+        RunMs(500);
+        take();
+        usb();
+        ShiftWith({kLoopKeys[2]});
+        RunMs(300);
+        ShiftWith({kLoopKeys[2]});
+        RunMs(300);
+        const std::string cancelled = hex(take()), cancelled_usb = usb();
+        const bool kept = UntilLength(120000, 3000) < 0;
+        ShiftWith({kLoopKeys[2]});
+        RunMs(300);
+        take();
+        usb();
+        Trs({kCC, 81, 127});
+        Trs({kCC, 81, 0});
+        RunMs(300);
+        const std::string by_midi = hex(take()) + usb();
+        const bool kept_midi = UntilLength(120000, 3000) < 0;
+        printf("      cancelled by hand:%s, USB%s; by MIDI:%s\n", cancelled.c_str(), cancelled_usb.c_str(), by_midi.c_str());
+        const std::string cancel = " BF 00 01 BF 36 01 CF 02 BF 36 00 BF 00 00 BF 51 7F BF 51 00";
+        Check(cancelled == cancel && cancelled_usb == cancel && kept,
+              "loops-feedback-plan: a plan told, cancelled by hand: CC 81 = 127, then 0, on the jack and USB");
+        Check(by_midi.empty() && kept_midi, "loops-feedback-plan: one cancelled by MIDI's CC 81: nothing back");
+    }});
+
     // a white key alone: at once. From an empty looper it plays, wet; from a loop, with a 10 ms
     // crossfade; back to the last loop without a load; the loop sets the tempo
     cases.push_back({"loops-now", [] {

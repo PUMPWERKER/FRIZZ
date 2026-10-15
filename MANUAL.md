@@ -2496,12 +2496,18 @@ where [MIDI out](#midi-out) goes, so MIDI out has to be on too.
   (CC 80) while you hold it by hand.
 - **A scene** recalled sends what it changed, once. A morph sends only where it lands, once
   it has. The chaos key changes no setting, so it sends nothing.
-- **A loop switch** you make by hand (a white key on the Loops or Cubbi page, at once or
-  planned) goes out on the global channel at the moment it switches: CC 0 with its bank, the
-  program change, then CC 0 = 0 (see [Program changes](#program-changes)). So a DAW records
-  it, plays it back at the same moment, and leaves FRIZZ's program changes on the scenes
-  after. Gear behind FRIZZ on the same channel that listens to program changes switches its
-  sounds with it: switch its program changes off, or give FRIZZ another global channel.
+- **A loop switch** you make by hand (a white key on the Loops or Cubbi page) goes out on the
+  global channel: CC 0 with its bank, the program change, then CC 0 = 0 (see [Program
+  changes](#program-changes)), so a DAW records it and leaves FRIZZ's program changes on the
+  scenes after. One planned at the end of a pass (SHIFT + the key) goes out as you let go of
+  SHIFT, with CC 54 = its passes before the program change and CC 54 = 0 after: played back,
+  it lands on the same pass end. If it then doesn't switch (cancelled with SHIFT + its key,
+  another key pressed, the loop erased), CC 81 follows (127, then 0). Any other switch goes
+  out the moment it switches, so a switch at once plays back a card load late (up to about
+  0.1 s for a long loop): for a take on time, switch at the pass end, or quantize the program
+  changes with CC 54. Gear behind FRIZZ on the same channel that listens to program changes
+  switches its sounds with it: switch its program changes off, or give FRIZZ another global
+  channel.
 - **Never back:** what came in by MIDI, or by FRIZZ's SysEx, isn't sent back, so a DAW
   recording what it also sends doesn't loop.
 - **Paced:** a value goes at most once every 10 ms, and only when its 7-bit value changed.

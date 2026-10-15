@@ -732,8 +732,14 @@ namespace chompi
                 Heard(feedback::kFocus);
             }
             MidiControl::Event event;
+#if !FRIZZ_BENCH
+            TakeTold(true); // the hand's, before MIDI's events
+#endif
             while (midi_->TakeEvent(event))
                 RemoteEvent(event, now);
+#if !FRIZZ_BENCH
+            TakeTold(false);
+#endif
             bool on;
             while (midi_->TakeLatch(key, on))
             {
@@ -770,6 +776,11 @@ namespace chompi
             const int switched = loops_.TakeSwitched();
             if (switched != LoopControls::kNone)
                 loop_fed_ = feedback ? switched : LoopControls::kNone;
+            if (!feedback)
+            {
+                plan_fed_ = LoopControls::kNone;
+                cancel_fed_ = false;
+            }
 #endif
 
             // one answer a pass (every 2 ms), so USB has sent the last before the next goes,
@@ -1106,28 +1117,76 @@ namespace chompi
                 return true;
             };
 #if !FRIZZ_BENCH
-            // a loop switched to by hand (#259): its bank (CC 0), its program change, and the
-            // scenes' bank again, so a DAW's recording leaves FRIZZ's program changes on the
-            // scenes: 3 CCs' worth, the PC's 2 bytes then CC 0's 3
-            if (loop_fed_ != LoopControls::kNone)
-            {
-                const uint8_t bank = static_cast<uint8_t>(loop_fed_ / loops::kSlots + 1);
-                uint8_t msg[8] = {static_cast<uint8_t>(0xB0 | ch), midimap::kBankCC, bank,
-                                  static_cast<uint8_t>(0xC0 | ch), static_cast<uint8_t>(loop_fed_ % loops::kSlots),
-                                  static_cast<uint8_t>(0xB0 | ch), midimap::kBankCC, 0};
-                // the jack's ring takes them as they are: each starts with its status byte
-                if (midi_->feedback_trs.Room() < 8
-                    || (usb && midi_->UsbHost() && !midi_->TrySendUsb(msg, 8)
+            // the hand's loops (#259, #400), on the global channel: whole messages, over USB and
+            // into the jack's ring as they are (each starts with its status byte)
+            uint8_t msg[14];
+            size_t m = 0;
+            auto cc = [&](uint8_t c, uint8_t v) {
+                msg[m++] = static_cast<uint8_t>(0xB0 | ch);
+                msg[m++] = c;
+                msg[m++] = v;
+            };
+            auto out = [&] {
+                if (midi_->feedback_trs.Room() < m
+                    || (usb && midi_->UsbHost() && !midi_->TrySendUsb(msg, m)
                         && ++feedback_usb_tries_ < kFeedbackUsbTries))
-                    return;
+                    return false;
                 feedback_usb_tries_ = 0;
-                midi_->feedback_trs.Push(msg, 8);
-                loop_fed_ = LoopControls::kNone;
+                midi_->feedback_trs.Push(msg, m);
+                return true;
+            };
+            // a plan told cancelled: CC 81 crossing 64 upward, and back, so the next crosses again
+            if (cancel_fed_)
+            {
+                cc(midimap::kStopMorphCC, 127);
+                cc(midimap::kStopMorphCC, 0);
+                cancel_fed_ = !out();
+                return;
+            }
+            // a loop switched to at once, then a plan at the pass end: its bank (CC 0), the plan's
+            // passes (CC 54), its program change, CC 54 at once again, so a switch at once after
+            // it plays back at once, and the scenes' bank again, so a DAW's recording leaves
+            // FRIZZ's program changes on the scenes
+            const bool plan = loop_fed_ == LoopControls::kNone;
+            const int loop = plan ? plan_fed_ : loop_fed_;
+            if (loop != LoopControls::kNone)
+            {
+                cc(midimap::kBankCC, static_cast<uint8_t>(loop / loops::kSlots + 1));
+                if (plan)
+                    cc(midimap::kLoopTimingCC, plan_fed_passes_);
+                msg[m++] = static_cast<uint8_t>(0xC0 | ch);
+                msg[m++] = static_cast<uint8_t>(loop % loops::kSlots);
+                if (plan)
+                    cc(midimap::kLoopTimingCC, midimap::kTimingNow);
+                cc(midimap::kBankCC, 0);
+                if (out())
+                    (plan ? plan_fed_ : loop_fed_) = LoopControls::kNone;
                 return;
             }
 #endif
             feedback_.Pass(now, global, [this](uint8_t item, uint8_t& v) { return FeedbackValue(item, v); }, send);
         }
+
+#if !FRIZZ_BENCH
+        /** The hand's plans at the pass end told, and the told ones cancelled
+         *  (LoopControls::TakeTold), for MIDI feedback; not hand: MIDI's events', whose
+         *  cancels don't go back. A plan not sent yet and cancelled goes unsent */
+        void TakeTold(bool hand)
+        {
+            uint8_t passes;
+            bool cancelled;
+            const int told = loops_.TakeTold(passes, cancelled);
+            if (cancelled && plan_fed_ != LoopControls::kNone)
+                plan_fed_ = LoopControls::kNone;
+            else if (cancelled && hand)
+                cancel_fed_ = true;
+            if (told != LoopControls::kNone)
+            {
+                plan_fed_ = told;
+                plan_fed_passes_ = passes;
+            }
+        }
+#endif
 
         /** A morph (CC 3) or a drop (CC 83) over MIDI: as SHIFT + the scene key, tapped once per
          *  bar, for a drop the transport pressed, and SHIFT let go, unless the hand holds it,
@@ -3080,6 +3139,9 @@ namespace chompi
 #if !FRIZZ_BENCH
         LoopControls loops_;
         int loop_fed_ = LoopControls::kNone; // a loop switched to, for MIDI feedback (#259)
+        int plan_fed_ = LoopControls::kNone; // a plan at the pass end told (#400)
+        uint8_t plan_fed_passes_ = 1;        // its passes
+        bool cancel_fed_ = false;            // a plan told cancelled: CC 81
         LedSignal loop_refused_key_;  // a loop refused, on its key
         size_t loop_refused_slot_ = 0;
         LedSignal bank_refused_;      // no bank further, on its key (both: no loop on the page)
