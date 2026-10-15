@@ -9,6 +9,13 @@
  *  empties MidiHandler's queue and preempts the task), and sends the queue. RxActive() is
  *  false until StartRx: MidiHandler::Listen() starts the receive only while it's false (true
  *  from the start, as lost-tty's, left FRIZZ deaf to USB MIDI: no IDENT, no restart).
+ *
+ *  A computer can have FRIZZ configured and not read it: Linux (and Windows) take MIDI in only
+ *  while an app has the port open. What waits then is stale, and went out all at once when an
+ *  app opened the port (a DAW got ~270 ticks in a burst, and any Start among them). So a queue
+ *  that nothing was taken from for kStalePasses is dropped, all but the rest of the message
+ *  TinyUSB has begun, and SendUsb doesn't wait for room once Stuck(). TinyUSB's own 64 bytes
+ *  and the packet in the endpoint stay: up to ~30 stale messages at most.
  */
 #pragma once
 #include <cstddef>
@@ -53,6 +60,8 @@ public:
     }
     /** The queue's free bytes */
     size_t Room() const { return kTxSize - (head_ - tail_); }
+    /** Nothing taken from the queue for a while (kStuckPasses): no app reads FRIZZ's port */
+    bool Stuck() const { return stuck_ >= kStuckPasses; }
 
     /** Whether any MIDI came in over USB since power-on (UsbDevice.cpp's Watch) */
     static bool& Heard()
@@ -70,6 +79,9 @@ public:
 
     // an answer to a query is 51 bytes at most (MidiControl::Reply)
     static const size_t kTxSize = 256;
+    // Poll's passes, at 4 kHz: 5 ms (a computer that reads takes some every 1 ms frame), and
+    // 100 ms before what waits is dropped
+    static const uint32_t kStuckPasses = 20, kStalePasses = 400;
 
 private:
     static MidiTinyUsbTransport*& Active()
@@ -100,9 +112,11 @@ private:
         {
             drop_ = false;
             tail_ = head_;
+            stuck_ = 0;
             return;
         }
 
+        bool moved = tail_ == head_;
         while (tail_ != head_)
         {
             const size_t pos = tail_ % kTxSize;
@@ -110,9 +124,29 @@ private:
             const size_t chunk = count < kTxSize - pos ? count : kTxSize - pos;
             const uint32_t sent = tud_midi_stream_write(0, &tx_[pos], static_cast<uint32_t>(chunk));
             tail_ += sent;
+            moved = moved || sent > 0;
             if (sent < chunk)
                 break; // the rest next time
         }
+        if (moved)
+            stuck_ = 0;
+        else if (++stuck_ >= kStalePasses)
+            DropStale();
+    }
+
+    /** Drops what waits but the rest of the message TinyUSB has begun (its data bytes, a
+     *  SysEx's through F7), which it needs to close its packet: Tx's messages start with their
+     *  status byte. Takes back the head, which only Tx moves, and only with interrupts off */
+    void DropStale()
+    {
+        daisy::ScopedIrqBlocker block;
+        size_t keep = 0;
+        while (tail_ + keep != head_ && tx_[(tail_ + keep) % kTxSize] < 0x80)
+            keep++;
+        if (tail_ + keep != head_ && tx_[(tail_ + keep) % kTxSize] == 0xF7)
+            keep++;
+        head_ = tail_ + keep;
+        stuck_ = kStuckPasses; // still stuck: SendUsb doesn't wait
     }
 
     MidiRxParseCallback rx_cb_ = nullptr;
@@ -120,5 +154,6 @@ private:
     uint8_t tx_[kTxSize];
     volatile size_t head_ = 0, tail_ = 0; // only Poll() moves the tail
     volatile bool drop_ = false;
+    volatile uint32_t stuck_ = 0; // Poll's passes since it last took something
 };
 } // namespace chompi
