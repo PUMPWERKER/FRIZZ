@@ -90,6 +90,7 @@ public:
     static constexpr float kMaxShiftFeedback = .9f;
     static constexpr float kShiftFeedbackLp = .35f; // the feedback's lowpass, ~3.3kHz
     static const uint32_t kDipSamples = 240;        // a mode switch's dip out and in, 5ms each
+    static const uint32_t kResync = 32;             // retunes between setting the carrier, 256 samples
 
     FX_ONCE void Init(float sample_rate)
     {
@@ -104,6 +105,7 @@ public:
         dip_ = 1.f;
         co_ = 1.f;
         so_ = cr_ = sr_ = turn_ = 0.f;
+        resync_ = kResync;
         coeff_[0] = coeff_[1] = step_[0] = step_[1] = 0.f;
         for (size_t i = 0; i < kNumFxParams; i++)
             SetParam(i, 0.f);
@@ -237,9 +239,10 @@ private:
 
     /** The rate knob (rate_) as the mode reads it: synced, or the free LFO's or carrier's
      *  advance a sample */
-    __attribute__((noinline, optimize("Os"))) void SetRate()
+    __attribute__((noinline, optimize("Os"))) FRIZZ_AFTER_RUN void SetRate()
     {
         synced_ = SplitUpper(rate_);
+        resync_ = kResync; // the carrier where the LFO is, at the next retune
         if (synced_)
             div_pulses_ = kLfoDivisionPulses[SplitStep(rate_, kNumDivisions)];
         else
@@ -306,8 +309,9 @@ private:
     }
 
     /** The frequency shifter's Retune: the knobs, and the carrier set again where the LFO is,
-     *  its turn a sample at the free rate or the clock's */
-    __attribute__((noinline)) void RetuneShift(float feedback, float depth, float direction)
+     *  its turn a sample at the free rate or the clock's. The shifter's code (this, Shift, Dip,
+     *  SetRate, Clear) is linked after FxChain::Run (FRIZZ_AFTER_RUN), so it doesn't move Run */
+    __attribute__((noinline)) FRIZZ_AFTER_RUN void RetuneShift(float feedback, float depth, float direction)
     {
         feedback_ = kMaxShiftFeedback * feedback;
         wet_ = depth;
@@ -327,8 +331,15 @@ private:
             phase = free_phase_;
             turn = free_inc_;
         }
-        co_ = cosf(kTwoPi * phase);
-        so_ = sinf(kTwoPi * phase);
+        // the carrier set again where the LFO is every kResync retunes, turned a sample at a
+        // time in between (a few 1e-7 off by then): sinf and cosf every 8 samples cost about
+        // half a point of the block
+        if (++resync_ >= kResync)
+        {
+            resync_ = 0;
+            co_ = cosf(kTwoPi * phase);
+            so_ = sinf(kTwoPi * phase);
+        }
         if (turn != turn_)
         {
             turn_ = turn;
@@ -338,7 +349,7 @@ private:
     }
 
     /** A sample of the frequency shifter, both channels (file comment), gate: the key's fade */
-    __attribute__((noinline)) void Shift(float* l, float* r, float gate)
+    __attribute__((noinline)) FRIZZ_AFTER_RUN void Shift(float* l, float* r, float gate)
     {
         float* const io[2] = {l, r};
         for (size_t c = 0; c < 2; c++)
@@ -372,16 +383,17 @@ private:
         }
         return x;
     }
-    /** stmlib's SoftLimit: x up to about 1, smoothly, 1 from 3 on */
+    /** A soft limit as stmlib's SoftLimit, without its division: x - 4/27 x^3, smoothly up to
+     *  1 at 1.5 and flat from there */
     static inline float SoftLimit(float x)
     {
-        x = fclamp(x, -3.f, 3.f);
-        return x * (27.f + x * x) / (27.f + 9.f * x * x);
+        x = fclamp(x, -1.5f, 1.5f);
+        return x - (4.f / 27.f) * x * x * x;
     }
 
     /** A sample of a mode switch's dip, 1 to 0 and back: at the bottom the mode switches,
      *  starting from silence. Wanted back meanwhile, it comes up as it was */
-    __attribute__((noinline)) float Dip()
+    __attribute__((noinline)) FRIZZ_AFTER_RUN float Dip()
     {
         const float step = 1.f / static_cast<float>(kDipSamples);
         if (dip_down_)
@@ -420,11 +432,12 @@ private:
             shifting_ = want_;
             SetRate();
         }
+        resync_ = kResync; // the carrier where the LFO is
         Clear();
         Snap();
         Retune(true);
     }
-    __attribute__((noinline, optimize("Os"))) void Clear()
+    __attribute__((noinline, optimize("Os"))) FRIZZ_AFTER_RUN void Clear()
     {
         for (size_t c = 0; c < 2; c++)
         {
@@ -468,6 +481,7 @@ private:
     float dir_[2];              // per channel: -1 down, 0 both sidebands, 1 up
     float co_, so_;             // the carrier, cos and sin
     float cr_, sr_, turn_;      // its turn a sample, and that in cycles
+    uint32_t resync_;           // retunes since the carrier was set (RetuneShift)
 };
 
 
