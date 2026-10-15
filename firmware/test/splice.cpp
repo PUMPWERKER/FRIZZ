@@ -7,7 +7,9 @@
 // Then the shifter itself, at the ends of its shift, grain, swoop and stereo, from power-on,
 // after the shift or the grain was turned while it was off, turned from the centre while it
 // plays, and the grain turned at once while it plays: no sounding tap may run into the end of its delay
-// (#137, #140, #167). Built and run by unit.sh splice.
+// (#137, #140, #167). And back at stereo 0 while it plays (#226): the right channel relocks
+// onto the left's taps without a jump, within one grain (30 ms at the default, #249).
+// Built and run by unit.sh splice.
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -461,14 +463,18 @@ int main()
             step();
             same &= l == r;
         }
-        char line[220];
+        // the fade is one grain long (#249's "within about 30 ms" at the default grain), two
+        // when turned apart again halfway
+        const int grain = static_cast<int>(48.f * (10.f + 40.f * rl.grain) + .5f);
+        const bool in_time = fade <= (rl.reverse ? 2 : 1) * grain;
+        char line[240];
         snprintf(line, sizeof(line),
-                 "%s: back at stereo 0, the right channel on the left's taps after %d samples%s, "
+                 "%s: back at stereo 0, the right channel on the left's taps after %d samples (%.1f ms)%s, "
                  "its steps up to %.4f (the left's %.4f; at once: %.4f), %d and %d splices; L == R "
                  "after: %s",
-                 rl.name, fade, rl.reverse ? (back ? " (back to its own first)" : " (NOT back)") : "",
+                 rl.name, fade, fade / 48.f, rl.reverse ? (back ? " (back to its own first)" : " (NOT back)") : "",
                  step_r, step_l, jump, splices[0], splices[1], same ? "yes" : "NO");
-        Check(apart && same && fade < 48000 && step_r <= 1.1f * step_l && jump > 3.f * step_l
+        Check(apart && same && in_time && step_r <= 1.1f * step_l && jump > 3.f * step_l
                   && splices[0] > 0 && splices[1] > 0 && (!rl.reverse || back > 0),
               line);
     }
