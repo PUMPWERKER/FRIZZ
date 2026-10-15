@@ -236,7 +236,7 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   the pushed commit, with that commit's build attached. First the commit to tag sets
   `kFrizzVersion` in `firmware/code/src/Version.h` to the tag's version (`{1, 5, 0, 1}` for
   `v1.5.0-beta.1`, the last 0 for a release), on a branch merged before tagging: the loop
-  transfer's HELLO reports it, and `tools/builds.py` and `flash.py --slot 10/13` refuse a tag's
+  transfer's HELLO reports it, and `tools/builds.py` and `flash.py --slot 10/11` refuse a tag's
   build whose constant isn't its tag. After the tag, main's next commit may carry the next
   version's. Then the build: `make` in a clean worktree at the tag
   (`git worktree add ../FrizZ-<tag> <tag>`, GCC 10.3), and its `firmware/code/src/build/FRIZZ.bin` uploaded under that name. The
@@ -253,12 +253,11 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   Its notes start from `CHANGELOG.md` but are written for a CHOMPI owner new to FRIZZ, as
   v1.0.0's are: what FRIZZ is, trying it beside the stock firmwares, what you can do with it,
   then what moved for those updating, and a link to the CHANGELOG for every entry.
-- On the CHOMPI (decided 2026-10-13, #171): a beta goes to **key 13** (`FRIZZ-BETA`), a release
-  to **key 10** (`FRIZZ`), each on the user's word once it's cut, from the clean worktree of
-  its tag: `./flash.py --slot 13` (or `--slot 10`) there. `flash.py` sends to 10 or 13 nothing
-  else: only when the key is named, and only the build of a clean `v*` tag's checkout. Since
-  `v1.0.0`, 10 carries the release and 13 the beta (before 1.0, key 10 carried the newest beta
-  too).
+- On the CHOMPI (decided 2026-10-13, #171; the keys reordered 2026-10-15): a beta goes to
+  **key 11** (`FRIZZ-BETA`), a release to **key 10** (`FRIZZ`), each on the user's word once
+  it's cut, from the clean worktree of its tag: `./flash.py --slot 11` (or `--slot 10`) there.
+  `flash.py` sends to 10 or 11 nothing else: only when the key is named, and only the build of
+  a clean `v*` tag's checkout.
 
 ## The CHOMPI is shared: the lock and the slots
 
@@ -306,15 +305,18 @@ turn in the same instant as a key's edge lands differently on the twin and the d
 `wait 100` between them (#227). The DAW cases' music lives in `firmware/card/audio/`
 (git-ignored, the user's own samples: never commit or name it).
 Within that, stage 2 needs no asking. Ask the user first only for what needs their hands or
-changes what they play: sending to key 10 or 13, `flash.py --list` (it restarts FRIZZ into
+changes what they play: sending to key 10 or 11, `flash.py --list` (it restarts FRIZZ into
 the launcher: a loop in RAM is lost), anything when the lock's holder is the user, a cable to
 plug.
 
-The slots (#171): keys 10 and 13 are the user's, **10 the latest release, 13 the latest beta**
-(*Releases*); sessions never send there unasked, and `flash.py` refuses anything but a clean
-`v*` tag's build there, and only with the key named (`--slot 10`, `--slot 13`; a bare
-`./flash.py` sends nothing). A branch's build goes to the **test slot, key 12** (`flash.py
---test`, as `FRIZZ-TEST`); the bench on 11, USB storage on 15. Never send to another slot.
+The slots (#171, reordered 2026-10-15): keys 10 and 11 are the user's, **10 the latest
+release, 11 the latest beta** (*Releases*); sessions never send there unasked, and `flash.py`
+refuses anything but a clean `v*` tag's build there, and only with the key named (`--slot 10`,
+`--slot 11`; a bare `./flash.py` sends nothing). A branch's build goes to the **test slot, key
+12** (`flash.py --test`, as `FRIZZ-TEST`); the bench on 13 (`flash.py --bench`, as
+`FRIZZ-BENCH`), USB storage on 15. Never send to another slot. On the launcher 1.6 `flash.py`
+colours each key with the build it sends: 10 green, 11 orange, 12 and 13 red (the builds
+sessions make).
 `remote.py`'s setters that FRIZZ saves (`channel`, `transport`, `source`, `out`, `scene put`,
 `set` for settings, the compressor and the input gain) keep the card out of it as `play` does
 (PERSIST 0) unless `--save`, which a session never gives. The tools
