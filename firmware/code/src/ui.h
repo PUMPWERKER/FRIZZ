@@ -134,7 +134,7 @@ namespace chompi
                 if (inc == 1 || inc == -1)
                 {
                     if (!settings_ || encoder_map[i] == kVolumeEncoder || encoder_map[i] == 0)
-                        event_queue.AddEncoderTurned(encoder_map[i], inc, 0);
+                        event_queue.AddEncoderTurned(encoder_map[i], inc, Gap(encoder_map[i], inc));
                     log_->Add(EventLog::TURN, i + 1, inc);
                 }
             }
@@ -143,7 +143,8 @@ namespace chompi
             {
                 const int panel_turn = midi_->TakePanelTurn(knob);
                 if (panel_turn && (!settings_ || knob == kVolumeEncoder || knob == 0))
-                    event_queue.AddEncoderTurned(knob, static_cast<int16_t>(panel_turn), 0);
+                    event_queue.AddEncoderTurned(knob, static_cast<int16_t>(panel_turn),
+                                                 Gap(knob, panel_turn));
             }
         }
 
@@ -204,6 +205,23 @@ namespace chompi
             told = down;
         }
 
+        /** A detent of knob 1-4 or VOLUME, the hand's or SysEx's: the ms since that knob's
+         *  last one the same way, measured here as it happens (MainLoop may take them late,
+         *  behind the card), for the turn's speed (TurnAccel, #375); the first, or one turned
+         *  back, as a slow one. It goes as the event's stepsPerRevolution, which nothing else
+         *  reads; 0 for the transport */
+        uint16_t Gap(uint16_t knob, int dir)
+        {
+            if (knob == kTransportEncoder)
+                return 0;
+            const uint32_t now = daisy::System::GetNow();
+            const int8_t way = dir > 0 ? 1 : -1;
+            const uint32_t gap = way == knob_way_[knob] ? now - knob_at_[knob] : kSlowGap;
+            knob_at_[knob] = now;
+            knob_way_[knob] = way;
+            return static_cast<uint16_t>(gap < kSlowGap ? gap : kSlowGap);
+        }
+
         MidiControl *midi_ = nullptr;
         uint64_t hand_ = 0; // the keys the hand holds, by Hardware::SwId
         uint64_t told_ = 0; // the keys the play page was told are down
@@ -213,6 +231,9 @@ namespace chompi
         uint64_t told_settings_ = 0;    // the keys it was told are down
         uint64_t loops_keys_ = 0;       // those that went down on the Loops page,
         uint64_t told_loops_ = 0;       // and those it was told are down
+        static const uint32_t kSlowGap = 1000; // ms: any gap from kFxAccelSlowMs up is as slow
+        uint32_t knob_at_[kVolumeEncoder + 1] = {}; // a knob's last detent (Gap)
+        int8_t knob_way_[kVolumeEncoder + 1] = {};  // and its way, +1 or -1; 0 before the first
 
         BootPage boot_page_;
         NormalPage normal_page_;

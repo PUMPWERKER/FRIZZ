@@ -12,6 +12,8 @@
 //    patterns bit for bit, "-12 to +12 semitones", "two steps") as the code's tables have
 //    them, and its "(default ...)" is the default's step; Punch-in FX's "Stepped parameters"
 //    bullet names every one, and their detents per step
+//  - the turning speed (#375): Punch-in FX's "Turning speed" bullet and VOLUME's paragraph,
+//    their steps a detent and how they grow turned fast (FxControls.h, NormalPage.h)
 //  - Coarse steps: every row against its grid (kFxGrids), the values it lists computed from
 //    the grid's points over the knob's range as the effect's table gives it (and, where the
 //    code has the range as a constant, that too); every parameter with a grid of its own has
@@ -656,6 +658,57 @@ static std::string ParamWord(size_t fx, size_t q)
 }
 
 static bool Stepped(size_t fx, size_t q) { return kFxParams[fx].steps[q] && (kFxParams[fx].knobs & (1 << q)); }
+
+/** The first number after pattern's match (a regex with one group) in text, or -1 */
+static double NumberAfter(const std::string& text, const char* pattern)
+{
+    std::smatch m;
+    return std::regex_search(text, m, std::regex(pattern)) ? atof(m[1].str().c_str()) : -1.;
+}
+
+/** A constant of a header read as text, "NAME = 1.5f;", or -1 */
+static double Constant(const std::string& text, const char* name)
+{
+    return NumberAfter(text, (std::string(name) + " = ([0-9.]+)f?;").c_str());
+}
+
+/** The turning speed (#375): Punch-in FX's bullet and VOLUME's paragraph say the steps, where
+ *  they start to grow and how far, as FxControls.h and NormalPage.h have them */
+static void CheckTurnSpeed()
+{
+    const Strings lines = Under(Under(manual, "## Punch-in FX"), "### Playing an effect");
+    const std::string fx = Bullet(lines, "Turning speed");
+    CheckF(!fx.empty(), "Punch-in FX: a bullet \"Turning speed ...\"");
+    CheckF(Near(NumberAfter(fx, "moves (\\d+)% a detent"), kFxParamStep * 100., 1e-6)
+               && Near(NumberAfter(fx, "faster than about (\\d+) detents a second"), 1000. / kFxAccelSlowMs, 1e-6)
+               && Near(NumberAfter(fx, "up to (\\d+)% a detent"), kFxParamStep * 100. * kFxAccelMax, 1e-6)
+               && Near(NumberAfter(fx, "% a detent from about (\\d+) a second"), 1000. / kFxAccelFastMs, 1e-6),
+           "Punch-in FX: turning speed, %g%% a detent, faster from %g a second, up to %g%% from %g "
+           "(FxControls.h)",
+           kFxParamStep * 100.f, 1000.f / kFxAccelSlowMs, kFxParamStep * 100.f * kFxAccelMax,
+           1000.f / kFxAccelFastMs);
+
+    std::string vol;
+    for (const std::string& line : Under(Under(manual, "## Playing basics"), "### VOLUME knob"))
+        vol += line + " ";
+    const std::string page = Source("NormalPage.h");
+    const double gains = Constant(page, "kVolumeStep") * 100., mix = Constant(page, "kMixStep") * 100.,
+                 hp = Constant(page, "kHpCueStep") * 100., most = Constant(page, "kVolumeAccelMax"),
+                 slow = 1000. / Constant(page, "kVolumeAccelSlowMs"),
+                 fast = 1000. / Constant(page, "kVolumeAccelFastMs");
+    CheckF(Near(NumberAfter(vol, "moves the gains (\\d+)% per detent"), gains, 1e-6)
+               && Near(NumberAfter(vol, "\\(SHIFT \\+ turn\\) (\\d+)%"), mix, 1e-6)
+               && Near(NumberAfter(vol, "headphone feed (\\d+)%"), hp, 1e-6),
+           "VOLUME knob: the gains %g%% per detent, the mix %g%%, the headphone feed %g%% (NormalPage.h)",
+           gains, mix, hp);
+    CheckF(Near(NumberAfter(vol, "faster than about (\\d+) detents a second"), slow, 1e-6)
+               && Near(NumberAfter(vol, "up to (\\d+) times"), most, 1e-6)
+               && Near(NumberAfter(vol, "times at about (\\d+) a second"), fast, 1e-6)
+               && Near(NumberAfter(vol, "\\(the gains (\\d+)% a detent\\)"), gains * most, 1e-6),
+           "VOLUME knob: faster from %g detents a second, up to %g times at %g (the gains %g%%) "
+           "(NormalPage.h)",
+           slow, most, fast, gains * most);
+}
 
 static void CheckSteppedBullet()
 {
@@ -1464,6 +1517,7 @@ int main()
             if (Stepped(fx, q))
                 CheckSteps(fx, q);
     CheckSteppedBullet();
+    CheckTurnSpeed();
     CheckCoarse();
     CheckMidi();
     CheckSettings();

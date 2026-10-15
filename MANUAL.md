@@ -98,7 +98,9 @@ which SHIFT + the lower C# and SHIFT + the lower D# open.
 | SHIFT + press | Resets the input/loop mix: the loop only while there is one, otherwise the input only | |
 
 Turning moves the gains 2% per detent, the input/loop mix (SHIFT + turn) 4% and the headphone
-feed 1%. Whether a press is SHIFT + press is decided when it goes down, so letting go of
+feed 1%. Turned faster than about 8 detents a second, these steps grow smoothly, up to 3 times
+at about 50 a second (the gains 6% a detent) and no more, so a quick turn of the output can't
+jump the level. Whether a press is SHIFT + press is decided when it goes down, so letting go of
 CHOMPI first doesn't also change the page.
 
 - **The input gain** is the one setting here that's saved: AUX, the mic and USB each keep their own
@@ -669,7 +671,7 @@ time than there is, heard as crackles (see [Processing load](#processing-load)).
 | Hold an FX key, then SHIFT | **Latch** on / off: the effect stays on after release. Hold several FX keys, then SHIFT, to latch them all |
 | SHIFT, then an FX key | **Select:** the knobs edit that effect without your hearing it; the key flashes |
 | FX key on a latched effect | Clears the latch; the effect stays on until the key is released |
-| Knobs 1-4 | The parameters of the most recently pressed or selected FX key, 1% per detent |
+| Knobs 1-4 | The parameters of the most recently pressed or selected FX key, 1% per detent, faster when turned fast |
 | SHIFT + knobs 1-4 | Coarse: the next point of the parameter's grid per detent (see [Coarse steps](#coarse-steps)) |
 | SHIFT + press knobs 1-4 | Resets that parameter to its default, on the page shown |
 | Press knobs 1-4 | The effect's page 2, and back (see [Page 2](#page-2)) |
@@ -688,6 +690,12 @@ The details of the timing:
   and the delay's divisions, the freezer's length and roll, the slicer's pattern and stereo,
   the tape stop's stop and spin-up times, the flanger's polarity, the chaos key's grid, the
   phaser's rate right of its centre (and the frequency shifter's shift there).
+- **Turning speed:** a knob turned slowly moves 1% a detent, for a precise setting. Turned
+  faster than about 8 detents a second, its step grows smoothly, up to 5% a detent from about
+  40 a second, so a quick sweep across the whole range takes about one turn. Turned slowly
+  again, it's back to 1% from the next detent, and a value still stops exactly at 0% and 100%.
+  The finalizer's knobs speed up the same way; SHIFT + turn and the stepped parameters keep
+  their steps however fast you turn.
 
 ### Keys and knobs
 
@@ -774,8 +782,8 @@ tails too, after the key is let go).
 
 ### Coarse steps
 
-SHIFT + turn moves one point of a fixed grid per detent, always to the next point in the
-direction you turn, so a value set finely snaps onto the grid with the first coarse move:
+SHIFT + turn moves one point of a fixed grid per detent, however fast you turn, always to the
+next point in the direction you turn, so a value set finely snaps onto the grid with the first coarse move:
 
 | Parameter | Coarse grid |
 |---|---|
@@ -981,9 +989,10 @@ SP-404MK2's Phaser and the Elektron Tonverk's Phase 98). Its second mode is a
   faster in the free half, and from the centre on, slower again, through the divisions; the
   two halves meet where both are fast. The knob's LED shows the half: the phaser's colours
   (violet to orange) while free, green on 1/16 to yellow on 4 bars once synced.
-  - Turning it by hand: 1% a detent in the free half, a division per 3 detents in the synced
-    half. Turning up out of the free half stops on 1/16 first; turning down from 1/16 takes 3
-    detents back into the free half, just below the centre.
+  - Turning it by hand: 1% a detent in the free half (more turned fast, as every knob), a
+    division per 3 detents in the synced half. Turning up out of the free half stops on 1/16
+    first; turning down from 1/16 takes 3 detents back into the free half, just below the
+    centre.
   - SHIFT + turn: 10% steps in the free half, a division a detent in the synced half,
     across the centre both ways.
   - Synced, the sweep is at the centre on the beat and rises first, like the filter's LFO,
@@ -1291,7 +1300,7 @@ Drive and Loud.
 ![The white keys from above, the finalizer lit on key 15; its knobs 1 to 4 are input, drive, type, Loud](images/key-finalizer.svg)
 
 - **Selecting it:** the key selects the finalizer for knobs 1-4, which then turn it the way they
-  turn an effect: 1% per detent, SHIFT + turn coarse, SHIFT + press resets. Pressing an FX key
+  turn an effect: 1% per detent (more turned fast), SHIFT + turn coarse, SHIFT + press resets. Pressing an FX key
   gives the knobs back to that effect. There's no page 2: a plain knob press does nothing in
   Level, and [mutes a band](#band-mutes) in the other modules.
 - **The modules:** hold SHIFT, tap key 15 (it's selected, as ever), then tap it again: the knobs

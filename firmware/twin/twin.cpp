@@ -231,9 +231,9 @@ struct Quadrature
     int pending = 0;     // detents still to play, signed
     int step = 0;        // 0 at rest, 1..4 within a detent
     uint64_t step_end = 0;
+    uint64_t step_ns = 0; // a quarter of a detent's time
 };
 static Quadrature quad[6];
-static const uint64_t kQuadStepNs = 2000000; // 4 steps, 8 ms a detent
 
 static void SetEncoderLines(int enc, bool a, bool b)
 {
@@ -271,7 +271,7 @@ static void StepEncoders()
         const bool (*seq)[2] = q.pending > 0 ? kCw : kCcw;
         SetEncoderLines(e, seq[q.step][0], seq[q.step][1]);
         q.step++;
-        q.step_end = block_ns + kQuadStepNs;
+        q.step_end = block_ns + q.step_ns;
     }
 }
 
@@ -676,10 +676,13 @@ bool Press(const char* name, bool down)
     return false;
 }
 
-void Turn(int encoder, int detents)
+void Turn(int encoder, int detents, int ms)
 {
-    if (encoder >= 1 && encoder <= 6)
+    if (encoder >= 1 && encoder <= 6 && ms > 0)
+    {
         quad[encoder - 1].pending += detents;
+        quad[encoder - 1].step_ns = static_cast<uint64_t>(ms) * 1000000 / 4;
+    }
 }
 
 void SetToggle(bool raw_level)
