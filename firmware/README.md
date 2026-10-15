@@ -279,9 +279,11 @@ A card set up from the launcher's v1.5 or v1.6 release still has USB storage v1.
 v1.6's `.bin` over `FIRMWARE/15_USB_STORAGE.bin` (or `./flash.py FILE --slot 15 --other-slot
 --name USB_STORAGE`). With an older launcher or storage firmware the tools still work, but say which
 key to press (15 for the card, overdub then CHOMPI to leave it, 10 for FRIZZ). Another firmware
-built on FRIZZ's platform (its USB names say Chompi Club) is sent FRIZZ's restart into the
-launcher first; with an older FRIZZ or a firmware that ignores it, switch the CHOMPI off and on
-when they say so (they wait up to 2 minutes). Mounting needs udisks, as any desktop has.
+built on FRIZZ's platform (its USB names say Chompi Club, or, garbled, the Daisy's USB id
+finds it as it finds FRIZZ) is sent FRIZZ's restart into the launcher at once, not waited for
+as a busy FRIZZ is, and its RESET when it doesn't get there (#371); with an older FRIZZ or a
+firmware that ignores both, switch the CHOMPI off and on when they say so (they wait up to 2
+minutes). Mounting needs udisks, as any desktop has.
 
 **Remote control over USB MIDI.** `./remote.py` talks to a running FRIZZ over its SysEx
 (`code/src/MidiControl.h`): `state`, `leds`, `load [--every S]` (with the blocks that took

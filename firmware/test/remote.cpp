@@ -2113,6 +2113,20 @@ chompi = importlib.reload(chompi)
 chompi.ASOUND = "asound"
 print("names:", chompi.platform_node("/dev/snd/midiC3D0"), chompi.platform_node("/dev/snd/midiC4D0"),
       chompi.platform_node(None), chompi.frizz_node("/dev/snd/midiC3D0"), flush=True)
+# garbled names (#88, #371): one string off, the maker the product's name, found by the Daisy's
+# USB id; a Daisy with its own names isn't the CHOMPI's platform
+with open("asound/cards", "a") as cards:
+    cards.write(" 5 [Default        ]: USB-Audio - \u0409\n                      OTHERFW \u0409 at usb-0000:00:14.0-2, full speed\n"
+                " 6 [Default_1      ]: USB-Audio - \u0409\n                      FrizZ \u0409 at usb-0000:00:14.0-2, full speed\n")
+for card in (4, 5, 6):
+    os.makedirs("asound/card%d" % card, exist_ok=True)
+    open("asound/card%d/usbid" % card, "w").write("0483:5740\n")
+for what, card in (("garbled", 5), ("garbled FRIZZ", 6), ("Daisy", 4)):
+    node = "/dev/snd/midiC%dD0" % card
+    print("%s: %s %s %s" % (what, chompi.platform_node(node), chompi.frizz_node(node), chompi.other_firmware(node)), flush=True)
+import shutil
+for card in (4, 5, 6):
+    shutil.rmtree("asound/card%d" % card)
 # IDENT's kinds
 for kind in (0, 1, 2, 9):
     info = chompi.parse_ident(bytes([1, kind]) + bytes(24))
@@ -2141,10 +2155,14 @@ except SystemExit as e:
 )", out);
     Check(rc == 0 && Has(out, "platform: ['restart node', 'reached? launcher', 'wait launcher: None']\n")
               && Has(out, "another firmware on the CHOMPI: asking it to restart into the launcher")
-              && Has(out, "platform, no restart: ['restart node', 'reached? launcher', 'wait launcher: None']\n")
-              && Has(out, "it didn't restart: switch the CHOMPI off and on")
+              && Has(out, "platform, no restart: ['restart node', 'reached? launcher', 'RESET node', 'wait launcher: still no launcher: switch the CHOMPI off and on']\n")
+              && Has(out, "it didn't restart: resetting it from its audio callback (RESET)")
               && Has(out, "stock: ['wait launcher: None']\n") && Has(out, "names: True False False False\n"),
-          "tools: another firmware on FRIZZ's platform, by its USB names, is asked to restart into the launcher first (#368)");
+          "tools: another firmware on FRIZZ's platform, by its USB names, is asked to restart into the launcher first (#368), "
+          "RESET when it doesn't (#371)");
+    Check(Has(out, "garbled: True False True\n") && Has(out, "garbled FRIZZ: True True False\n")
+              && Has(out, "Daisy: False False False\n"),
+          "tools: another firmware with garbled USB names is found by the Daisy's USB id as FRIZZ is, not a Daisy that says so (#371)");
     Check(Has(out, "kind 0: frizz / FRIZZ, crc32") && Has(out, "kind 1: bench / the bench, crc32")
               && Has(out, "kind 2: other 2 / another firmware (IDENT kind 2), crc32")
               && Has(out, "kind 9: other 9 / another firmware (IDENT kind 9), crc32")
@@ -2159,6 +2177,39 @@ except SystemExit as e:
               && Has(out, "exit: the firmware running lends the card to the computer (CHOMPI-SD at /dev/sdx1): not restarted"),
           "tools: a card another firmware lends (its vendor, or MIDI beside the drive) isn't the storage firmware's, and isn't restarted from under (#368)");
     if (rc != 0 || !Has(out, "to_frizz: n"))
+        printf("%s\n", out.c_str());
+
+    // #371: another firmware by its USB names never answers as FRIZZ, so it isn't waited for:
+    // neither BUSY s before its restart (to_launcher) nor SETTLE s before its slot is started
+    // (to_frizz); FRIZZ silent by its names still is. A clock the sleeps move on
+    rc = Python(R"(
+import time, chompi
+clock = [0.]
+time.monotonic = lambda: clock[0]
+time.sleep = lambda s: clock.__setitem__(0, clock[0] + s)
+chompi.BUSY, chompi.SETTLE = 20, 10
+chompi.state = lambda device=None: ("other", "node")
+chompi.reached = lambda wanted, *rest: True
+chompi.wait_for = lambda *a, **kw: "l"
+who = [""]
+chompi.restart = lambda node, hard=False: print("%s: %s at %g s" % (who[0], "RESET" if hard else "restart", clock[0]), flush=True)
+chompi.last_started = lambda: (None, False, "")
+chompi.start = lambda slot, *rest: print("%s: start %d at %g s" % (who[0], slot, clock[0]), flush=True) or "n"
+for name, frizz in (("another", False), ("FRIZZ", True)):
+    chompi.platform_node = lambda node: True
+    chompi.frizz_node = lambda node, frizz=frizz: frizz
+    clock[0] = 0.
+    who[0] = name + " to_launcher"
+    chompi.to_launcher()
+    clock[0] = 0.
+    who[0] = name + " to_frizz"
+    chompi.to_frizz()
+)", out);
+    Check(rc == 0 && Has(out, "another to_launcher: restart at 0 s\n") && Has(out, "another to_frizz: start 10 at 0 s\n"),
+          "tools: another firmware on FRIZZ's platform is restarted at once, not after BUSY or SETTLE s (#371)");
+    Check(Has(out, "FRIZZ to_launcher: RESET at 20 s\n") && Has(out, "FRIZZ to_frizz: start 10 at 10 s\n"),
+          "tools: a FRIZZ silent by its names is still waited for (BUSY, SETTLE)");
+    if (rc != 0 || !Has(out, "restart at 0 s"))
         printf("%s\n", out.c_str());
 
     // after a script played RAM only, a FRIZZ slot other than the test slot is started again
