@@ -299,8 +299,7 @@ public:
     inline uint32_t Wraps() const { return wraps_; }
     /** One more for each switch done */
     inline uint32_t Switches() const { return switches_; }
-    /** The loop is a loaded one (Switch), with these beats (0: none known) */
-    inline bool Loaded() const { return mem_ != rec_mem_; }
+    /** A loaded loop's beats (Switch), 0: none known */
     inline uint32_t LoadedBeats() const { return loaded_beats_; }
     /** Where the last switch's loop started, 0-1 through it, 1 at its end in reverse (its
      *  start that way): for the clock (TempoClock::SetLoop) */

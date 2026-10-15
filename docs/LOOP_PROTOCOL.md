@@ -234,7 +234,7 @@ where the release supports it. The file comes with the firmware, not before.
 | `21` | SWAP | BANK SLOT TOBANK TOSLOT | yes |
 | `22` | DELETE | BANK SLOT | yes |
 | `23` | COPY | CUBBIBANK SLOT TOBANK TOSLOT FLAGS | yes |
-| `30` | RESCAN | — | no |
+| `30` | RESCAN | — | yes (a swap's repair, 5.6) |
 
 `FLAGS` bit 0, **`REPLACE`**: a file already in the destination slot is replaced. Without it,
 the request is refused with `EXISTS`. The app sets it only once the player has confirmed the
@@ -382,7 +382,8 @@ that keeps to the window never overfills it. Otherwise:
   is acked (at most once a pass), so a lost ack is made good by the app's next repeat.
 - OFFSET beyond it, a length that doesn't match, a full ring, a paused write: a **gap**. The
   CHUNK is dropped and `DROPS` counts it.
-- an unknown TID: ignored, with an ack of `NO_TRANSFER` at most every 250 ms, so a stale app
+- a TID that isn't the open write's (unknown, or of a write that is finishing or ended): ignored,
+  with an ack of `NO_TRANSFER` at most every 250 ms, so a stale app
   stops. That ack carries the CHUNK's TID, `NEXT` 0 and `DROPS` 0. The app then reads `STATUS`
   for how its job ended (it may have ended while an answer was lost, e.g. `WRITE_BEGIN`'s) and
   acts on that result.
@@ -452,6 +453,13 @@ A job is never refused halfway because of something the player does. FRIZZ pause
   milliseconds, and the card is lent after it; the job's result is then `OK`. The same holds
   when USB goes away (1.6).
 
+  The app starts a job lending ended (`CARD_LENT` in its ack, its STATUS or its result) again
+  from the start: `WRITE_BEGIN` (or `COPY`) once more, refused with `CARD_LENT` while the card
+  is lent, a passing refusal that the app asks again every 250 ms (4.1). The player sees the
+  upload wait, then start over once the card is back; the slot keeps its old loop until then.
+  The Companion does so, and `tools/loopxfer.py`'s client too, which gives up after its
+  `busy_wait` (120 s) with the card still lent and after two such starts.
+
 While paused, FRIZZ takes no CHUNKs and its 30 s timeout stands still. The app waits as long
 as the pause lasts. A recording can take 77 s or more, so the app tells the player why it
 waits.
@@ -487,7 +495,9 @@ together: once the old file is deleted, nothing (no `ABORT`) comes between it an
 
 A failure in steps 2-5 deletes `xfer.tmp`, leaves the slot as it was, and sets phase 5 with
 the status. The app polls `STATUS` until the phase is 4 or 5. A FatFs call that fails at any
-point is `CARD_ERROR` with FatFs's `FRESULT` as `DETAIL`. One exception: a card error in step 5,
+point is `CARD_ERROR` with FatFs's `FRESULT` as `DETAIL`, with two exceptions. In step 2 the walk
+is the scan's, which tells a file it couldn't read only as `UNREADABLE`: `BAD_WAV` with `DETAIL`
+12. And a card error in step 5,
 after step 4 deleted the old file, leaves the slot empty, as a power cut there does (5.6).
 After a card error in steps 4-5 FRIZZ reads the slot from the card again, so `SLOT` and `BANK`
 show what it holds.
@@ -688,7 +698,9 @@ count from the card's FSINFO sector (`_FS_NOFSINFO` 0). Where FSINFO has none (a
 computer left without it), `f_getfree` would scan the whole FAT in one call: seconds on a
 large card, MainLoop held up. FRIZZ instead counts the free clusters during the scan, a FAT
 sector a pass, and reports "unknown" (flag 6 clear, 0 KB) until then. Changing commands get
-`BUSY_SCANNING` meanwhile.
+`BUSY_SCANNING` meanwhile. A load only pauses the count (it reads). A pass that may change the
+FAT (the card lent or gone, a save or a bug report, a job, the temp file's delete) starts it
+again from the FAT's first sector: FatFs keeps no count of its own changes until it has one.
 
 ### 5.5 What the player hears
 
@@ -827,15 +839,16 @@ audio callback.
 ### 6.4 The device's side
 
 - **The audio callback** (where MIDI is parsed, `MidiClock::Process`) only checks a CHUNK's
-  header and copies its packed bytes, at most 123 of them, into a ring of `window` slots
-  (16 × 128 bytes = 2 KB, outside the tight `SRAM`: `RAM_D2CACHE`, `RAM_D3` or SDRAM). A full
+  header and copies its packed bytes, at most 112 of them, into a ring of `window` slots
+  (16 × 112 bytes = 1792 bytes, outside the tight `SRAM`: `RAM_D2CACHE`, `RAM_D3` or SDRAM). A full
   ring is a gap (3.7). No EventLog line per CHUNK: the log keeps a job's begin, end and result
   only.
 - **MainLoop** unpacks the ring into a staging buffer in SDRAM, updates the CRC, and writes
   whole 32 KB blocks to `xfer.tmp` (the last one shorter), as the loader's and SceneStore's
   card work does, a step a pass, giving the card to the loader's DMA when it wants it.
 - **Acks** go in the one-a-pass answer's pass (`NormalPage::Remote`), before it, without taking
-  its place: one ack and one answer at most a pass.
+  its place: one ack and one answer at most a pass. Each is made as it goes, with `NEXT` and
+  `DROPS` as they stand then.
 
 ---
 
@@ -971,10 +984,11 @@ rest).
    answered (unless the last answer hasn't gone yet); one card step if the card is free (no
    `card`, `lent`, `loading` or `card_busy`): the temp file deleted, else a job's step (not while
    recording: a 32 KB block written and synced, 32 KB of a copy, or one of 3.9's steps), else
-   one FAT sector (128 entries) of the free count while no job runs; then the 30 s timeout;
-   then the ack, if one is due (3.7: at most one, an end of the write's first, then a running
-   or paused write's, then a stale TID's `NO_TRANSFER`);
-3. what it sends: the ack, then the answer.
+   one FAT sector (128 entries on FAT32, 256 on FAT16) of the free count while no job runs; then
+   the 30 s timeout;
+3. what it sends: the ack, if one is due, made as it goes, so `NEXT` and `DROPS` are as they
+   stand then (3.7: at most one, an end of the write's first, then a running or paused write's,
+   then a stale TID's `NO_TRANSFER`), then the answer.
 
 `loopxfer.py`'s `Frizz`, `Loader` and `Transfer` are this, statement for statement where the
 bytes depend on it: where this summary leaves a doubt, they settle it.
@@ -987,14 +1001,15 @@ bytes depend on it: where this summary leaves a doubt, they settle it.
   - every refusal;
   - the temp file and its rename;
   - remount mid-write (SceneStore's save), the loader's DMA in flight, the free space counted
-    a step a pass;
+    a step a pass (paused by a load, counted again after a save);
   - the fragment check, a file in 300 fragments;
   - a power cut after every FatFs call: a fresh boot on the card as it was, then the card holds
     whole files only;
   - the swap's repair;
   - a card error (FatFs failing, the card staying) at every name change of a replacing write,
     a copy, RENAME, SWAP and DELETE: every slot's `SLOT` as the card holds it, the swap's two
-    loops still there;
+    loops still there; the slot's check in 3.9's step 4 failing: `CARD_ERROR` with its
+    `FRESULT`;
   - a diff of the card's file list after each case: only the allowed names changed, `/TAPE`
     and the root never.
 - **`loops.cpp`** gets `WavWalk`'s `INAM` cases: a name, one over 28 bytes cut at a UTF-8

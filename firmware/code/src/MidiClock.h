@@ -229,10 +229,11 @@ public:
     void SendUsb(uint8_t* bytes, size_t size)
     {
 #if defined(__arm__)
-        // into the transport's queue, which TinyUSB's task empties meanwhile: kUsbWaitMs at most
+        // into the transport's queue, which TinyUSB's task empties meanwhile: kUsbWaitMs at
+        // most, and not at all while nothing reads it
+        MidiTinyUsbTransport& usb = usb_midi.GetMutableTransport();
         const uint32_t start = System::GetNow();
-        while (UsbHost() && !usb_midi.GetMutableTransport().Tx(bytes, size)
-               && System::GetNow() - start < kUsbWaitMs)
+        while (UsbHost() && !usb.Tx(bytes, size) && !usb.Stuck() && System::GetNow() - start < kUsbWaitMs)
             ;
 #else
         usb_midi.SendMessage(bytes, size);

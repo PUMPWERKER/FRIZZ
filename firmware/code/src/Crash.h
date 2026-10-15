@@ -101,10 +101,24 @@ inline void Clear(Record& r)
     r.count = 0;
 }
 
-/** A Record of KIND, the registers as stacked in FRAME (r0-r3, r12, lr, pc, xPSR), or none.
- *  Its count goes on from a valid one's */
+static const uint32_t kStackingFaults = 1u << 4 | 1u << 12; // CFSR's MSTKERR, STKERR
+
+/** Whether the frame a fault stacked at SP can be read in its handler: not after a stacking
+ *  fault (CFSR's MSTKERR, STKERR: it isn't there), nor where no stack is (a corrupt SP: outside
+ *  DTCM and the AXI SRAM, or unaligned). A read there faults again in the handler, which locks
+ *  the core up until the watchdog's reset, and that records no fault */
+inline bool FrameReadable(uintptr_t sp, uint32_t cfsr)
+{
+    const auto in = [sp](uintptr_t from, uintptr_t to) { return sp >= from && sp <= to - 32; };
+    return !(cfsr & kStackingFaults) && !(sp & 3)
+           && (in(0x20000000u, 0x20020000u) || in(0x24000000u, 0x24080000u));
+}
+
+/** A Record of KIND, the registers as stacked in FRAME (r0-r3, r12, lr, pc, xPSR), or none;
+ *  with stacked false only FRAME's address (FrameReadable). Its count goes on from a valid
+ *  one's */
 inline void Write(Record& r, uint32_t kind, const Running& running, uint32_t ms, uint32_t rsr,
-                  const uint32_t* frame, const uint32_t* fault)
+                  const uint32_t* frame, const uint32_t* fault, bool stacked = true)
 {
     const uint32_t count = Valid(r) ? r.count + 1 : 1;
     r.magic = kMagic;
@@ -115,6 +129,7 @@ inline void Write(Record& r, uint32_t kind, const Running& running, uint32_t ms,
     r.len = running.magic == kMagic ? running.len : 0;
     r.rsr = rsr;
     r.sp = reinterpret_cast<uintptr_t>(frame) & 0xFFFFFFFFu;
+    frame = stacked ? frame : nullptr;
     r.lr = frame ? frame[5] : 0;
     r.pc = frame ? frame[6] : 0;
     r.xpsr = frame ? frame[7] : 0;

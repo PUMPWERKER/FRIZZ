@@ -19,7 +19,9 @@ namespace chompi
         /** True once the ripple has run out */
         bool Done() const { return start_ != 0 && System::GetNow() - start_ >= kRippleMs; }
 
-        void Draw(const daisy::UiCanvasDescriptor &canvasDescriptor) override
+        // the boot's ripple, half a second at boot: small rather than fast
+        __attribute__((noinline, optimize("Os"))) void Draw(
+            const daisy::UiCanvasDescriptor &canvasDescriptor) override
         {
             const uint32_t now = System::GetNow();
             if(start_ == 0)

@@ -62,7 +62,7 @@ void SetAudio(bool audio);
 /** The layout FRIZZ is on the bus with (or will be): true with the sound card */
 bool Audio();
 
-/** A computer has FRIZZ configured and isn't suspending it */
+/** A computer has FRIZZ configured and isn't suspending it, and FRIZZ is on the bus */
 bool Host();
 
 /** The computer plays to FRIZZ */
