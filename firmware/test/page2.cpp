@@ -516,7 +516,9 @@ static void TestReverbFreezePitch()
            early_hz, off, early_spread, late_hz, drift, late_spread, growth);
     // measured on main: within 4 cents of 2kHz (a detuning by ear is tens of cents), a swing
     // of 3.1 and 3.7 cents (the tank's modulation at twice the depth, before #313: 4.5 and
-    // 5.3); the tone's level falls (the loop's lowpass stays in, frozen), never rises
+    // 5.3); the tone's level falls, ~15dB a minute at 2kHz (the tank's modulated reads,
+    // interpolated, take a little of the highs on each trip; without the modulation -0.5dB,
+    // and before #313 the same), never rises
     Check(fabs(off) < 10. && fabs(drift) < 10., "reverb: frozen, the room holds its pitch, at 1s and a minute on");
     Check(early_spread < 4.5 && late_spread < 4.5, "reverb: frozen, the held room's pitch swings no wider than the tank's modulation");
     Check(growth < 1., "reverb: frozen a minute, the held tone doesn't grow");

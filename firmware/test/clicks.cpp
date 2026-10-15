@@ -395,7 +395,7 @@ static void ChainRepunch(const ChainCase& c, float hz, size_t interval, float* s
 }
 
 /** #249: filter, crusher, shifter, wow & flutter and flanger punched in again and again, at a
- *  hand's speed (50 and 150ms) and inside the key's fade (0.5 to 5ms: a release bouncing
+ *  hand's speed (20 to 150ms) and inside the key's fade (0.5 to 5ms: a release bouncing
  *  back, MIDI; the key reaches the effect at a run's start): no step or peak beyond what one
  *  punch-in makes, with ChainPunchIn's margins and the fade's own crossing */
 static void TestRepunch()
@@ -404,7 +404,7 @@ static void TestRepunch()
     {
         const char* what;
         size_t intervals[4];
-    } speeds[] = {{"at a hand's speed", {2400, 7200, 2400, 7200}}, {"inside the key's fade", {24, 48, 120, 240}}};
+    } speeds[] = {{"at a hand's speed", {960, 1440, 2400, 7200}}, {"inside the key's fade", {24, 48, 120, 240}}};
     for (const ChainCase& c : kChainCases)
     {
         if (c.fx != chompi::FX_FILTER && c.fx != chompi::FX_CRUSHER && c.fx != chompi::FX_SHIFTER
