@@ -526,6 +526,18 @@ UartHandler::Impl::DmaListenStart(uint8_t* buff,
     // enable idle interrupts so that TC, HT, and IDLE are triggers
     __HAL_UART_ENABLE_IT(&huart_, UART_IT_IDLE);
 
+    // FRIZZ: a MIDI clock tick (0xF8) hands over what came so far at once, as IDLE does, not
+    // only once the bytes right behind it have passed too (#322). Listening is MIDI's alone
+    // (MidiUartTransport::StartRx). ADD is written with the USART off
+    USART_TypeDef* usart = huart_.Instance;
+    const uint32_t cr1   = usart->CR1;
+    usart->CR1           = cr1 & ~USART_CR1_UE;
+    MODIFY_REG(usart->CR2,
+               USART_CR2_ADD | USART_CR2_ADDM7,
+               (0xF8U << USART_CR2_ADD_Pos) | USART_CR2_ADDM7);
+    usart->ICR = USART_ICR_CMCF;
+    usart->CR1 = cr1 | USART_CR1_CMIE;
+
     /** cache maintanence to allow memory from cache-able regions  */
     dsy_dma_invalidate_cache_for_buffer(buff, size);
     if(HAL_UART_Receive_DMA(&huart_, buff, size) != HAL_OK)
@@ -1032,6 +1044,19 @@ static void UART_CheckRxListener(UartHandler::Impl* handle)
 void UART_IRQHandler(UartHandler::Impl* handle)
 {
     HAL_UART_IRQHandler(&handle->huart_);
+
+    // FRIZZ: a tick matched (DmaListenStart): once the DMA has taken it from RDR, delivered
+    // with what came before it (#322)
+    if(handle->listener_mode_
+       && __HAL_UART_GET_FLAG(&handle->huart_, UART_FLAG_CMF))
+    {
+        handle->huart_.Instance->ICR = UART_CLEAR_CMF;
+        for(int i = 0; i < 64
+                       && __HAL_UART_GET_FLAG(&handle->huart_, UART_FLAG_RXNE);
+            i++)
+            ;
+        UART_CheckRxListener(handle);
+    }
 
     if(handle->listener_mode_
        && __HAL_UART_GET_FLAG(&handle->huart_, UART_FLAG_IDLE))
