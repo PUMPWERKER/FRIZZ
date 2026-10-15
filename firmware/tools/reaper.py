@@ -2072,6 +2072,8 @@ def main():
                 why = why or (None if np is not None else NO_NUMPY)
                 if why:
                     results += [(c, "SKIP", why, [], audio) for c in sound]
+                    for c in sound:
+                        print("SKIP %s: %s" % (c.id, why), flush=True)
                 else:
                     plan.append((audio, False, False, True, sound))
         plan.append((audios[0], False, True, False, [c for c in plain if c.synced]))
