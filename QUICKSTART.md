@@ -64,6 +64,9 @@ the loop's steps (see [Chaos key](MANUAL.md#chaos-key)).
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Effect | Freezer | Shifter | Folder | Crusher | Filter | Flanger | Phaser | Resonator | Slicer | Wow & flutter | Tape stop | Delay | Reverb | Chaos | Finalizer |
 
+White key 7 has a second mode, the [frequency shifter](MANUAL.md#frequency-shifter): hold
+SHIFT and tap the key twice (it turns azure); the same again goes back to the phaser.
+
 ![Keys: an FX key held, then SHIFT, latches it; SHIFT, then an FX key, picks it for the knobs; SHIFT + a knob turned jumps in big steps; a knob pressed turns to its page 2](images/keys-quickstart.svg)
 
 - **Hold a key:** the effect is on while you hold it.
@@ -116,8 +119,8 @@ Things to try first:
   its resonance. Turn knob 1 right past the centre (its LED turns green) and the sweep locks
   to the tempo, 1/16 first, slower as you go on. With the resonator latched too, the sweep
   moves through its ringing. Hold SHIFT and tap the key twice: it turns azure, a
-  [frequency shifter](MANUAL.md#frequency-shifter). Knob 1 at a few Hz and knob 2 up make a
-  barber pole.
+  [frequency shifter](MANUAL.md#frequency-shifter). Knob 1 at a few Hz, knob 2 up and knob 4
+  (the direction) turned to one side make a barber pole that rises, or falls, forever.
 - **Delay + reverb (white keys 12 and 13):** tap them to throw echoes and tails onto single
   notes.
 - **Tape stop (white key 11)** with the delay or reverb latched: hold it on a beat and the

@@ -12,8 +12,8 @@ what FRIZZ does.
 - **A frequency shifter** (#306), the phaser's second mode: hold SHIFT, tap white key 7 (it's
   selected, as ever), then tap it again: the key turns azure, and every frequency in the sound
   moves up or down by the same number of Hz, so its harmonics no longer line up. A few Hz with
-  feedback make a barber pole that rises (or falls) forever, tens to hundreds of Hz a metallic,
-  bell-like sound. Each further tap in the same SHIFT hold switches back and forth. The same
+  feedback and the direction to one side make a barber pole that rises (or falls) forever, tens
+  to hundreds of Hz a metallic, bell-like sound. Each further tap in the same SHIFT hold switches back and forth. The same
   knobs, read the other way: the shift (free, 0.1 Hz to 1 kHz, or a cycle per tempo division),
   feedback, depth and the direction (down, both, up); page 2's stereo turns the right channel
   the other way. A scene keeps the mode (an older FRIZZ loads it as the phaser), a morph
@@ -69,9 +69,13 @@ what FRIZZ does.
 - **The card as a USB drive while FRIZZ plays** (#196): on the settings page, SHIFT + LOOP held
   2 s lends the card to the computer (LOOP blue), so you can copy loops, scenes and bug reports
   without the USB storage firmware; the loop and the effects play on. Eject it on the computer,
-  unplug, or hold SHIFT + LOOP again to take it back: FRIZZ finds the loops again. The scenes
-  and settings stay as FRIZZ has them, and its next save writes over a change made to their
-  files on the drive: edit those with the card taken out (#291). See
+  unplug, or hold SHIFT + LOOP again to take it back: FRIZZ finds the loops again, and reads
+  `frizz_scenes.txt` and `frizz_master.txt` again if the computer changed them (#291), as at
+  power-on: the settings apply at once (the input gains and the compressor glide there), the
+  scenes come in for their next recall, and what plays stays. If you changed a scene or a
+  setting on FRIZZ while the card was lent, FRIZZ's wins and the computer's file is kept as
+  `frizz_scenes.bak` or `frizz_master.bak` (in v1.5.0-beta.1, FRIZZ kept what it had and its
+  next save wrote over the computer's changes). See
   [The card as a USB drive](MANUAL.md#the-card-as-a-usb-drive).
 
 - **A crashed FRIZZ restarts by itself** (#105): if FRIZZ crashes, or its sound stops for
@@ -80,7 +84,7 @@ what FRIZZ does.
   with the power switch. See [Power and battery](MANUAL.md#power-and-battery).
 
 - **Figures in the manual:** each effect's chapter, the [chaos key](MANUAL.md#chaos-key)'s and
-  the [compressor](MANUAL.md#finalizer)'s show where its white key is and its knobs'
+  the [finalizer](MANUAL.md#finalizer)'s show where its white key is and its knobs'
   colours; the panel, with what a chapter plays lit, opens
   [Playing an effect](MANUAL.md#playing-an-effect), [Looper](MANUAL.md#looper),
   [FX scenes](MANUAL.md#fx-scenes), [Scene changes in time](MANUAL.md#scene-changes-in-time),
@@ -131,13 +135,6 @@ what FRIZZ does.
   at the default resonance, up to +25 dB with the resonance up), on the whole highpass side too;
   the highpass is 12 dB per octave now, where it was 6 dB at low resonance, so it thins the
   sound faster; and the far right is no longer quieter. The filter takes less of the CPU.
-- **The card as a USB drive** (#291): taken back from the computer, FRIZZ reads
-  `frizz_scenes.txt` and `frizz_master.txt` again if the computer changed them, as at power-on:
-  the settings apply at once (the input gains and the compressor glide there), the scenes come
-  in for their next recall, and what plays stays. If you changed a scene or a setting on FRIZZ
-  while the card was lent, FRIZZ's wins and the computer's file is kept as `frizz_scenes.bak`
-  or `frizz_master.bak`. Before, FRIZZ kept what it had and its next save wrote over the
-  computer's changes. See [The card as a USB drive](MANUAL.md#the-card-as-a-usb-drive).
 - **MIDI map: CC 0 is the bank select** (#259), where it was left free: 0 (the default) keeps
   program changes on the scenes, 1-8 before a program change pick a loop from FRIZZ's banks
   a-h, 9-13 a cubbi. A host that sends another bank select before its program changes now
@@ -191,7 +188,7 @@ what FRIZZ does.
   out on USB and no app on the computer reading FRIZZ's port yet, the clock piled up, and an
   app opening the port later (a DAW, at any time after) got about 270 ticks at once, eleven
   beats, and any Start or Stop among them. Now what nobody takes for a tenth of a second is
-  dropped: the app gets at most a fraction of a beat of old clock, then the clock as it runs.
+  dropped: the app gets less than a beat of old clock, then the clock as it runs.
 - **Scenes and settings always save into the card's `FRIZZ` folder:** after the card failed to
   answer once (a hiccup FRIZZ recovers from by itself), the scenes and settings saved from then
   on until a restart could land in the card's root, shown as saved but gone at the next
@@ -211,6 +208,11 @@ what FRIZZ does.
   a program change cut over hard, with a click, instead of fading the old loop out over 10 ms,
   most often when two switches came within a few ms of each other (a program change right
   after a key). Now every switch fades; one that comes during another's fade waits for it.
+- **A loop switch at a pass end no longer clicks right after another switch** (#318): when the
+  loop reached its end within 10 ms of a switch, the switch planned for that end (SHIFT + a
+  white key, or CC 54) cut the earlier switch's fade-out off, a click. Now that fade-out ends
+  early but smoothly, over 2 ms, and the planned switch stays exactly on the pass end. The same
+  holds for a switch while the crossfader still mixes two loops.
 - **The resonator rings on its note with the tone dark** (#303): the darker the tone and the
   higher the note, the flatter it rang, 67 cents (two thirds of a semitone) at 440 Hz with the
   tone at the bottom and still 20 cents with it a quarter up. Now its notes are within 5 cents
