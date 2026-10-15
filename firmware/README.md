@@ -71,7 +71,7 @@ The output goes to `code/src/build/`:
 `make USB_SAFETY=1` builds a development build for a new USB stack into `build-usbsafety/`:
 with `UsbDevice.h`'s `Watch()`, an enumeration that never finishes (10 s) or a computer that
 sends FRIZZ no MIDI for 60 s restarts into the launcher, a way back without the power switch.
-Use it for the first flash of a USB change, after `test/unit.sh usbtransport`; never hand it
+Use it for the first flash of a USB change, after `test/unit.sh usbtransport` and `usbdevice`; never hand it
 out (a computer that sends no MIDI is no fault).
 Neither is committed: a build is named by its md5, and `tools/builds.py` builds both and
 prints it (`tools/builds.py md5` only prints). That works because GCC 10.3 builds the same
@@ -157,6 +157,16 @@ cd firmware
 ./flash.py --list     # what's on each key: restarts FRIZZ into the launcher, a loop in RAM lost
 ```
 
+**Key colours.** Launcher 1.6 lights each key in a colour: the one chosen for the file on it
+(its `COLOR` over USB MIDI, kept in `/FIRMWARE/key_colors.txt` with the file's name), or else
+one made from that name. `--list` shows them. `flash.py --color RRGGBB` (with a build sent;
+off unless given) stores the build without starting it, colours its key, then starts it;
+since `flash.py` always writes the same file to a key (`12_FRIZZ-TEST.bin`), the colour stays
+with that key's later builds. The setup page gives a key it recognises as a FRIZZ release
+FRIZZ's colour from its catalogue (`#8A4DFF`) each time it connects. The tools work the same
+with launcher 1.5, whose keys breathe white: `--list` without colours, `--color` sends
+without one, saying so.
+
 Each send prints the md5 of what it sends, the name of that build in a pull request.
 
 **The keys** (#171): 10 is the latest release (`FRIZZ`), 13 the latest beta (`FRIZZ-BETA`),
@@ -200,7 +210,7 @@ Sending replaces whatever is in that slot, so set yours (`FRIZZ_SLOT`, `BETA_SLO
 firmware than FRIZZ (`--other-slot` replaces it anyway). Nothing restarts FRIZZ while it lends
 the card to the computer (`tools/chompi.py`'s `restart`): the drive would go from under it;
 eject it first. Run by hand, `tools/midi_send.py` takes the lock too and leaves keys 10, 13, 15
-and the launcher to `flash.py`. Linux only (ALSA), Python 3, no
+(sending, clearing or colouring them) and the launcher to `flash.py`. Linux only (ALSA), Python 3, no
 packages; it uses the launcher's own client, `tools/midi_send.py`. On macOS or Windows, the
 launcher's web page (https://ugrossek.github.io/CHOMPI/, Chrome or Edge) does the same.
 FRIZZ keeps its files in `/FRIZZ`, so it shares the card with the other firmwares.
@@ -230,10 +240,11 @@ wherever it is.
 All of them go through the launcher (`tools/chompi.py`): a running FRIZZ restarts into it over
 USB MIDI (the SysEx `F0 7D 43 48 10 F7`, `MidiClock.h`), the storage firmware restarts on an
 eject, and the launcher starts a slot on its `RUN` command. The last two need
-[launcher v1.5](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE/releases/tag/launcher-v1.5)
-(the [setup page](https://ugrossek.github.io/CHOMPI/setup/) updates an older one) and
+[launcher v1.6](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE/releases/tag/launcher-v1.6)
+(or 1.5; the [setup page](https://ugrossek.github.io/CHOMPI/setup/) updates an older one, or
+copy the release's `CHOMPI.bin` to the card's root) and
 [USB storage v1.6](https://github.com/lnetzel/CHOMPI-lnetzel/releases/tag/usb-storage-v1.6).
-A card set up from the launcher's v1.5 release still has USB storage v1.5 on key 15: copy
+A card set up from the launcher's v1.5 or v1.6 release still has USB storage v1.5 on key 15: copy
 v1.6's `.bin` over `FIRMWARE/15_USB_STORAGE.bin` (or `./flash.py FILE --slot 15 --other-slot
 --name USB_STORAGE`). With an older launcher or storage firmware the tools still work, but say which
 key to press (15 for the card, overdub then CHOMPI to leave it, 10 for FRIZZ). With an older FRIZZ or
@@ -747,7 +758,7 @@ chompi_main.cpp        entry point: audio callback, main loop, boot sequence, AU
 passthroughEngine.h    the engine: the input (AUX, the built-in mic or USB) and its gain, the looper, input/loop mix ("dry/wet" in the code), punch-in FX,
                        master compressor, output gain, headphone cue, safety limiter, the master to USB
 UsbDevice.h / .cpp     FRIZZ's USB-C port on TinyUSB (../libs/tinyusb): the sound card (UAC1), MIDI,
-                       the card as a drive; TinyUSB's task on TIM7 (#196)
+                       the card as a drive; TinyUSB's task on TIM7 (#196; test/usbdevice.cpp)
 usb_descriptors.c/.h   the USB descriptors, with and without the sound card; tusb_config.h TinyUSB's settings
 UsbMidiTransport.h     libDaisy's MIDI transport on TinyUSB (test/usbtransport.cpp)
 CardLend.h             the card lent to the computer: what the settings page shows and asks
