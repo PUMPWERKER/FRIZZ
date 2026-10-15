@@ -157,6 +157,24 @@ Portions of the FX engine in TAPE, TEMPO, WAVE and FRIZZ derive from Émilie Gil
   90 degrees apart, the quadrature carrier and the feedback through a soft limit and a lowpass.
   The allpasses' coefficients are FRIZZ's own, fitted for 48 kHz.
 
+## The finalizer's building blocks
+
+`firmware/code/src/Finalizer.h` (FRIZZ, #345) is FRIZZ's own code, written after these designs;
+no code was copied:
+
+- Its band split: Linkwitz-Riley crossovers built from the topology-preserving state-variable
+  filter (Vadim Zavalishin, *The Art of VA Filter Design*), as in Mutable Instruments' stmlib
+  (`stmlib/dsp/filter.h`, © Émilie Gillet, MIT).
+- Its drive's oversampling: hiir's polyphase IIR halfband filters (Laurent de Soras, WTFPL),
+  their coefficients computed with hiir's `PolyphaseIir2Designer` algorithm for 4 coefficients
+  and a transition of 0.083; the soft clip is DaisySP's `SoftClip` (Electrosmith, MIT).
+- Its limiter: Signalsmith Audio's lookahead limiter design (Geraint Luff, "Designing a
+  straightforward limiter", 2022, its DSP library MIT): the gain each sample needs held at its
+  minimum over the lookahead and smoothed by box filters, the signal delayed as long.
+- The idea of a finalizer, its fixed 300 Hz / 3 kHz bands with a level, a compression
+  character and a width each and a depth macro, after Endorphin.es' Golden Master; its drive
+  types after OTO Machines' BOUM. Neither's code: both are closed hardware.
+
 ## The bootloader
 
 `reference/firmware/chompi-bootloader-v6.4-beta/shared/` holds Electrosmith's Daisy Bootloader v6.4 source.

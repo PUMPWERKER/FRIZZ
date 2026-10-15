@@ -5,24 +5,28 @@
  *  knobs here and draws the LEDs from it; test/controls.cpp runs it on the host.
  *
  *  The knobs have two pages, switched together: a plain press on any of them turns all four
- *  over to the selected FX's or the compressor's page 2 (its parameters 4-7, FxParams.h) and
- *  back; on an FX with nothing on page 2 it does nothing. Selecting
- *  another FX, or the compressor, goes back to page 1, so the main controls are under the
+ *  over to the selected FX's page 2 (its parameters 4-7, FxParams.h) and back; on an FX with
+ *  nothing on page 2 it does nothing. Selecting
+ *  another FX, or the finalizer, goes back to page 1, so the main controls are under the
  *  fingers whenever an effect is picked. SHIFT + turn and SHIFT + press act on the page shown.
  *
- *  The master compressor (MasterComp.h) is edited here too: its key selects it for the knobs
- *  (kCompSelected), which then turn as they do for an FX (kCompParams). It's always on and
- *  not part of a scene, so its knobs leave the scene unedited.
+ *  The finalizer (Finalizer.h, #345) is edited here too: its key selects it for the knobs
+ *  (kFinSelected), which then turn as they do for an FX, on the module shown (Module: Level,
+ *  EQ, Comp or Width, kFinalizerKnobs). It has no page 2: a plain press of knob 1-3 mutes or
+ *  unmutes a band instead, in the three band modules (#347). It's always there and not part
+ *  of a scene, so its knobs leave the scene unedited; its bypass and mutes are live, not
+ *  kept.
  *
  *  An effect with a second mode (kFxModes: the phaser's frequency shifter, #306) has it as a
  *  setting of its own beside its knobs (SetMode), which a scene keeps, and a recall or morph
  *  switches as a stepped parameter.
  *
  *  Engine is PassthroughEngine on the device, a fake on the host. It needs SetFxOn(fx, on),
- *  SetFxParam(fx, param, val), SetFxMode(fx, second), SetCompParam(param, val), FastFxSlew()
- *  and the morph's StartFxMorph(plan), AddFxMorphBar(), LandFxMorph(), FreezeFxMorph(params,
- *  unswitched, was_on, modes), FxMorphing(), the crossfader's FxMorphHeld() and FadeFxMorph(t),
- *  a drop's DropFxMorph(to, ui_on, on, glide, modes) and FxDropping(), and
+ *  SetFxParam(fx, param, val), SetFxMode(fx, second), SetFinParam(param, val),
+ *  SetFinBypass(on), SetFinMute(band, on), FastFxSlew() and the morph's StartFxMorph(plan),
+ *  AddFxMorphBar(), LandFxMorph(), FreezeFxMorph(params, unswitched, was_on, modes),
+ *  FxMorphing(), the crossfader's FxMorphHeld() and FadeFxMorph(t), a drop's
+ *  DropFxMorph(to, ui_on, on, glide, modes) and FxDropping(), and
  *  SetFxPool(pool) for the chaos key (Pool).
  */
 #pragma once
@@ -46,8 +50,10 @@ namespace chompi
 // Knobs: 1% per detent; a stepped parameter moves one step per kFxDetentsPerStep detents
 static const float kFxParamStep = .01f;
 static const float kFxDetentsPerStep = 3.f;
-// Selected() while the knobs edit the master compressor
-static const size_t kCompSelected = kNumFx;
+// Selected() while the knobs edit the finalizer
+static const size_t kFinSelected = kNumFx;
+// its modules (Finalizer::Module) and bands
+static const size_t kFinLevel = 0, kFinBands = 3;
 
 template <class Engine>
 class FxControls
@@ -69,13 +75,17 @@ public:
             engine_->SetFxOn(fx, false);
         }
         modes_ = 0; // as the engine starts
-        for (size_t p = 0; p < kNumFxParams; p++)
+        for (size_t p = 0; p < kNumFinParams; p++)
         {
             // an unused one stays on its default; a used one counts as changed and is sent
-            comp_[p] = (kCompParams.knobs >> p) & 1 ? -1.f : kCompParams.defaults[p];
-            SetComp(p, kCompParams.defaults[p]);
+            const float def = FinDefault(p);
+            fin_[p] = FinUsed(p) ? -1.f : def;
+            SetFin(p, def);
         }
-        comp_changed_ = 0;
+        fin_changed_ = 0;
+        module_ = 0;
+        mutes_ = 0;
+        bypass_ = false;
         rebound_ = 0;
         ClearChunks();
         chunk_shift_ = false;
@@ -166,17 +176,16 @@ public:
         return true;
     }
 
-    /** The master compressor's key going down: selects it for the knobs, on page 1 unless it
-     *  already was, as an FX key does. It has no gate or latch, so the release does nothing.
-     *  With SHIFT, a select as an FX key's would be */
-    void CompKeyPressed(bool shift)
+    /** The finalizer's key going down: selects it for the knobs, as an FX key does. With
+     *  SHIFT, a select as an FX key's would be */
+    void FinKeyPressed(bool shift)
     {
-        Select(kCompSelected);
+        Select(kFinSelected);
         if (shift)
             ShiftUsed();
     }
 
-    /** fx, or kCompSelected, selected for the knobs without its key (MIDI's focus), on page 1
+    /** fx, or kFinSelected, selected for the knobs without its key (MIDI's focus), on page 1
      *  unless it already was */
     void Select(size_t fx)
     {
@@ -285,10 +294,18 @@ public:
     }
 
     /** Knob 0-3 pressed: with SHIFT, resets that parameter to its default, on a knob the page
-     *  uses. A plain press turns the page, all four knobs together, for an FX or the
-     *  compressor with a page 2. True if the press did something */
+     *  uses. A plain press turns the page, all four knobs together, for an FX with a page 2;
+     *  on the finalizer it mutes a band (SetMute). True if the press did something */
     bool KnobPressed(size_t knob, bool shift)
     {
+        if (!shift && selected_ == kFinSelected)
+        {
+            // the finalizer: knob 1-3 mutes its band in the band modules (#347)
+            if (module_ == kFinLevel || knob >= kFinBands)
+                return false;
+            SetMute(knob, !Muted(knob));
+            return true;
+        }
         if (!shift)
         {
             if (!HasPage2())
@@ -654,26 +671,74 @@ public:
     }
 
     inline float Param(size_t fx, size_t param) const { return params_[fx][param]; }
-    inline float CompParam(size_t param) const { return comp_[param]; }
-    /** A compressor parameter set, from its knob, the card or SysEx: clamped and sent, and
-     *  kept (TakeCompChanged). keep false: MIDI's CCs, which the card never gets (#97 D6) */
-    void SetComp(size_t param, float val, bool keep = true)
+    /** The finalizer's parameter p (m * kNumFxKnobs + k: module m's knob k), all of them */
+    inline float FinParam(size_t p) const { return fin_[p]; }
+    inline const float* FinParams() const { return fin_; }
+    static inline bool FinUsed(size_t p)
     {
-        if (param >= kNumFxParams || !((kCompParams.knobs >> param) & 1))
+        return p < kNumFinParams && (kFinalizerKnobs[p / kNumFxKnobs].knobs >> (p % kNumFxKnobs) & 1);
+    }
+    static inline float FinDefault(size_t p)
+    {
+        return kFinalizerKnobs[p / kNumFxKnobs].defaults[p % kNumFxKnobs];
+    }
+    /** A finalizer parameter set, from its knob, the card or SysEx: clamped and sent, and
+     *  kept (TakeFinChanged). keep false: MIDI's CCs, which the card never gets (#97 D6). A
+     *  stepped one on its nearest step */
+    void SetFin(size_t p, float val, bool keep = true)
+    {
+        if (!FinUsed(p))
             return;
         val = fclamp(val, 0.f, 1.f);
-        if (keep && val != comp_[param])
-            comp_changed_ |= 1u << param;
-        comp_[param] = val;
-        engine_->SetCompParam(param, val);
+        const uint8_t steps = kFinalizerKnobs[p / kNumFxKnobs].steps[p % kNumFxKnobs];
+        if (steps)
+            val = roundf(val * (steps - 1)) / (steps - 1);
+        if (keep && val != fin_[p])
+            fin_changed_ |= static_cast<uint16_t>(1u << p);
+        fin_[p] = val;
+        engine_->SetFinParam(p, val);
     }
-    /** The compressor's parameters changed to be kept since last asked, a bit each, so the
+    /** The finalizer's parameters changed to be kept since last asked, a bit each, so the
      *  play page can keep those */
-    uint8_t TakeCompChanged()
+    uint16_t TakeFinChanged()
     {
-        const uint8_t changed = comp_changed_;
-        comp_changed_ = 0;
+        const uint16_t changed = fin_changed_;
+        fin_changed_ = 0;
         return changed;
+    }
+    /** The module the knobs show on the finalizer's key, 0-3 (Finalizer::Module): the next,
+     *  1 to 4 and round (SHIFT + its key twice), or one outright (MIDI) */
+    inline size_t Module() const { return module_; }
+    void SetModule(size_t m)
+    {
+        if (m < kFinModules && m != module_)
+        {
+            module_ = static_cast<uint8_t>(m);
+            ClearChunks();
+        }
+    }
+    void NextModule() { SetModule((module_ + 1) % kFinModules); }
+    /** A band of the finalizer muted (#347): live, not kept */
+    inline bool Muted(size_t band) const { return mutes_ >> band & 1; }
+    void SetMute(size_t band, bool mute)
+    {
+        if (band >= kFinBands)
+            return;
+        mutes_ = static_cast<uint8_t>(mute ? mutes_ | 1u << band : mutes_ & ~(1u << band));
+        engine_->SetFinMute(band, mute);
+    }
+    /** Every band unmuted: power-on, a preset recalled */
+    void Unmute()
+    {
+        for (size_t b = 0; b < kFinBands; b++)
+            SetMute(b, false);
+    }
+    /** The finalizer bypassed: live, not kept */
+    inline bool Bypassed() const { return bypass_; }
+    void SetBypass(bool bypass)
+    {
+        bypass_ = bypass;
+        engine_->SetFinBypass(bypass);
     }
     inline bool IsLatched(size_t fx) const { return latched_[fx]; }
     /** The chaos key's pool (FxChaos.h): the effects latched, but not held, nor the chaos key
@@ -687,20 +752,20 @@ public:
         return pool;
     }
     inline bool IsOn(size_t fx) const { return held_[fx] || latched_[fx]; }
-    /** The FX the knobs edit: the last one pressed, or kCompSelected */
+    /** The FX the knobs edit: the last one pressed, or kFinSelected */
     inline size_t Selected() const { return selected_; }
     /** Knobs or latches changed since the last Snapshot or Recall */
     inline bool Edited() const { return edited_; }
     inline void MarkEdited() { edited_ = true; }
 
-    /** The selected FX's or the compressor's knobs */
+    /** The selected FX's knobs, or the finalizer's module's */
     inline const FxParams& Knobs() const
     {
-        if (selected_ == kCompSelected)
-            return kCompParams;
+        if (selected_ == kFinSelected)
+            return kFinalizerKnobs[module_];
         return kFxParams[selected_];
     }
-    /** Whether the knobs' FX or the compressor has parameters on page 2 */
+    /** Whether the knobs' FX has parameters on page 2 (the finalizer has none) */
     inline bool HasPage2() const { return (Knobs().knobs >> kNumFxKnobs) != 0; }
     /** The page the knobs show, 0 or 1; always 0 without a page 2 */
     inline size_t Page() const { return page_; }
@@ -711,8 +776,8 @@ public:
     /** Knob 0-3's value on the page shown */
     inline float Knob(size_t knob) const
     {
-        if (selected_ == kCompSelected)
-            return comp_[ParamOf(knob)];
+        if (selected_ == kFinSelected)
+            return fin_[module_ * kNumFxKnobs + ParamOf(knob)];
         return params_[selected_][ParamOf(knob)];
     }
 
@@ -778,8 +843,8 @@ private:
 
     void SetKnob(size_t knob, float val)
     {
-        if (selected_ == kCompSelected)
-            SetComp(ParamOf(knob), val);
+        if (selected_ == kFinSelected)
+            SetFin(module_ * kNumFxKnobs + ParamOf(knob), val);
         else
             SetParam(selected_, ParamOf(knob), val);
     }
@@ -813,8 +878,11 @@ private:
     OnRelease was_on_release_[kNumFx];   // and what it was to do
     size_t selected_ = 0;
     size_t page_ = 0;           // the knobs' page, 0 or 1 (ParamOf)
-    float comp_[kNumFxParams];  // the master compressor's parameters, both pages
-    uint8_t comp_changed_ = 0;  // a bit a parameter, since the last TakeCompChanged
+    float fin_[kNumFinParams];  // the finalizer's parameters, module by module
+    uint16_t fin_changed_ = 0;  // a bit a parameter, since the last TakeFinChanged
+    uint8_t module_ = 0;        // the finalizer's module on the knobs (Module)
+    uint8_t mutes_ = 0;         // bit b: its band b muted
+    bool bypass_ = false;       // it's bypassed
     float chunk_[kNumFxKnobs];  // detents towards the next step or grid point
     bool chunk_shift_ = false;  // whether they were turned with SHIFT
     bool edited_ = false;

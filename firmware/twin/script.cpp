@@ -238,7 +238,7 @@ static const char* const kFxNames[] = {"freezer", "shifter",  "folder", "crusher
                                        "flanger", "resonator", "slicer", "warble",  "tapestop",
                                        "delay",   "reverb",    "phaser", "chaos"};
 static const int kNumFxNames = sizeof(kFxNames) / sizeof(kFxNames[0]);
-static const int kGroupComp = 0x20, kGroupLatch = 0x21, kGroupVolume = 0x22, kGroupSettings = 0x23;
+static const int kGroupFin = 0x20, kGroupLatch = 0x21, kGroupVolume = 0x22, kGroupSettings = 0x23;
 static const char* const kVolumeNames[] = {"out", "in", "mix", "headphones"};
 // masterfile::kLines' order (MasterSettings.h)
 static const char* const kSettingNames[] = {
@@ -272,8 +272,8 @@ static std::string DevSet(const std::string& group_name, const std::string& inde
     int group = IndexOf(kFxNames, kNumFxNames, group_name);
     const char* const* names = nullptr;
     int count = 0;
-    if (group_name == "comp")
-        group = kGroupComp;
+    if (group_name == "fin" || group_name == "comp")
+        group = kGroupFin; // the finalizer's (#345; the master compressor's until then)
     else if (group_name == "latch")
     {
         group = kGroupLatch;

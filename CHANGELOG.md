@@ -80,7 +80,7 @@ what FRIZZ does.
   with the power switch. See [Power and battery](MANUAL.md#power-and-battery).
 
 - **Figures in the manual:** each effect's chapter, the [chaos key](MANUAL.md#chaos-key)'s and
-  the [compressor](MANUAL.md#master-compressor)'s show where its white key is and its knobs'
+  the [compressor](MANUAL.md#finalizer)'s show where its white key is and its knobs'
   colours; the panel, with what a chapter plays lit, opens
   [Playing an effect](MANUAL.md#playing-an-effect), [Looper](MANUAL.md#looper),
   [FX scenes](MANUAL.md#fx-scenes), [Scene changes in time](MANUAL.md#scene-changes-in-time),
@@ -90,6 +90,33 @@ what FRIZZ does.
   on the Loops page.
 
 ### Changed
+
+- **Key 15 is now the finalizer, replacing the master compressor** (#345, #347): a master
+  section after the effects, in four modules of four knobs. **Key 15's knobs change, and the
+  compressor's settings are dropped**: a card from before loads with the finalizer neutral (and
+  every other setting as it was), and the old compressor's line is no longer written. This is
+  the one change of the controls in 1.5, decided for it. The modules, in the order the sound
+  goes through them:
+  - **Level** (white): Input, a clean trim of ±12 dB; Drive into a saturation, Boost, Tube or
+    Fuzz, at twice the sample rate and level-compensated; Loud, up to +18 dB into a limiter
+    with a ceiling of -1 dB that looks 1 ms ahead, for loudness without clipping.
+  - **EQ** (yellow): the low, mid and high band's levels, -20 to +8 dB, split at 300 Hz and
+    3 kHz.
+  - **Comp** (cyan): a compressor on each band, its character picked from six (Light & fast to
+    Beat FX, Parallel among them), one Depth for all three. No makeup: level comes back
+    through Drive and Loud.
+  - **Width** (magenta): each band's stereo, from mono to twice as wide.
+
+  Hold SHIFT and tap key 15 twice for the next module; the key shows its colour. At the
+  defaults it leaves the sound untouched. Its knob LEDs are meters while they rest: the input
+  level, each band's level, gain reduction or correlation, the limiter's reduction. A press of
+  knob 1-3 in EQ, Comp or Width mutes that band, as a DJ mixer's kill. Hold key 15 and press
+  SHIFT to bypass it; four presets, kept on the card, are recalled with key 15 held and a scene
+  key, and saved, copied or deleted as scenes are, with key 15 held and the upper F#, G# or A#.
+  While Loud is up, the outputs and MIDI clock out are 1 ms later, so gear behind stays in
+  time. Over MIDI, channel 15 has every parameter at a fixed CC (CC 14-20 Level and EQ, 24-30
+  Comp and Width, 21 a preset, 22 on or bypassed, 23 the module, 102-104 the mutes), the global
+  channel CC 24-27 Level's knobs and CC 28 Depth. See [Finalizer](MANUAL.md#finalizer).
 
 - **AUX keeps its bass** (#317): the input's DC blocker, TAPE's, cut AUX's lows from about
   76 Hz down (50 Hz 5 dB quieter, 30 Hz 9 dB); it now takes out only DC, from about 8 Hz down,
