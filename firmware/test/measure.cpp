@@ -2,7 +2,8 @@
 // that answers GET and SET as MidiControl.h does (a latch that takes, or one that doesn't),
 // the audio interface is stubbed: which effect is latched while it records, the CCs on the
 // effect's channel, the latches and knobs put back afterwards, and the measurement refused
-// when the latch didn't take. Python 3 only: importing measure.py works without numpy.
+// when the latch didn't take; AUX set live and through the effects in RAM only where the
+// settings have it otherwise, and put back (#391). Python 3 only: importing measure.py works without numpy.
 #include <sys/wait.h>
 #include <unistd.h>
 #include <cstdio>
@@ -22,20 +23,36 @@ time.sleep = lambda s: None
 
 
 class Frizz:
-    """GET and SET as MidiControl.h answers them; a latch SET that doesn't take with TAKES False"""
-    def __init__(self, latches=(), takes=True):
+    """GET and SET as MidiControl.h answers them; a latch SET that doesn't take with TAKES False;
+    the settings with AUX as AUX has it (aux_live, aux_dry), PERSIST 0 taken unless PERSIST False"""
+    def __init__(self, latches=(), takes=True, aux=(1, 0), persist=True):
         self.latch = [int(n in latches) for n in remote.FX_NAMES]
         self.knobs = [[8192] * 8 for _ in remote.FX_NAMES]
-        self.takes, self.ccs = takes, []
+        self.settings = [0] * len(remote.SETTING_NAMES)
+        self.set_aux(*aux)
+        self.takes, self.ccs, self.persist, self.ram = takes, [], persist, False
+
+    def set_aux(self, live, dry):
+        self.settings[remote.SETTING_NAMES.index("aux_live")] = live
+        self.settings[remote.SETTING_NAMES.index("aux_dry")] = dry
+
+    def aux(self):
+        return "live %d dry %d" % tuple(self.settings[remote.SETTING_NAMES.index(n)] for n in ("aux_live", "aux_dry"))
+
+    def ram_only(self):
+        self.ram = self.ram or self.persist
+        return self.persist or None
 
     def dev(self, sub, args=(), retries=3):
         if sub == chompi.GET:
             g = args[0]
-            v = self.latch if g == remote.GROUP_LATCH else self.knobs[g]
+            v = {remote.GROUP_LATCH: self.latch, remote.GROUP_SETTINGS: self.settings}.get(g) or self.knobs[g]
             return chompi.OK, bytes([g, len(v)] + [b for x in v for b in (x >> 7 & 0x7F, x & 0x7F)])
         if sub == chompi.SET:
             g, i, v = args[0], args[1], args[2] << 7 | args[3]
-            if g != remote.GROUP_LATCH:
+            if g == remote.GROUP_SETTINGS:
+                self.settings[i] = v
+            elif g != remote.GROUP_LATCH:
                 self.knobs[g][i] = v
             elif self.takes:
                 self.latch[i] = v
@@ -57,11 +74,12 @@ class Np:
     mean = staticmethod(lambda y: sum(y) / len(y))
 
 
-def fx(args, latches=(), takes=True, level=1e-4, fail=False):
-    f = Frizz(latches, takes)
-    seen = []
+def fx(args, latches=(), takes=True, level=1e-4, fail=False, aux=(1, 0), persist=True):
+    f = Frizz(latches, takes, aux, persist)
+    seen, heard = [], []
     def record(seconds, path):
         seen.append(" ".join(n for n, v in zip(remote.FX_NAMES, f.latch) if v) or "-")
+        heard.append("AUX %s%s" % (f.aux(), ", RAM only" if f.ram else ""))
         if fail:
             raise RuntimeError("pw-record died")
         return Recording([level] * 10)
@@ -80,6 +98,8 @@ def fx(args, latches=(), takes=True, level=1e-4, fail=False):
             print(e.code)
     except RuntimeError:
         code = "raised"
+    if aux != (1, 0):
+        print("AUX %s: while recording %s; after %s; exit %s" % (aux, heard or "never", f.aux(), code), flush=True)
     print("RESULT %s: recorded %s; ccs [%s]; after %s; knobs %s; exit %s" % (
         args, seen or "never", ", ".join(f.ccs),
         " ".join(n for n, v in zip(remote.FX_NAMES, f.latch) if v) or "-",
@@ -103,6 +123,10 @@ fx("KEY_12 --cc 21=80", latches=["reverb"], fail=True)
 fx("KEY_12", level=1e-10)
 fx("none --cc 21=80")
 fx("KEY_14")
+fx("reverb", aux=(0, 1))
+fx("none", aux=(1, 1))
+fx("reverb", aux=(0, 1), fail=True)
+fx("reverb", aux=(0, 0), persist=False)
 )", out);
     if (rc != 0)
         printf("%s\n", out.c_str());
@@ -130,6 +154,18 @@ fx("KEY_14")
           "measure: CCs with none are refused");
     Check(Has(out, "fx KEY_14: a key KEY_1 .. KEY_13") && Has(out, "RESULT KEY_14: recorded never; ccs []; after -; knobs as before; exit 1"),
           "measure: a key without an effect of its own (the chaos key) is refused");
+    // #391: a card with AUX unmonitored or past the effects recorded silence or the dry line
+    Check(Has(out, "AUX set to play through for the measurement, in RAM only, the card untouched: aux_live 1 (was 0), aux_dry 0 (was 1) (put back after)")
+              && Has(out, "AUX (0, 1): while recording ['AUX live 1 dry 0, RAM only']; after live 0 dry 1; exit 0"),
+          "measure: AUX off and past the effects is set through for fx in RAM only (PERSIST 0), said so, and put back after (#391)");
+    Check(Has(out, "untouched: aux_dry 0 (was 1) (put back after)") && Has(out, "AUX (1, 1): while recording ['AUX live 1 dry 0, RAM only']; after live 1 dry 1; exit 0"),
+          "measure: fx none too, only what differs set");
+    Check(Has(out, "AUX (0, 1): while recording ['AUX live 1 dry 0, RAM only']; after live 0 dry 1; exit raised"),
+          "measure: a recording that breaks off still puts AUX's settings back");
+    Check(Has(out, "this FRIZZ can't set them in RAM only (no PERSIST)") && Has(out, "AUX (0, 0): while recording never; after live 0 dry 0; exit 1"),
+          "measure: a FRIZZ that can't keep them out of the card is left as it is, the measurement refused, saying why");
+    Check(!Has(out, "AUX set to play through for the measurement, in RAM only, the card untouched: aux_live 1 (was 1)"),
+          "measure: AUX already live and through: nothing set");
     if (failures)
         printf("%s\n", out.c_str());
     std::string cmd = "rm -rf '" + tmp_dir + "'";

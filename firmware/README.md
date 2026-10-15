@@ -491,7 +491,11 @@ cd firmware/tools
   device, and every effect recorded the dry line), sends the CCs on the effect's channel
   (e.g. `--cc 21=80`, its Level), plays material into AUX and records the line out; it says
   what was latched and the knobs FRIZZ has, and puts the latches and the effect's knobs back
-  afterwards. `compare` gives two recordings' level and octave bands, for an A/B of two
+  afterwards. It reads the settings first: a card with AUX unmonitored or past the effects
+  (`aux_live 0`, `aux_dry 1`) would record silence or the dry line (#391), so it sets
+  `aux_live 1` and `aux_dry 0` in RAM only (PERSIST 0, the card untouched), says so, and puts
+  them back afterwards; a FRIZZ without PERSIST is refused, saying so. `drift` needs neither:
+  the looper records AUX either way. `compare` gives two recordings' level and octave bands, for an A/B of two
   builds. Real music (`material --music`) is the better test here; level and bands don't
   show an effect's timing (an echo's place), which takes a script of its own.
 
