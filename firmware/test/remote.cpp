@@ -1810,6 +1810,23 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc == 0 && out.find("0.2500") == out.find("page 1  ") + 16, "remote: set an effect's knob, get reads it");
     if (rc != 0)
         printf("%s\n", out.c_str());
+    // play's turn paced (#375): a detent every MS ms is a slow turn, 1% each; a plain turn
+    // goes at once, one a block, a fast one
+    rc = Remote({"set", "filter", "0", "0.5"}, out);
+    Write(script, "booted\ntap KEY_5\nwait 100\nturn 4 -5 200\nwait 1300\n");
+    rc |= Remote({"play", script}, out);
+    rc |= Remote({"get", "filter"}, out);
+    Check(rc == 0 && out.find("0.4500") == out.find("page 1  ") + 8,
+          "remote: play's turn ENC N MS turns slowly, 1% a detent");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
+    Write(script, "booted\ntap KEY_5\nwait 100\nturn 4 5\nwait 300\n");
+    rc = Remote({"play", script}, out);
+    rc |= Remote({"get", "filter"}, out);
+    Check(rc == 0 && out.find("0.6600") == out.find("page 1  ") + 8,
+          "remote: and its plain turn fast: 1%, then 5% a detent");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
     rc = Remote({"set", "settings", "clock_factor", "50"}, out);
     rc |= Remote({"get", "settings"}, out);
     Check(rc == 0 && Has(out, "clock_factor    50\n") && Has(out, "midi_channel    5\n"),

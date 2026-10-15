@@ -107,6 +107,13 @@ namespace chompi
     static const float kVolumeStep = .02f;
     static const float kMixStep = .04f;
     static const float kHpCueStep = .01f;
+    // turned fast, VOLUME's steps grow too, carefully (#375): 1x at kVolumeAccelSlowMs between
+    // detents (8 a second) or slower, up to kVolumeAccelMax times (the gains 6%) at
+    // kVolumeAccelFastMs (50 a second) or faster; not more, so a fast turn of the output gain
+    // can't jump the level at a PA (TurnAccel)
+    static const float kVolumeAccelSlowMs = 125.f;
+    static const float kVolumeAccelFastMs = 20.f;
+    static const float kVolumeAccelMax = 3.f;
     // the hand's keys while the mode switch is up come as these IDs plus their SwId (ui.h)
     static const uint16_t kSettingsKeyBase = 64;
 
@@ -664,6 +671,8 @@ namespace chompi
                              int16_t turns,
                              uint16_t stepsPerRevolution) override
         {
+            // knobs 1-4's and VOLUME's: the ms since the detent before (ui.h's Gap)
+            const uint16_t gap = stepsPerRevolution;
 #if !FRIZZ_BENCH
             tap_one_ = tap_clean_ = false;
             if (encoderID < kNumFxKnobs && loops_shown_ && !show_settings_)
@@ -681,19 +690,21 @@ namespace chompi
             {
                 if (fx_.KnobUsed(encoderID))
                     keys_.Used();
-                fx_.KnobTurned(encoderID, turns, Shift());
+                fx_.KnobTurned(encoderID, turns, Shift(), FxKnobAccel(gap));
                 knob_page_flash_.Stop(); // a turn shows what it turns at once
                 fin_turned_[encoderID] = System::GetNow(); // on the finalizer: its value
             }
             else if (encoderID == kVolumeEncoder)
             {
+                const float detents =
+                    turns * TurnAccel(gap, kVolumeAccelSlowMs, kVolumeAccelFastMs, kVolumeAccelMax);
                 if (show_settings_)
                 {
-                    SettingsVolumeTurned(turns);
+                    SettingsVolumeTurned(detents);
                     return true;
                 }
                 keys_.Used();
-                VolumeTurned(turns);
+                VolumeTurned(detents);
             }
             else
                 return false;
@@ -2177,7 +2188,7 @@ namespace chompi
         }
         /** VOLUME turned on the settings page: page 1 or 2 as on the play page, SHIFT + turn
          *  nothing */
-        void SettingsVolumeTurned(int16_t detents)
+        void SettingsVolumeTurned(float detents)
         {
             vol_touched_ = System::GetNow();
             if (!Shift() && !settings_.ShiftHeld())
