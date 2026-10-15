@@ -17,6 +17,10 @@
 // (a file created, renamed, deleted, a folder made) counted, and a power cut after the cut-th
 // (cut_after): the card gone from there, what was open for writing back to its last sync; or
 // the one after the fail_after-th failing (FR_DISK_ERR, nothing changed), once, the card staying.
+// A card that didn't answer once (glitch): the next call that finds the volume (f_open, f_stat,
+// f_unlink, f_rename, f_mkdir, f_opendir, f_chdir) mounts it again first, as ff.c's find_volume
+// does, back in the root; and the readdir_fail-th f_readdir (counting dir_reads) failing with
+// FR_DISK_ERR, once.
 #pragma once
 #include <algorithm>
 #include <cstdint>
@@ -115,6 +119,8 @@ struct FakeCard
     int changes = 0;
     int cut_after = -1;
     int fail_after = -1;
+    bool glitch = false;
+    int readdir_fail = -1;
 
     // the volume's geometry, and where each file's clusters are: given out on its first link
     // map, in fragments of frag_clusters with a free cluster between them
@@ -358,6 +364,7 @@ inline FRESULT f_mount(FATFS* fs, const char*, BYTE)
             c.fs->fs_type = 0;
         return FR_OK;
     }
+    c.glitch = false;
     c.fs = fs;
     fs->csize = c.csize;
     fs->database = c.database;
@@ -370,10 +377,19 @@ inline FRESULT f_mount(FATFS* fs, const char*, BYTE)
     c.fat_win = ~0u;
     return c.present ? FR_OK : FR_NOT_READY;
 }
+/** ff.c's find_volume, at each call with a path: a card that didn't answer (glitch) is mounted
+ *  again, the volume f_mount mounted */
+inline void FindVolume()
+{
+    FakeCard& c = FakeCard::Get();
+    if (c.glitch && c.fs && c.fs->fs_type)
+        f_mount(c.fs, "", 1);
+    c.Touch();
+}
 inline FRESULT f_chdir(const char* path)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     if (!c.present || !c.HasDir(path))
         return FR_NO_FILE;
     c.cwd = path;
@@ -382,7 +398,7 @@ inline FRESULT f_chdir(const char* path)
 inline FRESULT f_mkdir(const char* path)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     if (!c.present || c.read_only)
         return FR_DENIED;
     if (c.HasDir(path))
@@ -394,7 +410,7 @@ inline FRESULT f_mkdir(const char* path)
 inline FRESULT f_stat(const char* name, FILINFO*)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     if (!c.present)
         return FR_NOT_READY;
     return c.files.count(c.Find(c.Path(name))) ? FR_OK : FR_NO_FILE;
@@ -402,7 +418,7 @@ inline FRESULT f_stat(const char* name, FILINFO*)
 inline FRESULT f_unlink(const char* name)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     if (!c.present)
         return FR_NOT_READY;
     if (!c.files.count(c.Find(c.Path(name))))
@@ -433,7 +449,7 @@ inline FRESULT f_unlink(const char* name)
 inline FRESULT f_rename(const char* from, const char* to)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     if (!c.present)
         return FR_NOT_READY;
     const std::string src = c.Find(c.Path(from));
@@ -462,7 +478,7 @@ inline FRESULT f_rename(const char* from, const char* to)
 inline FRESULT f_open(FIL* f, const char* name, BYTE mode)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     if (!c.present)
         return FR_NOT_READY;
     f->path = c.Find(c.Path(name));
@@ -641,7 +657,7 @@ inline FRESULT f_lseek(FIL* f, DWORD ofs)
 inline FRESULT f_opendir(DIR* d, const char* path)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     std::string dir = c.Path(path);
     if (dir == "/")
         dir = ""; // the root: every path starts with its "/"
@@ -685,7 +701,11 @@ inline FRESULT f_readdir(DIR* d, FILINFO* info)
     info->fname[0] = '\0';
     if (d->mount != c.mount)
         return FR_INVALID_OBJECT;
-    c.dir_reads++;
+    if (int(++c.dir_reads) == c.readdir_fail)
+    {
+        c.readdir_fail = -1;
+        return FR_DISK_ERR;
+    }
     if (d->at < d->names.size())
     {
         snprintf(info->fname, sizeof(info->fname), "%s", d->names[d->at].c_str());
