@@ -254,8 +254,9 @@ class Frizz:
     def dev(self, sub, args=(), retries=3, wait=0.5):
         """kCmdDev's SUB: (status, data), asked again while unanswered for WAIT s (its queue
         full, or the USB lost it), with the same SEQ, so a late answer to the first ask still
-        counts; None if nothing answers, a FRIZZ from before it. FRIZZ runs each ask it gets:
-        what starts a job (a load, the write test) asks once (retries=1)"""
+        counts; None if nothing answers, a FRIZZ from before it. FRIZZ runs each ask it gets, in
+        order (MidiControl.h's ring of kDevQueue): a job's start asked again is refused, but the
+        first ask's answer, OK, comes first and is the one taken"""
         with self.query_lock:
             chompi._seq[0] = chompi._seq[0] % 127 + 1
             seq = chompi._seq[0]
@@ -875,7 +876,7 @@ def loops_load(f, bank, slot, fault, check):
     import zlib
     load(f)  # the meter from here
     loops_status(f)  # and MainLoop's longest step
-    got = f.dev(chompi.LOOPS, [4, bank, slot - 1, LOOP_FAULTS.get(fault, 0)], retries=1, wait=1.5)
+    got = f.dev(chompi.LOOPS, [4, bank, slot - 1, LOOP_FAULTS.get(fault, 0)], wait=1.5)
     if not got:
         sys.exit("no answer to LOOPS: a FRIZZ from before it")
     if got[0] != chompi.OK:
@@ -916,7 +917,7 @@ def loops_write(f, kb, chunk, fault=None):
     before = loops_status(f)
     # the fault in KB's high group (KB up to 1024: 8 at most there; the SysEx takes 5 bytes)
     args = [6, kb >> 7 | WRITE_FAULTS.get(fault, 0), kb & 0x7F, chunk >> 7, chunk & 0x7F]
-    got = f.dev(chompi.LOOPS, args, retries=1, wait=1.5)
+    got = f.dev(chompi.LOOPS, args, wait=1.5)
     if not got or got[0] != chompi.OK:
         sys.exit("loops write: refused")
     s, secs, worst = loops_wait(f, [6], 120)

@@ -557,7 +557,7 @@ print([remote.set_saves("volume", i) for i in ("in", "1", "01", " 1", "+1", "out
         printf("%s\n", out.c_str());
 
     // remote.py's developers' SysEx asked again keeps its SEQ, so a late answer to the first ask
-    // counts; what starts a job (a load) is asked once (FRIZZ runs every ask it gets)
+    // counts: a job's start asked again is refused, but the first ask's OK comes first (FIFO)
     rc = Python(R"(
 import os, threading, remote, chompi
 r, w = os.pipe()
@@ -575,11 +575,11 @@ def asks():
 chompi._seq[0] = 40
 f.link = Link([None, None, bytes([remote.chompi.IDENT, 41, 0])])
 print("ident", f.dev(chompi.IDENT), asks(), flush=True)
-f.link = Link([None])
-print("load", f.dev(chompi.LOOPS, [4, 0, 0, 0], retries=1, wait=0.01), asks(), flush=True)
+f.link = Link([None, bytes([chompi.LOOPS, 42, 0]), bytes([chompi.LOOPS, 42, 1])])
+print("load", f.dev(chompi.LOOPS, [4, 0, 0, 0], wait=0.01), asks(), flush=True)
 )", out);
-    Check(rc == 0 && Has(out, "ident (0, b'') [41, 41, 41]\n") && Has(out, "load None [42]\n"),
-          "tools: remote.py asks again with the same SEQ, a job's start once");
+    Check(rc == 0 && Has(out, "ident (0, b'') [41, 41, 41]\n") && Has(out, "load (0, b'') [42, 42]\n"),
+          "tools: remote.py asks again with the same SEQ, and takes the first answer, a job's start's OK");
     if (rc != 0)
         printf("%s\n", out.c_str());
 

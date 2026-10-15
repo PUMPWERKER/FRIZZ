@@ -316,8 +316,9 @@ only, answered `F0 7D 43 48 7E SUB SEQ STATUS DATA F7`. SEQ comes back, so a too
 answer; STATUS is 0 ok, 1 refused (an unknown sub-command, group, index, or a value a setting
 doesn't take), 2 not in this build, 3 not yet. Requests wait in a queue of their own (8), apart
 from the other queries' one slot that `play --cpu`'s load readings use, and MainLoop answers
-one every 2 ms; a request that finds the queue full gets no answer, so the tools ask again
-(every request can be repeated: they set, never step). Numbers go in 7-bit groups, the highest
+one every 2 ms, in order; a request that finds the queue full gets no answer, so the tools ask
+again with the same SEQ (most set, never step; a job's start asked twice is refused the second
+time, but the first's answer comes first, and is the one the tool takes). Numbers go in 7-bit groups, the highest
 first; a knob's value in 14 bits, as `0x21` has them.
 
 | SUB | Asks | Answers |
