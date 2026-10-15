@@ -743,6 +743,12 @@ About the browser:
 - **What it can see:** only the home directory, so the files to upload live there.
 - **The MIDI port:** while the page has FRIZZ's port, no other tool reaches FRIZZ.
 - **No prompt:** Web MIDI's permission is granted, or denied, through CDP.
+- **The MIDI shim:** Chromium's ALSA MIDI publishes no hardware port while a card has a hwdep
+  that reports interface 0, OPL2, without being an FM synth (the Scarlett 18i20's "Focusrite
+  Control", #399, #406). It counts that hwdep as a MIDI device, its two counts never meet, and
+  only "Midi Through" is listed. `tools/chromium-midi-shim.c`, built with `cc` into the cache
+  on first use, is `LD_PRELOAD`ed into this browser only and reports such a hwdep as another.
+  `FRIZZ_MIDI_SHIM=0` leaves it out; `companion.py ports` shows what the browser sees.
 
 `test/companion.cpp` checks its WebSocket and CDP client against a stand-in, and what it
 refuses before a browser opens.
