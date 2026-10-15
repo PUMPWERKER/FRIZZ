@@ -406,6 +406,16 @@ public:
         // start on a sector
         if (state == Looper::State::EMPTY || state == Looper::State::RECORDING)
             playing_ = kNone;
+        // the card scanned again (the take-back after a lend, RESCAN): a slot whose file has
+        // other frames or beats than the loop playing doesn't hold it any more, as after the
+        // loop transfer's replace (#332); one nobody touched keeps it
+        if (playing_ != kNone && st != LoopLoader::SCANNING)
+        {
+            const loops::Slot& s = loader_->GetSlot(static_cast<size_t>(playing_) / loops::kSlots,
+                                                    static_cast<size_t>(playing_) % loops::kSlots);
+            if (s.frames != looper.GetLength() || s.beats != looper.LoadedBeats())
+                playing_ = kNone;
+        }
         // an erase takes every plan with it
         const bool loop = (state == Looper::State::PLAYING || state == Looper::State::PAUSED)
                           && !looper.IsErasing();

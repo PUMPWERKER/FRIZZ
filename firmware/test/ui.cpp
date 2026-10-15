@@ -3757,6 +3757,39 @@ int main()
               "loops-xfer-playing: a5 replaced while it plays: its key dim, not lit, the old loop plays on");
     }});
 
+    // the card lent and taken back (#332): the playing loop's key stays bright while its file
+    // is untouched, and goes dim once the computer replaced it, as after the loop transfer's
+    // replace; the old loop plays on
+    cases.push_back({"loops-lent-replaced", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(48000, 2, 220.f)}, {"a2", SineWav(24000, 2, 330.f)}});
+        LoopsPage();
+        auto lit = [](int slot) { return Shows(SmtLedFull(LoopLed(slot)), kOrange, kLoopLit); };
+        auto dim = [](int slot) { return Shows(SmtLedFull(LoopLed(slot)), kOrange, kLoopDim); };
+        auto lend = [](bool on) {
+            Ask({0x3E, 0x0E, 1, 2, static_cast<uint8_t>(on ? 1 : 0)});
+            RunMs(on ? 300 : 5000); // back, and the loops scanned again
+        };
+        Tap(kLoopKeys[0]);
+        UntilLength(48000, 1000);
+        RunMs(100);
+        lend(true);
+        CardFiles()["/FRIZZ/a2.wav"] = SineWav(12000, 2, 660.f); // not the one playing
+        lend(false);
+        const bool kept = lit(0) && dim(1) && !CardLent();
+        lend(true);
+        CardFiles()["/FRIZZ/a1.wav"] = SineWav(12000, 2, 660.f);
+        lend(false);
+        printf("      a2 replaced: a1 %s; a1 replaced: a1 %s, the loop %zu frames\n", kept ? "bright" : "not bright",
+               Hex(SmtLedFull(LoopLed(0))).c_str(), static_cast<size_t>(Probe().loop_length));
+        Check(kept && dim(0) && !CardLent() && Probe().loop_length == 48000,
+              "loops-lent-replaced: taken back, the playing a1 stays bright while only a2 changed; once the "
+              "computer replaced a1, its key is dim and the old loop plays on");
+        Tap(kLoopKeys[0]);
+        Check(UntilLength(12000, 2000) >= 0, "loops-lent-replaced: a tap on a1 loads its new loop");
+    }});
+
     // SLOT's flags for a cubbi too (docs/LOOP_PROTOCOL.md 3.3): one the Cubbi page plays
     cases.push_back({"loops-xfer-cubbi", [] {
         RunMs(kReadyMs);

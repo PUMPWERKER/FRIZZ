@@ -137,6 +137,9 @@ what FRIZZ does.
   without its free count, a scene save, bug report or card lend while FRIZZ was counting could
   leave it with a wrong number, which it then wrote onto the card. Now it counts again from the
   start after any of these.
+- **A playing loop the computer replaced while it had the card no longer keeps its key bright**
+  (#332): once the card is back, its key is dim and the old loop plays on, as after a replace in
+  the Companion; a tap loads the new file. A loop whose file wasn't touched stays bright.
 - **FRIZZ tells the Companion which cubbi plays**: it said which of its own slots played and
   was loaded, but never a cubbi.
 - **With the card lent to the computer, the loop you played before switches at once** (#292):
