@@ -1,9 +1,9 @@
 /** @file FxSlots.h
  *  @brief The punch-in FX keys: one entry per FxId (FxChain.h), in the same order, with the
- *  key and colours the play page (NormalPage.h) gives each, and the master compressor's key.
+ *  key and colours the play page (NormalPage.h) gives each, and the finalizer's key.
  *  Their LEDs are the keys' (PanelKeys.h). The keys follow the chain (FxChain.h): the 7th white key is the phaser's, next to the
  *  flanger, though it comes after the sends in FxId; the 14th is the chaos key's (FxChaos.h),
- *  which has no place in the chain, between the sends and the compressor. Their knobs
+ *  which has no place in the chain, between the sends and the finalizer. Their knobs
  *  (defaults, steps, coarse grids) are in FxParams.h. The controls are described in MANUAL.md.
  */
 #pragma once
@@ -57,12 +57,13 @@ static_assert(sizeof(kFxSlots) / sizeof(kFxSlots[0]) == kNumFx, "one per FxId");
 static const float* const kShifterKeyColor = azure;
 static const float* const kShifterKnobColors[3] = {azure, white, orange};
 
-// The master compressor's key (MasterComp.h), the last white key: white, lighting up with
-// its gain reduction. Its knob LEDs at 0 / .5 / 1
+// The finalizer's key (Finalizer.h, #345; the master compressor's until 1.5), the last white
+// key: in the colour of the module its knobs show (kFinColors), lighting up with its gain
+// reduction. Its knob LEDs at 0 / .5 / 1 when they show a value
 static const Hardware::SwId kCompKey = Hardware::SwId::KEY_15;
 
 /** The FxId on white key 0-14 (PanelKeys.h, left to right: MIDI's effect channels 1-15,
- *  MidiControl.h), kNumFx on the compressor's */
+ *  MidiControl.h), kNumFx on the finalizer's */
 inline size_t FxOnWhiteKey(size_t white)
 {
     for (size_t fx = 0; fx < kNumFx; fx++)
@@ -70,7 +71,7 @@ inline size_t FxOnWhiteKey(size_t white)
             return fx;
     return kNumFx;
 }
-/** The white key 0-14 of an FxId, or of the compressor (kNumFx) */
+/** The white key 0-14 of an FxId, or of the finalizer (kNumFx) */
 inline size_t WhiteKeyOfFx(size_t fx)
 {
     for (size_t w = 0; w < kNumWhiteKeys; w++)
@@ -80,5 +81,7 @@ inline size_t WhiteKeyOfFx(size_t fx)
 }
 static const uint8_t kCompKeyLed = KeyLedOf(kCompKey);
 static const float* const kCompKnobColors[3] = {med_blue, white, orange};
+// The finalizer's modules' colours (Finalizer::Module): Level, EQ, Comp, Width
+static const float* const kFinColors[4] = {white, yellow, cyan, magenta};
 
 } // namespace chompi

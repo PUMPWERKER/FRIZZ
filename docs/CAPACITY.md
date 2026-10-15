@@ -9,8 +9,8 @@ prints the memory table after every build; the numbers below come from it and fr
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 268,116 B (96 %) | **~10.2 KB** (10,412 B; the bench build 267,164 B, ~11.1 KB) | all the code, and the initial values of `.data` |
-| `SRAM` (AXI SRAM) | 240 KB | 217,664 B (89 %) | ~27.4 KB (the bench build 225,496 B, ~19.8 KB) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 275,164 B (99 %) | **~3.3 KB** (3,364 B; the bench build 274,604 B, ~3.8 KB) | all the code, and the initial values of `.data` |
+| `SRAM` (AXI SRAM) | 240 KB | 220,588 B (90 %) | ~24.6 KB (the bench build 228,708 B, ~16.7 KB) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,804 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
@@ -18,6 +18,16 @@ prints the memory table after every build; the numbers below come from it and fr
 | `RAM_D3` | 64 KB | 0 | 64 KB | nothing |
 | `BACKUP_SRAM` | 4 KB | 92 B | ~4 KB | libDaisy's `boot_info` (12 B, first: the bootloader and the launcher hand over through it), then the crash record and the build running (80 B, `Crash.h`, #105); a reset leaves it, a power-off doesn't |
 | `SDRAM` | 64 MB | 58.7 MB | **~8.4 MB** | the loop (31.7 MB), the loop loader's buffer (14.75 MB), the tape stop (4.2 MB), the delay (3.8 MB), the event log (2.1 MB), the freezer (1.9 MB), the reverb's pre-delay (0.1 MB), the loop transfer's staging block and ring (34 KB) |
+
+**The finalizer (#345, 2026-10-15)** took 7,048 B of code (the bench build 7,440 B) and
+2,736 B of data, on `main` 79f893e (10,412 B of code left after #343's frequency shifter):
+its per-sample block (`Finalizer::ProcessAwake`, 3.5 KB at `-O2`; `-O3` unrolled it to 5.6 KB,
+`-Os` would save 570 B more at some CPU), its control rate (1.7 KB, `-Os`), the play page's
+LEDs, meters, presets and gestures (~2.5 KB), the master file's lines, MIDI. Two levers it
+pulled itself: no `tanf` (its series instead: newlib's argument reduction is 4 KB) and the
+master file's code at `-Os`. Its data: the limiter's delay and running minimum, the bands'
+filters, the presets (256 B), the master file's limit (`kMasterFileMax` 1,536 B in SDRAM's
+event log).
 
 **The code-room round (#320, 2026-10-15).** `main` had ~1.5 KB of code left in `FRIZZ.bin`
 (277,012 B, 0170d38) and ~2.1 KB in the bench build (276,408 B). Eight changes, none to what the audio
