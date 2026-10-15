@@ -157,7 +157,7 @@ public:
                     FxScene& to = Saved()[s];
                     if (to.used != read[s].used
                         || (to.used
-                            && (to.latched != read[s].latched || memcmp(to.params, read[s].params, sizeof(to.params)))))
+                            && (to.latched != read[s].latched || to.modes != read[s].modes || memcmp(to.params, read[s].params, sizeof(to.params)))))
                         taken |= 1u << (kBlankSlot + 1 + s);
                     to = read[s];
                 }

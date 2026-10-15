@@ -9,6 +9,17 @@ what FRIZZ does.
 
 ### Added
 
+- **A frequency shifter** (#306), the phaser's second mode: hold SHIFT, tap white key 7 (it's
+  selected, as ever), then tap it again: the key turns azure, and every frequency in the sound
+  moves up or down by the same number of Hz, so its harmonics no longer line up. A few Hz with
+  feedback make a barber pole that rises (or falls) forever, tens to hundreds of Hz a metallic,
+  bell-like sound. Each further tap in the same SHIFT hold switches back and forth. The same
+  knobs, read the other way: the shift (free, 0.1 Hz to 1 kHz, or a cycle per tempo division),
+  feedback, depth and the direction (down, both, up); page 2's stereo turns the right channel
+  the other way. A scene keeps the mode (an older FRIZZ loads it as the phaser), a morph
+  switches it at its landing, and CC 23 on the phaser's channel (7) sets it over MIDI. After
+  Mutable Instruments' Warps. See [Frequency shifter](MANUAL.md#frequency-shifter).
+
 - **The Companion** (#278): a web page, [frizz.friedrichwagner.eu/companion](https://frizz.friedrichwagner.eu/companion/),
   that manages your loop banks over the USB cable while FRIZZ plays, in Chrome, Edge and other
   Chromium-based browsers and in Firefox. It lists what's on the card, FRIZZ's banks with each

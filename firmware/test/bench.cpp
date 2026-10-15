@@ -19,7 +19,7 @@ using namespace twin;
 static const char* const kSegments[] = {
     "idle",       "freezer",   "shifter",      "folder",      "crusher",
     "filter",     "flanger",   "resonator",    "slicer",      "warble",
-    "tapestop",   "phaser",    "compressor", "inserts",     "recording",   "loop",
+    "tapestop",   "phaser",    "freqshift",  "compressor", "inserts",     "recording",   "loop",
     "loop+inserts", "loop+delay", "loop+scene4+delay", "loop+reverb", "everything",
     "stress",     "loop+everything", "loop+inserts+chaos", "loop+inserts+dry", "loop+inserts+mic",
     "loop+everything+fader", "loop+everything+page2",
@@ -78,7 +78,7 @@ int main()
     }
 
     Boot();
-    // the boot animation, about 10 s for the delay to rest, then 28 segments of 3 s with the
+    // the boot animation, about 10 s for the delay to rest, then 29 segments of 3 s with the
     // 4 s recording among them and the pauses for tails between them, until cpu.txt is
     // written; the input is the bench's own tune, so none is fed here
     std::vector<float> rms; // the master out's level every 3 s from when the bench starts

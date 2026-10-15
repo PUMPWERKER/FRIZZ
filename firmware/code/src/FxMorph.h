@@ -42,6 +42,11 @@
  *  freezer, the slicer, the tape stop, the shifter's swoop) starts on the line; the ones going
  *  off kDropLeadSamples before it (DropLead), so their fade ends on it. The crossfader can't
  *  take a drop.
+ *
+ *  An effect's second mode (kFxModes, the phaser's frequency shifter, #306) goes as a stepped
+ *  parameter does: set at the start where the effect is off then, switched at the landing (or
+ *  the crossfader's middle) where it's on, which the effect does with a dip of its own (out,
+ *  the switch, in: FxPhaser.h), and at a drop's line.
  */
 #pragma once
 #include "FxChain.h"
@@ -109,6 +114,7 @@ struct FxMorphPlan
     uint16_t was_on;   // bit fx: on at the start, what a deferred key is until it's switched
     uint16_t park;     // bit fx: if it ends off, its parameters stay where the glide left them
                        // (faded out) instead of jumping to the target at the landing
+    uint16_t mode_start, mode_target; // bit fx: in its second mode (kFxModes) at either end
 };
 
 /** Chain is FxChain; a template only so test/tempo.cpp can watch what it's sent */
@@ -137,6 +143,7 @@ public:
         for (size_t fx = 0; fx < kNumFx; fx++)
             for (size_t p = 0; p < kNumFxParams; p++)
                 live_[fx][p] = plan_.start[fx][p];
+        modes_ = plan_.mode_start;
         deferred_ = plan_.deferred;
         pending_on_ = 0;
         bars_left_ = 1;
@@ -224,10 +231,12 @@ public:
      *  moves until the line. Extra bars: AddBar. False if none is held, or it's a drop already.
      *  Call with the audio interrupt blocked */
     FX_MORPH_ONCE bool Drop(const float to[kNumFx][kNumFxParams], uint16_t ui_on, uint16_t on,
-                            bool glide)
+                            bool glide, int modes = -1)
     {
         if (!active_ || !holding_ || land_ || manual_ || drop_)
             return false;
+        // modes -1: the plan's target, as the UI had it
+        drop_modes_ = modes < 0 ? plan_.mode_target : static_cast<uint16_t>(modes);
         const uint16_t now_on = static_cast<uint16_t>((ui_on & ~deferred_) | (plan_.was_on & deferred_));
         // a build-up's fade-ins still come on with its glide (Process), and the drop switches
         // them at the line as the rest
@@ -250,6 +259,8 @@ public:
                     chain_->SetParam(fx, p, to[fx][p]);
                 }
             }
+            if (set)
+                SendMode(fx, drop_modes_ >> fx & 1);
         }
         chain_->FastSlew();
         plan_.deferred = deferred_ = static_cast<uint16_t>((now_on ^ on) | wake);
@@ -380,6 +391,7 @@ public:
                         chain_->SetParam(fx, p, to[p]);
                 }
             }
+            SendMode(fx, (drop_ ? drop_modes_ : plan_.mode_target) >> fx & 1);
             if (deferred_ & bit)
                 chain_->SetOn(fx, on);
         }
@@ -395,10 +407,12 @@ public:
      *  is, unswitched with those keys, and was_on with which of them are on. False if it
      *  doesn't run. Call with the audio interrupt blocked */
     FX_MORPH_ONCE bool Freeze(float params[kNumFx][kNumFxParams], uint16_t* unswitched,
-                              uint16_t* was_on)
+                              uint16_t* was_on, uint16_t* modes = nullptr)
     {
         if (!active_)
             return false;
+        if (modes)
+            *modes = modes_;
         for (size_t fx = 0; fx < kNumFx; fx++)
             for (size_t p = 0; p < kNumFxParams; p++)
                 params[fx][p] = live_[fx][p];
@@ -424,6 +438,17 @@ public:
         else
             plan_.target[fx][param] = val;
         return active_; // landed meanwhile: then it's for the chain
+    }
+
+    /** From the UI: a mode's new destination while it runs, as SetParam's */
+    bool SetMode(size_t fx, bool second)
+    {
+        if (!active_)
+            return false;
+        uint16_t& to = drop_ ? drop_modes_ : plan_.mode_target;
+        const uint16_t bit = static_cast<uint16_t>(1u << fx);
+        to = second ? to | bit : to & ~bit;
+        return active_;
     }
 
     /** From the UI: a key while it runs. False if the morph doesn't switch this one (yet), so
@@ -464,6 +489,16 @@ private:
         chain_->SetOn(fx, true);
     }
 
+    /** fx's mode to the chain, if it changes */
+    void SendMode(size_t fx, bool second)
+    {
+        const uint16_t bit = static_cast<uint16_t>(1u << fx);
+        if (((modes_ & bit) != 0) == second)
+            return;
+        modes_ ^= bit;
+        chain_->SetMode(fx, second);
+    }
+
     /** Where a gliding parameter glides to: a fade-out to neutral, the rest to the target */
     inline float End(size_t fx, size_t p, MorphParam how) const
     {
@@ -489,6 +524,9 @@ private:
                     chain_->SetOn(fx, on);
                 }
             }
+            // a mode as a stepped parameter, kept by one going off until the end
+            if (!(plan_.park & bit))
+                SendMode(fx, (t >= .5f ? plan_.mode_target : plan_.mode_start) >> fx & 1);
             for (size_t p = 0; p < kNumFxParams; p++)
             {
                 const MorphParam how = plan_.how[fx][p];
@@ -536,6 +574,8 @@ private:
     bool external_ = false;         // lands on LandNext, not a bar line (ReleaseAt)
     uint32_t landings_ = 0;
     float drop_to_[kNumFx][kNumFxParams]; // a drop's landing, as the plan's target a morph's
+    uint16_t modes_ = 0;            // bit fx: in its second mode, as last sent
+    uint16_t drop_modes_ = 0;       // a drop's, as the plan's mode_target a morph's
     volatile float fader_ = 0.f;    // its position, 0 the start to 1 the target
     uint16_t sent_on_ = 0;          // on the crossfader: the switched keys as sent
 };

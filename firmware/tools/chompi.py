@@ -395,7 +395,7 @@ def link(node):
     try:
         yield to
     finally:
-        os.close(to.fd)
+        to.close()
 
 
 def ask_midi(device):
