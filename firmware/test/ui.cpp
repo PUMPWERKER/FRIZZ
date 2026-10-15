@@ -4813,6 +4813,92 @@ int main()
         Check(PthLedFull(kLoopLed).r > 100, "midi notes: note 47 is LOOP");
     }});
 
+    // a key held by the hand and by a note is pressed once and let go once both have, also on
+    // the Loops page and the settings page, where the hand's keys go to that page
+    static auto play_shift = [] { return (Ask({0x20})[6] & 4) != 0; };
+    static auto filter_latched = [] { return (LatchedFx(Ask({0x20})) & 1 << 4) != 0; };
+    cases.push_back({"midi-notes-once-shift", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a5", SineWav(96000, 2, 220.f)}});
+        // the Loops page: SHIFT by hand, and note 45 on and off meanwhile
+        LoopsPage();
+        Press("KEY_26", true);
+        RunMs(100);
+        Trs({kNoteOn, kChompiNote, 100});
+        RunMs(100);
+        Trs({kNoteOff, kChompiNote, 0});
+        RunMs(100);
+        const bool kept = play_shift() && LoopsShown();
+        // the other way round: the note first, the hand's let go first
+        Trs({kNoteOn, kChompiNote, 100});
+        RunMs(100);
+        Press("KEY_26", false);
+        RunMs(100);
+        const bool by_note = play_shift();
+        Trs({kNoteOff, kChompiNote, 0});
+        RunMs(100);
+        Check(kept && by_note && !play_shift(),
+              "midi-notes-once-shift: the Loops page: SHIFT held by hand and by note 45 is held until both let go");
+    }});
+    // a scene key there is the play page's: scene 1 (the filter latched) recalled by hand,
+    // the filter let go over MIDI, and scene 1's note meanwhile doesn't recall it again
+    cases.push_back({"midi-notes-once-scene", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a5", SineWav(96000, 2, 220.f)}});
+        Latch("KEY_5");
+        Save(1);
+        Latch("KEY_5");
+        LoopsPage();
+        Press(kSceneKeys[1], true);
+        RunMs(100);
+        const bool recalled = filter_latched();
+        Trs({kCC, kFilterLatchCC, 127, kCC, kFilterLatchCC, 0});
+        RunMs(100);
+        const bool let_go = !filter_latched();
+        Trs({kNoteOn, 56, 100});
+        RunMs(100);
+        Trs({kNoteOff, 56, 0});
+        RunMs(100);
+        const bool once = !filter_latched();
+        Press(kSceneKeys[1], false);
+        RunMs(100);
+        Check(LoopsShown() && recalled && let_go && once,
+              "midi-notes-once-scene: the Loops page: a scene key held by hand, its note recalls it no second time");
+    }});
+    // the settings page: scene 1's key held there by hand (the clock factor), its note recalls
+    // nothing on the play page; SHIFT held there by hand, note 45 is no SHIFT on the play page
+    cases.push_back({"midi-notes-once-settings", [] {
+        RunMs(kReadyMs);
+        Latch("KEY_5");
+        Save(1);
+        Latch("KEY_5");
+        const bool let_go = !filter_latched();
+        SetToggle(true);
+        RunMs(300);
+        Press(kSceneKeys[1], true);
+        RunMs(100);
+        Trs({kNoteOn, 56, 100});
+        RunMs(100);
+        Trs({kNoteOff, 56, 0});
+        RunMs(100);
+        Press(kSceneKeys[1], false);
+        RunMs(100);
+        const bool no_recall = let_go && !filter_latched();
+        Press("KEY_26", true);
+        RunMs(100);
+        Trs({kNoteOn, kChompiNote, 100});
+        RunMs(100);
+        const bool once = !play_shift();
+        Trs({kNoteOff, kChompiNote, 0});
+        RunMs(100);
+        Press("KEY_26", false);
+        RunMs(100);
+        SetToggle(false);
+        RunMs(300);
+        Check(no_recall, "midi-notes-once-settings: a scene key held there by hand, its note recalls nothing");
+        Check(once, "midi-notes-once-settings: SHIFT held there by hand, note 45 is no SHIFT on the play page");
+    }});
+
     // a key a note holds isn't held for good when its note off can't come: the computer gone,
     // FRIZZ leaving the bus for USB audio, or the global channel changed since the note on
     cases.push_back({"midi-notes-gone", [] {

@@ -155,6 +155,10 @@ what FRIZZ does.
   key MIDI holds lets go, and a note off on any channel lets go of the key its note holds, so
   changing the MIDI channel on the settings page meanwhile no longer leaves an effect punched
   in or SHIFT held. See [Notes: the keys](MANUAL.md#notes-the-keys).
+- **A key held by your hand and by a note is pressed once on the Loops and settings pages
+  too**: there the note pressed it a second time on the play page, so letting go of note 45
+  ended SHIFT while your hand still held it, and a scene key's note recalled its scene again.
+  See [Notes: the keys](MANUAL.md#notes-the-keys).
 
 ## v1.0.1 (2026-10-13)
 
