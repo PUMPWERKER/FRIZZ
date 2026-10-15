@@ -2091,10 +2091,9 @@ print("exit codes:", midisuite.exit_code(False, None), midisuite.exit_code(True,
     if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 
-    unlink(blank.c_str());
-    unlink(mine.c_str());
-    unlink(back.c_str());
-    unlink(script.c_str());
-    rmdir(tmp_dir.c_str());
+    // the folder whole: the cases leave more in it than these (the loops' WAVs, the card), and
+    // rmdir alone left ~200 KB in /tmp each run
+    if (system(("rm -rf '" + tmp_dir + "'").c_str()) != 0)
+        printf("could not remove %s\n", tmp_dir.c_str());
     return Finish();
 }
