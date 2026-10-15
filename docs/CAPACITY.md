@@ -1,23 +1,44 @@
 # Capacity: what's free on the CHOMPI, and how to make room
 
-What a new feature can still use, measured on 2026-10-14 after the loop loader (#70), with
-FRIZZ's USB on TinyUSB, a sound card and the card as a drive (#196), and with the loop transfer
-over USB MIDI (#278; the history below). `make` prints the memory table after every build; the numbers below come from it and
-from `build/FRIZZ.map`.
+What a new feature can still use, measured on 2026-10-15 after the code-room round (#320, on
+`main` 0170d38: the loop loader, USB on TinyUSB, the loop transfer; the history below). `make`
+prints the memory table after every build; the numbers below come from it and from
+`build/FRIZZ.map`.
 
 ## Memory
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 275,780 B (99 %) | **~2.7 KB** (the bench build ~2.1 KB) | all the code, and the initial values of `.data` |
-| `SRAM` (AXI SRAM) | 240 KB | 220,436 B (90 %) | ~25 KB | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
-| `DTCMRAM` | 128 KB | 72,752 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 261,292 B (94 %) | **~16.8 KB** (17,236 B; the bench build 260,628 B, ~17.5 KB) | all the code, and the initial values of `.data` |
+| `SRAM` (AXI SRAM) | 240 KB | 217,664 B (89 %) | ~27.4 KB (the bench build 225,496 B, ~19.8 KB) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
+| `DTCMRAM` | 128 KB | 72,804 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
 | `ITCMRAM` | 64 KB | 0 (~40 KB with `make ITCM=1`) | 64 KB | the per-sample code with `make ITCM=1` (`FRIZZ_HOT`, `FrizzHot.h`, #51), copied there at boot; off by default |
 | `RAM_D3` | 64 KB | 0 | 64 KB | nothing |
 | `BACKUP_SRAM` | 4 KB | 92 B | ~4 KB | libDaisy's `boot_info` (12 B, first: the bootloader and the launcher hand over through it), then the crash record and the build running (80 B, `Crash.h`, #105); a reset leaves it, a power-off doesn't |
 | `SDRAM` | 64 MB | 58.7 MB | **~8.4 MB** | the loop (31.7 MB), the loop loader's buffer (14.75 MB), the tape stop (4.2 MB), the delay (3.8 MB), the event log (2.1 MB), the freezer (1.9 MB), the reverb's pre-delay (0.1 MB), the loop transfer's staging block and ring (34 KB) |
+
+**The code-room round (#320, 2026-10-15).** `main` had ~1.5 KB of code left in `FRIZZ.bin`
+(277,012 B, 0170d38) and ~2.1 KB in the bench build (276,408 B). Eight changes, none to what the audio
+path computes (`check.sh` and `compare.sh` bit-identical), took 15.7 KB off both; measured one
+at a time, in this order, on `main` 3a77138 (`FRIZZ.bin`, the bench build where it differs):
+
+| Change | Code | Data |
+|---|---|---|
+| FatFs (`ff.c`, `diskio.c`, `ccsbcs.c`, `ff_gen_drv.c`) built `-Os`, as TinyUSB is (`Makefile`) | −6,840 B | |
+| libDaisy's SPI driver and the HAL's out of the link: FRIZZ has no SPI, an empty `dsy_spi_global_init` (`encoder.cpp`) keeps `System::Init` from pulling them in | −5,708 B | −2,892 B |
+| `PassthroughEngine::Process`' rare paths out of line, cold: the loop's tempo change (`LoopTempoChanged`) and a tap (`Process` 14,724 → 11,684 B) | −632 B | |
+| `ProcessSwitch`'s copy for AUX and the mic folded into its general loop | −824 B | |
+| `-Os` on `Hardware::Init`, `LowBatteryLockoutCheck` and `BootPage::Draw` | −1,176 B (bench −2,136 B) | |
+| an empty `operator delete` (nothing is allocated): newlib's `free` and its locks out | −200 B | −8 B |
+| the USB input's silence (`UsbIn`) in `.bss`, not `.rodata` | −192 B | +192 B |
+| `LoopLoader`'s members all 0 by default, so `loop_loader` is in `.bss`, not `.data` (the bench has no loader) | −228 B | |
+
+The fault handler's check for a stacking fault (`Crash.h`'s `FrameReadable`) took +72 B
+back. `.bss` moved: −288 B from the SPI driver's `.data`, +192 B for the silence, and the
+objects before `loop_loader` −224 B more (`engine` 0x240465b8 → 0x24046478; `midi_clock`,
+`ui` and the rest −96 B); the bench in one hold against `main` (#286) is in the PR.
 
 **The loop transfer (#278, for 1.5).** FRIZZ's loop banks over USB MIDI, the Companion's
 (`LoopTransfer.h`, built `-Os` all of it; `LoopLoader.h`'s names and swap repair; the play
@@ -90,13 +111,12 @@ The CDC class's handle (540 B) moved from the heap into `.bss` in the same chang
 counts it now: 226,760 → 226,568 B, the bench build's 234,856 → 234,664 B (from `main`
 b608028).
 
-**Both builds are near the wall.** `FRIZZ-bench.bin` carries the bench as well: its code is at
-274,952 B (99 %, **~3.5 KB free**; 274,104 B before the loop transfer) and its data at
-228,204 B (93 %, **~17 KB free**). Since the loop transfer, `FRIZZ.bin` has less code room
-(~3.1 KB) than the bench build: it has the loader and the transfer, which the bench build
-hasn't. So a feature of more than ~2 KB of code, or ~17 KB of data in internal RAM, needs room
-made first (below), or one of the builds stops linking. Data grows into SDRAM or DTCM where it
-can; for internal RAM, step 4 below frees 64 KB.
+**Where the builds stand.** `FRIZZ.bin` has the least code room, ~16.8 KB: it has the loop
+loader and the transfer, which the bench build hasn't (~17.5 KB left, as it carries the bench).
+The bench build has the least data room, ~19.8 KB of `SRAM` (`FRIZZ.bin` ~27.4 KB). So a
+feature of more than ~15 KB of code, or ~19 KB of data in internal RAM, needs room made first
+(below), or one of the builds stops linking. Data grows into SDRAM or DTCM where it can; for
+internal RAM, step 4 below frees 64 KB.
 
 Page 2's Mix, Band and Level on every effect and the compressor's page 2 (#40, #38,
 `FxOutput.h`) then took ~7.3 KB of code, and each effect's own page-2 knob (#40) ~3.8 KB
@@ -170,14 +190,15 @@ Where the code goes (`.text` + `.rodata` by object, from the map):
 
 | | Bytes |
 |---|---|
-| FRIZZ itself (`chompi_main.o` 121,900 and `FxChain.o` 37,100, `-O3`; 2026-10-14) | 159,000 |
-| libDaisy and the STM32 HAL | 87,700 |
-| FatFs (`ff.o`, `ccsbcs.o`, `diskio.o`) | 14,700 |
-| newlib-nano, libm, libgcc | 11,400 |
+| FRIZZ itself (`chompi_main.o` 120,400 and `FxChain.o` 37,100, `-O3`; `UsbDevice.o` 2,800, `-Os`; 2026-10-15) | 160,700 |
+| libDaisy and the STM32 HAL | 64,200 |
+| TinyUSB (`-Os`) | 18,300 |
+| FatFs (`ff.o`, `ccsbcs.o`, `diskio.o`, `ff_gen_drv.o`, `-Os`) | 9,300 |
+| newlib-nano, libm, libgcc | 7,300 |
 
-The biggest single functions are `FxChain::Run` (14.0 KB, the chain over a block, #136, #142) and
-`PassthroughEngine::Process` (10.9 KB, everything inlined into them; 2026-10-12), then `Shifter::Process`,
-`Looper::Process` and `FxChain::Init` (5.5 KB each). `NormalPage::OnButton` was 7.9 KB at
+The biggest single functions are `FxChain::Run` (13.1 KB, the chain over a block, #136, #142) and
+`PassthroughEngine::Process` (11.7 KB, everything inlined into them; 2026-10-15), then
+`Looper::Process` (7.3 KB), `UART_SetConfig` (5.3 KB, libDaisy's, at `-O2`) and `main` (4.7 KB). `NormalPage::OnButton` was 7.9 KB at
 `-O3`, 1.1 KB at `-Os`.
 
 To see it again after a build (`firmware/code/src`):
@@ -199,8 +220,10 @@ A feature that runs per sample costs CPU in that budget; one that runs in `MainL
 
 ## Making room for code, the biggest lever first
 
-Steps 1 and, for the play page, 3 are done, and of 5 the USB host stack and ST's device stack; the rest isn't built yet: do it when a feature needs it, each step on
-its own branch with a device test (the layout can change the timing: b5c658c).
+Step 1 is done, 3 for the play page and the boot's code, and of 5 the USB host stack, ST's
+device stack, the SPI driver and FatFs at `-Os`; the rest isn't built yet: do it when a feature
+needs it, each step on its own branch with a device test (the layout can change the timing:
+b5c658c, #286).
 
 1. **Move the split between code and data** (done, #26: 232 KB / 280 KB became 272 KB /
    240 KB in `chompi_sram.lds`). The bootloader copies up to 480 KB of image into the 512 KB
@@ -226,17 +249,25 @@ its own branch with a device test (the layout can change the timing: b5c658c).
    `NormalPage.h`, `PlayKeys.h`, `SceneControls.h`, `SettingsPage.h` and `FxControls.h`,
    -15.5 KB before #89, -12.0 KB after), but for what the audio callback calls (`NormalPage::ShowSettings`,
    `ResetSmtLeds`), which stays as the callback is built; check with
-   `arm-none-eabi-objdump -d` that nothing the callback reaches lost its inlining. The card
-   code (`SceneStore.h`, `MasterSettings.h`, `FxScenes.h`), the boot and init code are left:
-   a few KB more; measure with the map. The per-sample path stays `-O3`.
+   `arm-none-eabi-objdump -d` that nothing the callback reaches lost its inlining. FatFs is
+   built `-Os` (#320, −6.8 KB), and so are `Hardware::Init`, `LowBatteryLockoutCheck` and the
+   boot's ripple (−1.2 KB). The card code (`SceneStore.h`, `MasterSettings.h`, `FxScenes.h`)
+   and `main()` are left (`main()` at `-Os` saves 24 B: its inlined `Init`s come out of line);
+   measure with the map. The per-sample path stays `-O3`.
 4. **Shrink the MIDI queues.** libDaisy's `MidiHandler` keeps `FIFO<MidiEvent, 256>`
    (`libs/libDaisy/src/hid/midi.h:261`), each event with a 128-byte SysEx buffer: 37 KB per
    transport. FRIZZ drains them every block, so 32 events would do: -64 KB of data. It's a
    change to vendored libDaisy: rebuild `libdaisy.a` with GCC 10.3 and list it in
    `THIRD_PARTY.md`.
 5. **Trim libDaisy and the HAL**: the USB host stack is gone (6.4 KB, #196), and with TinyUSB
-   ST's device stack, its CDC class and the `printf` its `USBD_DEBUG_LEVEL` pulled in (#271).
-   What's left, in vendored code: the QSPI driver (3.7 KB).
+   ST's device stack, its CDC class and the `printf` its `USBD_DEBUG_LEVEL` pulled in (#271);
+   the SPI driver (5.7 KB, #320) without touching the library, by defining the function that
+   pulled it in. The next lever is `libdaisy.a` rebuilt `-Os` (it is `-O2`), but for what the
+   audio and MIDI interrupts run (`sai.cpp`, `audio.cpp`, `dma.c`, the HAL's DMA and SAI,
+   `midi_parser`): estimated −5…7 KB from the functions FRIZZ links (the HAL's UART −1.8 KB,
+   `UART_SetConfig` alone 5.3 KB; libDaisy's `uart.cpp` −1.5 KB, `UI.cpp` −0.8 KB), a rebuild
+   of vendored code with GCC 10.3, listed in `THIRD_PARTY.md` (#323). What's left beside it: the QSPI
+   driver (3.7 KB).
 
 Not recommended: link-time optimisation (GCC 10.3, and it would merge the `-O0` workarounds
 into their callers), and running code from QSPI flash (slow, and it's the bootloader's).

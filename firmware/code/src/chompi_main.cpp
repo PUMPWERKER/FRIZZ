@@ -289,7 +289,8 @@ extern "C" __attribute__((used, noinline)) void FrizzFault(const uint32_t* frame
 {
     const uint32_t fault[] = {SCB->CFSR, SCB->HFSR, SCB->MMFAR, SCB->BFAR};
     crash::Write(crash_mem.record, ipsr & 0x1FF, crash_mem.running, System::GetNow(),
-                 midi_control.dev.reset_cause, frame, fault);
+                 midi_control.dev.reset_cause, frame, fault,
+                 crash::FrameReadable(reinterpret_cast<uintptr_t>(frame), fault[0]));
     SCB_CleanDCache();
     NVIC_SystemReset();
 }

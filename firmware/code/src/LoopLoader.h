@@ -416,7 +416,7 @@ public:
     }
     /** Whether the developers' SysEx may use Init's buffer, which the looper may be playing
      *  from (LoopControls.h): its loads and the write test are refused otherwise */
-    inline void DevBuffer(bool free) { dev_free_ = free; }
+    inline void DevBuffer(bool free) { dev_taken_ = !free; }
     inline const uint8_t* Buffer() const { return buf_; }
     inline const uint8_t* Home() const { return home_; }
     /** The slot loaded last, and its acid chunk's beats (0 for none) */
@@ -545,7 +545,7 @@ public:
         else if (part == 3)
             return Request(SCANNING) ? 0 : -1;
         else if (part == 4)
-            return dev_free_ && Request(LOADING, bank, slot, arg[3]) ? 0 : -1;
+            return !dev_taken_ && Request(LOADING, bank, slot, arg[3]) ? 0 : -1;
         else if (part == 5)
         {
             if (len > 1 && !Request(CHECKING))
@@ -554,7 +554,7 @@ public:
             n = Put(d, n, crc_, 5);
         }
         else if (part == 6 && len >= 5)
-            return dev_free_ && Request(WRITING, arg[1] & 0x30, 0, ((arg[1] & 0x0F) << 7 | arg[2]) << 16 | (arg[3] << 7 | arg[4])) ? 0 : -1;
+            return !dev_taken_ && Request(WRITING, arg[1] & 0x30, 0, ((arg[1] & 0x0F) << 7 | arg[2]) << 16 | (arg[3] << 7 | arg[4])) ? 0 : -1;
         else
             return -1;
         return static_cast<int>(n);
@@ -1114,13 +1114,15 @@ private:
 
     uint8_t* buf_ = nullptr;  // the buffer of the last load or write test
     uint8_t* home_ = nullptr; // Init's
-    bool cancel_ = false, dev_free_ = true;
+    // every member's default 0, so the loader sits in .bss, not in .data (whose values take
+    // room in the image): Init sets the clock's ticks, a load its fragment
+    bool cancel_ = false, dev_taken_ = false;
     uint32_t beats_ = 0, size_ = 0; // Open's file's: its acid chunk's beats, its size
     loops::Mem* mem_ = nullptr;
     FATFS* fs_ = nullptr;
     uint32_t (*ms_clock_)() = nullptr;
     uint32_t (*ticks_)() = nullptr;
-    uint32_t ticks_us_ = 1;
+    uint32_t ticks_us_ = 0;
 
     State state_ = IDLE;
     uint8_t bank_ = 0, slot_ = 0, error_ = 0, faults_ = 0;
@@ -1141,7 +1143,7 @@ private:
     DWORD last_ = 0;
     uint16_t csize_ = 0;
     DWORD database_ = 0;
-    size_t frag_ = 1;
+    size_t frag_ = 0;
     uint32_t frag_at_ = 0, run_ = 0, done_ = 0, total_ = 0, runs_ = 0;
     uint32_t run_t_ = 0, timeout_ = 0, start_ms_ = 0, ms_ = 0, worst_us_ = 0; // ticks, ms, us
     uint8_t recoveries_ = 0, reinits_ = 0;
