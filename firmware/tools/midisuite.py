@@ -837,6 +837,39 @@ def out_idle(r):
             count(r.captured(port).log, START, t0), 0)
 
 
+@case("out-fin-delay", "7: the finalizer's Loud up delays the outputs 1 ms (its limiter's lookahead): "
+      "MIDI out's clock comes 1 ms later with them, and back once Loud is at 0 (#345)", literal="out")
+def out_fin_delay(r):
+    port = out_port(r)
+    r.setting(clock_source=SOURCES["internal"], midi_out=OUTS["trs" if port == "trs" else "all"])
+    r.set("fin", 3, 0)
+    time.sleep(1.)
+    spans = []
+    for loud in (0, .1, 0):
+        r.set("fin", 3, loud)
+        time.sleep(.5)
+        t0 = time.perf_counter()
+        time.sleep(4.)
+        spans.append(ticks_after(r.captured(port).log, t0, time.perf_counter()))
+    period, _ = fit(spans[0])
+    if not period or not all(spans):
+        r.check("MIDI out (%s): its ticks" % port.upper(), False, "none", "ticks")
+        return
+    origin = spans[0][0]
+
+    def phase(ts):
+        return sum(((t - origin + period / 2) % period) - period / 2 for t in ts) / len(ts)
+
+    a, d, z = (phase(ts) for ts in spans)
+    # against the mean of before and after, so this computer's clock drifting from FRIZZ's
+    # cancels
+    delay = (d - (a + z) / 2) * 1000
+    r.tcheck("Loud up: MIDI out's clock (%s) later by the limiter's 1 ms" % port.upper(),
+             abs(delay - 1.) < .3 * r.loose, "%.2f ms" % delay, "1.00 +-%.1f" % (.3 * r.loose))
+    r.tcheck("Loud at 0: back where it was", abs((z - a) * 1000) < .3 * r.loose, "%.2f ms" % ((z - a) * 1000),
+             "0 +-%.1f" % (.3 * r.loose))
+
+
 @case("out-loop", "7: MIDI out, record a loop: it starts on the loop's beat 1 and stays in time; "
       "pause -> it stops; PLAY -> it goes on in step with the loop (#73)", literal="out")
 def out_loop(r):

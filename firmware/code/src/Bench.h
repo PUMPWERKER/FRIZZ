@@ -419,6 +419,10 @@ private:
         engine.SetAuxDry(seg.flags & DRY);
         mic_ = seg.flags & MIC;
         engine.SetMicInput(mic_);
+        // a segment without the finalizer has it asleep from its start, not releasing what the
+        // segment before compressed
+        if (!(seg.flags & (COMP | SCENE4 | FIN)))
+            engine.ResetFin();
         for (size_t p = 0; p < kNumFinParams; p++)
             engine.SetFinParam(p, seg.flags & FIN ? kFinBench[p] : kFinalizerKnobs[p / kNumFxKnobs].defaults[p % kNumFxKnobs]);
         if (seg.flags & (COMP | SCENE4))

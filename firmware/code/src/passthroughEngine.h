@@ -378,6 +378,8 @@ public:
     inline void SetFinBypass(bool bypass) { fin_.SetBypass(bypass); }
     inline void SetFinMute(size_t band, bool mute) { fin_.SetMute(band, mute); }
     inline void SetFinMeter(uint8_t module) { fin_.SetMeter(module); }
+    /** The finalizer at rest at once, every knob on its default (the bench, between segments) */
+    inline void ResetFin() { fin_.Init(sample_rate_); }
     /** Its meters, from MainLoop (Finalizer.h) */
     inline chompi::Finalizer& Fin() { return fin_; }
     /** Its deepest gain reduction now, in dB (<= 0) */
