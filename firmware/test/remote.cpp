@@ -663,6 +663,8 @@ log = []
 class Launcher:
     def __init__(self, minor):
         self.minor = minor
+    def close(self):
+        pass
     def call(self, cmd, payload=b"", timeout=0.3, retries=10, required=True, match=None):
         if cmd == midi_send.PING:
             features = 0x3F if self.minor >= 6 else 0x1F
@@ -755,6 +757,77 @@ os.remove("image.bin")
     Check(Has(out, "bad colour: exit: --color takes a colour like 8A4DFF") && Has(out, "colour, nothing sent: exit: --color takes"),
           "tools: flash.py --color takes a colour, with a build sent only");
     if (rc != 0 || !Has(out, "colour, nothing sent: exit"))
+        printf("%s\n", out.c_str());
+
+    // the launcher's node as ALSA's raw MIDI has it: one opener at a time (EBUSY). flash.py's
+    // midi_send.main() for the build, then again for COLOR (and chompi's links between), each
+    // must close it: the first left it open, COLOR's open failed uncaught and nothing was
+    // started. A COLOR that fails so anyway is said, and the build started all the same
+    rc = Python(R"(
+import contextlib, errno, os, sys, chompi, flash, midi_send
+log = []
+class Node:
+    """The launcher 1.6 behind an exclusive node"""
+    users = 0
+    def __init__(self, path, verbose=False):
+        if Node.users:
+            raise OSError(errno.EBUSY, "Device or resource busy")
+        Node.users += 1
+        self.fd = 0
+        self.length = 0
+    def close(self):
+        if self.fd >= 0:
+            Node.users -= 1
+            self.fd = -1
+    def call(self, cmd, payload=b"", timeout=0.3, retries=10, required=True, match=None):
+        if cmd == midi_send.PING:
+            return bytes([0, 1]) + midi_send.put7(256, 4) + bytes([15, 0x3F, 1, 6, 0])
+        if cmd == midi_send.LIST:
+            name = b"12_FRIZZ-TEST.bin" if payload[0] == 12 else b""
+            return bytes([0, payload[0], len(name)]) + name + midi_send.put7(1, 4) + bytes([0, 0, 0])
+        if cmd == midi_send.BEGIN:
+            self.length = midi_send.get7(payload[:4])
+            return bytes([0])
+        if cmd == midi_send.DATA:
+            return bytes([0]) + midi_send.put7(self.length, 4)
+        if cmd == midi_send.END:
+            log.append('stored%s' % (' (stay)' if payload[5:] else ''))
+            return bytes([0])
+        if cmd == midi_send.COLOR:
+            if colour_fails:
+                raise OSError(errno.EBUSY, "Device or resource busy")
+            log.append("color %d" % payload[0])
+            return bytes([0, payload[0]])
+        if cmd == chompi.RUN:
+            log.append("run %d" % payload[0])
+            return bytes([0, payload[0]])
+        return bytes([1])
+midi_send.Link = Node
+chompi.to_launcher = lambda *rest: "l"
+chompi.wait_for = lambda *rest: "node"
+chompi.renamed = lambda slot, node, *rest: node
+chompi.ident = lambda node: None
+chompi.started = chompi.noted_image = lambda *rest: None
+open("image.bin", "wb").write(b"x")
+flash.builds.build = flash.builds.built = lambda bench: "image.bin"
+for colour_fails in (False, True):
+    log.clear()
+    sys.argv = ["flash.py", "--test", "--no-build"]
+    try:
+        flash.main()
+        got = "ok"
+    except BaseException as e:
+        got = "%s: %s" % (type(e).__name__, e)
+    print("exclusive%s: %s %s, open %d" % (", COLOR fails" if colour_fails else "", got, log, Node.users), flush=True)
+    Node.users = 0
+os.remove("image.bin")
+)", out);
+    Check(rc == 0 && Has(out, "exclusive: ok ['stored (stay)', 'color 12', 'run 12'], open 0\n"),
+          "tools: flash.py with the launcher 1.6 on a node one opener at a time: stored, coloured, started, the node closed");
+    Check(Has(out, "key 12 not coloured: [Errno 16] Device or resource busy\n")
+              && Has(out, "exclusive, COLOR fails: ok ['stored (stay)', 'run 12'], open 0\n"),
+          "tools: and a COLOR the node refuses (EBUSY) is said, the build started all the same");
+    if (rc != 0 || !Has(out, "exclusive: ok"))
         printf("%s\n", out.c_str());
 
     // usbjitter.py turns PERSIST 0 on: the user's FRIZZ it measured is started again at the end,
