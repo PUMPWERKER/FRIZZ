@@ -86,7 +86,9 @@ BANK a-h for FRIZZ's slots, cubbi_a-cubbi_e for TAPE's, SLOT 1-15:
     ./remote.py loops rescan          FRIZZ reads the card again, as at the end of a batch
 
 `play` presses the keys and turns the knobs of a script over FRIZZ's SysEx, at the script's
-times, sends its `midi` and `clock` to the device, and checks its `expect led` lines against the
+times (a `turn ENC N MS` a detent every MS ms in the background, as the twin plays it, since
+knobs 1-4 and VOLUME speed up when turned fast, #375; a plain `turn` all at once, which FRIZZ
+takes one a block, as fast as the twin's 8 ms counts), sends its `midi` and `clock` to the device, and checks its `expect led` lines against the
 LEDs the device shows, dimmed as the card's led_brightness (the settings page) has them: at
 100, 75 or 50 %, the one level that fits every line, said when it isn't 100 %; it starts
 with the mode switch down over SysEx, as the twin starts, whatever the hand left it at (#253),
@@ -1389,7 +1391,22 @@ def play(f, path, cpu):
                 f.key(args[0], True)
                 time.sleep((float(args[1]) if len(args) > 1 else 60) / 1000)
                 f.key(args[0], False)
+            elif cmd == "turn" and len(args) > 2:
+                # paced, MS a detent, in the background as the twin plays it: FRIZZ's knobs
+                # speed up when turned fast (#375), so a slow turn has to be slow here too
+                def paced(enc=int(args[0]), detents=int(args[1]), ms=float(args[2])):
+                    nxt = time.monotonic()
+                    for _ in range(abs(detents)):
+                        if stop.is_set():
+                            return
+                        f.send(TURN, [enc, (1 if detents > 0 else -1) & 0x7F])
+                        nxt += ms / 1000
+                        time.sleep(max(0.0, nxt - time.monotonic()))
+                turner = threading.Thread(target=paced, daemon=True)
+                turner.start()
+                threads.append(turner)
             elif cmd == "turn":
+                # at once: FRIZZ takes one a block, as fast as a hand ever turns
                 detents = int(args[1])
                 while detents:
                     step = max(-64, min(63, detents))

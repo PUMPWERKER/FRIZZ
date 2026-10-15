@@ -21,16 +21,16 @@ set fin 14 0.5
 at 6000
 tap KEY_15
 wait 200
-turn 4 20
-wait 1000
-turn 1 50
-wait 1000
+turn 4 20 130
+wait 3440
+turn 1 50 130
+wait 7100
 turn 2 3
 wait 1000
-turn 3 40
-wait 1500
-turn 4 -20
-wait 1000
+turn 3 40 130
+wait 6380
+turn 4 -20 130
+wait 3440
 usb BF 1C 50
 wait 2000
 # drive and type as they were turned (their values: no meters there)

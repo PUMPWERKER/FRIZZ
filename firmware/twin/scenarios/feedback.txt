@@ -18,8 +18,8 @@ usb F0 7D 43 48 3E 03 01 23 08 00 01 F7
 wait 300
 tap KEY_5
 wait 300
-turn 4 -30
-wait 600
+turn 4 -30 130
+wait 4260
 down KEY_5
 wait 80
 tap KEY_26
@@ -27,7 +27,7 @@ up KEY_5
 wait 500
 # the filter latched
 expect led smt 20 fcc4dc
-turn 6 -5
-wait 500
+turn 6 -5 130
+wait 1110
 tap KEY_18
 wait 1000

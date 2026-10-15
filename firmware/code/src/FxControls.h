@@ -50,6 +50,30 @@ namespace chompi
 // Knobs: 1% per detent; a stepped parameter moves one step per kFxDetentsPerStep detents
 static const float kFxParamStep = .01f;
 static const float kFxDetentsPerStep = 3.f;
+// Turned fast, a plain turn's 1% grows (#375): 1x at kFxAccelSlowMs between detents (8 a
+// second) or slower, up to kFxAccelMax times at kFxAccelFastMs (40 a second) or faster.
+// Tuned by these
+static const float kFxAccelSlowMs = 125.f;
+static const float kFxAccelFastMs = 25.f;
+static const float kFxAccelMax = 5.f;
+
+/** A turn's factor on its step for a detent gap_ms after the knob's last one the same way
+ *  (ui.h measures it; the first, or one turned back, counts as slow): 1 at slow_ms or slower,
+ *  most at fast_ms or faster, linear in detents a second between, so it has no jump */
+inline float TurnAccel(uint16_t gap_ms, float slow_ms, float fast_ms, float most)
+{
+    if (gap_ms >= slow_ms)
+        return 1.f;
+    if (gap_ms <= fast_ms)
+        return most;
+    const float rate = 1000.f / gap_ms, slow = 1000.f / slow_ms, fast = 1000.f / fast_ms;
+    return 1.f + (most - 1.f) * (rate - slow) / (fast - slow);
+}
+/** Knob 1-4's plain turn's */
+inline float FxKnobAccel(uint16_t gap_ms)
+{
+    return TurnAccel(gap_ms, kFxAccelSlowMs, kFxAccelFastMs, kFxAccelMax);
+}
 // Selected() while the knobs edit the finalizer
 static const size_t kFinSelected = kNumFx;
 // its modules (Finalizer::Module) and bands
@@ -227,11 +251,11 @@ public:
         }
     }
 
-    /** Knob 0-3 turned by detents (signed). Plain: 1% per detent, or a step per
-     *  kFxDetentsPerStep for a stepped parameter, a split one (FxParams::split) either by
-     *  which half it's in. SHIFT: one point of the coarse grid per detent. A knob the page
-     *  doesn't use does nothing */
-    void KnobTurned(size_t knob, float detents, bool shift)
+    /** Knob 0-3 turned by detents (signed). Plain: 1% per detent, times accel turned fast
+     *  (FxKnobAccel), or a step per kFxDetentsPerStep for a stepped parameter, a split one
+     *  (FxParams::split) either by which half it's in. SHIFT: one point of the coarse grid per
+     *  detent. A knob the page doesn't use does nothing */
+    void KnobTurned(size_t knob, float detents, bool shift, float accel = 1.f)
     {
         const FxParams& fxp = Knobs();
         if (!KnobUsed(knob))
@@ -268,7 +292,7 @@ public:
         {
             // a split knob's lower half stops on the upper's first step, reached from a hair
             // below it too: 1% steps add up to a little under it
-            const float to = val + detents * kFxParamStep;
+            const float to = val + detents * accel * kFxParamStep;
             SetKnob(knob, split && SplitUpper(to + .5f * kFxParamStep) ? kSplitKnob : to);
             return;
         }

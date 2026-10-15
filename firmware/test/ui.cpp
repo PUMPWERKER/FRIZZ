@@ -160,6 +160,16 @@ static void TurnBrightness(int detents)
     RunMs(8 * static_cast<uint32_t>(abs(detents)) + 100);
 }
 
+/** Turned slowly, kSlowMs a detent, and run until it's done: knobs 1-4 move 1% a detent,
+ *  VOLUME its 2%, as their numbers say. The twin's own 8 ms is a fast turn, which they speed
+ *  up (FxKnobAccel, #375) */
+static const int kSlowMs = 130;
+static void TurnSlow(int encoder, int detents)
+{
+    Turn(encoder, detents, kSlowMs);
+    RunMs(kSlowMs * static_cast<uint32_t>(abs(detents)));
+}
+
 /** The largest step between two samples of the master out over ms */
 static float StepMs(uint32_t ms)
 {
@@ -1029,7 +1039,7 @@ int main()
                                   "nothing matches it");
         Tap("ENC_4_SW"); // page 2
         RunMs(100);
-        Turn(3, -25); // knob 4, Level: 0dB to -12dB
+        TurnSlow(3, -25); // knob 4, Level: 0dB to -12dB
         RunMs(800);
         const float down = RunMs(300);
         printf("      Level at -12dB: %.4f (%.1fdB)\n", down, 20.f * log10f(down / driven));
@@ -1111,6 +1121,53 @@ int main()
         Check(white(PthLedFull(kKnob1Led + 2)), "knob-colors: page 2's Band at its centre, white");
     }});
 
+    // knobs 1-4 speed up when turned fast (#375): 1% a detent slowly, up to 5% fast, back to 1%
+    // as soon as they turn slowly again; VOLUME's 2% up to 3 times; FRIZZ's SysEx detents, one a
+    // block, count as fast as they come
+    cases.push_back({"knob-accel", [] {
+        RunMs(kReadyMs);
+        auto cutoff = [] {
+            const std::string p = Ask({0x21, 4});
+            return p.size() == 17 ? KnobOf(p[1], p[2]) : -1.f;
+        };
+        auto out_gain = [] {
+            const std::string st = Ask({0x20});
+            return st.size() > 16 ? KnobOf(st[15], st[16]) : -1.f;
+        };
+        Tap("KEY_5"); // the filter on the knobs
+        RunMs(200);
+        const float c0 = cutoff();
+        TurnSlow(kKnob1Encoder, -10);
+        RunMs(100);
+        const float slow = cutoff();
+        Turn(kKnob1Encoder, 10); // the twin's 8 ms a detent: fast, the first counts as slow
+        RunMs(200);
+        const float fast = cutoff();
+        TurnSlow(kKnob1Encoder, -5);
+        RunMs(100);
+        const float again = cutoff();
+        Turn(kKnob1Encoder, -10, 50); // 20 a second: 2.5% a detent, the first 1%
+        RunMs(600);
+        const float medium = cutoff();
+        printf("      cutoff %.3f, slow -10: %.3f, fast +10: %.3f, slow -5: %.3f, 20/s -10: %.3f\n", c0, slow,
+               fast, again, medium);
+        Check(fabsf(slow - (c0 - .1f)) < 1e-3f, "knob-accel: turned slowly, 1% a detent");
+        Check(fabsf(fast - (slow + .01f + 9 * .05f)) < 1e-3f, "knob-accel: turned fast, 5% a detent");
+        Check(fabsf(again - (fast - .05f)) < 1e-3f, "knob-accel: slowly again, at once 1% again");
+        Check(fabsf(medium - (again - .01f - 9 * .025f)) < .01f, "knob-accel: in between, in between");
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x12, 4, 5, 0xF7}); // SysEx: 5 detents, one a block
+        RunMs(100);
+        Check(fabsf(cutoff() - (medium + .01f + 4 * .05f)) < 1e-3f, "knob-accel: SysEx's detents as fast");
+        TurnSlow(kVolumeEncoder, -10);
+        RunMs(100);
+        const float gain = out_gain();
+        Turn(kVolumeEncoder, 5);
+        RunMs(200);
+        printf("      the output gain: slow -10: %.3f, fast +5: %.3f\n", gain, out_gain());
+        Check(fabsf(gain - .55f) < 1e-3f, "knob-accel: VOLUME turned slowly, 2% a detent");
+        Check(fabsf(out_gain() - (gain + .02f + 4 * .06f)) < 1e-3f, "knob-accel: VOLUME turned fast, at most 6%");
+    }});
+
     // FX page 2 (#35): a plain knob press turns all four knobs over, and back. Another FX or
     // the finalizer goes back to page 1. The LEDs there: knob-page-blink, fx-vu
     cases.push_back({"fx-page2", [] {
@@ -1141,8 +1198,8 @@ int main()
                   && Max(PthLedFull(kKnob1Led + 3)) > 0,
               "fx-page2: the shifter's page 2: all four knobs lit");
         Check(mix() == 1.f, "fx-page2: the mix starts fully shifted");
-        Turn(kKnob1Encoder, -30); // 8 ms a detent
-        RunMs(400);
+        TurnSlow(kKnob1Encoder, -30);
+        RunMs(150);
         Check(fabsf(mix() - .7f) < 1e-3f, "fx-page2: knob 1 there turns the mix, 1% a detent");
         const std::string p1 = Ask({0x21, 1});
         Check(p1.size() == 17 && KnobOf(p1[1], p1[2]) == .5f, "fx-page2: page 1's shift untouched");
@@ -1152,8 +1209,8 @@ int main()
         Press("KEY_26", false);
         RunMs(100);
         Check(mix() == 1.f && page() == 1, "fx-page2: SHIFT + press resets the mix, on page 2");
-        Turn(kKnob1Encoder, -50);
-        RunMs(600);
+        TurnSlow(kKnob1Encoder, -50);
+        RunMs(150);
         Tap("ENC_1_SW"); // knob 2: any of the four turns the page
         RunMs(300);
         Check(page() == 0 && swing() < 10, "fx-page2: a press on another knob turns back to page 1");
@@ -1444,7 +1501,7 @@ int main()
         RunMs(kReadyMs);
         Tap("KEY_15"); // the compressor on the knobs
         RunMs(300);
-        Turn(4, 20);
+        TurnSlow(4, 20); // not to its end, whose colour would count as a blink
         const std::vector<int> seen = Watch(false, kCompKeyLed, 14000);
         // trains of red blinks (lit 100 ms, dark 100 ms), and how many blinks each
         std::vector<int> trains, blinks;
@@ -4938,7 +4995,7 @@ int main()
         const std::string master = Card("/FRIZZ/frizz_master.txt");
         Save(4);
         Tap("KEY_15");
-        Turn(4, 10);
+        Turn(4, -10); // down: the sweeps before left its input at the top
         RunMs(3000);
         Check(Card("/FRIZZ/frizz_scenes.txt") != scenes && Card("/FRIZZ/frizz_master.txt") != master
                   && Card("/frizz_scenes.txt").empty() && Card("/frizz_master.txt").empty(),
@@ -5468,7 +5525,7 @@ int main()
         Check(comp.size() == 33 && comp[1] > 90 && Card("/FRIZZ/frizz_master.txt") == before,
               "midi-not-kept: CC 24 sets the finalizer's input, and nothing's written");
         Tap("KEY_15");
-        Turn(1, 10); // its drive, by hand
+        TurnSlow(1, 10); // its drive, by hand
         RunMs(2500);
         const std::string master = Card("/FRIZZ/frizz_master.txt");
         Check(master.find("\nfinalizer 500000 100000 ") != std::string::npos,
@@ -5631,7 +5688,7 @@ int main()
         SetToggle(false);
         RunMs(300);
         TrsCcs();
-        Turn(kKnob1Encoder, -10);
+        Turn(kKnob1Encoder, 10); // up: the scene's cutoff is at its bottom
         RunMs(100);
         const std::vector<std::array<int, 3>> global_only = TrsCcs();
         Check(LastCc(global_only, 0xBF, 14) >= 0 && LastCc(global_only, 0xB4, 14) < 0,
@@ -6481,8 +6538,8 @@ int main()
         Tap("KEY_15");
         Press("KEY_26", false);
         RunMs(100);
-        Turn(3, 50);
-        RunMs(700); // the detents play out, 8 ms each
+        TurnSlow(3, 50);
+        RunMs(100);
         const std::string p = Ask({0x21, 14});
         Check(p.size() == 33 && fabsf(KnobOf(p[23], p[24]) - .5f) < .01f, "fin-cycle: on Comp, knob 4 turns its Depth");
         // not on the Loops page
@@ -6539,7 +6596,7 @@ int main()
             return p.size() == 33 ? KnobOf(p[3], p[4]) : -1.f;
         };
         Tap("KEY_15");
-        Turn(1, 30); // drive .3
+        TurnSlow(1, 30); // drive .3
         RunMs(300);
         Keys({"+KEY_15", "100", "+KEY_23", "60", "-KEY_23", "100", "-KEY_15", "200"}); // SAVE
         Tap(kSceneKeys[2]); // preset 2
@@ -6653,7 +6710,7 @@ int main()
         Check(louder > dry * 1.5f, "fin-old-file: the file's other settings read: channel 5 is the global one");
         Trs({0xB4, 24, 64});
         Tap("KEY_15");
-        Turn(1, 10);
+        TurnSlow(1, 10);
         RunMs(2500);
         const std::string now = Card("/FRIZZ/frizz_master.txt");
         Check(now.find("\nfinalizer 500000 100000 ") != std::string::npos && now.find("compressor") == std::string::npos
@@ -6765,7 +6822,7 @@ int main()
         Trs({0xBE, 23, 64}); // Comp
         RunMs(100);
         UsbCcs();
-        Turn(3, 50); // knob 4: Depth .5
+        TurnSlow(3, 50); // knob 4: Depth .5
         RunMs(500);
         const std::vector<std::array<int, 3>> usb = UsbCcs();
         printf("      Depth's CC 27 on channel 15: %d\n", LastCc(usb, 0xBE, 27));
@@ -7487,7 +7544,7 @@ int main()
               "send-level: the delay's Level on page 2's knob 4 at 0dB, Ducking on page 1's knob 4 off");
         Tap("ENC_4_SW"); // page 2
         RunMs(100);
-        Turn(3, -25); // knob 4, Level: 0dB to -12dB
+        TurnSlow(3, -25); // knob 4, Level: 0dB to -12dB
         RunMs(800);
         const float down = tail();
         printf("      Level at -12dB: %.4f (%.1fdB)\n", down, 20.f * log10f(down / echoes));
@@ -7917,7 +7974,7 @@ int main()
         Turn(kVolumeEncoder, 0);
         Tap("ENC_6_SW"); // VOLUME's page 2: the input gain
         RunMs(300);
-        Turn(kVolumeEncoder, -20); // 75 % to 35 %
+        TurnSlow(kVolumeEncoder, -20); // 75 % to 35 %
         RunMs(500);
         RunMs(500);
         const float a_low = hp_rms;
@@ -7930,7 +7987,7 @@ int main()
         printf("      AUX at 35 %% input gain %.4f; the mic then %.4f\n", a_low, m_same);
         Check(a_low < a1k * .6f && a_low > a1k * .3f && fabsf(m_same - m1k) < m1k * .02f,
               "mic-level: the input gain turned with AUX heard turns AUX down, not the mic");
-        Turn(kVolumeEncoder, -20); // the mic's, 75 % to 35 %
+        TurnSlow(kVolumeEncoder, -20); // the mic's, 75 % to 35 %
         RunMs(500);
         RunMs(500);
         const float m_low = hp_rms;
@@ -8298,7 +8355,7 @@ int main()
         SetToggle(true);
         RunMs(300);
         const Rgb battery = PthLedFull(kVolumeLed);
-        Turn(kVolumeEncoder, -10); // page 1: the output, 75 % to 55 %
+        TurnSlow(kVolumeEncoder, -10); // page 1: the output, 75 % to 55 %
         RunMs(300);
         const Rgb shown = PthLedFull(kVolumeLed);
         Check(fabsf(state(15) - .55f) < .01f && fabsf(state(17) - .75f) < .01f,
@@ -8308,7 +8365,7 @@ int main()
               "settings-volume: its LED shows the page, then the battery again after 2 s");
         Tap("ENC_6_SW");
         RunMs(1500);
-        Turn(kVolumeEncoder, -10);
+        TurnSlow(kVolumeEncoder, -10);
         RunMs(300);
         Check(page() == 1 && fabsf(state(17) - .55f) < .01f && fabsf(state(15) - .55f) < .01f,
               "settings-volume: a press, page 2: the input gain");
@@ -8341,7 +8398,7 @@ int main()
         RunMs(1500);
         SetToggle(true);
         RunMs(300);
-        Turn(kVolumeEncoder, 5);
+        TurnSlow(kVolumeEncoder, 5);
         RunMs(300);
         Check(page() == 2 && fabsf(state(15) - .65f) < .01f && state(19) == 0.f,
               "settings-volume: from the headphones' page 3: a turn sets the output");
