@@ -80,6 +80,10 @@ what FRIZZ does.
 
 ### Changed
 
+- **AUX keeps its bass** (#317): the input's DC blocker, TAPE's, cut AUX's lows from about
+  76 Hz down (50 Hz 5 dB quieter, 30 Hz 9 dB); it now takes out only DC, from about 8 Hz down,
+  so a kick or a bass synth goes into the loop and the effects at full weight. The mic too,
+  though its own 150 Hz highpass stays. USB's input never had it.
 - **The filter (white key 5) is a state-variable filter now** (#304): one filter a channel,
   lowpass left of the centre and highpass right, where it was WAVE's lowpass and highpass in
   series. The cutoff knob and the resonance keep their ranges: the cutoff sits within about
