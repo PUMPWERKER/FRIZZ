@@ -121,6 +121,7 @@ struct FakeCard
     int fail_after = -1;
     bool glitch = false;
     int readdir_fail = -1;
+    bool stat_fails = false; // the next f_stat fails (FR_DISK_ERR), once
 
     // the volume's geometry, and where each file's clusters are: given out on its first link
     // map, in fragments of frag_clusters with a free cluster between them
@@ -413,6 +414,11 @@ inline FRESULT f_stat(const char* name, FILINFO*)
     FindVolume();
     if (!c.present)
         return FR_NOT_READY;
+    if (c.stat_fails)
+    {
+        c.stat_fails = false;
+        return FR_DISK_ERR;
+    }
     return c.files.count(c.Find(c.Path(name))) ? FR_OK : FR_NO_FILE;
 }
 inline FRESULT f_unlink(const char* name)
