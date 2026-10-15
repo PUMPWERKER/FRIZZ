@@ -1818,14 +1818,14 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc |= Remote({"get", "filter"}, out);
     Check(rc == 0 && out.find("0.4500") == out.find("page 1  ") + 8,
           "remote: play's turn ENC N MS turns slowly, 1% a detent");
-    if (rc != 0)
+    if (rc != 0 || out.find("0.4500") != out.find("page 1  ") + 8)
         printf("%s\n", out.c_str());
     Write(script, "booted\ntap KEY_5\nwait 100\nturn 4 5\nwait 300\n");
     rc = Remote({"play", script}, out);
     rc |= Remote({"get", "filter"}, out);
     Check(rc == 0 && out.find("0.6600") == out.find("page 1  ") + 8,
           "remote: and its plain turn fast: 1%, then 5% a detent");
-    if (rc != 0)
+    if (rc != 0 || out.find("0.6600") != out.find("page 1  ") + 8)
         printf("%s\n", out.c_str());
     rc = Remote({"set", "settings", "clock_factor", "50"}, out);
     rc |= Remote({"get", "settings"}, out);
