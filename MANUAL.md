@@ -42,7 +42,7 @@ On the play page (the mode switch down), the controls are:
 
 | Control | In FRIZZ |
 |---|---|
-| White keys 1-13 | The [punch-in effects](#punch-in-fx), in the order the sound goes through them: [Freezer](#freezer), [Shifter](#shifter), [Folder](#folder), [Crusher](#crusher), [Filter](#filter), [Flanger](#flanger), [Phaser](#phaser), [Resonator](#resonator), [Slicer](#slicer), [Wow & flutter](#wow--flutter), [Tape stop](#tape-stop), [Delay](#delay), [Reverb](#reverb) |
+| White keys 1-13 | The [punch-in effects](#punch-in-fx), in the order the sound goes through them: [Freezer](#freezer), [Shifter](#shifter), [Folder](#folder), [Crusher](#crusher), [Filter](#filter), [Flanger](#flanger), [Phaser](#phaser) (or its [frequency shifter](#frequency-shifter)), [Resonator](#resonator), [Slicer](#slicer), [Wow & flutter](#wow--flutter), [Tape stop](#tape-stop), [Delay](#delay), [Reverb](#reverb) |
 | White key 14 | The [Chaos key](#chaos-key) |
 | White key 15 | The [Master compressor](#master-compressor) on knobs 1-4 |
 | Lower C# and D# | With SHIFT, the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page): loops from the card |
@@ -573,7 +573,7 @@ playing and its scene, on the right the new loop and the new scene, and both loo
 <!-- part: Effects -->
 
 ## Sound architecture
-<!-- summary: The path from the input through the looper and effects to the outputs. -->
+<!-- summary: From the input through the looper and the effects to the outputs. -->
 
 How the sound goes through FRIZZ, from the input to the outputs.
 
@@ -684,7 +684,7 @@ The details of the timing:
 - **Stepped parameters** move one step per 3 detents: the shifter's shift, the filter's LFO
   and the delay's divisions, the freezer's length and roll, the slicer's pattern and stereo,
   the tape stop's stop and spin-up times, the flanger's polarity, the chaos key's grid, the
-  phaser's rate right of its centre.
+  phaser's rate right of its centre (and the frequency shifter's shift there).
 
 ### Keys and knobs
 
@@ -791,7 +791,7 @@ direction you turn, so a value set finely snaps onto the grid with the first coa
 | Resonator tone | Octaves down from 15 kHz: 7.5 kHz, 3.75 kHz, 1.9 kHz |
 | Wow & flutter tone | Octaves down from open, as the folder's and crusher's |
 | Stepped parameters (freezer length and roll, filter LFO and delay divisions, slicer pattern and stereo, tape stop and spin-up times, flanger polarity, chaos grid) | One step per detent instead of per 3 |
-| Phaser rate | Left of the centre the knob's 10% steps (0.02, 0.07, 0.4, 1 and 14 Hz), then each division, one per detent: from the free half up, the first stop is 1/16 on the centre; from the synced half down, past 1/16 onto the free half's 10% |
+| Phaser rate | Left of the centre the knob's 10% steps (0.02, 0.07, 0.4, 1 and 14 Hz), then each division, one per detent: from the free half up, the first stop is 1/16 on the centre; from the synced half down, past 1/16 onto the free half's 10%. The [frequency shifter](#frequency-shifter)'s shift on the same points |
 | Phaser centre | Octaves: 100, 200, 400, 800 Hz … 6.4 kHz |
 | Everything else, filter cutoff included | 10% steps |
 
@@ -915,7 +915,7 @@ White key 4. Fewer bits and a lower sample rate, down to 480 Hz, with a dive on 
 <!-- summary: A DJ filter, lowpass one way and highpass the other, with an LFO on the cutoff that follows the tempo. -->
 
 White key 5. A DJ filter, lowpass one way and highpass the other, with an LFO on the cutoff
-that follows the tempo (the DJ filter of TAPE, TEMPO and WAVE).
+that follows the tempo: a state-variable filter, on the cutoff knob of WAVE's DJ filter.
 
 ![The white keys from above, the filter lit on key 5; its knobs 1 to 4 are cutoff, resonance, LFO depth, LFO division](images/key-filter.svg)
 
@@ -959,7 +959,7 @@ vibrato.
 - LEDs: the key is light blue; the knobs go light blue to purple.
 
 ## Phaser
-<!-- summary: Sweeping notches with resonance, free-running or locked to the tempo; or a frequency shifter. -->
+<!-- summary: Sweeping notches with resonance, free-running or locked to the tempo. Hold SHIFT and tap key 7 twice for its other mode, a frequency shifter. -->
 
 White key 7. Sweeping notches with resonance, free-running or locked to the tempo (after the
 SP-404MK2's Phaser and the Elektron Tonverk's Phase 98). Its second mode is a
@@ -1013,9 +1013,9 @@ SP-404MK2's Phaser and the Elektron Tonverk's Phase 98). Its second mode is a
 
 The phaser's second mode moves every frequency in the sound up or down by the same number of
 Hz. A pitch shifter keeps the harmonics in tune with each other; this doesn't, so they no
-longer line up. A few Hz with feedback make a barber pole, a sweep that rises (or falls) and
-never ends; tens to hundreds of Hz make a sound metallic and bell-like. After Mutable
-Instruments' Warps.
+longer line up. A few Hz with feedback, and the direction (knob 4) turned to one side, make a
+barber pole, a sweep that rises (or falls) and never ends; tens to hundreds of Hz make a sound
+metallic and bell-like. After Mutable Instruments' Warps.
 
 - **Switching:** hold SHIFT and press key 7, which selects the phaser as ever, then press key
   7 again: the frequency shifter, the key azure. Every further press in the same hold switches
@@ -1028,31 +1028,37 @@ Instruments' Warps.
 
 | Knob | Page 1 | Page 2 |
 |---|---|---|
-| 1 | Shift, in two halves: left of the centre free, 0.1 Hz to 1 kHz; from the centre right a cycle per tempo division, 1/16 to 4 bars | Mix |
-| 2 | Feedback: the shifted sound shifted again, up to 90% | Stereo: the right channel turned the other way (default off) |
-| 3 | Depth: brings the shifted sound in, all of it at the top (0, off) | Band |
-| 4 | Direction: down at the left, both ways in the middle, up at the right | Level |
+| 1 | Shift, in two halves: left of the centre free, 0.1 Hz to 1 kHz; from the centre right a cycle per tempo division, 1/16 to 4 bars (default 10 Hz, free) | Mix |
+| 2 | Feedback: the shifted sound shifted again, up to 90% (default 36%, the knob at 40%) | Stereo: the right channel turned the other way (default off) |
+| 3 | Depth: brings the shifted sound in, all of it at the top (default 0, off) | Band |
+| 4 | Direction: down at the left, both ways in the middle, up at the right (default both) | Level |
 
 - **Shift (knob 1):** its free half is a curve, a tenfold every eighth of the knob: 0.1 Hz at
   the left, 10 Hz halfway to the centre, 1 kHz just below it. From the centre right, the shift
   follows the [tempo](#tempo-and-transport), a full cycle per division of the phaser's rate
   (1/16 on the centre to 4 bars at the top: at 120 BPM, 8 Hz down to 0.125 Hz), so the barber
-  pole turns in time. Turning it works as the phaser's rate does.
+  pole turns in time; with the loop in reverse, it turns the other way. Turning it works as
+  the phaser's rate does; SHIFT + turn steps the free half through 0.1, 0.63, 4, 25 and
+  158 Hz, then a division a detent.
 - **Feedback (knob 2)** sends the shifted sound back in, so it's shifted again on every trip,
-  through a lowpass and a soft limit: with a few Hz of shift, the barber pole. The repeats add
-  up, so the level is turned down a little as it rises.
+  through a lowpass and a soft limit: with a few Hz of shift and the direction to one side,
+  the barber pole; with the direction in the middle, both ways at once, it rings instead. The
+  repeats add up, so the level is turned down a little as it rises.
 - **Depth (knob 3)** brings the shifted sound in: at 0 the sound passes untouched, at the top
   you hear only the shifted sound. In between, the two together beat against each other. A
   morph fades the frequency shifter in and out on it.
 - **Direction (knob 4):** down at the left, every frequency lower by the shift; up at the
   right, higher; in the middle (its default) both at once, half as loud each, as a ring
-  modulator does; in between, one louder than the other. Its LED is blue for down, white for
-  both, orange for up.
+  modulator does; in between, one louder than the other. SHIFT + turn moves it in sixths of
+  the knob, the middle on one. Its LED is blue for down, white for both, orange for up.
 - **Stereo (page 2's knob 2):** turns the right channel's direction the other way: at the top
-  the right goes down where the left goes up; in the middle the right has both.
+  the right goes down where the left goes up; in the middle the right has both. With the
+  direction in the middle, both channels have both, and stereo changes nothing.
 - **Scenes:** a scene keeps the mode. Recalling it switches the mode; the blank scene is the
   phaser. A morph switches it at the landing, as it does stepped knobs: the effect fades out,
-  switches and fades in, a few milliseconds each way. A scene from before the frequency shifter
+  switches and fades in, a few milliseconds each way; the crossfader switches it in its
+  middle, a drop on its line. Switched by hand while a morph runs, the key shows the new mode
+  at once and the sound switches at the landing. A scene from before the frequency shifter
   is the phaser, and an older FRIZZ loads a scene with the frequency shifter as the phaser.
 - **MIDI:** CC 23 on the phaser's channel (7) sets the mode, 0-63 the phaser, 64-127 the
   frequency shifter (see [Controllers](#controllers)). Notes do as your hand: SHIFT's note 45
@@ -1223,6 +1229,9 @@ White key 13. From a room to a long wash; the tail rings on after you let go.
 
 - It gets the inserts' output and the delay's echoes, so the echoes are reverberated while
   both are on.
+- Its first diffusion moves a little all the time, as in Mutable Instruments' Clouds and
+  Elements, so the same hit rings a little differently each time: a smooth tail rather than a
+  metallic one.
 - LEDs: the key is blue; the knobs go light blue to purple. On page 2, knob 4's LED shows
   the room coming back (see [Page 2](#page-2)).
 
@@ -1568,7 +1577,7 @@ without a loop, and the bar lines don't count while you hold it.
 
 ## Settings page
 
-<!-- summary: MIDI, the clock, the input and the LEDs, set once for a setup. -->
+<!-- summary: MIDI, the clock, the input and the LEDs, set once per setup. -->
 
 With the mode switch **up**, the keys set up MIDI, the input and the LEDs. The loop, the
 effects and MIDI play on meanwhile; switch back down to play.
@@ -2367,6 +2376,9 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
 
 - 48 kHz, stereo in and out, through a 24-bit codec. FRIZZ works in floating point, in blocks
   of 24 samples (0.5 ms).
+- The input: AUX and the mic have their DC taken out, from about 8 Hz down, so a kick or a bass
+  synth keeps its weight; the mic also has its highpass at about 150 Hz. USB's input comes in
+  as the computer sends it.
 - The loop: up to 2:45 of stereo, stored at 16 bits in RAM, gone at power-off (see
   [Looper](#looper)). Live, the input is floating point up to the safety limiter; what goes
   into the loop is held just under full scale by a limiter of its own, which takes a peak at
@@ -2384,7 +2396,8 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
   the level AUX would have with the same signal at its jack. FRIZZ asks the computer for
   100 mA.
 - The effects: the shifter lands within about a cent of the interval, its taps lining up
-  within 7.5 ms where they start over. The folder's sine fold keeps its aliases more than
+  within 7.5 ms where they start over, and keeps its highs (a 10 kHz tone a fifth up loses
+  about 0.3 dB). The folder's sine fold keeps its aliases more than
   85 dB down on a sine below about 1.5 kHz at any drive; the triangle's corners alias, and
   first-order antialiasing (ADAA) takes 5 to 13 dB off them.
 

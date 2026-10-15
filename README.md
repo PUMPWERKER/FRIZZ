@@ -15,7 +15,7 @@ computer on USB.
   [frizz.friedrichwagner.eu/companion](https://frizz.friedrichwagner.eu/companion/), that puts
   your loops on the card over the USB cable while FRIZZ plays.
 - **Thirteen punch-in effects on the white keys:** freezer, pitch shifter, wavefolder, bitcrusher,
-  DJ filter, flanger, phaser, resonator, slicer, wow & flutter, tape stop, tempo-synced delay and reverb. Hold a key to play an effect,
+  DJ filter, flanger, phaser (or frequency shifter), resonator, slicer, wow & flutter, tape stop, tempo-synced delay and reverb. Hold a key to play an effect,
   hold it and press SHIFT to latch it. Knobs 1-4 shape the last effect you touched. A chaos
   key next to them drops latched effects out at random and scrambles the loop's steps.
 - **Four FX scenes on the dark keys in the middle:** save every effect's settings and latches, recall them
