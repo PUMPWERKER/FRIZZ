@@ -128,6 +128,7 @@ public:
         locks_ = 0;
         changes_ = 0;
         counted_at_ = 0;
+        trs_restarts_ = 0;
         factor_ = ClockFactor::ONE;
         period_ = 0.f;
         held_ = kNoneHeld;
@@ -140,7 +141,9 @@ public:
         if (source_ != Source::NONE && now - last_tick_ > kClockTimeoutSamples)
             source_ = Source::NONE;
 
-        // UART disables itself on errors such as overrun; Listen() restarts it
+        // UART disables itself on errors such as overrun; Listen() restarts it (#361)
+        if (!uart_midi.GetMutableTransport().RxActive())
+            trs_restarts_++;
         uart_midi.Listen();
 
         while (uart_midi.HasEvents())
@@ -167,6 +170,9 @@ public:
     /** Sample count of the last tick that came from the locked source, counted or not: a
      *  change is a tick (Looper::Follow) */
     inline uint32_t GetLastTick() const { return last_tick_; }
+
+    /** How often the jack's receive ended on an error and was started again (#361) */
+    inline uint32_t TrsRestarts() const { return trs_restarts_; }
 
     /** Sample count of the most recent tick counted */
     inline uint32_t GetLastTickTime() const { return counted_at_; }
@@ -412,6 +418,7 @@ private:
     uint32_t changes_;    // of the factor
     uint32_t last_tick_;  // the last tick that came
     uint32_t counted_at_; // the last tick counted
+    uint32_t trs_restarts_; // the jack's receive started again after an error
     volatile ClockFactor factor_;
     volatile ClockSource setting_ = ClockSource::AUTO;
     bool skipped_ = false; // at half: the last tick wasn't counted

@@ -28,6 +28,33 @@ tools/                    what those share (chompi.py, the launcher's midi_send.
 Design notes live in [`../docs/`](../docs/): the looper spec (`LOOPER.md`) and an overview of
 the effects across the CHOMPI firmwares (`FX_OVERVIEW.md`).
 
+
+## 0. Set up a development machine
+
+Everything below is Linux (the device tools use ALSA's raw MIDI and udisks); the host checks
+and the twin also build elsewhere. A new machine, in order:
+
+1. **Toolchain:** GCC 10.3 in `~/opt/gcc-arm-none-eabi-10.3-2021.10` ([1](#1-toolchain)), `make`,
+   `g++` and `python3` for the host checks.
+2. **Clone and hooks:** clone FrizZ, then `firmware/tools/install-hooks.sh` (refuses commits on
+   `main`); `gh auth login` for issues and PRs. Branches go in worktrees next to the clone
+   (`../FrizZ-<branch>`).
+3. **Check it:** `firmware/test/all.sh` green, and `firmware/tools/builds.py md5` gives the same
+   md5 as on any other machine for the same commit: then the toolchain is the pinned one.
+4. **Optional, for the browser twin:** Emscripten in `~/opt/emsdk` ([3](#3-test-on-the-host)).
+5. **The CHOMPI** (stage 2): your user in the `audio` group (raw MIDI under `/dev/snd`), udisks
+   for the card as a drive, the multi-firmware launcher on the card ([4](#4-put-it-on-the-chompi)).
+6. **Sound and timing checks:** a venv with numpy (`python3 -m venv ~/.venvs/frizz &&
+   ~/.venvs/frizz/bin/pip install numpy`), the audio interface routed as in
+   [Measure timing and sound](#measure-timing-and-sound-on-the-device) and kept with
+   `sudo alsactl store`, and the `FRIZZ_AUX_SINK` / `FRIZZ_LINE_SOURCE` / `FRIZZ_TRS_MIDI`
+   variables if your interface isn't a Scarlett 18i20.
+7. **DAW cases:** REAPER 7 at `~/Apps/REAPER/reaper` (or `FRIZZ_REAPER`), and your own songs
+   in `firmware/card/audio/`. They're git-ignored: copy them over by hand.
+
+Machine state the tools keep, none of it in git: the CHOMPI's lock and its slot notes
+(`$XDG_RUNTIME_DIR/frizz-chompi.lock`, `FRIZZ_CHOMPI_LOCK`), `card/` (what the tools fetch from
+the card), the build folders.
 ## 1. Toolchain
 
 To build the firmware for the CHOMPI, FRIZZ needs **GNU Arm Embedded 10.3-2021.10** (GCC 10.3.1), the Daisy toolchain default. Newer
@@ -345,7 +372,7 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | `03` SET | GROUP INDEX VALUE(2) | GROUP INDEX; applied in MainLoop through the setters the knobs and keys use, and saved as theirs are (unless RAM only) |
 | `04` BENCH | `00` | the bench's state: running, settling, the segment, how many, written, stored, `cpu.txt`'s length (3) |
 | | `01` OFFSET(3) | up to 32 bytes of `cpu.txt` from OFFSET, as it went to the card (status 3 while it runs); FRIZZ.bin answers status 2 |
-| `05` PROBE | `00` | the clock: the source set (0 Auto, 1 TRS, 2 USB, 3 internal), the one counted (0 none, 1 TRS, 2 USB), the factor (0 x1/2, 1 x1, 2 x2), flags (1 a clock counted, 2 a loop sets the effects' tempo, 4 a tempo set, by a clock, a loop or taps, 8 the pulses running backwards, 16 transport followed), its tempo by the factor and as sent (3 each, BPM x 100), the ticks counted (5), how often it locked (3), the effects' tempo (3, x 100) and whole (2), the FX clock's pulse (3) and a loop's pulses (3) |
+| `05` PROBE | `00` | the clock: the source set (0 Auto, 1 TRS, 2 USB, 3 internal), the one counted (0 none, 1 TRS, 2 USB), the factor (0 x1/2, 1 x1, 2 x2), flags (1 a clock counted, 2 a loop sets the effects' tempo, 4 a tempo set, by a clock, a loop or taps, 8 the pulses running backwards, 16 transport followed), its tempo by the factor and as sent (3 each, BPM x 100), the ticks counted (5), how often it locked (3), the effects' tempo (3, x 100) and whole (2), the FX clock's pulse (3), a loop's pulses (3), and how often the jack's MIDI receive ended on an error and started again (3, #361) |
 | | `01` | the looper: its state (0 empty, 1 recording, 2 playing, 3 paused), flags (1 closing, 2 erase waiting, 4 erasing, 8 can record quantized), length and position in frames (4 each), beats (3), semitones + 64, speed and the speed now (2 each, x 1000 + 2000), rewinds by Start (3) |
 | `06` LEVELS | `00` | the effects' meters, as their keys show them, 0-16383 each, by FxId |
 | | `01` | flags (1: the peak meters just started), the VU meter (2), the compressor's reduction (2, dB x 100), the peaks since the last ask (2 each, 8192 full scale, up to twice it): the input as the engine takes it (mic, AUX L, R), the headphones L, R, the line outs L, R |
@@ -356,7 +383,7 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | `0B` CRASH | `00` | flags (1: a crash recorded), its kind (1 the watchdog, else the exception: 3 HardFault, as every fault is, since MemManage, BusFault and UsageFault aren't enabled and escalate; CFSR tells which), how many since cleared (3), uptime ms at the fault (5; the watchdog's: MainLoop's last pass), the CRC-32 (5) and length (3) of the build that crashed, `RCC_RSR` at that start (5), SP (5), and `FLASH_OPTSR_CUR` (5), the option bytes, whether or not one is recorded; zeros for none |
 | | `01` | PC, LR, xPSR, CFSR, HFSR, MMFAR, BFAR (5 each) |
 | | `02` | clears it -> flags |
-| `0C` TEST | WHAT | the bench only (FRIZZ.bin answers status 2): 1 MainLoop hangs (after answering), 2 a bus fault in MainLoop (a read where nothing is), 3 the audio callback hangs, 4 an undefined instruction in it (3 and 4 unanswered, as they come) |
+| `0C` TEST | WHAT | the bench only (FRIZZ.bin answers status 2): 1 MainLoop hangs (after answering), 2 a bus fault in MainLoop (a read where nothing is), 3 the audio callback hangs, 4 an undefined instruction in it (3 and 4 unanswered, as they come), 5 the MIDI jack's UART at twice its rate for 20 ms, so the bytes coming in meanwhile break their frames: a receive error, for `midisuite.py`'s `trs-relisten` (#361) |
 | `0D` LOOPS | `00` | the loop loader (`LoopLoader.h`, #70; FRIZZ.bin only, status 2 in the bench): its state (0 idle, 1 scanning, 2 loading, 3 loaded, 4 failed, 5 checking, 6 writing, 7 written), the bank and slot loading, the result (`loops::Result`: why a load or the write test stopped, 0 if it didn't), the SD error (5, `HAL_SD_ERROR_*`), bytes read (4) of (4), ms (3: the load's, or the last scan's), runs (3), MainLoop's longest step since the last `00` in µs (3), the SDMMC's CLKCR (5), the card recovered (1) and set up again (1), the file's fragments (2) |
 | | `01` BANK | 1 while the scan runs, then the bank's 15 slots' results (0 empty, 1 mono, 2 stereo, more: refused, why). Banks 0-7 are FRIZZ's a-h (`/FRIZZ/a1.wav` …), 8-12 TAPE's cubbis a-e (`cubbi_a1.wav` … in `/TAPE`, else the root) |
 | | `02` BANK SLOT | the slot's result, frames (4), its data's offset in the file (5) |
