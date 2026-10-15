@@ -40,6 +40,12 @@
 #include <string.h>
 #include "LoopLoader.h"
 #include "passthroughEngine.h"
+#include "util/scopedirqblocker.h"
+
+// where the twin brings the audio interrupt in the middle of MainLoop (twin::PreemptAt)
+#ifndef FRIZZ_PREEMPT
+#define FRIZZ_PREEMPT(point)
+#endif
 
 // the play page's logic, built for size (SRAM_EXEC, docs/CAPACITY.md)
 #pragma GCC push_options
@@ -276,11 +282,6 @@ public:
         plan_ = kNone;
     }
 
-    /** A plan waits, its key blinking: for SHIFT + a blinking key */
-    inline bool Planned() const { return plan_ != kNone; }
-    /** Its loop lands with the scene sequence */
-    inline bool WithSequence() const { return plan_ != kNone && kind_ == Kind::LANDING; }
-
     /** Whether a load (or its spreading) writes into the recording's buffer: a recording
      *  waits for it */
     inline bool WritingRec() const { return load_ != kNone && target_ == 0; }
@@ -373,9 +374,20 @@ public:
         if (st == LoopLoader::SCANNING)
             bufs_[0].id = bufs_[1].id = kNone;
 
-        if (looper.Switches() != switches_)
+        // the looper's switches and whether the one posted still waits, at one instant: the
+        // switch done between two looks would seem not taken, and go again, cutting its own
+        // fade-out short (#302)
+        uint32_t switches;
+        bool waiting;
         {
-            switches_ = looper.Switches();
+            ScopedIrqBlocker irq;
+            switches = looper.Switches();
+            waiting = looper.SwitchWaiting() || looper.Fading();
+        }
+        FRIZZ_PREEMPT("loops-switched");
+        if (switches != switches_)
+        {
+            switches_ = switches;
             started_ = started_ || was_empty_;
             playing_ = posted_;
             switched_ = posted_midi_ ? kNone : posted_;
@@ -384,13 +396,26 @@ public:
             posted_ = kNone;
         }
         // not taken (the looper erasing then): handed over again
-        if (posted_ != kNone && !looper.SwitchWaiting() && !looper.Fading())
+        if (posted_ != kNone && !waiting)
             posted_ = kNone;
         // a recording: the recording's buffer holds no loop of the card's any more
         if (state == Looper::State::RECORDING)
             bufs_[0].id = kNone;
-        if (!looper.Loaded())
+        // empty or recording: no loop of the card's plays. Not "the looper plays the
+        // recording's buffer": a card loop loaded there plays from its start when its samples
+        // start on a sector
+        if (state == Looper::State::EMPTY || state == Looper::State::RECORDING)
             playing_ = kNone;
+        // the card scanned again (the take-back after a lend, RESCAN): a slot whose file has
+        // other frames or beats than the loop playing doesn't hold it any more, as after the
+        // loop transfer's replace (#332); one nobody touched keeps it
+        if (playing_ != kNone && st != LoopLoader::SCANNING)
+        {
+            const loops::Slot& s = loader_->GetSlot(static_cast<size_t>(playing_) / loops::kSlots,
+                                                    static_cast<size_t>(playing_) % loops::kSlots);
+            if (s.frames != looper.GetLength() || s.beats != looper.LoadedBeats())
+                playing_ = kNone;
+        }
         // an erase takes every plan with it
         const bool loop = (state == Looper::State::PLAYING || state == Looper::State::PAUSED)
                           && !looper.IsErasing();

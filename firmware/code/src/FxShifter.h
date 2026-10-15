@@ -84,27 +84,23 @@ public:
     {
         const float gate = gate_.Process();
 
+        // off: only the buffer goes on, so a punch-in has the recent sound to shift (Wake)
+        if (gate_.Asleep())
+        {
+            ring_.WriteFrame(SoftClip(*l), SoftClip(*r));
+            still_[0] = still_[1] = true;
+            asleep_samples_++;
+            return;
+        }
+        if (asleep_samples_ > 0)
+            Wake();
         if (gate_.TakePress())
             env_.Press();
         env_.Process(env_attack_inc_, env_decay_coeff_);
-
-        // off: only the buffer goes on, so a punch-in has the recent sound to shift; the
-        // knobs where they're going
-        if (gate_.Asleep())
-        {
-            for (size_t c = 0; c < 2; c++)
-            {
-                if (waiting_[c])
-                    FinishSplice(c);
-                window_frames_[c] = grain_frames_; // no tap sounds: the grain at once
-            }
-            SnapParams();
-            ring_.WriteFrame(SoftClip(*l), SoftClip(*r));
-            still_[0] = still_[1] = true;
-            return;
-        }
         const float dry = dry_.Process();
-        const float feedback = feedback_.Process();
+        // the feedback with the key's fade, so what it adds to the buffer comes in with the
+        // key instead of stepping in under it at the punch-in (asleep, it writes none)
+        const float feedback = gate * feedback_.Process();
 
         // the speed per channel; recomputed every kSwoopUpdate samples while swooping (2
         // powf: every sample was ~6% of the CPU for the swoop's 1.3s), and once when it ends;
@@ -229,6 +225,18 @@ public:
                                                 float feedback)
     {
         Channels<true>(l, r, gate, dry, feedback);
+    }
+
+    /** FxBase::SleepsThrough: what Process does asleep, once for the run */
+    FX_PER_RUN bool SleepsThrough(const float* l, const float* r, size_t n)
+    {
+        if (!gate_.AsleepForRun())
+            return false;
+        for (size_t i = 0; i < n; i++)
+            ring_.WriteFrame(SoftClip(l[i]), SoftClip(r[i]));
+        still_[0] = still_[1] = true;
+        asleep_samples_ += static_cast<uint32_t>(n);
+        return true;
     }
 
     /** The slewed parameters jump to their targets, at Init */
@@ -619,6 +627,21 @@ public:
 private:
     // the search's groups at its start, the rest a block later: about half its time each
     static const int kFirstGroups = SpliceSearch::kGroups / 2;
+    /** Back on from asleep: a splice it was waiting on finished on the recent sound, no tap
+     *  sounding, so the grain at once (the taps stood still, Process); the knobs where they
+     *  went; the swoop's envelope where it would have got to. Out of line: once a punch-in */
+    __attribute__((noinline, optimize("Os"))) void Wake()
+    {
+        for (size_t c = 0; c < 2; c++)
+        {
+            if (waiting_[c])
+                FinishSplice(c);
+            window_frames_[c] = grain_frames_;
+        }
+        SnapParams();
+        env_.Skip(asleep_samples_, env_attack_inc_, env_decay_coeff_);
+        asleep_samples_ = 0;
+    }
     /** Each channel's speed: 2^(semitones/12), the right channel stereo semitones higher */
     void UpdateRatios(float semitones)
     {
@@ -656,6 +679,7 @@ private:
     Smoothed dry_;
     Smoothed feedback_;
     PressEnvelope env_;
+    uint32_t asleep_samples_ = 0; // how long it hasn't run (FxGate::Asleep)
     float env_attack_inc_, env_decay_coeff_;
 };
 

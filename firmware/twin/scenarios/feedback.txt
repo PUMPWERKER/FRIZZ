@@ -8,6 +8,11 @@ set settings aux_dry 0
 set settings aux_live 1
 set settings gain_aux 75
 at 6000
+# the source AUX (CC 84 on the global channel, 16 while remote.py plays), where the test
+# signal comes in as on the twin: without a cable in AUX the device takes the mic, which a
+# player's card may not route into the effects (#334)
+usb F0 7D 43 48 13 00 10 F7
+midi BF 54 00
 usb F0 7D 43 48 13 03 02 F7
 usb F0 7D 43 48 3E 03 01 23 08 00 01 F7
 wait 300

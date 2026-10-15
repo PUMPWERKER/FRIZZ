@@ -80,6 +80,22 @@ what FRIZZ does.
 
 ### Changed
 
+- **The filter (white key 5) is a state-variable filter now** (#304): one filter a channel,
+  lowpass left of the centre and highpass right, where it was WAVE's lowpass and highpass in
+  series. The cutoff knob and the resonance keep their ranges: the cutoff sits within about
+  half a semitone of where it was at the default resonance, and the resonance goes from none to
+  about a 20 dB peak, as before. What you hear differently: at the centre the filter is now
+  really flat, where WAVE's lowpass stayed in with the resonance on it, a peak near 8 kHz (+5 dB
+  at the default resonance, up to +25 dB with the resonance up), on the whole highpass side too;
+  the highpass is 12 dB per octave now, where it was 6 dB at low resonance, so it thins the
+  sound faster; and the far right is no longer quieter. The filter takes less of the CPU.
+- **The card as a USB drive** (#291): taken back from the computer, FRIZZ reads
+  `frizz_scenes.txt` and `frizz_master.txt` again if the computer changed them, as at power-on:
+  the settings apply at once (the input gains and the compressor glide there), the scenes come
+  in for their next recall, and what plays stays. If you changed a scene or a setting on FRIZZ
+  while the card was lent, FRIZZ's wins and the computer's file is kept as `frizz_scenes.bak`
+  or `frizz_master.bak`. Before, FRIZZ kept what it had and its next save wrote over the
+  computer's changes. See [The card as a USB drive](MANUAL.md#the-card-as-a-usb-drive).
 - **MIDI map: CC 0 is the bank select** (#259), where it was left free: 0 (the default) keeps
   program changes on the scenes, 1-8 before a program change pick a loop from FRIZZ's banks
   a-h, 9-13 a cubbi. A host that sends another bank select before its program changes now
@@ -92,6 +108,17 @@ what FRIZZ does.
   clock out over USB keeps its time while FRIZZ reads the card (it could come up to 8 ms late
   while a cubbi loaded, #265). FrizZ asks the computer for 100 mA, where it asked for 160. See
   [MIDI out](MANUAL.md#midi-out).
+- **The folder keeps the bass** (white key 3): it cut everything below about 76 Hz, even with
+  the drive at off, 5 dB at 50 Hz and 9 dB at 30 Hz, so a latched folder took the weight out of
+  kicks and bass. Now 50 Hz comes through within half a dB, and turning Symmetry no longer
+  thumps on a quiet signal. With Symmetry up and a loud hit at medium drive, the bass a hit
+  pushes up rings out a little longer than before. See [Folder](MANUAL.md#folder).
+- **Effects that are off take less of the CPU:** the filter, the crusher, the shifter, wow &
+  flutter and the flanger no longer keep running unheard while off; they start afresh when
+  punched in, without a click: FRIZZ with every effect off takes about 22% of the processing
+  time where it took 31%, more headroom when only a few effects are on. A punched-in
+  crusher's steps fall at other moments than before, and wow & flutter's wow goes on from
+  where it rested.
 - **The shifter is brighter** (#305): its taps read between samples more precisely, so the
   shifted sound keeps more of its highs (a 10 kHz tone a fifth up loses 0.3 dB, where it lost
   1.3 dB) and carries less aliasing, most audibly with feedback, where every pass lost highs
@@ -103,10 +130,59 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The shifter and the flanger no longer click when punched in with the feedback up** (#326):
+  the feedback's share of what they had stored came in at once under the key's fade, and
+  repeated on every trip. Now it fades in with the key.
+- **The phaser's LFO stays on the beat after a long rest** (#327): punched in again after a
+  while off, with the tempo moved meanwhile (or a MIDI clock's tempo wavering), its synced LFO
+  could start up to a pulse off and jump back at the next one.
+- **Opening FRIZZ's USB MIDI port late no longer brings eleven beats of old clock**: with MIDI
+  out on USB and no app on the computer reading FRIZZ's port yet, the clock piled up, and an
+  app opening the port later (a DAW, at any time after) got about 270 ticks at once, eleven
+  beats, and any Start or Stop among them. Now what nobody takes for a tenth of a second is
+  dropped: the app gets at most a fraction of a beat of old clock, then the clock as it runs.
+- **Scenes and settings always save into the card's `FRIZZ` folder:** after the card failed to
+  answer once (a hiccup FRIZZ recovers from by itself), the scenes and settings saved from then
+  on until a restart could land in the card's root, shown as saved but gone at the next
+  power-on. Now they go to `FRIZZ` whatever happened before.
+- **A restart over MIDI (the launcher's) takes the card back first:** with the card lent to the
+  computer as a USB drive, FRIZZ restarted with the computer still on it. Now it takes it back
+  as SHIFT + LOOP does, saves what waited for the card, then restarts. And a setting changed just
+  before a restart is now always on the card: half the time FRIZZ restarted without waiting for
+  it.
+- **The card is taken back when the computer ejects it, every time:** an eject that came in
+  the same instant FRIZZ looked could be missed, leaving the card lent until SHIFT + LOOP.
+- **A card error while FRIZZ looks for your loops no longer hides the ones after it:** the
+  slots after the error showed empty until the next scan; now FRIZZ reads the folder again.
+- **Switching USB audio waits the 100 ms it should** before FRIZZ leaves the bus, so the
+  answer to a tool's request that switched it still reaches the computer.
+- **A loop switch at once always crossfades** (#302): now and then a switch by a white key or
+  a program change cut over hard, with a click, instead of fading the old loop out over 10 ms,
+  most often when two switches came within a few ms of each other (a program change right
+  after a key). Now every switch fades; one that comes during another's fade waits for it.
+- **The resonator rings on its note with the tone dark** (#303): the darker the tone and the
+  higher the note, the flatter it rang, 67 cents (two thirds of a semitone) at 440 Hz with the
+  tone at the bottom and still 20 cents with it a quarter up. Now its notes are within 5 cents
+  at any tone, so the coarse steps' notes at A440 hold, also on the right channel with the
+  stereo up. At the default tone it moves only by a few cents.
 - **A key of the Loops page is bright only while its slot holds the loop playing** (#295):
   deleting the playing loop's slot in the Companion left its key bright, though the slot was
   empty; replacing it did too. Now the key goes dark (deleted) or dim (replaced) while the
   loop plays on, and moving or swapping it in the Companion takes the bright key along.
+- **A loop whose audio starts on a 512-byte boundary lights its key and starts again from the
+  top**: such files (Logic, GarageBand and other CoreAudio apps pad their WAVs that way, so do
+  some Pro Tools writers) played, but every second switch to one left its key dim instead of
+  bright, its key didn't start it again from the top, and FRIZZ didn't tell the Companion it
+  played.
+- **The free space on a card without a free count is counted right**: on a card a computer left
+  without its free count, a scene save, bug report or card lend while FRIZZ was counting could
+  leave it with a wrong number, which it then wrote onto the card. Now it counts again from the
+  start after any of these.
+- **A playing loop the computer replaced while it had the card no longer keeps its key bright**
+  (#332): once the card is back, its key is dim and the old loop plays on, as after a replace in
+  the Companion; a tap loads the new file. A loop whose file wasn't touched stays bright.
+- **FRIZZ tells the Companion which cubbi plays**: it said which of its own slots played and
+  was loaded, but never a cubbi.
 - **With the card lent to the computer, the loop you played before switches at once** (#292):
   it waited until the card was back, though it was already in memory. A loop that has to be
   loaded from the card still waits.
@@ -124,6 +200,24 @@ what FRIZZ does.
   the save flashes red as when the card can't be written. A card that stops answering
   altogether can take a few seconds longer. See
   [Scenes and settings on the card](MANUAL.md#scenes-and-settings-on-the-card).
+- **SHIFT + press of knob 1 on the settings page sets the LEDs to 100 %**: it was knob 2's
+  press that did, and knob 1's did nothing. See [LED brightness](MANUAL.md#led-brightness).
+- **Save, copy and delete's notes do nothing on the Loops and Cubbi pages**, as the upper F#,
+  G# and A# there: notes 66, 68 and 70 started the function, which the next tap of SHIFT could
+  confirm. See [Notes: the keys](MANUAL.md#notes-the-keys).
+- **A key a MIDI note holds no longer stays held for good when its note off can't come**: when
+  the computer goes away (the cable pulled, the computer asleep) or USB audio switches, every
+  key MIDI holds lets go, and a note off on any channel lets go of the key its note holds, so
+  changing the MIDI channel on the settings page meanwhile no longer leaves an effect punched
+  in or SHIFT held. See [Notes: the keys](MANUAL.md#notes-the-keys).
+- **A key held by your hand and by a note is pressed once on the Loops and settings pages
+  too**: there the note pressed it a second time on the play page, so letting go of note 45
+  ended SHIFT while your hand still held it, and a scene key's note recalled its scene again.
+  See [Notes: the keys](MANUAL.md#notes-the-keys).
+- **SHIFT held from the play page counts for the settings page's 2 s holds**: with SHIFT held
+  as you flip the switch up, CHOMPI lit and SHIFT + upper F# worked, but SHIFT + VOLUME or
+  SHIFT + LOOP held 2 s did nothing. Now they write the bug report and lend the card. See
+  [Settings page](MANUAL.md#settings-page).
 
 ## v1.0.1 (2026-10-13)
 

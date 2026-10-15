@@ -16,6 +16,9 @@ namespace chompi
 // memory (docs/CAPACITY.md), and -O3 unrolls the effects' buffer clears and settings into
 // kilobytes
 #define FX_ONCE __attribute__((noinline, optimize("Os")))
+// What runs once per run of samples, not per sample (an effect's SleepsThrough): out of line
+// and small, so FxChain::Insert, inlined for every effect, carries only the call
+#define FX_PER_RUN __attribute__((noinline, optimize("Os")))
 
 // The FX knobs 1-4, and the parameters per effect: two pages of them, page 1's on parameters
 // 0-3, page 2's on 4-7 (FxControls.h)
@@ -52,6 +55,10 @@ struct FxSlewT
 template <class Unused>
 float FxSlewT<Unused>::coeff = kFxParamCoeff;
 using FxSlew = FxSlewT<>;
+
+/** The knobs' slew (FxSlew) over n samples at once, for an effect that moves them every few
+ *  (the filter, the phaser): 1 to snap */
+inline float FxSlewOver(float n, bool snap) { return snap ? 1.f : fminf(FxSlew::coeff * n, 1.f); }
 
 /** v slewed a sample toward target (fonepole), and snapped onto it once it's within 1e-5 or
  *  a step no longer moves it, so it settles (#168): near 1 a step smaller than half the
@@ -94,10 +101,7 @@ struct Smoothed
     {
         if (value == target)
             return false;
-        const float before = value;
-        Process(coeff);
-        if (value == before || fabsf(value - target) < 1e-5f)
-            Snap();
+        value = Glide(value, target, coeff);
         return true;
     }
 };
@@ -151,6 +155,15 @@ public:
     }
     /** Off and faded out (under -120dB) */
     inline bool Silent() const { return !on_ && value_ <= kFxGateSleep; }
+    /** Before a run of samples, in place of Process and Asleep on each: asleep for all of
+     *  them, snapped to 0 as Asleep does. The key changes only between runs (FxChain::Block) */
+    __attribute__((always_inline)) inline bool AsleepForRun()
+    {
+        if (!Silent())
+            return false;
+        value_ = 0.f;
+        return true;
+    }
 
     /** True once after each press, for the audio callback */
     bool TakePress()
@@ -193,6 +206,10 @@ public:
      *  Level (FxOutput.h), which an effect sounding on after its key (the tape stop) hides */
     inline float Fade() const { return gate_.Value(); }
     inline bool Quiet() const { return Idle(); }
+    /** Instead of n Process calls on l and r, for FxChain::Insert's fast path while its page 2
+     *  rests: true if asleep for all of them, its bookkeeping for them done; an effect with
+     *  such work has its own. Its output is its input, so l and r stay as they are */
+    inline bool SleepsThrough(const float*, const float*, size_t) { return false; }
 
 protected:
     FxGate gate_;
@@ -403,6 +420,38 @@ struct PressEnvelope
             attacking = false;
         }
         value *= powf(decay_coeff, static_cast<float>(n));
+    }
+};
+
+/** A DC blocker, daisysp::DcBlock's first-order highpass (y = x - x1 + pole y1) with a pole of
+ *  its own: DcBlock's is .99 whatever the sample rate, 76Hz at 48kHz */
+struct DcBlocker
+{
+    float x1 = 0.f, y1 = 0.f;
+
+    /** As if x had always been there: its output from 0 */
+    inline void Reset(float x = 0.f)
+    {
+        x1 = x;
+        y1 = 0.f;
+    }
+    inline float Process(float x, float pole)
+    {
+        const float y = x - x1 + pole * y1;
+        x1 = x;
+        y1 = y;
+        return y;
+    }
+    /** Process(0), landing on 0 under 1e-30, where it costs nothing more: on 0 alone its
+     *  output would decay into the denormals and stall there (~7e-44), never 0 */
+    inline float Fall(float pole)
+    {
+        if (x1 == 0.f && y1 == 0.f)
+            return 0.f;
+        const float y = Process(0.f, pole);
+        if (fabsf(y) < 1e-30f)
+            y1 = 0.f;
+        return y1;
     }
 };
 

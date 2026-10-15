@@ -14,11 +14,12 @@
 
 using namespace twin;
 
-static void WriteWav(const char* path, const std::vector<float>& s)
+/** false if it couldn't be written whole (a full disk) */
+static bool WriteWav(const char* path, const std::vector<float>& s)
 {
     FILE* f = fopen(path, "wb");
     if (!f)
-        return;
+        return false;
     const uint32_t data = s.size() * 4, riff = 36 + data, fmt_len = 16, rate = 48000,
                    bytes_per_sec = rate * 8;
     const uint16_t format = 3, channels = 2, align = 8, bits = 32;
@@ -35,7 +36,8 @@ static void WriteWav(const char* path, const std::vector<float>& s)
     fwrite("data", 1, 4, f);
     fwrite(&data, 4, 1, f);
     fwrite(s.data(), 4, s.size(), f);
-    fclose(f);
+    const bool written = !ferror(f);
+    return fclose(f) == 0 && written;
 }
 
 int main(int argc, char** argv)
@@ -62,7 +64,14 @@ int main(int argc, char** argv)
         return 2;
     }
     if (led_out)
+    {
         led_log = !strcmp(led_out, "-") ? stdout : fopen(led_out, "w");
+        if (!led_log)
+        {
+            fprintf(stderr, "can't write %s\n", led_out);
+            return 4;
+        }
+    }
 
     std::ifstream file;
     std::istream* src = &std::cin;
@@ -80,10 +89,18 @@ int main(int argc, char** argv)
     std::vector<float> out_samples;
     const int failures = PlayScript(*src, led_log, &out_samples);
 
-    if (wav_out)
-        WriteWav(wav_out, out_samples);
-    if (led_log && led_log != stdout)
-        fclose(led_log);
+    // what it couldn't write whole (a full disk: compare.sh's runs in /tmp) fails the run (4), so
+    // nothing compares a log or a WAV cut short
+    bool written = !wav_out || WriteWav(wav_out, out_samples);
+    if (!written)
+        fprintf(stderr, "can't write %s\n", wav_out);
+    if (led_log)
+    {
+        const bool logged = !ferror(led_log) && (led_log == stdout ? fflush(led_log) : fclose(led_log)) == 0;
+        if (!logged)
+            fprintf(stderr, "can't write %s\n", led_out);
+        written &= logged;
+    }
     if (!quiet)
     {
         float peak = 0.f;
@@ -109,5 +126,7 @@ int main(int argc, char** argv)
                 (unsigned long long)d.usb_audio_out);
         return 3;
     }
+    if (!written)
+        return 4;
     return failures ? 1 : 0;
 }

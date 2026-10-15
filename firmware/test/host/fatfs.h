@@ -16,7 +16,15 @@
 // then kept as FatFs keeps it, and the FAT's sectors to count them (FatRead); the name changes
 // (a file created, renamed, deleted, a folder made) counted, and a power cut after the cut-th
 // (cut_after): the card gone from there, what was open for writing back to its last sync; or
-// the one after the fail_after-th failing (FR_DISK_ERR, nothing changed), once, the card staying.
+// the one after the fail_after-th failing (FR_DISK_ERR, nothing changed), once, the card staying;
+// the same for a file's data: the f_read, f_write or f_sync after the fail_io_after-th (io counts
+// them) failing, once. Unmounted (f_mount(nullptr), the card lent as a USB drive), it counts
+// every call made until it's mounted again (unmounted_calls), raw reads and the mount itself
+// too: FRIZZ leaves the card alone while the computer has it.
+// A card that didn't answer once (glitch): the next call that finds the volume (f_open, f_stat,
+// f_unlink, f_rename, f_mkdir, f_opendir, f_chdir) mounts it again first, as ff.c's find_volume
+// does, back in the root; and the readdir_fail-th f_readdir (counting dir_reads) failing with
+// FR_DISK_ERR, once.
 #pragma once
 #include <algorithm>
 #include <cstdint>
@@ -115,6 +123,15 @@ struct FakeCard
     int changes = 0;
     int cut_after = -1;
     int fail_after = -1;
+    // a file's reads, writes and syncs made, and the one after the fail_io_after-th failing
+    int io = 0;
+    int fail_io_after = -1;
+    // unmounted (lent), and the calls made meanwhile
+    bool unmounted = false;
+    int unmounted_calls = 0;
+    bool glitch = false;
+    int readdir_fail = -1;
+    bool stat_fails = false; // the next f_stat fails (FR_DISK_ERR), once
 
     // the volume's geometry, and where each file's clusters are: given out on its first link
     // map, in fragments of frag_clusters with a free cluster between them
@@ -199,6 +216,16 @@ struct FakeCard
         if (++changes == cut_after)
             Cut();
     }
+    /** A file's read, write or sync, counted: true for the one after the fail_io_after-th,
+     *  which fails (FR_DISK_ERR, nothing read or written), once */
+    bool IoFails()
+    {
+        const bool fails = fail_io_after >= 0 && io == fail_io_after;
+        io++;
+        if (fails)
+            fail_io_after = -1;
+        return fails;
+    }
     /** A name change that fails: the one after the fail_after-th, once */
     bool Fails()
     {
@@ -233,7 +260,11 @@ struct FakeCard
     }
 
     /** Each FatFs call: none while a raw read runs */
-    void Touch() { raw_clash += raw_busy > 0; }
+    void Touch()
+    {
+        raw_clash += raw_busy > 0;
+        unmounted_calls += unmounted;
+    }
 
     /** The file's clusters, given out on first asking; a write past them adds more (Grow),
      *  as FatFs allocates them: its last fragment goes on while it's the last given out and has
@@ -356,8 +387,11 @@ inline FRESULT f_mount(FATFS* fs, const char*, BYTE)
         // unmounted (the card lent as a USB drive, CardLend.h)
         if (c.fs)
             c.fs->fs_type = 0;
+        c.unmounted = true;
         return FR_OK;
     }
+    c.unmounted = false;
+    c.glitch = false;
     c.fs = fs;
     fs->csize = c.csize;
     fs->database = c.database;
@@ -370,10 +404,19 @@ inline FRESULT f_mount(FATFS* fs, const char*, BYTE)
     c.fat_win = ~0u;
     return c.present ? FR_OK : FR_NOT_READY;
 }
+/** ff.c's find_volume, at each call with a path: a card that didn't answer (glitch) is mounted
+ *  again, the volume f_mount mounted */
+inline void FindVolume()
+{
+    FakeCard& c = FakeCard::Get();
+    if (c.glitch && c.fs && c.fs->fs_type)
+        f_mount(c.fs, "", 1);
+    c.Touch();
+}
 inline FRESULT f_chdir(const char* path)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     if (!c.present || !c.HasDir(path))
         return FR_NO_FILE;
     c.cwd = path;
@@ -382,7 +425,7 @@ inline FRESULT f_chdir(const char* path)
 inline FRESULT f_mkdir(const char* path)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     if (!c.present || c.read_only)
         return FR_DENIED;
     if (c.HasDir(path))
@@ -394,15 +437,20 @@ inline FRESULT f_mkdir(const char* path)
 inline FRESULT f_stat(const char* name, FILINFO*)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     if (!c.present)
         return FR_NOT_READY;
+    if (c.stat_fails)
+    {
+        c.stat_fails = false;
+        return FR_DISK_ERR;
+    }
     return c.files.count(c.Find(c.Path(name))) ? FR_OK : FR_NO_FILE;
 }
 inline FRESULT f_unlink(const char* name)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     if (!c.present)
         return FR_NOT_READY;
     if (!c.files.count(c.Find(c.Path(name))))
@@ -433,7 +481,7 @@ inline FRESULT f_unlink(const char* name)
 inline FRESULT f_rename(const char* from, const char* to)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     if (!c.present)
         return FR_NOT_READY;
     const std::string src = c.Find(c.Path(from));
@@ -462,7 +510,7 @@ inline FRESULT f_rename(const char* from, const char* to)
 inline FRESULT f_open(FIL* f, const char* name, BYTE mode)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     if (!c.present)
         return FR_NOT_READY;
     f->path = c.Find(c.Path(name));
@@ -500,6 +548,8 @@ inline FRESULT f_read(FIL* f, void* buf, UINT n, UINT* read)
         return FR_NOT_READY;
     if (f->mount != FakeCard::Get().mount)
         return FR_INVALID_OBJECT;
+    if (FakeCard::Get().IoFails())
+        return FR_DISK_ERR;
     const std::string& data = FakeCard::Get().files[f->path];
     const size_t len = std::min<size_t>(n, data.size() - f->fptr);
     memcpy(buf, data.data() + f->fptr, len);
@@ -523,6 +573,8 @@ inline FRESULT f_write(FIL* f, const void* buf, UINT n, UINT* written)
         return FR_NOT_READY;
     if (f->mount != c.mount)
         return FR_INVALID_OBJECT;
+    if (c.IoFails())
+        return FR_DISK_ERR;
     if (c.write_time)
         c.write_time(n);
     // a full card: FatFs writes what fits and says so in *written, with FR_OK
@@ -558,6 +610,8 @@ inline FRESULT f_sync(FIL* f)
         return FR_NOT_READY;
     if (f->mount != c.mount)
         return FR_INVALID_OBJECT;
+    if (c.IoFails())
+        return FR_DISK_ERR;
     if (f->write && c.synced.count(f->path))
         c.synced[f->path] = c.files[f->path].size();
     return FR_OK;
@@ -641,7 +695,7 @@ inline FRESULT f_lseek(FIL* f, DWORD ofs)
 inline FRESULT f_opendir(DIR* d, const char* path)
 {
     FakeCard& c = FakeCard::Get();
-    c.Touch();
+    FindVolume();
     std::string dir = c.Path(path);
     if (dir == "/")
         dir = ""; // the root: every path starts with its "/"
@@ -685,7 +739,11 @@ inline FRESULT f_readdir(DIR* d, FILINFO* info)
     info->fname[0] = '\0';
     if (d->mount != c.mount)
         return FR_INVALID_OBJECT;
-    c.dir_reads++;
+    if (int(++c.dir_reads) == c.readdir_fail)
+    {
+        c.readdir_fail = -1;
+        return FR_DISK_ERR;
+    }
     if (d->at < d->names.size())
     {
         snprintf(info->fname, sizeof(info->fname), "%s", d->names[d->at].c_str());

@@ -165,7 +165,7 @@ namespace chompi
     // free on this page. One language for all three: the mode's colour shows what will happen
     // (the slots it can act on, the pick, the CHOMPI key that confirms), white that it's done,
     // red that it was refused or isn't on the card. Their LEDs: KeyLedOf (PanelKeys.h)
-    static const Hardware::SwId kSceneKeys[kNumSlots] = {
+    static constexpr Hardware::SwId kSceneKeys[kNumSlots] = {
         Hardware::SwId::KEY_18, Hardware::SwId::KEY_19, Hardware::SwId::KEY_20,
         Hardware::SwId::KEY_21, Hardware::SwId::KEY_22,
     };
@@ -184,6 +184,14 @@ namespace chompi
 
     // The Loops page (#70): the hand's keys there come as these IDs plus their SwId (ui.h)
     static const uint16_t kLoopsKeyBase = 128;
+    // those that are the play page's there (LoopsKey): SHIFT, PLAY, LOOP, the transport's and
+    // VOLUME's presses, the scene keys
+    static constexpr uint64_t kLoopsOwnKeys =
+        1ull << static_cast<int>(Hardware::SwId::KEY_26) | 1ull << static_cast<int>(Hardware::SwId::KEY_27)
+        | 1ull << static_cast<int>(Hardware::SwId::KEY_28) | 1ull << ENC_5_SW
+        | 1ull << static_cast<int>(Hardware::SwId::ENC_6_SW) | 1ull << static_cast<int>(kSceneKeys[0])
+        | 1ull << static_cast<int>(kSceneKeys[1]) | 1ull << static_cast<int>(kSceneKeys[2])
+        | 1ull << static_cast<int>(kSceneKeys[3]) | 1ull << static_cast<int>(kSceneKeys[4]);
     static const uint32_t kDoubleTapMs = 400;  // SHIFT's taps home: each, and the gap
     static const uint32_t kLoadingBlinkMs = 100; // a planned loop not loaded yet
     // the banks A-H, around the colour wheel; not red (refused) nor white (flashes)
@@ -260,6 +268,37 @@ namespace chompi
         /** The settings page's USB audio (SettingsPage::UsbAudio) */
         bool UsbAudio() const { return settings_.UsbAudio(); }
 
+        /** A master change the hand or SysEx made that's still waiting out its rest, not yet
+         *  asked to be saved (SceneStore::Reread) */
+        bool MasterWaiting() const { return master_unsaved_; }
+
+        /** The card taken back from the computer: what SceneStore::Reread took from it,
+         *  applied as at boot. The master settings at once, the compressor's knobs and the
+         *  input gains gliding there as a turn does (and USB audio switched over MainLoop's
+         *  way); what MIDI set without the card goes to the file's. The scenes for their next
+         *  recall: what plays stays, an active one changed counts as edited, one emptied is no
+         *  longer active (as over SysEx) */
+        void Reread(uint8_t taken)
+        {
+            if (taken & SceneStore::kRereadMaster)
+            {
+                for (size_t p = 0; p < kNumFxParams; p++)
+                    fx_.SetComp(p, scenes_->master.comp[p]);
+                fx_.TakeCompChanged();
+                settings_.Init(engine_, midi_, hw_, scenes_->master);
+                midi_->SetChannel(scenes_->master.midi_channel);
+                midi_->SetTransport(scenes_->master.midi_transport);
+            }
+            for (size_t s = kBlankSlot + 1; s < kNumSlots; s++)
+                if ((taken >> s) & 1)
+                {
+                    if (!scenes_->scenes[s].used)
+                        scene_ctl_.Emptied(s);
+                    else if (static_cast<int>(s) == scene_ctl_.Active())
+                        fx_.MarkEdited();
+                }
+        }
+
         /** Before a restart: master settings waiting out their kMasterSaveDelayMs go to the
          *  card at once, the first time it's asked (a change after that, automation still
          *  coming, waits as usual). True once there's nothing left to write */
@@ -311,7 +350,9 @@ namespace chompi
             }
             if (settings)
             {
-                // SHIFT + VOLUME held there: a bug report, its blink over the transport LEDs
+                // SHIFT + VOLUME held there: a bug report, its blink over the transport LEDs;
+                // SHIFT held from the play page counts, as for its keys
+                settings_.PlayShift(Shift(), now);
                 if (settings_.BugReportHeld(now))
                     log_->RequestWrite();
                 // SHIFT + LOOP held there: the card lent or taken back (CardLend.h)
@@ -474,8 +515,7 @@ namespace chompi
                  || buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_17))
                 && Shift())
             {
-                keys_.Used();
-                ShowLoops(true, buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_17));
+                PageKey(buttonID, true);
                 return true;
             }
 #endif
@@ -514,6 +554,12 @@ namespace chompi
             {
                 if (buttonID == static_cast<uint16_t>(key.key))
                 {
+#if !FRIZZ_BENCH
+                    // MIDI's note on the Loops page does nothing, as the hand's (LoopsKey): a
+                    // mode can't start where a tap of SHIFT confirms nothing
+                    if (loops_shown_)
+                        return true;
+#endif
                     keys_.Used();
                     scene_ctl_.ModePressed(key.mode);
                     return true;
@@ -587,6 +633,13 @@ namespace chompi
         MIDI_CONTROL_ONCE void Remote()
         {
             const uint32_t now = System::GetNow();
+            // the computer gone, or FRIZZ leaving the bus (USB audio switched): the releases of
+            // what its notes and SysEx hold are lost, so MIDI lets go of them
+            const bool host = midi_->UsbHost(), audio = settings_.UsbAudio();
+            if ((usb_host_ && !host) || audio != usb_audio_)
+                midi_->LetGo();
+            usb_host_ = host;
+            usb_audio_ = audio;
             uint8_t key;
             if (midi_->TakeFocus(key))
             {
@@ -1001,8 +1054,8 @@ namespace chompi
                 midi_->TakeLoad(max, mean, over, blocks);
                 n = Put14(d, n, max);
                 n = Put14(d, n, mean);
-                n = Put7s(d, n, over, 3);
-                n = Put7s(d, n, blocks, 3);
+                n = loopxfer::Put7(d, n, over, 3);
+                n = loopxfer::Put7(d, n, blocks, 3);
                 break;
             }
             case kCmdSettings:
@@ -1038,16 +1091,6 @@ namespace chompi
             return n;
         }
 
-        /** v in `groups` 7-bit groups, the highest first; saturated at the most they hold */
-        MIDI_CONTROL_ONCE static size_t Put7s(uint8_t* d, size_t n, uint32_t v, size_t groups)
-        {
-            const uint32_t top = groups >= 5 ? 0xFFFFFFFFu : (1u << (7 * groups)) - 1;
-            v = v > top ? top : v;
-            for (size_t g = groups; g-- > 0;)
-                d[n++] = static_cast<uint8_t>(g * 7 < 32 ? (v >> (g * 7)) & 0x7F : 0);
-            return n;
-        }
-
         /** A kCmdDev request (MidiControl.h's namespace dev), answered over USB: SUB SEQ
          *  STATUS, then what it asked for. Every one is answered */
         MIDI_CONTROL_ONCE void DevAnswer(const MidiControl::DevQuery& q)
@@ -1068,11 +1111,11 @@ namespace chompi
                 }
                 d[n++] = kVersion;
                 d[n++] = info.kind;
-                n = Put7s(d, n, info.crc, 5);
-                n = Put7s(d, n, info.image_len, 3);
-                n = Put7s(d, n, System::GetNow(), 5);
-                n = Put7s(d, n, info.passes, 5);
-                n = Put7s(d, n, info.reset_cause, 5);
+                n = loopxfer::Put7(d, n, info.crc, 5);
+                n = loopxfer::Put7(d, n, info.image_len, 3);
+                n = loopxfer::Put7(d, n, System::GetNow(), 5);
+                n = loopxfer::Put7(d, n, info.passes, 5);
+                n = loopxfer::Put7(d, n, info.reset_cause, 5);
                 d[n++] = scenes_->InRam() ? kRamOnly : 0;
                 break;
             case PERSIST:
@@ -1148,9 +1191,9 @@ namespace chompi
                 }
                 else if (q.len)
                     status = BAD;
-                n = Put7s(d, n, info.seed, 5);
+                n = loopxfer::Put7(d, n, info.seed, 5);
                 for (size_t i = 0; i < FxChain::kRandoms; i++)
-                    n = Put7s(d, n, engine_->RandomState(i), 5);
+                    n = loopxfer::Put7(d, n, engine_->RandomState(i), 5);
                 break;
             case BATTERY:
             {
@@ -1162,9 +1205,9 @@ namespace chompi
                 d[n++] = hw_->batt_check_state;
                 d[n++] = hw_->read_error ? 1 : 0;
                 for (uint8_t b : bounces)
-                    n = Put7s(d, n, b, 2);
+                    n = loopxfer::Put7(d, n, b, 2);
                 for (size_t i = 0; i < 6; i++)
-                    n = Put7s(d, n, hw_->mp_buff_[i], 2);
+                    n = loopxfer::Put7(d, n, hw_->mp_buff_[i], 2);
                 break;
             }
             case CRASH:
@@ -1186,11 +1229,11 @@ namespace chompi
                     const uint32_t words[] = {r.count, r.ms, r.crc, r.len, r.rsr, r.sp, info.option_bytes};
                     const uint8_t groups[] = {3, 5, 5, 3, 5, 5, 5};
                     for (size_t i = 0; i < sizeof(groups); i++)
-                        n = Put7s(d, n, words[i], groups[i]);
+                        n = loopxfer::Put7(d, n, words[i], groups[i]);
                 }
                 else
                     for (uint32_t w : {r.pc, r.lr, r.xpsr, r.cfsr, r.hfsr, r.mmfar, r.bfar})
-                        n = Put7s(d, n, w, 5);
+                        n = loopxfer::Put7(d, n, w, 5);
                 break;
             }
 #if FRIZZ_BENCH
@@ -1234,7 +1277,7 @@ namespace chompi
         /** v * by in 7-bit groups, 0 below 0 */
         static size_t PutScaled(uint8_t* d, size_t n, float v, float by, size_t groups)
         {
-            return Put7s(d, n, v > 0.f ? static_cast<uint32_t>(v * by + .5f) : 0u, groups);
+            return loopxfer::Put7(d, n, v > 0.f ? static_cast<uint32_t>(v * by + .5f) : 0u, groups);
         }
 
         /** PROBE 0: the clock, as MidiClock counts it, and the tempo the effects follow */
@@ -1250,12 +1293,12 @@ namespace chompi
                                           | (midi_->Transport() ? 16 : 0));
             n = PutScaled(d, n, clock.GetBpm(), 100.f, 3);
             n = PutScaled(d, n, clock.SenderBpm(), 100.f, 3);
-            n = Put7s(d, n, clock.GetTicks(), 5);
-            n = Put7s(d, n, clock.GetLocks(), 3);
+            n = loopxfer::Put7(d, n, clock.GetTicks(), 5);
+            n = loopxfer::Put7(d, n, clock.GetLocks(), 3);
             n = PutScaled(d, n, tempo.GetFxBpm(), 100.f, 3);
-            n = Put7s(d, n, static_cast<uint32_t>(tempo.GetTempo()), 2);
-            n = Put7s(d, n, tempo.Position(), 3);
-            return Put7s(d, n, tempo.LoopPulses(), 3);
+            n = loopxfer::Put7(d, n, static_cast<uint32_t>(tempo.GetTempo()), 2);
+            n = loopxfer::Put7(d, n, tempo.Position(), 3);
+            return loopxfer::Put7(d, n, tempo.LoopPulses(), 3);
         }
 
         /** PROBE 1: the looper */
@@ -1267,13 +1310,13 @@ namespace chompi
             d[n++] = static_cast<uint8_t>((looper.IsClosing() ? 1 : 0) | (looper.IsErasePending() ? 2 : 0)
                                           | (looper.IsErasing() ? 4 : 0)
                                           | (looper.CanRecordQuantized() ? 8 : 0));
-            n = Put7s(d, n, length, 4);
+            n = loopxfer::Put7(d, n, length, 4);
             n = PutScaled(d, n, looper.GetPosition(), static_cast<float>(length), 4);
-            n = Put7s(d, n, looper.GetBeats(), 3);
+            n = loopxfer::Put7(d, n, looper.GetBeats(), 3);
             d[n++] = static_cast<uint8_t>(looper.GetSemitones() + 64);
             n = PutScaled(d, n, looper.GetSpeed() + 2.f, 1000.f, 2);
             n = PutScaled(d, n, looper.GetActualSpeed() + 2.f, 1000.f, 2);
-            return Put7s(d, n, looper.Rewinds(), 3);
+            return loopxfer::Put7(d, n, looper.Rewinds(), 3);
         }
 
         /** LEVELS: part 0 the effects' meters; part 1 the VU meter, the compressor's reduction
@@ -1478,6 +1521,10 @@ namespace chompi
             {
                 if (Grace(static_cast<uint16_t>(kFxSlots[fx].key), true, shift))
                 {
+                    // a select whatever LateSelect says: SHIFT and the key in one block come
+                    // SHIFT first (ui.h's Tell, by SwId), so LateSelect finds no press yet; the
+                    // key's, still to come, selects with SHIFT held, and this SHIFT is a combo,
+                    // not a tap. Not a slip: keep it
                     fx_.LateSelect(fx);
                     select = true;
                 }
@@ -1562,12 +1609,7 @@ namespace chompi
         bool LoopsKey(uint16_t key, uint8_t presses)
         {
             using S = Hardware::SwId;
-            bool own = key == static_cast<uint16_t>(S::KEY_26) || key == static_cast<uint16_t>(S::KEY_27)
-                       || key == static_cast<uint16_t>(S::KEY_28) || key == ENC_5_SW
-                       || key == static_cast<uint16_t>(S::ENC_6_SW);
-            for (Hardware::SwId scene : kSceneKeys)
-                own = own || key == static_cast<uint16_t>(scene);
-            if (own)
+            if (kLoopsOwnKeys >> key & 1)
                 return OnButton(key, presses, false);
             if (presses != 1)
                 return true;
@@ -1576,9 +1618,8 @@ namespace chompi
                 // SHIFT + the page's key goes home, SHIFT + the other's to the other page
                 if (Shift())
                 {
-                    keys_.Used();
                     const bool cubbi = key == static_cast<uint16_t>(S::KEY_17);
-                    ShowLoops(cubbi != loops_.Cubbi(), cubbi);
+                    PageKey(key, cubbi != loops_.Cubbi());
                 }
                 else if (!loops_.StepBank(key == static_cast<uint16_t>(S::KEY_16) ? -1 : 1))
                 {
@@ -1594,6 +1635,14 @@ namespace chompi
                     LoopKeyPressed(w);
                 }
             return true;
+        }
+
+        /** SHIFT + the lower C# (the Loops page) or D# (the Cubbi page), with on whether its
+         *  page shows after: from the play page, MIDI's notes on the Loops page too, always */
+        void PageKey(uint16_t key, bool on)
+        {
+            keys_.Used();
+            ShowLoops(on, key == static_cast<uint16_t>(Hardware::SwId::KEY_17));
         }
 
         /** A white key there: its loop, at once or planned (LoopControls::Press). SHIFT + the
@@ -1682,7 +1731,7 @@ namespace chompi
                 if (w == loop_refused_slot_ && loop_refused_key_.Active(now))
                 {
                     c = red;
-                    level = loop_refused_key_.BlinkLit(now) ? 1.f : 0.f;
+                    level = loop_refused_key_.BlinkLevel(now);
                 }
                 else
                     switch (loops_.SlotLed(w))
@@ -1714,7 +1763,7 @@ namespace chompi
                 const int to = loops_.Neighbour(key == Hardware::SwId::KEY_16 ? -1 : 1);
                 if ((static_cast<uint16_t>(key) == bank_refused_key_ || bank_refused_key_ == kBothBankKeys)
                     && bank_refused_.Active(now))
-                    SmtLed(KeyLedOf(key), red, bank_refused_.BlinkLit(now) ? 1.f : 0.f);
+                    SmtLed(KeyLedOf(key), red, bank_refused_.BlinkLevel(now));
                 else
                     SmtLed(KeyLedOf(key), to == LoopControls::kNone ? color : BankColor(static_cast<size_t>(to)),
                            to == LoopControls::kNone ? 0.f : 1.f);
@@ -1943,7 +1992,7 @@ namespace chompi
             if (page_flash_.Active(now))
             {
                 // a page picked: blinks its number in white
-                rgb[0] = rgb[1] = rgb[2] = page_flash_.BlinkLit(now) ? 1.f : 0.f;
+                rgb[0] = rgb[1] = rgb[2] = page_flash_.BlinkLevel(now);
             }
             else if (page == kOutGainPage)
             {
@@ -2054,12 +2103,12 @@ namespace chompi
                 else if (s == scene_flash_ && scene_flash_signal_.Active(now))
                 {
                     color = scene_flash_ok_ ? white : red;
-                    level = scene_flash_signal_.BlinkLit(now) ? 1.f : 0.f;
+                    level = scene_flash_signal_.BlinkLevel(now);
                 }
                 else if (s == scene_refused_ && scene_refused_signal_.Active(now))
                 {
                     color = red;
-                    level = scene_refused_signal_.BlinkLit(now) ? 1.f : 0.f;
+                    level = scene_refused_signal_.BlinkLevel(now);
                 }
                 else if (mode != SceneMode::NONE)
                 {
@@ -2114,7 +2163,7 @@ namespace chompi
             const float* const* colors = comp ? kCompKnobColors : kFxSlots[selected].knob_colors;
             // the page it blinks for, so another effect's page 1 isn't blinked over
             const bool flash = knob_page_flash_.Active(now) && fx_.Page() == knob_flash_page_;
-            const float lit = knob_page_flash_.BlinkLit(now) ? 1.f : 0.f;
+            const float lit = knob_page_flash_.BlinkLevel(now);
             const FxParams& knobs = fx_.Knobs();
             for (size_t k = 0; k < kNumFxKnobs; k++)
             {
@@ -2173,7 +2222,7 @@ namespace chompi
             if (comp && select_flash_.Active(now))
                 Flash(rgb);
             if (master_refused_.Active(now))
-                SmtLed(kCompKeyLed, red, master_refused_.BlinkLit(now) ? 1.f : 0.f);
+                SmtLed(kCompKeyLed, red, master_refused_.BlinkLevel(now));
             else
                 SetSmtLedFloat(kCompKeyLed, rgb[0], rgb[1], rgb[2]);
         }
@@ -2259,7 +2308,7 @@ namespace chompi
             // refused quantized record or tap: 3 red blinks, over whatever LOOP was showing
             if (loop_refused_.Active(now))
             {
-                loop[0] = loop_refused_.BlinkLit(now) ? 1.f : 0.f;
+                loop[0] = loop_refused_.BlinkLevel(now);
                 loop[1] = loop[2] = 0.f;
             }
 
@@ -2301,7 +2350,7 @@ namespace chompi
             if (log_->Writing())
                 level = BlinkOn(now, kPendingBlinkMs) ? 1.f : 0.f;
             else if (log_signal_.Active(now))
-                level = log_signal_.BlinkLit(now) ? 1.f : 0.f;
+                level = log_signal_.BlinkLevel(now);
             if (level < 0.f)
                 return;
             const float* color = log_->Writing() || log_ok_ ? white : red;
@@ -2526,6 +2575,7 @@ namespace chompi
         bool vol_down_ = false;     // VOLUME's press was seen here, not by the boot page
         bool vol_shift_ = false;    // VOLUME's press was SHIFT + press
         uint32_t vol_touched_ = 0;  // VOLUME last turned or pressed on the settings page
+        bool usb_host_ = false, usb_audio_ = true; // as Remote last saw them (MidiControl::LetGo)
         uint32_t gain_turned_ = 0;  // the input gain last set
         float in_meter_ = 0.f;      // the input's meter, full scale 1
         uint32_t in_red_at_ = 0;    // the input last reached the loop's ceiling

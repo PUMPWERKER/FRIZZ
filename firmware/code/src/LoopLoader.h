@@ -303,6 +303,15 @@ inline char* SlotName(char* p, size_t bank, size_t slot)
     *p++ = static_cast<char>('0' + (slot + 1) % 10);
     return p;
 }
+/** v in `groups` 7-bit groups, the highest first, from d + n: the new n. Only v's low bits,
+ *  cut where they don't fit (the developers' SysEx: the loader's LOOPS, USB's;
+ *  loopxfer::Put7 saturates instead) */
+LOOP_LOADER_ONCE inline size_t Put7Low(uint8_t* d, size_t n, uint32_t v, size_t groups)
+{
+    for (size_t g = groups; g-- > 0;)
+        d[n++] = static_cast<uint8_t>(g * 7 < 32 ? (v >> (g * 7)) & 0x7F : 0);
+    return n;
+}
 /** A swap's temp file, "/FRIZZ/a1-b2.swp": a1's file on its way to b2 (LoopTransfer.h,
  *  docs/LOOP_PROTOCOL.md 5.6), into path (20 bytes) */
 LOOP_LOADER_ONCE inline void SwapPath(char* path, size_t from, size_t to)
@@ -416,7 +425,7 @@ public:
     }
     /** Whether the developers' SysEx may use Init's buffer, which the looper may be playing
      *  from (LoopControls.h): its loads and the write test are refused otherwise */
-    inline void DevBuffer(bool free) { dev_free_ = free; }
+    inline void DevBuffer(bool free) { dev_taken_ = !free; }
     inline const uint8_t* Buffer() const { return buf_; }
     inline const uint8_t* Home() const { return home_; }
     /** The slot loaded last, and its acid chunk's beats (0 for none) */
@@ -477,12 +486,7 @@ public:
         const char* dir = !cubbi ? "/FRIZZ/" : tape_ ? "/TAPE/cubbi_" : "/cubbi_";
         const size_t n = strlen(dir);
         memcpy(path, dir, n);
-        char* p = path + n;
-        *p++ = static_cast<char>('a' + bank - (cubbi ? loops::kCubbiBank : 0));
-        if (slot >= 9)
-            *p++ = '1';
-        *p++ = static_cast<char>('0' + (slot + 1) % 10);
-        memcpy(p, ".wav", 5);
+        memcpy(loops::SlotName(path + n, bank - (cubbi ? loops::kCubbiBank : 0), slot), ".wav", 5);
     }
     static const size_t kPathLen = 24; // "/TAPE/cubbi_a15.wav"
 
@@ -500,7 +504,7 @@ public:
      *   6 KB(2) CHUNK(2)    the write test: KB written in CHUNK-byte writes; KB's high group
      *               can carry kFaultDiskCutShort or kFaultDiskPastEnd (KB is at most 1024,
      *               the developers' SysEx 5 bytes)
-     *  3-6 are refused (-1) while something runs */
+     *  3-6 are refused (-1) while something runs, and while the card is lent (chompi_main.cpp) */
     LOOP_LOADER_ONCE int Dev(const uint8_t* arg, size_t len, uint8_t* d)
     {
         const uint8_t part = len ? arg[0] : 0xFF;
@@ -512,16 +516,16 @@ public:
             d[n++] = bank_;
             d[n++] = slot_;
             d[n++] = error_;
-            n = Put(d, n, sd_error_, 5);
-            n = Put(d, n, done_, 4);
-            n = Put(d, n, total_, 4);
-            n = Put(d, n, ms_, 3);
-            n = Put(d, n, runs_, 3);
-            n = Put(d, n, worst_us_, 3);
-            n = Put(d, n, SdRawClkcr(), 5);
+            n = loops::Put7Low(d, n, sd_error_, 5);
+            n = loops::Put7Low(d, n, done_, 4);
+            n = loops::Put7Low(d, n, total_, 4);
+            n = loops::Put7Low(d, n, ms_, 3);
+            n = loops::Put7Low(d, n, runs_, 3);
+            n = loops::Put7Low(d, n, worst_us_, 3);
+            n = loops::Put7Low(d, n, SdRawClkcr(), 5);
             d[n++] = recoveries_ & 0x7F;
             d[n++] = reinits_ & 0x7F;
-            n = Put(d, n, frags_, 2);
+            n = loops::Put7Low(d, n, frags_, 2);
             worst_us_ = 0;
             return static_cast<int>(n);
         }
@@ -539,35 +543,28 @@ public:
         {
             const loops::Slot& s = mem_->slots[bank][slot];
             d[n++] = s.result;
-            n = Put(d, n, s.frames, 4);
-            n = Put(d, n, s.data, 5);
+            n = loops::Put7Low(d, n, s.frames, 4);
+            n = loops::Put7Low(d, n, s.data, 5);
         }
         else if (part == 3)
             return Request(SCANNING) ? 0 : -1;
         else if (part == 4)
-            return dev_free_ && Request(LOADING, bank, slot, arg[3]) ? 0 : -1;
+            return !dev_taken_ && Request(LOADING, bank, slot, arg[3]) ? 0 : -1;
         else if (part == 5)
         {
             if (len > 1 && !Request(CHECKING))
                 return -1;
             d[n++] = state_;
-            n = Put(d, n, crc_, 5);
+            n = loops::Put7Low(d, n, crc_, 5);
         }
         else if (part == 6 && len >= 5)
-            return dev_free_ && Request(WRITING, arg[1] & 0x30, 0, ((arg[1] & 0x0F) << 7 | arg[2]) << 16 | (arg[3] << 7 | arg[4])) ? 0 : -1;
+            return !dev_taken_ && Request(WRITING, arg[1] & 0x30, 0, ((arg[1] & 0x0F) << 7 | arg[2]) << 16 | (arg[3] << 7 | arg[4])) ? 0 : -1;
         else
             return -1;
         return static_cast<int>(n);
     }
 
 private:
-    static size_t Put(uint8_t* d, size_t n, uint32_t v, size_t groups)
-    {
-        for (size_t g = groups; g-- > 0;)
-            d[n++] = static_cast<uint8_t>(g * 7 < 32 ? (v >> (g * 7)) & 0x7F : 0);
-        return n;
-    }
-
     /** The step of what runs */
     LOOP_LOADER_ONCE void Step()
     {
@@ -597,7 +594,7 @@ private:
             if (dir_open_)
                 f_closedir(&mem_->dir);
             group_ = 0;
-            listed_ = dir_open_ = false;
+            listed_ = dir_open_ = relisted_ = false;
             entries_ = 0;
             ms_ = 0;
             start_ms_ = ms_clock_();
@@ -710,9 +707,12 @@ private:
         for (size_t n = 0; n < loops::kDirEntries; n++)
         {
             const FRESULT r = f_readdir(&dir, &mem_->info);
-            if (r == FR_INVALID_OBJECT)
+            // a remount: opened again at the next pass, past what was read; a card error too,
+            // once a scan, rather than the slots after it read as empty
+            if (r == FR_INVALID_OBJECT || (r != FR_OK && !relisted_))
             {
-                dir_open_ = false; // a remount: opened again at the next pass
+                relisted_ |= r != FR_INVALID_OBJECT;
+                dir_open_ = false;
                 return;
             }
             if (r != FR_OK || !mem_->info.fname[0])
@@ -1111,13 +1111,15 @@ private:
 
     uint8_t* buf_ = nullptr;  // the buffer of the last load or write test
     uint8_t* home_ = nullptr; // Init's
-    bool cancel_ = false, dev_free_ = true;
+    // every member's default 0, so the loader sits in .bss, not in .data (whose values take
+    // room in the image): Init sets the clock's ticks, a load its fragment
+    bool cancel_ = false, dev_taken_ = false;
     uint32_t beats_ = 0, size_ = 0; // Open's file's: its acid chunk's beats, its size
     loops::Mem* mem_ = nullptr;
     FATFS* fs_ = nullptr;
     uint32_t (*ms_clock_)() = nullptr;
     uint32_t (*ticks_)() = nullptr;
-    uint32_t ticks_us_ = 1;
+    uint32_t ticks_us_ = 0;
 
     State state_ = IDLE;
     uint8_t bank_ = 0, slot_ = 0, error_ = 0, faults_ = 0;
@@ -1129,6 +1131,7 @@ private:
     uint16_t found_[loops::kBanks] = {};
     static const size_t kSwaps = 4; // swaps' temp files a scan puts right
     uint8_t swap_[kSwaps][2] = {}, swaps_ = 0;
+    bool relisted_ = false; // the listing read again after a card error
     // the load
     bool opened_ = false, mapping_ = false, inflight_ = false;
     uint8_t result_ = loops::EMPTY;
@@ -1137,7 +1140,7 @@ private:
     DWORD last_ = 0;
     uint16_t csize_ = 0;
     DWORD database_ = 0;
-    size_t frag_ = 1;
+    size_t frag_ = 0;
     uint32_t frag_at_ = 0, run_ = 0, done_ = 0, total_ = 0, runs_ = 0;
     uint32_t run_t_ = 0, timeout_ = 0, start_ms_ = 0, ms_ = 0, worst_us_ = 0; // ticks, ms, us
     uint8_t recoveries_ = 0, reinits_ = 0;

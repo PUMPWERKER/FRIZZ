@@ -87,7 +87,7 @@ their keys' order left to right (see the FRIZZ chain above). Their controls are 
 | 2nd white | Shifter (insert) | FRIZZ's own two-tap shifter with aligned splices, tuned in semitones; the swoop, feedback and stereo after Bastl Instruments' Kastle 2 FX Wizard shifter (MIT) |
 | 3rd white | Folder (insert) | FRIZZ's own: a sine-to-triangle fold with first-order ADAA, after DaisySP's `wavefolder` (which is the triangle alone, unfiltered) |
 | 4th white | Crusher (insert) | TEMPO's sample-rate reducer, plus FRIZZ's own bit quantizer and tone lowpass, and the XOR and trigger dive from Bastl Instruments' Kastle 2 FX Wizard crusher (MIT) |
-| 5th white | DJ filter (insert) | WAVE's `DJFilter.h` + `BasicMMF.h`; the triangle LFO follows WAVE's filter LFO but is synced by `TempoClock.h` |
+| 5th white | DJ filter (insert) | WAVE's knob law and cutoff ranges on stmlib's state-variable filter (MIT), one a channel, lowpass or highpass (#304; WAVE's was `DJFilter.h` + `BasicMMF.h`, a lowpass and a highpass in series); the coefficients retuned every 8 samples; the triangle LFO follows WAVE's filter LFO but is synced by `TempoClock.h` |
 | 6th white | Flanger (insert) | Bastl Instruments' Kastle 2 FX Wizard flanger (MIT) |
 | 7th white | Phaser (insert) | FRIZZ's own (#68): six first-order allpass stages a channel with feedback, the coefficient retuned every 8 samples from a triangle LFO, free (the flanger's rate curve) or synced by `TempoClock.h` (the filter LFO's divisions) on one split knob; knobs after the SP-404MK2's Phaser and the Elektron Tonverk's Phase 98 |
 | 8th white | Resonator (comb loop from after the phaser back to after the freezer) | the feedback comb Bastl Instruments' Kastle 2 FX Wizard runs around every mode (MIT) |

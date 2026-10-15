@@ -74,9 +74,25 @@ public:
     void SetPulseSamples(float samples) { lfo_.SetPulseSamples(samples); }
     void ClockPulse(uint32_t pos, bool reverse = false)
     {
-        // on the pulse, less the samples counted since the LFOs last moved: they went by
-        // before it, and the next Retune adds them
-        lfo_.Pulse(pos, reverse, (reverse ? 1.f : -1.f) * static_cast<float>(since_) * lfo_.PulseInc());
+        // asleep, the samples counted so far move the LFOs now: the pulse sets where the
+        // tempo LFO is, and a Wake that moved it by all of them would do it at the tempo it
+        // wakes at, the whole sleep off if the tempo changed meanwhile
+        if (asleep_)
+        {
+            Advance(since_);
+            since_ = 0;
+        }
+        lfo_.PulseAfter(pos, reverse, since_);
+    }
+
+    /** FxBase::SleepsThrough: what Process does asleep, once for the run */
+    FX_PER_RUN bool SleepsThrough(const float*, const float*, size_t n)
+    {
+        if (!gate_.AsleepForRun())
+            return false;
+        since_ += n;
+        asleep_ = true;
+        return true;
     }
 
     void Process(float* l, float* r)
@@ -171,7 +187,7 @@ private:
         Advance(since_);
         since_ = 0;
         // the knobs slew here, once per kRetune samples, at the rate they would per sample
-        const float coeff = snap ? 1.f : fminf(FxSlew::coeff * n, 1.f);
+        const float coeff = FxSlewOver(n, snap);
         const float depth = depth_.Process(coeff);
         const float centre = centre_.Process(coeff);
         feedback_ = kMaxFeedback * feedback_knob_.Process(coeff);

@@ -83,7 +83,8 @@ namespace chompi
         // it's let go, so flipping the switch while holding one neither lets go of it on the
         // play page (an FX punched in, PLAY or CHOMPI acting on their release) nor presses it
         // on the settings page. The Loops page (#70) takes the panel's keys the same way, as
-        // kLoopsKeyBase plus the key; MIDI's notes still go to the play page's.
+        // kLoopsKeyBase plus the key; MIDI's notes still go to the play page's, but for a key
+        // the panel holds on one of the others: the note joins it there.
         void GenerateEvents()
         {
             const uint8_t sw = midi_->Switch();
@@ -108,17 +109,22 @@ namespace chompi
                 Hand(ENC_5_SW, true);
             log_->Toggle(hw_->GetToggleState());
 
+            // a press the panel makes goes to the page showing, unless a note holds its key
+            // already: then it joins the note's side, and MIDI's bits count on the side that
+            // has the key, so the key lets go there once both have
             const uint64_t panel = hand_ | midi_->PanelKeys();
+            const uint64_t down = panel | midi_->TakeKeys();
+            const uint64_t pressed = panel & ~panel_ & ~(told_ | told_settings_ | told_loops_);
             if (settings_)
-                settings_keys_ |= panel & ~panel_;
+                settings_keys_ |= pressed;
             else if (normal_page_.LoopsShown())
-                loops_keys_ |= panel & ~panel_;
+                loops_keys_ |= pressed;
             panel_ = panel;
-            Tell((panel & ~settings_keys_ & ~loops_keys_) | midi_->TakeKeys(), told_, 0);
-            Tell(panel & settings_keys_, told_settings_, kSettingsKeyBase);
-            Tell(panel & loops_keys_, told_loops_, kLoopsKeyBase);
-            settings_keys_ &= panel;
-            loops_keys_ &= panel;
+            Tell(down & ~settings_keys_ & ~loops_keys_, told_, 0);
+            Tell(down & settings_keys_, told_settings_, kSettingsKeyBase);
+            Tell(down & loops_keys_, told_loops_, kLoopsKeyBase);
+            settings_keys_ &= down;
+            loops_keys_ &= down;
 
             // encoder_map remaps the encoders' wiring order to the knobs' order; one event per
             // detent
@@ -155,6 +161,10 @@ namespace chompi
         bool MasterSettled() { return normal_page_.MasterSettled(); }
         /** Whether FRIZZ should be a USB sound card (the settings page's, UsbDevice.h) */
         bool UsbAudio() const { return normal_page_.UsbAudio(); }
+        /** The card taken back: a master change still waiting, and what was read again
+         *  (NormalPage::MasterWaiting, Reread) */
+        bool MasterWaiting() const { return normal_page_.MasterWaiting(); }
+        void Reread(uint8_t taken) { normal_page_.Reread(taken); }
 #if !FRIZZ_BENCH
         /** The Loops page's loops (NormalPage::InitLoops, LoopsProcess) */
         void InitLoops(LoopLoader *loader, int16_t *rec) { normal_page_.InitLoops(loader, rec); }

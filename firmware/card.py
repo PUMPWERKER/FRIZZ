@@ -3,7 +3,8 @@
 
     ./card.py get                     FRIZZ/cpu.txt and every FRIZZ/bug-N.txt, into card/
     ./card.py get PATH... [-o DIR]    those files (paths on the card) into DIR
-    ./card.py put FILE PATH           FILE onto the card as PATH (a folder keeps FILE's name)
+    ./card.py put FILE PATH           FILE onto the card as PATH (a folder keeps FILE's name):
+                                      in /FRIZZ (not its settings and scenes) or /USBTEST
     ./card.py ls [PATH]               what's in a folder on the card
     ./card.py mount                   only mounts it, and prints where; `card.py done` ends it
                                       (in a hold, which keeps the CHOMPI in between:
@@ -17,7 +18,16 @@ slot N instead, --then none leaves it at the picker (before or after the subcomm
 leaves the card mounted. A FRIZZ that comes up with garbled USB names is started again (#88).
 
 How it gets there, and which launcher and storage firmware do it without a hand:
-tools/chompi.py. FRIZZ_SLOT and STORAGE_SLOT set other slots.
+tools/chompi.py. FRIZZ_SLOT and STORAGE_SLOT set other slots. It takes the CHOMPI (the lock)
+before anything, the card already a drive or not.
+
+The card is the user's: put writes only into /FRIZZ, where FRIZZ's own files are, and into
+/USBTEST, the tools' test folder; never over the settings or the scenes (/FRIZZ/frizz_*.txt and
+their .bak), and over a file in /FRIZZ already there (the user's loops, aN.wav) only with
+--replace. --dangerous lets it write anywhere else (and over those), but never into the root,
+/FIRMWARE (the launcher's firmwares: flash.py sends them) or /TAPE. The card's FAT matches
+names whatever their case and drops trailing dots and spaces, and so does the check (a short
+name, FRIZZ_~1.TXT, starts as its long one does).
 
 Linux only (ALSA's raw MIDI, udisks), Python 3 without packages, like flash.py.
 """
@@ -40,6 +50,34 @@ def on_card(root, path):
     return full
 
 
+# the folders put may write into, and what in them it may not, as card_name() has them
+PUT_FOLDERS = ("frizz", "usbtest")
+PUT_NEVER = ("firmware", "tape")
+
+
+def card_name(root, full):
+    """FULL (under ROOT) as the card's FAT matches it: its parts lower case, trailing dots and
+    spaces dropped"""
+    return [p.rstrip(". ").casefold() for p in os.path.relpath(full, root).split(os.sep)]
+
+
+def put_refused(root, dst, dangerous):
+    """Why put may not write DST (under ROOT), None if it may"""
+    parts = card_name(root, dst)
+    if len(parts) < 2:
+        return "the card's root is the launcher's (CHOMPI.bin) and every firmware's"
+    if parts[0] in PUT_NEVER:
+        return "/%s is %s" % (parts[0].upper(), "the launcher's firmwares: flash.py sends them"
+                              if parts[0] == "firmware" else "TAPE's")
+    if dangerous:
+        return None
+    if parts[0] not in PUT_FOLDERS:
+        return "only /FRIZZ and /USBTEST take a file (--dangerous: elsewhere)"
+    if parts[0] == "frizz" and parts[1].startswith("frizz_"):
+        return "the user's settings and scenes (--dangerous: anyway)"
+    return None
+
+
 def short(path):
     rel = os.path.relpath(path)
     return path if rel.startswith("..") else rel
@@ -60,10 +98,15 @@ def get(root, paths, out):
         print("  %s -> %s" % (path, short(dst)))
 
 
-def put(root, local, path):
+def put(root, local, path, dangerous=False, replace=False):
     dst = on_card(root, path)
     if os.path.isdir(dst):
         dst = os.path.join(dst, os.path.basename(local))
+    why = put_refused(root, dst, dangerous)
+    if not why and os.path.exists(dst) and not replace and card_name(root, dst)[0] != "usbtest":
+        why = "there already: --replace replaces it"
+    if why:
+        sys.exit("not written to %s: %s" % (os.path.relpath(dst, root), why))
     shutil.copyfile(local, dst)
     print("  %s -> %s" % (local, os.path.relpath(dst, root)))
 
@@ -108,6 +151,10 @@ def main():
     p = sub.add_parser("put", parents=[then])
     p.add_argument("file")
     p.add_argument("path")
+    p.add_argument("--replace", action="store_true", help="write over a file in /FRIZZ that's there")
+    p.add_argument("--dangerous", action="store_true",
+                   help="write outside /FRIZZ and /USBTEST, or over the settings and scenes (never "
+                   "the root, /FIRMWARE or /TAPE)")
     p = sub.add_parser("ls", parents=[then])
     p.add_argument("path", nargs="?")
     sub.add_parser("mount", parents=[then])
@@ -116,10 +163,21 @@ def main():
 
     if a.cmd == "put" and not os.path.isfile(a.file):
         sys.exit("no file %s" % a.file)
+    if a.cmd == "put":
+        # refused before the CHOMPI goes anywhere when the path alone says so: as a file, and
+        # as a folder keeping the file's name (which it is, put() sees on the card)
+        card = os.path.normpath(os.path.join("/", a.path.lstrip("/")))
+        whys = [put_refused("/", p, a.dangerous)
+                for p in (card, os.path.join(card, os.path.basename(a.file)))]
+        if all(whys):
+            sys.exit("not written to %s: %s" % (a.path, whys[-1]))
     if a.cmd == "mount" and not os.environ.get(chompi.HELD):
         # the card stays mounted after this ends, so the CHOMPI must stay held until done
         sys.exit("card.py mount leaves the card mounted until card.py done, which no lock of its "
                  "own covers: run both in a hold, e.g. tools/chompi.py hold bash")
+    # the lock first: a card that is a drive already (another's card.py mount, the storage
+    # firmware started by hand) is someone's, and finish() would eject it from under them
+    chompi.claim()
     if a.cmd == "done":
         if not chompi.storage_partition():
             sys.exit("the card isn't on USB")
@@ -137,7 +195,7 @@ def main():
         if a.cmd == "get":
             get(root, a.paths, a.out)
         elif a.cmd == "put":
-            put(root, a.file, a.path)
+            put(root, a.file, a.path, a.dangerous, a.replace)
         elif a.cmd == "ls":
             ls(root, a.path)
     finally:

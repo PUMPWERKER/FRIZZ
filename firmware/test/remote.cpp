@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -22,6 +23,7 @@
 #include "check.h"
 #include "script.h"
 #include "twin.h"
+#include "ptytwin.h"
 
 using namespace twin;
 
@@ -31,76 +33,46 @@ extern chompi::crash::Backup crash_mem;
 static const int kFilterKeyLed = 20;
 static const int kPlayLed = 7; // PanelLeds.h
 
-static int master_fd = -1;
-static std::string slave_path;
 static std::string remote_py;
-static std::string tmp_dir;
 
-/** The pseudo-terminal: raw, so every byte goes through as it is */
-static bool OpenPty()
+// the loop transfer's CHUNKs (0x38 0x11) the pty loses on the way while usb_drop is DropChunk
+// (ptytwin.h): each kDropEvery-th offset (98 bytes a CHUNK, kMaxChunk), on its first sending
+// only. By the offset, not by the count of CHUNKs seen: go-back-N sends the same CHUNKs again
+// after a gap, and every n-th one seen can be the same offset each round, the file never whole
+// (#315)
+static const uint32_t kDropEvery = 7;
+static int chunks_dropped = 0;
+static std::set<uint32_t> dropped;
+
+static bool DropChunk(const std::string& m)
 {
-    master_fd = posix_openpt(O_RDWR | O_NOCTTY);
-    if (master_fd < 0 || grantpt(master_fd) || unlockpt(master_fd))
+    if (m.size() < 12 || m.compare(0, 6, "\xF0\x7D\x43\x48\x38\x11"))
         return false;
-    slave_path = ptsname(master_fd);
-    // kept open, so the terminal stays up between remote.py's runs
-    const int slave = open(slave_path.c_str(), O_RDWR | O_NOCTTY);
-    termios t;
-    if (slave < 0 || tcgetattr(slave, &t))
+    uint32_t offset = 0;
+    for (int i = 7; i < 11; i++)
+        offset = offset << 7 | (static_cast<uint8_t>(m[i]) & 0x7F);
+    if ((offset / 98) % kDropEvery != kDropEvery - 1 || !dropped.insert(offset).second)
         return false;
-    cfmakeraw(&t);
-    tcsetattr(slave, TCSANOW, &t);
-    fcntl(master_fd, F_SETFL, O_NONBLOCK);
+    chunks_dropped++;
     return true;
 }
 
-// the loop transfer's CHUNKs (0x38 0x11) the pty drops: every drop_every-th, 0 none; a message
-// from remote.py gathered until its F7 for it
-static int drop_every = 0, chunks_seen = 0, chunks_dropped = 0;
-static std::string from_remote;
-
-/** What remote.py wrote, into the twin's USB (but the CHUNKs dropped); what the twin sent, back
- *  to it */
-static void Pump()
-{
-    uint8_t buf[256];
-    ssize_t n;
-    while ((n = read(master_fd, buf, sizeof(buf))) > 0)
-        for (ssize_t i = 0; i < n; i++)
-        {
-            if (!drop_every)
-            {
-                UsbMidi(buf[i]);
-                continue;
-            }
-            from_remote.push_back(static_cast<char>(buf[i]));
-            if (buf[i] != 0xF7)
-                continue;
-            const bool chunk = from_remote.size() > 6 && !from_remote.compare(0, 6, "\xF0\x7D\x43\x48\x38\x11");
-            if (chunk && ++chunks_seen % drop_every == 0)
-                chunks_dropped++;
-            else
-                for (char c : from_remote)
-                    UsbMidi(static_cast<uint8_t>(c));
-            from_remote.clear();
-        }
-    const std::string out = TakeUsbOut();
-    if (!out.empty() && write(master_fd, out.data(), out.size()) < 0)
-        perror("pty");
-}
-
-/** Runs ms of silence, as fast as the twin goes */
+/** Runs ms of silence, as fast as the twin goes: what remote.py left on the pty in, the twin's
+ *  answers out */
 static void RunMs(uint32_t ms)
 {
     for (uint32_t t = 0; t < ms; t++)
     {
-        Pump();
+        uint8_t buf[256];
+        ssize_t n;
+        while ((n = read(usb.fd, buf, sizeof(buf))) > 0)
+            for (ssize_t i = 0; i < n; i++)
+                ToTwinUsb(buf[i]);
+        FromTwin();
         Run(2, nullptr, nullptr);
     }
 }
 #include "twintest.h" // after RunMs, which its Tap runs
-
-static bool Has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
 
 /** In an LED line (LedLine, remote.py leds), where PLAY's colour is: after "pth " and the LEDs
  *  before it, 7 characters each. npos in another line */
@@ -122,97 +94,26 @@ static std::string WithoutPlay(std::string line)
     return line;
 }
 
-/** remote.py ARGS, the twin running at the wall clock's pace until it's done (30 s at most),
- *  interrupted (SIGINT, Ctrl-C) once it has printed interrupt_at, if given. Its exit code; out
- *  gets what it printed, stdout and stderr */
+/** ARG quoted for sh */
+static std::string Quoted(const std::string& arg)
+{
+    std::string q = "'";
+    for (char c : arg)
+        q += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    return q + "'";
+}
+
+/** remote.py ARGS, the twin running at the wall clock's pace until it's done (30 s at most,
+ *  ptytwin.h's Exec), interrupted (SIGINT, Ctrl-C) once it has printed interrupt_at, if given.
+ *  Its exit code; out gets what it printed, stdout and stderr; lag how far the twin fell
+ *  behind meanwhile */
 static int Remote(const std::vector<std::string>& args, std::string& out,
                   const std::string& interrupt_at = "")
 {
-    bool interrupt = !interrupt_at.empty();
-    int pipe_fd[2];
-    if (pipe(pipe_fd))
-        return -1;
-    const pid_t pid = fork();
-    if (pid == 0)
-    {
-        dup2(pipe_fd[1], 1);
-        dup2(pipe_fd[1], 2);
-        close(pipe_fd[0]);
-        setenv("PYTHONDONTWRITEBYTECODE", "1", 1); // no __pycache__ in the repo
-        setenv("FRIZZ_CHOMPI_HELD", "1", 1); // the twin, not the CHOMPI: no lock (tools/chompi.py)
-        signal(SIGINT, SIG_DFL); // a shell's background job (all.sh) ignores it, Python then too
-        std::vector<const char*> argv = {"python3", remote_py.c_str(), "--device",
-                                         slave_path.c_str()};
-        for (const std::string& a : args)
-            argv.push_back(a.c_str());
-        argv.push_back(nullptr);
-        execvp("python3", const_cast<char* const*>(argv.data()));
-        _exit(127);
-    }
-    close(pipe_fd[1]);
-    fcntl(pipe_fd[0], F_SETFL, O_NONBLOCK);
-    out.clear();
-    const auto start = std::chrono::steady_clock::now();
-    const uint32_t twin_start = NowMs();
-    int status = -1;
-    while (true)
-    {
-        char buf[512];
-        ssize_t n;
-        while ((n = read(pipe_fd[0], buf, sizeof(buf))) > 0)
-            out.append(buf, n);
-        if (waitpid(pid, &status, WNOHANG) == pid)
-            break;
-        const auto wall = std::chrono::steady_clock::now() - start;
-        if (interrupt && Has(out, interrupt_at))
-        {
-            kill(pid, SIGINT);
-            interrupt = false;
-        }
-        if (wall > std::chrono::seconds(30))
-        {
-            kill(pid, SIGKILL);
-            waitpid(pid, &status, 0);
-            out += "(timed out)";
-            break;
-        }
-        // one ms of the twin per ms of the wall clock
-        if (NowMs() - twin_start < std::chrono::duration_cast<std::chrono::milliseconds>(wall).count())
-            RunMs(1);
-        else
-            std::this_thread::sleep_for(std::chrono::microseconds(200));
-    }
-    char buf[512];
-    ssize_t n;
-    while ((n = read(pipe_fd[0], buf, sizeof(buf))) > 0)
-        out.append(buf, n);
-    close(pipe_fd[0]);
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-}
-
-
-static std::string firmware_dir;
-
-/** python3 on CODE with tools/ and firmware/ on its path, the lock (tools/chompi.py) a file in
- *  the temp folder and not held, 20 s at most: never the CHOMPI's own. It runs in the temp
- *  folder. Its exit code (-1 for a signal); out gets what it printed, stdout and stderr */
-static int Python(const std::string& code, std::string& out)
-{
-    const std::string file = tmp_dir + "/tools.py";
-    std::ofstream(file) << code;
-    const std::string cmd = "cd '" + tmp_dir + "' && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH='" + firmware_dir + "/tools:"
-                            + firmware_dir + "' FRIZZ_CHOMPI_LOCK='" + tmp_dir
-                            + "/lock' FRIZZ_CHOMPI_HELD= timeout -s KILL 20 python3 '" + file
-                            + "' 2>&1";
-    out.clear();
-    FILE* p = popen(cmd.c_str(), "r");
-    char buf[512];
-    size_t n;
-    while (p && (n = fread(buf, 1, sizeof(buf), p)) > 0)
-        out.append(buf, n);
-    const int status = p ? pclose(p) : -1;
-    unlink(file.c_str());
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    std::string cmd = "exec python3 " + Quoted(remote_py) + " --device " + Quoted(usb.path);
+    for (const std::string& a : args)
+        cmd += " " + Quoted(a);
+    return Exec(cmd, out, 30, {}, interrupt_at, interrupt_at.empty() ? 0 : SIGINT);
 }
 
 static void Write(const std::string& path, const std::string& text)
@@ -285,6 +186,21 @@ int main()
         rc = Python("import signal, chompi\nsignal.alarm(1)\nchompi.claim()\nprint('claimed')\n", out);
         Check(rc != 0 && Has(out, "the CHOMPI is in use") && !Has(out, "claimed"),
               "tools: reaching for it does, saying so");
+        // card.py with the card a drive already (another's card.py mount, the storage firmware
+        // started by hand): it waits for the lock all the same, touching nothing
+        rc = Python(R"(
+import signal, sys, chompi, card
+signal.alarm(1)
+chompi.storage_partition = lambda: "/dev/sdx1"
+chompi.mount = lambda part: print("mounted", part) or "/nowhere"
+chompi.to_launcher = chompi.start = lambda *rest: print("restarted")
+sys.argv = ["card.py", "ls"]
+card.main()
+)", out);
+        Check(rc != 0 && Has(out, "the CHOMPI is in use") && !Has(out, "mounted") && !Has(out, "restarted"),
+              "tools: card.py waits for the lock with the card a drive already");
+        if (!Has(out, "the CHOMPI is in use"))
+            printf("%s\n", out.c_str());
         close(lock);
         unlink((tmp_dir + "/lock").c_str());
     }
@@ -355,7 +271,7 @@ def flash_to(*argv):
     sys.argv = ["flash.py", "image.bin"] + list(argv)
     flash.main()
 case("flash", [True, False], lambda: flash_to("--slot", "12"))
-case("flash 5", [True], lambda: flash_to("--slot", "5", "--name", "FRIZZ-X"))
+case("flash 5", [True], lambda: flash_to("--slot", "5", "--other-slot", "--name", "FRIZZ-X"))
 os.remove("image.bin")
 chompi.forget()
 case("fix-name, none noted", [False], lambda: chompi.fix_name())
@@ -424,6 +340,7 @@ try:
     card.main()
 except SystemExit as e:
     print("exit:", e)
+os.environ.pop(chompi.HELD, None)  # the ls above took the lock, as its own process would
 sys.argv = ["card.py", "mount"]
 try:
     card.main()
@@ -435,6 +352,360 @@ except SystemExit as e:
     Check(Has(out, "exit: card.py mount leaves the card mounted"),
           "tools: card.py mount needs a hold");
     if (rc != 0 || !Has(out, "finished None"))
+        printf("%s\n", out.c_str());
+
+    // card.py put writes into /FRIZZ and /USBTEST only, never over the settings and scenes or a
+    // file there (the user's loops) unasked; --dangerous elsewhere, but never the root, /FIRMWARE
+    // or /TAPE, however the name is spelt (FAT: any case, trailing dots and spaces dropped);
+    // refused before the CHOMPI goes anywhere when the path says so
+    rc = Python(R"(
+import os, sys, chompi, card
+for d in ("card/FRIZZ", "card/USBTEST", "card/FIRMWARE", "card/TAPE", "card/mine"):
+    os.makedirs(d)
+open("card/FRIZZ/a1.wav", "w").write("the user's")
+open("card/USBTEST/t.txt", "w").write("old")
+open("x.txt", "w").write("new")
+root = os.path.abspath("card")
+def put(path, *flags):
+    try:
+        card.put(root, "x.txt", path, "--dangerous" in flags, "--replace" in flags)
+    except SystemExit as e:
+        print("refused %s %s: %s" % (path, " ".join(flags), e), flush=True)
+for path, flags in (("FRIZZ/", ()), ("FRIZZ/a1.wav", ()), ("FRIZZ/a1.wav", ("--replace",)),
+                    ("USBTEST/t.txt", ()), ("frizz/FRIZZ_master.txt", ()), ("FRIZZ./frizz_scenes.txt.bak", ()),
+                    ("FRIZZ/FRIZZ_~1.TXT", ()), ("FRIZZ/frizz_master.txt", ("--dangerous",)),
+                    ("mine/", ()), ("mine/", ("--dangerous",)), ("CHOMPI.bin", ("--dangerous",)),
+                    ("/", ("--dangerous",)), ("FIRMWARE/10_FRIZZ.bin", ("--dangerous",)),
+                    ("firmware. /13_x.bin", ("--dangerous",)), ("TAPE/", ("--dangerous",)), ("../x", ())):
+    put(path, *flags)
+print(sorted(os.path.relpath(os.path.join(d, f), root) for d, _, fs in os.walk(root) for f in fs))
+print(open("card/FRIZZ/a1.wav").read(), open("card/USBTEST/t.txt").read())
+chompi.to_storage = lambda *rest: print("to the drive") or "/dev/sdx1"
+chompi.mount = lambda part: print("mounted") or root
+card.finish = lambda then: print("finished")
+for path in ("FIRMWARE/", "TAPE/x.wav", "frizz/frizz_master.txt"):
+    sys.argv = ["card.py", "put", "x.txt", path]
+    try:
+        card.main()
+    except SystemExit as e:
+        print("main %s: %s" % (path, e), flush=True)
+)", out);
+    Check(rc == 0 && Has(out, "['FRIZZ/a1.wav', 'FRIZZ/frizz_master.txt', 'FRIZZ/x.txt', 'USBTEST/t.txt', 'mine/x.txt']\n")
+              && Has(out, "\nnew new\n") && Has(out, "refused FRIZZ/a1.wav : not written to FRIZZ/a1.wav: there already")
+              && !Has(out, "refused FRIZZ/ :") && !Has(out, "refused USBTEST/t.txt"),
+          "tools: card.py put writes into /FRIZZ and /USBTEST, over a file in /FRIZZ only with --replace");
+    Check(Has(out, "refused frizz/FRIZZ_master.txt : not written to frizz/FRIZZ_master.txt: the user's settings")
+              && Has(out, "refused FRIZZ./frizz_scenes.txt.bak : ") && Has(out, "refused FRIZZ/FRIZZ_~1.TXT : ")
+              && Has(out, "refused mine/ : not written to mine/x.txt: only /FRIZZ and /USBTEST")
+              && Has(out, "refused CHOMPI.bin --dangerous: not written to CHOMPI.bin: the card's root")
+              && Has(out, "refused / --dangerous: not written to x.txt: the card's root")
+              && Has(out, "refused FIRMWARE/10_FRIZZ.bin --dangerous: not written to FIRMWARE/10_FRIZZ.bin: /FIRMWARE is")
+              && Has(out, "refused firmware. /13_x.bin --dangerous: ") && Has(out, "refused TAPE/ --dangerous: ")
+              && Has(out, "refused ../x : ../x is not on the card"),
+          "tools: never the settings and scenes unasked, never the root, /FIRMWARE or /TAPE, however spelt");
+    Check(Has(out, "main FIRMWARE/: not written to FIRMWARE/: /FIRMWARE is")
+              && Has(out, "main TAPE/x.wav: not written to TAPE/x.wav: /TAPE is TAPE's")
+              && Has(out, "main frizz/frizz_master.txt: not written to frizz/frizz_master.txt: the user's")
+              && !Has(out, "to the drive") && !Has(out, "finished"),
+          "tools: card.py put refuses those before the CHOMPI goes anywhere");
+    if (rc != 0 || !Has(out, "main frizz/"))
+        printf("%s\n", out.c_str());
+    system(("rm -rf '" + tmp_dir + "/card' '" + tmp_dir + "/x.txt'").c_str());
+
+    // a host check that reaches for a real device, a stub missing, is stopped there, finally
+    // blocks and all: Python() sets FRIZZ_NO_DEVICE (pytool.h). A pty (the twin's) still goes
+    for (const char* reach : {"chompi.link('/dev/snd/midiC9D0').__enter__()", "chompi.udisks('info', '-b', '/dev/sdx1')",
+                              "remote.Frizz('/dev/snd/midiC9D0')"})
+    {
+        const std::string code = std::string("import chompi, remote, card\ntry:\n    ") + reach
+                                 + "\nfinally:\n    print('finally ran')\nprint('carried on')\n";
+        rc = Python(code, out);
+        Check(rc == 70 && Has(out, "a host check reached for a real device (") && !Has(out, "carried on")
+                  && !Has(out, "finally ran"),
+              (std::string("tools: the host checks' net stops ") + reach).c_str());
+        if (rc != 70)
+            printf("%s\n", out.c_str());
+    }
+    rc = Python("import os, pty, chompi\nm, s = pty.openpty()\nwith chompi.link(os.ttyname(s)) as to:\n"
+                "    print('pty', to.fd > 0)\n",
+                out);
+    Check(rc == 0 && Has(out, "pty True\n"), "tools: but lets a pty through, the twin's");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
+
+    // the user's keys stay guarded whatever FRIZZ_SLOT and BETA_SLOT say; a slot is checked
+    // before anything is built or the CHOMPI restarted, another key than FRIZZ's and the
+    // bench's only with --other-slot; FRIZZ's keys keep another firmware on them unasked
+    rc = Python(R"(
+import os, sys
+os.environ.update(FRIZZ_SLOT="5", BETA_SLOT="14", TEST_SLOT="10")
+import chompi, flash, midi_send
+log = []
+chompi.to_launcher = lambda *rest: log.append("launcher") or "l"
+chompi.wait_for = lambda *rest: "node"
+chompi.renamed = lambda slot, node, *rest: node
+chompi.ident = lambda node: None
+chompi.started = chompi.noted_image = lambda *rest: None
+midi_send.main = lambda: log.append("sent %s" % sys.argv[3])
+there = {}
+chompi.slot_file = lambda device, slot: there.get(slot)
+open("image.bin", "wb").write(b"x")
+flash.builds.build = flash.builds.built = lambda bench: "image.bin"
+def flash_to(*argv):
+    log.clear()
+    sys.argv = ["flash.py"] + list(argv)
+    try:
+        flash.main()
+        got = "ok"
+    except SystemExit as e:
+        got = "exit: %s" % e
+    print("%s: %s %s" % (" ".join(argv), got, log), flush=True)
+print("user slots", chompi.USER_SLOTS)
+for argv in (("image.bin", "--slot", "13"), ("image.bin", "--slot", "10"), ("--test", "--no-build"),
+             ("image.bin", "--slot", "5"), ("image.bin", "--slot", "14")):
+    flash_to(*argv)
+print("-- the defaults", flush=True)
+os.environ.update(FRIZZ_SLOT="10", BETA_SLOT="13", TEST_SLOT="12")
+import importlib
+importlib.reload(chompi)
+flash.chompi = chompi
+chompi.to_launcher = lambda *rest: log.append("launcher") or "l"
+chompi.wait_for = lambda *rest: "node"
+chompi.renamed = lambda slot, node, *rest: node
+chompi.ident = lambda node: None
+chompi.started = chompi.noted_image = lambda *rest: None
+chompi.slot_file = lambda device, slot: there.get(slot)
+for argv in (("image.bin", "--slot", "15"), ("image.bin", "--slot", "0"), ("image.bin", "--slot", "16"),
+             ("image.bin", "--slot", "15", "--other-slot"), ("image.bin", "--slot", "12")):
+    flash_to(*argv)
+there[12] = "12_TAPE.bin"
+flash_to("image.bin", "--slot", "12")
+flash_to("--test", "--no-build")
+flash_to("image.bin", "--slot", "12", "--other-slot")
+os.remove("image.bin")
+)", out);
+    Check(rc == 0 && Has(out, "user slots (5, 10, 13, 14)\n")
+              && Has(out, "image.bin --slot 13: exit: key 13 is the latest beta, the user's: only a release's")
+              && Has(out, "image.bin --slot 10: exit: key 10 is ") && Has(out, "--test --no-build: exit: key 10 is ")
+              && Has(out, "image.bin --slot 5: exit: key 5 is ") && Has(out, "image.bin --slot 14: exit: key 14 is ")
+              && Has(out, "-- the defaults") && !Has(out.substr(0, out.find("-- the defaults")), "'sent"),
+          "tools: flash.py keeps keys 10 and 13 the user's whatever FRIZZ_SLOT, BETA_SLOT and TEST_SLOT say");
+    Check(Has(out, "image.bin --slot 15: exit: key 15 isn't FRIZZ's or the bench's (10, 11, 12, 13): ")
+              && Has(out, "image.bin --slot 0: exit: no key 0: the launcher's are 1-15 []\n")
+              && Has(out, "image.bin --slot 16: exit: no key 16") && Has(out, "image.bin --slot 15: exit: key 15 isn't FRIZZ's or the bench's (10, 11, 12, 13): sending replaces what's there, so --other-slot says it's meant (never in a session's run) []\n")
+              && Has(out, "image.bin --slot 15 --other-slot: ok ['launcher', 'sent 15']\n")
+              && Has(out, "image.bin --slot 12: ok ['launcher', 'sent 12']\n"),
+          "tools: flash.py --slot takes FRIZZ's keys and the bench's, another only with --other-slot, before any restart");
+    Check(Has(out, "image.bin --slot 12: exit: key 12 holds 12_TAPE.bin, not FRIZZ: give --other-slot")
+              && Has(out, "--test --no-build: exit: key 12 holds 12_TAPE.bin")
+              && Has(out, "image.bin --slot 12 --other-slot: ok ['launcher', 'sent 12']\n"),
+          "tools: flash.py replaces another firmware on FRIZZ's keys only with --other-slot, --slot or not");
+    if (rc != 0 || !Has(out, "--other-slot: ok ['launcher', 'sent 12']"))
+        printf("%s\n", out.c_str());
+
+    // nothing restarts FRIZZ while it lends the card to the computer: the drive would go from
+    // under it (#196). Its drive seen, or FRIZZ's own word (USB's flags) before the drive shows;
+    // sent as before when neither
+    rc = Python(R"(
+import contextlib, os, sys, chompi
+r, w = os.pipe()
+os.set_blocking(r, False)
+class To:
+    fd = w
+chompi.link = contextlib.contextmanager(lambda node: (yield To()))
+flags = [0]
+chompi.dev_call = lambda to, sub, args=b"", **kw: (chompi.OK, bytes([flags[0]])) if sub == chompi.USB_SUB else None
+def restart(drive, f, hard=False):
+    chompi.lent_partition = lambda: drive
+    flags[0] = f
+    try:
+        chompi.restart("node", hard)
+        got = "sent"
+    except SystemExit as e:
+        got = "exit: %s" % e
+    try:
+        got += " " + os.read(r, 100).hex()
+    except BlockingIOError:
+        got += " nothing"
+    print(got, flush=True)
+restart("/dev/sdz1", 0)
+restart(None, chompi.CARD_LENT | 1)
+restart(None, 1)
+restart(None, 0, hard=True)
+restart("/dev/sdz1", 0, hard=True)
+chompi.dev_call = lambda *rest, **kw: None
+restart(None, 0)
+)", out);
+    Check(rc == 0 && Has(out, "exit: FRIZZ lends the card to the computer (CHOMPI-SD at /dev/sdz1): not restarted, the drive would go from under it. Eject it there (or take it back on the CHOMPI) and run this again nothing\n")
+              && Has(out, "exit: FRIZZ lends the card to the computer (FRIZZ says so): not restarted")
+              && Has(out, "\nsent f07d434810f7\nsent f07d43483e0a00525354f7\nexit: ")
+              && Has(out, "\nsent f07d434810f7\n"),
+          "tools: chompi.restart refuses while FRIZZ lends the card, by the drive or by FRIZZ's word");
+    if (rc != 0 || !Has(out, "FRIZZ says so"))
+        printf("%s\n", out.c_str());
+
+    // remote.py set: VOLUME's input gain is saved however its index is written ("01", " 1",
+    // "+1", as try_set reads it), so it keeps the card out of it as for "in" (PERSIST 0)
+    rc = Python(R"(
+import remote
+print([remote.set_saves("volume", i) for i in ("in", "1", "01", " 1", "+1", "out", "0", "2", "x", "1.0")],
+      remote.set_saves("comp", "0"), remote.set_saves("settings", "mono"), remote.set_saves("filter", "1"))
+)", out);
+    Check(rc == 0 && Has(out, "[True, True, True, True, True, False, False, False, False, False] True True False\n"),
+          "tools: remote.py set volume's input gain counts as saved however its index is written");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
+
+    // remote.py's developers' SysEx asked again keeps its SEQ, so a late answer to the first ask
+    // counts: a job's start asked again is refused, but the first ask's OK comes first (FIFO)
+    rc = Python(R"(
+import os, threading, remote, chompi
+r, w = os.pipe()
+class Link:
+    fd = w
+    def __init__(self, answers): self.answers = answers
+    def recv(self, cmd, timeout, match=None):
+        a = self.answers.pop(0) if self.answers else None
+        return a if a is None or match(a) else None
+f = object.__new__(remote.Frizz)
+f.write_lock, f.query_lock = threading.Lock(), threading.Lock()
+def asks():
+    data = os.read(r, 1000)
+    return [m[6] for m in data.split(b"\xf7") if m]
+chompi._seq[0] = 40
+f.link = Link([None, None, bytes([remote.chompi.IDENT, 41, 0])])
+print("ident", f.dev(chompi.IDENT), asks(), flush=True)
+f.link = Link([None, bytes([chompi.LOOPS, 42, 0]), bytes([chompi.LOOPS, 42, 1])])
+print("load", f.dev(chompi.LOOPS, [4, 0, 0, 0], wait=0.01), asks(), flush=True)
+)", out);
+    Check(rc == 0 && Has(out, "ident (0, b'') [41, 41, 41]\n") && Has(out, "load (0, b'') [42, 42]\n"),
+          "tools: remote.py asks again with the same SEQ, and takes the first answer, a job's start's OK");
+    if (rc != 0)
+        printf("%s\n", out.c_str());
+
+    // the TRS interface found is never FRIZZ's own node (the Daisy's USB id, its card called
+    // FrizZ or Default), not while FRIZZ restarts either, and said which
+    rc = Python(R"(
+import os, chompi, midiport
+chompi.find_device = lambda: None  # FRIZZ restarting: not found as the CHOMPI
+for d in ("asound/card1", "asound/card2", "snd"):
+    os.makedirs(d)
+open("asound/cards", "w").write(" 1 [Default        ]: USB-Audio - FrizZ\n                      Electrosmith FrizZ at usb-1\n"
+                                " 2 [USB            ]: USB-Audio - Scarlett\n                      Focusrite Scarlett at usb-2\n")
+open("asound/card1/usbid", "w").write("0483:5740\n")
+open("asound/card2/usbid", "w").write("1235:8215\n")
+for n in ("midiC1D0", "midiC2D0"):
+    open("snd/" + n, "w").close()
+chompi.ASOUND, chompi.SND = "asound", "snd"
+print("trs", midiport.trs_midi(), flush=True)
+)", out);
+    Check(rc == 0 && Has(out, "trs snd/midiC2D0\n") && Has(out, "the TRS interface: snd/midiC2D0 (USB / "),
+          "tools: the TRS interface is never FRIZZ's own USB node, and said which");
+    if (rc != 0 || !Has(out, "trs snd/midiC2D0"))
+        printf("%s\n", out.c_str());
+
+    // tools/midi_send.py run by hand takes the lock and leaves the user's keys, the storage
+    // firmware's and the launcher to flash.py; another key goes on as before
+    rc = Python(R"(
+import subprocess, sys
+open("x.bin", "wb").write(b"x")
+by_hand = "import runpy, sys\nsys.argv[0] = 'midi_send.py'\nrunpy.run_module('midi_send', run_name='__main__')\n"
+for args in (["--slot", "13"], ["--sl", "10"], ["--slot=15"], ["--clear", "10"], ["--launcher"], ["--slot", "12"]):
+    p = subprocess.run([sys.executable, "-c", by_hand, "x.bin", "--device", "nowhere"] + args,
+                       capture_output=True, text=True)
+    print(" ".join(args), p.returncode, (p.stderr.strip().splitlines() or [""])[-1], flush=True)
+)", out);
+    Check(rc == 0 && Has(out, "--slot 13 1 midi_send.py by hand leaves keys 10, 13, 15 and the launcher alone")
+              && Has(out, "--sl 10 1 midi_send.py by hand") && Has(out, "--slot=15 1 midi_send.py by hand")
+              && Has(out, "--clear 10 1 midi_send.py by hand") && Has(out, "--launcher 1 midi_send.py by hand")
+              && Has(out, "--slot 12 1 FileNotFoundError"),
+          "tools: midi_send.py by hand leaves keys 10, 13, 15 and the launcher to flash.py");
+    if (rc != 0 || !Has(out, "--slot 12 1 FileNotFoundError"))
+        printf("%s\n", out.c_str());
+
+    // usbjitter.py turns PERSIST 0 on: the user's FRIZZ it measured is started again at the end,
+    // from the card, so it saves again (the test slot's needn't); usbaudio.py card on needs a
+    // hold, the card staying lent after it (as card.py mount)
+    rc = Python(R"(
+import sys, chompi, remote, usbjitter, usbaudio
+usbjitter.time.sleep = lambda s: None
+class F:
+    def __init__(self): self.link = type("L", (), {"fd": -1})()
+    def ram_only(self): return True
+    def ask(self, cmd): return [0, 0, 0, 0]
+    def send(self, *rest): pass
+usbjitter.TapLink = lambda link: type("T", (), {"fd": -1, "running": True, "ticks": []})()
+remote.Frizz = lambda node: F()
+remote.loops_load = lambda *rest: None
+remote.os.close = lambda fd: None
+for slot in (10, 12):
+    def to_frizz(s, slot=slot):
+        chompi.frizz_slot = slot
+        return "node"
+    chompi.to_frizz = to_frizz
+    chompi.start = lambda s: print("started", s, flush=True)
+    sys.argv = ["usbjitter.py", "--slot", str(slot)]
+    try:
+        usbjitter.main()
+    except SystemExit as e:
+        print("slot %d: %s" % (slot, e), flush=True)
+sys.argv = ["usbaudio.py", "card", "on"]
+try:
+    usbaudio.main()
+except SystemExit as e:
+    print("card on:", e)
+)", out);
+    Check(rc == 0 && Has(out, "started 10\nslot 10: no clock ticks") && Has(out, "\nslot 12: no clock ticks")
+              && !Has(out, "started 12"),
+          "tools: usbjitter.py starts the user's FRIZZ it measured again, its PERSIST 0 gone");
+    Check(Has(out, "card on: card on leaves the card lent until card off, which no lock of its own covers"),
+          "tools: usbaudio.py card on needs a hold");
+    if (rc != 0 || !Has(out, "card on:"))
+        printf("%s\n", out.c_str());
+
+    // the smaller holes: a hold that's gone (SIGTERMed, its child running on) holds nothing, so
+    // its child takes the lock; make failing (2) isn't a fresh build; key 10 takes no
+    // pre-release's tag; an IDENT cut short is no IDENT, said so
+    rc = Python(R"(
+import os, signal, subprocess, sys, chompi, builds, flash, remote
+p = subprocess.Popen(["true"])
+p.wait()
+os.environ[chompi.HELD] = str(p.pid)  # its hold is gone
+chompi.claim()
+print("dead hold: lock taken", chompi._lock is not None, flush=True)
+codes = []
+builds.subprocess.run = lambda *a, **kw: subprocess.CompletedProcess(a, codes.pop(0))
+for code in (0, 1, 2):
+    codes.append(code)
+    print("make -q %d: stale %s" % (code, builds.stale(builds.image(False))), flush=True)
+flash.tagged = lambda where=flash.HERE: "v1.5.0-beta.1"
+class A:
+    bench = False
+for slot in (10, 13):
+    flash.builds.check_version = lambda tag: print("checked", tag)
+    try:
+        print("beta tag, key %d:" % slot, flash.user_slot(slot, A()), flush=True)
+    except SystemExit as e:
+        print("beta tag, key %d: exit: %s" % (slot, e), flush=True)
+print("short ident", chompi.parse_ident(bytes(25)), chompi.parse_ident(bytes(26)) is not None)
+class F:
+    def dev(self, sub, *rest, **kw): return (chompi.OK, bytes(10))
+try:
+    remote.show_ident(F())
+except SystemExit as e:
+    print("show_ident:", e)
+print("in_ram:", remote.in_ram(F()))
+)", out);
+    Check(rc == 0 && Has(out, "dead hold: lock taken True\n"), "tools: a hold that's gone holds nothing: its child takes the lock");
+    Check(Has(out, "make -q 0: stale False\nmake -q 1: stale True\nmake -q 2: stale True\n"),
+          "tools: builds.py takes a build for fresh only when make -q says so (0), not when it fails");
+    Check(Has(out, "beta tag, key 10: exit: key 10 is the latest release: v1.5.0-beta.1 is a pre-release's tag")
+              && Has(out, "checked v1.5.0-beta.1\nbeta tag, key 13: v1.5.0-beta.1\n"),
+          "tools: flash.py sends a pre-release's build to key 13, never to key 10");
+    Check(Has(out, "short ident None True\n") && Has(out, "show_ident: IDENT's answer is cut short (10 bytes)")
+              && Has(out, "in_ram: no answer to IDENT"),
+          "tools: an IDENT cut short is no IDENT, said so, never an IndexError");
+    if (rc != 0 || !Has(out, "in_ram:"))
         printf("%s\n", out.c_str());
 
     // which slot runs, no firmware says (the bench answers as FRIZZ does): the tools note the
@@ -639,7 +910,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
         printf("%s\n", out.c_str());
     unlink((tmp_dir + "/levels.txt").c_str());
 
-    if (!OpenPty())
+    if (!usb.Open())
     {
         Check(false, "remote: a pseudo-terminal for the twin's USB");
         return Finish();
@@ -679,7 +950,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc = Remote({"load"}, out);
     Check(rc == 0 && Has(out, "max") && Has(out, "mean"), "remote: load reads the load");
 
-    rc = Remote({"load", "--device", slave_path}, out);
+    rc = Remote({"load", "--device", usb.path}, out);
     Check(rc == 0 && Has(out, "max"), "remote: --device after the subcommand counts too");
     if (rc != 0)
         printf("%s\n", out.c_str());
@@ -876,13 +1147,21 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
             printf("%s\n", out.c_str());
         rc = Remote({"loops", "load", "h", "1", "--check", wav}, out);
         Check(rc == 0 && Has(out, ": the same"), "remote: loops load of the upload: its CRC-32 the file's data's");
-        drop_every = 7;
+        usb_drop = DropChunk;
         rc = Remote({"loops", "put", other, "h", "2"}, out);
-        drop_every = 0;
-        Check(rc == 0 && chunks_dropped > 0 && !Has(out, ", 0 rewinds") && Card("/FRIZZ/h2.wav") == Read(other),
-              "remote: loops put with every 7th CHUNK lost on the way: rewound, the file whole");
+        usb_drop = nullptr;
+        const bool whole = Card("/FRIZZ/h2.wav") == Read(other);
+        Check(rc == 0 && chunks_dropped == 20 && !Has(out, ", 0 rewinds") && whole,
+              "remote: loops put with every 7th CHUNK lost on its first sending: rewound, the file whole");
         const size_t line = out.rfind("h2.wav ->");
         printf("      %d CHUNKs dropped: %s", chunks_dropped, line == std::string::npos ? "\n" : out.substr(line).c_str());
+        if (rc != 0 || !whole)
+        {
+            printf("%s\n      (the twin was %ld ms behind the wall clock at most)\n", out.c_str(), lag);
+            // the cases after it from h2 as it should be, not failing with this one
+            CardFiles()["/FRIZZ/h2.wav"] = Read(other);
+            Remote({"loops", "rescan"}, out);
+        }
         rc = Remote({"loops", "ls"}, out);
         Check(rc == 0 && Has(out, "h1  stereo, 10000 frames (0.21 s), " + std::to_string(named.size()) + " B, \"" + name + "\"\n")
                   && Has(out, "h2  mono, 7000 frames") && Has(out, "cubbi_c3  stereo")
@@ -956,6 +1235,23 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
               "crash: a start without the watchdog's flag keeps the record");
         crash_mem.running = running;
         crash::Clear(crash_mem.record);
+    }
+    {
+        // a stacking fault, or an SP where no stack is: the handler doesn't read the frame (a
+        // second fault there would lock the core up), it keeps the SP and the fault's bits
+        using namespace chompi;
+        Check(crash::FrameReadable(0x2001ff00u, 0x8200) && crash::FrameReadable(0x24070000u, 0)
+                  && !crash::FrameReadable(0x2001ff00u, 0x1000) && !crash::FrameReadable(0x2001ff00u, 0x10)
+                  && !crash::FrameReadable(0x2001fff0u, 0) && !crash::FrameReadable(0x60000000u, 0)
+                  && !crash::FrameReadable(0x2001ff02u, 0),
+              "crash: the stacked frame is read only if stacked, in DTCM or the AXI SRAM");
+        crash::Record r = {};
+        const uint32_t frame[8] = {0, 0, 0, 0, 0, 0x24001235, 0x24004214, 0x01000003};
+        const uint32_t fault[4] = {0x1000, 0x40000000, 0, 0};
+        crash::Write(r, crash::HARD_FAULT, crash_mem.running, 1, 0, frame, fault, false);
+        Check(crash::Valid(r) && r.pc == 0 && r.lr == 0 && r.xpsr == 0 && r.cfsr == 0x1000
+                  && r.sp == (reinterpret_cast<uintptr_t>(frame) & 0xFFFFFFFFu),
+              "crash: a frame not stacked isn't read, its SP and the fault's bits recorded");
     }
     rc = Remote({"crash-test", "fault-main"}, out);
     Check(rc != 0 && Has(out, "TEST: not in this build"), "remote: crash-test, on FRIZZ: not in this build");
@@ -1344,6 +1640,7 @@ chompi.started(12)
 case("old noted", None)
 sys.argv = ["flash.py", "a.bin", "--slot", "12"]
 chompi.to_launcher = lambda *rest: "l"
+chompi.slot_file = lambda *rest: None  # key 12 holds FRIZZ-TEST
 chompi.wait_for = lambda *rest: "node"
 chompi.renamed = lambda slot, node, *rest: node
 midi_send.main = lambda: None

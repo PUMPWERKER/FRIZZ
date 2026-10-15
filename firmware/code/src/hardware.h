@@ -90,7 +90,8 @@ uint8_t DMA_BUFFER_MEM_SECTION mp_dma_buff[6];
 
         /** Initialize the hardware */
         Hardware() {}
-        void Init()
+        // the boot's and MainLoop's every 20 ms, not the audio callback's: small rather than fast
+        __attribute__((noinline, optimize("Os"))) void Init()
         {
             /** Daisy Seed Initialization */
             seed.Init(true);
@@ -249,7 +250,7 @@ uint8_t DMA_BUFFER_MEM_SECTION mp_dma_buff[6];
         bool plugged_ = true; // the cable at the last check, as vin_gd_bounce starts
         /** Called periodically from MainLoop() (see chompi_main.cpp) to protect the
          *  battery from running on too low battery. */
-        void LowBatteryLockoutCheck()
+        __attribute__((noinline, optimize("Os"))) void LowBatteryLockoutCheck()
         {
             // not during the level check, whose threshold is raised to 3V3 (BMCMediumBattCheck)
             if(batt_check_state == 0)

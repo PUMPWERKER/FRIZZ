@@ -42,6 +42,8 @@ public:
 
     /** While it shows: whether a blink is lit now */
     inline bool BlinkLit(uint32_t now) const { return ((now - start_) / kSignalBlinkMs) % 2 == 0; }
+    /** And as an LED's level, full or dark: out of line, once for every LED that blinks */
+    __attribute__((noinline)) float BlinkLevel(uint32_t now) const { return BlinkLit(now) ? 1.f : 0.f; }
 
 private:
     uint32_t start_ = 0;

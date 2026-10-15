@@ -358,8 +358,10 @@ FRIZZ's 8 banks of 15 with each loop's name, and TAPE's cubbis. Then:
   lending the card [as a USB drive](#the-card-as-a-usb-drive) is several times faster (a card
   reader too).
 - **While FRIZZ records a loop, loads one or saves to the card,** an upload waits and goes on
-  by itself. Lending the card to the computer ends an upload, and so does switching
-  [USB audio](#usb-audio) on or off. A card too full for a loop refuses it.
+  by itself. Lending the card to the computer stops an upload: the page waits, and once the
+  card is back it sends that loop again from its start (the slot keeps its old loop until
+  then). Switching [USB audio](#usb-audio) on or off ends an upload. A card too full for a loop
+  refuses it.
 - **Nothing half is left:** an upload cut short (the tab closed, the cable pulled, the power
   off) leaves the slot as it was. If the CHOMPI doesn't answer (another firmware, or an
   older FRIZZ), the page says so.
@@ -873,7 +875,7 @@ gritty overtones.
 - **The fold:** past the fold point the signal is mirrored back, again and again as the
   drive rises, each fold adding harmonics. Drive is the folding: on loud material the folds
   start low on the knob, on quiet material higher up.
-- **Level:** at 1× a quiet sound comes out at its own level. Driven, a folder's output
+- **Level:** at 1× a quiet sound comes out at its own level, the bass too. Driven, a folder's output
   rises towards full scale whatever goes in, so the folder gets louder as you drive it, the
   more so on quiet material. Nothing evens that out by itself: page 2's Level and Mix are
   there for it.
@@ -929,6 +931,8 @@ that follows the tempo (the DJ filter of TAPE, TEMPO and WAVE).
   from lowpass to highpass. It's at the centre of the cutoff on the beat and rises towards
   highpass first. Like the delay's events, the beat is counted from the loop's start, or
   without a loop from when the clock locked, not from the DAW's beat 1.
+- **Slopes:** 12 dB per octave either way. The resonance goes from none to a peak of about
+  20 dB at the cutoff; at the centre the filter is out of the sound, whatever the resonance.
 - LEDs: the key is pink; the cutoff goes blue through white (flat) to orange, the other knobs
   pink to light blue.
 
@@ -1558,7 +1562,8 @@ the input.
 - The transport LEDs are purple, so the page can't be mistaken for the play page.
 - **SHIFT + VOLUME, held 2 s:** hold SHIFT and press and hold the VOLUME knob, in either
   order; after 2 s it writes a [bug report](#bug-reports), once per hold. CHOMPI lights white
-  while you hold it, as on the play page.
+  while you hold it, as on the play page. SHIFT held from the play page, the switch flipped
+  up with it held, counts here as for every SHIFT combination, for SHIFT + LOOP's hold too.
 - Otherwise knobs 2-4 (their LEDs dark), CHOMPI (but as SHIFT), PLAY and LOOP do nothing
   here.
 - A key you're holding when you flip the switch stays where it went down until you let go:
@@ -1724,7 +1729,7 @@ loops from there. Leave the card in.
 |---|---|---|
 | `FRIZZ/frizz_scenes.txt` | The 4 [FX scenes](#fx-scenes) | When you save, copy or delete a scene |
 | `FRIZZ/frizz_master.txt` | The [master compressor](#master-compressor) and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, USB audio, and for AUX, the mic and USB each their input gain, monitoring and effects | 2 s after the last change |
-| `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | The versions before | With each write of the file |
+| `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | A file FRIZZ couldn't read, or the computer's version that FRIZZ's own replaced ([The card as a USB drive](#the-card-as-a-usb-drive)) | When FRIZZ's save replaces it |
 | `FRIZZ/bug-1.txt`, `bug-2.txt` … | [Bug reports](#bug-reports) | When you ask for one |
 | `FRIZZ/a1.wav` … `h15.wav` | Your [loops](#loops-on-the-card) | Only by the [Companion](#the-companion), as it uploads, moves or deletes them |
 | `FRIZZ/xfer.tmp` | A Companion upload under way, renamed to its slot when it's whole | During an upload; one left over is deleted at power-on |
@@ -1763,9 +1768,9 @@ on again, so the scenes on the card aren't replaced by the session's.
 A line FRIZZ doesn't know is skipped, a setting left out or out of its range keeps its
 default, and a word where a number belongs makes the whole file unreadable: FRIZZ then starts
 with every setting at its default and keeps the file as `frizz_master.bak`. Edit the files
-with the card taken out or in the launcher's [USB storage mode](INSTALL.md#usb-storage-mode),
-not on the card [lent as a USB drive](#the-card-as-a-usb-drive): FRIZZ reads them only at
-power-on.
+with the card taken out, in the launcher's [USB storage mode](INSTALL.md#usb-storage-mode), or
+on the card [lent as a USB drive](#the-card-as-a-usb-drive), which FRIZZ reads again when it
+takes the card back.
 
 ### The card as a USB drive
 
@@ -1776,15 +1781,30 @@ for 2 s**. LOOP lights blue there while the card is lent, and the computer finds
 lent). The loop and the effects play on meanwhile.
 
 - **To take it back:** eject the drive on the computer, unplug the cable, or hold SHIFT + LOOP
-  for 2 s again on the settings page; a computer going to sleep takes it back too. FRIZZ then
-  looks for the loops again (the Loops page shows what's there now).
-- **The scenes and settings stay as they are in FRIZZ:** it reads `frizz_scenes.txt` and
-  `frizz_master.txt` only at power-on, and its next save writes over what the computer changed
-  in them. Copy them off the drive freely; to edit them, see
-  [Scenes and settings on the card](#scenes-and-settings-on-the-card).
+  for 2 s again on the settings page; a computer going to sleep takes it back too, and so does
+  a restart over MIDI (the launcher's), before FRIZZ restarts. FRIZZ then looks for the loops
+  again (the Loops page shows what's there now).
+- **Scenes and settings edited on the computer come in:** taken back, FRIZZ reads
+  `frizz_scenes.txt` and `frizz_master.txt` again if the computer changed them, as at power-on
+  ([Scenes and settings on the card](#scenes-and-settings-on-the-card)). A file the computer
+  left as it was changes nothing.
+  - The settings apply at once. The input gains and the compressor's knobs glide there as when
+    you turn them, and `usb_audio` switched takes FRIZZ off USB and back on as the settings
+    page does. What MIDI set without the card (an input gain by CC, say) goes to the file's
+    value, as after a restart.
+  - The scenes come in for their next recall: what plays stays as it is. If the scene that
+    plays changed, its key pulses as edited, as after you turn a knob.
+- **If you changed them on FRIZZ meanwhile, FRIZZ's wins**, file by file: a scene saved, copied
+  or deleted while the card was lent, or a setting changed (or still in its 2 s before it's
+  saved) when you take the card back. FRIZZ then writes its own over the computer's, and keeps
+  the computer's as `frizz_scenes.bak` or `frizz_master.bak`.
+- **A file the computer left unreadable** changes nothing in FRIZZ: it writes its own at once
+  and keeps the computer's as the `.bak`. One the computer deleted changes nothing either, and
+  FRIZZ's next save writes it again.
 - **While it's lent, FRIZZ leaves the card alone:** saving a scene or a setting waits until
   it's back, a loop can't be loaded from it, a bug report can't be written, and a
-  [Companion](#the-companion) upload running ends. A loop from the card you played just before
+  [Companion](#the-companion) upload running stops: the page waits and sends that loop again
+  from its start once the card is back. A loop from the card you played just before
   is usually still in memory and switches at once; one that has to be loaded waits until the
   card is back. Only the settings page shows it (LOOP blue); on the play page FRIZZ plays as
   always.
@@ -2046,6 +2066,10 @@ save, copy and delete 66, 68 and 70. Below them:
 - The velocity doesn't matter; a note on at velocity 0 is a note off.
 - All Notes Off (CC 123) or All Sound Off (CC 120) lets go of every key MIDI holds, for a
   note off that went missing.
+- So does the computer going away (the cable pulled, the computer asleep) or
+  [USB audio](#usb-audio) switching, when FRIZZ leaves the bus for a moment. A note off on any
+  channel lets go of a key a note holds, so a key held through a change of the global
+  channel still lets go.
 
 ### Controllers
 
@@ -2307,8 +2331,9 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
 
 ### Processing load
 
-Effects that are off cost (almost) no processing time, but the ones that are on do. Some
-heavy combinations (the shifter and the crusher with a loop playing and the master compressor
+Effects that are off cost little processing time, about 5% of each block's together (most of
+it the resonator and the shifter keeping their recent sound for a punch-in), but the ones that
+are on do. Some heavy combinations (the shifter and the crusher with a loop playing and the master compressor
 working hard, for example) can need more time than there is, which is heard as crackles;
 switching one of them off clears it.
 

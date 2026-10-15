@@ -1,7 +1,8 @@
 // sleep.cpp: checks that an effect switched off stops costing time without changing what's
 // heard (FxGate::Asleep, TailWatch in FxCommon.h): an insert off and faded out passes its
 // input exactly, a send sleeps only once its tail has rung out, and both come back on their
-// key. Exits 0 when everything passes. Run by unit.sh sleep.
+// key; the filter's and the phaser's tempo LFO wake where one that never slept is, after a
+// long sleep with the tempo moving. Exits 0 when everything passes. Run by unit.sh sleep.
 #include <cmath>
 #include <cstdio>
 #include "check.h"
@@ -56,6 +57,73 @@ static void TestInsert(Fx& fx, const char* name)
     }
     snprintf(what, sizeof what, "%s: on again, it shapes the sound", name);
     Check(shaped && !fx.Idle(), what);
+}
+
+/** The filter's or the phaser's tempo LFO (FxTempoLfo.h), counted while asleep and caught up
+ *  on waking: 10s asleep while the clock's pulses come unevenly (±1.5%), its estimate of their
+ *  spacing wobbles (±0.5%) and the tempo moves from 120 to 130 BPM, then woken: its LFO where
+ *  the same effect's is that stayed on all along. Caught up at the tempo it woke at, the whole
+ *  sleep, it was off by up to a pulse */
+template <class Fx, class Cycle>
+static void TestLfoSleep(const char* name, Fx& a, Fx& b, Cycle cycle)
+{
+    a.SetOn(true);
+    b.SetOn(true);
+    uint32_t pos = 0;
+    double next = 0.;
+    long n = 0;
+    const long sleep_at = 24000, wake_at = sleep_at + 480000, end = wake_at + 24;
+    for (; n < end; n += 24)
+    {
+        if (n == sleep_at)
+            a.SetOn(false);
+        if (n == wake_at)
+            a.SetOn(true);
+        const float t = fminf(fmaxf(static_cast<float>(n - sleep_at) / 480000.f, 0.f), 1.f);
+        const float spacing = 60.f * kSr / ((120.f + 10.f * t) * 12.f);
+        // the clock's estimate of it wobbling from block to block, as a MIDI clock's does
+        const float estimate = spacing * ((n / 24) % 2 ? 1.005f : .995f);
+        a.SetPulseSamples(estimate);
+        b.SetPulseSamples(estimate);
+        while (next < n + 24)
+        {
+            a.ClockPulse(pos);
+            b.ClockPulse(pos);
+            pos++;
+            next += spacing * (pos % 2 ? 1.015 : .985);
+        }
+        for (long i = n; i < n + 24; i++)
+        {
+            float l = Sine(i), r = l, l2 = l, r2 = l;
+            a.Process(&l, &r);
+            b.Process(&l2, &r2);
+        }
+    }
+    float apart = fabsf(cycle(a) - cycle(b));
+    apart = fminf(apart, 1.f - apart);
+    printf("      %s: woken after 10s, its LFO %.4f of a cycle from one that never slept\n", name, apart);
+    char what[112];
+    snprintf(what, sizeof what, "%s: its LFO wakes where it would be, the tempo moved while it slept", name);
+    Check(a.Idle() == false && apart < .01f, what);
+}
+
+static void TestLfoSleeps()
+{
+    static chompi::Filter fa, fb;
+    for (chompi::Filter* f : {&fa, &fb})
+    {
+        f->Init(kSr);
+        f->SetParam(chompi::Filter::LFO_DEPTH, 1.f);
+        f->SetParam(chompi::Filter::LFO_DIVISION, 0.f); // 1/16: a pulse is a third of its cycle
+    }
+    TestLfoSleep("filter", fa, fb, [](chompi::Filter& f) { return f.lfo_.Cycle(f.lfo_div_pulses_); });
+    static chompi::Phaser pa, pb;
+    for (chompi::Phaser* p : {&pa, &pb})
+    {
+        p->Init(kSr);
+        p->SetParam(chompi::Phaser::RATE, SplitStepValue(0.f, chompi::Phaser::kNumDivisions)); // synced, 1/16
+    }
+    TestLfoSleep("phaser", pa, pb, [](chompi::Phaser& p) { return p.lfo_.Cycle(p.div_pulses_); });
 }
 
 /** PressEnvelope::Skip, what an effect that slept catches up on (the slicer), against the
@@ -339,6 +407,7 @@ int main()
     TestInsert(filter, "filter");
     TestInsert(slicer, "slicer");
     TestSkip();
+    TestLfoSleeps();
     TestTapeStop();
     TestResonator();
     TestResonatorEnv();

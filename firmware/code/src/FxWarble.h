@@ -70,6 +70,16 @@ public:
     FRIZZ_HOT void Process(float* l, float* r)
     {
         const float gate = gate_.Process();
+        // off: only the buffer goes on, so a punch-in starts from the recent sound; the walk
+        // waits where it was, the flutter catches up (Wake)
+        if (gate_.Asleep())
+        {
+            ring_.WriteFrame(*l, *r);
+            asleep_samples_++;
+            return;
+        }
+        if (asleep_samples_ > 0)
+            Wake(*l, *r);
 
         // TAPE: now and then a new target and slew. None while the wow is off, so the flutter
         // alone is just the flutter. The right channel's walk is heard with the stereo knob.
@@ -90,16 +100,6 @@ public:
             phase_[i] += inc_[i];
             if (phase_[i] >= 1.f)
                 phase_[i] -= 1.f;
-        }
-        // off: the walk, the flutter's phases and the buffer go on, so a punch-in starts where
-        // it would have; the tone filter follows the dry signal, close to what it would hear
-        if (gate_.Asleep())
-        {
-            SnapParams(); // the knobs where they're going
-            ring_.WriteFrame(*l, *r);
-            lp_[0] = *l;
-            lp_[1] = *r;
-            return;
         }
         const float mix = mix_.Process();
         const float depth = depth_.Process();
@@ -147,6 +147,17 @@ public:
             *io[c] += gate * (out - *io[c]);
         }
         ring_.Advance();
+    }
+
+    /** FxBase::SleepsThrough: what Process does asleep, once for the run */
+    FX_PER_RUN bool SleepsThrough(const float* l, const float* r, size_t n)
+    {
+        if (!gate_.AsleepForRun())
+            return false;
+        for (size_t i = 0; i < n; i++)
+            ring_.WriteFrame(l[i], r[i]);
+        asleep_samples_ += static_cast<uint32_t>(n);
+        return true;
     }
 
     /** The slewed parameters jump to their targets, at Init */
@@ -198,6 +209,23 @@ private:
         float pos, target, coeff;
     };
 
+    /** Back on from asleep, at its first sample l, r: the knobs where they went, the
+     *  flutter's phases on by what it slept through (the walk, random anyway, goes on from
+     *  where it waited), the tone filter on the dry signal, close to what it would hear. Out
+     *  of line: once a punch-in */
+    __attribute__((noinline, optimize("Os"))) void Wake(float l, float r)
+    {
+        SnapParams();
+        for (size_t i = 0; i < 2; i++)
+        {
+            const float p = phase_[i] + static_cast<float>(asleep_samples_) * inc_[i];
+            phase_[i] = p - floorf(p);
+        }
+        asleep_samples_ = 0;
+        lp_[0] = l;
+        lp_[1] = r;
+    }
+
     /** TAPE's vinyl_rand, 0..2^31 - 1 */
     uint32_t Rand()
     {
@@ -229,6 +257,7 @@ private:
     float age_ = 0.f;
     float drop_ = 1.f, drop_target_ = 1.f; // the dropout's level, gliding
     uint32_t drop_left_ = 0;               // samples the dropout still holds
+    uint32_t asleep_samples_ = 0;          // how long it hasn't run (FxGate::Asleep)
     Smoothed mix_;
     Smoothed depth_;
     Smoothed tone_;

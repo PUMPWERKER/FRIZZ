@@ -62,12 +62,14 @@ public:
         if (gate_.Asleep())
         {
             SnapParams();
-            ring_.WriteFrame(SoftClip(*l), SoftClip(*r));
+            ring_.WriteFrame(*l, *r);
             return;
         }
         const float depth = depth_.Process();
         const float mix = mix_.Process();
-        const float feedback = feedback_.Process();
+        // the feedback with the key's fade, so what it adds to the buffer comes in with the
+        // key instead of stepping in under it at the punch-in (asleep, it writes none)
+        const float feedback = gate * feedback_.Process();
         const float mix_before = stereo_mix_.value;
         stereo_mix_.Process();
 
@@ -98,13 +100,26 @@ public:
         for (size_t c = 0; c < 2; c++)
         {
             const float delay = fclamp(kCentreFrames * (1.f + lfo[c] * depth), 1.f, kBufSize - 2.f);
-            const float wet = ring_.Read(c, delay);
-            ring_.Write(c, SoftClip(*io[c] + wet * feedback));
+            // the clipper on what comes out of the buffer rather than what goes in, so asleep
+            // it only stores the input
+            const float wet = SoftClip(ring_.Read(c, delay));
+            ring_.Write(c, *io[c] + wet * feedback);
 
             const float out = *io[c] + mix * (wet - *io[c]);
             *io[c] += gate * (out - *io[c]);
         }
         ring_.Advance();
+    }
+
+    /** FxBase::SleepsThrough: what Process does asleep, once for the run */
+    FX_PER_RUN bool SleepsThrough(const float* l, const float* r, size_t n)
+    {
+        if (!gate_.AsleepForRun())
+            return false;
+        SnapParams();
+        for (size_t i = 0; i < n; i++)
+            ring_.WriteFrame(l[i], r[i]);
+        return true;
     }
 
     /** The slewed parameters jump to their targets, at Init */

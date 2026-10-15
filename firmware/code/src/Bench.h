@@ -656,7 +656,7 @@ private:
     {
         if (f_mount(fs_, path_, 1) != FR_OK)
             return false;
-        EnterFrizzDir(); // a mount goes back to the root; SceneStore's paths are relative
+        EnterFrizzDir(); // the folder made if it isn't there
         static FIL file;
         if (f_open(&file, "/FRIZZ/cpu.txt", FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
             return false;

@@ -184,13 +184,6 @@ extern "C" uint32_t g_pfnVectors, _sidata, _sdata, _edata, _stext;
  *  packets instead; 1 -> the drive's (CardStats); 2 X -> the card lent (X 1) or taken back (0),
  *  as the settings page's SHIFT + LOOP. Each answer starts with the flags: a computer 1, it
  *  plays 2, the card lent 4, USB audio on 8, it records 16. Its length, or -1 for BAD */
-__attribute__((optimize("Os"))) static size_t UsbPut(uint8_t* d, size_t n, uint32_t v, size_t groups)
-{
-    for (size_t g = groups; g-- > 0;)
-        d[n++] = static_cast<uint8_t>(g * 7 < 32 ? (v >> (g * 7)) & 0x7F : 0);
-    return n;
-}
-
 __attribute__((optimize("Os"))) static int UsbDev(const uint8_t* arg, size_t len, uint8_t* d)
 {
     size_t n = 0;
@@ -202,28 +195,28 @@ __attribute__((optimize("Os"))) static int UsbDev(const uint8_t* arg, size_t len
     if (part == 0 && len > 1 && arg[1] == 1)
     {
         for (uint32_t v : {s.rx_packets, s.rx_short, s.rx_long, s.rx_full})
-            n = UsbPut(d, n, v, 5);
-        n = UsbPut(d, n, s.rx_min == 0xFFFF ? 0 : s.rx_min, 2);
-        n = UsbPut(d, n, s.rx_max, 2);
+            n = loops::Put7Low(d, n, v, 5);
+        n = loops::Put7Low(d, n, s.rx_min == 0xFFFF ? 0 : s.rx_min, 2);
+        n = loops::Put7Low(d, n, s.rx_max, 2);
         usb::ResetFillRange();
         return static_cast<int>(n);
     }
     if (part == 0)
     {
         for (uint32_t v : {s.rx_blocks, s.rx_dry, s.rx_starts, s.tx_blocks, s.tx_full})
-            n = UsbPut(d, n, v, 5);
-        n = UsbPut(d, n, s.rx_fill, 2);
-        n = UsbPut(d, n, s.tx_fill, 2);
-        n = UsbPut(d, n, s.enumerations, 2);
+            n = loops::Put7Low(d, n, v, 5);
+        n = loops::Put7Low(d, n, s.rx_fill, 2);
+        n = loops::Put7Low(d, n, s.tx_fill, 2);
+        n = loops::Put7Low(d, n, s.enumerations, 2);
         return static_cast<int>(n);
     }
     if (part == 1)
     {
         const usb::CardStats& c = usb::GetCardStats();
         for (uint32_t v : {c.reads, c.writes, c.kb_read, c.kb_written, c.errors, c.io_ms})
-            n = UsbPut(d, n, v, 5);
-        n = UsbPut(d, n, c.unit_ready, 2);
-        n = UsbPut(d, n, c.capacity, 2);
+            n = loops::Put7Low(d, n, v, 5);
+        n = loops::Put7Low(d, n, c.unit_ready, 2);
+        n = loops::Put7Low(d, n, c.capacity, 2);
         return static_cast<int>(n);
     }
     if (part == 2 && len > 1)
@@ -256,7 +249,11 @@ static void DevInfo(dev::Info& info)
     info.kind = 1;
     info.bench = [](uint8_t part, uint32_t offset, uint8_t* d) { return bench.Report(part, offset, d); };
 #else
-    info.loops = [](const uint8_t* arg, size_t len, uint8_t* d) { return loop_loader.Dev(arg, len, d); };
+    // what starts something (3-6) waits for the card while it's lent: it would hold the loader
+    // busy past the take-back, whose scan it then refuses
+    info.loops = [](const uint8_t* arg, size_t len, uint8_t* d) {
+        return len && arg[0] >= 3 && cardlend::Get().lent ? -1 : loop_loader.Dev(arg, len, d);
+    };
 #endif
 }
 
@@ -285,7 +282,8 @@ extern "C" __attribute__((used, noinline)) void FrizzFault(const uint32_t* frame
 {
     const uint32_t fault[] = {SCB->CFSR, SCB->HFSR, SCB->MMFAR, SCB->BFAR};
     crash::Write(crash_mem.record, ipsr & 0x1FF, crash_mem.running, System::GetNow(),
-                 midi_control.dev.reset_cause, frame, fault);
+                 midi_control.dev.reset_cause, frame, fault,
+                 crash::FrameReadable(reinterpret_cast<uintptr_t>(frame), fault[0]));
     SCB_CleanDCache();
     NVIC_SystemReset();
 }
@@ -450,12 +448,6 @@ static uint32_t usb_switch_at = 0;
 
 /** The card lent to the computer as a USB drive, or taken back, as the settings page or the
  *  developers' SysEx asked (CardLend.h), and the computer's transfers. True while it's lent */
-static void CardRemount()
-{
-    f_mount(&fsi.GetSDFileSystem(), fsi.GetSDPath(), 1);
-    EnterFrizzDir();
-}
-
 __attribute__((optimize("Os"))) static bool CardLendProcess(uint32_t now)
 {
     cardlend::State& card = cardlend::Get();
@@ -467,8 +459,10 @@ __attribute__((optimize("Os"))) static bool CardLendProcess(uint32_t now)
     {
         usb::CardMode(false);
         usb::CardTask(); // one the computer still waited on fails
-        CardRemount();
         card.lent = false;
+        // mounted afresh; what the computer changed of the scenes and the settings is read
+        // again, unless the device changed its own meanwhile (SceneStore::Reread)
+        ui.Reread(scene_store.Reread(ui.MasterWaiting()));
 #if !FRIZZ_BENCH
         loop_loader.Request(LoopLoader::SCANNING); // the computer may have changed them
 #endif
@@ -532,7 +526,7 @@ void MainLoop(void* data)
         usb_switch_at = 0;
     else if (!usb_switch_at)
         usb_switch_at = now | 1; // 0 is "not yet"
-    else if (now - usb_switch_at >= kUsbSwitchMs)
+    else if ((now | 1) - usb_switch_at >= kUsbSwitchMs) // now | 1: the same ms ahead of an even now
         usb::SetAudio(ui.UsbAudio());
 #if FRIZZ_USB_SAFETY
     usb::Watch(now); // make USB_SAFETY=1: an enumeration that hangs restarts into the launcher
@@ -576,12 +570,16 @@ void MainLoop(void* data)
     // a restart asked for over MIDI (MidiClock.h), once no report is being written and the
     // master settings that were waiting are on the card, or a second after it was asked for
     // whatever still comes in (a DAW's automation): the chip's reset, as the launcher hands
-    // over, so the bootloader starts what's in QSPI
+    // over, so the bootloader starts what's in QSPI. The card lent to the computer is taken
+    // back first, as the gesture takes it (CardLend.h): no transfer of the computer's cut off
+    // halfway, and what waited for the card is saved before the reset
     if (midi_clock.RestartRequested() && !event_log.Writing())
     {
         if (!restart_asked)
             restart_asked = now | 1; // 0 is "not yet"
-        if ((ui.MasterSettled() && !scene_store.Busy()) || now - restart_asked > kRestartWaitMs)
+        if (card_lent)
+            cardlend::Get().asked = true; // the next pass takes it back
+        else if ((ui.MasterSettled() && !scene_store.Busy()) || (now | 1) - restart_asked > kRestartWaitMs)
             NVIC_SystemReset();
     }
 
