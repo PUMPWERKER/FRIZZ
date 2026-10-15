@@ -104,7 +104,8 @@ void RunAudio(const std::string& name, const std::string& id, const std::vector<
     }
     else
     {
-        printf("%s: no %s (numpy): the SKIP checked instead\n", name.c_str(), kVenv.c_str());
+        // a SKIP line all.sh lists under the check: stage 1b, for a machine with the venv
+        printf("SKIP: local only (numpy in %s): %s checks its SKIP instead\n", kVenv.c_str(), name.c_str());
         Run(name, true, id + " --material generated", {"SKIP " + id, "needs numpy"}, 0, env);
     }
     if (system(("rm -rf '" + audio_dir + "'").c_str()) != 0)
