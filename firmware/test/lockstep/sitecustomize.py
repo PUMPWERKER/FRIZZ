@@ -518,6 +518,17 @@ def _install(addr):
         real_join(self)
 
     threading.Thread.start, threading.Thread.join = start, join
+    real_shutdown = threading._shutdown
+
+    def shutdown():
+        # the threads Python waits for at its end (not daemons), joined on the twin's clock first:
+        # its own join waits on locks that don't know it
+        for t in threading.enumerate():
+            if t is not threading.current_thread() and not t.daemon:
+                t.join()
+        real_shutdown()
+
+    threading._shutdown = shutdown
 
     # --- a Python child runs on the same clock: the twin waits for its HELLO ---
     import subprocess

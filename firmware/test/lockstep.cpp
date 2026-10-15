@@ -104,7 +104,7 @@ int main()
             printf("calm:\n%s\nstalled:\n%s\n", calm.c_str(), stalled.c_str());
     }});
     // threads on the twin's clock: an Event's timeout, a notify, a lock held across a sleep, a
-    // join, each at its time to the ms
+    // join, each at its time to the ms; and one (not a daemon) that Python waits for at its end
     cases.push_back({"threads", [] {
         usb.Open();
         std::string out;
@@ -144,8 +144,11 @@ h2 = threading.Thread(target=time.sleep, args=(5,), daemon=True)
 h2.start()
 h2.join(.1)
 at("join-timeout %s" % h2.is_alive())
+last = threading.Thread(target=lambda: (time.sleep(.2), at("last")))
+last.start()
 )", out);
-        const std::string want = "event-timeout False 50.0\nnotified 150.0\nlock 350.0\njoined 650.0\njoin-timeout True 750.0\n";
+        const std::string want = "event-timeout False 50.0\nnotified 150.0\nlock 350.0\njoined 650.0\njoin-timeout True 750.0\n"
+                                 "last 950.0\n";
         Check(rc == 0 && Has(out, want), "threads: Event, Condition, Lock, join and their timeouts on the twin's time, to the ms");
         if (rc != 0 || !Has(out, want))
             printf("%s\n", out.c_str());
