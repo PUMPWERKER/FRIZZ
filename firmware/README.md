@@ -776,8 +776,9 @@ the twin couldn't play fails it), and `tools/builds.py` with ARM's GCC 10.3
 (`.github/scripts/gcc-arm.sh`, checked against ARM's checksums), both builds' md5 and memory
 tables in the job summary and the builds as artifacts for 14 days. A green run on the PR's last
 push stands for running `all.sh` and `compare.sh` yourself; what a check couldn't run there it
-lists as `SKIP: local only (…)`, for your machine. On a pushed `v*` tag, `release.yml` builds it again and checks
-the release's `FRIZZ.bin` against its md5, attaches one where there's none, or drafts the
+lists as `SKIP: local only (…)`, for your machine. On a pushed `v*` tag, `release.yml` builds
+it again and checks the release's `FRIZZ.bin` against its md5, attaches one to a draft without
+(a published release without one fails it: nothing goes live without a person), or drafts the
 release. Nothing there reaches a CHOMPI (`FRIZZ_NO_DEVICE`). No check is required on GitHub:
 when Actions is down, everything runs locally, and merging and releases go on without it.
 

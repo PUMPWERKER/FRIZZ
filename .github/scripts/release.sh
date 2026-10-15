@@ -3,7 +3,9 @@
 # GH_REPO/GH_TOKEN set, finds the tag's GitHub release, drafts included (the by-tag lookup
 # skips drafts, so it lists them), and
 # - checks its FRIZZ.bin against the CI's build: the same md5, or this fails loudly;
-# - attaches the CI's build to one without a FRIZZ.bin;
+# - attaches the CI's build to a draft without a FRIZZ.bin; a published one without fails
+#   loudly instead, as attaching would put it live (the website takes a published release with
+#   its .bin) without a person;
 # - makes a draft one (a pre-release for a -beta.N tag) with FRIZZ.bin and its md5 if there's
 #   none. Never publishes one, never marks one Latest, never touches the rolling `beta`.
 # Writes what it did to the job summary.
@@ -36,6 +38,11 @@ read -r draft asset < <(gh api "repos/$GH_REPO/releases/$id" \
     --jq '[(.draft | tostring), ([.assets[] | select(.name == "FRIZZ.bin") | .id][0] // "none" | tostring)] | join(" ")')
 kind=release
 [ "$draft" = true ] && kind="draft release"
+if [ "$asset" = none ] && [ "$draft" != true ]; then
+    say "**$TAG's release is published without a FRIZZ.bin:** CI attaches nothing to a published release (that would put it live without a person). Attach the build of a clean worktree of the tag yourself (CLAUDE.md, *Releases*), md5 \`$MD5\` as CI built it, then run this again."
+    echo "::error::$TAG's published release has no FRIZZ.bin; CI attaches only to drafts"
+    exit 1
+fi
 if [ "$asset" = none ]; then
     gh api --method POST -H "Content-Type: application/octet-stream" \
         "https://uploads.github.com/repos/$GH_REPO/releases/$id/assets?name=FRIZZ.bin" --input "$BIN" > /dev/null

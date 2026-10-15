@@ -6,7 +6,8 @@
 # - a release for the tag (published or a draft, made by a session or by hand) with a FRIZZ.bin:
 #   that FRIZZ.bin must be the CI's byte for byte, the proof that the build is the tag's;
 #   a mismatch fails loudly;
-# - one without a FRIZZ.bin gets the CI's;
+# - a draft without a FRIZZ.bin gets the CI's; a published release without one fails loudly,
+#   attaching nothing: nothing goes live without a person;
 # - no release yet: a draft one (a pre-release for a -beta.N tag) with FRIZZ.bin and its md5.
 #   Publishing it stays a person's step: the website only picks up published releases.
 #

@@ -287,12 +287,14 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   a clean `v*` tag's checkout.
 - **CI checks the release's build** (`.github/workflows/release.yml`): a pushed `v*` tag is
   built there too, refused unless it is `kFrizzVersion`'s. If the tag's release (or a draft of
-  it) carries a `FRIZZ.bin`, CI's must have the same md5, or the run fails loudly; one without
-  gets CI's attached; with no release yet, CI makes a draft (a pre-release for `-beta.N`) with
+  it) carries a `FRIZZ.bin`, CI's must have the same md5, or the run fails loudly; a draft
+  without one gets CI's attached, a published release without one fails the run (CI never
+  puts anything live); with no release yet, CI makes a draft (a pre-release for `-beta.N`) with
   `FRIZZ.bin` and its md5, never published, never Latest, and `beta` is never touched. A
   release never waits for it: make it as above, right after pushing the tag (`gh release
   create <tag> --verify-tag …`); should CI's draft be there first, finish that one (`gh release
-  edit`) instead of making a second.
+  edit`) instead of making a second, and once your `FRIZZ.bin` is on it, run the tag's
+  *Release build* again (`gh run rerun <its run>`) so it checks that md5.
 
 ## The CHOMPI is shared: the lock and the slots
 
