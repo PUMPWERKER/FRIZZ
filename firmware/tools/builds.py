@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """builds.py: FRIZZ's two builds and their md5, the name a build goes by.
 
-    tools/builds.py              builds both (make, make BENCH=1 in code/src, GCC 10.3), prints their md5
+    tools/builds.py              builds both (make, make BENCH=1 in code/src, GCC 10.3), prints their
+                                 memory tables (the room left) and their md5
     tools/builds.py md5          prints the md5 (and CRC-32) of the builds there are, building nothing
     tools/builds.py cpu [FILE]   files the bench's cpu.txt (default card/cpu.txt, from card.py get)
                                  as bin/cpu.txt, headed by the md5 of the build it measured
@@ -141,7 +142,19 @@ def build(bench, env=None):
     if result.returncode != 0:
         print(result.stdout[-3000:] + result.stderr[-3000:])
         sys.exit("the build failed")
+    print(memory_table(result.stdout), end="")
     return image(bench)
+
+
+def memory_table(out):
+    """the linker's memory table (--print-memory-usage) in make's output: how much room each
+    region has left; empty if make didn't link"""
+    lines = out.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("Memory region"):
+            table = [line] + [l for l in lines[i + 1:] if re.match(r"\s+\S+:\s", l)]
+            return "".join(l + "\n" for l in table)
+    return ""
 
 
 def built(bench, fresh=True):

@@ -436,7 +436,7 @@ static void TestMetersFfmpeg()
 {
     if (!HaveFfmpeg())
     {
-        printf("SKIP  the meters against ffmpeg: no ffmpeg\n");
+        printf("SKIP: local only (ffmpeg): the meters against ffmpeg\n");
         return;
     }
     char dir[] = "/tmp/finalizer.XXXXXX";

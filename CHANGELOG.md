@@ -902,7 +902,7 @@ what FRIZZ does.
 
 - **Mono input** on VOLUME's page 3: turn 3 detents left for a mono (TS) cable, such as one
   from a Lyra-8 or a pedal, and the left channel feeds both sides; 3 right for stereo. Saved
-  on the card. By sfaber02 ([#1](https://github.com/ZUHcYa/FrizZ/pull/1)).
+  on the card. By sfaber02 ([#1](https://github.com/ZUHcYa/FRIZZ/pull/1)).
 - **Headphone feed** on VOLUME's page 4: turned left, blends steplessly from the master out
   to the dry input on its own; back on the master at power-on.
 - SHIFT + press VOLUME resets the input/loop mix.
@@ -973,7 +973,7 @@ what FRIZZ does.
 ## v0.9 (2026-10-06)
 
 The first public release. See its
-[release notes](https://github.com/ZUHcYa/FrizZ/releases/tag/v0.9).
+[release notes](https://github.com/ZUHcYa/FRIZZ/releases/tag/v0.9).
 
 - FRIZZ keeps its files in a folder `FRIZZ` on the card, which it creates at its first start;
   a `frizz_scenes.txt` an earlier build left in the card's top folder is moved into it.
