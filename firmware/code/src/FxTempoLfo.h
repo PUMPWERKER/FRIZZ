@@ -38,6 +38,13 @@ public:
         frac_ = frac;
         reverse_ = reverse;
     }
+    /** A clock pulse for an effect that moves the LFO every few samples (the filter, the
+     *  phaser): on the pulse, less the since samples counted since it last moved, which went
+     *  by before it and the next Advance adds */
+    void PulseAfter(uint32_t pos, bool reverse, uint32_t since)
+    {
+        Pulse(pos, reverse, (reverse ? 1.f : -1.f) * static_cast<float>(since) * pulse_inc_);
+    }
     inline void SetReverse(bool reverse) { reverse_ = reverse; }
     /** The LFO's advance a sample, in pulses */
     inline float PulseInc() const { return pulse_inc_; }

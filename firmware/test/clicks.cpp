@@ -11,12 +11,11 @@
 //    the output steps no further than the sweep does (a guard; it never clicked)
 //  - the crusher and the filter punched in after they've gone to sleep (FxGate::Asleep), at
 //    their harshest: no step and no peak in the first 100ms beyond what they make settled
+//  - every insert and the resonator punched in from asleep through the chain, in the
+//    device's runs of 24 samples (FxChain::Insert), on a 220Hz and a 50Hz sine: the same
 #include <cmath>
 #include <vector>
-#include "FxFlanger.h"
-#include "FxCrusher.h"
-#include "FxFilter.h"
-#include "FxFreezer.h"
+#include "FxChain.h"
 #include "check.h"
 
 using namespace chompi;
@@ -220,6 +219,91 @@ static void TestPunchIns()
             [](size_t pos) { filter.ClockPulse(static_cast<uint32_t>(pos % 192)); });
 }
 
+// ======== punch-ins through the chain ========
+
+static const size_t kDelayFrames = 480000, kFzFrames = 240000, kTapeFrames = 1u << 19;
+static float delay_mem[kDelayFrames * 2];
+static float fz_l[kFzFrames], fz_r[kFzFrames], tape_l[kTapeFrames], tape_r[kTapeFrames];
+static daisysp::Reverb reverb;
+static chompi::FxChain chain;
+
+/** One effect through the chain in blocks of 24, as the audio callback runs it: its page-1
+ *  knobs and stereo at vals, on for 1s, off for 2s (asleep by then), on again; the first
+ *  100ms against the 2s after, as PunchIn (2s: its LFO's whole sweep, a press restarts some) */
+static void ChainPunchIn(size_t fx, const char* name, const float (&vals)[5], float amp, float hz)
+{
+    chain.Init(kSr, delay_mem, kDelayFrames, &reverb, fz_l, fz_r, kFzFrames, tape_l, tape_r,
+               kTapeFrames);
+    chain.SetTempo(120.f, static_cast<float>(kPulseSamples));
+    for (size_t p = 0; p < 4; p++)
+        chain.SetParam(fx, p, vals[p]);
+    chain.SetParam(fx, 5, vals[4]);
+    size_t i = 0;
+    float step = 0.f, peak = 0.f, last = 0.f;
+    const auto Play = [&](size_t n) {
+        step = peak = 0.f;
+        for (size_t k = 0; k < n; k += 24)
+        {
+            float jump;
+            if (i % kPulseSamples < 24)
+                chain.ClockPulse(static_cast<uint32_t>(i / kPulseSamples % 192));
+            chain.Block(&jump);
+            float l[24], r[24];
+            for (size_t j = 0; j < 24; j++)
+                l[j] = r[j] = amp * Sine(i + j, hz);
+            chain.Process(l, r, 24);
+            for (size_t j = 0; j < 24; j++)
+            {
+                step = fmaxf(step, fabsf(l[j] - last));
+                peak = fmaxf(peak, fabsf(l[j]));
+                last = l[j];
+            }
+            i += 24;
+        }
+    };
+    chain.SetOn(fx, true);
+    Play(48000);
+    chain.SetOn(fx, false);
+    Play(96000);
+    const bool slept = chain.Resting(fx);
+    chain.SetOn(fx, true);
+    Play(4800);
+    const float first_step = step, first_peak = peak;
+    Play(96000);
+    printf("      %s at %.0fHz: punched in, largest step %.4f, peak %.4f; settled %.4f, %.4f\n",
+           name, hz, first_step, first_peak, step, peak);
+    char what[112];
+    snprintf(what, sizeof what, "%s: a punch-in from asleep at %.0fHz, in the chain's runs, doesn't click", name, hz);
+    const float dry_peak = .5f * amp, dry_step = dry_peak * 2.f * static_cast<float>(M_PI) * hz / kSr;
+    Check(slept && first_step <= 1.5f * fmaxf(step, dry_step) + 1e-4f
+              && first_peak <= 1.25f * fmaxf(peak, dry_peak) + 1e-4f,
+          what);
+}
+
+static void TestChainPunchIns()
+{
+    struct Case
+    {
+        size_t fx;
+        const char* name;
+        float vals[5]; // knobs 1-4, stereo
+        float amp;
+    };
+    static const Case kCases[] = {
+        {chompi::FX_SHIFTER, "shifter", {.8f, .5f, .5f, .3f, .5f}, 1.f},
+        {chompi::FX_FOLDER, "folder", {.6f, .5f, .7f, .6f, .5f}, 1.f},
+        {chompi::FX_CRUSHER, "crusher", {1.f, 1.f, 1.f, 1.f, 1.f}, .08f},
+        {chompi::FX_FILTER, "filter", {.2f, 1.f, 1.f, 2.f / 6.f, .5f}, 1.f},
+        {chompi::FX_FLANGER, "flanger", {.5f, 1.f, .6f, 0.f, .5f}, 1.f},
+        {chompi::FX_PHASER, "phaser", {.3f, .8f, .8f, .5f, .5f}, 1.f},
+        {chompi::FX_RESONATOR, "resonator", {.3f, .9f, .5f, .5f, .5f}, .5f},
+        {chompi::FX_WARBLE, "warble", {.7f, .5f, .7f, 0.f, .5f}, 1.f},
+    };
+    for (const Case& c : kCases)
+        for (float hz : {220.f, 50.f})
+            ChainPunchIn(c.fx, c.name, c.vals, c.amp, hz);
+}
+
 int main()
 {
     TestFlanger();
@@ -227,5 +311,6 @@ int main()
     TestFreezer();
     TestFilter();
     TestPunchIns();
+    TestChainPunchIns();
     return Finish();
 }

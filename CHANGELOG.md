@@ -108,6 +108,17 @@ what FRIZZ does.
   clock out over USB keeps its time while FRIZZ reads the card (it could come up to 8 ms late
   while a cubbi loaded, #265). FrizZ asks the computer for 100 mA, where it asked for 160. See
   [MIDI out](MANUAL.md#midi-out).
+- **The folder keeps the bass** (white key 3): it cut everything below about 76 Hz, even with
+  the drive at off, 5 dB at 50 Hz and 9 dB at 30 Hz, so a latched folder took the weight out of
+  kicks and bass. Now 50 Hz comes through within half a dB, and turning Symmetry no longer
+  thumps on a quiet signal. With Symmetry up and a loud hit at medium drive, the bass a hit
+  pushes up rings out a little longer than before. See [Folder](MANUAL.md#folder).
+- **Effects that are off take less of the CPU:** the filter, the crusher, the shifter, wow &
+  flutter and the flanger no longer keep running unheard while off; they start afresh when
+  punched in, without a click: FRIZZ with every effect off takes about 22% of the processing
+  time where it took 31%, more headroom when only a few effects are on. A punched-in
+  crusher's steps fall at other moments than before, and wow & flutter's wow goes on from
+  where it rested.
 - **The reverb's tail is smoother, less metallic:** its first allpass is modulated, as in
   Mutable's Clouds and Elements, so the same hit rings a little differently each time instead of
   through the same diffusion. Its knobs, decay, level and freeze are as they were. See
@@ -115,6 +126,12 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The shifter and the flanger no longer click when punched in with the feedback up** (#326):
+  the feedback's share of what they had stored came in at once under the key's fade, and
+  repeated on every trip. Now it fades in with the key.
+- **The phaser's LFO stays on the beat after a long rest** (#327): punched in again after a
+  while off, with the tempo moved meanwhile (or a MIDI clock's tempo wavering), its synced LFO
+  could start up to a pulse off and jump back at the next one.
 - **Opening FRIZZ's USB MIDI port late no longer brings eleven beats of old clock**: with MIDI
   out on USB and no app on the computer reading FRIZZ's port yet, the clock piled up, and an
   app opening the port later (a DAW, at any time after) got about 270 ticks at once, eleven

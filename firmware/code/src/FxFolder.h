@@ -13,8 +13,8 @@ namespace chompi
  *  bias so the folds go uneven and bring in even harmonics.
  *
  *  DaisySP's Wavefolder is the triangle alone, unfiltered; here the fold is antialiased
- *  with first-order ADAA (the fold's antiderivative, differenced), DC-blocked, and followed
- *  by a lowpass. The sine fold barely aliases anyway; on the triangle the ADAA takes off
+ *  with first-order ADAA (the fold's antiderivative, differenced), DC-blocked (the bias's
+ *  own DC taken off first, the rest at 15Hz, so the bass passes), and followed by a lowpass. The sine fold barely aliases anyway; on the triangle the ADAA takes off
  *  5-13dB, which at high drive on bright material still leaves some grit. The sine's and the
  *  triangle's antiderivatives are kept apart and blended with the current shape, so moving
  *  the shape knob doesn't put its change into the difference. The fold is scaled to a slope
@@ -45,8 +45,9 @@ public:
             u1_[c] = 0.f;
             Antiderivatives(0.f, &f1_sine_[c], &f1_tri_[c]);
             lp_[c] = 0.f;
-            dc_[c].Init(sample_rate);
+            dc_[c].Reset();
         }
+        bias_at_ = shape_at_ = bias_dc_ = 0.f;
         gate_.Init();
 
         for (size_t i = 0; i < kNumFxParams; i++)
@@ -74,12 +75,25 @@ public:
         float* const io[2] = {l, r};
         // the sine's slope at 0 is pi/2, the triangle's 1: both brought to 1
         const float unity = kSineUnity + shape * (1.f - kSineUnity);
+        // the bias's own DC, the fold of the bias alone, taken off before the DC blocker:
+        // what's left for it is only what the signal itself brings, so it can sit low enough
+        // to keep the bass, and a Symmetry turn doesn't thump through it
+        if (bias != bias_at_ || (shape != shape_at_ && bias != 0.f)) // Fold(0, any shape) is 0
+        {
+            bias_at_ = bias;
+            shape_at_ = shape;
+            bias_dc_ = Fold(bias, shape);
+        }
+        // back on: the fold from this sample (no step to average over), the DC blocker from
+        // 0, the tone's lowpass from this sample's output (below)
+        const bool waking = asleep_;
         if (asleep_)
         {
             for (size_t c = 0; c < 2; c++)
             {
                 u1_[c] = *io[c] * (c ? drive_r : drive_l) + bias;
                 Antiderivatives(u1_[c], &f1_sine_[c], &f1_tri_[c]);
+                dc_[c].Reset();
             }
             asleep_ = false;
         }
@@ -107,10 +121,23 @@ public:
             f1_sine_[c] = f_sine;
             f1_tri_[c] = f_tri;
 
-            // the bias's DC out, then the tone
-            lp_[c] += tone_coeff * (dc_[c].Process(y) - lp_[c]);
+            // the bias's DC out, then the tone, from this sample on waking
+            const float x = dc_[c].Process(y - bias_dc_, kDcPole);
+            if (__builtin_expect(waking, 0))
+                lp_[c] = x;
+            lp_[c] += tone_coeff * (x - lp_[c]);
             *io[c] += gate * (unity * lp_[c] - *io[c]);
         }
+    }
+
+    /** FxBase::SleepsThrough: what Process does asleep, once for the run */
+    FX_PER_RUN bool SleepsThrough(const float*, const float*, size_t)
+    {
+        if (!gate_.AsleepForRun())
+            return false;
+        SnapParams();
+        asleep_ = true;
+        return true;
     }
 
     /** The slewed parameters jump to their targets, at Init */
@@ -152,6 +179,9 @@ public:
 
 private:
     static constexpr float kMaxDrive = 32.f;
+    // the DC blocker's pole: 15Hz, so the bass comes through (daisysp::DcBlock's .99, 76Hz,
+    // took 5dB off 50Hz)
+    static constexpr float kDcPole = .998f;
     static constexpr float kAdaaMinStep = 1e-3f;
     static constexpr float kSineUnity = 2.f / PI_F;
 
@@ -185,7 +215,8 @@ private:
     float u1_[2];                 // the last sample's fold input
     float f1_sine_[2], f1_tri_[2]; // and its antiderivatives
     float lp_[2];
-    daisysp::DcBlock dc_[2];
+    DcBlocker dc_[2];
+    float bias_at_ = 0.f, shape_at_ = 0.f, bias_dc_ = 0.f; // Fold(bias, shape), and of what
     Smoothed drive_, shape_, bias_, tone_coeff_;
     Smoothed stereo_; // the right channel's drive over the left's
 };

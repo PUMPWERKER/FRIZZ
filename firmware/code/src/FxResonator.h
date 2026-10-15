@@ -101,6 +101,20 @@ public:
         }
     }
 
+    /** In place of a run's n Feeds while it's asleep for all of them (FxGate::AsleepForRun):
+     *  what each would do, at once */
+    FX_PER_RUN bool SleepsThrough(size_t n)
+    {
+        if (!gate_.AsleepForRun())
+            return false;
+        SnapParams();
+        for (size_t i = 0; i < n; i++)
+            lp_at_[i] = lp_coeff_.value;
+        ret_[0] = ret_[1] = 0.f;
+        env_ = 0.f;
+        return true;
+    }
+
     /** After the phaser: into the loop through the clipper and filters, at the lowpass Feed i
      *  left */
     void Tap(float l, float r, size_t i = 0)

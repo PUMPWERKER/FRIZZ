@@ -283,6 +283,13 @@ public:
     {
         FxOutput& out = out_[fx];
         bool busy = OutBusy(fx); // nothing in the audio callback sets it during a run
+        // off and faded out with page 2 at rest: the run at once, as the effect slept through
+        // each sample (its key changes only at Block); no meter, as Idle
+        if (!busy && effect.SleepsThrough(l, r, n))
+        {
+            BENCH_MARK_FX(fx);
+            return;
+        }
         for (size_t i = 0; i < n; i++)
         {
             float sl = l[i], sr = r[i];

@@ -1,7 +1,7 @@
 // inserts.cpp: checks the effects that had none of their own, the folder (FxFolder.h), the
 // slicer (FxSlicer.h) and the filter (FxFilter.h): the folder's bypass when off, its level at
-// 1x and that nothing matches it to the input, the slicer's patterns on the clock's 16ths, its
-// chance and its stereo; the filter's centre (the input, bit for bit, at any resonance), its
+// 1x (down to 30Hz), that nothing matches it to the input and that Symmetry turned on silence
+// doesn't thump; the slicer's patterns on the clock's 16ths, its chance and its stereo; the filter's centre (the input, bit for bit, at any resonance), its
 // -3dB points and resonance peak where WAVE's were (#304), and its LFO sweeping a low sine
 // across the centre without a step; and page 2's Mix on the shifter (FxOutput.h). Exits 0 when
 // everything passes. Run by unit.sh inserts.
@@ -16,9 +16,9 @@ static const float kSr = 48000.f;
 
 // ======== the folder ========
 
-/** The folder at a drive, on a sine of amp: the output's level over the input's in dB, over
- *  the last half of a second */
-static float FolderOver(float drive, float amp, float shape = 0.f, float tone = 1.f)
+/** The folder at a drive, on a sine of amp at hz: the output's level over the input's in dB,
+ *  over the last half of a second */
+static float FolderOver(float drive, float amp, float shape = 0.f, float tone = 1.f, float hz = 220.f)
 {
     Folder f;
     f.Init(kSr);
@@ -30,7 +30,7 @@ static float FolderOver(float drive, float amp, float shape = 0.f, float tone = 
     double in_sum = 0., out_sum = 0.;
     for (size_t i = 0; i < 48000; i++)
     {
-        float l = amp * sinf(2.f * float(M_PI) * 220.f * i / kSr), r = l;
+        float l = amp * sinf(2.f * float(M_PI) * hz * i / kSr), r = l;
         const float in = l;
         f.Process(&l, &r);
         if (i >= 24000)
@@ -63,13 +63,40 @@ static void TestFolder()
     const float unity = FolderOver(0.f, .03f), driven = FolderOver(1.f, .03f);
     printf("  folder: %+.1fdB at 1x, %+.1fdB at full drive, both on a sine at -30dBFS\n", unity,
            driven);
-    // within 1dB: its DC blocker (daisysp::DcBlock, about 76Hz) takes 0.5dB off 220Hz
     Check(fabsf(unity) < 1.f, "folder: at 1x a quiet signal comes out at its own level");
+    // the bass too: its DC blocker at 15Hz (daisysp::DcBlock's 76Hz took 5dB off 50Hz)
+    const float bass = FolderOver(0.f, .03f, 0.f, 1.f, 50.f), deep = FolderOver(0.f, .03f, 0.f, 1.f, 30.f);
+    printf("  folder: at 1x %+.1fdB at 50Hz, %+.1fdB at 30Hz\n", bass, deep);
+    Check(fabsf(bass) < .5f && fabsf(deep) < 1.5f, "folder: at 1x the bass comes out at its own level, 50Hz within 0.5dB");
     const float tri = FolderOver(0.f, .03f, 1.f);
     printf("  folder: the triangle at 1x %+.1fdB\n", tri);
     Check(fabsf(tri) < 1.f, "folder: so does the triangle: the shape doesn't change the level at 1x");
     Check(driven > 15.f, "folder: driven, a quiet signal comes out far louder: nothing matches "
                          "it to the input (page 2's Level is for that)");
+    // Symmetry turned all the way at a recall's slew on silence: the bias's DC is taken off
+    // before the DC blocker, which let it through as a thump (0.2 at 76Hz)
+    {
+        Folder g;
+        g.Init(kSr);
+        g.SetParam(Folder::TONE, 1.f);
+        g.SnapParams();
+        g.SetOn(true);
+        float peak = 0.f;
+        for (size_t i = 0; i < 24000; i++)
+        {
+            if (i == 4800)
+            {
+                FxSlew::coeff = kFxRecallCoeff;
+                g.SetParam(Folder::SYMMETRY, 1.f);
+            }
+            float l = 0.f, r = 0.f;
+            g.Process(&l, &r);
+            peak = fmaxf(peak, fabsf(l));
+        }
+        FxSlew::coeff = kFxParamCoeff;
+        printf("  folder: Symmetry 0 to 1 on silence, peak %.4f\n", peak);
+        Check(peak < .01f, "folder: Symmetry turned on silence doesn't thump");
+    }
     // #37: the tone is a tone control: darker is quieter, at the same drive
     const float open = FolderOver(.6f, .3f, 0.f, 1.f), dark = FolderOver(.6f, .3f, 0.f, .2f);
     printf("  folder: drive .6 on -10dBFS, tone open %+.1fdB, at .2 %+.1fdB\n", open, dark);

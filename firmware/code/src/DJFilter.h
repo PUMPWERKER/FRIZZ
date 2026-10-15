@@ -89,6 +89,20 @@ class DjFilter
         ch_[1].Set(right < 0.f ? k : Coefficients(right), snap);
     }
 
+    /** Both channels afresh at their inputs l and r, so neither starts with a step: the
+     *  highpass as if its input had always been there (its output from 0), the lowpass from
+     *  silence (its output rising to its input as fast as its cutoff lets it; from the input,
+     *  a low cutoff would hold that as DC for seconds) */
+    void Seed(float l, float r)
+    {
+        const float in[2] = {l, r};
+        for (size_t c = 0; c < 2; c++)
+        {
+            ch_[c].s1 = 0.f;
+            ch_[c].s2 = ch_[c].hp ? in[c] : 0.f;
+        }
+    }
+
     inline void Run(float in_l, float in_r, float* out_l, float* out_r)
     {
         *out_l = ch_[0].Process(in_l);
