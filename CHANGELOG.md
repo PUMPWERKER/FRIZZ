@@ -182,6 +182,10 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The flanger punched in again right after letting it go doesn't click** (#392): a press
+  while its key still faded out (a quick double tap, a bouncing key, MIDI) restarted the sweep
+  under the fade, a click. Now a press from silence restarts the sweep as before, and one in
+  the first moments after letting go goes on with the sweep where it is.
 - **A hot chord records clean into the loop** (#372): recorded loud enough for the loop's soft
   limit to take it, a chord came back with a faint rough flutter, the limit's gain moving with
   the chord's beat (sidebands about 51 dB under it). Now it holds still: a single tone was clean
