@@ -144,14 +144,17 @@ class WebSocket:
 class Browser:
     """A headless Chromium of its own, one page, driven over CDP; close() ends it"""
 
-    def __init__(self, port=None):
+    def __init__(self, port=None, log=None):
         self.port = port or random.randint(20000, 29999)
         self.profile = os.path.join(os.path.expanduser("~"), ".cache", "frizz-companion", "profile-%d" % self.port)
         os.makedirs(self.profile, exist_ok=True)
         cmd = BROWSER + ["--headless=new", "--remote-debugging-port=%d" % self.port,
                          "--user-data-dir=" + self.profile, "--no-first-run", "--no-default-browser-check",
                          "about:blank"]
-        self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        if log:  # Chromium's own log, its Web MIDI's (the ALSA ports it takes or drops) in detail
+            cmd[-1:-1] = ["--enable-logging=stderr", "--v=0", "--vmodule=*midi*=3,*udev*=1"]
+        self.log = open(log, "w") if log else None
+        self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=self.log or subprocess.DEVNULL,
                                      start_new_session=True)
         self.ws = None
         self.seq = 0
@@ -357,7 +360,7 @@ def name_of(b, s):
 
 
 def run(a):
-    br = Browser()
+    br = Browser(log=a.log)
     print("browser:", br.version, flush=True)
     try:
         if a.cmd == "ports":
@@ -481,6 +484,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--url", default=URL)
+    common.add_argument("--log", help="Chromium's log (its Web MIDI's in detail) into this file")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("slots", parents=[common])
     p = sub.add_parser("playing", parents=[common])

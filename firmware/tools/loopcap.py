@@ -362,7 +362,7 @@ def judge(ev, res):
             lv = np.array(res["levels"])
             w = int(t * SR / WIN)
             gone = next((k for k in range(w, len(lv)) if lv[k].max() < 0.2 * res["bed"]), None)
-            out.append((gone is not None and (gone * WIN / SR - t) < 0.15,
+            out.append((gone is not None and (gone * WIN / SR - t) < 0.3,  # a cubbi loads first
                         "CC 0 = 9, PC %d (cubbi_a%d) at %.3f s: our loops gone at %s" % (
                             e["cubbi"] - 1, e["cubbi"], t, "%.3f s" % (gone * WIN / SR) if gone is not None else "never")))
         last = ev["events"][-1]["sent"] + off + 1.0 if ev["events"] else None
