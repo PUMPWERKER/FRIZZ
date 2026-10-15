@@ -62,7 +62,7 @@ In TEMPO and WAVE:
   compilation: the firmware builds against pristine upstream, but its MIDI output timing won't
   match the released firmware. Keep the vendored file.
 
-FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with seven changes:
+FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with eight changes:
 - `src/usbd/usbd_desc.c` names the USB product "FrizZ".
 - `src/hid/midi_parser.cpp` follows MIDI 1.0 where WAVE's didn't:
   - A real-time byte (a clock tick, 0xF8-0xFF) inside a SysEx or another message is passed on,
@@ -97,12 +97,18 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with seven changes:
   would run past it at boot (a freeze in the fork lost-tty/CHOMPI), where the buffer fails the link.
   One handle, for FRIZZ's one USB device; it's the same buffer on every Init, and freeing it
   does nothing (#196).
+- `src/per/uart.cpp` hands over what the MIDI jack's UART received at once when a clock tick
+  (0xF8) comes in, as it does when the line goes quiet: `DmaListenStart` sets the USART's
+  character match on 0xF8 (`CR2.ADD`, `ADDM7`, `CR1.CMIE`), and `UART_IRQHandler` takes the
+  match like IDLE, once the DMA has the byte. Before, a tick followed closely by other bytes
+  reached the parser only after them, 0.32 ms late a byte (#322). Listening (`DmaListenStart`)
+  is MIDI's alone in FRIZZ.
 
 Its prebuilt `build/libdaisy.a` is WAVE's with only the objects of those changes rebuilt:
 `usbd_desc.o`, `midi_parser.o`, `usb_midi.o`, `usbd_conf.o`, `fatfs.o`, `system.o` (twice, the
-second time without the handlers: from the source before, it disassembled as the archive's) and
+second time without the handlers: from the source before, it disassembled as the archive's),
 `usbd_cdc.o` (whose code changes with `usbd_conf.h`'s macro; of the other objects that include
-it none does). They were built with GCC 10.3 and libDaisy's own flags (`make
+it none does) and `uart.o` (from the source before #322, it disassembled as the archive's). They were built with GCC 10.3 and libDaisy's own flags (`make
 build/src/hid/midi_parser.o` in its folder, then `arm-none-eabi-ar r build/libdaisy.a
 build/src/hid/midi_parser.o`; delete the object first to rebuild it, `make -B` fails on the
 `build` folder). The loose objects in `build/src/` stay WAVE's: only the archive is linked.

@@ -2558,6 +2558,7 @@ effect's page 2 turned off its defaults (Mix, Band and Level), needs more than t
 | The clock source on Auto, its clock stopping | The other input's clock counts within about 0.8 s |
 | MIDI clock out over TRS (120 BPM) | Jitter 0.53 ms; 0.64 ms with MIDI feedback sending 1652 CCs meanwhile |
 | MIDI clock out over USB | Its tempo right (120.08 BPM for 120), each tick within about 1 ms, also while a loop loads from the card |
+| A clock over TRS with other MIDI right behind its ticks (a chord, a stream of CCs) | Each tick within 0.35 ms of a bare clock's (95%), a loop's Start within 0.4 ms |
 | A computer's clock over USB, passed on out of TRS (200 and 300 BPM) | Each tick 0.13-0.16 ms off even on average, 99% within 0.5 ms |
 | MIDI feedback | One CC per value every 10 ms at most |
 | Switching on | Sound about a second after FRIZZ starts |
