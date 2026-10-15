@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-# From the CHOMPI multi-firmware launcher v1.5, github.com/sfaber02/CHOMPI-MULTI-FIRMWARE,
-# firmware/chompi-launcher/midi-send.py at dc7c747145, by ugrossek (chomplex music theory).
+# From the CHOMPI multi-firmware launcher v1.6, github.com/sfaber02/CHOMPI-MULTI-FIRMWARE,
+# firmware/chompi-launcher/midi-send.py at d35ad992d8 (launcher-v1.6), by ugrossek (chomplex
+# music theory).
 # MIT licensed (see THIRD_PARTY.md); unchanged but for this note and the guard at its end, when
 # it's run by hand. firmware/flash.py uses it.
 """Send a firmware image to the CHOMPI launcher over USB MIDI, store it in a slot and run it.
@@ -17,8 +18,10 @@ The name defaults to the project folder the image was built in (chompi-tape
 -> TAPE); override it with --name.
 
 With --stay the launcher only stores it and keeps showing the picker, so more
-can follow. --list shows what is on each key, --clear N empties key N. These
-three need a launcher that has them; older ones say so.
+can follow. --list shows what is on each key and its colour, --clear N
+empties key N, --color N RRGGBB sets the colour key N breathes in (000000:
+back to the colour from its name). These need a launcher that has them;
+older ones say so.
 
 To start a firmware that is already on the card, as its key would:
 
@@ -37,10 +40,10 @@ import time
 import zlib
 
 HEADER = bytes([0xF0, 0x7D, 0x43, 0x48])
-PING, BEGIN, DATA, END, RUN, LIST, CLEAR = 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07
+PING, BEGIN, DATA, END, RUN, LIST, CLEAR, COLOR = 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08
 REPLY = 0x40
 
-FEATURE_LIST, FEATURE_CLEAR, FEATURE_STAY, FEATURE_LAUNCHER, FEATURE_RUN = 1, 2, 4, 8, 16
+FEATURE_LIST, FEATURE_CLEAR, FEATURE_STAY, FEATURE_LAUNCHER, FEATURE_RUN, FEATURE_COLOR = 1, 2, 4, 8, 16, 32
 END_STAY = 1
 
 PROTOCOL_VERSION = 1
@@ -185,6 +188,8 @@ def main():
                     help="store only; the launcher stays in the picker")
     ap.add_argument("--list", action="store_true", help="show what is on each key")
     ap.add_argument("--clear", type=int, metavar="SLOT", help="empty that key")
+    ap.add_argument("--color", nargs=2, metavar=("SLOT", "RRGGBB"),
+                    help="the colour that key breathes in; 000000 for the one from its name")
     ap.add_argument("--run", type=int, metavar="SLOT",
                     help="start the firmware already in this slot instead of sending one")
     ap.add_argument("--name", help="name on the card, 1-16 of A-Z 0-9 - _ "
@@ -199,8 +204,11 @@ def main():
         ap.error("--slot is needed to send an image")
     if args.launcher and not args.image:
         ap.error("--launcher needs the launcher's CHOMPI.bin")
-    if not (args.image or args.list or args.clear or args.run is not None):
-        ap.error("nothing to do: give an image and --slot, or --list, --clear or --run")
+    if not (args.image or args.list or args.clear or args.color or args.run is not None):
+        ap.error("nothing to do: give an image and --slot, or --list, --clear, --color or --run")
+    if args.color:
+        if not args.color[0].isdigit() or not re.fullmatch(r"[0-9A-Fa-f]{6}", args.color[1]):
+            ap.error("--color takes a key number and a colour like FF9431")
 
     if args.image:
         image = open(args.image, "rb").read()
@@ -256,6 +264,16 @@ def main():
             need(FEATURE_STAY, "store without starting")
         send(link, image, name, args.slot, max_chunk, args.stay)
 
+    if args.color:
+        need(FEATURE_COLOR, "colour its keys")
+        slot, rgb = int(args.color[0]), bytes.fromhex(args.color[1])
+        if not 1 <= slot <= slots:
+            sys.exit(f"slot must be 1-{slots}")
+        reply = link.call(COLOR, bytes([slot] + [c >> 1 for c in rgb]), timeout=2.0,
+                          match=for_slot(slot))
+        check(reply, "color")
+        print(f"  key {slot} colour set")
+
     if args.list:
         need(FEATURE_LIST, "list its keys")
         for slot in range(1, slots + 1):
@@ -264,7 +282,9 @@ def main():
             n = reply[2]
             fname = reply[3:3 + n].decode("ascii")
             size = get7(reply[3 + n:7 + n])
-            print(f"  key {slot:2d}: {fname} ({size} bytes)" if n else f"  key {slot:2d}: -")
+            rgb = reply[7 + n:10 + n]
+            colour = "  #" + "".join(f"{c << 1 | c >> 6:02X}" for c in rgb) if len(rgb) == 3 else ""
+            print(f"  key {slot:2d}: {fname} ({size} bytes){colour}" if n else f"  key {slot:2d}: -")
 
 
 def send(link, image, name, slot, max_chunk, stay, launcher=False):
@@ -306,7 +326,7 @@ def send(link, image, name, slot, max_chunk, stay, launcher=False):
     check(reply, "end")
     print(f"  written and checked in {stored_in:.1f} s")
     if launcher:
-        print("stored -- CHOMPI restarts and installs it (rainbow), then the keys breathe white")
+        print("stored -- CHOMPI restarts and installs it (rainbow), then the keys light up again")
     else:
         print(f"stored in slot {slot}" + ("" if stay else " -- starting firmware"))
 
@@ -327,17 +347,20 @@ def run(link, slot, slots):
 
 if __name__ == "__main__":
     # FRIZZ's (THIRD_PARTY.md): run by hand, it takes the CHOMPI's lock (tools/chompi.py) and
-    # leaves the user's keys (10, 13), the storage firmware's (15) and the launcher to flash.py,
-    # which calls main() after its own checks, and to the launcher's web page
+    # leaves the user's keys (10, 13), the storage firmware's (15) and the launcher (sending to
+    # them, clearing or colouring them) to flash.py, which calls main() after its own checks, and
+    # to the launcher's web page
     import chompi
     chompi.claim()
     guard = argparse.ArgumentParser(add_help=False)
     guard.add_argument("--slot", type=int)
     guard.add_argument("--clear", type=int)
     guard.add_argument("--launcher", action="store_true")
+    guard.add_argument("--color", nargs=2)  # writes the card's key_colors.txt
     asked = guard.parse_known_args()[0]
     kept = sorted(set(chompi.USER_SLOTS) | {15, chompi.STORAGE_SLOT})
-    if asked.launcher or asked.slot in kept or asked.clear in kept:
+    coloured = asked.color and asked.color[0].isdigit() and int(asked.color[0]) in kept
+    if asked.launcher or asked.slot in kept or asked.clear in kept or coloured:
         sys.exit("midi_send.py by hand leaves keys %s and the launcher alone: flash.py sends to "
                  "10 and 13 (a v* tag's build), the launcher's web page does the rest"
                  % ", ".join(str(k) for k in kept))

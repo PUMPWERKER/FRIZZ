@@ -67,6 +67,10 @@ static constexpr float kLineOutGain = .3f;
 static constexpr float kHpGain = .2f;
 static constexpr float kLineInGain = 3.f;
 static constexpr float kMicGain = 5.f; // TAPE's, after the input gain as there
+// AUX's and the mic's DC blocker (DcBlocker, FxCommon.h): the codec's offset, a mic's bias.
+// ~8Hz, so a kick's or a synth's bass comes through (TAPE's DcBlock, .99, cut it from 76Hz
+// down, #317); a step of DC falls 60dB in 144ms
+static constexpr float kInDcPole = .999f;
 // USB's into the engine and back (#196): AUX's line in gain and the line out's level, each
 // turned, as the jacks' analog stages turn them (#209)
 static constexpr float kUsbInGain = -kLineInGain;
@@ -110,9 +114,9 @@ public:
         morph_.Init(&fx_);
         comp_.Init(sample_rate);
 
-        dcblock_line_in_l_.Init(sample_rate);
-        dcblock_line_in_r_.Init(sample_rate);
-        dcblock_mic_in_.Init(sample_rate);
+        dcblock_line_in_l_.Reset();
+        dcblock_line_in_r_.Reset();
+        dcblock_mic_in_.Reset();
         mic_filter_.Init(sample_rate);
 
         lim_hp_l_.Init();
@@ -159,8 +163,8 @@ public:
 
                 // mono: a TS plug grounds the right channel, so the left (its tip) feeds both
                 const float in_r = mono_in_ ? in[2][i] : in[3][i];
-                dryl[i] = dcblock_line_in_l_.Process(in[2][i] * aux_gain_ * kLineInGain);
-                dryr[i] = dcblock_line_in_r_.Process(in_r * aux_gain_ * kLineInGain);
+                dryl[i] = dcblock_line_in_l_.Process(in[2][i] * aux_gain_ * kLineInGain, kInDcPole);
+                dryr[i] = dcblock_line_in_r_.Process(in_r * aux_gain_ * kLineInGain, kInDcPole);
             }
         }
         else if (mic)
@@ -538,7 +542,7 @@ private:
     /** The mic's sample: after its gain, DC blocked and filtered */
     __attribute__((always_inline)) inline float Mic(float in)
     {
-        return mic_filter_.Process(dcblock_mic_in_.Process(in * mic_gain_ * kMicGain));
+        return mic_filter_.Process(dcblock_mic_in_.Process(in * mic_gain_ * kMicGain, kInDcPole));
     }
 
     /** The computer's channel c for this block, or silence */
@@ -571,8 +575,8 @@ private:
             const float m = Mic(in[0][i]);
             fonepole(aux_gain_, aux_gain_target_, .001f);
             const float in_r = mono_in_ ? in[2][i] : in[3][i];
-            const float l = dcblock_line_in_l_.Process(in[2][i] * aux_gain_ * kLineInGain);
-            const float r = dcblock_line_in_r_.Process(in_r * aux_gain_ * kLineInGain);
+            const float l = dcblock_line_in_l_.Process(in[2][i] * aux_gain_ * kLineInGain, kInDcPole);
+            const float r = dcblock_line_in_r_.Process(in_r * aux_gain_ * kLineInGain, kInDcPole);
             fonepole(usb_gain_, usb_gain_target_, .001f);
             const float u_l = ul[i] * usb_gain_ * kUsbInGain;
             const float u_r = ur[i] * usb_gain_ * kUsbInGain;
@@ -715,7 +719,7 @@ private:
 
     float sample_rate_;
     std::atomic<float> tap_bpm_{0.f};
-    daisysp::DcBlock dcblock_line_in_l_, dcblock_line_in_r_, dcblock_mic_in_;
+    chompi::DcBlocker dcblock_line_in_l_, dcblock_line_in_r_, dcblock_mic_in_;
     chompi::MicFilter mic_filter_;
     chompi::Limiter lim_hp_l_, lim_hp_r_, lim_line_l_, lim_line_r_;
     volatile float lim_gain_ = 1.f; // TakeLimiterGain

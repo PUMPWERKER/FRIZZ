@@ -717,9 +717,18 @@ def start(slot, timeout=120, device=None):
     return run(slot, "frizz" if slot in FRIZZ_SLOTS else None, timeout, device)
 
 
+def features(node):
+    """The launcher's at NODE: its PING's features (midi_send.FEATURE_*), 0 from one before 1.5
+    (no such byte) or none answering"""
+    with link(node) as to:
+        reply = to.call(midi_send.PING, timeout=0.3, retries=3, required=False)
+    return reply[7] if reply and len(reply) >= 8 else 0
+
+
 def slot_file(node, slot):
     """The file on key SLOT ("" for none), as the launcher at NODE lists it; None from a
-    launcher before 1.5, which can't say"""
+    launcher before 1.5, which can't say. 1.6's LIST adds the key's colour after the size,
+    which this doesn't read"""
     with link(node) as to:
         reply = to.call(midi_send.PING, timeout=0.3, retries=3, required=False)
         if not reply or len(reply) < 8 or not reply[7] & midi_send.FEATURE_LIST:
