@@ -7109,7 +7109,7 @@ int main()
         // knob 1, the rate, at .25: free, between blue and orange; synced over CC 14 on its
         // channel, 7: green
         const Rgb free_rate = PthLedFull(kKnob1Led);
-        Check(free_rate.r > 120 && free_rate.b > 120 && free_rate.g > 30 && free_rate.g < 120,
+        Check(free_rate.r > 80 && free_rate.r < 180 && free_rate.b > 120 && free_rate.g > 30 && free_rate.g < 120,
               "phaser: its rate free, knob 1's LED between blue and orange");
         Trs({0xB6, 14, 64}); // the centre
         RunMs(100);
