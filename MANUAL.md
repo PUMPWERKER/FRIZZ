@@ -875,7 +875,7 @@ gritty overtones.
 - **The fold:** past the fold point the signal is mirrored back, again and again as the
   drive rises, each fold adding harmonics. Drive is the folding: on loud material the folds
   start low on the knob, on quiet material higher up.
-- **Level:** at 1× a quiet sound comes out at its own level. Driven, a folder's output
+- **Level:** at 1× a quiet sound comes out at its own level, the bass too. Driven, a folder's output
   rises towards full scale whatever goes in, so the folder gets louder as you drive it, the
   more so on quiet material. Nothing evens that out by itself: page 2's Level and Mix are
   there for it.
@@ -2331,8 +2331,9 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
 
 ### Processing load
 
-Effects that are off cost (almost) no processing time, but the ones that are on do. Some
-heavy combinations (the shifter and the crusher with a loop playing and the master compressor
+Effects that are off cost little processing time, about 5% of each block's together (most of
+it the resonator and the shifter keeping their recent sound for a punch-in), but the ones that
+are on do. Some heavy combinations (the shifter and the crusher with a loop playing and the master compressor
 working hard, for example) can need more time than there is, which is heard as crackles;
 switching one of them off clears it.
 

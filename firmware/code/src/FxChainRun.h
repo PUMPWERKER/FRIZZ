@@ -19,14 +19,17 @@ FX_CHAIN_RUN void FxChain::Run(float* l, float* r, size_t n)
     // the resonator's loop wraps everything from here to the phaser: its Feeds, the
     // inserts in it, then its Taps (Resonator::Feed)
     uint32_t res_idle = 0; // bit i: idle after Feed i, for what goes into the loop then
-    for (size_t i = 0; i < n; i++)
-    {
-        resonator_.Feed(&l[i], &r[i], i);
-        if (resonator_.Idle())
-            res_idle |= 1u << i;
-        else
-            Meter(FX_RESONATOR, resonator_.Return());
-    }
+    if (resonator_.SleepsThrough(n))
+        res_idle = ~0u;
+    else
+        for (size_t i = 0; i < n; i++)
+        {
+            resonator_.Feed(&l[i], &r[i], i);
+            if (resonator_.Idle())
+                res_idle |= 1u << i;
+            else
+                Meter(FX_RESONATOR, resonator_.Return());
+        }
     BENCH_MARK_FX(FX_RESONATOR);
     Insert(FX_SHIFTER, shifter_, l, r, n);
     Insert(FX_FOLDER, folder_, l, r, n);
