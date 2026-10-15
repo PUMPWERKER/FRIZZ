@@ -30,35 +30,37 @@ struct FxSlot
 {
     Hardware::SwId key;           // its LED: KeyLedOf (PanelKeys.h)
     const float* key_color;
-    const float* knob_colors[3];  // the knob LEDs at 0 and 1 (the middle one unused: white is
-                                  // a bipolar knob's neutral point, NormalPage.h KnobColor);
-                                  // a split knob's lower half (FxParams::split) goes from
-                                  // the first to the last within it
+    const float* knob_colors[3];  // the knob LEDs at 0, the key's colour, and at 1, well apart
+                                  // from it (the middle one unused: white is a bipolar
+                                  // knob's neutral point, NormalPage.h KnobColor); a split
+                                  // knob's lower half (FxParams::split) goes from the first
+                                  // to the last within it
     FxKind kind;
 };
 
 static const FxSlot kFxSlots[] = {
     {Hardware::SwId::KEY_1, purple, {purple, white, med_blue}, FxKind::INSERT},   // freezer
-    {Hardware::SwId::KEY_2, indigo, {blue, white, red}, FxKind::INSERT},          // shifter
-    {Hardware::SwId::KEY_3, scarlet, {magenta, white, orange}, FxKind::INSERT},   // folder
-    {Hardware::SwId::KEY_4, orange, {yellow, orange, red}, FxKind::INSERT},       // crusher
+    {Hardware::SwId::KEY_2, indigo, {indigo, white, red}, FxKind::INSERT},        // shifter
+    {Hardware::SwId::KEY_3, scarlet, {scarlet, white, azure}, FxKind::INSERT},    // folder
+    {Hardware::SwId::KEY_4, orange, {orange, white, violet}, FxKind::INSERT},     // crusher
     {Hardware::SwId::KEY_5, pink, {pink, white, med_blue}, FxKind::INSERT},       // filter
     {Hardware::SwId::KEY_6, med_blue, {med_blue, white, purple}, FxKind::INSERT}, // flanger
-    {Hardware::SwId::KEY_8, lime, {orange, white, med_blue}, FxKind::LOOP},       // resonator
+    {Hardware::SwId::KEY_8, lime, {lime, white, med_blue}, FxKind::LOOP},         // resonator
     {Hardware::SwId::KEY_9, yellow, {yellow, white, green}, FxKind::INSERT},      // slicer
-    {Hardware::SwId::KEY_10, red, {teal, white, purple}, FxKind::INSERT},         // wow & flutter
-    {Hardware::SwId::KEY_11, rose, {amber, white, red}, FxKind::INSERT},          // tape stop
+    {Hardware::SwId::KEY_10, red, {red, white, purple}, FxKind::INSERT},          // wow & flutter
+    {Hardware::SwId::KEY_11, rose, {rose, white, azure}, FxKind::INSERT},         // tape stop
     {Hardware::SwId::KEY_12, green, {green, white, med_blue}, FxKind::SEND},      // delay
-    {Hardware::SwId::KEY_13, teal, {med_blue, blue, purple}, FxKind::SEND},       // reverb
-    {Hardware::SwId::KEY_7, blue, {violet, white, orange}, FxKind::INSERT},       // phaser
-    {Hardware::SwId::KEY_14, magenta, {med_blue, white, rose}, FxKind::CHAOS},    // chaos
+    {Hardware::SwId::KEY_13, teal, {teal, white, purple}, FxKind::SEND},          // reverb
+    {Hardware::SwId::KEY_7, blue, {blue, white, orange}, FxKind::INSERT},         // phaser
+    {Hardware::SwId::KEY_14, magenta, {magenta, white, med_blue}, FxKind::CHAOS}, // chaos
 };
 static_assert(sizeof(kFxSlots) / sizeof(kFxSlots[0]) == kNumFx, "one per FxId");
 
 // The phaser's second mode, the frequency shifter (#306, kFxModes): its key and knob LEDs, as
-// a slot's; the key a pale blue, apart from the flanger's light blue and the phaser's blue
+// a slot's; the key a pale blue, apart from the flanger's light blue and the phaser's blue, its
+// knobs starting in it
 static const float* const kShifterKeyColor = ice_blue;
-static const float* const kShifterKnobColors[3] = {azure, white, orange};
+static const float* const kShifterKnobColors[3] = {ice_blue, white, orange};
 
 // The finalizer's key (Finalizer.h, #345; the master compressor's until 1.5), the last white
 // key: in the colour of the module its knobs show (kFinColors), lighting up with its gain

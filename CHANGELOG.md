@@ -103,8 +103,16 @@ what FRIZZ does.
   and phaser blue, resonator lime, slicer yellow, wow & flutter red and tape stop rose, delay
   green and reverb teal. The frequency shifter's key is ice blue, the chaos key magenta. New
   are the shifter (was red), the folder (magenta), the phaser (violet), wow & flutter (teal),
-  the tape stop (amber), the reverb (blue) and the chaos key (rose); the knobs keep their
-  colours. See [Keys and knobs](MANUAL.md#keys-and-knobs).
+  the tape stop (amber), the reverb (blue) and the chaos key (rose). See
+  [Keys and knobs](MANUAL.md#keys-and-knobs).
+- **Each effect's knob lights start in its key's colour**: turned down, a knob shows the colour
+  of the key it belongs to, and turning it up goes to a second colour well apart from that, so
+  the knobs say which effect they're on. New start colours for the shifter, folder, crusher,
+  phaser, frequency shifter, resonator, wow & flutter, tape stop, reverb and chaos key; new end
+  colours where the old one was too close to the start: the folder and the tape stop now end in
+  azure, the crusher in violet, the chaos key in light blue. A knob with a centre stays blue,
+  white and orange, the phaser's synced rate green to yellow. Each effect's colours are in its
+  chapter of the manual.
 - **Knobs 1-4 and VOLUME speed up when turned fast** (#375): turned slowly, a knob still moves
   1% a detent, so a precise setting is as easy to hit; turned faster than about 8 detents a
   second, its step grows smoothly, up to 5% a detent from about 40 a second, so a quick sweep
