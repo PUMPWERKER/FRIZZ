@@ -179,6 +179,24 @@ what FRIZZ does.
   the save flashes red as when the card can't be written. A card that stops answering
   altogether can take a few seconds longer. See
   [Scenes and settings on the card](MANUAL.md#scenes-and-settings-on-the-card).
+- **SHIFT + press of knob 1 on the settings page sets the LEDs to 100 %**: it was knob 2's
+  press that did, and knob 1's did nothing. See [LED brightness](MANUAL.md#led-brightness).
+- **Save, copy and delete's notes do nothing on the Loops and Cubbi pages**, as the upper F#,
+  G# and A# there: notes 66, 68 and 70 started the function, which the next tap of SHIFT could
+  confirm. See [Notes: the keys](MANUAL.md#notes-the-keys).
+- **A key a MIDI note holds no longer stays held for good when its note off can't come**: when
+  the computer goes away (the cable pulled, the computer asleep) or USB audio switches, every
+  key MIDI holds lets go, and a note off on any channel lets go of the key its note holds, so
+  changing the MIDI channel on the settings page meanwhile no longer leaves an effect punched
+  in or SHIFT held. See [Notes: the keys](MANUAL.md#notes-the-keys).
+- **A key held by your hand and by a note is pressed once on the Loops and settings pages
+  too**: there the note pressed it a second time on the play page, so letting go of note 45
+  ended SHIFT while your hand still held it, and a scene key's note recalled its scene again.
+  See [Notes: the keys](MANUAL.md#notes-the-keys).
+- **SHIFT held from the play page counts for the settings page's 2 s holds**: with SHIFT held
+  as you flip the switch up, CHOMPI lit and SHIFT + upper F# worked, but SHIFT + VOLUME or
+  SHIFT + LOOP held 2 s did nothing. Now they write the bug report and lend the card. See
+  [Settings page](MANUAL.md#settings-page).
 
 ## v1.0.1 (2026-10-13)
 

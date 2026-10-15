@@ -2345,16 +2345,20 @@ int main()
               "settings-brightness: SHIFT + turn steps by quarters, 35 % up to 50, then 75, 50, 25, and up to 100");
         TurnBrightness(-3); // 85 %
         RunMs(3000);
-        Tap("ENC_1_SW"); // a press alone: nothing
+        Tap("ENC_4_SW"); // knob 1: a press alone, nothing
         RunMs(3000);
         const bool kept = brightness_saved(85);
         Press("KEY_26", true);
         RunMs(100);
-        Tap("ENC_1_SW"); // SHIFT + press: 100 %
+        Tap("ENC_1_SW"); // knob 2: SHIFT + press, nothing either
+        RunMs(3000);
+        const bool not_knob2 = brightness_saved(85);
+        Tap("ENC_4_SW"); // knob 1: SHIFT + press, 100 %
         RunMs(100);
         Press("KEY_26", false);
         RunMs(3000);
         Check(kept && brightness_saved(100), "settings-brightness: knob 1 pressed does nothing, SHIFT + press is 100 %");
+        Check(not_knob2, "settings-brightness: SHIFT + press of knob 2 leaves it");
         SetToggle(false);
         RunMs(300);
         Check(Same(SmtLed(kFilterKeyLed), filter), "settings-brightness: at 100 % as full as before");
@@ -4004,6 +4008,32 @@ int main()
               "loops-midi: the filter held by hand on the play page lets go on the Loops page");
     }});
 
+    // save, copy and delete's notes (66, 68, 70) do nothing on the Loops page, as the hand's
+    // upper F#, G#, A# there: no mode a tap of SHIFT could confirm
+    cases.push_back({"loops-midi-modes", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a5", SineWav(96000, 2, 220.f)}});
+        LoopsPage();
+        bool none = true;
+        for (int note : {66, 68, 70})
+        {
+            Trs({kNoteOn, note, 100});
+            RunMs(100);
+            Trs({kNoteOff, note, 0});
+            RunMs(100);
+            none = none && Ask({0x20})[7] == 0;
+        }
+        const bool shown = LoopsShown();
+        LoopsPage(); // home
+        Trs({kNoteOn, 70, 100});
+        RunMs(100);
+        Trs({kNoteOff, 70, 0});
+        RunMs(100);
+        const bool home = Ask({0x20})[7] != 0;
+        Check(none && shown && home,
+              "loops-midi-modes: notes 66, 68, 70 arm no mode on the Loops page, and on the play page do");
+    }});
+
     // loops over MIDI (#259): CC 0 picks the program changes' bank (0 the scenes, 1-8 FRIZZ's
     // a-h, 9-13 the cubbis a-e), a program change 0-14 the key; CC 54 when: 0 at once, 1-8 at
     // the n-th pass end, 127 with the waiting scene sequence (at once if none); CC 81 cancels
@@ -4956,6 +4986,43 @@ int main()
         Check(bugs() == short_hold + 1, "bug hold: VOLUME + SHIFT held 5 s writes one report");
     }});
 
+    // SHIFT held from the play page, the switch flipped up with it, counts on the settings
+    // page for its 2 s holds too, as for its keys: a bug report, the card lent
+    cases.push_back({"bug-hold-play-shift", [] {
+        auto bugs = [] {
+            int n = 0;
+            for (auto& f : CardFiles())
+                n += f.first.rfind("/FRIZZ/bug-", 0) == 0;
+            return n;
+        };
+        RunMs(kReadyMs);
+        const int before = bugs();
+        Press("KEY_26", true);
+        RunMs(100);
+        SetToggle(true);
+        RunMs(300);
+        Press("ENC_6_SW", true);
+        RunMs(2500);
+        Press("ENC_6_SW", false);
+        RunMs(100);
+        Press("KEY_26", false);
+        RunMs(1000);
+        Check(bugs() == before + 1, "bug-hold-play-shift: SHIFT from the play page + VOLUME held 2 s writes a report");
+        SetToggle(false);
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        SetToggle(true);
+        RunMs(300);
+        Press("KEY_28", true);
+        RunMs(2500);
+        Press("KEY_28", false);
+        RunMs(100);
+        Press("KEY_26", false);
+        RunMs(300);
+        Check(CardLent(), "bug-hold-play-shift: SHIFT from the play page + LOOP held 2 s lends the card");
+    }});
+
     // with the card kept out of it (kCmdDev's PERSIST 0, a test on the device) the hold
     // writes no report either: a bug report played there leaves the card as it was (#171)
     cases.push_back({"bug-ram-only", [] {
@@ -5008,6 +5075,157 @@ int main()
         Trs({kNoteOff, 47, 0});
         RunMs(100);
         Check(PthLedFull(kLoopLed).r > 100, "midi notes: note 47 is LOOP");
+    }});
+
+    // a key held by the hand and by a note is pressed once and let go once both have, also on
+    // the Loops page and the settings page, where the hand's keys go to that page
+    static auto play_shift = [] { return (Ask({0x20})[6] & 4) != 0; };
+    static auto filter_latched = [] { return (LatchedFx(Ask({0x20})) & 1 << 4) != 0; };
+    cases.push_back({"midi-notes-once-shift", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a5", SineWav(96000, 2, 220.f)}});
+        // the Loops page: SHIFT by hand, and note 45 on and off meanwhile
+        LoopsPage();
+        Press("KEY_26", true);
+        RunMs(100);
+        Trs({kNoteOn, kChompiNote, 100});
+        RunMs(100);
+        Trs({kNoteOff, kChompiNote, 0});
+        RunMs(100);
+        const bool kept = play_shift() && LoopsShown();
+        // the other way round: the note first, the hand's let go first
+        Trs({kNoteOn, kChompiNote, 100});
+        RunMs(100);
+        Press("KEY_26", false);
+        RunMs(100);
+        const bool by_note = play_shift();
+        Trs({kNoteOff, kChompiNote, 0});
+        RunMs(100);
+        Check(kept && by_note && !play_shift(),
+              "midi-notes-once-shift: the Loops page: SHIFT held by hand and by note 45 is held until both let go");
+    }});
+    // a scene key there is the play page's: scene 1 (the filter latched) recalled by hand,
+    // the filter let go over MIDI, and scene 1's note meanwhile doesn't recall it again
+    cases.push_back({"midi-notes-once-scene", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a5", SineWav(96000, 2, 220.f)}});
+        Latch("KEY_5");
+        Save(1);
+        Latch("KEY_5");
+        LoopsPage();
+        Press(kSceneKeys[1], true);
+        RunMs(100);
+        const bool recalled = filter_latched();
+        Trs({kCC, kFilterLatchCC, 127, kCC, kFilterLatchCC, 0});
+        RunMs(100);
+        const bool let_go = !filter_latched();
+        Trs({kNoteOn, 56, 100});
+        RunMs(100);
+        Trs({kNoteOff, 56, 0});
+        RunMs(100);
+        const bool once = !filter_latched();
+        Press(kSceneKeys[1], false);
+        RunMs(100);
+        Check(LoopsShown() && recalled && let_go && once,
+              "midi-notes-once-scene: the Loops page: a scene key held by hand, its note recalls it no second time");
+    }});
+    // the settings page: scene 1's key held there by hand (the clock factor), its note recalls
+    // nothing on the play page; SHIFT held there by hand, note 45 is no SHIFT on the play page
+    cases.push_back({"midi-notes-once-settings", [] {
+        RunMs(kReadyMs);
+        Latch("KEY_5");
+        Save(1);
+        Latch("KEY_5");
+        const bool let_go = !filter_latched();
+        SetToggle(true);
+        RunMs(300);
+        Press(kSceneKeys[1], true);
+        RunMs(100);
+        Trs({kNoteOn, 56, 100});
+        RunMs(100);
+        Trs({kNoteOff, 56, 0});
+        RunMs(100);
+        Press(kSceneKeys[1], false);
+        RunMs(100);
+        const bool no_recall = let_go && !filter_latched();
+        Press("KEY_26", true);
+        RunMs(100);
+        Trs({kNoteOn, kChompiNote, 100});
+        RunMs(100);
+        const bool once = !play_shift();
+        Trs({kNoteOff, kChompiNote, 0});
+        RunMs(100);
+        Press("KEY_26", false);
+        RunMs(100);
+        SetToggle(false);
+        RunMs(300);
+        Check(no_recall, "midi-notes-once-settings: a scene key held there by hand, its note recalls nothing");
+        Check(once, "midi-notes-once-settings: SHIFT held there by hand, note 45 is no SHIFT on the play page");
+    }});
+
+    // a key a note holds isn't held for good when its note off can't come: the computer gone,
+    // FRIZZ leaving the bus for USB audio, or the global channel changed since the note on
+    cases.push_back({"midi-notes-gone", [] {
+        RunMs(kReadyMs);
+        RunMs(3000);
+        const int off = Max(SmtLedFull(kFilterKeyLed));
+        auto held = [off] { return Max(SmtLedFull(kFilterKeyLed)) > 2 * off; };
+        Usb({kNoteOn, kFilterNote, 100});
+        RunMs(100);
+        const bool usb_on = held();
+        SetUsbHost(false); // unplugged
+        RunMs(300);
+        const bool usb_gone = !held();
+        SetUsbHost(true);
+        RunMs(1000);
+        Check(usb_on && usb_gone, "midi-notes-gone: the computer gone, a key its note held lets go");
+
+        // the channel: 16, then 1 on the settings page, and the note off still on 16
+        Trs({kNoteOn, kFilterNote, 100});
+        RunMs(100);
+        const bool on16 = held();
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_1");
+        RunMs(100);
+        SetToggle(false);
+        RunMs(300);
+        const bool still = held();
+        Trs({kNoteOff, kFilterNote, 0});
+        RunMs(300);
+        const bool let_go = !held();
+        Trs({kNoteOn, kFilterNote, 100}); // channel 16 isn't FRIZZ's now
+        RunMs(100);
+        const bool ignored = !held();
+        Trs({0x90, kFilterNote, 100}); // channel 1 is
+        RunMs(100);
+        const bool on1 = held();
+        Trs({0x90, kFilterNote, 0});
+        RunMs(300);
+        Check(on16 && still && let_go && ignored && on1 && !held(),
+              "midi-notes-gone: held on channel 16, its note off lets go after the channel changed to 1; "
+              "a note on on 16 does nothing then");
+
+        // USB audio switched off (SHIFT + upper F# with USB): FRIZZ leaves the bus
+        Usb({0x90, kFilterNote, 100});
+        RunMs(100);
+        const bool usb_held = held();
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_23");
+        RunMs(100);
+        Tap("KEY_23"); // USB
+        RunMs(100);
+        Press("KEY_26", true);
+        RunMs(60);
+        Tap("KEY_23");
+        RunMs(60);
+        Press("KEY_26", false);
+        RunMs(600);
+        const bool switched = !UsbAudioOn();
+        SetToggle(false);
+        RunMs(300);
+        Check(usb_held && switched && !held(), "midi-notes-gone: USB audio switched, a key a USB note held lets go");
     }});
 
     // controllers: latches, an effect's channel, the focus, the compressor, a gain
@@ -8076,6 +8294,11 @@ int main()
         RunMs(600);
         Check(CardLent() && UsbAudioOn() && UsbEnumerations() == enumerated && blinks == 3,
               "usb-switch-lent: the card lent: SHIFT + F# with USB blinks red 3 times, USB audio stays on");
+        // the developers' SET of usb_audio (masterfile::kLines' 18) is refused the same
+        const std::string set = Ask({0x3E, 3, 1, 0x23, 18, 0, 0});
+        RunMs(600);
+        Check(set.size() == 5 && set[2] == 1 && CardLent() && UsbAudioOn() && UsbEnumerations() == enumerated,
+              "usb-switch-lent: the developers' SET of USB audio is refused too");
     }});
 
     // a bug report knows AUX's jack: as it was at power-on, and each change; its replay plays

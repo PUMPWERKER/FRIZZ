@@ -300,26 +300,30 @@ public:
         const uint8_t bit = key == static_cast<int>(Hardware::SwId::KEY_26)     ? kShiftHeld
                             : key == static_cast<int>(Hardware::SwId::ENC_6_SW) ? kVolumeHeld
                             : key == static_cast<int>(Hardware::SwId::KEY_28)   ? kLoopHeld
+                            : key == kPlayShift                                 ? kPlayShiftHeld
                                                                                 : 0;
         if (!bit)
             return;
-        const uint8_t was = held_;
+        const uint8_t was = Holding();
         held_ = down ? held_ | bit : held_ & ~bit;
-        if (held_ == kBothHeld && was != kBothHeld)
+        const uint8_t holding = Holding();
+        if (holding == kBothHeld && was != kBothHeld)
             held_since_ = now;
-        else if (held_ != kBothHeld)
+        else if (holding != kBothHeld)
             reported_ = false;
-        if (held_ == kCardHeld && was != kCardHeld)
+        if (holding == kCardHeld && was != kCardHeld)
             card_since_ = now;
-        else if (held_ != kCardHeld)
+        else if (holding != kCardHeld)
             card_asked_ = false;
     }
+    /** SHIFT held from the play page, from Draw: it counts for the holds too, as for Key */
+    inline void PlayShift(bool shift, uint32_t now) { Held(kPlayShift, shift, now); }
 
     /** True once per hold, when SHIFT and LOOP have both been held kBugReportHoldMs: the card
      *  lent or taken back (CardLend.h) */
     bool CardHeld(uint32_t now)
     {
-        if (held_ != kCardHeld || card_asked_ || now - card_since_ < kBugReportHoldMs)
+        if (Holding() != kCardHeld || card_asked_ || now - card_since_ < kBugReportHoldMs)
             return false;
         card_asked_ = true;
         return true;
@@ -328,7 +332,7 @@ public:
     /** True once per hold, when SHIFT and VOLUME's press have both been held kBugReportHoldMs */
     bool BugReportHeld(uint32_t now)
     {
-        if (held_ != kBothHeld || reported_ || now - held_since_ < kBugReportHoldMs)
+        if (Holding() != kBothHeld || reported_ || now - held_since_ < kBugReportHoldMs)
             return false;
         reported_ = true;
         return true;
@@ -376,6 +380,9 @@ public:
     {
         using namespace masterfile;
         if (line >= sizeof(kLines) / sizeof(kLines[0]) || !kLines[line].Takes(v))
+            return false;
+        // USB audio leaves the bus: not with the card lent there, as its key (Key)
+        if (kLines[line].offset == offsetof(MasterSettings, usb_audio) && cardlend::Get().lent)
             return false;
         MasterSettings master;
         Store(master);
@@ -465,14 +472,14 @@ public:
         const size_t src = engine_->Source();
         const bool live = engine_->Live(src);
         if (no_usb_switch_.Active(now))
-            SmtLed(KeyLedOf(kInSourceKey), red, no_usb_switch_.BlinkLit(now) ? 1.f : 0.f);
+            SmtLed(KeyLedOf(kInSourceKey), red, no_usb_switch_.BlinkLevel(now));
         else if (shift || ShiftHeld())
             KeyLed(kInSourceKey, white, src == kUsb ? usb_audio_ : mono_);
         else
             KeyLed(kInSourceKey, kInSourceColors[src], src != kUsb || usb_audio_);
         KeyLed(kLiveKey, white, live);
         if (dark_fx_.Active(now))
-            SmtLed(KeyLedOf(kInFxKey), red, dark_fx_.BlinkLit(now) ? 1.f : 0.f);
+            SmtLed(KeyLedOf(kInFxKey), red, dark_fx_.BlinkLevel(now));
         else
             SmtLed(KeyLedOf(kInFxKey), engine_->Dry(src) ? white : green, live ? 1.f : 0.f);
         // knob 1 the brightness, white and dimmed with every LED: it shows itself
@@ -487,13 +494,13 @@ public:
         // LOOP: the card lent (blue), or refused (3 red blinks); else dark (CardLend.h)
         cardlend::State& card = cardlend::Get();
         if (card.refused.Active(now))
-            PthLed(kLoopLed, red, card.refused.BlinkLit(now) ? 1.f : 0.f);
+            PthLed(kLoopLed, red, card.refused.BlinkLevel(now));
         else
             PthLed(kLoopLed, blue, card.lent ? 1.f : 0.f);
         PthLed(kChompiKeyLed, white, shift || (held_ & kShiftHeld) ? 1.f : 0.f);
         if (refused_.Active(now))
         {
-            const float lit = refused_.BlinkLit(now) ? 1.f : 0.f;
+            const float lit = refused_.BlinkLevel(now);
             if (unsaved_key_ == kBrightnessKnobKey)
                 PthLed(kKnobLeds[0], red, lit);
             else
@@ -527,10 +534,13 @@ private:
 
     static const uint8_t kNumChannelKeys = 14; // white keys 1-14; the 15th is 15 and 16
     static const Hardware::SwId kChannel15Key = Hardware::SwId::KEY_15;
-    // Held's bits: SHIFT 1, VOLUME 2, LOOP 4; the bug report's hold, the card's
-    static const uint8_t kShiftHeld = 1, kVolumeHeld = 2, kLoopHeld = 4;
+    // Held's bits: SHIFT 1, VOLUME 2, LOOP 4, the play page's SHIFT 8 (PlayShift); the bug
+    // report's hold, the card's
+    static const uint8_t kShiftHeld = 1, kVolumeHeld = 2, kLoopHeld = 4, kPlayShiftHeld = 8;
     static const uint8_t kBothHeld = kShiftHeld | kVolumeHeld, kCardHeld = kShiftHeld | kLoopHeld;
-    static const int kNoKey = -1;
+    static const int kNoKey = -1, kPlayShift = -2; // no key; PlayShift's for Held
+    /** What's held, either SHIFT as the page's */
+    inline uint8_t Holding() const { return (held_ | held_ >> 3) & (kShiftHeld | kVolumeHeld | kLoopHeld); }
     static const uint32_t kBugReportHoldMs = 2000;
 
     // the dark keys by topic (#97): MIDI in on the lower octave, from all channels (KEY_16)
@@ -546,7 +556,7 @@ private:
     static const Hardware::SwId kLiveKey = Hardware::SwId::KEY_24;
     static const Hardware::SwId kInFxKey = Hardware::SwId::KEY_25;
     // knob 1's press, the brightness's (#176), and its LED and the others' (PanelLeds.h)
-    static const int kBrightnessKnobKey = static_cast<int>(Hardware::SwId::ENC_1_SW);
+    static const int kBrightnessKnobKey = static_cast<int>(Hardware::SwId::ENC_4_SW);
     static constexpr uint8_t kKnobLeds[4] = {1, 2, 3, 4};
     static const int kBrightnessStep = 5, kQuarter = 25, kMinBrightness = 25; // percent
     // the factor's hue, by ClockFactor: x1/2 light blue, x1 yellow, x2 red
@@ -571,7 +581,8 @@ private:
     bool saved_live_[kNumSources] = {true, false, true};
     float saved_gain_[kNumSources] = {.75f, .75f, .75f};
     bool usb_audio_ = true;
-    uint8_t held_ = 0;          // SHIFT, VOLUME's press and LOOP down on the page, by Held's bits
+    uint8_t held_ = 0;          // SHIFT, VOLUME's press and LOOP down on the page, and the
+                                // play page's SHIFT, by Held's bits
     uint32_t held_since_ = 0;   // since when both are
     bool reported_ = false;     // this hold has asked for its bug report
     uint32_t card_since_ = 0;   // since when SHIFT and LOOP are
