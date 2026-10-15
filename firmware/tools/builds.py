@@ -16,7 +16,7 @@ builds here refuse it.
 A build at a v* tag is a release's or a beta's, and reports its version to the loop transfer's
 HELLO from code/src/Version.h's kFrizzVersion (docs/LOOP_PROTOCOL.md 7.1): building refuses a
 tag whose version isn't kFrizzVersion (v1.5.0-beta.1 is 1, 5, 0, 1; v1.5.0 is 1, 5, 0, 0), and so
-does flash.py --slot 10/13 (check_version).
+does flash.py --slot 10/11 (check_version).
 
 cpu.txt's first line is the bench's own: the checksum of the source it was built from, which
 the bench build also carries. `cpu` files it only if the bench build here carries that line
