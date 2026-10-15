@@ -2,11 +2,11 @@
  *  @brief Audio engine: the stereo AUX input, the built-in mic, or a computer over USB goes to
  *  both outputs
  *  through the Volume Engine: input gain -> input/loop mix -> punch-in FX (FxChain.h) ->
- *  master compressor (MasterComp.h) -> output gain -> safety limiter.
+ *  finalizer (Finalizer.h) -> output gain -> safety limiter.
  *
  *  The source is AUX, the mic (#152) or USB (#196), and each has its own settings (#177): live or not, on
  *  the outputs at all; and if live, through the effects, as above, or dry, its share of the
- *  mix added after the compressor, past the effects and the compressor (a mastered song, a
+ *  mix added after the finalizer, past the effects and the finalizer (a mastered song, a
  *  drum machine), still through VOLUME and the limiter. The mic is off unless asked for: a
  *  speaker would feed it back. The looper records the source as it is, whatever those say,
  *  and so do the headphones' input on its own. Each source has its own input gain.
@@ -32,7 +32,7 @@
  *  on its own. The looper records the dry signal (see Looper.h).
  *
  *  The headphones mirror the master out, or with SetHeadphoneCue() blend in the input on its
- *  own: after the input gain and VOLUME, but no loop, no FX, no MIX and no compressor. The
+ *  own: after the input gain and VOLUME, but no loop, no FX, no MIX and no finalizer. The
  *  headphones' safety limiter comes after that blend, so it guards the input too. They go
  *  out turned against the line out: the CHOMPI's headphone stages don't turn the signal, its
  *  AUX in and line out stages do, so turned they're in phase with AUX at the jacks (#209).
@@ -56,7 +56,7 @@
 #include "FxMorph.h"
 #include "limiter.h"
 #include "Looper.h"
-#include "MasterComp.h"
+#include "Finalizer.h"
 #include "MicFilter.h"
 #include "TempoClock.h"
 
@@ -112,7 +112,7 @@ public:
                  freezer_mem_l, freezer_mem_r, freezer_frames,
                  tapestop_mem_l, tapestop_mem_r, tapestop_frames);
         morph_.Init(&fx_);
-        comp_.Init(sample_rate);
+        fin_.Init(sample_rate);
 
         dcblock_line_in_l_.Reset();
         dcblock_line_in_r_.Reset();
@@ -293,13 +293,13 @@ public:
         BENCH_MARK(OUTPUT);
 
         // punch-in FX, on the mix so they work on the input, the loop or both, and before the
-        // output gain so they don't change with the VOLUME knob. The FX and the compressor a
+        // output gain so they don't change with the VOLUME knob. The FX and the finalizer a
         // block at a time, each effect's code in the I-cache for the whole block (#136)
         fx_.Process(sigl, sigr, size); // marks each effect itself
-        comp_.Process(sigl, sigr, size);
+        fin_.Process(sigl, sigr, size);
         BENCH_MARK(COMP);
 
-        // the dry branch joins after the compressor, before VOLUME and the limiter
+        // the dry branch joins after the finalizer, before VOLUME and the limiter
         if (bypass)
             for (size_t i = 0; i < size; i++)
             {
@@ -357,7 +357,7 @@ public:
             }
         }
 
-        // the line outs' deepest limiting this block, for the compressor key's LED; kept the
+        // the line outs' deepest limiting this block, for the finalizer key's LED; kept the
         // deepest until the play page takes it
         const float lim = fminf(lim_line_l_.Gain(), lim_line_r_.Gain());
         if (lim < lim_gain_)
@@ -372,10 +372,21 @@ public:
     {
         (source == kMic ? mic_gain_target_ : source == kUsb ? usb_gain_target_ : aux_gain_target_) = gain;
     }
-    /** The master compressor's knobs (MasterComp.h), 0..1 */
-    inline void SetCompParam(size_t param, float val) { comp_.SetParam(param, val); }
-    /** Its gain reduction now, in dB (<= 0) */
-    inline float GetCompReduction() const { return comp_.GetReduction(); }
+    /** The finalizer's knobs (Finalizer.h), 0..1, its bypass, a band's mute and the module
+     *  whose meters the knob LEDs show (Finalizer::kNoMeter: none) */
+    inline void SetFinParam(size_t param, float val) { fin_.SetParam(param, val); }
+    inline void SetFinBypass(bool bypass) { fin_.SetBypass(bypass); }
+    inline void SetFinMute(size_t band, bool mute) { fin_.SetMute(band, mute); }
+    inline void SetFinMeter(uint8_t module) { fin_.SetMeter(module); }
+    /** The finalizer at rest at once, every knob on its default (the bench, between segments) */
+    inline void ResetFin() { fin_.Init(sample_rate_); }
+    /** Its meters, from MainLoop (Finalizer.h) */
+    inline chompi::Finalizer& Fin() { return fin_; }
+    /** Its deepest gain reduction now, in dB (<= 0) */
+    inline float GetFinReduction() const { return fin_.GetReduction(); }
+    /** The output's delay, samples: the finalizer's limiter (Finalizer::Latency), which MIDI
+     *  clock out follows (MidiOut.h) */
+    inline uint32_t OutputLatency() const { return fin_.Latency(); }
     /** The safety limiter's deepest gain on the line outs since the last call, 0..1 (1: it
      *  didn't limit). From MainLoop: a float read and written whole, so no lock */
     inline float TakeLimiterGain()
@@ -398,7 +409,7 @@ public:
     inline void SetMicInput(bool mic) { SetSource(mic ? kMic : kAux); }
     inline bool MicInput() const { return source_ == kMic; }
     /** A source's effects (#177), by its number (false and true are AUX and the mic): false =
-     *  through them, true = dry, past them and the compressor */
+     *  through them, true = dry, past them and the finalizer */
     inline void SetDry(size_t source, bool dry) { dry_[source] = dry; }
     inline bool Dry(size_t source) const { return dry_[source]; }
     inline void SetAuxDry(bool dry) { SetDry(kAux, dry); }
@@ -737,7 +748,7 @@ private:
     uint32_t next_16th_ = 0;
     chompi::FxChain fx_;
     chompi::FxMorph morph_;
-    chompi::MasterComp comp_;
+    chompi::Finalizer fin_;
     volatile bool mono_in_ = false;
     volatile uint8_t source_ = kAux;
     // each source's settings, AUX's, the mic's, USB's: past the effects, live

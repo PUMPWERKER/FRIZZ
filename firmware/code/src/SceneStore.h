@@ -4,7 +4,7 @@
  *  boot; written only when the play page saves, copies or deletes one, never on a recall, so a
  *  performance doesn't touch the card.
  *
- *  Next to it, frizz_master.txt holds the master compressor's knobs, the mono input and the
+ *  Next to it, frizz_master.txt holds the finalizer's knobs and presets, the mono input and the
  *  MIDI settings (MasterSettings.h): read at boot, written when the play page asks, a while after they were
  *  last turned. It goes through the same .tmp; one that's there but can't be read (#168) is
  *  kept as frizz_master.bak by the next save, as the scenes' is.

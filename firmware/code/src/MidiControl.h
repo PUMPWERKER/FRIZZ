@@ -7,8 +7,9 @@
  *  Channels (#97): the one set (MasterSettings::midi_channel, 16 at first) is the global
  *  channel, with the notes, program changes, the looper, the scenes, the gains, every latch
  *  and the knobs of the effect they edit (the focus). Channels 1-15 are the effect block, one
- *  per white key, left to right (FxSlots.h: 14 the chaos key, 15 the compressor), the same CCs
- *  on each: a DAW's track per effect. On the global channel its own map wins; on all channels
+ *  per white key, left to right (FxSlots.h: 14 the chaos key, 15 the finalizer), the same CCs
+ *  on each: a DAW's track per effect. The finalizer's channel has a map of its own (#345):
+ *  its four modules' knobs at fixed CCs, the module shown, its bypass, presets and mutes. On the global channel its own map wins; on all channels
  *  (0) only the global map counts, and the block is off. Over the jack the block is a setting
  *  (BlockTrs, the settings page's), since a chain of gear shares that cable's channels.
  *
@@ -90,7 +91,7 @@ static const uint8_t kBankCC = 0;       // Bank Select (MSB): the program change
 static const uint8_t kMorphCC = 3;      // morph to the scene 0-4, as the value changes
 static const uint8_t kMorphBarsCC = 9;  // over how many bars, 1-8 (kMaxMorphBars)
 static const uint8_t kFocusCC = 23;     // 1-15: the white key whose knobs 14-22 reach
-static const uint8_t kCompCC = 24;      // 24-31: the compressor's knobs, as channel 15's 14-21
+static const uint8_t kFinGlobalCC = 24; // 24-27: the finalizer's Level knobs, 28 its Depth
 static const uint8_t kLoopTimingCC = 54; // when a loop's program change switches (kTimingNow ...)
 static const uint8_t kFaderCC = 80;     // the crossfader: a running morph from its start to its scene
 static const uint8_t kStopMorphCC = 81; // stops a morph where it is, crossing 64 upward
@@ -112,13 +113,26 @@ static const uint8_t kMorphBarsMax = 8;
 static const uint8_t kLoopBanks = 13, kLoopPrograms = 15, kCubbiProgramBank = 9;
 // CC 54's values: at once, at the end of the 1st-8th pass, with the scene sequence waiting
 static const uint8_t kTimingNow = 0, kTimingPassesMax = 8, kTimingSequence = 127;
+// The finalizer's channel, white key 15's (#345): CC 14-20 its parameters 0-6 (Level's
+// knobs, EQ's), 24-30 its 8-14 (Comp's, Width's), so a module's knobs are four CCs in a row;
+// 21 recalls preset 1-4 (0 none) as the value changes; 22 on (64 and up) or bypassed; 23
+// the module the knobs show, in quarters (0-31 Level ...); 102-104 mute the low, mid and
+// high band (64 and up muted). Through the focus (CC 23 = 15 on the global channel) CC
+// 14-17 reach the module shown
+static const uint8_t kFinKey = kBlockChannels - 1;
+static const uint8_t kFinPresetCC = 21, kFinOnCC = 22, kFinModuleCC = 23;
+static_assert(kFinOnCC == kLatchCC && kFinModuleCC == kFocusCC, "on or off at the latch's CC, the module at the focus's");
+static const uint8_t kFinHighCC = 24; // its parameters 8-15 from here
+static const uint8_t kFinMuteCC = 102;
+static const uint8_t kFinDepthParam = 11; // the global channel's CC 28
+static const uint8_t kFinKnobs = 4;       // a module's
 // Free on purpose, so what hosts and keyboards send by themselves reaches nothing: 32, 1,
 // 2, 4, 7, 10, 11 and 64-79; 6/38 and 96-101, an (N)RPN's data and selects (a DAW's
 // pitch-bend range); 88; 91-95; 121 (Reset All Controllers) and the channel modes. 46-53, the
 // LSBs of 14-21, stay free for a 14-bit mode later
 
-/** What TakeValue gives: white key k's knob p (both pages) as k * kKeyParams + p, the
- *  compressor's as the 15th key's, then the rest */
+/** What TakeValue gives: white key k's knob p (both pages) as k * kKeyParams + p (the
+ *  finalizer's key's 0-3 the module shown's knobs, through the focus), then the rest */
 enum Value : uint8_t
 {
     kOutGain = kBlockChannels * kKeyParams,
@@ -128,7 +142,10 @@ enum Value : uint8_t
     kSpeed,
     kFader,
     kMode, // CC 23 on kModeKey's channel
-    kNumValues,
+    kFinModule,          // CC 23 on the finalizer's channel
+    kFinMute,            // + band 0-2: CC 102-104 there
+    kFinParam = kFinMute + 3, // + its parameter 0-15
+    kNumValues = kFinParam + 16,
 };
 } // namespace midimap
 
@@ -139,8 +156,10 @@ static_assert(Cc(0) == midimap::kKnobCC && Cc(kLatchSlot) == midimap::kLatchCC
                   && kLatchSlot == midimap::kKeyParams && kKeys == midimap::kBlockChannels,
               "a key's knobs, then its latch, on its channel");
 static_assert(Cc(kGlobalLatches) == midimap::kKeyLatchCC && Cc(kFocusItems) == midimap::kKnobCC
-                  && Cc(kCompItems) == midimap::kCompCC && Cc(kFocus) == midimap::kFocusCC,
-              "the latches, the effect in focus, the compressor");
+                  && Cc(kFinItems) == midimap::kFinHighCC && Cc(kFinModule) == midimap::kFinModuleCC
+                  && Cc(kFinMutes) == midimap::kFinMuteCC && Cc(kFocus) == midimap::kFocusCC
+                  && kKeys - 1 == midimap::kFinKey,
+              "the latches, the effect in focus, the finalizer's channel");
 static_assert(Cc(kOutGain) == midimap::kOutGainCC && Cc(kInGain) == midimap::kInGainCC
                   && Cc(kMix) == midimap::kMixCC && Cc(kHpCue) == midimap::kHpCueCC
                   && Cc(kSpeed) == midimap::kSpeedCC && Cc(kFader) == midimap::kFaderCC
@@ -166,7 +185,7 @@ enum MidiCmd : uint8_t
     kCmdSwitch = 0x14,   // POS: the mode switch, 0 as it stands, 1 down, 2 up, until power-off
     kCmdState = 0x20,    // what the play page shows
     kCmdParams = 0x21,   // FX: an effect's knobs (12 the phaser's, 13 the chaos key's, 14 the
-                         // compressor's), 14 bits each
+                         // finalizer's 16, module by module), 14 bits each
     kCmdLeds = 0x22,     // PART: the LEDs as their bytes, part 0 the panel's, 1-3 the keys'
     kCmdLoad = 0x23,     // the audio callback's load since the last ask: max and mean, 14 bits
                          // each, then the blocks longer than a block (crackles) and the
@@ -196,7 +215,9 @@ enum Sub : uint8_t
                  //    of cpu.txt from there. FRIZZ-bench.bin only
     PROBE = 5,   // 0 -> the clock and the FX's tempo; 1 -> the looper (firmware/README.md)
     LEVELS = 6,  // 0 -> the effects' meters (14 bits each); 1 -> flags (kArmed), the VU meter,
-                 //    the compressor's reduction, the peaks since the last ask (Audio)
+                 //    the finalizer's reduction, the peaks since the last ask (Audio); 2 ->
+                 //    the finalizer's meters: the input's peak, the bands' peaks, reductions
+                 //    and correlations, the limiter's reduction (NormalPage::DevLevels)
     SIGNAL = 7,  // WAVE FREQ(2) LEVEL(2): Audio's test signal in place of the input, 0 off
     RESEED = 8,  // [SEED(5)]: the effects' random numbers from SEED (0 as at power-on) ->
                  //    the seed, then chaos's, the slicer's, the delay's and wow & flutter's
@@ -222,7 +243,7 @@ enum Status : uint8_t
 };
 // the groups of GET and SET: an effect's knobs by FxId (0-7: page 1, then page 2), then
 // numbers that don't move as effects join
-static const uint8_t kGroupComp = 0x20;     // the compressor's knobs, 0-7
+static const uint8_t kGroupFin = 0x20;      // the finalizer's knobs, 0-15 (module by module)
 static const uint8_t kGroupLatch = 0x21;    // the latches, by FxId: 0 or 1
 static const uint8_t kGroupVolume = 0x22;   // 0 output gain, 1 input gain, 2 mix, 3 headphones
 static const uint8_t kGroupSettings = 0x23; // the card's settings, as masterfile::kLines lists
@@ -386,6 +407,7 @@ public:
             INPUT,      // arg: the source 0 (CC 84), its effects 1 (116), live 2 (117) | its value << 2: CC 84's
                         // the source (AUX 0, the mic 1, USB 2), the others' on 1
             LOOP,       // arg: the loop, LoopLoader's bank * 15 + its key; arg2: CC 54's then
+            FIN_PRESET, // arg: the finalizer's preset 0-3 (CC 21 on its channel)
         };
         uint8_t kind, arg, arg2;
         uint16_t ms; // when it came, System::GetNow()'s lower 16 bits
@@ -493,6 +515,19 @@ public:
         return false;
     }
 
+    /** Value id's latest, if it changed since it was last taken: the finalizer's module
+     *  before the knobs that come with it (TakeValue goes by id) */
+    MIDI_CONTROL_ONCE bool TakeValueOf(uint8_t id, uint8_t& raw)
+    {
+        daisy::ScopedIrqBlocker irq;
+        const uint32_t bit = 1u << (id % 32);
+        if (!(changed_[id / 32] & bit))
+            return false;
+        changed_[id / 32] &= ~bit;
+        raw = values_[id];
+        return true;
+    }
+
     /** The next thing that acts once, in the order they came */
     inline bool TakeEvent(Event& e)
     {
@@ -504,7 +539,8 @@ public:
         return true;
     }
 
-    /** A latch MIDI changed since it was last taken: its white key 0-13 and whether it's on */
+    /** A latch MIDI changed since it was last taken: its white key 0-13 and whether it's on,
+     *  or the finalizer's (kFinKey): on or bypassed */
     inline bool TakeLatch(uint8_t& key, bool& on)
     {
         daisy::ScopedIrqBlocker irq;
@@ -716,6 +752,8 @@ private:
     bool KeyControl(uint8_t key, uint8_t cc, uint8_t v, uint8_t latch)
     {
         using namespace midimap;
+        if (key == kFinKey)
+            return FinControl(cc, v, latch == key);
         if (cc >= kKnobCC && cc < kKnobCC + kKeyParams)
         {
             Set(static_cast<uint8_t>(key * kKeyParams + cc - kKnobCC), v);
@@ -729,10 +767,43 @@ private:
             Set(kMode, v);
             return true;
         }
-        // the compressor's channel has no latch
-        if (cc != kLatchCC || key >= kBlockChannels - 1)
+        if (cc != kLatchCC)
             return false;
         return Latch(latch, key, v);
+    }
+
+    /** A controller for the finalizer (#345): on its own channel (own), or through the focus,
+     *  where CC 14-17 reach the module shown */
+    MIDI_CONTROL_ONCE bool FinControl(uint8_t cc, uint8_t v, bool own)
+    {
+        using namespace midimap;
+        if (!own)
+        {
+            if (cc < kKnobCC || cc >= kKnobCC + kFinKnobs)
+                return false;
+            Set(static_cast<uint8_t>(kFinKey * kKeyParams + cc - kKnobCC), v);
+            return true;
+        }
+        if (cc >= kKnobCC && cc < kFinPresetCC)
+            Set(static_cast<uint8_t>(kFinParam + cc - kKnobCC), v);
+        else if (cc >= kFinHighCC && cc < kFinHighCC + kKeyParams - 1)
+            Set(static_cast<uint8_t>(kFinParam + kKeyParams + cc - kFinHighCC), v);
+        else if (cc == kFinModuleCC)
+            Set(kFinModule, v);
+        else if (cc >= kFinMuteCC && cc < kFinMuteCC + 3)
+            Set(static_cast<uint8_t>(kFinMute + cc - kFinMuteCC), v);
+        else if (cc == kFinOnCC)
+            return Latch(kFinKey, kFinKey, v);
+        else if (cc == kFinPresetCC)
+        {
+            // as the value changes, a preset 1-4; taken as sent only once it's queued
+            if (v == fin_preset_last_ || (v >= 1 && v <= 4 && !Push(Event::FIN_PRESET, static_cast<uint8_t>(v - 1))))
+                return false;
+            fin_preset_last_ = v;
+        }
+        else
+            return false;
+        return true;
     }
     inline bool KeyControl(uint8_t key, uint8_t cc, uint8_t v) { return KeyControl(key, cc, v, key); }
 
@@ -743,8 +814,17 @@ private:
         using namespace midimap;
         if (cc >= kKnobCC && cc <= kLatchCC)
             return KeyControl(focus_, cc, v, kFocusLatch);
-        if (cc >= kCompCC && cc < kCompCC + kKeyParams)
-            return KeyControl(kBlockChannels - 1, static_cast<uint8_t>(cc - kCompCC + kKnobCC), v);
+        // the finalizer's Level knobs and its Depth
+        if (cc >= kFinGlobalCC && cc < kFinGlobalCC + kFinKnobs)
+        {
+            Set(static_cast<uint8_t>(kFinParam + cc - kFinGlobalCC), v);
+            return true;
+        }
+        if (cc == kFinGlobalCC + kFinKnobs)
+        {
+            Set(kFinParam + kFinDepthParam, v);
+            return true;
+        }
         if (cc >= kKeyLatchCC && cc < kKeyLatchCC + kBlockChannels - 1)
             return Latch(static_cast<uint8_t>(kKeyLatches + cc - kKeyLatchCC), cc - kKeyLatchCC, v);
         bool on;
@@ -1080,6 +1160,7 @@ private:
     uint32_t known_ = 0, high_ = 0; // sent a value yet; it was 64 or more
     uint8_t morph_last_ = 0xFF;     // CC 3's last value, 0xFF for none yet
     uint8_t drop_last_ = 0xFF;      // CC 83's
+    uint8_t fin_preset_last_ = 0xFF; // CC 21's on the finalizer's channel
     uint8_t morph_bars_ = 1;
 
     Query query_;

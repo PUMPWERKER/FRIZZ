@@ -759,7 +759,7 @@ erase a stuck Seed, but the generic Daisy bootloader it offers is not CHOMPI's.
 chompi_main.cpp        entry point: audio callback, main loop, boot sequence, AUX's jack picking the input,
                        the card lent as a USB drive
 passthroughEngine.h    the engine: the input (AUX, the built-in mic or USB) and its gain, the looper, input/loop mix ("dry/wet" in the code), punch-in FX,
-                       master compressor, output gain, headphone cue, safety limiter, the master to USB
+                       finalizer, output gain, headphone cue, safety limiter, the master to USB
 UsbDevice.h / .cpp     FRIZZ's USB-C port on TinyUSB (../libs/tinyusb): the sound card (UAC1), MIDI,
                        the card as a drive; TinyUSB's task on TIM7 (#196; test/usbdevice.cpp)
 usb_descriptors.c/.h   the USB descriptors, with and without the sound card; tusb_config.h TinyUSB's settings
@@ -775,10 +775,11 @@ LoopTransfer.h         the loop transfer over USB MIDI (#278, ../../docs/LOOP_PR
 FxChain.h              the punch-in effects in their processing order, with a level meter each
 FxChain.cpp            FxChain::Run (FxChainRun.h), the effects' per-sample code, compiled alone so its
                        machine code follows only its own sources (#286; tools/fxchain_tu.py checks the link)
-FxParams.h             each effect's knobs: how many, defaults, steps, coarse grids; the compressor's too
-FxSlots.h              each effect's key, LED and colours; the compressor's key
-MasterComp.h           the master compressor: amount, ratio, speed, mix, stereo-linked
-MasterSettings.h       what's kept on the card outside the scenes (the compressor's knobs, the
+FxParams.h             each effect's knobs: how many, defaults, steps, coarse grids; the finalizer's too
+FxSlots.h              each effect's key, LED and colours; the finalizer's key and its modules' colours
+Finalizer.h            the finalizer on key 15 (#345): input, a 3-band EQ, compression and width,
+                       drive, a lookahead limiter; its meters (test/finalizer.cpp)
+MasterSettings.h       what's kept on the card outside the scenes (the finalizer's knobs and presets, the
                        mono input, the MIDI channel and transport following), and its file format
 SceneStore.h           the card: /FRIZZ, the scene file and the master file, written from MainLoop
 FxScenes.h             the FX scenes and their file format

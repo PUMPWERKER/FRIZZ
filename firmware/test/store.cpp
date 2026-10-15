@@ -203,8 +203,8 @@ static void TestMasterFormat()
 {
     MasterSettings a, b;
     a.Reset();
-    for (size_t p = 0; p < kNumFxParams; p++)
-        a.comp[p] = .125f * p;
+    for (size_t p = 0; p < kNumFinParams; p++)
+        a.fin[p] = .0625f * p;
     a.mono = true;
     a.midi_channel = 3;
     a.midi_transport = true;
@@ -227,7 +227,8 @@ static void TestMasterFormat()
     char buf[kMasterFileMax];
     const size_t len = FormatMaster(a, buf, sizeof(buf));
     const std::string want = "FRIZZ master 1\n"
-                             "compressor2 0 125000 250000 375000 500000 625000 750000 875000\n"
+                             "finalizer 0 62500 125000 187500 250000 312500 375000 500000 562500 625000 "
+                             "687500 750000 812500 875000\n"
                              "mono 1\nmidi_channel 3\nmidi_transport 1\nclock_factor 50\n"
                              "clock_source 2\nmidi_out 1\nled_brightness 75\nmidi_block_trs 0\nmidi_feedback 1\n"
                              "aux_dry 1\ngain_aux 100\ngain_mic 36\nmic_dry 1\naux_live 0\nmic_live 1\n"
@@ -263,8 +264,13 @@ static void TestMasterFormat()
         // the longest file there can be still fits
         MasterSettings m;
         m.Reset();
-        for (size_t p = 0; p < kNumFxParams; p++)
-            m.comp[p] = .123456f;
+        for (size_t p = 0; p < kNumFinParams; p++)
+        {
+            m.fin[p] = .123456f;
+            for (size_t i = 0; i < kFinPresets; i++)
+                m.fin_presets[i][p] = .123456f;
+        }
+        m.fin_presets_used = 0x0f;
         m.midi_channel = 16;
         m.clock_factor = 200;
         m.led_brightness = 100;
