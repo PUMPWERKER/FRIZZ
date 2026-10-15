@@ -1310,6 +1310,8 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc == 0 && Has(out, "AUX L         0.500") && Has(out, "-6.0 dBFS") && Has(out, "mic           0.500")
               && !Has(out, "line L        0.0000") && Has(out, "effects    freezer 0.00"),
           "remote: signal plays a sine at half scale where the input was, levels shows it at -6 dBFS");
+    Check(rc == 0 && Has(out, "finalizer  input ") && Has(out, "; limiter "),
+          "remote: levels shows the finalizer's meters too (LEVELS 2, #408)");
     if (rc != 0 || !Has(out, "-6.0 dBFS"))
         printf("%s\n", out.c_str());
     rc = Remote({"signal", "off"}, out);
