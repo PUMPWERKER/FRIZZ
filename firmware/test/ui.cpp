@@ -6508,12 +6508,13 @@ int main()
         Tap("KEY_7");
         RunMs(300);
         const bool phaser = PhaserShows(false), knob4 = !White(PthLedFull(4));
+        const Rgb selected = SmtLedFull(kPhaserKeyLed);
         Tap("KEY_7");
         RunMs(40);
         const Rgb flash = SmtLedFull(kPhaserKeyLed);
         RunMs(400);
         const bool shifter = PhaserShows(true);
-        printf("      selected %s, switched %s (at full %s), knob 4 %s\n", Hex(SmtLedFull(kPhaserKeyLed)).c_str(),
+        printf("      selected %s, switched %s (at full %s), knob 4 %s\n", Hex(selected).c_str(),
                Hex(SmtLedFull(kPhaserKeyLed)).c_str(), Hex(flash).c_str(), Hex(PthLedFull(4)).c_str());
         Check(phaser && knob4, "fshift-gesture: SHIFT + KEY_7 selects the phaser, its key dim violet");
         Check(shifter && Shows(flash, kAzure, 252, 12) && White(PthLedFull(4)),
