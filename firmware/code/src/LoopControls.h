@@ -282,11 +282,6 @@ public:
         plan_ = kNone;
     }
 
-    /** A plan waits, its key blinking: for SHIFT + a blinking key */
-    inline bool Planned() const { return plan_ != kNone; }
-    /** Its loop lands with the scene sequence */
-    inline bool WithSequence() const { return plan_ != kNone && kind_ == Kind::LANDING; }
-
     /** Whether a load (or its spreading) writes into the recording's buffer: a recording
      *  waits for it */
     inline bool WritingRec() const { return load_ != kNone && target_ == 0; }
@@ -406,7 +401,10 @@ public:
         // a recording: the recording's buffer holds no loop of the card's any more
         if (state == Looper::State::RECORDING)
             bufs_[0].id = kNone;
-        if (!looper.Loaded())
+        // empty or recording: no loop of the card's plays. Not "the looper plays the
+        // recording's buffer": a card loop loaded there plays from its start when its samples
+        // start on a sector
+        if (state == Looper::State::EMPTY || state == Looper::State::RECORDING)
             playing_ = kNone;
         // an erase takes every plan with it
         const bool loop = (state == Looper::State::PLAYING || state == Looper::State::PAUSED)

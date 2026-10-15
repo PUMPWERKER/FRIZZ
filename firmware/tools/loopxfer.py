@@ -782,7 +782,6 @@ class Transfer:
         self.card, self.loader, self.intake, self.clock = card, loader, intake, clock
         self.env = {}
         self.ans = None
-        self.ack = None
         self.remembered = None
         self.job, self.phase, self.tid, self.tid_seq = JOB_NONE, IDLE, 0, 0
         self.bank = self.slot = self.src_bank = self.src_slot = self.result = self.detail = 0
@@ -853,15 +852,17 @@ class Transfer:
             self.job_step()
         elif card and not self.open_() and self.card.fs_type and not self.free_known():
             self.count_step()
+        else:
+            self.count_left = None  # a count goes on only over a FAT nobody changed (5.4)
         if self.job == JOB_WRITE and self.phase == RUNNING and now - self.heard_ms >= TIMEOUT_MS:
             self.end(TIMED_OUT, 0, False)
-        self.acks(now)
 
     def send(self):
+        """the pass's ack, made as it goes (NEXT and DROPS as they stand), then the answer"""
         out = []
-        if self.ack is not None:
-            out.append(sysex(REPLY, self.ack))
-        self.ack = None
+        ack = self.acks(self.clock())
+        if ack is not None:
+            out.append(sysex(REPLY, ack))
         if self.ans is not None:
             out.append(sysex(REPLY, self.ans))
         self.ans = None
@@ -1172,11 +1173,16 @@ class Transfer:
             self.step = 4
             return
         path = slot_path(self.bank, self.slot, False)
-        there = self.card.stat(path) == FR_OK
+        r = self.card.stat(path)
+        there = r == FR_OK
         if there and not self.replace:
             self.end(EXISTS, 0, True)
             return
-        r = self.card.unlink(path) if there else FR_OK
+        # a check that failed is a card error, not "no file" (3.9)
+        if there:
+            r = self.card.unlink(path)
+        elif r == FR_NO_FILE:
+            r = FR_OK
         if r == FR_OK:
             r = self.card.rename(TMP, path)
         if r:
@@ -1206,8 +1212,6 @@ class Transfer:
             self.count_left = None
 
     def acks(self, now):
-        if self.ack is not None:
-            return
         st, tid, drops, nxt = None, self.tid, self.intake.drops, self.next
         if self.end_ack:
             st, self.end_ack = self.end_ack, 0
@@ -1225,10 +1229,10 @@ class Transfer:
                 st, nxt, drops = NO_TRANSFER, 0, 0
                 self.stale_sent, self.stale_ms = True, now
         if st is None:
-            return
+            return None
         if st != NO_TRANSFER:
             self.acked_next, self.acked_drops = nxt, drops
-        self.ack = [CHUNK, 0, st, tid] + put7(nxt, 4) + [drops]
+        return [CHUNK, 0, st, tid] + put7(nxt, 4) + [drops]
 
 
 def frizz_version():
