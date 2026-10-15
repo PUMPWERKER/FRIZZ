@@ -425,6 +425,13 @@ struct FakeChain
     float params[kNumFx][kNumFxParams] = {};
     bool on[kNumFx] = {};
     void SetParam(size_t fx, size_t p, float v) { params[fx][p] = v; }
+    uint16_t modes = 0; // bit fx: its second mode, as sent
+    void SetMode(size_t fx, bool second)
+    {
+        modes = static_cast<uint16_t>(second ? modes | 1u << fx : modes & ~(1u << fx));
+        mode_calls++;
+    }
+    int mode_calls = 0;
     void SetOn(size_t fx, bool o) { on[fx] = o; }
     void FastSlew() {}
 };
@@ -458,6 +465,7 @@ static FxMorphPlan Plan(MorphParam how, float from, float to)
 {
     FxMorphPlan plan;
     plan.deferred = plan.wake = plan.was_on = plan.park = 0;
+    plan.mode_start = plan.mode_target = 0;
     for (size_t fx = 0; fx < kNumFx; fx++)
         for (size_t p = 0; p < kNumFxParams; p++)
         {
@@ -466,6 +474,77 @@ static FxMorphPlan Plan(MorphParam how, float from, float to)
             plan.how[fx][p] = how;
         }
     return plan;
+}
+
+/** An effect's second mode in a morph (#306): a stepped parameter, which the effect switches
+ *  with its own dip. The phaser on in both, its mode switches at the landing, on the
+ *  crossfader at its middle, either way; a freeze keeps the one it had got to; a drop's at
+ *  its line; and a UI's new mode while one runs goes where it lands */
+static void TestModes()
+{
+    MidiClock midi;
+    TempoClock clock;
+    clock.Init(kSr, &midi); // free at 120 BPM: a bar is 2s, 4000 blocks
+    FakeChain chain;
+    FxMorphT<FakeChain> morph;
+    morph.Init(&chain);
+    const uint16_t phaser = 1u << FX_PHASER;
+    FxMorphPlan plan = Plan(MorphParam::GLIDE, 0.f, 1.f);
+    plan.mode_target = phaser;
+    plan.was_on = phaser;
+
+    while (clock.Position() != 0)
+        MorphBlock(clock, morph);
+    morph.Start(plan, clock.PulsesToBarLine());
+    bool before = true;
+    int blocks = 0;
+    while (morph.Active())
+    {
+        before = before && chain.modes == 0 && chain.mode_calls == 0;
+        MorphBlock(clock, morph);
+        blocks++;
+    }
+    Check(before && blocks > 3990 && chain.modes == phaser && chain.mode_calls == 1,
+          "modes: on in both, the phaser's mode switches at the landing, once");
+
+    // on the crossfader: at its middle, back and forth
+    chain = FakeChain();
+    plan.mode_start = 0;
+    morph.Start(plan, clock.PulsesToBarLine(), true);
+    morph.Fader(.4f);
+    MorphBlock(clock, morph);
+    const bool a = chain.modes == 0;
+    morph.Fader(.6f);
+    MorphBlock(clock, morph);
+    const bool b = chain.modes == phaser;
+    morph.Fader(.3f);
+    MorphBlock(clock, morph);
+    const bool back = chain.modes == 0;
+    morph.Fader(.7f);
+    MorphBlock(clock, morph);
+    float live[kNumFx][kNumFxParams];
+    uint16_t unswitched, was_on, modes = 0;
+    Check(a && b && back && morph.Freeze(live, &unswitched, &was_on, &modes) && modes == phaser,
+          "modes: on the crossfader at its middle, either way; a freeze keeps where it got to");
+
+    // a held morph made a drop to the phaser: its mode at the line; and the UI's set
+    // meanwhile is where a morph lands
+    chain = FakeChain();
+    while (clock.Position() != 0)
+        MorphBlock(clock, morph);
+    morph.Start(Plan(MorphParam::HOLD, .5f, .5f), clock.PulsesToBarLine(), true);
+    Check(morph.Drop(plan.target, phaser, phaser, false, phaser) && chain.modes == 0,
+          "modes: a drop doesn't switch the mode of an effect on before its line");
+    morph.Release(clock.PulsesToBarLine(), clock.PulsesPerBarLine());
+    while (morph.Active())
+        MorphBlock(clock, morph);
+    const bool dropped = chain.modes == phaser;
+    morph.Start(Plan(MorphParam::HOLD, .5f, .5f), clock.PulsesToBarLine());
+    chain.modes = phaser; // as the chain has it
+    Check(morph.SetMode(FX_PHASER, true), "modes: the UI's mode goes to a morph while it runs");
+    morph.Land();
+    Check(dropped && chain.modes == phaser && !morph.SetMode(FX_PHASER, false),
+          "modes: a drop switches it at its line, a morph lands on the UI's; none runs: the chain's");
 }
 
 /** A drop (#175, FxMorph::Drop): a held morph made one lands hard on the bar line its
@@ -1319,5 +1398,6 @@ int main()
     TestDelayOnLoopBeat();
     TestFactor();
     TestFactorQuantized();
+    TestModes();
     return Finish();
 }

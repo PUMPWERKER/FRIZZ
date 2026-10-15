@@ -222,7 +222,7 @@ def main():
         sys.argv = ["midi_send.py", "--color", str(slot), color, "--device", device]
         try:
             midi_send.main()
-        except SystemExit as e:
+        except (SystemExit, OSError) as e:
             print("key %d not coloured: %s" % (slot, e))
         chompi.send_run(device, slot)
     chompi.started(slot)
