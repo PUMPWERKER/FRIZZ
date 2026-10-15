@@ -125,7 +125,7 @@ def main():
         if len(before) > 3:
             f.send(remote.SETTING, [3, before[3]])
         f.link.running = False
-        # PERSIST 0 stays until FRIZZ restarts: the user's key 10 or 13 would keep their saves
+        # PERSIST 0 stays until FRIZZ restarts: the user's key 10 or 11 would keep their saves
         # in RAM, unsaid (remote.py's restore, as after a script)
         a.found = True
         remote.restore(f, a)

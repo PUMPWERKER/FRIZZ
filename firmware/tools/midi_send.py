@@ -347,7 +347,7 @@ def run(link, slot, slots):
 
 if __name__ == "__main__":
     # FRIZZ's (THIRD_PARTY.md): run by hand, it takes the CHOMPI's lock (tools/chompi.py) and
-    # leaves the user's keys (10, 13), the storage firmware's (15) and the launcher (sending to
+    # leaves the user's keys (10, 11), the storage firmware's (15) and the launcher (sending to
     # them, clearing or colouring them) to flash.py, which calls main() after its own checks, and
     # to the launcher's web page
     import chompi
@@ -362,6 +362,6 @@ if __name__ == "__main__":
     coloured = asked.color and asked.color[0].isdigit() and int(asked.color[0]) in kept
     if asked.launcher or asked.slot in kept or asked.clear in kept or coloured:
         sys.exit("midi_send.py by hand leaves keys %s and the launcher alone: flash.py sends to "
-                 "10 and 13 (a v* tag's build), the launcher's web page does the rest"
+                 "10 and 11 (a v* tag's build), the launcher's web page does the rest"
                  % ", ".join(str(k) for k in kept))
     main()
