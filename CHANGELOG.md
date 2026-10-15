@@ -159,6 +159,10 @@ what FRIZZ does.
   too**: there the note pressed it a second time on the play page, so letting go of note 45
   ended SHIFT while your hand still held it, and a scene key's note recalled its scene again.
   See [Notes: the keys](MANUAL.md#notes-the-keys).
+- **SHIFT held from the play page counts for the settings page's 2 s holds**: with SHIFT held
+  as you flip the switch up, CHOMPI lit and SHIFT + upper F# worked, but SHIFT + VOLUME or
+  SHIFT + LOOP held 2 s did nothing. Now they write the bug report and lend the card. See
+  [Settings page](MANUAL.md#settings-page).
 
 ## v1.0.1 (2026-10-13)
 

@@ -300,26 +300,30 @@ public:
         const uint8_t bit = key == static_cast<int>(Hardware::SwId::KEY_26)     ? kShiftHeld
                             : key == static_cast<int>(Hardware::SwId::ENC_6_SW) ? kVolumeHeld
                             : key == static_cast<int>(Hardware::SwId::KEY_28)   ? kLoopHeld
+                            : key == kPlayShift                                 ? kPlayShiftHeld
                                                                                 : 0;
         if (!bit)
             return;
-        const uint8_t was = held_;
+        const uint8_t was = Holding();
         held_ = down ? held_ | bit : held_ & ~bit;
-        if (held_ == kBothHeld && was != kBothHeld)
+        const uint8_t holding = Holding();
+        if (holding == kBothHeld && was != kBothHeld)
             held_since_ = now;
-        else if (held_ != kBothHeld)
+        else if (holding != kBothHeld)
             reported_ = false;
-        if (held_ == kCardHeld && was != kCardHeld)
+        if (holding == kCardHeld && was != kCardHeld)
             card_since_ = now;
-        else if (held_ != kCardHeld)
+        else if (holding != kCardHeld)
             card_asked_ = false;
     }
+    /** SHIFT held from the play page, from Draw: it counts for the holds too, as for Key */
+    inline void PlayShift(bool shift, uint32_t now) { Held(kPlayShift, shift, now); }
 
     /** True once per hold, when SHIFT and LOOP have both been held kBugReportHoldMs: the card
      *  lent or taken back (CardLend.h) */
     bool CardHeld(uint32_t now)
     {
-        if (held_ != kCardHeld || card_asked_ || now - card_since_ < kBugReportHoldMs)
+        if (Holding() != kCardHeld || card_asked_ || now - card_since_ < kBugReportHoldMs)
             return false;
         card_asked_ = true;
         return true;
@@ -328,7 +332,7 @@ public:
     /** True once per hold, when SHIFT and VOLUME's press have both been held kBugReportHoldMs */
     bool BugReportHeld(uint32_t now)
     {
-        if (held_ != kBothHeld || reported_ || now - held_since_ < kBugReportHoldMs)
+        if (Holding() != kBothHeld || reported_ || now - held_since_ < kBugReportHoldMs)
             return false;
         reported_ = true;
         return true;
@@ -530,10 +534,13 @@ private:
 
     static const uint8_t kNumChannelKeys = 14; // white keys 1-14; the 15th is 15 and 16
     static const Hardware::SwId kChannel15Key = Hardware::SwId::KEY_15;
-    // Held's bits: SHIFT 1, VOLUME 2, LOOP 4; the bug report's hold, the card's
-    static const uint8_t kShiftHeld = 1, kVolumeHeld = 2, kLoopHeld = 4;
+    // Held's bits: SHIFT 1, VOLUME 2, LOOP 4, the play page's SHIFT 8 (PlayShift); the bug
+    // report's hold, the card's
+    static const uint8_t kShiftHeld = 1, kVolumeHeld = 2, kLoopHeld = 4, kPlayShiftHeld = 8;
     static const uint8_t kBothHeld = kShiftHeld | kVolumeHeld, kCardHeld = kShiftHeld | kLoopHeld;
-    static const int kNoKey = -1;
+    static const int kNoKey = -1, kPlayShift = -2; // no key; PlayShift's for Held
+    /** What's held, either SHIFT as the page's */
+    inline uint8_t Holding() const { return (held_ | held_ >> 3) & (kShiftHeld | kVolumeHeld | kLoopHeld); }
     static const uint32_t kBugReportHoldMs = 2000;
 
     // the dark keys by topic (#97): MIDI in on the lower octave, from all channels (KEY_16)
@@ -574,7 +581,8 @@ private:
     bool saved_live_[kNumSources] = {true, false, true};
     float saved_gain_[kNumSources] = {.75f, .75f, .75f};
     bool usb_audio_ = true;
-    uint8_t held_ = 0;          // SHIFT, VOLUME's press and LOOP down on the page, by Held's bits
+    uint8_t held_ = 0;          // SHIFT, VOLUME's press and LOOP down on the page, and the
+                                // play page's SHIFT, by Held's bits
     uint32_t held_since_ = 0;   // since when both are
     bool reported_ = false;     // this hold has asked for its bug report
     uint32_t card_since_ = 0;   // since when SHIFT and LOOP are

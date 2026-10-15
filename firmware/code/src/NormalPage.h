@@ -342,7 +342,9 @@ namespace chompi
             }
             if (settings)
             {
-                // SHIFT + VOLUME held there: a bug report, its blink over the transport LEDs
+                // SHIFT + VOLUME held there: a bug report, its blink over the transport LEDs;
+                // SHIFT held from the play page counts, as for its keys
+                settings_.PlayShift(Shift(), now);
                 if (settings_.BugReportHeld(now))
                     log_->RequestWrite();
                 // SHIFT + LOOP held there: the card lent or taken back (CardLend.h)

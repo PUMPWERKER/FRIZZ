@@ -4759,6 +4759,43 @@ int main()
         Check(bugs() == short_hold + 1, "bug hold: VOLUME + SHIFT held 5 s writes one report");
     }});
 
+    // SHIFT held from the play page, the switch flipped up with it, counts on the settings
+    // page for its 2 s holds too, as for its keys: a bug report, the card lent
+    cases.push_back({"bug-hold-play-shift", [] {
+        auto bugs = [] {
+            int n = 0;
+            for (auto& f : CardFiles())
+                n += f.first.rfind("/FRIZZ/bug-", 0) == 0;
+            return n;
+        };
+        RunMs(kReadyMs);
+        const int before = bugs();
+        Press("KEY_26", true);
+        RunMs(100);
+        SetToggle(true);
+        RunMs(300);
+        Press("ENC_6_SW", true);
+        RunMs(2500);
+        Press("ENC_6_SW", false);
+        RunMs(100);
+        Press("KEY_26", false);
+        RunMs(1000);
+        Check(bugs() == before + 1, "bug-hold-play-shift: SHIFT from the play page + VOLUME held 2 s writes a report");
+        SetToggle(false);
+        RunMs(300);
+        Press("KEY_26", true);
+        RunMs(100);
+        SetToggle(true);
+        RunMs(300);
+        Press("KEY_28", true);
+        RunMs(2500);
+        Press("KEY_28", false);
+        RunMs(100);
+        Press("KEY_26", false);
+        RunMs(300);
+        Check(CardLent(), "bug-hold-play-shift: SHIFT from the play page + LOOP held 2 s lends the card");
+    }});
+
     // with the card kept out of it (kCmdDev's PERSIST 0, a test on the device) the hold
     // writes no report either: a bug report played there leaves the card as it was (#171)
     cases.push_back({"bug-ram-only", [] {
