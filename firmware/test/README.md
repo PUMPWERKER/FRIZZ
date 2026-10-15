@@ -209,10 +209,10 @@ the loop out. It also guards the filter: its LFO division changed at full depth 
 resonance jumps the cutoff, but the output doesn't step further than the sweep does. Every
 insert and the resonator punched in from asleep through the chain, in its runs of 24
 samples, on a 220 Hz and a 50 Hz sine, steps and peaks no further in the first 100 ms than
-settled; the shifter so with its feedback at .8 and .95 on the 50 Hz too. And the filter,
-crusher, shifter, wow & flutter and flanger punched in 12 times in a row, at a hand's speed
-(50 and 150 ms) and inside the key's ~5 ms fade, step and peak no further than one punch-in
-does (the flanger inside the fade is #392, `Known`).
+settled; the shifter so with its feedback at .8 and .95 on the 50 Hz too. And every insert,
+the resonator and the slicer punched in 12 times in a row, at a hand's speed (20 to 150 ms)
+and inside the key's ~5 ms fade, step and peak no further than one punch-in does; the
+flanger's press restarts its sweep from silence, and only there (#392).
 
 ## Delay check
 

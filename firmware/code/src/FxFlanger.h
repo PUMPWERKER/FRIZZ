@@ -17,10 +17,14 @@ static const float kFlangerRateX[] = {0.f, .3f, .6f, .75f, 1.f};
 static const float kFlangerRateHz[] = {.02f, .1f, 1.f, 5.f, 50.f};
 static const float kFlangerDetuneX[] = {0.f, .1f, 1.f};
 static const float kFlangerDetuneHz[] = {0.f, .5f, .2f};
+// a press restarts the sweep below this gate (-60dB: the delay's jump unheard), which the
+// release falls to ~36ms after the key is let go
+static const float kFlangerRestartGate = .001f;
 
 /** Kastle's flanger. A delay of about 12ms swept either way by a triangle LFO, mixed
  *  with the input. Like Kastle's Amount, one knob sets both the sweep depth and the mix, so
- *  the top of it is pure vibrato. Pressing the key restarts the sweep (Kastle's trigger).
+ *  the top of it is pure vibrato. Pressing the key restarts the sweep (Kastle's trigger),
+ *  unless it's still fading out from the last release.
  *  Feedback recirculates the swept delay, a classic flanger's resonance; Kastle's Feedback
  *  is instead a short comb around every mode, at most 8% for the flanger.
  *  Params: 0 rate, 1 feedback, 2 amount, 3 polarity: the feedback positive
@@ -52,9 +56,13 @@ public:
 
     void Process(float* l, float* r)
     {
+        // a press from silence restarts the sweep (Kastle's trigger); one while the release
+        // still fades out, heard, keeps it, or the delay would jump under the fade, a click
+        // (#392). The gate as it was before this sample's fade
+        const bool silent = gate_.Value() < kFlangerRestartGate;
         const float gate = gate_.Process();
 
-        if (gate_.TakePress())
+        if (gate_.TakePress() && silent)
             phase_[0] = phase_[1] = 0.f;
 
         // off: only the buffer goes on (a press restarts the LFOs anyway), the knobs where
