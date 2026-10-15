@@ -628,6 +628,11 @@ namespace chompi
                 // a plain press turns the page; SHIFT + press resets, on a knob the page uses
                 if (buttonID == static_cast<uint16_t>(kFxKnobSwitches[knob]))
                 {
+#if !FRIZZ_BENCH
+                    // MIDI's note on the Loops page does nothing, as the hand's (LoopsKey, #360)
+                    if (loops_shown_)
+                        return true;
+#endif
                     const size_t page = fx_.Page();
                     const bool muted = fx_.Muted(knob);
                     if (fx_.KnobPressed(knob, Shift()))

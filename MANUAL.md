@@ -42,13 +42,13 @@ On the play page (the mode switch down), the controls are:
 
 | Control | In FRIZZ |
 |---|---|
-| White keys 1-13 | The [punch-in effects](#punch-in-fx), in the order the sound goes through them: [Freezer](#freezer), [Shifter](#shifter), [Folder](#folder), [Crusher](#crusher), [Filter](#filter), [Flanger](#flanger), [Phaser](#phaser), [Resonator](#resonator), [Slicer](#slicer), [Wow & flutter](#wow--flutter), [Tape stop](#tape-stop), [Delay](#delay), [Reverb](#reverb) |
+| White keys 1-13 | The [punch-in effects](#punch-in-fx), in the order the sound goes through them: [Freezer](#freezer), [Shifter](#shifter), [Folder](#folder), [Crusher](#crusher), [Filter](#filter), [Flanger](#flanger), [Phaser](#phaser) (or its [frequency shifter](#frequency-shifter)), [Resonator](#resonator), [Slicer](#slicer), [Wow & flutter](#wow--flutter), [Tape stop](#tape-stop), [Delay](#delay), [Reverb](#reverb) |
 | White key 14 | The [Chaos key](#chaos-key) |
 | White key 15 | The [Finalizer](#finalizer) on knobs 1-4: input and drive, EQ, compression, width, a limiter |
 | Lower C# and D# | With SHIFT, the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page): loops from the card |
 | Lower F#, G#, A#, upper C#, D# | The [FX scenes](#fx-scenes): the blank scene, then scenes 1-4 |
 | Upper F#, G#, A# | [Save, copy and delete](#save-copy-and-delete) a scene |
-| Knobs 1-4 | The effect picked last, or the finalizer; a press turns them to its [page 2](#page-2) |
+| Knobs 1-4 | The effect picked last, or the finalizer; a press turns them to the effect's [page 2](#page-2) (on the finalizer, it [mutes a band](#band-mutes)) |
 | The transport knob, the big purple one | The loop's speed and direction, a scrub while it's paused ([Transport knob](#transport-knob)); with a scene morph held, the crossfader and the drop |
 | VOLUME | Output gain, input gain and the headphone feed; with SHIFT, the input/loop mix ([VOLUME knob](#volume-knob)) |
 | CHOMPI | SHIFT; it confirms a save, copy or delete |
@@ -390,7 +390,8 @@ page opens with its white keys dark, and the lower C# and D# blink red 3 times.
 
 While you're on the Loops page, the CHOMPI key glows dimly in the bank's colour (white while
 you hold it as SHIFT). The CHOMPI key's LED only ever shows SHIFT held, the page you're on,
-the confirm of a scene save, copy or delete and the start-up ripple.
+a scene save, copy or delete waiting for its confirm, the start-up ripple and the low-battery
+warning.
 
 ![The panel on the Loops page in bank B: the CHOMPI key glows yellow, held as SHIFT for the page's gestures; the lower C# and D# lead to banks A and C in orange and green, white keys 1 to 9 hold loops in dim yellow, key 3 bright as the loop playing](images/panel-loops.svg)
 
@@ -418,6 +419,8 @@ show where they lead. A white key shows its loop:
 
 The effects can't be punched in by hand there, since the white keys are the loops, but the
 latched ones and the [chaos key](#chaos-key) play on, and MIDI notes still play the effects.
+Notes 66, 68 and 70 do nothing there, as the upper F#, G# and A# don't, nor do notes 36-39, as
+the knobs' presses don't.
 
 ### The Cubbi page
 
@@ -452,7 +455,7 @@ bank's colour, and the lower C# and D# in the colours of the banks they lead to.
 
 ### Switching loops
 
-- **A white key** switches to its loop at once, with a short crossfade. It keeps time: the
+- **A white key** switches to its loop at once, with a short crossfade (10 ms). It keeps time: the
   new loop starts as far into its pass as the loop playing is into its own, counted round
   the new loop's length. So two loops at the same tempo stay on the beat, whatever their
   lengths and whatever tempo FRIZZ guesses for them. With no loop playing it starts from the
@@ -573,7 +576,7 @@ playing and its scene, on the right the new loop and the new scene, and both loo
 <!-- part: Effects -->
 
 ## Sound architecture
-<!-- summary: The path from the input through the looper and effects to the outputs. -->
+<!-- summary: From the input through the looper and the effects to the outputs. -->
 
 How the sound goes through FRIZZ, from the input to the outputs.
 
@@ -684,7 +687,7 @@ The details of the timing:
 - **Stepped parameters** move one step per 3 detents: the shifter's shift, the filter's LFO
   and the delay's divisions, the freezer's length and roll, the slicer's pattern and stereo,
   the tape stop's stop and spin-up times, the flanger's polarity, the chaos key's grid, the
-  phaser's rate right of its centre.
+  phaser's rate right of its centre (and the frequency shifter's shift there).
 
 ### Keys and knobs
 
@@ -788,7 +791,7 @@ direction you turn, so a value set finely snaps onto the grid with the first coa
 | Resonator tone | Octaves down from 15 kHz: 7.5 kHz, 3.75 kHz, 1.9 kHz |
 | Wow & flutter tone | Octaves down from open, as the folder's and crusher's |
 | Stepped parameters (freezer length and roll, filter LFO and delay divisions, slicer pattern and stereo, tape stop and spin-up times, flanger polarity, chaos grid) | One step per detent instead of per 3 |
-| Phaser rate | Left of the centre the knob's 10% steps (0.02, 0.07, 0.4, 1 and 14 Hz), then each division, one per detent: from the free half up, the first stop is 1/16 on the centre; from the synced half down, past 1/16 onto the free half's 10% |
+| Phaser rate | Left of the centre the knob's 10% steps (0.02, 0.07, 0.4, 1 and 14 Hz), then each division, one per detent: from the free half up, the first stop is 1/16 on the centre; from the synced half down, past 1/16 onto the free half's 10%. The [frequency shifter](#frequency-shifter)'s shift on the same points |
 | Phaser centre | Octaves: 100, 200, 400, 800 Hz … 6.4 kHz |
 | Everything else, filter cutoff included | 10% steps |
 
@@ -912,7 +915,7 @@ White key 4. Fewer bits and a lower sample rate, down to 480 Hz, with a dive on 
 <!-- summary: A DJ filter, lowpass one way and highpass the other, with an LFO on the cutoff that follows the tempo. -->
 
 White key 5. A DJ filter, lowpass one way and highpass the other, with an LFO on the cutoff
-that follows the tempo (the DJ filter of TAPE, TEMPO and WAVE).
+that follows the tempo: a state-variable filter, on the cutoff knob of WAVE's DJ filter.
 
 ![The white keys from above, the filter lit on key 5; its knobs 1 to 4 are cutoff, resonance, LFO depth, LFO division](images/key-filter.svg)
 
@@ -956,7 +959,7 @@ vibrato.
 - LEDs: the key is light blue; the knobs go light blue to purple.
 
 ## Phaser
-<!-- summary: Sweeping notches with resonance, free-running or locked to the tempo; or a frequency shifter. -->
+<!-- summary: Sweeping notches with resonance, free-running or locked to the tempo. Hold SHIFT and tap key 7 twice for its other mode, a frequency shifter. -->
 
 White key 7. Sweeping notches with resonance, free-running or locked to the tempo (after the
 SP-404MK2's Phaser and the Elektron Tonverk's Phase 98). Its second mode is a
@@ -1010,9 +1013,9 @@ SP-404MK2's Phaser and the Elektron Tonverk's Phase 98). Its second mode is a
 
 The phaser's second mode moves every frequency in the sound up or down by the same number of
 Hz. A pitch shifter keeps the harmonics in tune with each other; this doesn't, so they no
-longer line up. A few Hz with feedback make a barber pole, a sweep that rises (or falls) and
-never ends; tens to hundreds of Hz make a sound metallic and bell-like. After Mutable
-Instruments' Warps.
+longer line up. A few Hz with feedback, and the direction (knob 4) turned to one side, make a
+barber pole, a sweep that rises (or falls) and never ends; tens to hundreds of Hz make a sound
+metallic and bell-like. After Mutable Instruments' Warps.
 
 - **Switching:** hold SHIFT and press key 7, which selects the phaser as ever, then press key
   7 again: the frequency shifter, the key azure. Every further press in the same hold switches
@@ -1025,31 +1028,37 @@ Instruments' Warps.
 
 | Knob | Page 1 | Page 2 |
 |---|---|---|
-| 1 | Shift, in two halves: left of the centre free, 0.1 Hz to 1 kHz; from the centre right a cycle per tempo division, 1/16 to 4 bars | Mix |
-| 2 | Feedback: the shifted sound shifted again, up to 90% | Stereo: the right channel turned the other way (default off) |
-| 3 | Depth: brings the shifted sound in, all of it at the top (0, off) | Band |
-| 4 | Direction: down at the left, both ways in the middle, up at the right | Level |
+| 1 | Shift, in two halves: left of the centre free, 0.1 Hz to 1 kHz; from the centre right a cycle per tempo division, 1/16 to 4 bars (default 10 Hz, free) | Mix |
+| 2 | Feedback: the shifted sound shifted again, up to 90% (default 36%, the knob at 40%) | Stereo: the right channel turned the other way (default off) |
+| 3 | Depth: brings the shifted sound in, all of it at the top (default 0, off) | Band |
+| 4 | Direction: down at the left, both ways in the middle, up at the right (default both) | Level |
 
 - **Shift (knob 1):** its free half is a curve, a tenfold every eighth of the knob: 0.1 Hz at
   the left, 10 Hz halfway to the centre, 1 kHz just below it. From the centre right, the shift
   follows the [tempo](#tempo-and-transport), a full cycle per division of the phaser's rate
   (1/16 on the centre to 4 bars at the top: at 120 BPM, 8 Hz down to 0.125 Hz), so the barber
-  pole turns in time. Turning it works as the phaser's rate does.
+  pole turns in time; with the loop in reverse, it turns the other way. Turning it works as
+  the phaser's rate does; SHIFT + turn steps the free half through 0.1, 0.63, 4, 25 and
+  158 Hz, then a division a detent.
 - **Feedback (knob 2)** sends the shifted sound back in, so it's shifted again on every trip,
-  through a lowpass and a soft limit: with a few Hz of shift, the barber pole. The repeats add
-  up, so the level is turned down a little as it rises.
+  through a lowpass and a soft limit: with a few Hz of shift and the direction to one side,
+  the barber pole; with the direction in the middle, both ways at once, it rings instead. The
+  repeats add up, so the level is turned down a little as it rises.
 - **Depth (knob 3)** brings the shifted sound in: at 0 the sound passes untouched, at the top
   you hear only the shifted sound. In between, the two together beat against each other. A
   morph fades the frequency shifter in and out on it.
 - **Direction (knob 4):** down at the left, every frequency lower by the shift; up at the
   right, higher; in the middle (its default) both at once, half as loud each, as a ring
-  modulator does; in between, one louder than the other. Its LED is blue for down, white for
-  both, orange for up.
+  modulator does; in between, one louder than the other. SHIFT + turn moves it in sixths of
+  the knob, the middle on one. Its LED is blue for down, white for both, orange for up.
 - **Stereo (page 2's knob 2):** turns the right channel's direction the other way: at the top
-  the right goes down where the left goes up; in the middle the right has both.
+  the right goes down where the left goes up; in the middle the right has both. With the
+  direction in the middle, both channels have both, and stereo changes nothing.
 - **Scenes:** a scene keeps the mode. Recalling it switches the mode; the blank scene is the
   phaser. A morph switches it at the landing, as it does stepped knobs: the effect fades out,
-  switches and fades in, a few milliseconds each way. A scene from before the frequency shifter
+  switches and fades in, a few milliseconds each way; the crossfader switches it in its
+  middle, a drop on its line. Switched by hand while a morph runs, the key shows the new mode
+  at once and the sound switches at the landing. A scene from before the frequency shifter
   is the phaser, and an older FRIZZ loads a scene with the frequency shifter as the phaser.
 - **MIDI:** CC 23 on the phaser's channel (7) sets the mode, 0-63 the phaser, 64-127 the
   frequency shifter (see [Controllers](#controllers)). Notes do as your hand: SHIFT's note 45
@@ -1220,6 +1229,9 @@ White key 13. From a room to a long wash; the tail rings on after you let go.
 
 - It gets the inserts' output and the delay's echoes, so the echoes are reverberated while
   both are on.
+- Its first diffusion moves a little all the time, as in Mutable Instruments' Clouds and
+  Elements, so the same hit rings a little differently each time: a smooth tail rather than a
+  metallic one.
 - LEDs: the key is blue; the knobs go light blue to purple. On page 2, knob 4's LED shows
   the room coming back (see [Page 2](#page-2)).
 
@@ -1340,11 +1352,13 @@ Module 3, cyan: a compressor on each band, set by its character, all three by on
 | 1 | Low character: Light & fast, Standard & fast, Standard & slow, Parallel, Keep loud, Beat FX (default Standard & slow) |
 | 2 | Mid character: as the low band's (default Standard & slow) |
 | 3 | High character: as the low band's (default Standard & slow) |
-| 4 | Depth: the three bands' thresholds together, from 0 dB down to -30 dB, 0 off (default off) |
+| 4 | Depth: the three bands' thresholds together, from 0 dB down to -30 dB on most characters (below), 0 off (default off) |
 
 - **Depth (knob 4)** is how much the three compress: at 0 they're off, turned up their
-  thresholds come down together.
-- **The characters** each set the attack, release, ratio and knee; the low band's are 1.5x
+  thresholds come down together, by 30 dB at the top. Each starts from its character's own:
+  0 dB, but -4 dB for Keep loud and -10 dB for Parallel and Beat FX, so those three compress
+  from the first detent.
+- **The characters** each set the attack, release, ratio, knee and where the threshold starts; the low band's are 1.5x
   slower, so the bass isn't pumped by its own waveform:
   - **Light & fast:** a gentle ratio, quick to react, for a little glue.
   - **Standard & fast:** a medium ratio, quick: tames peaks.
@@ -1402,8 +1416,11 @@ all three.
     the upper F#, G# or A#, which starts that mode for the presets rather than the scenes; let
     go of key 15 if you like. The scene keys show the presets in the mode's colour (green,
     blue, red). Pick the preset (for a copy the one to copy, then where to), confirm with
-    SHIFT: white for done, red if the card refused. While such a mode waits, SHIFT is its
-    confirm, never the bypass, even with key 15 still held.
+    SHIFT: white for done, red if the card refused. While such a mode waits (or a scene's),
+    SHIFT is its confirm, never the bypass, even with key 15 still held.
+  - An empty preset's key blinks red when pressed, and the blank scene's key does nothing
+    while the presets show. Flipping to the settings page or opening the Loops page ends a
+    preset's save, copy or delete.
 
 ### Finalizer LEDs and settings
 
@@ -1415,7 +1432,7 @@ all three.
   full scale. It's the only thing FRIZZ does to the level by itself, so it shows: key 15
   turns red over everything while it limits, from 1 dB of limiting on and fully red from 3 dB,
   held 0.3 s so a short peak is seen. Red means turn something down: VOLUME, an effect's
-  Level, the finalizer's Input or Loud. Loud's own limiter keeps it from working at VOLUME
+  Level, the finalizer's Input or Loud. Loud's own limiter keeps it from showing at VOLUME
   full.
 - **The knob LEDs** are meters while the knobs rest (above, module by module); a knob you turn
   shows its value for a moment, from light blue (0%) to orange (100%), then the meter again.
@@ -1423,8 +1440,8 @@ all three.
   stays VOLUME's.
 - **Level:** 0 dB at the input is an AUX signal about 7 dB below full scale, at the default
   input gain.
-- **Kept:** the knobs and presets are saved to `FRIZZ/frizz_master.txt` on the card 2 s after
-  the last turn, and come back at power-on. They're not part of a scene. Without a card, or
+- **Kept:** the knobs are saved to `FRIZZ/frizz_master.txt` on the card 2 s after the last
+  turn, a preset as you confirm it, and they come back at power-on. They're not part of a scene. Without a card, or
   when the card can't be written, the key blinks red 3 times instead, and FRIZZ tries again
   2 s later, up to 3 times; the settings then last until power-off.
 - LEDs: the key is white, yellow, cyan or magenta, by its module; the knobs go light blue to
@@ -1688,7 +1705,7 @@ without a loop, and the bar lines don't count while you hold it.
 
 ## Settings page
 
-<!-- summary: MIDI, the clock, the input and the LEDs, set once for a setup. -->
+<!-- summary: MIDI, the clock, the input and the LEDs, set once per setup. -->
 
 With the mode switch **up**, the keys set up MIDI, the input and the LEDs. The loop, the
 effects and MIDI play on meanwhile; switch back down to play.
@@ -1905,17 +1922,19 @@ loops from there. Leave the card in.
 |---|---|---|
 | `FRIZZ/frizz_scenes.txt` | The 4 [FX scenes](#fx-scenes) | When you save, copy or delete a scene |
 | `FRIZZ/frizz_master.txt` | The [finalizer](#finalizer) and its presets, and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, USB audio, and for AUX, the mic and USB each their input gain, monitoring and effects | 2 s after the last change |
-| `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | A file FRIZZ couldn't read, or the computer's version that FRIZZ's own replaced ([The card as a USB drive](#the-card-as-a-usb-drive)) | When FRIZZ's save replaces it |
+| `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | A file FRIZZ couldn't read, or the computer's version that FRIZZ's own replaced ([The card as a USB drive](#the-card-as-a-usb-drive)) | When FRIZZ writes its own in that file's place: at the next save, or when it takes the card back |
+| `FRIZZ/frizz_scenes.tmp`, `frizz_master.tmp` | A save on its way, renamed into place when it's whole | During a save; one a power cut left is finished at power-on |
 | `FRIZZ/bug-1.txt`, `bug-2.txt` … | [Bug reports](#bug-reports) | When you ask for one |
 | `FRIZZ/a1.wav` … `h15.wav` | Your [loops](#loops-on-the-card) | Only by the [Companion](#the-companion), as it uploads, moves or deletes them |
 | `FRIZZ/xfer.tmp` | A Companion upload under way, renamed to its slot when it's whole | During an upload; one left over is deleted at power-on |
+| `FRIZZ/a1-b2.swp` and the like | A Companion swap under way | During a swap; one cut short is put right when FRIZZ next looks for the loops |
 | `TAPE/cubbi_a1.wav` … `cubbi_e15.wav` (or in the card's root) | TAPE's recordings, on the [Cubbi page](#the-cubbi-page) | Never: FRIZZ only reads them |
 
 ### Scenes and settings on the card
 
 The scenes live in `FRIZZ/frizz_scenes.txt` on the card, one line per effect, keyed by its
-name. FRIZZ creates the folder on its first start; after that the card is written only when
-you save, copy or delete, never on a recall. Saving takes a moment in which the LEDs may pause. A scene file FRIZZ can't
+name. FRIZZ creates the folder on its first start; after that the scene file is written only
+when you save, copy or delete, never on a recall. Saving takes a moment in which the LEDs may pause. A scene file FRIZZ can't
 read (from another version, or edited into something else) starts it with no scenes but
 isn't lost: the first save moves it to `frizz_scenes.bak`.
 
@@ -1970,7 +1989,8 @@ lent). The loop and the effects play on meanwhile.
     page does. What MIDI set without the card (an input gain by CC, say) goes to the file's
     value, as after a restart.
   - The scenes come in for their next recall: what plays stays as it is. If the scene that
-    plays changed, its key pulses as edited, as after you turn a knob.
+    plays changed, its key pulses as edited, as after you turn a knob; if the computer deleted
+    it, what plays stays and no scene key is lit for it, as after a delete.
 - **If you changed them on FRIZZ meanwhile, FRIZZ's wins**, file by file: a scene saved, copied
   or deleted while the card was lent, or a setting changed (or still in its 2 s before it's
   saved) when you take the card back. FRIZZ then writes its own over the computer's, and keeps
@@ -2270,7 +2290,7 @@ save, copy and delete 66, 68 and 70. Below them:
 | CC | Function |
 |---|---|
 | 14-22 | The effect in focus, as on its own channel |
-| 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the finalizer: CC 14-17 reach the module its knobs show). It's the effect the knobs edit, as SHIFT + its key picks it, and it follows when you pick one by hand |
+| 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the finalizer: CC 14-17 reach the module its knobs show, CC 18-22 nothing). It's the effect the knobs edit, as SHIFT + its key picks it, and it follows when you pick one by hand |
 | 24-27 | The finalizer's Level module: input, drive, type, Loud, as channel 15's 14-17 |
 | 28 | The finalizer's Depth, as channel 15's 27 |
 | 84 | [The input's source](#input-aux-the-mic-or-usb) in thirds: 0-42 AUX, 43-85 the mic, 86-127 USB, as the settings page's upper F# picks it |
@@ -2315,7 +2335,7 @@ module's knobs are four CCs in a row:
   same value again does nothing, so a latch you switched by hand stays as you left it until the
   lane crosses 64 again. Use 0 and 127.
 - **Automation isn't saved:** nothing that comes in by CC goes to the card. After a restart the
-  finalizer is as you left it by hand (its knobs, the settings page, or FRIZZ's SysEx), the
+  finalizer is as you left it by hand (its knobs, its presets, or FRIZZ's SysEx), the
   source (CC 84) as the jack picks it, each source's effects and monitoring (CC 116, 117) as the
   settings page's upper G# and A# left them, the input gains as you last turned them,
   and the output gain and the input/loop mix at their power-on levels. Scenes you save keep what the CCs set, as ever.
@@ -2423,6 +2443,9 @@ feedback](#midi-feedback) on.
 - Over USB, the clock goes out between FRIZZ's other work: it's less steady than the TRS
   output's, by up to a millisecond or so, also while FRIZZ reads a loop from the card. For
   tight timing, use TRS.
+- Over USB, what no app on the computer takes for a tenth of a second is dropped: a DAW that
+  opens FRIZZ's port later gets the clock as it runs from then on, after less than a beat of
+  old messages.
 - A DAW that follows FRIZZ's clock (synced to an external MIDI clock): set its project tempo
   roughly to the loop's. REAPER, for one, keeps its own tempo and follows a clock smoothly
   only within about half to twice it (measured); further off, it plays in jumps. So the
@@ -2445,10 +2468,12 @@ page](#settings-page) switches it (`midi_feedback 1` in `FRIZZ/frizz_master.txt`
 where [MIDI out](#midi-out) goes, so MIDI out has to be on too.
 
 - **What goes out:** an effect's knobs (CC 14-21) and latch (CC 22) on its own channel, and
-  for the effect in focus also on the global channel (CC 14-22); the phaser's mode (CC 23 on
+  for the effect in focus also on the global channel (CC 14-22; the finalizer's module shown on
+  CC 14-17); the phaser's mode (CC 23 on
   its channel, 0 or 127); the latches by key (CC
   102-115), the focus (CC 23) as you pick an effect, the finalizer (on its channel, 15, every
-  parameter at its CC there, and the module, mutes and on or off), the gains and
+  parameter at its CC there, and the module, mutes and on or off; not while the global channel
+  is 15 or every channel, and never as the global CC 24-28), the gains and
   the input/loop mix (CC 85-87), the headphone feed (CC 89), the input (CC 84: 0 AUX, 64 the mic, 127 USB, also
   when the jack switches it; CC 116 and 117, 0 or 127, the source's effects and monitoring, also
   when a switch of the source brings up the other's), the loop's speed (CC 90), and the crossfader
@@ -2509,6 +2534,9 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
 
 - 48 kHz, stereo in and out, through a 24-bit codec. FRIZZ works in floating point, in blocks
   of 24 samples (0.5 ms).
+- The input: AUX and the mic have their DC taken out, from about 8 Hz down, so a kick or a bass
+  synth keeps its weight; the mic also has its highpass at about 150 Hz. USB's input comes in
+  as the computer sends it.
 - The loop: up to 2:45 of stereo, stored at 16 bits in RAM, gone at power-off (see
   [Looper](#looper)). Live, the input is floating point up to the safety limiter; what goes
   into the loop is held just under full scale by a limiter of its own, which takes a peak at
@@ -2530,7 +2558,8 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
   the level AUX would have with the same signal at its jack. FRIZZ asks the computer for
   100 mA.
 - The effects: the shifter lands within about a cent of the interval, its taps lining up
-  within 7.5 ms where they start over. The folder's sine fold keeps its aliases more than
+  within 7.5 ms where they start over, and keeps its highs (a 10 kHz tone a fifth up loses
+  about 0.3 dB). The folder's sine fold keeps its aliases more than
   85 dB down on a sine below about 1.5 kHz at any drive; the triangle's corners alias, and
   first-order antialiasing (ADAA) takes 5 to 13 dB off them.
 

@@ -4719,6 +4719,8 @@ HAL_StatusTypeDef HAL_TIM_ConfigOCrefClear(TIM_HandleTypeDef *htim,
   *         contains the clock source information for the TIM peripheral.
   * @retval HAL status
   */
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 HAL_StatusTypeDef HAL_TIM_ConfigClockSource(TIM_HandleTypeDef *htim, TIM_ClockConfigTypeDef *sClockSourceConfig)
 {
   uint32_t tmpsmcr;
@@ -4863,6 +4865,7 @@ HAL_StatusTypeDef HAL_TIM_ConfigClockSource(TIM_HandleTypeDef *htim, TIM_ClockCo
 
   return HAL_OK;
 }
+#pragma GCC pop_options
 
 /**
   * @brief  Selects the signal connected to the TI1 input: direct from CH1_input
@@ -6064,6 +6067,8 @@ static void TIM_DMATriggerHalfCplt(DMA_HandleTypeDef *hdma)
   * @param  Structure TIM Base configuration structure
   * @retval None
   */
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 void TIM_Base_SetConfig(TIM_TypeDef *TIMx, TIM_Base_InitTypeDef *Structure)
 {
   uint32_t tmpcr1;
@@ -6105,6 +6110,7 @@ void TIM_Base_SetConfig(TIM_TypeDef *TIMx, TIM_Base_InitTypeDef *Structure)
      and the repetition counter (only for advanced timer) value immediately */
   TIMx->EGR = TIM_EGR_UG;
 }
+#pragma GCC pop_options
 
 /**
   * @brief  Timer Output Compare 1 configuration

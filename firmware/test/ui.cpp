@@ -4071,6 +4071,54 @@ int main()
               "loops-midi-modes: notes 66, 68, 70 arm no mode on the Loops page, and on the play page do");
     }});
 
+    // the knob presses' notes (36-39) do nothing on the Loops and Cubbi pages, as the hand's
+    // there (#360): no page turned, SHIFT's note 45 + one resets nothing
+    cases.push_back({"loops-midi-knobs", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a5", SineWav(96000, 2, 220.f)}, {"/cubbi_a1.wav", SineWav(96000, 2, 220.f)}});
+        auto page = [] {
+            const std::string state = Ask({0x20});
+            return state.size() > 24 ? state[24] : -1; // the FX knobs' page
+        };
+        auto shift = [] { // the shifter's page-1 knob 1
+            const std::string p = Ask({0x21, 1});
+            return p.size() == 17 ? KnobOf(p[1], p[2]) : -1.f;
+        };
+        auto note = [](int n) {
+            Trs({kNoteOn, n, 100});
+            RunMs(100);
+            Trs({kNoteOff, n, 0});
+            RunMs(100);
+        };
+        Tap("KEY_2"); // the shifter on the knobs
+        RunMs(200);
+        Turn(kKnob1Encoder, -30);
+        RunMs(400);
+        const float turned = shift();
+        bool none = true;
+        for (int on_cubbi = 0; on_cubbi < 2; on_cubbi++)
+        {
+            on_cubbi ? CubbiPage() : LoopsPage();
+            for (int n : {36, 37, 38, 39})
+            {
+                note(n);
+                none = none && page() == 0;
+            }
+            Trs({kNoteOn, 45, 100}); // SHIFT
+            RunMs(50);
+            note(36);
+            Trs({kNoteOff, 45, 0});
+            RunMs(200);
+            none = none && LoopsShown() && shift() == turned;
+        }
+        CubbiPage(); // home
+        note(36);
+        const bool home = !LoopsShown() && page() == 1;
+        Check(turned < .4f && none && home,
+              "loops-midi-knobs: notes 36-39 turn no page and reset nothing on the Loops and "
+              "Cubbi pages, and on the play page turn it");
+    }});
+
     // loops over MIDI (#259): CC 0 picks the program changes' bank (0 the scenes, 1-8 FRIZZ's
     // a-h, 9-13 the cubbis a-e), a program change 0-14 the key; CC 54 when: 0 at once, 1-8 at
     // the n-th pass end, 127 with the waiting scene sequence (at once if none); CC 81 cancels
@@ -4353,6 +4401,52 @@ int main()
         Check(st.loop_switches - was == 2 && st.loop_length == 120000 && twice < .01f,
               "loops-switch-fade: a second switch within the first's fade waits for it: both "
               "crossfaded (no step)");
+    }});
+
+    // #318: a switch at the loop point (CC 54 = 1) within the fade-out of one at once doesn't
+    // cut that fade-out off: it ends early but smoothly (Looper's tail), and the loop the
+    // switch leaves fades out from where it's heard. A/02 is 5 ms (a period of 200 Hz), so its
+    // loop point comes within 5 ms of the switch to it, wherever by time it starts
+    cases.push_back({"loops-loop-point-fade", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(240, 2, 200.f)}});
+        Trs({kCC, 0, 1});
+        Trs({kPC, 0});
+        UntilLength(96000, 1000);
+        Trs({kPC, 1});
+        UntilLength(240, 1000);
+        RunMs(100);
+        Trs({kPC, 0}); // both loaded: A/01 again
+        UntilLength(96000, 1000);
+        RunMs(300);
+        const uint32_t was = Probe().loop_switches;
+        max_step = 0.f;
+        Trs({kPC, 1}); // A/02 at once
+        int first = -1, second = -1;
+        for (int ms = 0; ms < 200 && second < 0; ms++)
+        {
+            RunMs(1);
+            const uint32_t n = Probe().loop_switches - was;
+            if (n >= 1 && first < 0)
+            {
+                first = ms;
+                Trs({kCC, 54, 1}); // A/01 at A/02's loop point
+                Trs({kPC, 0});
+            }
+            if (n >= 2)
+                second = ms;
+        }
+        RunMs(100);
+        const float step = max_step;
+        const ClockState st = Probe();
+        printf("      A/02 at once after %d ms, A/01 at its loop point %d ms later: %u switches, "
+               "largest step %.4f\n",
+               first, second - first, st.loop_switches - was, step);
+        Check(first >= 0 && second > first && second - first < 10 && st.loop_switches - was == 2
+                  && st.loop_length == 96000 && step < .01f,
+              "loops-loop-point-fade: a switch at the loop point within another's fade-out: "
+              "both crossfaded (no step)");
     }});
 
     // the tape runs on across loops (#70): a switch keeps the speed and the direction, at once
