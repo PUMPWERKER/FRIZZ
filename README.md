@@ -75,7 +75,7 @@ alone:
 - **By ear and hand:** every release is played with real gear first, from a public
   release-test checklist (the issues labelled `release test`).
 
-The decisions behind each feature are in the [issues](https://github.com/ZUHcYa/FrizZ/issues)
+The decisions behind each feature are in the [issues](https://github.com/ZUHcYa/FRIZZ/issues)
 and pull requests.
 
 ## Credits and license

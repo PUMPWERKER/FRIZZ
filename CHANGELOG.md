@@ -95,6 +95,16 @@ what FRIZZ does.
 
 ### Changed
 
+- **Knobs 1-4 and VOLUME speed up when turned fast** (#375): turned slowly, a knob still moves
+  1% a detent, so a precise setting is as easy to hit; turned faster than about 8 detents a
+  second, its step grows smoothly, up to 5% a detent from about 40 a second, so a quick sweep
+  across the whole range takes about one turn instead of three. Slow again, it's back to 1% from
+  the next detent, and 0% and 100% are still reached exactly. The effects' knobs on both pages
+  and the finalizer's do this; SHIFT + turn (the coarse grid), the stepped parameters, knob
+  presses, MIDI and the transport knob are as before. VOLUME speeds up more carefully, at most
+  3 times (the gains 6% a detent, from 2%), so a fast turn of the output can't jump the level.
+  See [Playing an effect](MANUAL.md#playing-an-effect).
+
 - **Key 15 is now the finalizer, replacing the master compressor** (#345, #347): a master
   section after the effects, in four modules of four knobs. **Key 15's knobs change, and the
   compressor's settings are dropped**: a card from before loads with the finalizer neutral (and
@@ -888,7 +898,7 @@ what FRIZZ does.
 
 - **Mono input** on VOLUME's page 3: turn 3 detents left for a mono (TS) cable, such as one
   from a Lyra-8 or a pedal, and the left channel feeds both sides; 3 right for stereo. Saved
-  on the card. By sfaber02 ([#1](https://github.com/ZUHcYa/FrizZ/pull/1)).
+  on the card. By sfaber02 ([#1](https://github.com/ZUHcYa/FRIZZ/pull/1)).
 - **Headphone feed** on VOLUME's page 4: turned left, blends steplessly from the master out
   to the dry input on its own; back on the master at power-on.
 - SHIFT + press VOLUME resets the input/loop mix.
@@ -959,7 +969,7 @@ what FRIZZ does.
 ## v0.9 (2026-10-06)
 
 The first public release. See its
-[release notes](https://github.com/ZUHcYa/FrizZ/releases/tag/v0.9).
+[release notes](https://github.com/ZUHcYa/FRIZZ/releases/tag/v0.9).
 
 - FRIZZ keeps its files in a folder `FRIZZ` on the card, which it creates at its first start;
   a `frizz_scenes.txt` an earlier build left in the card's top folder is moved into it.
