@@ -50,14 +50,16 @@ scenes and settings stay, as long as the `FRIZZ` folder stays on the card.
 
 The [multi-firmware launcher](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE/releases)
 (a community project by hiwatts, chomplex music theory and lnetzel) keeps several firmwares on
-one card: at power-on each white key with a firmware lights up, and pressing one starts it. FRIZZ
-works as one of them, next to TAPE, TEMPO and WAVE.
+one card: at power-on each white key with a firmware breathes in that firmware's colour, and
+pressing one starts it. FRIZZ works as one of them, next to TAPE, TEMPO and WAVE.
 
 1. **Set up the card with the launcher**, as its
-   [v1.5 release](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE/releases/tag/launcher-v1.5)
+   [v1.6 release](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE/releases/tag/launcher-v1.6)
    describes: copy the contents of `chompi-multi-firmware-card/` to an empty FAT32 card and
-   switch on (a rainbow once, then the picker). On a card with an older launcher (v1.1 or
-   later), the setup page below updates it.
+   switch on (a rainbow once, then the picker). A card with an older launcher (v1.1 or later)
+   needn't start over: the setup page below updates the launcher (from v1.5 on), or copy the
+   release's `CHOMPI.bin` to the top folder of the card and switch on. If the keys seem stuck
+   on one colour right after the update, switch the CHOMPI off and on once.
 2. **Put FRIZZ on a key with the [setup page](https://ugrossek.github.io/CHOMPI/setup/).**
    With the picker showing, connect the CHOMPI to a computer over USB and open the page in
    Chrome or Edge. Pick FRIZZ for a free key; the page fetches the latest release and writes
@@ -65,6 +67,11 @@ works as one of them, next to TAPE, TEMPO and WAVE.
 
    **Or by hand:** copy `FRIZZ.bin` into the card's `FIRMWARE` folder, named after the key you
    want it on, for example `FIRMWARE/04_FRIZZ.bin` for white key 4.
+
+   The setup page gives FRIZZ's key FRIZZ's colour, a violet. A firmware the page doesn't know
+   gets a colour made from its file's name, the same on every card. The colours are kept in
+   `FIRMWARE/key_colors.txt`, one line per key (`04 8A4DFF 04_FRIZZ.bin`: the key, the colour
+   as on a screen, the file it's for), which you can edit by hand.
 3. Copy your `FRIZZ` folder over too, if you have scenes or loops from another card. Otherwise FRIZZ
    creates it on its first start and keeps its scenes there, apart from the other firmwares'
    files.
@@ -82,7 +89,7 @@ reports, scenes) without taking the card out. FRIZZ can also lend the card to th
 while it plays: see [The card as a USB drive](MANUAL.md#the-card-as-a-usb-drive). To leave, eject the drive on the computer first. With
 [USB storage v1.6](https://github.com/lnetzel/CHOMPI-lnetzel/releases/tag/usb-storage-v1.6),
 the CHOMPI then restarts into the launcher's picker by itself. With an older one (a card set
-up from the launcher's v1.5 release has v1.5), press the LOOP key, which glows red: it blinks
+up from the launcher's v1.5 or v1.6 release has v1.5), press the LOOP key, which glows red: it blinks
 and the CHOMPI key turns red; tap the CHOMPI key to confirm, and the CHOMPI restarts into the
 picker. Pressing the blinking LOOP again cancels.
 
