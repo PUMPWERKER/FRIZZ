@@ -110,7 +110,6 @@ public:
     void Start(uint32_t now, bool toggle, bool jack)
     {
         jack_at_start_ = jack;
-        // relative, as SceneStore's: /FRIZZ, or the root on a card where it couldn't be made
         Snapshot(kSceneFile, mem_->scenes, kSceneFileMax);
         Snapshot(kMasterFile, mem_->master, kMasterFileMax);
         toggle_ = toggle_at_start_ = toggle;
@@ -385,13 +384,12 @@ private:
     {
         if (f_mount(fs_, path_, 1) != FR_OK)
             return false;
-        // a mount goes back to the root, and SceneStore's paths are relative to /FRIZZ
-        EnterFrizzDir();
+        EnterFrizzDir(); // the folder made again if the computer deleted it
         char name[24];
         for (number_ = 1; number_ < 1000; number_++)
         {
             pos_ = 0;
-            Put("bug-");
+            Put("/FRIZZ/bug-"); // a whole path: FatFs goes back to the root at a mount (SceneStore.h)
             PutNum(number_);
             Put(".txt");
             memcpy(name, text_, pos_);
