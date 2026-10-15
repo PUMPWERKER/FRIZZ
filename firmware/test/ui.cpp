@@ -48,6 +48,7 @@ static const int kChompiKeyLed = 0; // PanelLeds.h
 
 static bool sine = true;
 static float amp = .3f, freq = 220.f, phase = 0.f;
+static float aux_dc = 0.f; // a DC offset into AUX, under the sine
 static float clock_bpm = 0.f; // a MIDI clock into the jack while > 0
 static double clock_next = 0.;
 static float usb_clock_bpm = 0.f; // and one over USB
@@ -98,7 +99,7 @@ static float RunBlocks(uint32_t blocks)
         {
             const float s = sine ? amp * sinf(phase) : 0.f;
             phase = fmodf(phase + 2.f * float(M_PI) * freq / kSampleRate, 2.f * float(M_PI));
-            in[i * kChannels + 2] = in[i * kChannels + 3] = s;
+            in[i * kChannels + 2] = in[i * kChannels + 3] = s + aux_dc;
             in[i * kChannels] = mic_amp * sinf(mic_phase);
             mic_phase = fmodf(mic_phase + 2.f * float(M_PI) * mic_freq / kSampleRate, 2.f * float(M_PI));
         }
@@ -7814,6 +7815,56 @@ int main()
         const float loop = RunMs(500);
         printf("      the loop recorded from USB: %.4f\n", loop);
         Check(Probe().loop_state == 2 && loop > .01f, "usb-loop: the looper records USB, and plays it once the computer stops");
+    }});
+
+    // AUX's DC blocker (#317): ~8 Hz, so 50 Hz comes through as 1 kHz does (TAPE's, at 76 Hz,
+    // took 5 dB off it), and a DC offset into AUX still leaves the master, within 150 ms
+    cases.push_back({"input-bass", [] {
+        RunMs(kReadyMs);
+        amp = .05f;
+        std::vector<float> rec;
+        auto tone = [&rec](float hz) {
+            freq = hz;
+            RunMs(500);
+            rec.clear();
+            master_rec = &rec;
+            RunMs(1000);
+            master_rec = nullptr;
+            std::vector<float> l;
+            for (size_t i = 0; i < rec.size(); i += 2)
+                l.push_back(rec[i]);
+            return ToneLevel(l, hz);
+        };
+        const float at1k = tone(1000.f), at50 = tone(50.f), at30 = tone(30.f);
+        const float db50 = 20.f * log10f(at50 / at1k), db30 = 20.f * log10f(at30 / at1k);
+        printf("      the master: 1 kHz %.4f, 50 Hz %+.2f dB, 30 Hz %+.2f dB against it\n", at1k, db50, db30);
+        Check(fabsf(db50) < .5f, "input-bass: 50 Hz on AUX comes through within 0.5 dB of 1 kHz");
+        Check(fabsf(db30) < 1.f, "input-bass: and 30 Hz within 1 dB");
+
+        // silence, then DC into AUX: its step falls away, and none of it stays
+        amp = 0.f;
+        RunMs(500);
+        aux_dc = .2f;
+        // the master's peak over the next ms
+        auto peak = [&rec](uint32_t ms) {
+            rec.clear();
+            master_rec = &rec;
+            RunMs(ms);
+            master_rec = nullptr;
+            float p = 0.f;
+            for (float v : rec)
+                p = std::max(p, fabsf(v));
+            return p;
+        };
+        const float step = peak(10);
+        RunMs(140);
+        const float after150 = peak(10); // 150-160 ms after the step
+        RunMs(240);
+        const float last = peak(100);    // 400-500 ms
+        printf("      DC 0.2 into AUX: the step %.4f on the master, at 150 ms %.2e (%.0f dB), after 0.5 s %.2e\n",
+               step, after150, 20.f * log10f(std::max(after150, 1e-12f) / step), last);
+        Check(step > .01f && after150 < step * 1e-3f, "input-bass: DC into AUX: its step on the master falls 60 dB within 150 ms");
+        Check(last < 1e-5f, "input-bass: and none of it stays on the master");
     }});
 
     // what the computer records: the master before VOLUME, VOLUME's knob doesn't change it; in

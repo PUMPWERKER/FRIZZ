@@ -68,6 +68,7 @@ bool trs_in = true, trs_out = true; // the TRS adapter: the interface's out into
 // MIDI packet can be (remote.cpp's lost CHUNKs). Unset, every byte goes through as it comes
 std::function<bool(const std::string&)> usb_drop;
 long lag = 0; // the most the twin fell behind the wall clock, ms
+long exec_late = 0; // Exec keeps the twin this far behind the wall clock, ms: a load's lag on purpose
 // Behind by more than this, the twin's timing isn't the wall clock's: a case that failed on
 // timing alone ([timing], "failed on timing alone") isn't judged
 const long kLagMs = 5;
@@ -337,7 +338,8 @@ struct Audio
  *  now until it's done (limit s at most), with env's NAME=VALUE pairs set and the CHOMPI's lock
  *  shared (the twin isn't the CHOMPI): its exit code; out gets what it printed, "(timed out)"
  *  after it if it was stopped so. stop_signal (SIGINT, SIGTERM) goes to it once it has printed
- *  stop_at. lag says how far the twin fell behind meanwhile */
+ *  stop_at. lag says how far the twin fell behind meanwhile; behind as the command ends, the
+ *  twin catches up then, so everything it sent has arrived when this returns (#336) */
 int Exec(const std::string& cmd, std::string& out, int limit,
          const std::vector<std::pair<std::string, std::string>>& env = {}, const std::string& stop_at = "",
          int stop_signal = 0)
@@ -372,6 +374,20 @@ int Exec(const std::string& cmd, std::string& out, int limit,
     Audio audio;
     if (!audio_dir.empty())
         audio.Open(std::chrono::duration<double>(start.time_since_epoch()).count());
+    // one ms of the twin: what came by then in, its answers out
+    const auto step = [&]()
+    {
+        const long ms = long(NowMs() - twin_start);
+        Pump(ms);
+        if (audio_dir.empty())
+            Run(2, nullptr, nullptr);
+        else
+        {
+            if (ms % 10 == 0)
+                audio.Look();
+            audio.Run2(ms * long(kSampleRate / 1000));
+        }
+    };
     int status = -1;
     while (true)
     {
@@ -398,24 +414,32 @@ int Exec(const std::string& cmd, std::string& out, int limit,
         const long behind = std::chrono::duration_cast<std::chrono::milliseconds>(wall).count()
                             - long(NowMs() - twin_start);
         lag = std::max(lag, behind);
-        if (behind > 0)
-        {
-            const long ms = long(NowMs() - twin_start);
-            Pump(ms);
-            if (audio_dir.empty())
-                Run(2, nullptr, nullptr);
-            else
-            {
-                if (ms % 10 == 0)
-                    audio.Look();
-                audio.Run2(ms * long(kSampleRate / 1000));
-            }
-        }
+        if (behind > exec_late)
+            step();
         else
             std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
+    // What the tool sent before it ended reaches the twin all the same: the reader's last bytes,
+    // and the twin, as fast as it goes, up to the wall clock's time at the end, as a twin on time
+    // was. A twin behind (all.sh's load) left the tool's last messages (play's key releases and
+    // SWITCH 0 in its finally) undelivered, and the next Exec dropped them (#336)
     reading = false;
     reader.join();
+    const long end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+    for (int p = 0; p < 2; p++)
+    {
+        const int fd = p == 0 ? usb.fd : trs.fd;
+        uint8_t buf[256];
+        ssize_t n;
+        while (fd >= 0 && (n = read(fd, buf, sizeof(buf))) > 0)
+        {
+            std::lock_guard<std::mutex> lock(arrivals_mutex);
+            for (ssize_t i = 0; i < n; i++)
+                arrivals.push_back({end, p == 0, buf[i]});
+        }
+    }
+    while (long(NowMs() - twin_start) <= end)
+        step();
     audio.Close();
     char buf[512];
     ssize_t n;
