@@ -2,7 +2,9 @@
 # all.sh: runs every host check on the working tree: the engine against HEAD (check.sh), then
 # each unit check (every NAME.cpp but the harness), and doclinks: the docs the website is built
 # from (../tools/doclinks.py --all: its checks and its selftest). Prints one line per check and exits 0 when
-# all pass, with the faults the checks know of (Known() in check.h) listed under theirs. A
+# all pass, with the faults the checks know of (Known() in check.h) listed under theirs, and
+# what a check couldn't run on this machine (its lines "SKIP: local only (what's missing)": stage
+# 1b, CLAUDE.md). A
 # changed sound (check.sh not bit-identical) counts as a failure: run ./check.sh to
 # see what changed. A run of a tool against the twin (midisuite, reaper) that failed with the
 # twin far behind the wall clock and passed when run again is listed as FLAKY under its check
@@ -57,7 +59,7 @@ for t in check doclinks $(units); do
     rc=$(cat "$OUT/$t.rc" 2>/dev/null)
     if [ "$rc" = 0 ]; then
         echo "ok    $t: $(echo "$out" | tail -1)$(echo "$out" | grep -m1 -E '^[0-9]+ known$' | sed 's/^/, /')"
-        echo "$out" | grep -E "^(KNOWN|FLAKY)" | sed 's/^/      /'
+        echo "$out" | grep -E "^(KNOWN|FLAKY|SKIP)" | sed 's/^/      /'
         continue
     fi
     failed="$failed $t"
