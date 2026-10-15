@@ -411,6 +411,12 @@ public:
      *  and let go */
     uint64_t TakeKeys()
     {
+        if (let_go_)
+        {
+            let_go_ = false;
+            PushNote(kAllKeysUp);
+            panel_keys_ = 0;
+        }
         uint64_t changed = 0;
         while (note_read_ != note_write_)
         {
@@ -424,6 +430,11 @@ public:
         }
         return keys_;
     }
+    /** From MainLoop: the computer went away, or leaves the bus (USB audio switched), so the
+     *  note offs and SysEx key releases still to come are lost. TakeKeys lets go of every key
+     *  MIDI holds at the next block, as All Notes Off does: in the audio callback, which
+     *  pushes the notes */
+    inline void LetGo() { let_go_ = true; }
     /** The keys FRIZZ's SysEx holds (kCmdKey): the panel's, as the hand's, so they reach the
      *  settings page too (ui.h) */
     inline uint64_t PanelKeys() const { return panel_keys_; }
@@ -655,22 +666,24 @@ private:
         // the jack if it's let
         const uint8_t channel = static_cast<uint8_t>(e.channel + 1);
         const bool global = !channel_ || channel == channel_;
-        if (!global && (channel > kBlockChannels || !(usb || block_trs_)))
+        const uint8_t d0 = e.data[0], d1 = e.data[1];
+        // a note off lets go of a key a note holds on any channel: the global channel may
+        // have changed since its note on
+        const int key = type <= NoteOn ? NoteKey(d0) : -1;
+        const bool down = type == NoteOn && d1 > 0;
+        const bool release = key >= 0 && !down && (keys_ >> key & 1);
+        if (!global && !release && (channel > kBlockChannels || !(usb || block_trs_)))
             return;
 
         const uint8_t status = static_cast<uint8_t>(0x80 | (type << 4) | e.channel);
-        const uint8_t d0 = e.data[0], d1 = e.data[1];
         switch (type)
         {
         case NoteOff:
         case NoteOn:
-        {
-            const int key = NoteKey(d0);
-            if (!global || key < 0)
+            if (key < 0 || !(global || release))
                 return;
-            PushNote(static_cast<uint8_t>(key | (type == NoteOn && d1 > 0 ? kNoteDown : 0)));
+            PushNote(static_cast<uint8_t>(key | (down ? kNoteDown : 0)));
             break;
-        }
         case ControlChange:
             if (!(global ? GlobalControl(d0, d1) : KeyControl(channel - 1, d0, d1)))
                 return;
@@ -1016,6 +1029,7 @@ private:
     uint8_t note_write_ = 0, note_read_ = 0;
     uint64_t keys_ = 0;                // what TakeKeys has taken of them
     volatile uint64_t panel_keys_ = 0; // SysEx's
+    volatile bool let_go_ = false;     // LetGo's, for TakeKeys
     volatile int panel_turns_[midimap::kNumKnobs] = {}; // SysEx's
     volatile uint8_t switch_ = 0;
     volatile bool block_trs_ = true;

@@ -1562,7 +1562,8 @@ the input.
 - The transport LEDs are purple, so the page can't be mistaken for the play page.
 - **SHIFT + VOLUME, held 2 s:** hold SHIFT and press and hold the VOLUME knob, in either
   order; after 2 s it writes a [bug report](#bug-reports), once per hold. CHOMPI lights white
-  while you hold it, as on the play page.
+  while you hold it, as on the play page. SHIFT held from the play page, the switch flipped
+  up with it held, counts here as for every SHIFT combination, for SHIFT + LOOP's hold too.
 - Otherwise knobs 2-4 (their LEDs dark), CHOMPI (but as SHIFT), PLAY and LOOP do nothing
   here.
 - A key you're holding when you flip the switch stays where it went down until you let go:
@@ -2065,6 +2066,10 @@ save, copy and delete 66, 68 and 70. Below them:
 - The velocity doesn't matter; a note on at velocity 0 is a note off.
 - All Notes Off (CC 123) or All Sound Off (CC 120) lets go of every key MIDI holds, for a
   note off that went missing.
+- So does the computer going away (the cable pulled, the computer asleep) or
+  [USB audio](#usb-audio) switching, when FRIZZ leaves the bus for a moment. A note off on any
+  channel lets go of a key a note holds, so a key held through a change of the global
+  channel still lets go.
 
 ### Controllers
 
