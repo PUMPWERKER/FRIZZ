@@ -1053,6 +1053,14 @@ void UART_IRQHandler(UartHandler::Impl* handle)
 {
     HAL_UART_IRQHandler(&handle->huart_);
 
+    // FRIZZ: a receive error (framing, noise, overrun) ended the reception: HAL takes any error
+    // during DMA reception as blocking (UART_EndRxTransfer, the DMA aborted). Not listening any
+    // more, so MidiHandler::Listen starts it again (#361). Upstream clears it in
+    // HAL_UART_ErrorCallback (f7c63aee), which the abort reaches only through the stream's
+    // interrupt, taken by DMA1_Stream5_IRQHandler here
+    if(handle->listener_mode_ && handle->huart_.RxState != HAL_UART_STATE_BUSY_RX)
+        handle->listener_mode_ = false;
+
     // FRIZZ: a tick matched (DmaListenStart): once the DMA has taken it from RDR, delivered
     // with what came before it (#322)
     if(handle->listener_mode_
@@ -1100,13 +1108,17 @@ extern "C" void DMA1_Stream5_IRQHandler(void)
 {
     // FRIZZ: while listening, the half and full transfer by the stream's own flags (#356), not
     // HAL's handler: that one leaves them set while dma_active_peripheral_ is -1 (after a DMA
-    // transmit), the interrupt pending for ever
+    // transmit), the interrupt pending for ever. After an error ended the reception too, until
+    // Listen starts it again (#361): the abort's end goes no further (UART_DMAAbortOnError's
+    // HAL_UART_Init and DmaTransferFinished from the interrupt), as before #356
     UartHandler::Impl* listener = dma_listener;
-    if(listener && listener->listener_mode_)
+    if(listener)
     {
+        const bool listening = listener->listener_mode_;
         DMA1->HIFCR = DMA_HIFCR_CHTIF5 | DMA_HIFCR_CTCIF5 | DMA_HIFCR_CTEIF5
                       | DMA_HIFCR_CDMEIF5 | DMA_HIFCR_CFEIF5;
-        UART_CheckRxListener(listener);
+        if(listening)
+            UART_CheckRxListener(listener);
         return;
     }
     HalUartDmaRxStreamCallback();
@@ -1155,10 +1167,9 @@ extern "C" void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef* huart)
 
 extern "C" void HAL_UART_ErrorCallback(UART_HandleTypeDef* huart)
 {
-    /** TODO: This hooks into the "Normal" DMA completion, 
-     *  might want to change this to have a different fallthrough
-     *  for "listener_mode_"
-     */
+    // FRIZZ: upstream's f7c63aee, so Listen starts it again (#361)
+    auto* handle           = MapInstanceToHandle(huart->Instance);
+    handle->listener_mode_ = false;
     UartHandler::Impl::DmaTransferFinished(huart, UartHandler::Result::ERR);
 }
 

@@ -1406,6 +1406,10 @@ namespace chompi
                     info.hang = true;
                 else if (group == kFaultMain)
                     d[n++] = static_cast<uint8_t>(*reinterpret_cast<volatile uint32_t*>(0x2FFF0000u) & 0x7F);
+#if defined(__arm__)
+                else if (group == kUartError)
+                    UartAtTwice(20);
+#endif
                 else
                     status = BAD;
                 break;
@@ -1461,8 +1465,30 @@ namespace chompi
             n = PutScaled(d, n, tempo.GetFxBpm(), 100.f, 3);
             n = loopxfer::Put7(d, n, static_cast<uint32_t>(tempo.GetTempo()), 2);
             n = loopxfer::Put7(d, n, tempo.Position(), 3);
-            return loopxfer::Put7(d, n, tempo.LoopPulses(), 3);
+            n = loopxfer::Put7(d, n, tempo.LoopPulses(), 3);
+            return loopxfer::Put7(d, n, clock.TrsRestarts(), 3);
         }
+
+#if FRIZZ_BENCH && defined(__arm__)
+        /** TEST's kUartError: the MIDI jack's UART (USART1) at twice its rate for ms, then back.
+         *  BRR is written with the USART off; CR1 under the interrupts' lock, which the
+         *  receive's error and its restart (Listen, the audio callback) write too */
+        static void UartAtTwice(uint32_t ms)
+        {
+            const uint32_t brr = USART1->BRR;
+            for (const uint32_t rate : {brr / 2, brr})
+            {
+                {
+                    daisy::ScopedIrqBlocker irq;
+                    USART1->CR1 &= ~USART_CR1_UE;
+                    USART1->BRR = rate;
+                    USART1->CR1 |= USART_CR1_UE;
+                }
+                if (rate != brr)
+                    System::Delay(ms);
+            }
+        }
+#endif
 
         /** PROBE 1: the looper */
         MIDI_CONTROL_ONCE size_t DevLooper(uint8_t* d, size_t n)

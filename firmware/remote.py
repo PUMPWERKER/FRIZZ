@@ -599,6 +599,8 @@ def probe(f):
         "the loop's" if flags & 2 else "set by a clock or taps" if flags & 4 else "the default",
         g(d[23:26]), ", of %d round the loop" % g(d[26:29]) if flags & 2 else "",
         ", backwards" if flags & 8 else ""))
+    if len(d) >= 32:
+        print("TRS in     restarted %d times after a receive error" % g(d[29:32]))
     d = dev_data(f, chompi.PROBE, [1], "PROBE")
     length = g(d[2:6])
     print("looper     %s%s%s%s%s" % (

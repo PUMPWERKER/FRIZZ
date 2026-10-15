@@ -1210,6 +1210,41 @@ def cc_burst_trs(r):
             "latched %s, selected %s" % (after["latched"], after["selected"]), "as before")
 
 
+UART_ERROR = 5  # kCmdDev TEST's kUartError (MidiControl.h): FRIZZ-bench.bin only
+
+
+def trs_restarts(r):
+    """PROBE 0's count of the jack's receive started again after an error, None before it (#361)"""
+    d = remote.dev_data(r.f, chompi.PROBE, [0], "PROBE")
+    return chompi.get7(d[29:32]) if len(d) >= 32 else None
+
+
+@case("trs-relisten", "8: a receive error on the TRS jack (a cable plugged in while the other end "
+      "sends, a bad contact): MIDI in over TRS comes back by itself, without a restart (#361). "
+      "FRIZZ-bench.bin only (--slot 13)", needs=("in",))
+def trs_relisten(r):
+    up, a, b = moved(r, "folder", 0, lambda v: r.send_trs(cc(3, 14, v)))
+    r.check("before: CC 14 on channel 3 over TRS", up, "%.2f -> %.2f" % (a, b), "moves")
+    before = trs_restarts(r)
+    # a dense stream (the mod wheel on channel 16, 900 bytes, ~0.45 s from a Scarlett 18i20), and
+    # in it the UART at twice its rate for 20 ms: its bytes break their frames meanwhile
+    r.send_trs(b"".join(cc(GLOBAL, 1, n & 0x7F) for n in range(300)))
+    time.sleep(.1)
+    got = r.f.dev(chompi.TEST, [UART_ERROR], retries=1)
+    if not got or got[0] != chompi.OK:
+        raise Skip("TEST %d: %s (FRIZZ-bench.bin only)" % (
+            UART_ERROR, chompi.DEV_STATUS.get(got[0], got[0]) if got else "no answer"))
+    time.sleep(1.)
+    after = trs_restarts(r)
+    if after is None:
+        r.note("no restart count in PROBE 0: a FRIZZ from before #361")
+    else:
+        r.check("the receive ended on an error and started again", after > before,
+                "%d times" % (after - before), "at least once")
+    up, a, b = moved(r, "folder", 1, lambda v: r.send_trs(cc(3, 15, v)))
+    r.check("after: CC 15 on channel 3 over TRS", up, "%.2f -> %.2f" % (a, b), "moves: TRS MIDI in is back")
+
+
 def runs(ns):
     """Sorted numbers as (first, last) runs"""
     out = []
@@ -1837,8 +1872,9 @@ def put_back(r, snap):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--slot", type=int, choices=chompi.FRIZZ_SLOTS, default=chompi.TEST_SLOT,
-                    help="the FRIZZ slot (12 by default), started unless it runs")
+    ap.add_argument("--slot", type=int, choices=chompi.FRIZZ_SLOTS + (chompi.BENCH_SLOT,), default=chompi.TEST_SLOT,
+                    help="the FRIZZ slot (12 by default), started unless it runs; the bench's (13) "
+                    "for trs-relisten, once its bench is done (remote.py bench --wait)")
     ap.add_argument("--device", help="FRIZZ's raw MIDI node (as remote.py's; the twin's for the host check)")
     ap.add_argument("--trs", help="the raw MIDI node on the TRS jack (FRIZZ_TRS_MIDI; found by name)")
     ap.add_argument("--wiring", choices=["auto"] + list(WIRINGS), default="auto")

@@ -152,6 +152,11 @@ int main()
     cases.push_back({"usb only", [] {
         Run("no TRS", false, false, {"sources-trs", "out-factor"}, "SKIP", {"wiring: no TRS MIDI (USB only)"}, 0);
     }});
+    // trs-relisten needs the bench build's TEST (kUartError): on FRIZZ.bin a SKIP that says so
+    // (#361)
+    cases.push_back({"trs-relisten", [] {
+        Run("trs-relisten", true, true, {"trs-relisten"}, "SKIP", {"FRIZZ-bench.bin only"}, 0);
+    }});
     // stopped from outside (Ctrl-C) in a case: things put back, the summary, exit 130, not 0
     // (#171)
     cases.push_back({"interrupted", [] {
