@@ -2027,6 +2027,7 @@ def main():
 
     device = a.device or chompi.to_frizz(a.slot)
     trs_node = a.trs or (None if a.wiring == "none" else midiport.trs_midi())
+    chompi.device_guard(trs_node)
     trs_fd = os.open(trs_node, os.O_RDWR | os.O_NONBLOCK) if trs_node else None
     trs = midiport.Tap(trs_fd) if trs_fd is not None else None
     results, sessions, jitter, wiring, timing_only = [], [], [], set(), []

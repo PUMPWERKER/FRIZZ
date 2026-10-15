@@ -11,6 +11,7 @@
     tools/usbaudio.py stats [--every S]          FRIZZ's own counts (kCmdDev's USB): blocks to and
                                                  from the host, the stream run dry, the FIFOs, the card
     tools/usbaudio.py card on|off                the card lent to the computer, or taken back
+                                                 (on: in a hold, as card.py mount)
 
 A sine's glitches: a clean sine x satisfies x[n] = 2 cos(w) x[n-1] - x[n-2]; the residual of
 that is noise-small, and a dropped or doubled packet, a click or a fade shows as a spike far
@@ -250,6 +251,11 @@ def stats(args):
 
 
 def card(args):
+    if args.state == "on" and not os.environ.get("FRIZZ_CHOMPI_HELD"):
+        # the card stays lent after this ends, and a tool's restart then would take the drive
+        # from under the computer: the CHOMPI stays held until card off (as card.py mount)
+        sys.exit("card on leaves the card lent until card off, which no lock of its own covers: "
+                 "run both in a hold, e.g. tools/chompi.py hold bash")
     chompi, f = frizz()
     got = f.dev(USB, [2, {"on": 1, "off": 0}[args.state]])
     if not got or got[0] != chompi.OK:
