@@ -185,8 +185,11 @@ working on a branch:
 
 - **`CHANGELOG.md`** (Keep a Changelog style): every change a player notices goes under
   **Unreleased** (Added / Changed / Fixed / Removed), in the commit that makes it, worded for
-  users like `MANUAL.md`. Credit outside contributors with their PR. Refactoring, tests and
-  developer docs stay out unless they change behaviour. A release renames Unreleased to the
+  users like `MANUAL.md`. Credit outside contributors with their PR; a merged outside PR
+  also adds its author to `README.md`'s *Credits and license* (Contributors) and
+  `site/landing.md`'s *Credits*, if they're not there yet (the user's decision 2026-10-15:
+  everyone whose code is in FRIZZ, across the project; tips and ideas don't count).
+  Refactoring, tests and developer docs stay out unless they change behaviour. A release renames Unreleased to the
   version and its GitHub release notes start from it.
 - **A pull request per branch into `main`**, opened (as a draft is fine) once the branch is
   pushed. Its description lists what changed and three sections, kept current
