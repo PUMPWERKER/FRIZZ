@@ -131,7 +131,7 @@ it with SHIFT held: leave the gaps a hand would.
 | `wait MS` / `at MS` | run for MS / until MS after power-on (after `booted`: after the main loop's start) |
 | `booted` | run until the firmware's `main()` enters its loop (about 1 s); `at` counts from there. A bug report's times do |
 | `down KEY` / `up KEY` / `tap KEY [MS]` | a key by its `Hardware::SwId` name: `KEY_1` .. `KEY_28` (white keys 1-15 are `KEY_1`-`KEY_15`; CHOMPI, PLAY, LOOP are `KEY_26`-`KEY_28`), `ENC_1_SW` .. `ENC_6_SW`. `tap` holds it 60 ms |
-| `turn ENC N` | encoder 1-6 (SW1-SW6: 4 is knob 1, 1-3 knobs 2-4, 5 the transport, 6 VOLUME) by N detents. They play out in the background, 8 ms each, as a hand turns: `wait` for them before the next key |
+| `turn ENC N [MS]` | encoder 1-6 (SW1-SW6: 4 is knob 1, 1-3 knobs 2-4, 5 the transport, 6 VOLUME) by N detents. They play out in the background, 8 ms each (or MS), as a hand turns: `wait` for them before the next key. 8 ms is a fast turn, which knobs 1-4 and VOLUME speed up (#375): from 125 ms a detent they move their plain 1 % (VOLUME's 2 %), so a script setting a value turns them at `130` |
 | `toggle 0\|1` | the mode switch, as the 4021 reads it: 0 down (the play page, where the twin starts), 1 up (the settings page) |
 | `input sine HZ AMP` / `input wav FILE` / `input off` | what goes into AUX (a WAV loops) |
 | `mic sine HZ AMP` / `mic wav FILE` / `mic off` | what goes into the built-in mic (a WAV's left channel), heard while the mic is the input |

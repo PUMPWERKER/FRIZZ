@@ -26,14 +26,14 @@ wait 200
 # all wet (depth up), feedback at the top
 turn 2 100
 wait 600
-turn 1 60
-wait 600
+turn 1 60 130
+wait 7920
 # the shift down from 10 Hz to about 1.3 Hz: a barber pole
-turn 4 -11
-wait 4000
+turn 4 -11 130
+wait 5342
 # about 90 Hz
-turn 4 23
-wait 2000
+turn 4 23 130
+wait 4806
 # the direction down, then up: knob 4's LED blue, then orange
 turn 3 -50
 wait 1500
@@ -49,8 +49,8 @@ wait 1500
 tap ENC_4_SW
 wait 300
 # synced: the first division, 1/16, green
-turn 4 13
-wait 2000
+turn 4 13 130
+wait 3586
 expect led pth 1 00fd00
 # back to the phaser: violet, knob 4 the phaser's centre
 down KEY_26
