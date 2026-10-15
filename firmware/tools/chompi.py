@@ -272,11 +272,17 @@ def get7(data):
 IDENT_LEN = 26  # IDENT's data, its flags the last byte
 
 
+# IDENT's kinds (MidiControl.h): FRIZZ.bin, its bench; any other is another firmware built on
+# FRIZZ's platform, never taken for FRIZZ (#368)
+IDENT_KINDS = {0: "frizz", 1: "bench"}
+
+
 def parse_ident(data):
-    """IDENT's answer as a dict; None for one too short (cut off, or not IDENT's)"""
+    """IDENT's answer as a dict; None for one too short (cut off, or not IDENT's). Its kind:
+    "frizz", "bench", or "other N" for another firmware's"""
     if len(data) < IDENT_LEN:
         return None
-    return {"version": data[0], "kind": "bench" if data[1] == 1 else "frizz",
+    return {"version": data[0], "kind": IDENT_KINDS.get(data[1], "other %d" % data[1]),
             "crc": get7(data[2:7]) & 0xFFFFFFFF, "length": get7(data[7:10]),
             "uptime": get7(data[10:15]) / 1000, "passes": get7(data[15:20]),
             "reset": get7(data[20:25]) & 0xFFFFFFFF, "ram_only": bool(data[25] & RAM_ONLY)}
@@ -302,8 +308,9 @@ def describe_ident(info, slots=None):
     """'FRIZZ, crc32 X, N B (slot 12's: md5 M, ...)', for the tools to say"""
     slots = slots_of(info) if slots is None else slots
     images = noted_images()
-    what = "%s, crc32 %08x, %d B" % ("the bench" if info["kind"] == "bench" else "FRIZZ",
-                                     info["crc"], info["length"])
+    name = {"frizz": "FRIZZ", "bench": "the bench"}.get(info["kind"])
+    name = name or "another firmware (IDENT kind %s)" % info["kind"].split()[-1]
+    what = "%s, crc32 %08x, %d B" % (name, info["crc"], info["length"])
     if slots:
         what += " (%s)" % "; ".join("slot %d's: %s" % (s, images[s][2]) for s in slots)
     elif info["length"]:
@@ -418,8 +425,9 @@ def restart(device, hard=False):
     it, its cache unwritten (lent())"""
     why = lent(device)
     if why:
-        sys.exit("FRIZZ lends the card to the computer (%s): not restarted, the drive would go from "
-                 "under it. Eject it there (or take it back on the CHOMPI) and run this again" % why)
+        sys.exit("the firmware running lends the card to the computer (%s): not restarted, the drive "
+                 "would go from under it. Eject it there (or take it back on the CHOMPI) and run this "
+                 "again" % why)
     try:
         with link(device) as to:
             os.write(to.fd, RESET_SYSEX if hard else RESTART)
@@ -434,6 +442,13 @@ def frizz_node(node):
     return bool(m) and "frizz" in card_names(m.group(1)).lower()
 
 
+def platform_node(node):
+    """Whether NODE is a CHOMPI's by its USB names ("Chompi Club"): another firmware on FRIZZ's
+    platform takes FRIZZ's restart SysEx too (#368); one that doesn't ignores it"""
+    m = re.search(r"midiC(\d+)D", node or "")
+    return bool(m) and "chompi" in card_names(m.group(1)).lower()
+
+
 # ---- the card, as a drive -----------------------------------------------------------------
 
 def card_partition():
@@ -444,28 +459,47 @@ def card_partition():
     return os.path.realpath(link) if os.path.exists(link) else None
 
 
-def lent_by_frizz(part):
-    """Whether PART is the card a running FRIZZ lends as a USB drive (#196: its drive's vendor
-    is "FrizZ"), not the USB storage firmware's"""
+# the vendor (SCSI INQUIRY) of a card FRIZZ lends (#196); another firmware built on FRIZZ's
+# platform is told by its MIDI beside the drive (lent_by_firmware, #368)
+LENDERS = ("FrizZ",)
+
+
+def drive_vendor(part):
+    """The vendor PART's drive gives (INQUIRY), None if it can't be read"""
     disk = os.path.basename(storage_disk(part))
     try:
         with open("/sys/block/%s/device/vendor" % disk) as f:
-            return f.read().strip() == "FrizZ"
+            return f.read().strip()
     except OSError:
-        return False
+        return None
+
+
+def lent_by_frizz(part):
+    """Whether PART is the card a running FRIZZ lends as a USB drive (#196: its drive's vendor
+    is "FrizZ"), not the USB storage firmware's"""
+    return drive_vendor(part) == "FrizZ"
+
+
+def lent_by_firmware(part):
+    """Whether PART is a card a running firmware lends (FRIZZ, or another on its platform), not
+    the USB storage firmware's: its vendor is a lender's, or the CHOMPI answers MIDI beside the
+    drive, which the storage firmware, a drive alone, never does (#368)"""
+    return (drive_vendor(part) in LENDERS or midi_send.find_device() is not None
+            or by_usb_id()[1] is not None)
 
 
 def storage_partition():
     """/dev/sdXN of the CHOMPI-SD file system, if the USB storage firmware offers it (not a
-    FRIZZ lending the card: it answers MIDI as FRIZZ meanwhile)"""
+    firmware lending the card: FRIZZ, or another, answers MIDI meanwhile)"""
     part = card_partition()
-    return part if part and not lent_by_frizz(part) else None
+    return part if part and not lent_by_firmware(part) else None
 
 
 def lent_partition():
-    """/dev/sdXN of the card a running FRIZZ lends, if it is there"""
+    """/dev/sdXN of the card a running firmware lends (FRIZZ, or another on its platform), if
+    it is there"""
     part = card_partition()
-    return part if part and lent_by_frizz(part) else None
+    return part if part and lent_by_firmware(part) else None
 
 
 USB_SUB = 0x0E  # kCmdDev's USB (MidiControl.h): its first data byte's 4 is "the card lent"
@@ -629,6 +663,14 @@ def to_launcher(timeout=120, device=None):
         eject(where)
         hint = ("still no launcher: this USB storage firmware doesn't restart on an eject; "
                 "press overdub, then the CHOMPI key")
+    elif now == "other" and platform_node(where):
+        # another firmware on FRIZZ's platform: it doesn't answer as FRIZZ, but takes its
+        # restart into the launcher (#368)
+        say("another firmware on the CHOMPI: asking it to restart into the launcher ...")
+        restart(where)
+        hint = None
+        if not reached("launcher", RESCUE, device):
+            say("it didn't restart: switch the CHOMPI off and on")
     elif now == "other":
         say("a CHOMPI that can't be restarted from here: switch it off and on")
         hint = None
@@ -778,6 +820,8 @@ def to_frizz(slot=None, timeout=120, device=None, again=False):
         running = slots[0] if len(slots) == 1 else (last if last in slots else None)
         if info["kind"] == "bench":
             say("the bench runs: %s" % describe_ident(info, slots))
+        elif info["kind"] != "frizz":
+            say("not FRIZZ: %s" % describe_ident(info, slots))  # started below (#368)
         elif running is not None and slot in (None, running):
             say("FRIZZ on slot %d: %s" % (running, describe_ident(info, slots)))
             return found(where, running)
