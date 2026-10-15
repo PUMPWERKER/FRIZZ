@@ -134,6 +134,11 @@ Portions of the FX engine in TAPE, TEMPO, WAVE and FRIZZ derive from Émilie Gil
   code by Émilie Gillet, 2014.
 - `limiter.h` — extracted from `pichenettes/stmlib`.
 - `encoder.h` — encoder decoding influenced by the Mutable Instruments encoder classes.
+- `FxPhaser.h` (FRIZZ) — the phaser's second mode, the frequency shifter, after Warps' easter
+  egg (`pichenettes/eurorack`, `warps/dsp/quadrature_transform.h` and `warps/dsp/modulator.cc`,
+  © 2014 Émilie Gillet, MIT): its chains of first-order allpasses (`AllPassFilter`) as a pair
+  90 degrees apart, the quadrature carrier and the feedback through a soft limit and a lowpass.
+  The allpasses' coefficients are FRIZZ's own, fitted for 48 kHz.
 
 ## The bootloader
 

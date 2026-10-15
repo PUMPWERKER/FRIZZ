@@ -465,6 +465,42 @@ static bool Shows(const Rgb& c, const float* color, int level, int within = 6)
 static const float kOrange[3] = {1.f, .6f, .24f}, kGreen[3] = {0.f, 1.f, 0.f}, kRed[3] = {1.f, 0.f, 0.f},
                    kWhite[3] = {1.f, 1.f, 1.f};
 
+// the phaser's key (FxSlots.h) and its second mode's colour (#306)
+static const int kPhaserKeyLed = 18;
+static const float kAzure[3] = {0.f, .4f, 1.f}, kViolet[3] = {.4f, 0.f, 1.f};
+/** The phaser's key in the frequency shifter's colour (azure) or its own (violet): dim, or lit
+ *  (on, whitened by its meter, so only which of red and green shows) */
+static bool PhaserShows(bool shifter, bool on = false)
+{
+    const Rgb c = SmtLedFull(kPhaserKeyLed);
+    if (on)
+        return Max(c) > 200 && (shifter ? c.g > c.r + 20 : c.r > c.g + 20);
+    return Shows(c, shifter ? kAzure : kViolet, kLoopDim, 4);
+}
+static bool White(const Rgb& c) { return std::min(c.r, std::min(c.g, c.b)) > 200; }
+/** The master out's left at 1100, 900 and 1000 Hz over ms, by Goertzel: amplitudes */
+static void Spectrum(float* at, uint32_t ms = 1000)
+{
+    std::vector<float> rec;
+    master_rec = &rec;
+    RunMs(ms);
+    master_rec = nullptr;
+    const float hz[3] = {1100.f, 900.f, 1000.f};
+    for (int k = 0; k < 3; k++)
+    {
+        const double w = 2. * M_PI * hz[k] / kSampleRate, c = 2. * cos(w);
+        double s1 = 0., s2 = 0.;
+        const size_t n = rec.size() / 2;
+        for (size_t i = 0; i < n; i++)
+        {
+            const double s0 = rec[2 * i] + c * s1 - s2;
+            s2 = s1;
+            s1 = s0;
+        }
+        at[k] = static_cast<float>(2. * sqrt(fmax(s1 * s1 + s2 * s2 - c * s1 * s2, 0.)) / n);
+    }
+}
+
 /** Loops on the card ("a1" and the file, in /FRIZZ; a path with a "/", as it is), then
  *  scanned again (LoopLoader's SysEx) */
 static void PutLoops(const std::vector<std::pair<std::string, std::string>>& files)
@@ -5771,7 +5807,7 @@ int main()
         Save(1);
         RunMs(2500);
         const std::string slot = Ask({0x30, 1, 8});
-        Check(slot.size() == 5 && slot[2] == 1, "midi dev: a scene saved after it is in its slot");
+        Check(slot.size() == 7 && slot[2] == 1, "midi dev: a scene saved after it is in its slot");
         Check(Card("/FRIZZ/frizz_master.txt") == master && Card("/FRIZZ/frizz_scenes.txt") == scenes,
               "midi dev: but neither it nor the settings are on the card");
 
@@ -5992,7 +6028,7 @@ int main()
         for (int part = 0; part < 9; part++)
         {
             blank[part] = Ask({0x30, 0, static_cast<uint8_t>(part)});
-            all &= blank[part].size() == (part < 8 ? 34u : 5u);
+            all &= blank[part].size() == (part < 8 ? 34u : 7u); // the last: used, the latches, the modes
         }
         // the shifter's mix (FX 1, page 2's knob 1: part 4, 2nd effect) on its default, 1
         all &= blank[4].size() == 34u && blank[4][10] == 127 && blank[4][11] == 127;
@@ -6397,7 +6433,6 @@ int main()
     // its key violet, its rate knob's LED in its colours while free and green once synced, its
     // knobs on NRPN 0/64-67 and 1/64-67
     cases.push_back({"phaser", [] {
-        static const int kPhaserKeyLed = 18;
         freq = 800.f; // the centre at its default: the middle notch sweeps across it
         RunMs(kReadyMs);
         const float dry = RunMs(300);
@@ -6457,6 +6492,237 @@ int main()
         const std::string st = Ask({0x20});
         Check(st.size() > 9 && ((static_cast<uint8_t>(st[8]) << 7 | static_cast<uint8_t>(st[9])) == 1u << 13),
               "phaser: KEY_14 latches the chaos key (FxId 13), the phaser off");
+    }});
+
+    // ======== #306: the frequency shifter, the phaser's second mode ========
+
+    // SHIFT + KEY_7 selects the phaser; KEY_7 again in the same hold switches it to the
+    // frequency shifter, however long after, and each further tap back and forth: the key azure
+    // (FxSlots.h), at full for a moment after each switch, the knob LEDs the mode's (knob 4
+    // white in the middle of its direction); letting go of SHIFT, a new hold's SHIFT + KEY_7
+    // only selects
+    cases.push_back({"fshift-gesture", [] {
+        RunMs(kReadyMs);
+        Press("KEY_26", true);
+        RunMs(60);
+        Tap("KEY_7");
+        RunMs(300);
+        const bool phaser = PhaserShows(false), knob4 = !White(PthLedFull(4));
+        Tap("KEY_7");
+        RunMs(40);
+        const Rgb flash = SmtLedFull(kPhaserKeyLed);
+        RunMs(400);
+        const bool shifter = PhaserShows(true);
+        printf("      selected %s, switched %s (at full %s), knob 4 %s\n", Hex(SmtLedFull(kPhaserKeyLed)).c_str(),
+               Hex(SmtLedFull(kPhaserKeyLed)).c_str(), Hex(flash).c_str(), Hex(PthLedFull(4)).c_str());
+        Check(phaser && knob4, "fshift-gesture: SHIFT + KEY_7 selects the phaser, its key dim violet");
+        Check(shifter && Shows(flash, kAzure, 252, 12) && White(PthLedFull(4)),
+              "fshift-gesture: KEY_7 again in the hold: the frequency shifter, its key azure, at full for a moment; "
+              "knob 4 white, both sidebands");
+        Tap("KEY_7");
+        RunMs(400);
+        const bool back = PhaserShows(false);
+        RunMs(3000);
+        Tap("KEY_7");
+        RunMs(400);
+        Check(back && PhaserShows(true), "fshift-gesture: each further tap switches again, however long after");
+        Press("KEY_26", false);
+        RunMs(300);
+        ShiftWith({"KEY_7"});
+        RunMs(400);
+        Check(PhaserShows(true), "fshift-gesture: a new hold's SHIFT + KEY_7 only selects, the mode stays");
+        const std::string st = Ask({0x20});
+        Check(st.size() > 11 && LatchedFx(st) == 0 && (static_cast<uint8_t>(st[10]) << 7 | static_cast<uint8_t>(st[11])) == 0,
+              "fshift-gesture: and the phaser stays off, unlatched");
+    }});
+
+    // what starts the count again, or never counts: SHIFT let go, another key between, the latch
+    // gesture (KEY_7 held, then SHIFT); SHIFT just after the key's press (the grace) is SHIFT
+    // first, a select, which counts
+    cases.push_back({"fshift-resets", [] {
+        RunMs(kReadyMs);
+        Press("KEY_26", true);
+        RunMs(60);
+        Tap("KEY_7");
+        RunMs(60);
+        Press("KEY_26", false);
+        RunMs(100);
+        ShiftWith({"KEY_7"});
+        RunMs(300);
+        Check(PhaserShows(false), "fshift-resets: SHIFT let go between the taps: no switch");
+        ShiftWith({"KEY_7", "KEY_5", "KEY_7"});
+        RunMs(300);
+        Check(PhaserShows(false), "fshift-resets: another FX key between: no switch");
+        ShiftWith({"KEY_7", "KEY_15", "KEY_7"});
+        RunMs(300);
+        Check(PhaserShows(false), "fshift-resets: the compressor's key between: no switch");
+        ShiftWith({"KEY_7", kSceneKeys[0], "KEY_7"});
+        RunMs(300);
+        Check(PhaserShows(false), "fshift-resets: a scene key between: no switch");
+        // the latch: KEY_7 held, SHIFT down, KEY_7 let go; KEY_7 again with SHIFT down is a select
+        Press("KEY_7", true);
+        RunMs(100);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("KEY_7", false);
+        RunMs(100);
+        Tap("KEY_7");
+        RunMs(100);
+        Press("KEY_26", false);
+        RunMs(300);
+        const std::string st = Ask({0x20});
+        Check(PhaserShows(false, true) && LatchedFx(st) == 1u << 12,
+              "fshift-resets: the latch gesture never counts: the phaser latched, still the phaser");
+        // SHIFT 8 ms after the key's press: SHIFT first after all, the first tap
+        Press("KEY_7", true);
+        RunMs(8);
+        Press("KEY_26", true);
+        RunMs(60);
+        Press("KEY_7", false);
+        RunMs(60);
+        Tap("KEY_7");
+        RunMs(60);
+        Press("KEY_26", false);
+        RunMs(400);
+        Check(PhaserShows(true, true), "fshift-resets: SHIFT within the grace after the key: the first tap, the second switches");
+    }});
+
+    // on the Loops page the white keys are loops: SHIFT + KEY_7 twice switches nothing
+    cases.push_back({"fshift-loops-page", [] {
+        RunMs(kReadyMs);
+        LoopsPage();
+        ShiftWith({"KEY_7", "KEY_7"});
+        RunMs(200);
+        DoubleTap();
+        RunMs(300);
+        Check(!LoopsShown() && PhaserShows(false), "fshift-loops-page: SHIFT + KEY_7 twice on the Loops page: no switch");
+    }});
+
+    // MIDI: CC 23 on the phaser's channel, 7, sets the mode (0-63 the phaser, 64-127 the
+    // shifter); on another effect's channel it does nothing, on the global one it's the focus.
+    // The notes do as the hand: SHIFT's 45 held, KEY_7's 59 twice. MIDI feedback sends the
+    // mode as CC 23 on channel 7, and not what came in
+    cases.push_back({"fshift-midi", [] {
+        RunMs(kReadyMs);
+        Trs({0xB6, 23, 127});
+        RunMs(400);
+        const bool cc_on = PhaserShows(true);
+        Trs({0xB6, 23, 0});
+        RunMs(400);
+        const bool cc_off = PhaserShows(false);
+        Check(cc_on && cc_off, "fshift-midi: CC 23 on channel 7 switches the phaser to the shifter and back");
+        const std::string before = Ask({0x20});
+        Trs({0xB4, 23, 127, 0xB0, 23, 127});
+        RunMs(400);
+        const std::string after = Ask({0x20});
+        Check(PhaserShows(false) && before.size() > 5 && after.size() > 5 && before[4] == after[4],
+              "fshift-midi: CC 23 on the filter's or the freezer's channel does nothing");
+        Trs({kNoteOn, 45, 100});
+        RunMs(60);
+        for (int i = 0; i < 2; i++)
+        {
+            Trs({kNoteOn, 59, 100});
+            RunMs(60);
+            Trs({kNoteOff, 59, 0});
+            RunMs(60);
+        }
+        Trs({kNoteOff, 45, 0});
+        RunMs(400);
+        Check(PhaserShows(true), "fshift-midi: SHIFT's note held, KEY_7's twice: the shifter, as the hand");
+
+        // feedback on: the hand's switch goes out as CC 23 on channel 7; MIDI's isn't echoed
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 3, 2, 0xF7}); // MIDI out: the jack and USB
+        RunMs(100);
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_22");
+        RunMs(100);
+        SetToggle(false);
+        RunMs(300);
+        TrsCcs();
+        ShiftWith({"KEY_7", "KEY_7"});
+        RunMs(300);
+        const std::vector<std::array<int, 3>> fed = TrsCcs();
+        Check(PhaserShows(false) && HasCc(fed, 0xB6, 23, 0), "fshift-midi: feedback sends the hand's switch as CC 23 on channel 7");
+        Trs({0xB6, 23, 100});
+        RunMs(300);
+        Check(PhaserShows(true) && LastCc(TrsCcs(), 0xB6, 23) < 0, "fshift-midi: and not what came in by CC 23");
+    }});
+
+    // the sound: a 1 kHz sine through the shifter, 100 Hz (CC 14 at 48), all wet, up: it comes
+    // out at 1100 Hz, 900 Hz and 1 kHz far below; down: at 900 Hz
+    cases.push_back({"fshift-sound", [] {
+        freq = 1000.f;
+        RunMs(kReadyMs);
+        Trs({0xB6, 23, 127, 0xB6, 14, 48, 0xB6, 16, 127, 0xB6, 17, 127, 0xB6, 22, 127});
+        RunMs(500);
+        float up[3], down[3];
+        Spectrum(up);
+        Trs({0xB6, 17, 0});
+        RunMs(500);
+        Spectrum(down);
+        printf("      up: %.4f at 1100 Hz, %.4f at 900, %.4f at 1000; down: %.4f, %.4f, %.4f\n", up[0], up[1],
+               up[2], down[0], down[1], down[2]);
+        Check(up[0] > .05f && up[1] < up[0] * .03f && up[2] < up[0] * .03f,
+              "fshift-sound: up 100 Hz, a 1 kHz sine comes out at 1100 Hz, 900 Hz and 1 kHz 30 dB below");
+        Check(down[1] > .05f && down[0] < down[1] * .03f && down[2] < down[1] * .03f,
+              "fshift-sound: down, at 900 Hz");
+    }});
+
+    // a scene keeps the mode, its phaser line's ninth value; a recall sets it, the blank scene
+    // the phaser; a scene file without it (from before) recalls the phaser
+    cases.push_back({"fshift-scene", [] {
+        CardFiles()["/FRIZZ/frizz_scenes.txt"]
+            = "FRIZZ scenes 1\nlayout 5\nscene 2\nphaser 1 250000 400000 0 500000 1000000 0 500000 750000\n";
+        RunMs(kReadyMs);
+        Trs({0xB6, 23, 127});
+        RunMs(300);
+        Save(1);
+        RunMs(2500);
+        const std::string file = Card("/FRIZZ/frizz_scenes.txt");
+        const size_t line = file.find("phaser ", file.find("scene 1\n"));
+        Check(line != std::string::npos && file.compare(file.find('\n', line) - 2, 2, " 1") == 0,
+              "fshift-scene: saved, the phaser's line has a ninth value, 1");
+        Tap(kSceneKeys[0]);
+        RunMs(400);
+        const bool blank = PhaserShows(false);
+        Tap(kSceneKeys[1]);
+        RunMs(400);
+        Check(blank && PhaserShows(true), "fshift-scene: the blank scene recalls the phaser, scene 1 the shifter");
+        Tap(kSceneKeys[2]);
+        RunMs(400);
+        Check(PhaserShows(false, true), "fshift-scene: a scene from before, no ninth value: the phaser, latched");
+    }});
+
+    // a morph between scenes on the phaser in either mode, latched in both: the controls show
+    // the new mode at once, the sound stays the phaser's until the landing, then the shifter's,
+    // through the effect's dip: no click
+    cases.push_back({"fshift-morph", [] {
+        freq = 1000.f;
+        RunMs(kReadyMs);
+        Trs({0xB6, 14, 48, 0xB6, 16, 127, 0xB6, 17, 127, 0xB6, 22, 127});
+        RunMs(300);
+        Save(1);
+        Trs({0xB6, 23, 127});
+        RunMs(300);
+        Save(2);
+        Tap(kSceneKeys[1]);
+        RunMs(500);
+        ToBarLine();
+        ShiftWith({kSceneKeys[2]});
+        RunMs(100);
+        const bool shown = PhaserShows(true, true);
+        float early[3];
+        Spectrum(early, 300);
+        max_step = 0.f;
+        RunMs(2500);
+        const float step = max_step;
+        float late[3];
+        Spectrum(late);
+        printf("      before the landing %.4f at 1100 Hz, after %.4f; the largest step %.4f\n", early[0], late[0], step);
+        Check(shown && early[0] < .01f && late[0] > .05f,
+              "fshift-morph: the key shows the shifter at once, the sound switches at the landing");
+        Check(step < .08f, "fshift-morph: through the effect's dip, no click");
     }});
 
     // ======== #117: stereo on page 2, the page's number blinked, Level's LED a VU ========
@@ -8083,7 +8349,7 @@ int main()
     // a scene slot as kCmdSceneGet's last part has it: used, its latches (bit 4 the filter's)
     static auto slot_latches = [](int slot) {
         const std::string s = Ask({0x30, slot, 8});
-        return s.size() == 5 && s[2] ? static_cast<uint8_t>(s[3]) << 7 | static_cast<uint8_t>(s[4]) : -1;
+        return s.size() == 7 && s[2] ? static_cast<uint8_t>(s[3]) << 7 | static_cast<uint8_t>(s[4]) : -1;
     };
     // the computer unlatches the filter in scene 1
     static auto unlatch_filter = [](std::string file) {

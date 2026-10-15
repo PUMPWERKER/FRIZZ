@@ -80,6 +80,11 @@ static const uint8_t kKeyParams = 8; // an effect's knobs, both pages (kNumFxPar
 // On an effect channel, and on the global one for the effect in focus
 static const uint8_t kKnobCC = 14;  // 14-17 page 1's knobs 1-4, 18-21 page 2's
 static const uint8_t kLatchCC = 22; // 64 and up on, below off: acts as it crosses 64
+// On the channel of the effect with a second mode (#306), the phaser's: 0-63 the phaser,
+// 64-127 the frequency shifter. On the others it does nothing, and on the global channel 23
+// is the focus
+static const uint8_t kModeCC = 23;
+static const uint8_t kModeKey = 6; // the phaser's white key, 0-14 (FxSlots.h)
 // The global channel's
 static const uint8_t kBankCC = 0;       // Bank Select (MSB): the program changes' bank, below
 static const uint8_t kMorphCC = 3;      // morph to the scene 0-4, as the value changes
@@ -122,6 +127,7 @@ enum Value : uint8_t
     kHpCue,
     kSpeed,
     kFader,
+    kMode, // CC 23 on kModeKey's channel
     kNumValues,
 };
 } // namespace midimap
@@ -138,6 +144,7 @@ static_assert(Cc(kGlobalLatches) == midimap::kKeyLatchCC && Cc(kFocusItems) == m
 static_assert(Cc(kOutGain) == midimap::kOutGainCC && Cc(kInGain) == midimap::kInGainCC
                   && Cc(kMix) == midimap::kMixCC && Cc(kHpCue) == midimap::kHpCueCC
                   && Cc(kSpeed) == midimap::kSpeedCC && Cc(kFader) == midimap::kFaderCC
+                  && Cc(kMode) == midimap::kModeCC && kModeKey == midimap::kModeKey
                   && Cc(kSource) == midimap::kSourceCC && Cc(kDry) == midimap::kDryCC
                   && Cc(kLive) == midimap::kLiveCC,
               "the global CCs");
@@ -712,6 +719,14 @@ private:
         if (cc >= kKnobCC && cc < kKnobCC + kKeyParams)
         {
             Set(static_cast<uint8_t>(key * kKeyParams + cc - kKnobCC), v);
+            return true;
+        }
+        // the mode, on its effect's own channel only
+        if (cc == kModeCC)
+        {
+            if (key != kModeKey || latch != key)
+                return false;
+            Set(kMode, v);
             return true;
         }
         // the compressor's channel has no latch

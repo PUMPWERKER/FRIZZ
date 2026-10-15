@@ -959,10 +959,11 @@ vibrato.
 - LEDs: the key is light blue; the knobs go light blue to purple.
 
 ## Phaser
-<!-- summary: Sweeping notches with resonance, free-running or locked to the tempo. -->
+<!-- summary: Sweeping notches with resonance, free-running or locked to the tempo; or a frequency shifter. -->
 
 White key 7. Sweeping notches with resonance, free-running or locked to the tempo (after the
-SP-404MK2's Phaser and the Elektron Tonverk's Phase 98).
+SP-404MK2's Phaser and the Elektron Tonverk's Phase 98). Its second mode is a
+[frequency shifter](#frequency-shifter): SHIFT + key 7, then key 7 again.
 
 ![The white keys from above, the phaser lit on key 7; its knobs 1 to 4 are rate, feedback, depth, centre](images/key-phaser.svg)
 
@@ -1007,6 +1008,61 @@ SP-404MK2's Phaser and the Elektron Tonverk's Phase 98).
   a triangle LFO sweeps them up and down in octaves around the centre (knob 4).
 - LEDs: the key is violet; the knobs go violet to orange, the rate's synced half green to
   yellow.
+
+### Frequency shifter
+
+The phaser's second mode moves every frequency in the sound up or down by the same number of
+Hz. A pitch shifter keeps the harmonics in tune with each other; this doesn't, so they no
+longer line up. A few Hz with feedback make a barber pole, a sweep that rises (or falls) and
+never ends; tens to hundreds of Hz make a sound metallic and bell-like. After Mutable
+Instruments' Warps.
+
+- **Switching:** hold SHIFT and press key 7, which selects the phaser as ever, then press key
+  7 again: the frequency shifter, the key azure. Every further press in the same hold switches
+  back and forth, however long you wait between them. Letting go of SHIFT, or pressing any
+  other key, starts over: the next SHIFT + key 7 only selects. Holding key 7 and then pressing
+  SHIFT (the latch) never switches. The key lights up fully for a moment on each switch. It
+  doesn't work on the Loops and Cubbi pages, where the white keys are loops.
+- **Playing it:** key 7 plays the effect in the mode it's in, held or latched as ever. The
+  knobs stay where they are when you switch, and are read the other way:
+
+| Knob | Page 1 | Page 2 |
+|---|---|---|
+| 1 | Shift, in two halves: left of the centre free, 0.1 Hz to 1 kHz; from the centre right a cycle per tempo division, 1/16 to 4 bars | Mix |
+| 2 | Feedback: the shifted sound shifted again, up to 90% | Stereo: the right channel turned the other way (default off) |
+| 3 | Depth: brings the shifted sound in, all of it at the top (0, off) | Band |
+| 4 | Direction: down at the left, both ways in the middle, up at the right | Level |
+
+- **Shift (knob 1):** its free half is a curve, a tenfold every eighth of the knob: 0.1 Hz at
+  the left, 10 Hz halfway to the centre, 1 kHz just below it. From the centre right, the shift
+  follows the [tempo](#tempo-and-transport), a full cycle per division of the phaser's rate
+  (1/16 on the centre to 4 bars at the top: at 120 BPM, 8 Hz down to 0.125 Hz), so the barber
+  pole turns in time. Turning it works as the phaser's rate does.
+- **Feedback (knob 2)** sends the shifted sound back in, so it's shifted again on every trip,
+  through a lowpass and a soft limit: with a few Hz of shift, the barber pole. The repeats add
+  up, so the level is turned down a little as it rises.
+- **Depth (knob 3)** brings the shifted sound in: at 0 the sound passes untouched, at the top
+  you hear only the shifted sound. In between, the two together beat against each other. A
+  morph fades the frequency shifter in and out on it.
+- **Direction (knob 4):** down at the left, every frequency lower by the shift; up at the
+  right, higher; in the middle (its default) both at once, half as loud each, as a ring
+  modulator does; in between, one louder than the other. Its LED is blue for down, white for
+  both, orange for up.
+- **Stereo (page 2's knob 2):** turns the right channel's direction the other way: at the top
+  the right goes down where the left goes up; in the middle the right has both.
+- **Scenes:** a scene keeps the mode. Recalling it switches the mode; the blank scene is the
+  phaser. A morph switches it at the landing, as it does stepped knobs: the effect fades out,
+  switches and fades in, a few milliseconds each way. A scene from before the frequency shifter
+  is the phaser, and an older FRIZZ loads a scene with the frequency shifter as the phaser.
+- **MIDI:** CC 23 on the phaser's channel (7) sets the mode, 0-63 the phaser, 64-127 the
+  frequency shifter (see [Controllers](#controllers)). Notes do as your hand: SHIFT's note 45
+  held, key 7's note 59 twice.
+- **How it works:** two chains of seven allpass filters turn each channel into a pair of
+  signals 90 degrees apart; a carrier at the shift's frequency multiplies them, and their
+  difference or sum is the sound moved up or down alone. The other direction stays 45 dB down
+  from 25 Hz to 19 kHz.
+- LEDs in frequency-shifter mode: the key is azure; the knobs go azure to orange, the shift's
+  synced half green to yellow, the direction blue, white and orange.
 
 ## Resonator
 <!-- summary: A tuned comb loop that rings at a note you set. Latch the crusher or the shifter and the ringing goes through them on every pass. -->
@@ -1859,6 +1915,7 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | Hold an FX key | The effect on while held | [Playing an effect](#playing-an-effect) |
 | Hold FX keys, then SHIFT | Latch them on, or off | [Playing an effect](#playing-an-effect) |
 | SHIFT, then an FX key | Select it for the knobs, without hearing it | [Playing an effect](#playing-an-effect) |
+| SHIFT + key 7, then key 7 again | The phaser's other mode: the frequency shifter, and back | [Frequency shifter](#frequency-shifter) |
 | An FX key on a latched effect | Unlatch it; on until you let go | [Playing an effect](#playing-an-effect) |
 | White key 15 | The master compressor on the knobs | [Master compressor](#master-compressor) |
 | Turn knobs 1-4 | The selected effect's parameters | [Keys and knobs](#keys-and-knobs) |
@@ -2080,6 +2137,7 @@ save, copy and delete 66, 68 and 70. Below them:
 | 14, 15, 16, 17 | Page 1's knobs 1-4, set outright |
 | 18, 19, 20, 21 | [Page 2](#page-2)'s knobs 1-4 (Mix or the sends' Freeze, stereo or its own, Band, Level), set outright |
 | 22 | Latch: 64 and above on, below off, acting as the value crosses 64. The compressor (channel 15) has none, nor a page 2 knob 2: its CC 19 does nothing |
+| 23 | On the phaser's channel (7) only: its mode, 0-63 the phaser, 64-127 the [frequency shifter](#frequency-shifter). On the other effect channels it does nothing; on the global channel it's the focus |
 
 **On the global channel:**
 
@@ -2246,7 +2304,8 @@ page](#settings-page) switches it (`midi_feedback 1` in `FRIZZ/frizz_master.txt`
 where [MIDI out](#midi-out) goes, so MIDI out has to be on too.
 
 - **What goes out:** an effect's knobs (CC 14-21) and latch (CC 22) on its own channel, and
-  for the effect in focus also on the global channel (CC 14-22); the latches by key (CC
+  for the effect in focus also on the global channel (CC 14-22); the phaser's mode (CC 23 on
+  its channel, 0 or 127); the latches by key (CC
   102-115), the focus (CC 23) as you pick an effect, the compressor (CC 24-31), the gains and
   the input/loop mix (CC 85-87), the headphone feed (CC 89), the input (CC 84: 0 AUX, 64 the mic, 127 USB, also
   when the jack switches it; CC 116 and 117, 0 or 127, the source's effects and monitoring, also

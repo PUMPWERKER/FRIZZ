@@ -21,5 +21,6 @@ static const float teal[3] = {0.f, 1.f, .55f};
 static const float amber[3] = {1.f, .35f, 0.f};
 static const float rose[3] = {1.f, .08f, .3f};
 static const float violet[3] = {.4f, 0.f, 1.f}; // between the blue and the purple
+static const float azure[3] = {0.f, .4f, 1.f};  // between the light blue and the blue
 
 } // namespace chompi

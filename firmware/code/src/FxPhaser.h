@@ -1,5 +1,6 @@
 /** @file FxPhaser.h
- *  @brief The phaser (#68): FRIZZ's own, a chain of first-order allpass stages per channel.
+ *  @brief The phaser (#68): FRIZZ's own, a chain of first-order allpass stages per channel;
+ *  and its second mode, a frequency shifter (#306) after Mutable Instruments' Warps.
  */
 #pragma once
 #include "FxCommon.h"
@@ -10,6 +11,15 @@
 
 namespace chompi
 {
+
+// The frequency shifter's allpass pair (Phaser::Chain): Warps' AllPassFilter's coefficients
+// (which its Init takes as -pole), fitted for 48kHz to a 90 degree difference within .65
+// degrees from 25Hz to 19kHz
+static const size_t kShiftStages = 7;
+static const float kShiftI[kShiftStages] = {-.998965763f, -.995742255f, -.983517101f, -.941340022f,
+                                            -.797460598f, -.420813829f, .298537921f};
+static const float kShiftQ[kShiftStages] = {-.997290086f, -.992065396f, -.967980159f, -.891331600f,
+                                            -.640285696f, -.110620437f, .744728924f};
 
 /** A classic phaser: kStages first-order allpasses in a row, all on one break frequency,
  *  added to the input, with feedback from the end of the chain back into it. Six stages put
@@ -30,7 +40,25 @@ namespace chompi
  *  The break frequency is worked out every kRetune samples and the allpasses' coefficient
  *  glides to it in between, so a sample costs 6 stages' 2 multiplies a channel and the
  *  blend. Off and faded out (FxGate::Asleep) it does nothing but count the samples, so the
- *  LFOs are where they'd be when it comes on again, its stages starting from silence. */
+ *  LFOs are where they'd be when it comes on again, its stages starting from silence.
+ *
+ *  Its second mode (SetMode, #306), a frequency shifter: every frequency in the sound moved by
+ *  the same number of Hz, so harmonics no longer line up, as in Warps' easter egg
+ *  (pichenettes/eurorack, warps/dsp/quadrature_transform.h, MIT; THIRD_PARTY.md). Two chains
+ *  of first-order allpasses (Warps' AllPassFilter) turn the input into a pair 90 degrees
+ *  apart, kShiftStages each, their coefficients (kShiftI, kShiftQ) fitted for 48kHz to within
+ *  0.65 degrees from 25Hz to 19kHz (Warps' 17 are for 96kHz): an unwanted sideband 45dB down.
+ *  A quadrature carrier multiplies them, and their difference or sum is the upper or lower
+ *  sideband alone. The same eight knobs, read the other way: 0 the shift (the left half free,
+ *  kShiftLowHz to 10000 times that on an exponential curve; the right half one cycle per
+ *  tempo division, the phaser's), 1 feedback (the shifted sound shifted again, through a soft
+ *  limit and a lowpass, as Warps' does: a few Hz make a barber pole), 2 depth (the shifted
+ *  sound's share, 0 dry), 3 direction (down at 0, both sidebands in the middle, up at 1, in
+ *  between leaning one way); page 2: 5 stereo (the right channel's direction turned the other
+ *  way, through both sidebands at the middle). The carrier is a phasor turned a sample at a
+ *  time and set again every kRetune samples from the LFOs, so it's locked to the clock when
+ *  synced. One mode runs at a time: a switch dips the effect out over kDipSamples, switches
+ *  and starts the new mode from silence, and dips it back in; asleep it switches at once. */
 class Phaser : public FxBase
 {
 public:
@@ -41,6 +69,9 @@ public:
         DEPTH,
         CENTRE,
         STEREO = 5,
+        // the frequency shifter's names for two of them (SetMode)
+        SHIFT = RATE,
+        DIRECTION = CENTRE,
     };
 
     static const size_t kStages = 6;
@@ -53,6 +84,13 @@ public:
     static constexpr float kMinHz = 20.f, kMaxHz = 16000.f;
     static const uint32_t kRetune = 8;
 
+    // the frequency shifter (SetMode)
+    static constexpr float kShiftLowHz = .1f;       // the shift's free half: .1Hz ...
+    static constexpr float kShiftDecades = 4.f;     // ... to 1kHz
+    static constexpr float kMaxShiftFeedback = .9f;
+    static constexpr float kShiftFeedbackLp = .35f; // the feedback's lowpass, ~3.3kHz
+    static const uint32_t kDipSamples = 240;        // a mode switch's dip out and in, 5ms each
+
     FX_ONCE void Init(float sample_rate)
     {
         sample_rate_ = sample_rate;
@@ -62,6 +100,10 @@ public:
         free_phase_ = 0.f;
         since_ = 0;
         asleep_ = true;
+        want_ = shifting_ = dipping_ = dip_down_ = false;
+        dip_ = 1.f;
+        co_ = 1.f;
+        so_ = cr_ = sr_ = turn_ = 0.f;
         coeff_[0] = coeff_[1] = step_[0] = step_[1] = 0.f;
         for (size_t i = 0; i < kNumFxParams; i++)
             SetParam(i, 0.f);
@@ -85,6 +127,12 @@ public:
         lfo_.PulseAfter(pos, reverse, since_);
     }
 
+    /** The mode: the phaser, or the frequency shifter (#306). From MainLoop or the morph: the
+     *  audio switches with a dip, or at once while asleep (file comment) */
+    inline void SetMode(bool shifter) { want_ = shifter; }
+    /** The mode the audio runs now, for the tests */
+    inline bool Shifting() const { return shifting_; }
+
     /** FxBase::SleepsThrough: what Process does asleep, once for the run */
     FX_PER_RUN bool SleepsThrough(const float*, const float*, size_t n)
     {
@@ -97,7 +145,7 @@ public:
 
     void Process(float* l, float* r)
     {
-        const float gate = gate_.Process();
+        float gate = gate_.Process();
         if (gate_.Asleep())
         {
             since_++;
@@ -108,6 +156,14 @@ public:
             Wake();
         else if (++since_ >= kRetune)
             Retune(false);
+        // a mode switch: out of line, as the other mode
+        if (__builtin_expect(dipping_, 0))
+            gate *= Dip();
+        if (__builtin_expect(shifting_, 0))
+        {
+            Shift(l, r, gate);
+            return;
+        }
 
         float* const io[2] = {l, r};
         for (size_t c = 0; c < 2; c++)
@@ -132,11 +188,8 @@ public:
         switch (param)
         {
         case RATE:
-            synced_ = SplitUpper(val);
-            if (synced_)
-                div_pulses_ = kLfoDivisionPulses[SplitStep(val, kNumDivisions)];
-            else
-                free_inc_ = CurveMap(SplitLower(val), kFlangerRateX, kFlangerRateHz, 5) / sample_rate_;
+            rate_ = val;
+            SetRate();
             break;
         case FEEDBACK:
             feedback_knob_.target = val;
@@ -175,9 +228,25 @@ public:
     inline bool Synced() const { return synced_; }
     inline uint32_t DivisionPulses() const { return div_pulses_; }
     inline float FreeHz() const { return free_inc_ * sample_rate_; }
+    /** The shift's free half: Hz for its knob 0..1 (the rate knob's lower half as 0..1) */
+    static float ShiftHz(float x) { return kShiftLowHz * expf(kShiftDecades * kLn10 * x); }
 
 private:
-    static constexpr float kLn2 = .69314718f;
+    static constexpr float kLn2 = .69314718f, kLn10 = 2.3025851f;
+    static constexpr float kTwoPi = 6.2831853f;
+
+    /** The rate knob (rate_) as the mode reads it: synced, or the free LFO's or carrier's
+     *  advance a sample */
+    __attribute__((noinline, optimize("Os"))) void SetRate()
+    {
+        synced_ = SplitUpper(rate_);
+        if (synced_)
+            div_pulses_ = kLfoDivisionPulses[SplitStep(rate_, kNumDivisions)];
+        else
+            free_inc_ = (shifting_ ? ShiftHz(SplitLower(rate_))
+                                   : CurveMap(SplitLower(rate_), kFlangerRateX, kFlangerRateHz, 5))
+                        / sample_rate_;
+    }
 
     /** The knobs and LFOs on n samples further, and the coefficients' glide to where they're
      *  going. Out of line, so the per-sample code stays small (#51) */
@@ -190,6 +259,14 @@ private:
         const float coeff = FxSlewOver(n, snap);
         const float depth = depth_.Process(coeff);
         const float centre = centre_.Process(coeff);
+        // a mode switch starts with its dip (Dip)
+        if (want_ != shifting_ && !dipping_)
+            dipping_ = dip_down_ = true;
+        if (shifting_)
+        {
+            RetuneShift(feedback_knob_.Process(coeff), depth, centre);
+            return;
+        }
         feedback_ = kMaxFeedback * feedback_knob_.Process(coeff);
         wet_ = fminf(depth / kFullWetDepth, 1.f);
         // half the input and half the chain, so the notches go all the way down; the feedback's
@@ -228,21 +305,134 @@ private:
         lfo_.Advance(n);
     }
 
-    /** Coming on from asleep: from silence, the knobs where they went meanwhile */
+    /** The frequency shifter's Retune: the knobs, and the carrier set again where the LFO is,
+     *  its turn a sample at the free rate or the clock's */
+    __attribute__((noinline)) void RetuneShift(float feedback, float depth, float direction)
+    {
+        feedback_ = kMaxShiftFeedback * feedback;
+        wet_ = depth;
+        gain_ = 1.f - .5f * feedback_; // the repeats add up
+        dir_[0] = 2.f * direction - 1.f;
+        dir_[1] = dir_[0] * (1.f - 4.f * lag_); // stereo (2 lag_) 1: the other way
+        float phase, turn;
+        if (synced_)
+        {
+            phase = lfo_.Cycle(div_pulses_);
+            turn = lfo_.PulseInc() / static_cast<float>(div_pulses_);
+            if (lfo_.Reverse())
+                turn = -turn;
+        }
+        else
+        {
+            phase = free_phase_;
+            turn = free_inc_;
+        }
+        co_ = cosf(kTwoPi * phase);
+        so_ = sinf(kTwoPi * phase);
+        if (turn != turn_)
+        {
+            turn_ = turn;
+            cr_ = cosf(kTwoPi * turn);
+            sr_ = sinf(kTwoPi * turn);
+        }
+    }
+
+    /** A sample of the frequency shifter, both channels (file comment), gate: the key's fade */
+    __attribute__((noinline)) void Shift(float* l, float* r, float gate)
+    {
+        float* const io[2] = {l, r};
+        for (size_t c = 0; c < 2; c++)
+        {
+            const float dry = *io[c];
+            const float x = dry + feedback_ * fed_[c];
+            float* const st = pair_[c]; // the input a sample ago, then each stage's output
+            const float i = Chain(kShiftI, x, st[0], st + 1);
+            const float q = Chain(kShiftQ, x, st[0], st + 1 + kShiftStages);
+            st[0] = x;
+            const float y = i * co_ + dir_[c] * q * so_;
+            fed_[c] += kShiftFeedbackLp * (SoftLimit(y) - fed_[c]);
+            const float out = dry + wet_ * (gain_ * y - dry);
+            *io[c] = dry + gate * (out - dry);
+        }
+        const float co = co_ * cr_ - so_ * sr_;
+        so_ = so_ * cr_ + co_ * sr_;
+        co_ = co;
+    }
+    /** x through a chain of Warps' first-order allpasses on coefficients a; prev: the input a
+     *  sample ago, which is the first stage's; st: each stage's output a sample ago, the
+     *  next one's input then */
+    static inline float Chain(const float* a, float x, float prev, float* st)
+    {
+        for (size_t s = 0; s < kShiftStages; s++)
+        {
+            const float y = a[s] * (x - st[s]) + prev;
+            prev = st[s];
+            st[s] = y;
+            x = y;
+        }
+        return x;
+    }
+    /** stmlib's SoftLimit: x up to about 1, smoothly, 1 from 3 on */
+    static inline float SoftLimit(float x)
+    {
+        x = fclamp(x, -3.f, 3.f);
+        return x * (27.f + x * x) / (27.f + 9.f * x * x);
+    }
+
+    /** A sample of a mode switch's dip, 1 to 0 and back: at the bottom the mode switches,
+     *  starting from silence. Wanted back meanwhile, it comes up as it was */
+    __attribute__((noinline)) float Dip()
+    {
+        const float step = 1.f / static_cast<float>(kDipSamples);
+        if (dip_down_)
+        {
+            dip_ -= step;
+            if (dip_ <= 0.f)
+            {
+                // to the mode wanted, from silence, as from asleep; then back up
+                if (want_ != shifting_)
+                    Wake();
+                dipping_ = true;
+                dip_down_ = false;
+                dip_ = 0.f;
+            }
+        }
+        else
+        {
+            dip_ += step;
+            if (dip_ >= 1.f)
+            {
+                dip_ = 1.f;
+                dipping_ = false;
+            }
+        }
+        return dip_;
+    }
+    /** Coming on from asleep: from silence, the knobs where they went meanwhile, in the mode
+     *  wanted */
     __attribute__((noinline)) void Wake()
     {
         asleep_ = false;
+        dipping_ = dip_down_ = false;
+        dip_ = 1.f;
+        if (want_ != shifting_)
+        {
+            shifting_ = want_;
+            SetRate();
+        }
         Clear();
         Snap();
         Retune(true);
     }
-    void Clear()
+    __attribute__((noinline, optimize("Os"))) void Clear()
     {
         for (size_t c = 0; c < 2; c++)
         {
-            last_[c] = 0.f;
+            last_[c] = fed_[c] = 0.f;
             for (size_t s = 0; s < kStages; s++)
                 state_[c][s] = 0.f;
+            for (size_t s = 0; s < 1 + 2 * kShiftStages; s++)
+                pair_[c][s] = 0.f;
         }
     }
     void Snap()
@@ -266,6 +456,19 @@ private:
     TempoLfo lfo_;              // synced: the tempo clock
     uint32_t since_;            // samples since the LFOs last moved
     bool asleep_;
+    float rate_ = 0.f;          // the rate knob, read by the mode (SetRate)
+
+    // the frequency shifter
+    volatile bool want_;        // the mode set (SetMode)
+    bool shifting_;             // and the one the audio runs
+    bool dipping_, dip_down_;   // a switch's dip under way, and going down
+    float dip_;                 // its gain, 1 to 0 and back
+    float pair_[2][1 + 2 * kShiftStages]; // the allpass pair's (Chain), per channel
+    float fed_[2];              // the shifted sound a sample ago, limited and lowpassed
+    float dir_[2];              // per channel: -1 down, 0 both sidebands, 1 up
+    float co_, so_;             // the carrier, cos and sin
+    float cr_, sr_, turn_;      // its turn a sample, and that in cycles
 };
+
 
 } // namespace chompi

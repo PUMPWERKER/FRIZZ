@@ -14,11 +14,15 @@
  *  (kCompSelected), which then turn as they do for an FX (kCompParams). It's always on and
  *  not part of a scene, so its knobs leave the scene unedited.
  *
+ *  An effect with a second mode (kFxModes: the phaser's frequency shifter, #306) has it as a
+ *  setting of its own beside its knobs (SetMode), which a scene keeps, and a recall or morph
+ *  switches as a stepped parameter.
+ *
  *  Engine is PassthroughEngine on the device, a fake on the host. It needs SetFxOn(fx, on),
- *  SetFxParam(fx, param, val), SetCompParam(param, val), FastFxSlew() and the morph's
- *  StartFxMorph(plan), AddFxMorphBar(), LandFxMorph(), FreezeFxMorph(params, unswitched,
- *  was_on), FxMorphing(), the crossfader's FxMorphHeld() and FadeFxMorph(t), a drop's
- *  DropFxMorph(to, ui_on, on, glide) and FxDropping(), and
+ *  SetFxParam(fx, param, val), SetFxMode(fx, second), SetCompParam(param, val), FastFxSlew()
+ *  and the morph's StartFxMorph(plan), AddFxMorphBar(), LandFxMorph(), FreezeFxMorph(params,
+ *  unswitched, was_on, modes), FxMorphing(), the crossfader's FxMorphHeld() and FadeFxMorph(t),
+ *  a drop's DropFxMorph(to, ui_on, on, glide, modes) and FxDropping(), and
  *  SetFxPool(pool) for the chaos key (Pool).
  */
 #pragma once
@@ -64,6 +68,7 @@ public:
             }
             engine_->SetFxOn(fx, false);
         }
+        modes_ = 0; // as the engine starts
         for (size_t p = 0; p < kNumFxParams; p++)
         {
             // an unused one stays on its default; a used one counts as changed and is sent
@@ -322,6 +327,18 @@ public:
         SetParam(fx, param, val);
     }
 
+    /** fx in its second mode (kFxModes) or not, from SHIFT + its key twice or MIDI: the knobs
+     *  stay where they are, read the other way. An effect without one stays as it is */
+    void SetMode(size_t fx, bool second)
+    {
+        if (!(kFxModes >> fx & 1) || Mode(fx) == second)
+            return;
+        edited_ = true;
+        modes_ ^= Bit(fx);
+        engine_->SetFxMode(fx, second);
+    }
+    inline bool Mode(size_t fx) const { return modes_ >> fx & 1; }
+
     /** A latch set outright (MIDI): as the key's latch toggled, without the key. A key held
      *  meanwhile keeps the effect on, and its release leaves the latch as set */
     void SetLatch(size_t fx, bool on)
@@ -353,6 +370,8 @@ public:
         SceneDecides();
         engine_->LandFxMorph();
         engine_->FastFxSlew();
+        SendModes(scene.modes);
+        modes_ = scene.modes;
         for (size_t fx = 0; fx < kNumFx; fx++)
         {
             latched_[fx] = (scene.latched >> fx) & 1;
@@ -400,6 +419,13 @@ public:
         fading_ = false;
         FxMorphPlan plan;
         plan.deferred = plan.wake = plan.was_on = plan.park = 0;
+        // a mode switches at once where its effect is off now, at the landing where it's on
+        uint16_t now_on = 0;
+        for (size_t fx = 0; fx < kNumFx; fx++)
+            now_on |= IsOn(fx) ? Bit(fx) : 0;
+        plan.mode_start = static_cast<uint16_t>((scene.modes & ~now_on) | (modes_ & now_on));
+        SendModes(plan.mode_start);
+        plan.mode_target = modes_ = scene.modes;
         for (size_t fx = 0; fx < kNumFx; fx++)
         {
             const FxParams& fxp = kFxParams[fx];
@@ -496,7 +522,7 @@ public:
     {
         float live[kNumFx][kNumFxParams];
         uint16_t unswitched, was_on;
-        if (!engine_->FreezeFxMorph(live, &unswitched, &was_on))
+        if (!engine_->FreezeFxMorph(live, &unswitched, &was_on, &modes_))
             return false;
         SceneDecides();
         for (size_t fx = 0; fx < kNumFx; fx++)
@@ -542,13 +568,14 @@ public:
                 for (size_t p = 0; p < kNumFxParams; p++)
                     params_[fx][p] = scene->params[fx][p];
             }
+            modes_ = scene->modes;
             morph_touched_ = 0;
             ClearChunks();
             edited_ = false;
         }
         for (size_t fx = 0; fx < kNumFx; fx++)
             on |= IsOn(fx) ? Bit(fx) : 0;
-        if (!engine_->DropFxMorph(params_, ui_on, on, glide))
+        if (!engine_->DropFxMorph(params_, ui_on, on, glide, modes_))
             return false;
         stale_ = static_cast<uint16_t>(~on & ((1u << kNumFx) - 1));
         for (size_t fx = 0; fx < kNumFx; fx++)
@@ -697,6 +724,7 @@ private:
     {
         scene.used = true;
         scene.latched = 0;
+        scene.modes = modes_;
         for (size_t fx = 0; fx < kNumFx; fx++)
         {
             if (latched_[fx])
@@ -706,6 +734,14 @@ private:
         }
     }
     inline bool Stale(size_t fx) const { return (stale_ >> fx) & 1; }
+
+    /** The modes to the engine, those that differ from modes_ (which stays as it was) */
+    void SendModes(uint16_t modes)
+    {
+        for (size_t fx = 0; fx < kNumFx; fx++)
+            if ((modes ^ modes_) >> fx & 1)
+                engine_->SetFxMode(fx, modes >> fx & 1);
+    }
 
     /** The key's state to the engine; coming on, first the parameters it lags behind in */
     void SendOn(size_t fx)
@@ -767,6 +803,7 @@ private:
 
     Engine* engine_ = nullptr;
     float params_[kNumFx][kNumFxParams];
+    uint16_t modes_ = 0; // bit fx: in its second mode (kFxModes)
     bool held_[kNumFx];
     bool latched_[kNumFx];
     OnRelease on_release_[kNumFx];
