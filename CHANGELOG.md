@@ -130,6 +130,10 @@ what FRIZZ does.
   time where it took 31%, more headroom when only a few effects are on. A punched-in
   crusher's steps fall at other moments than before, and wow & flutter's wow goes on from
   where it rested.
+- **The shifter is brighter** (#305): its taps read between samples more precisely, so the
+  shifted sound keeps more of its highs (a 10 kHz tone a fifth up loses 0.3 dB, where it lost
+  1.3 dB) and carries less aliasing, most audibly with feedback, where every pass lost highs
+  again. The rest of the shifter is as it was.
 - **The reverb's tail is smoother, less metallic:** its first allpass is modulated, as in
   Mutable's Clouds and Elements, so the same hit rings a little differently each time instead of
   through the same diffusion. Its knobs, decay, level and freeze are as they were. See
