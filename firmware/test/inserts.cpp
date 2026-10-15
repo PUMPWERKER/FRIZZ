@@ -2,11 +2,13 @@
 // slicer (FxSlicer.h) and the filter (FxFilter.h): the folder's bypass when off, its level at
 // 1x (down to 30Hz), that nothing matches it to the input and that Symmetry turned on silence
 // doesn't thump; the slicer's patterns on the clock's 16ths, its chance and its stereo; the filter's centre (the input, bit for bit, at any resonance), its
-// -3dB points and resonance peak where WAVE's were (#304), and its LFO sweeping a low sine
-// across the centre without a step; and page 2's Mix on the shifter (FxOutput.h). Exits 0 when
+// -3dB points and resonance peak where WAVE's were (#304), its LFO sweeping a low sine
+// across the centre without a step (at 1/16 and 1 bar, resonance up to 75%), and its
+// highpass side's 12dB/oct, single resonance peak and flat top (#249); and page 2's Mix on the shifter (FxOutput.h). Exits 0 when
 // everything passes. Run by unit.sh inserts.
 #include <cmath>
 #include <cstdio>
+#include <vector>
 #include "check.h"
 #include "FxChain.h"
 
@@ -269,32 +271,102 @@ static void TestFilter()
     Check(peak > 18.f && peak < 22.f, "filter: the resonance peaks at ~20dB at the top");
 
     // the LFO sweeping a 50Hz sine across the centre, lowpass to highpass and back, at full
-    // depth, 1/16 and the default resonance: no step beyond the sine's own (.0033 a sample)
-    // and the sweep's, where the one filter changes sides (clicks.cpp has the cutoff jumping
-    // across)
+    // depth: no step beyond the sine's own (.0033 a sample) and the sweep's, where the one
+    // filter changes sides (clicks.cpp has the cutoff jumping across). At 1/16 and 1 bar, at
+    // the default resonance and at 75% (#249), two whole sweeps of each
+    struct Sweep
+    {
+        const char* name;
+        float res, division;
+    } sweeps[] = {{"1/16, resonance 50%", .5f, 0.f}, {"1/16, resonance 75%", .75f, 0.f},
+                  {"1 bar, resonance 75%", .75f, 4.f / 6.f}};
+    for (const Sweep& sw : sweeps)
     {
         static Filter f;
         f.Init(kSr);
         f.SetParam(Filter::CUTOFF, .5f);
-        f.SetParam(Filter::RESONANCE, .5f);
+        f.SetParam(Filter::RESONANCE, sw.res);
         f.SetParam(Filter::LFO_DEPTH, 1.f);
-        f.SetParam(Filter::LFO_DIVISION, 0.f);
+        f.SetParam(Filter::LFO_DIVISION, sw.division);
         f.SnapParams();
         f.SetPulseSamples(2000.f);
         f.SetOn(true);
-        float last = 0.f, step = 0.f;
-        for (size_t i = 0; i < 96000; i++)
+        float last = 0.f, step = 0.f, peak = 0.f;
+        const size_t n = 9600 + (sw.division > 0.f ? 2 * 96000 : 96000);
+        for (size_t i = 0; i < n; i++)
         {
             if (i % 2000 == 0)
-                f.ClockPulse(static_cast<uint32_t>(i / 2000));
+                f.ClockPulse(static_cast<uint32_t>(i / 2000 % 192));
             float l = .5f * sinf(2.f * static_cast<float>(M_PI) * 50.f * static_cast<float>(i) / kSr), r = l;
             f.Process(&l, &r);
             if (i > 9600)
+            {
                 step = fmaxf(step, fabsf(l - last));
+                peak = fmaxf(peak, fabsf(l));
+            }
             last = l;
         }
-        printf("      filter: a 50Hz sine swept across the centre, largest step %.4f\n", step);
-        Check(step < .015f, "filter: the LFO sweeps a low sine across the centre without a step");
+        char what[160];
+        snprintf(what, sizeof what,
+                 "filter: the LFO at %s sweeps a 50Hz sine across the centre without a step (%.4f, peak %.3f)",
+                 sw.name, step, peak);
+        Check(step < .015f, what);
+    }
+
+    // the highpass side (#310, #249): 12dB/oct below the cutoff at resonance 0 (WAVE's was 6
+    // there), one resonance peak and flat above it (WAVE's lowpass stayed in, a second peak
+    // near 8kHz), and at the far right as loud as the input up top (WAVE's -9dB at 20kHz)
+    {
+        // knob 1 at resonance 0: -3dB at ~8.6kHz; an octave apart, 2 and 3 octaves below
+        const float oct2 = FilterGain(1.f, 0.f, 2000.f), oct3 = FilterGain(1.f, 0.f, 1000.f);
+        const float knee2 = FilterGain(.9f, 0.f, 1000.f), knee3 = FilterGain(.9f, 0.f, 500.f);
+        printf("      filter: highpass at resonance 0, knob 1: %.1fdB at 2kHz, %.1fdB at 1kHz (%.1fdB/oct); "
+               "knob .9: %.1fdB/oct a step lower\n",
+               oct2, oct3, oct2 - oct3, knee2 - knee3);
+        Check(fabsf(oct2 - oct3 - 12.f) < 1.5f && fabsf(knee2 - knee3 - 12.f) < 1.5f,
+              "filter: the highpass falls 12dB an octave below its cutoff");
+
+        bool single = true;
+        for (float cutoff : {.7f, .8f, 1.f})
+            for (float res : {.75f, 1.f})
+            {
+                // maxima over 20Hz-20kHz in 1/24 octaves, counted with a prominence over 1dB
+                std::vector<float> g;
+                for (float hz = 20.f; hz < 20000.f; hz *= powf(2.f, 1.f / 24.f))
+                    g.push_back(FilterGain(cutoff, res, hz));
+                int peaks = 0;
+                float top = -100.f;
+                for (size_t k = 1; k + 1 < g.size(); k++)
+                {
+                    if (!(g[k] > g[k - 1] && g[k] >= g[k + 1]))
+                        continue;
+                    float lo_l = g[k], lo_r = g[k];
+                    for (size_t j = k; j-- > 0 && g[j] <= g[k];)
+                        lo_l = fminf(lo_l, g[j]);
+                    for (size_t j = k + 1; j < g.size() && g[j] <= g[k]; j++)
+                        lo_r = fminf(lo_r, g[j]);
+                    // a rise from the left and a fall to the right, or the right end
+                    if (g[k] - lo_l > 1.f && (g[k] - lo_r > 1.f || g[k] == g.back()))
+                        peaks++;
+                    top = fmaxf(top, g[k]);
+                }
+                const float above = FilterGain(cutoff, res, 18000.f);
+                printf("      filter: highpass knob %.2f, resonance %.0f%%: %d peak(s), the highest %.1fdB, "
+                       "%+.1fdB at 18kHz\n",
+                       cutoff, res * 100.f, peaks, top, above);
+                single = single && peaks == 1 && fabsf(above) < 1.f;
+            }
+        Check(single, "filter: with the resonance up the highpass has one peak, and is flat above it");
+
+        float worst = 0.f;
+        for (float res : {0.f, .5f})
+            for (float hz : {16000.f, 20000.f})
+            {
+                const float gain = FilterGain(1.f, res, hz);
+                printf("      filter: far right, resonance %.0f%%: %+.2fdB at %.0fkHz\n", res * 100.f, gain, hz / 1000.f);
+                worst = fmaxf(worst, fabsf(gain));
+            }
+        Check(worst < 1.f, "filter: at the far right the top comes out within 1dB of the input");
     }
 }
 

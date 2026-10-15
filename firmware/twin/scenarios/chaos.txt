@@ -41,13 +41,13 @@ up KEY_12
 wait 200
 turn 3 60
 wait 600
-# chaos latched: its key lit, rose
+# chaos latched: its key lit, magenta
 down KEY_14
 wait 80
 tap KEY_26
 up KEY_14
 wait 200
-expect led smt 11 fc144c
+expect led smt 11 fc00fc
 # FX chance and scramble high, the grid at 1/16
 turn 4 80
 wait 750
@@ -64,5 +64,5 @@ wait 80
 tap KEY_26
 up KEY_14
 wait 1000
-expect led smt 11 240008
+expect led smt 11 240024
 wait 1000

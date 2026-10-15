@@ -2,9 +2,11 @@
 // knob 4 on the folder, crusher and filter: the freezer's gate, the shifter's grain, the
 // folder's, crusher's and filter's stereo and their moved knobs, the flanger's polarity, the
 // resonator's env mod and return level, the slicer's shuffle, wow & flutter's age, the tape
-// stop's depth and darken, the delay's freeze, damping and ducking, the reverb's freeze,
+// stop's depth and darken, the delay's freeze, damping and ducking, the reverb's freeze (its
+// level a minute on, and the held room's pitch: no detuning, no wider swing, #249),
 // pre-delay and ducking; and the scene file's layout 3 (FxScenes.h). Exits 0 when everything
 // passes. Run by unit.sh page2.
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -416,6 +418,112 @@ static float ReverbRun(float freeze, float pre, float ducking, size_t from, size
     return static_cast<float>(sqrt(sum / static_cast<double>(to - from)));
 }
 
+/** The pitch of a tone around 2kHz in y from s0 to s1, as #313's tail measure: an 8192-point
+ *  Hann STFT every 512 samples, each frame's peak between 1.9 and 2.1kHz interpolated on its
+ *  log power; the track's median in Hz and its spread (standard deviation) in cents */
+static void TonePitch(const std::vector<float>& y, size_t s0, size_t s1, double* median, double* spread)
+{
+    static const size_t kN = 8192, kHop = 512;
+    static const size_t kLo = 325, kHi = 359; // 1904 to 2103Hz, a bin 5.86Hz
+    static std::vector<double> win, cs, sn;
+    if (win.empty())
+    {
+        win.resize(kN);
+        for (size_t i = 0; i < kN; i++)
+            win[i] = .5 - .5 * cos(2. * M_PI * static_cast<double>(i) / kN);
+        cs.resize((kHi - kLo + 2) * kN);
+        sn.resize(cs.size());
+        for (size_t k = kLo - 1; k <= kHi; k++)
+            for (size_t i = 0; i < kN; i++)
+            {
+                const double a = 2. * M_PI * static_cast<double>(k * i % kN) / kN;
+                cs[(k - kLo + 1) * kN + i] = cos(a) * win[i];
+                sn[(k - kLo + 1) * kN + i] = sin(a) * win[i];
+            }
+    }
+    std::vector<double> track;
+    for (size_t s = s0; s + kN <= s1; s += kHop)
+    {
+        double pw[kHi - kLo + 2];
+        for (size_t k = kLo - 1; k <= kHi; k++)
+        {
+            const double* c = &cs[(k - kLo + 1) * kN];
+            const double* q = &sn[(k - kLo + 1) * kN];
+            double re = 0., im = 0.;
+            for (size_t i = 0; i < kN; i++)
+            {
+                re += y[s + i] * c[i];
+                im += y[s + i] * q[i];
+            }
+            pw[k - kLo + 1] = re * re + im * im;
+        }
+        size_t m = 1;
+        for (size_t j = 2; j < kHi - kLo + 1; j++)
+            if (pw[j] > pw[m])
+                m = j;
+        const double a = log(pw[m - 1] + 1e-30), b = log(pw[m] + 1e-30), c = log(pw[m + 1] + 1e-30);
+        const double bin = static_cast<double>(kLo - 1 + m) + (a - c) / (2. * (a - 2. * b + c));
+        track.push_back(bin * kSr / kN);
+    }
+    std::vector<double> sorted = track;
+    std::sort(sorted.begin(), sorted.end());
+    *median = sorted[sorted.size() / 2];
+    double sum = 0., sum2 = 0.;
+    for (double f : track)
+    {
+        const double cents = 1200. * log2(f / *median);
+        sum += cents;
+        sum2 += cents * cents;
+    }
+    const double n = static_cast<double>(track.size());
+    *spread = sqrt(fmax(sum2 / n - (sum / n) * (sum / n), 0.));
+}
+
+/** #249: a 2kHz tone into the reverb, frozen at 0.5s as it ends: the room it holds keeps its
+ *  pitch, from 1s on and a minute later, its swing no wider than the tank's modulation makes
+ *  it (#313), and it doesn't grow */
+static void TestReverbFreezePitch()
+{
+    static chompi::ReverbSend v;
+    v.Init(kSr, &reverb);
+    v.SetParam(chompi::ReverbSend::DECAY, .5f);
+    v.SetParam(chompi::ReverbSend::LEVEL, kP2Level);
+    v.SetOn(true);
+    const size_t kEarly = 48000, kLate = 61 * 48000, kSpan = 110400; // 2.3s
+    std::vector<float> y(kLate + kSpan);
+    for (size_t i = 0; i < y.size(); i++)
+    {
+        if (i == 24000)
+            v.SetParam(chompi::ReverbSend::FREEZE, 1.f);
+        const float in = i >= 4800 && i < 24000 ? Sine(i, 2000.f) : 0.f;
+        float l = 0.f, r = 0.f;
+        v.Process(in, in, &l, &r);
+        y[i] = l;
+    }
+    double early_hz, early_spread, late_hz, late_spread;
+    TonePitch(y, kEarly, kEarly + kSpan, &early_hz, &early_spread);
+    TonePitch(y, kLate, kLate + kSpan, &late_hz, &late_spread);
+    double early_sum = 0., late_sum = 0.;
+    for (size_t i = 0; i < kSpan; i++)
+    {
+        early_sum += y[kEarly + i] * y[kEarly + i];
+        late_sum += y[kLate + i] * y[kLate + i];
+    }
+    const double growth = 10. * log10(late_sum / (early_sum + 1e-30));
+    const double off = 1200. * log2(early_hz / 2000.), drift = 1200. * log2(late_hz / early_hz);
+    printf("  reverb frozen on 2kHz: at 1s %.2fHz (%+.1f cents), spread %.2f cents; a minute on %.2fHz "
+           "(%+.1f cents), spread %.2f cents; level %+.2fdB\n",
+           early_hz, off, early_spread, late_hz, drift, late_spread, growth);
+    // measured on main: within 4 cents of 2kHz (a detuning by ear is tens of cents), a swing
+    // of 3.1 and 3.7 cents (the tank's modulation at twice the depth, before #313: 4.5 and
+    // 5.3); the tone's level falls, ~15dB a minute at 2kHz (the tank's modulated reads,
+    // interpolated, take a little of the highs on each trip; without the modulation -0.5dB,
+    // and before #313 the same), never rises
+    Check(fabs(off) < 10. && fabs(drift) < 10., "reverb: frozen, the room holds its pitch, at 1s and a minute on");
+    Check(early_spread < 4.5 && late_spread < 4.5, "reverb: frozen, the held room's pitch swings no wider than the tank's modulation");
+    Check(growth < 1., "reverb: frozen a minute, the held tone doesn't grow");
+}
+
 static void TestReverb()
 {
     const float fades = ReverbRun(0.f, 0.f, 0.f, 200000, 240000);
@@ -617,6 +725,7 @@ int main()
     TestTapeStop();
     TestDelay();
     TestReverb();
+    TestReverbFreezePitch();
     TestLayout();
     TestKeyOnPage2();
     TestKeyOnBand();

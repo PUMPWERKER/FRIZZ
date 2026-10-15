@@ -6,7 +6,7 @@
 input sine 220 0.3
 clock 120
 at 6000
-# latched: its key lit, violet
+# latched: its key lit, blue
 down KEY_7
 wait 80
 tap KEY_26
@@ -66,4 +66,4 @@ down KEY_7
 wait 80
 up KEY_7
 wait 1000
-expect led smt 18 0c0024
+expect led smt 18 000024
