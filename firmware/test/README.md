@@ -147,7 +147,8 @@ at stereo 0 while it plays (#226): the right channel fades from its own taps to 
 within a life, its steps sample to sample no larger than the left's (taking them at once
 would jump, by 3 times as much and more), both channels splicing through the fade, and
 after it L and R are the same to the bit; at every grain, with the swoop rising, and turned
-apart again halfway (back to its own taps first). Built with `-mfma` instead, as the CHOMPI fuses its
+apart again halfway (back to its own taps first), in one grain (30 ms at the default; two
+when turned apart again). Built with `-mfma` instead, as the CHOMPI fuses its
 multiply-adds, the searches come out the same too (checked by hand, not by `all.sh`).
 
 ## Tape FX check
@@ -203,7 +204,13 @@ Runs a 220 Hz sine through moves that used to jump the sound and fails if the ou
 further between two samples than a smooth sweep does: the flanger's stereo knob turned back
 to 0, as a recall or morph does, and the freezer pressed again while its release still fades
 the loop out. It also guards the filter: its LFO division changed at full depth and high
-resonance jumps the cutoff, but the output doesn't step further than the sweep does.
+resonance jumps the cutoff, but the output doesn't step further than the sweep does. Every
+insert and the resonator punched in from asleep through the chain, in its runs of 24
+samples, on a 220 Hz and a 50 Hz sine, steps and peaks no further in the first 100 ms than
+settled; the shifter so with its feedback at .8 and .95 on the 50 Hz too. And the filter,
+crusher, shifter, wow & flutter and flanger punched in 12 times in a row, at a hand's speed
+(50 and 150 ms) and inside the key's ~5 ms fade, step and peak no further than one punch-in
+does (the flanger inside the fade is #392, `Known`).
 
 ## Delay check
 
@@ -408,7 +415,8 @@ slicer's shuffle puts the even steps 2/3 of a 16th late and the rest on time, wo
 flutter's age dips the level, the tape stop's depth slows it without stopping and its
 darken takes the highs off, the delay's freeze holds its echoes at a steady level, its
 damping darkens or thins the repeats and its ducking turns them down under the input, the
-reverb's freeze holds the room, its pre-delay at the top starts it 250 ms later and its
+reverb's freeze holds the room (a 2 kHz tone frozen keeps its pitch within 10 cents and
+swings under 4.5, as #313's tail measure reads it, a minute on too, and doesn't grow), its pre-delay at the top starts it 250 ms later and its
 ducking turns it down. Then the scene file: v0.11's symmetry, XOR and LFO division stay on
 page 1's knob 4 with stereo off, the tape stop's depth is a full stop, a send's page 2 from
 the first test builds goes back to its defaults (not frozen), and layout 4 round-trips
@@ -427,8 +435,11 @@ pattern hits on its own steps of the clock's 16ths, on both channels; chance at 
 steps at random, both channels alike; stereo plays different patterns left and right. The
 filter (#304): at the centre it passes its input bit for bit at any resonance; at the default
 resonance its -3 dB points lie within a semitone of WAVE's filter's, measured on it, on both
-sides; the resonance at the top peaks at about 20 dB, as WAVE's did; and its LFO sweeping a
-50 Hz sine across the centre steps no further than the sine does.
+sides; the resonance at the top peaks at about 20 dB, as WAVE's did; its LFO sweeping a
+50 Hz sine across the centre steps no further than the sine does, at 1/16 and 1 bar, at the
+default resonance and at 75 %; and its highpass side falls 12 dB an octave below the cutoff,
+has one resonance peak with the resonance up and is flat above it, and at the far right
+passes the top within 1 dB of the input.
 
 ## Whole-device check
 

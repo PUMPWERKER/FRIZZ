@@ -3916,6 +3916,44 @@ int main()
               "loops-xfer-playing: a5 replaced while it plays: its key dim, not lit, the old loop plays on");
     }});
 
+    // the playing loop's slot replaced by the loop transfer, then its key (#298, #249): the
+    // loop playing is no slot's any more, so the key loads the new one and switches to it by
+    // time, as far into its pass as the old one is (loops-phase), not from its start, as the
+    // playing loop's own key would
+    cases.push_back({"loops-xfer-phase", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 2000);
+        RunMs(1300);
+        const bool replaced = XferWrite(0, 0, SineWav(72000, 2, 330.f), 1);
+        RunMs(200);
+        const ClockState a = Probe();
+        const uint32_t t0 = NowMs();
+        Tap(kLoopKeys[0]);
+        const int took = UntilLength(72000, 2000);
+        RunMs(50);
+        const ClockState b = Probe();
+        const double dt = (NowMs() - t0) * 48.;
+        const double old = fmod(a.loop_pos * 96000. + dt, 96000.);
+        const double want = fmod(old, 72000.), got = b.loop_pos * 72000.;
+        double d = fmod(std::fabs(want - got), 72000.);
+        d = std::min(d, 72000. - d);
+        const double from_top = std::min(got, 72000. - got);
+        std::vector<float> l, r;
+        MasterOut(100, l, r);
+        const float at330 = ToneLevel(l, 330.f), at220 = ToneLevel(l, 220.f);
+        printf("      replaced %d, the old loop playing (%zu frames) at %.0f; the new one after %d ms at %.0f, want "
+               "%.0f (%.0f apart; %.0f from its start); 330 Hz %.3f, 220 Hz %.3f\n",
+               replaced, a.loop_length, a.loop_pos * 96000., took, got, want, d, from_top, at330, at220);
+        Check(replaced && a.loop_length == 96000 && took >= 0 && at330 > 10.f * at220,
+              "loops-xfer-phase: the playing a1 replaced, its key loads and plays the new a1");
+        Check(d < 100. && want > 5000. && want < 67000.,
+              "loops-xfer-phase: by time: the new loop as far into its pass as the old one, not from its start");
+    }});
+
     // the card lent and taken back (#332): the playing loop's key stays bright while its file
     // is untouched, and goes dim once the computer replaced it, as after the loop transfer's
     // replace; the old loop plays on
