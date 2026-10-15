@@ -157,7 +157,7 @@ public:
     inline bool Silent() const { return !on_ && value_ <= kFxGateSleep; }
     /** Before a run of samples, in place of Process and Asleep on each: asleep for all of
      *  them, snapped to 0 as Asleep does. The key changes only between runs (FxChain::Block) */
-    inline bool AsleepForRun()
+    __attribute__((always_inline)) inline bool AsleepForRun()
     {
         if (!Silent())
             return false;
@@ -400,6 +400,38 @@ struct PressEnvelope
             attacking = false;
         }
         value *= powf(decay_coeff, static_cast<float>(n));
+    }
+};
+
+/** A DC blocker, daisysp::DcBlock's first-order highpass (y = x - x1 + pole y1) with a pole of
+ *  its own: DcBlock's is .99 whatever the sample rate, 76Hz at 48kHz */
+struct DcBlocker
+{
+    float x1 = 0.f, y1 = 0.f;
+
+    /** As if x had always been there: its output from 0 */
+    inline void Reset(float x = 0.f)
+    {
+        x1 = x;
+        y1 = 0.f;
+    }
+    inline float Process(float x, float pole)
+    {
+        const float y = x - x1 + pole * y1;
+        x1 = x;
+        y1 = y;
+        return y;
+    }
+    /** Process(0), landing on 0 under 1e-30, where it costs nothing more: on 0 alone its
+     *  output would decay into the denormals and stall there (~7e-44), never 0 */
+    inline float Fall(float pole)
+    {
+        if (x1 == 0.f && y1 == 0.f)
+            return 0.f;
+        const float y = Process(0.f, pole);
+        if (fabsf(y) < 1e-30f)
+            y1 = 0.f;
+        return y1;
     }
 };
 

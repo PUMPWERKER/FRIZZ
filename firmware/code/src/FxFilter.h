@@ -24,8 +24,8 @@ static_assert(kPulsesPerCycle % 192 == 0, "the longest LFO cycle must divide the
  *
  *  The knobs, the LFO and the filter's coefficients move every kRetune samples, as the
  *  phaser's (FxPhaser.h); a sample costs the two channels' filter and the blend. Off and faded
- *  out (FxGate::Asleep), the filter runs on unheard, so a punch-in finds it where it would
- *  be. */
+ *  out (FxGate::Asleep) it does nothing but count the samples, as the phaser; a punch-in
+ *  catches the LFO up and starts the filter afresh (Wake). */
 class Filter : public FxBase
 {
 public:
@@ -56,19 +56,41 @@ public:
      *  each pulse in the block with the clock's position. reverse: the position counts down,
      *  so the LFO eases down towards the pulse before */
     void SetPulseSamples(float samples) { lfo_.SetPulseSamples(samples); }
-    void ClockPulse(uint32_t pos, bool reverse = false) { lfo_.PulseAfter(pos, reverse, since_); }
+    void ClockPulse(uint32_t pos, bool reverse = false)
+    {
+        // asleep, the pulse is where the LFO is: the samples counted before it go, or Wake
+        // would move it by all of them at the tempo it wakes at (the phaser's, FxPhaser.h)
+        if (asleep_)
+            since_ = 0;
+        lfo_.PulseAfter(pos, reverse, since_);
+    }
+
+    /** FxBase::SleepsThrough: what Process does asleep, once for the run */
+    FX_PER_RUN bool SleepsThrough(const float*, const float*, size_t n)
+    {
+        if (!gate_.AsleepForRun())
+            return false;
+        since_ += static_cast<uint32_t>(n);
+        asleep_ = true;
+        return true;
+    }
 
     void Process(float* l, float* r)
     {
         const float gate = gate_.Process();
-        if (++since_ >= DjFilter::kRetune)
+        if (gate_.Asleep())
+        {
+            since_++;
+            asleep_ = true;
+            return;
+        }
+        if (asleep_)
+            Wake(*l, *r);
+        else if (++since_ >= DjFilter::kRetune)
             Retune(false);
 
         float fl, fr;
         filter_.Run(*l, *r, &fl, &fr);
-        if (gate_.Asleep())
-            return;
-
         *l += gate * (fl - *l);
         *r += gate * (fr - *r);
     }
@@ -124,6 +146,16 @@ public:
     }
 
 private:
+    /** Back on from asleep, at its first sample l, r: the knobs where they're going, the LFO
+     *  on by what it slept through, and the filter afresh from l and r (DjFilter::Seed). Its
+     *  key's fade covers the rest. Out of line: once a punch-in */
+    __attribute__((noinline, optimize("Os"))) void Wake(float l, float r)
+    {
+        asleep_ = false;
+        SnapParams();
+        filter_.Seed(l, r);
+    }
+
     /** The knobs and the LFO on by the samples since the last time, and the filter's
      *  coefficients: both channels' cutoffs, the right one's LFO lagging with the stereo
      *  knob. Out of line, so the per-sample code stays small (#51) */
@@ -149,6 +181,7 @@ private:
     Smoothed res_;
     TempoLfo lfo_;
     uint32_t since_ = 0; // samples since the knobs and the LFO last moved
+    bool asleep_ = false;
     uint32_t lfo_div_pulses_; // pulses per LFO cycle
     float lag_ = 0.f;         // the right LFO's lag, in cycles
 };

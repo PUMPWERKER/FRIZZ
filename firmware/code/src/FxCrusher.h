@@ -39,8 +39,8 @@ public:
 
         srr_l_.Init();
         srr_r_.Init();
-        xor_dc_l_.Init(sample_rate);
-        xor_dc_r_.Init(sample_rate);
+        xor_dc_l_.Reset();
+        xor_dc_r_.Reset();
         dive_.Reset();
         dive_attack_inc_ = 1.f / (.1f * sample_rate);
         dive_decay_coeff_ = Decay60dBCoeff(.4f, sample_rate);
@@ -57,30 +57,14 @@ public:
     {
         const float gate = gate_.Process();
 
-        // off and faded out: only what a punch-in starts from goes on: the reducer (so its
-        // grid runs on unbroken) and the XOR's DC blockers (so its offset doesn't thump in);
-        // the knobs where they're going
+        // off and faded out: nothing runs but the count; a punch-in starts afresh (Wake)
         if (gate_.Asleep())
         {
-            SnapParams();
-            srr_l_.SetFreq(rate_.value);
-            srr_r_.SetFreq(rate_.value * stereo_);
-            srr_l_.Process(*l);
-            srr_r_.Process(*r);
-            XorOffset(xor_dc_l_, *l);
-            XorOffset(xor_dc_r_, *r);
             asleep_samples_++;
             return;
         }
         if (asleep_samples_ > 0)
-        {
-            // back: the dive where it would have got to (an attack it was in finished, #167),
-            // the tone's lowpass settled on the input
-            dive_.Skip(asleep_samples_, dive_attack_inc_, dive_decay_coeff_);
-            asleep_samples_ = 0;
-            lp_l_ = *l;
-            lp_r_ = *r;
-        }
+            Wake(*l, *r);
         const float rate_knob = rate_.Process();
         const float tone_coeff = tone_coeff_.Process();
 
@@ -113,6 +97,15 @@ public:
 
         *l += gate * (lp_l_ - *l);
         *r += gate * (lp_r_ - *r);
+    }
+
+    /** FxBase::SleepsThrough: what Process does asleep, once for the run */
+    FX_PER_RUN bool SleepsThrough(const float*, const float*, size_t n)
+    {
+        if (!gate_.AsleepForRun())
+            return false;
+        asleep_samples_ += static_cast<uint32_t>(n);
+        return true;
     }
 
     /** The slewed parameters jump to their targets, at Init */
@@ -168,6 +161,7 @@ public:
 
 private:
     static constexpr float kRateBottom = .01f; // 480Hz, as a fraction of 48kHz
+    static constexpr float kXorDcPole = .99f;  // daisysp::DcBlock's, 76Hz
 
     /** Kastle's XOR on the sample as 16-bit */
     inline float Xor(float x) const
@@ -175,10 +169,36 @@ private:
         const int16_t i = static_cast<int16_t>(fclamp(x, -1.f, 1.f) * 32767.f);
         return static_cast<float>(static_cast<int16_t>(i ^ xor_)) * (1.f / 32767.f);
     }
-    /** What the XOR adds to x, DC-blocked; with it off, the blocker runs on 0 */
-    inline float XorOffset(daisysp::DcBlock& dc, float x) const
+    /** What the XOR adds to x, DC-blocked; with it off, the blocker falls to 0 */
+    inline float XorOffset(DcBlocker& dc, float x) const
     {
-        return dc.Process(xor_ > 0 ? Xor(x) - x : 0.f);
+        return xor_ > 0 ? dc.Process(Xor(x) - x, kXorDcPole) : dc.Fall(kXorDcPole);
+    }
+
+    /** Back on from asleep, at its first sample l, r, all from there, as if they had always
+     *  been there: the knobs where they're going; the dive where it would have got to (an
+     *  attack it was in finished, #167); the reducers holding the input until their next
+     *  step; the XOR's DC blockers settled on its offset, so it doesn't thump in; the tone's
+     *  lowpass on the input. Out of line: it runs once a punch-in */
+    __attribute__((noinline, optimize("Os"))) void Wake(float l, float r)
+    {
+        SnapParams();
+        dive_.Skip(asleep_samples_, dive_attack_inc_, dive_decay_coeff_);
+        asleep_samples_ = 0;
+        const float in[2] = {l, r};
+        daisysp::SampleRateReducer* const srr[2] = {&srr_l_, &srr_r_};
+        DcBlocker* const dc[2] = {&xor_dc_l_, &xor_dc_r_};
+        for (size_t c = 0; c < 2; c++)
+        {
+            // at a step every sample, three of the input leave it held, its last step's
+            // smoothing gone; then the rate is set again before the reducer runs
+            srr[c]->SetFreq(1.f);
+            for (int k = 0; k < 3; k++)
+                srr[c]->Process(in[c]);
+            dc[c]->Reset(xor_ > 0 ? Xor(in[c]) - in[c] : 0.f);
+        }
+        lp_l_ = l;
+        lp_r_ = r;
     }
 
     float sample_rate_;
@@ -189,7 +209,7 @@ private:
     float step_; // quantizer step, 2^(1 - bits)
     int16_t xor_ = 0;
     float stereo_ = 1.f; // the right channel's rate over the left's
-    daisysp::DcBlock xor_dc_l_, xor_dc_r_;
+    DcBlocker xor_dc_l_, xor_dc_r_;
     PressEnvelope dive_;
     uint32_t asleep_samples_ = 0; // how long it hasn't run (FxGate::Asleep)
     float dive_attack_inc_, dive_decay_coeff_;

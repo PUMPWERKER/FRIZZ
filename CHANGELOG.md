@@ -101,6 +101,11 @@ what FRIZZ does.
   clock out over USB keeps its time while FRIZZ reads the card (it could come up to 8 ms late
   while a cubbi loaded, #265). FrizZ asks the computer for 100 mA, where it asked for 160. See
   [MIDI out](MANUAL.md#midi-out).
+- **Effects that are off take less of the CPU:** the filter, the crusher, the shifter, wow &
+  flutter and the flanger no longer keep running unheard while off; they start afresh when
+  punched in, without a click. More headroom when only a few effects are on. A punched-in
+  crusher's steps fall at other moments than before, and wow & flutter's wow goes on from
+  where it rested.
 - **The reverb's tail is smoother, less metallic:** its first allpass is modulated, as in
   Mutable's Clouds and Elements, so the same hit rings a little differently each time instead of
   through the same diffusion. Its knobs, decay, level and freeze are as they were. See
@@ -108,6 +113,12 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The shifter and the flanger no longer click when punched in with the feedback up** (#326):
+  the feedback's share of what they had stored came in at once under the key's fade, and
+  repeated on every trip. Now it fades in with the key.
+- **The phaser's LFO stays on the beat after a long rest** (#327): punched in again after a
+  while off, with the tempo moved meanwhile (or a MIDI clock's tempo wavering), its synced LFO
+  could start up to a pulse off and jump back at the next one.
 - **A loop switch at once always crossfades** (#302): now and then a switch by a white key or
   a program change cut over hard, with a click, instead of fading the old loop out over 10 ms,
   most often when two switches came within a few ms of each other (a program change right

@@ -72,7 +72,18 @@ public:
     /** The tempo clock, as the filter's (FxFilter.h): the pulses' spacing in samples once a
      *  block, then each pulse in the block with the clock's position */
     void SetPulseSamples(float samples) { lfo_.SetPulseSamples(samples); }
-    void ClockPulse(uint32_t pos, bool reverse = false) { lfo_.PulseAfter(pos, reverse, since_); }
+    void ClockPulse(uint32_t pos, bool reverse = false)
+    {
+        // asleep, the samples counted so far move the LFOs now: the pulse sets where the
+        // tempo LFO is, and a Wake that moved it by all of them would do it at the tempo it
+        // wakes at, the whole sleep off if the tempo changed meanwhile
+        if (asleep_)
+        {
+            Advance(since_);
+            since_ = 0;
+        }
+        lfo_.PulseAfter(pos, reverse, since_);
+    }
 
     /** FxBase::SleepsThrough: what Process does asleep, once for the run */
     FX_PER_RUN bool SleepsThrough(const float*, const float*, size_t n)
