@@ -41,7 +41,9 @@ jobs:
         with:
           fetch-depth: 0   # check.sh builds the engine at HEAD
       - name: numpy for reaper's cases with music (measure.py's venv, firmware/README.md)
-        run: python3 -m venv ~/.venvs/frizz && ~/.venvs/frizz/bin/pip install -q --only-binary=:all: numpy==2.5.3
+        run: |
+          python3 -m venv ~/.venvs/frizz
+          ~/.venvs/frizz/bin/pip install -q --only-binary=:all: numpy==2.5.3
       - name: Tools
         run: g++ --version | head -1; python3 --version; ~/.venvs/frizz/bin/python -c 'import numpy; print("numpy", numpy.__version__)'; nproc; free -h
       - name: all.sh
