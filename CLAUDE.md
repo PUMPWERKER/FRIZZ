@@ -349,7 +349,7 @@ checks need only `g++` and `python3`; the browser twin needs Emscripten in `~/op
 `firmware/test/all.sh` runs everything, side by side (about a minute; the first run ~80 s): `check.sh` (the engine against HEAD;
 a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
 `pitch`, `tape`, `block`, `crusher`, `freezer`, `scenes`, `store`, `clicks`, `delay`, `controls`, `keys`, `looper`, `tempo`,
-`comp`, `level`, `sleep`, `inserts`, `resonator`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `splice`, `usbmidi`, `routing`, `measure`, `loops`, `loopxfer`, `sddisk`, `twinlib`, `compare`, `rtalloc`, `usbtransport`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
+`comp`, `level`, `sleep`, `inserts`, `resonator`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `splice`, `usbmidi`, `routing`, `measure`, `loops`, `loopxfer`, `sddisk`, `twinlib`, `compare`, `rtalloc`, `usbtransport`, `usbdevice`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
 `NAME.cpp`; [`firmware/test/README.md`](firmware/test/README.md) says what each covers.
 `check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail.
 
@@ -396,7 +396,7 @@ comments alone (or benches again).
 USB runs on TinyUSB (`UsbDevice.h`, #196): a UAC1 sound card, MIDI and the card as a drive, its
 task on TIM7 at 4 kHz (priority 2, below the audio callback). TinyUSB is called only from that
 task and the USB interrupt; `MainLoop()` posts what it wants. A change to USB gets `test/unit.sh
-usbtransport` and a first flash of `make USB_SAFETY=1` before anything else.
+usbtransport` (and `usbdevice`) and a first flash of `make USB_SAFETY=1` before anything else.
 
 **No file I/O and no blocking call from the audio ISR.** FRIZZ reads and writes the card only
 from `MainLoop()`, and leaves it alone while it lends it to the computer (`CardLend.h`). It
