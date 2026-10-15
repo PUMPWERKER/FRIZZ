@@ -85,6 +85,16 @@ by symbol. That took the delay's output lines and the reverb's pre-delay declare
 copy for each object (DTCM +6 KB, SDRAM +128 KB) and shifted `chompi_main.o`'s data behind
 them. With `make ITCM=1`, `Run` is in `.itcmram.fxchain` (`FRIZZ_HOT_RUN`, `FrizzHot.h`).
 
+**Where `Run` lies costs CPU by itself (#308).** FxChain.o's out-of-line effect code links
+before `Run`, so an effect that grows moves `Run` against the code it calls (the delay's read,
+the reverb). The shifter's Hermite reads (#305) moved it 796 B, and the delay's own share of
+the block rose by a point. The bench with `main` and 792 B of unused code before `Run` (no
+Hermite) showed the same rise. The shifter's per-sample code (`Process`, `Taps`,
+`FadeChannels`) is now linked at the end of the code instead (`FRIZZ_AFTER_RUN`,
+`.frizz_after_run`, `chompi_sram.lds`): `Run` lies 2,976 B earlier than before, and every
+segment without the shifter reads as `main`'s. Any other change to code before `Run` draws the
+I-cache's lots again (#285, #298): bench it against `main` in one hold.
+
 **The loop loader (#70, for 1.1)** adds a second loop buffer, 16 bars at 50 BPM (14.75 MB,
 `.sdram_noinit.later`, linked after the loop and the event log so they keep their addresses),
 and its 3.9 KB beside it: SDRAM 58.6 MB (87.4 %), **~8.5 MB** free. In FRIZZ.bin ~5 KB of code
