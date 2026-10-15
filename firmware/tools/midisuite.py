@@ -553,6 +553,145 @@ def usb_late(r):
         r.tcheck("USB clock 132 BPM (%s) started" % mode, took is not None, got, "132 +-1")
 
 
+# a chord (3 notes, running status) and automation (CC 1, running status) on channel 1, which
+# FRIZZ drops with the effect channels off over TRS (midi_block_trs 0): only the UART sees them
+def chord(n):
+    return bytes([0x90, 60, 100 * (n & 1), 64, 100 * (n & 1), 67, 100 * (n & 1)])
+
+
+def ccs(count):
+    return lambda n: bytes([0xB0] + [b for i in range(count) for b in (1, (n + i) & 0x7F)])
+
+
+# what follows a tick on the cable: (name, the bytes after tick n, which ticks have them)
+TAILS = [("bare", None, None),
+         ("a chord after each tick (7 bytes)", chord, lambda n: True),
+         ("a chord on each beat (7 bytes)", lambda n: chord(n // 24) if n % 24 == 0 else b"", lambda n: n % 24 == 0),
+         ("14 CCs after each tick (29 bytes)", ccs(14), lambda n: True),
+         ("21 CCs after each tick (43 bytes)", ccs(21), lambda n: True)]
+
+
+def pct(vals, q):
+    s = sorted(vals)
+    return s[min(len(s) - 1, int(q * (len(s) - 1) + .5))]
+
+
+def probe_clock(r):
+    d = remote.dev_data(r.f, chompi.PROBE, [0], "PROBE")
+    return chompi.get7(d[10:15]), chompi.get7(d[15:18])
+
+
+def matched(sent, out, floor):
+    """Each tick passed on over USB against the tick sent: (index into sent, delay in s) by
+    order, the alignment whose median delay is the least not below floor"""
+    best = None
+    for k in range(-6, 7):
+        pairs = [(i + k, o - sent[i + k]) for i, o in enumerate(out) if 0 <= i + k < len(sent)]
+        if len(pairs) < len(out) // 2:
+            continue
+        med = pct([d for _, d in pairs], .5)
+        if med >= floor and (best is None or med < best[0]):
+            best = (med, pairs)
+    return best[1] if best else []
+
+
+@case("tick-tail", "7: a TRS clock with other bytes right behind its ticks (a sequencer's chord, "
+      "automation on the same cable): each tick counts as it came, and goes out over USB at once; "
+      "a quantized loop's Start plays from the tick after it (#322)", needs=("in",))
+def tick_tail(r):
+    r.setting(clock_source=SOURCES["trs"], midi_out=OUTS["all"], midi_block_trs=0, midi_transport=1)
+    c = r.clock("trs", 120)
+    took, _ = r.wait_tempo(120, 1, 5)
+    if took is None:
+        raise AssertionError("FRIZZ didn't take the TRS clock")
+    log = r.captured("usb").log
+    seconds = 2. if r.args.quick else 8.
+    base = None  # the bare clock's: median delay, Start's delay
+    before = r.state()
+    for name, tail, tailed in TAILS:
+        c.tail = tail
+        time.sleep(.5)
+        ticks0, locks0 = probe_clock(r)
+        n0 = c.sent
+        t0 = time.perf_counter()
+        time.sleep(seconds)
+        t1 = time.perf_counter()
+        time.sleep(.1)
+        ticks1, locks1 = probe_clock(r)
+        sent = [t for t in c.ticks if t0 <= t <= t1]
+        first = c.ticks.index(sent[0]) if sent else 0
+        out = ticks_after(log, t0, t1 + .06)
+        pairs = matched(sent, out, base[0] - .001 if base else 0.)
+        delays = [d for _, d in pairs]
+        r.check("%s: FRIZZ counted every tick, locked on" % name,
+                locks1 == locks0 and abs((ticks1 - ticks0) - (c.sent - n0)) <= 2,
+                "%d counted of %d sent, %d new locks" % (ticks1 - ticks0, c.sent - n0, locks1 - locks0),
+                "all, none")
+        if not delays:
+            r.check("%s: its ticks passed on over USB" % name, False, "%d ticks" % len(out), "as sent")
+            continue
+        gaps = [b - a for a, b in zip(out, out[1:])]
+        spread = "intervals %.1f..%.1f ms" % (min(gaps) * 1000, max(gaps) * 1000) if gaps else "-"
+        vals = r.tempos(1.5)
+        if base is None:
+            base = [pct(delays, .5), None]
+            r.note("%s: the tick out over USB %.2f ms after it was sent (median; 95 %% %.2f, worst "
+                   "%.2f); %s; tempo %.2f..%.2f" % (name, base[0] * 1000, pct(delays, .95) * 1000,
+                                                   max(delays) * 1000, spread, min(vals), max(vals)))
+        else:
+            added = [d - base[0] for d in delays]
+            on = [d - base[0] for (i, d) in pairs if tailed(first + i)]
+            r.note("%s: the tick out over USB later than bare by %.2f ms (median; 95 %% %.2f, worst "
+                   "%.2f)%s; %s; tempo %.2f..%.2f" % (
+                       name, pct(added, .5) * 1000, pct(added, .95) * 1000, max(added) * 1000,
+                       ", the ticks with the chord %.2f (worst %.2f)" % (pct(on, .5) * 1000, max(on) * 1000)
+                       if len(on) < len(added) else "", spread, min(vals), max(vals)))
+            # USB's frames: a bare tick comes up to a millisecond after the median too
+            r.tcheck("%s: the tick out over USB" % name, pct(on, .95) <= .001 * r.slack and max(on) <= .002 * r.slack,
+                     "%.2f ms later than bare (95 %%), %.2f at worst" % (pct(on, .95) * 1000, max(on) * 1000),
+                     "within %g ms, %g at worst" % (r.slack, 2 * r.slack))
+        r.tcheck("%s: FRIZZ's tempo" % name, max(vals) - min(vals) <= .5 * r.loose and abs(pct(vals, .5) - 120) <= .5 * r.loose,
+                 "%.2f..%.2f" % (min(vals), max(vals)), "120 +-%g" % (.5 * r.loose))
+
+        # a quantized loop recorded through it: its length (the Looper's line fit), and the
+        # Start's cue (Looper::Follow), out over USB with the loop's first tick (MidiOut.h)
+        r.record_loop(1, 120)
+        d = remote.dev_data(r.f, chompi.PROBE, [1], "PROBE")
+        length = chompi.get7(d[2:6])
+        cues = []
+        for _ in range(2 if r.args.quick else 4):
+            time.sleep(.6)
+            mark = len(log)
+            ts = time.perf_counter()
+            c.send([START])
+            time.sleep(.3)
+            at = next((t for t in c.ticks if t >= ts), None)
+            got = next((t for t, m in log[mark:] if m[0] == START), None)
+            if at is not None and got is not None:
+                cues.append(got - at)
+        r.erase()
+        if not cues:
+            r.check("%s: the loop's Start out over USB" % name, False, "none", "one a Start")
+            continue
+        if base[1] is None:
+            base[1] = pct(cues, .5)
+            r.note("%s: a 1-bar loop of %d frames (%+.2f ms); Start's cue out over USB %.2f ms after "
+                   "its tick (%s)" % (name, length, (length - 96000) / 48., base[1] * 1000,
+                                      " ".join("%.1f" % (q * 1000) for q in cues)))
+        else:
+            r.note("%s: a 1-bar loop of %d frames (%+.2f ms); Start's cue later than bare by %s ms"
+                   % (name, length, (length - 96000) / 48., " ".join("%.1f" % ((q - base[1]) * 1000) for q in cues)))
+            r.tcheck("%s: the loop's Start" % name, max(cues) - base[1] <= .001 * r.slack,
+                     "%.2f ms later than bare at worst" % ((max(cues) - base[1]) * 1000), "within %g ms" % r.slack)
+        r.tcheck("%s: the loop's length" % name, abs(length - 96000) <= 48 * r.slack,
+                 "%+.2f ms" % ((length - 96000) / 48.), "1 bar +-%g ms" % r.slack)
+    c.tail = None
+    after = r.state()
+    r.check("the traffic on channel 1 moved nothing", (after["latched"], after["selected"], after["scene"])
+            == (before["latched"], before["selected"], before["scene"]),
+            "latched %s, selected %s" % (after["latched"], after["selected"]), "as before")
+
+
 def drift_case(r, port_in, seconds, factor=1., bars=4):
     """A quantized loop of bars to a clock (4: its length taken from 4x the ticks of a 1-bar
     loop's, which scatters by about +-2 ms a minute from one recording to the next, #20), the

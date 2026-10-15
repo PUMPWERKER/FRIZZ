@@ -50,7 +50,9 @@ class Clock:
     every other tick held back and sent 1 ms before the next) or is late now and then (late:
     one tick in 48 10 ms late). jitter: each tick up to that many ms early or late, at random.
     send() puts bytes (Start, Song Position ...) in front of the next tick, in the same write,
-    as a DAW does; bpm can be changed on the go. ticks keeps when each tick went"""
+    as a DAW does; tail, if set, those right behind it: tail(n) the bytes after tick n (from
+    0), as a sequencer's chord or automation on the same cable (#322). bpm and tail can be
+    changed on the go. ticks keeps when each tick went"""
 
     def __init__(self, write, bpm, mode="single", jitter=0., seed=1):
         self.write, self.bpm, self.mode, self.jitter = write, float(bpm), mode, jitter
@@ -59,6 +61,8 @@ class Clock:
         self.ticks = []
         self.lock = threading.Lock()
         self.pending = b""
+        self.tail = None
+        self.sent = 0  # ticks so far, tail's n
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.thread.start()
 
@@ -69,6 +73,9 @@ class Clock:
     def _out(self, n):
         with self.lock:
             data, self.pending = self.pending + b"\xF8" * n, b""
+        if self.tail:
+            data += bytes(self.tail(self.sent + n - 1))
+        self.sent += n
         now = time.perf_counter()
         self.ticks.extend([now] * n)
         self.write(data)
