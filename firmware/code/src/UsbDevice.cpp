@@ -421,8 +421,9 @@ void CardTask()
 // TinyUSB's task: a transfer posted for MainLoop
 static int32_t CardPost(uint32_t lba, uint32_t offset, uint8_t* buffer, uint32_t bytes, bool write)
 {
+    // within the card without lba + count, which wraps for an LBA near 2^32 (#342)
     if (!card_on || offset || !bytes || bytes % 512 || bytes > sizeof(card_buf) || card_req.posted
-        || lba + bytes / 512 > card_sectors)
+        || lba >= card_sectors || bytes / 512 > card_sectors - lba)
         return TUD_MSC_RET_ERROR;
     card_req.lba = lba;
     card_req.buf = buffer;

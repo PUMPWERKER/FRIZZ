@@ -453,11 +453,11 @@ int main()
         CardTask();
         Pass();
     }
-    Known(wrapped == TUD_MSC_RET_ERROR && ios.empty(),
+    Check(wrapped == TUD_MSC_RET_ERROR && ios.empty(),
           "a write at LBA 0xFFFFFFF9 (lba + 8 wraps to 1): refused, not handed to the card (#342)");
     if (!ios.empty())
         printf("      the card was asked for sector 0x%08X, %u sectors\n", ios[0].sector, ios[0].count);
-    Check(card == written, "the card as it was (the card in memory refuses a sector past its end, as an SD card does)");
+    Check(card == written, "the card as it was");
 
     // the card fails: an error to the computer, counted
     io_done.clear();
