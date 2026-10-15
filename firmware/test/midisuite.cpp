@@ -57,8 +57,8 @@ void Expect(const std::string& out, const std::vector<std::string>& ids, const s
 }
 
 /** The suite on CASES with the jack wired IN / OUT, found by itself: each case's result want,
- *  the summary's lines in it. Run once more if that failed with the twin behind (ptytwin.h's
- *  Twice()) */
+ *  the summary's lines in it. Run once more if that failed with the twin behind, or left a case
+ *  unjudged (ptytwin.h's Twice()); unjudged again, it fails (NotJudged()) */
 void Run(const std::string& name, bool in, bool out_wired, const std::vector<std::string>& ids,
          const std::string& want, const std::vector<std::string>& lines, int exit_code)
 {
@@ -85,10 +85,10 @@ void Run(const std::string& name, bool in, bool out_wired, const std::vector<std
         rc = Suite("--quick -v --cases " + list, out, 55);
         printf("%s: %ld s, the twin up to %ld ms behind\n", name.c_str(),
                long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()), lag);
-        return exited() && Missing(out, ids, want).empty() && says();
+        return exited() && Missing(out, ids, want).empty() && says() && Unjudged(out).empty();
     });
-    for (const std::string& id : Unjudged(out))
-        printf("%s: %s not judged, the twin %ld ms behind the wall clock\n", name.c_str(), id.c_str(), lag);
+    for (const std::string& line : NotJudged(name, out))
+        Check(false, line.c_str());
     Check(exited(), (name + ": exit " + std::to_string(rc) + ", not " + std::to_string(exit_code)).c_str());
     Expect(out, ids, want, name);
     Check(CardFiles() == card, (name + ": the card as it was (PERSIST 0)").c_str());
@@ -136,9 +136,18 @@ int main()
             0);
         trs_in = false;
         std::string out;
-        Suite("--quick --cases out-pass,cc-global", out, 55);
-        Expect(out, {"out-pass", "cc-global"}, "PASS", "wiring A: a clock from USB passed on out of TRS");
-        Check(Has(out, "USB clock 120 passed on out of TRS"), "wiring A: says so");
+        const std::vector<std::string> ids = {"out-pass", "cc-global"};
+        const std::string says = "USB clock 120 passed on out of TRS";
+        Twice("wiring A, out-pass", [&] {
+            Suite("--quick -v --cases out-pass,cc-global", out, 55);
+            return Missing(out, ids, "PASS").empty() && Has(out, says) && Unjudged(out).empty();
+        });
+        Expect(out, ids, "PASS", "wiring A: a clock from USB passed on out of TRS");
+        Check(Has(out, says), "wiring A: says so");
+        for (const std::string& line : NotJudged("wiring A, out-pass", out))
+            Check(false, line.c_str());
+        if (!Missing(out, ids, "PASS").empty() || !Has(out, says) || !Unjudged(out).empty())
+            printf("%s\n", out.c_str());
     }});
     // wiring B, the interface's out into the jack: MIDI out is seen over USB instead, the
     // clock passed on from TRS, and the TRS-out items listed for the other wiring
@@ -168,6 +177,36 @@ int main()
               "interrupted: Ctrl-C in a case stops the run, things put back, exit 130");
         if (rc != 130)
             printf("exit %d\n%s\n", rc, out.c_str());
+    }});
+    // judging under load (ptytwin.h): lag counts the tool's own clock sent late too (midiport.py's
+    // Clock, a late wake: the ticks behind it close), as its line says; a case left unjudged
+    // twice fails, naming it
+    cases.push_back({"judging", [] {
+        std::string out;
+        usb.Open();
+        Exec("python3 - <<'EOF'\n"
+             "import time, midiport\n"
+             "n = [0]\n"
+             "def write(data):\n"
+             "    n[0] += 1\n"
+             "    if n[0] == 3:\n"
+             "        time.sleep(.05)  # the 4th tick ~29 ms late\n"
+             "c = midiport.Clock(write, 120)\n"
+             "time.sleep(.3)\n"
+             "c.close()\n"
+             "print('the clock from here: sent up to %.1f ms late' % (midiport.LATE[0] * 1000))\n"
+             "EOF\n",
+             out, 10, {{"PYTHONPATH", firmware_dir + "/tools"}});
+        Check(lag >= 25 && lag < 100 && Has(out, "sent up to "), "judging: a tick the tool's clock sent late counts as the twin behind");
+        if (lag < 25 || lag >= 100)
+            printf("lag %ld ms\n%s\n", lag, out.c_str());
+        lag = kLagMs + 1;
+        const std::vector<std::string> lines = NotJudged("both ways, tick-tail", "failed on timing alone: tick-tail\n");
+        Check(lines.size() == 1 && Has(lines[0], "both ways, tick-tail: tick-tail failed on timing alone twice"),
+              "judging: a case left unjudged after its second run fails, by name");
+        lag = kLagMs;
+        Check(NotJudged("both ways, tick-tail", "failed on timing alone: tick-tail\n").empty(),
+              "judging: with the twin on time it was judged (its FAIL is the case's)");
     }});
     // the processes mostly wait on the wall clock: all at once, not a core each
     setenv("CASE_JOBS", "16", 0);
