@@ -1778,8 +1778,9 @@ for 2 s**. LOOP lights blue there while the card is lent, and the computer finds
 lent). The loop and the effects play on meanwhile.
 
 - **To take it back:** eject the drive on the computer, unplug the cable, or hold SHIFT + LOOP
-  for 2 s again on the settings page; a computer going to sleep takes it back too. FRIZZ then
-  looks for the loops again (the Loops page shows what's there now).
+  for 2 s again on the settings page; a computer going to sleep takes it back too, and so does
+  a restart over MIDI (the launcher's), before FRIZZ restarts. FRIZZ then looks for the loops
+  again (the Loops page shows what's there now).
 - **Scenes and settings edited on the computer come in:** taken back, FRIZZ reads
   `frizz_scenes.txt` and `frizz_master.txt` again if the computer changed them, as at power-on
   ([Scenes and settings on the card](#scenes-and-settings-on-the-card)). A file the computer

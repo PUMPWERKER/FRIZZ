@@ -45,6 +45,10 @@ void SetCardWriteMs(uint32_t ms);
  *  first); and the FatFs calls made while one ran, which on the device would cut into it */
 void SetCardRawPolls(int polls);
 int CardRawClash();
+/** The card didn't answer once: FatFs mounts it again inside its next call with a path, back
+ *  in the root (ff.c's find_volume); and the n-th f_readdir from now fails (FR_DISK_ERR), once */
+void CardGlitch();
+void CardReaddirFail(int n);
 
 /** Before the first Run(): the firmware's clock (System::GetNow, GetUs, GetTick) starts at ms
  *  instead of 0, so a check can cross the millisecond counter's wrap. NowMs() and the scripts

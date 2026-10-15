@@ -1,6 +1,6 @@
 /** @file SceneStore.h
- *  @brief The FX scenes (FxScenes.h) and their file on the SD card, frizz_scenes.txt in the
- *  current directory, /FRIZZ (EnterFrizzDir), or the root if that can't be made. Read once at
+ *  @brief The FX scenes (FxScenes.h) and their file on the SD card, frizz_scenes.txt in
+ *  /FRIZZ (EnterFrizzDir), or in the root if that can't be made. Read once at
  *  boot; written only when the play page saves, copies or deletes one, never on a recall, so a
  *  performance doesn't touch the card.
  *
@@ -44,27 +44,45 @@
 namespace chompi
 {
 
-static const char kSceneFile[] = "frizz_scenes.txt";
-static const char kSceneTmpFile[] = "frizz_scenes.tmp";
-static const char kSceneBakFile[] = "frizz_scenes.bak";
-static const char kMasterFile[] = "frizz_master.txt";
-static const char kMasterTmpFile[] = "frizz_master.tmp";
-static const char kMasterBakFile[] = "frizz_master.bak";
-
 // FRIZZ's folder on the card, so it can share a card with other firmwares (the launcher at
 // github.com/sfaber02/CHOMPI gives each its own folder)
 static const char kFrizzDir[] = "/FRIZZ";
 
+// Whole paths, never relative ones: FatFs goes back to the root at every mount, also one of
+// its own (a card that didn't answer is mounted again inside the next f_open), and a save
+// there would land in the root and be lost at the next power-on. Through At()
+static const char kSceneFile[] = "/FRIZZ/frizz_scenes.txt";
+static const char kSceneTmpFile[] = "/FRIZZ/frizz_scenes.tmp";
+static const char kSceneBakFile[] = "/FRIZZ/frizz_scenes.bak";
+static const char kMasterFile[] = "/FRIZZ/frizz_master.txt";
+static const char kMasterTmpFile[] = "/FRIZZ/frizz_master.tmp";
+static const char kMasterBakFile[] = "/FRIZZ/frizz_master.bak";
+
+/** FRIZZ's files are in the root: /FRIZZ couldn't be made. Only EnterFrizzDir changes it, and
+ *  only to /FRIZZ, so a mount that fails to find it later doesn't move the files elsewhere */
+inline bool& FrizzInRoot()
+{
+    static bool in_root = true;
+    return in_root;
+}
+
+/** One of FRIZZ's paths ("/FRIZZ/..."), where its files are: in the root without /FRIZZ */
+inline const char* At(const char* path) { return FrizzInRoot() ? path + sizeof(kFrizzDir) - 1 : path; }
+
 /** After f_mount: makes /FRIZZ the current directory, creating it on a card that doesn't have
- *  it yet and moving the scene files a FRIZZ before it left in the root into it. Every path
- *  FRIZZ opens is relative, so they all land there. If the folder can't be made (a file in
- *  the way, a read-only card), FRIZZ stays in the root. Before audio starts */
+ *  it yet and moving the scene files a FRIZZ before it left in the root into it. If the folder
+ *  can't be made (a file in the way, a read-only card), FRIZZ's files stay in the root
+ *  (FrizzInRoot). Before audio starts */
 inline void EnterFrizzDir()
 {
     if (f_chdir(kFrizzDir) == FR_OK)
+    {
+        FrizzInRoot() = false;
         return;
+    }
     if (f_mkdir(kFrizzDir) != FR_OK)
         return;
+    FrizzInRoot() = false;
 
     // FRIZZ's earlier home: the root
     static const char* const kOldFiles[][2] = {
@@ -252,14 +270,14 @@ private:
     inline bool Exists(const char* name)
     {
         FILINFO info;
-        return f_stat(name, &info) == FR_OK;
+        return f_stat(At(name), &info) == FR_OK;
     }
 
     /** The file's text into buf_, terminated; false for one too long for it, which would be
      *  read cut short */
     bool ReadText(const char* name)
     {
-        if (f_open(&file_, name, FA_READ) != FR_OK)
+        if (f_open(&file_, At(name), FA_READ) != FR_OK)
             return false;
         UINT len = 0;
         const FRESULT res = f_read(&file_, buf_, kSceneFileMax - 1, &len);
@@ -274,7 +292,7 @@ private:
     /** buf_'s first len bytes to tmp, which then replaces name */
     bool WriteText(const char* name, const char* tmp, size_t len)
     {
-        if (f_open(&file_, tmp, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+        if (f_open(&file_, At(tmp), FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
             return false;
         UINT written = 0;
         const FRESULT res = f_write(&file_, buf_, len, &written);
@@ -282,10 +300,10 @@ private:
             return false;
 
         // f_rename won't replace a file
-        const FRESULT del = f_unlink(name);
+        const FRESULT del = f_unlink(At(name));
         if (del != FR_OK && del != FR_NO_FILE)
             return false;
-        return f_rename(tmp, name) == FR_OK;
+        return f_rename(At(tmp), At(name)) == FR_OK;
     }
 
     /** buf_'s text hashed (FNV-1a), never 0 or 1 */
@@ -340,10 +358,10 @@ private:
      *  out of the way, or gone meanwhile (deleted, or the card swapped) */
     static bool KeepUnreadable(const char* name, const char* bak)
     {
-        const FRESULT del = f_unlink(bak);
+        const FRESULT del = f_unlink(At(bak));
         if (del != FR_OK && del != FR_NO_FILE)
             return false;
-        const FRESULT moved = f_rename(name, bak);
+        const FRESULT moved = f_rename(At(name), At(bak));
         return moved == FR_OK || moved == FR_NO_FILE;
     }
 
@@ -367,9 +385,9 @@ private:
     /** A save cut short before its rename (only tmp was read): finish it */
     static void FinishRename(const char* name, const char* tmp)
     {
-        const FRESULT del = f_unlink(name);
+        const FRESULT del = f_unlink(At(name));
         if (del == FR_OK || del == FR_NO_FILE)
-            f_rename(tmp, name);
+            f_rename(At(tmp), At(name));
     }
 
     /** After a failure: mount the card read at boot again */
