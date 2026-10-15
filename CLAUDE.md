@@ -249,7 +249,7 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   the release-test issue (or the PR). The number never moves, so feedback can name the build.
 - The pre-release **`beta`** always carries the newest numbered one (now v1.5.0-beta.1), and
   moves only with a new one, at a fixed link
-  (`https://github.com/ZUHcYa/FrizZ/releases/download/beta/FRIZZ.bin`): `git tag -f beta
+  (`https://github.com/ZUHcYa/FRIZZ/releases/download/beta/FRIZZ.bin`): `git tag -f beta
   <commit> && git push -f origin beta`, `gh release upload beta <the numbered one's FRIZZ.bin>
   --clobber`, and `gh release edit beta` with a title and notes naming the numbered build and
   its md5.

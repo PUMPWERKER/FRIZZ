@@ -10,7 +10,7 @@ tools or drivers, and the CHOMPI's bootloader is never touched.
 - A CHOMPI. It doesn't matter which firmware it runs now (TAPE, TEMPO or WAVE).
 - Its microSD card, or any FAT32-formatted microSD card.
 - A computer with a card reader.
-- `FRIZZ.bin`. Download it from the [Releases page](https://github.com/ZUHcYa/FrizZ/releases),
+- `FRIZZ.bin`. Download it from the [Releases page](https://github.com/ZUHcYa/FRIZZ/releases),
   or build it yourself as described in [`firmware/README.md`](firmware/README.md).
 
 ## Install
@@ -112,7 +112,7 @@ picker. Pressing the blinking LOOP again cancels.
 | Rainbow, but then nothing works | Copy `FRIZZ.bin` to the card again (the copy may be damaged) and switch on again |
 | The keys don't play | The mode switch is up, on the settings page: flip it down |
 | Silence | Check the input gain (press VOLUME, then turn) and the input/loop mix (SHIFT + turn VOLUME, turn towards green). Is the cable in AUX all the way? Without one, the input is the mic, which isn't monitored at first. On the settings page (mode switch up), the upper G# switches monitoring on for the input you hear (lit), and the upper F# shows which it is: blue is USB, a computer's sound, silent unless it plays to FRIZZ |
-| It restarts by itself while you play (FRIZZ starts again, or the launcher's picker shows) | FRIZZ crashed or its sound stopped, and it restarted rather than stay frozen. A loop in RAM is gone. If it happens again, note what you were doing and [open an issue](https://github.com/ZUHcYa/FrizZ/issues) |
+| It restarts by itself while you play (FRIZZ starts again, or the launcher's picker shows) | FRIZZ crashed or its sound stopped, and it restarted rather than stay frozen. A loop in RAM is gone. If it happens again, note what you were doing and [open an issue](https://github.com/ZUHcYa/FRIZZ/issues) |
 | A computer has trouble with FRIZZ on USB (it won't take it, MIDI comes and goes, sound glitches), or you don't want FrizZ as a sound card | Switch [USB audio](MANUAL.md#usb-audio) off: on the settings page (mode switch up), pick USB with the upper F# (blue), then SHIFT + upper F#, until it's dim while you hold SHIFT. FRIZZ is then MIDI and the card drive on USB. It's saved |
 | A recording from FRIZZ over USB sounds slightly dull or late | Set the computer or the DAW to 48 kHz, FRIZZ's own rate: at another rate the computer converts |
 | The CHOMPI doesn't respond at all | The bootloader may be damaged. Reinstall CHOMPI's own bootloader (`firmware/bin/CHOMPI_Bootloader_V6_2_0.bin`) as described in [`firmware/README.md`](firmware/README.md#4-put-it-on-the-chompi), then install FRIZZ again. Don't install the generic Daisy bootloader instead |
