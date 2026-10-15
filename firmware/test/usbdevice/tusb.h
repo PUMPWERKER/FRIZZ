@@ -19,7 +19,7 @@ struct tud_configure_dwc2_t
     bool vbus_sensing;
 };
 #define CFG_TUD_CONFIGURE_DWC2_DEFAULT {true}
-#define TUD_CFGID_DWC2 0
+#define TUD_CFGID_DWC2 100
 enum
 {
     TUSB_ROLE_DEVICE = 1
@@ -70,7 +70,7 @@ enum
 };
 enum
 {
-    AUDIO_FEEDBACK_METHOD_FIFO_COUNT = 5,
+    AUDIO_FEEDBACK_METHOD_FIFO_COUNT = 4,
 };
 struct audio_feedback_params_t
 {
