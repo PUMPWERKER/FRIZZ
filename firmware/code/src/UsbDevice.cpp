@@ -370,9 +370,12 @@ bool InCardMode() { return card_on; }
 
 bool TakeCardGone()
 {
-    const bool gone = card_gone;
+    // cleared only once seen set: TinyUSB's task sets it from TIM7's interrupt, and an eject
+    // between a read of false and the clear would be lost
+    if (!card_gone)
+        return false;
     card_gone = false;
-    return gone;
+    return true;
 }
 
 const CardStats& GetCardStats()
@@ -445,7 +448,7 @@ void Watch(uint32_t now_ms)
     {
         if (!mounted_since)
             mounted_since = now_ms | 1;
-        else if (now_ms - mounted_since > 60000)
+        else if ((now_ms | 1) - mounted_since > 60000) // now_ms | 1: the same ms ahead of an even now_ms
             NVIC_SystemReset(); // deaf to the tools: as a restart over MIDI, into the launcher
     }
     else
@@ -469,7 +472,7 @@ void Watch(uint32_t now_ms)
     }
     else if (now_ms - watch_moved > kFramesGoneMs)
         watch_since = 0; // no frames: no computer (a charger, a battery), or it suspends FRIZZ
-    if (watch_since && now_ms - watch_since > kUnconfiguredMs)
+    if (watch_since && (now_ms | 1) - watch_since > kUnconfiguredMs)
         NVIC_SystemReset(); // as a restart over MIDI: the bootloader starts the launcher
 }
 #endif

@@ -115,11 +115,26 @@ what FRIZZ does.
 
 ### Fixed
 
-- **No burst of old MIDI clock when an app opens FRIZZ's USB port late**: with MIDI out on
-  USB and no app on the computer reading FRIZZ's port yet, the clock piled up, and an app
-  opening the port later (a DAW, at any time after) got about 270 ticks at once, eleven beats,
-  and any Start or Stop among them. Now what nobody takes for a tenth of a second is dropped,
-  so the app gets the clock from about then on.
+- **Opening FRIZZ's USB MIDI port late no longer brings eleven beats of old clock**: with MIDI
+  out on USB and no app on the computer reading FRIZZ's port yet, the clock piled up, and an
+  app opening the port later (a DAW, at any time after) got about 270 ticks at once, eleven
+  beats, and any Start or Stop among them. Now what nobody takes for a tenth of a second is
+  dropped: the app gets at most a fraction of a beat of old clock, then the clock as it runs.
+- **Scenes and settings always save into the card's `FRIZZ` folder:** after the card failed to
+  answer once (a hiccup FRIZZ recovers from by itself), the scenes and settings saved from then
+  on until a restart could land in the card's root, shown as saved but gone at the next
+  power-on. Now they go to `FRIZZ` whatever happened before.
+- **A restart over MIDI (the launcher's) takes the card back first:** with the card lent to the
+  computer as a USB drive, FRIZZ restarted with the computer still on it. Now it takes it back
+  as SHIFT + LOOP does, saves what waited for the card, then restarts. And a setting changed just
+  before a restart is now always on the card: half the time FRIZZ restarted without waiting for
+  it.
+- **The card is taken back when the computer ejects it, every time:** an eject that came in
+  the same instant FRIZZ looked could be missed, leaving the card lent until SHIFT + LOOP.
+- **A card error while FRIZZ looks for your loops no longer hides the ones after it:** the
+  slots after the error showed empty until the next scan; now FRIZZ reads the folder again.
+- **Switching USB audio waits the 100 ms it should** before FRIZZ leaves the bus, so the
+  answer to a tool's request that switched it still reaches the computer.
 - **A loop switch at once always crossfades** (#302): now and then a switch by a white key or
   a program change cut over hard, with a click, instead of fading the old loop out over 10 ms,
   most often when two switches came within a few ms of each other (a program change right
