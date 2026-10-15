@@ -783,15 +783,19 @@ Three limits; the smallest wins.
    | 8 | 299 KB/s | 13 s | 49 s |
 
 2. **The window**: at most 16 × 98 = 1,568 bytes per round trip. The round trip is the app's
-   send, FRIZZ's pass (~2 ms) and the ack back through the browser: ~5 ms on a quick system
-   gives ~310 KB/s, ~10 ms gives ~155 KB/s.
+   send, FRIZZ's pass and the ack back. Measured on Linux through ALSA's raw MIDI
+   (`remote.py loops put`, 2 MB stereo, 2026-10-15): **10 ms median, 90 % within 18-20 ms**,
+   the same with the ack built in FRIZZ's pass or one pass later. That holds the window to
+   ~155 KB/s at the median; the slow round trips bring it to **~120 KB/s** measured (116-121
+   KB/s over four puts, no rewinds). The browser's round trip is not measured yet (6.3).
 3. **FRIZZ**: the TinyUSB build reads its MIDI FIFO (64 bytes) in a task at 4 kHz, at most
    256 KB/s of USB MIDI, ~150 KB/s of file (#196's PoC, `tusb_config.h`). libDaisy's stack
    takes every packet in its interrupt, with no limit of its own short of its queues. The
    card writes several MB/s, and the CRC costs ~1 % of MainLoop at these rates.
 
 **Expected: 4 MB in 30 s to 2 min, a full 14.7 MB loop in 1.5 to 7 min**, the faster end on
-Linux, the slower one on a driver that sends one transfer a millisecond. A mono loop takes half.
+Linux (at the measured ~120 KB/s: 4 MB in ~35 s, 14.7 MB in ~2 min), the slower one on a
+driver that sends one transfer a millisecond. A mono loop takes half.
 The progress bar goes by bytes.
 
 ### 6.3 Tuning the rate

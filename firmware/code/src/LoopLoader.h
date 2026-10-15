@@ -303,6 +303,15 @@ inline char* SlotName(char* p, size_t bank, size_t slot)
     *p++ = static_cast<char>('0' + (slot + 1) % 10);
     return p;
 }
+/** v in `groups` 7-bit groups, the highest first, from d + n: the new n. Only v's low bits,
+ *  cut where they don't fit (the developers' SysEx: the loader's LOOPS, USB's;
+ *  loopxfer::Put7 saturates instead) */
+LOOP_LOADER_ONCE inline size_t Put7Low(uint8_t* d, size_t n, uint32_t v, size_t groups)
+{
+    for (size_t g = groups; g-- > 0;)
+        d[n++] = static_cast<uint8_t>(g * 7 < 32 ? (v >> (g * 7)) & 0x7F : 0);
+    return n;
+}
 /** A swap's temp file, "/FRIZZ/a1-b2.swp": a1's file on its way to b2 (LoopTransfer.h,
  *  docs/LOOP_PROTOCOL.md 5.6), into path (20 bytes) */
 LOOP_LOADER_ONCE inline void SwapPath(char* path, size_t from, size_t to)
@@ -477,12 +486,7 @@ public:
         const char* dir = !cubbi ? "/FRIZZ/" : tape_ ? "/TAPE/cubbi_" : "/cubbi_";
         const size_t n = strlen(dir);
         memcpy(path, dir, n);
-        char* p = path + n;
-        *p++ = static_cast<char>('a' + bank - (cubbi ? loops::kCubbiBank : 0));
-        if (slot >= 9)
-            *p++ = '1';
-        *p++ = static_cast<char>('0' + (slot + 1) % 10);
-        memcpy(p, ".wav", 5);
+        memcpy(loops::SlotName(path + n, bank - (cubbi ? loops::kCubbiBank : 0), slot), ".wav", 5);
     }
     static const size_t kPathLen = 24; // "/TAPE/cubbi_a15.wav"
 
@@ -512,16 +516,16 @@ public:
             d[n++] = bank_;
             d[n++] = slot_;
             d[n++] = error_;
-            n = Put(d, n, sd_error_, 5);
-            n = Put(d, n, done_, 4);
-            n = Put(d, n, total_, 4);
-            n = Put(d, n, ms_, 3);
-            n = Put(d, n, runs_, 3);
-            n = Put(d, n, worst_us_, 3);
-            n = Put(d, n, SdRawClkcr(), 5);
+            n = loops::Put7Low(d, n, sd_error_, 5);
+            n = loops::Put7Low(d, n, done_, 4);
+            n = loops::Put7Low(d, n, total_, 4);
+            n = loops::Put7Low(d, n, ms_, 3);
+            n = loops::Put7Low(d, n, runs_, 3);
+            n = loops::Put7Low(d, n, worst_us_, 3);
+            n = loops::Put7Low(d, n, SdRawClkcr(), 5);
             d[n++] = recoveries_ & 0x7F;
             d[n++] = reinits_ & 0x7F;
-            n = Put(d, n, frags_, 2);
+            n = loops::Put7Low(d, n, frags_, 2);
             worst_us_ = 0;
             return static_cast<int>(n);
         }
@@ -539,8 +543,8 @@ public:
         {
             const loops::Slot& s = mem_->slots[bank][slot];
             d[n++] = s.result;
-            n = Put(d, n, s.frames, 4);
-            n = Put(d, n, s.data, 5);
+            n = loops::Put7Low(d, n, s.frames, 4);
+            n = loops::Put7Low(d, n, s.data, 5);
         }
         else if (part == 3)
             return Request(SCANNING) ? 0 : -1;
@@ -551,7 +555,7 @@ public:
             if (len > 1 && !Request(CHECKING))
                 return -1;
             d[n++] = state_;
-            n = Put(d, n, crc_, 5);
+            n = loops::Put7Low(d, n, crc_, 5);
         }
         else if (part == 6 && len >= 5)
             return !dev_taken_ && Request(WRITING, arg[1] & 0x30, 0, ((arg[1] & 0x0F) << 7 | arg[2]) << 16 | (arg[3] << 7 | arg[4])) ? 0 : -1;
@@ -561,13 +565,6 @@ public:
     }
 
 private:
-    static size_t Put(uint8_t* d, size_t n, uint32_t v, size_t groups)
-    {
-        for (size_t g = groups; g-- > 0;)
-            d[n++] = static_cast<uint8_t>(g * 7 < 32 ? (v >> (g * 7)) & 0x7F : 0);
-        return n;
-    }
-
     /** The step of what runs */
     LOOP_LOADER_ONCE void Step()
     {

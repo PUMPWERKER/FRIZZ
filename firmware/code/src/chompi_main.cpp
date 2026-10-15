@@ -184,13 +184,6 @@ extern "C" uint32_t g_pfnVectors, _sidata, _sdata, _edata, _stext;
  *  packets instead; 1 -> the drive's (CardStats); 2 X -> the card lent (X 1) or taken back (0),
  *  as the settings page's SHIFT + LOOP. Each answer starts with the flags: a computer 1, it
  *  plays 2, the card lent 4, USB audio on 8, it records 16. Its length, or -1 for BAD */
-__attribute__((optimize("Os"))) static size_t UsbPut(uint8_t* d, size_t n, uint32_t v, size_t groups)
-{
-    for (size_t g = groups; g-- > 0;)
-        d[n++] = static_cast<uint8_t>(g * 7 < 32 ? (v >> (g * 7)) & 0x7F : 0);
-    return n;
-}
-
 __attribute__((optimize("Os"))) static int UsbDev(const uint8_t* arg, size_t len, uint8_t* d)
 {
     size_t n = 0;
@@ -202,28 +195,28 @@ __attribute__((optimize("Os"))) static int UsbDev(const uint8_t* arg, size_t len
     if (part == 0 && len > 1 && arg[1] == 1)
     {
         for (uint32_t v : {s.rx_packets, s.rx_short, s.rx_long, s.rx_full})
-            n = UsbPut(d, n, v, 5);
-        n = UsbPut(d, n, s.rx_min == 0xFFFF ? 0 : s.rx_min, 2);
-        n = UsbPut(d, n, s.rx_max, 2);
+            n = loops::Put7Low(d, n, v, 5);
+        n = loops::Put7Low(d, n, s.rx_min == 0xFFFF ? 0 : s.rx_min, 2);
+        n = loops::Put7Low(d, n, s.rx_max, 2);
         usb::ResetFillRange();
         return static_cast<int>(n);
     }
     if (part == 0)
     {
         for (uint32_t v : {s.rx_blocks, s.rx_dry, s.rx_starts, s.tx_blocks, s.tx_full})
-            n = UsbPut(d, n, v, 5);
-        n = UsbPut(d, n, s.rx_fill, 2);
-        n = UsbPut(d, n, s.tx_fill, 2);
-        n = UsbPut(d, n, s.enumerations, 2);
+            n = loops::Put7Low(d, n, v, 5);
+        n = loops::Put7Low(d, n, s.rx_fill, 2);
+        n = loops::Put7Low(d, n, s.tx_fill, 2);
+        n = loops::Put7Low(d, n, s.enumerations, 2);
         return static_cast<int>(n);
     }
     if (part == 1)
     {
         const usb::CardStats& c = usb::GetCardStats();
         for (uint32_t v : {c.reads, c.writes, c.kb_read, c.kb_written, c.errors, c.io_ms})
-            n = UsbPut(d, n, v, 5);
-        n = UsbPut(d, n, c.unit_ready, 2);
-        n = UsbPut(d, n, c.capacity, 2);
+            n = loops::Put7Low(d, n, v, 5);
+        n = loops::Put7Low(d, n, c.unit_ready, 2);
+        n = loops::Put7Low(d, n, c.capacity, 2);
         return static_cast<int>(n);
     }
     if (part == 2 && len > 1)
