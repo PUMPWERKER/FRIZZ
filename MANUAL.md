@@ -2544,8 +2544,10 @@ switching one of them off clears it.
 
 Measured on a build that runs a set of combinations by itself, as a share of the time each
 block has: FRIZZ alone about 35%, one effect at most about 50%, all the inserts with a loop
-about 70%, every effect at once about 80%. Every effect at once with a loop, and every
-effect's page 2 turned off its defaults (Mix, Band and Level), needs more than there is.
+about 70%, every effect at once about 80%. The finalizer with every module working takes about
+13% more, its compressors alone (Depth up) about 5%; at its defaults nothing. Every effect at
+once with a loop, and every effect's page 2 turned off its defaults (Mix, Band and Level),
+needs more than there is.
 
 ### Timing
 

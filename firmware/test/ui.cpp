@@ -6504,6 +6504,69 @@ int main()
         Check(fabsf(drive() - .3f) < .005f, "fin-presets: CC 21 at 4 on channel 15 recalls preset 4");
     }});
 
+    // the presets' mode, armed, ends where a scene mode does: the settings page shown, the
+    // Loops page opened; a SHIFT tap after it saves nothing. Armed, CHOMPI blinks as for a scene
+    cases.push_back({"fin-preset-cancel", [] {
+        RunMs(kReadyMs);
+        Tap("KEY_15");
+        Turn(1, 30);
+        RunMs(300);
+        auto arm = [] {
+            Keys({"+KEY_15", "100", "+KEY_23", "60", "-KEY_23", "100", "-KEY_15", "200"});
+            Tap(kSceneKeys[2]);
+            RunMs(200);
+        };
+        arm();
+        const std::vector<int> blink = Watch(true, kChompiKeyLed, 600);
+        Check(*std::max_element(blink.begin(), blink.end()) > 100 && *std::min_element(blink.begin(), blink.end()) == 0,
+              "fin-preset-cancel: a preset armed: CHOMPI blinks, as for a scene");
+        SetToggle(true);
+        RunMs(300);
+        SetToggle(false);
+        RunMs(300);
+        Tap("KEY_26");
+        RunMs(3000);
+        Check(Card("/FRIZZ/frizz_master.txt").find("finalizer_preset") == std::string::npos,
+              "fin-preset-cancel: the settings page shown ends it: SHIFT then saves nothing");
+        arm();
+        LoopsPage();
+        RunMs(300);
+        DoubleTap(); // home: two taps of SHIFT
+        RunMs(3000);
+        Check(Card("/FRIZZ/frizz_master.txt").find("finalizer_preset") == std::string::npos,
+              "fin-preset-cancel: the Loops page opened ends it: SHIFT's taps there save nothing");
+    }});
+
+    // a card from before the finalizer, the master compressor's settings on it: FRIZZ boots with
+    // the finalizer neutral and the other settings read; a turn writes the finalizer's line and
+    // not the old ones
+    cases.push_back({"fin-old-file", [] {
+        CardFiles()["/FRIZZ/frizz_master.txt"] =
+            "FRIZZ master 1\ncompressor2 300000 900000 100000 750000 1000000 0 0 250000\n"
+            "compressor 300000 750000 200000 600000\nmidi_channel 5\n";
+        RunMs(kReadyMs);
+        const float dry = RunMs(300);
+        const std::string p = Ask({0x21, 14});
+        static const float kDefaults[16] = {.5f, 0.f, 0.f, 0.f, .5f, .5f, .5f, 0.f, .4f, .4f, .4f, 0.f, .5f, .5f, .5f, 0.f};
+        bool neutral = p.size() == 33;
+        for (int i = 0; neutral && i < 16; i++)
+            neutral = fabsf(KnobOf(p[1 + 2 * i], p[2 + 2 * i]) - kDefaults[i]) < .001f;
+        Check(neutral, "fin-old-file: the compressor's lines skipped, the finalizer on its defaults");
+        Trs({0xB4, 24, 127}); // the input +12dB on channel 5: the global channel the file says
+        RunMs(500);
+        const float louder = RunMs(300);
+        printf("      dry %.4f, input +12dB on channel 5 %.4f\n", dry, louder);
+        Check(louder > dry * 1.5f, "fin-old-file: the file's other settings read: channel 5 is the global one");
+        Trs({0xB4, 24, 64});
+        Tap("KEY_15");
+        Turn(1, 10);
+        RunMs(2500);
+        const std::string now = Card("/FRIZZ/frizz_master.txt");
+        Check(now.find("\nfinalizer 500000 100000 ") != std::string::npos && now.find("compressor") == std::string::npos
+                  && now.find("\nmidi_channel 5\n") != std::string::npos,
+              "fin-old-file: a turn writes the finalizer's line, not the old ones, the channel as it was");
+    }});
+
     // the finalizer's band mutes (#347): a plain press of knob 1-3 in EQ, Comp or Width mutes
     // that band, its LED nearly dark, below a quiet band's meter; again unmutes; in Level a press
     // does nothing

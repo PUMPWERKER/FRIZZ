@@ -365,7 +365,10 @@ namespace chompi
                 drew_settings_ = settings;
                 ResetSmtLeds();
                 if (settings)
+                {
                     scene_ctl_.Cancel();
+                    fin_presets_.Cancel(); // the finalizer's presets' mode too (#345)
+                }
             }
             if (settings)
             {
@@ -413,7 +416,7 @@ namespace chompi
             // CHOMPI key: blinking in the mode's colour while a tap would confirm a scene
             // action, otherwise white while it is acting as SHIFT; on a sub-page dim in its
             // colour (nothing else may use it)
-            if (scene_ctl_.Armed() && !keys_.ShiftCombo())
+            if (SceneArmed() && !keys_.ShiftCombo())
                 PthLed(kChompiKeyLed, SceneModeColor(), BlinkOn(now, kPendingBlinkMs) ? 1.f : 0.f);
 #if !FRIZZ_BENCH
             else if (loops_shown_ && !Shift())
@@ -1894,6 +1897,7 @@ namespace chompi
             if (on)
             {
                 scene_ctl_.Cancel();
+                fin_presets_.Cancel();
                 if (!loops_.Show(cubbi))
                 {
                     bank_refused_key_ = kBothBankKeys;
@@ -2340,9 +2344,11 @@ namespace chompi
         /** The current scene mode's colour, white without one */
         const float* SceneModeColor() const
         {
+            // the finalizer's presets' mode where one runs (#345)
+            const SceneMode mode = fin_presets_.Mode() != SceneMode::NONE ? fin_presets_.Mode() : scene_ctl_.Mode();
             for (const SceneModeKey& key : kSceneModeKeys)
             {
-                if (scene_ctl_.Mode() == key.mode)
+                if (mode == key.mode)
                     return key.color;
             }
             return white;
