@@ -85,9 +85,12 @@ USB-MIDI implications (already shipped in WAVE/TAPE/TEMPO, so low risk):
 - USB delivers in 1 ms frames, so ticks jitter by up to 1 ms. Fine at any sane tempo.
 
 TRS: the UART's DMA fills a ring of 256 bytes and hands them to the parser when the line has
-been quiet for a byte's time (IDLE; libDaisy leaves the DMA's own half and full interrupts
-off), and on every clock tick (0xF8: the USART's character match, #322, `THIRD_PARTY.md`). A
-tick then counts in the next audio block (0.5 ms) whatever follows it on the cable. Before the
+been quiet for a byte's time (IDLE), on every clock tick (0xF8: the USART's character match,
+#322) and at each half of the ring (the DMA's half and full transfer, #356; WAVE's libDaisy had
+them off, `THIRD_PARTY.md`). A tick then counts in the next audio block (0.5 ms) whatever
+follows it on the cable, and a line that never pauses loses nothing: before the halves, more
+than 256 bytes without a pause or a tick wrapped the ring, the laps lost (`midisuite.py
+--cases cc-burst-trs`: 1272 bytes of CCs in one go, a knob in each 12). Before the
 match, a tick waited for the bytes right behind it, 0.32 ms each or more (a Scarlett 18i20
 leaves gaps shorter than a byte between them: ~0.5 ms a byte). Measured with
 `tools/midisuite.py --cases tick-tail` (a clock in on TRS, passed on over USB): a 3-note chord
