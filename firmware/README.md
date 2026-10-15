@@ -279,9 +279,11 @@ A card set up from the launcher's v1.5 or v1.6 release still has USB storage v1.
 v1.6's `.bin` over `FIRMWARE/15_USB_STORAGE.bin` (or `./flash.py FILE --slot 15 --other-slot
 --name USB_STORAGE`). With an older launcher or storage firmware the tools still work, but say which
 key to press (15 for the card, overdub then CHOMPI to leave it, 10 for FRIZZ). Another firmware
-built on FRIZZ's platform (its USB names say Chompi Club) is sent FRIZZ's restart into the
-launcher first; with an older FRIZZ or a firmware that ignores it, switch the CHOMPI off and on
-when they say so (they wait up to 2 minutes). Mounting needs udisks, as any desktop has.
+built on FRIZZ's platform (its USB names say Chompi Club, or, garbled, the Daisy's USB id
+finds it as it finds FRIZZ) is sent FRIZZ's restart into the launcher at once, not waited for
+as a busy FRIZZ is, and its RESET when it doesn't get there (#371); with an older FRIZZ or a
+firmware that ignores both, switch the CHOMPI off and on when they say so (they wait up to 2
+minutes). Mounting needs udisks, as any desktop has.
 
 **Remote control over USB MIDI.** `./remote.py` talks to a running FRIZZ over its SysEx
 (`code/src/MidiControl.h`): `state`, `leds`, `load [--every S]` (with the blocks that took
@@ -492,9 +494,13 @@ cd firmware/tools
   device, and every effect recorded the dry line), sends the CCs on the effect's channel
   (e.g. `--cc 21=80`, its Level), plays material into AUX and records the line out; it says
   what was latched and the knobs FRIZZ has, and puts the latches and the effect's knobs back
-  afterwards. `compare` gives two recordings' level and octave bands, for an A/B of two
-  builds. Real music (`material --music`) is the better test here; level and bands don't
-  show an effect's timing (an echo's place), which takes a script of its own.
+  afterwards. It reads the settings first: a card with AUX unmonitored or past the effects
+  (`aux_live 0`, `aux_dry 1`) would record silence or the dry line (#391), so it sets
+  `aux_live 1` and `aux_dry 0` in RAM only (PERSIST 0, the card untouched), says so, and puts
+  them back afterwards; a FRIZZ without PERSIST is refused, saying so. `drift` needs neither:
+  the looper records AUX either way. `compare` gives two recordings' level and octave bands,
+  for an A/B of two builds. Real music (`material --music`) is the better test here; level
+  and bands don't show an effect's timing (an echo's place), which takes a script of its own.
 
 `tools/loopclip.py [--source aux|signal]` asks whether the loop distorts where the live input
 doesn't (#152): a 1 kHz sine at rising levels, into AUX or as FRIZZ's own test signal

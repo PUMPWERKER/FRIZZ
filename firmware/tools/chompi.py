@@ -437,16 +437,27 @@ def restart(device, hard=False):
 
 def frizz_node(node):
     """Whether NODE is FRIZZ's by its USB names (product "FrizZ", or maker when garbled, #88):
-    another firmware isn't sent its RESET"""
+    FRIZZ silent for BUSY s is RESET at once, another firmware only once it didn't take the
+    restart (#371)"""
     m = re.search(r"midiC(\d+)D", node or "")
     return bool(m) and "frizz" in card_names(m.group(1)).lower()
 
 
 def platform_node(node):
-    """Whether NODE is a CHOMPI's by its USB names ("Chompi Club"): another firmware on FRIZZ's
-    platform takes FRIZZ's restart SysEx too (#368); one that doesn't ignores it"""
+    """Whether NODE is a CHOMPI's by its USB names ("Chompi Club"), or by the Daisy's USB id
+    when they came garbled (#88: one string off, the maker the product's name, so no "Chompi
+    Club"; FRIZZ's are found so too, #371), not a Daisy that says it is one: another firmware
+    on FRIZZ's platform takes FRIZZ's restart SysEx too (#368); one that doesn't ignores it"""
     m = re.search(r"midiC(\d+)D", node or "")
-    return bool(m) and "chompi" in card_names(m.group(1)).lower()
+    names = card_names(m.group(1)).lower() if m else ""
+    return bool(m) and ("chompi" in names
+                        or usb_id(m.group(1)) == DAISY_USB_ID and "daisy" not in names)
+
+
+def other_firmware(node):
+    """Whether NODE is another firmware's on FRIZZ's platform, not FRIZZ's, by its USB names:
+    it never answers as FRIZZ, so waiting for it to (BUSY, SETTLE) only costs time (#371)"""
+    return platform_node(node) and not frizz_node(node)
 
 
 # ---- the card, as a drive -----------------------------------------------------------------
@@ -638,8 +649,9 @@ def to_launcher(timeout=120, device=None):
     now, where = state(device)
     # a FRIZZ that doesn't answer for a while looks like another firmware: the bench, its
     # audio callback over 100 % in a segment, leaves MainLoop no time (BUSY s at most)
+    # (another firmware never answers as FRIZZ: no use waiting for it, #371)
     busy = time.monotonic() + BUSY
-    while now == "other" and time.monotonic() < busy:
+    while now == "other" and not other_firmware(where) and time.monotonic() < busy:
         time.sleep(1)
         now, where = state(device)
     if now == "launcher":
@@ -669,8 +681,11 @@ def to_launcher(timeout=120, device=None):
         say("another firmware on the CHOMPI: asking it to restart into the launcher ...")
         restart(where)
         hint = None
+        # its MainLoop hung, while its audio callback may still take the platform's RESET (#371)
         if not reached("launcher", RESCUE, device):
-            say("it didn't restart: switch the CHOMPI off and on")
+            say("it didn't restart: resetting it from its audio callback (RESET) ...")
+            restart(where, hard=True)
+            hint = "still no launcher: switch the CHOMPI off and on"
     elif now == "other":
         say("a CHOMPI that can't be restarted from here: switch it off and on")
         hint = None
@@ -810,7 +825,7 @@ def to_frizz(slot=None, timeout=120, device=None, again=False):
 
     now, where = state(device)
     settle = time.monotonic() + SETTLE
-    while now in (None, "other") and time.monotonic() < settle:
+    while (now is None or now == "other" and not other_firmware(where)) and time.monotonic() < settle:
         time.sleep(0.5)
         now, where = state(device)
     last, this_hold, what = last_started()
