@@ -3818,6 +3818,56 @@ int main()
               "loops-xfer-playing: a5 replaced while it plays: its key dim, not lit, the old loop plays on");
     }});
 
+    // the card lent and taken back (#332): the playing loop's key stays bright while its file
+    // is untouched, and goes dim once the computer replaced it, as after the loop transfer's
+    // replace; the old loop plays on
+    cases.push_back({"loops-lent-replaced", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(48000, 2, 220.f)}, {"a2", SineWav(24000, 2, 330.f)}});
+        LoopsPage();
+        auto lit = [](int slot) { return Shows(SmtLedFull(LoopLed(slot)), kOrange, kLoopLit); };
+        auto dim = [](int slot) { return Shows(SmtLedFull(LoopLed(slot)), kOrange, kLoopDim); };
+        auto lend = [](bool on) {
+            Ask({0x3E, 0x0E, 1, 2, static_cast<uint8_t>(on ? 1 : 0)});
+            RunMs(on ? 300 : 5000); // back, and the loops scanned again
+        };
+        Tap(kLoopKeys[0]);
+        UntilLength(48000, 1000);
+        RunMs(100);
+        lend(true);
+        CardFiles()["/FRIZZ/a2.wav"] = SineWav(12000, 2, 660.f); // not the one playing
+        lend(false);
+        const bool kept = lit(0) && dim(1) && !CardLent();
+        lend(true);
+        CardFiles()["/FRIZZ/a1.wav"] = SineWav(12000, 2, 660.f);
+        lend(false);
+        printf("      a2 replaced: a1 %s; a1 replaced: a1 %s, the loop %zu frames\n", kept ? "bright" : "not bright",
+               Hex(SmtLedFull(LoopLed(0))).c_str(), static_cast<size_t>(Probe().loop_length));
+        Check(kept && dim(0) && !CardLent() && Probe().loop_length == 48000,
+              "loops-lent-replaced: taken back, the playing a1 stays bright while only a2 changed; once the "
+              "computer replaced a1, its key is dim and the old loop plays on");
+        Tap(kLoopKeys[0]);
+        Check(UntilLength(12000, 2000) >= 0, "loops-lent-replaced: a tap on a1 loads its new loop");
+    }});
+
+    // SLOT's flags for a cubbi too (docs/LOOP_PROTOCOL.md 3.3): one the Cubbi page plays
+    cases.push_back({"loops-xfer-cubbi", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"/TAPE/cubbi_a1.wav", SineWav(48000, 2, 220.f)}, {"/TAPE/cubbi_a2.wav", SineWav(24000, 2, 330.f)}});
+        CubbiPage();
+        Tap(kLoopKeys[0]);
+        const int played = UntilLength(48000, 1000);
+        RunMs(100);
+        std::string d1, d2;
+        const int s1 = Xfer(0x03, {8, 0}, &d1), s2 = Xfer(0x03, {8, 1}, &d2); // kCubbiBank 8
+        const int f1 = d1.size() > 14 ? d1[14] : -1, f2 = d2.size() > 14 ? d2[14] : -1;
+        printf("      cubbi_a1 after %d ms; SLOT flags a1 %d, a2 %d\n", played, f1, f2);
+        Check(played >= 0 && s1 == 0 && s2 == 0 && f1 == (2 | 4) && f2 == 0,
+              "loops-xfer-cubbi: the cubbi playing: SLOT says it plays and is ready; the other neither");
+    }});
+
     // the card lent (#292, CardLend.h): a loop already loaded switches at once, it needs no
     // card; one that needs loading waits for the card, which then loads it once it's scanned
     cases.push_back({"loops-lent", [] {
@@ -4099,6 +4149,41 @@ int main()
         printf("      A/03 after %d ms: %.2f BPM\n", acid, c.fx_bpm);
         Check(acid >= 0 && std::fabs(c.fx_bpm - 100.f) < .1f,
               "loops-now: an acid chunk's 12 beats set 100 BPM for 3 bars of 7.2 s");
+    }});
+
+    // a WAV whose samples start on a sector (CoreAudio's FLLR chunk pads them to 4096), loaded
+    // into the recording's buffer (the second loop): its key bright and starting it again as
+    // any other's
+    cases.push_back({"loops-sector", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        auto padded = [](uint32_t frames, float freq) {
+            std::string w = SineWav(frames, 2, freq);
+            const std::string fllr = std::string("FLLR") + std::string("\xCC\x0F\0\0", 4) + std::string(4044, '\0');
+            w.insert(36, fllr); // after fmt: "data" at 4088, its samples at 4096
+            const uint32_t riff = static_cast<uint32_t>(w.size() - 8);
+            memcpy(&w[4], &riff, 4);
+            return w;
+        };
+        PutLoops({{"a1", padded(96000, 220.f)}, {"a2", padded(72000, 330.f)}});
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        const int first = UntilLength(96000, 1000);
+        RunMs(300);
+        Tap(kLoopKeys[1]);
+        const int second = UntilLength(72000, 1000);
+        RunMs(700);
+        const Rgb lit = SmtLedFull(LoopLed(1));
+        const float was = Probe().loop_pos;
+        Press(kLoopKeys[1], true);
+        RunMs(30); // the key's debouncing, then a block
+        const float pos = Probe().loop_pos;
+        Press(kLoopKeys[1], false);
+        printf("      A/01 after %d ms, A/02 after %d ms, key %s, started again from %.4f at %.4f\n", first,
+               second, Hex(lit).c_str(), was, pos);
+        Check(first >= 0 && second >= 0 && Shows(lit, kOrange, kLoopLit) && was > .2f && pos < .015f,
+              "loops-sector: a loop whose samples start on a sector, in the recording's buffer: its "
+              "key bright, and the key starts it again");
     }});
 
     // #302: a switch at once is crossfaded however MainLoop and the audio interrupt meet. The
