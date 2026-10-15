@@ -53,6 +53,9 @@ SECTIONS
 
 		*(.text)
 		*(.text*)
+		/* FRIZZ: per-sample code whose size would move FxChain::Run (FRIZZ_AFTER_RUN,
+		 * FrizzHot.h, #308) */
+		*(.frizz_after_run)
 		*(.rodata)
 		*(.rodata*)
 		*(.glue_7)

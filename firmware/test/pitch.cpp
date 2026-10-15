@@ -2,7 +2,9 @@
 // +12 and measures the output's pitch (the strongest frequency over 1s, by a Goertzel scan to
 // 0.05Hz) and how much its level wobbles (1000-sample windows). Built and run by
 // unit.sh pitch; fails if any interval is off by more than kMaxCents or wobbles by more than
-// kMaxWobbleDb, on a sine (the hardest case for a delay-line shifter) or a harmonic tone.
+// kMaxWobbleDb, on a sine (the hardest case for a delay-line shifter) or a harmonic tone;
+// and that a 10kHz sine a fifth up keeps its level within kMaxHighLossDb (the taps' Hermite
+// reads, #305).
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -11,6 +13,7 @@
 
 static const double kMaxCents = 5.0;
 static const double kMaxWobbleDb = 2.0;
+static const double kMaxHighLossDb = .6;
 
 static chompi::Shifter shifter;
 
@@ -96,5 +99,24 @@ int main()
             Check(fabs(cents) <= kMaxCents && wobble <= kMaxWobbleDb, what);
         }
     }
+
+    // the highs (#305): the taps read between samples, Hermite, which keeps a 10kHz sine a
+    // fifth up within kMaxHighLossDb of its level, where linear reads lost 1.3dB
+    shifter.Init(48000.f);
+    shifter.SetParam(chompi::Shifter::SHIFT, (7 + 12) / 24.f);
+    shifter.SetOn(true);
+    double in = 0, out = 0;
+    for (int i = 0; i < 48000 * 3; i++)
+    {
+        float l = .1f * sinf(2 * M_PI * fmod(10000.0 / 48000.0 * i, 1.0)), r = l;
+        const float x = l;
+        shifter.Process(&l, &r);
+        if (i >= 96000)
+            in += x * x, out += l * l;
+    }
+    const double loss = 10 * log10(out / in);
+    char what[64];
+    snprintf(what, sizeof(what), "10kHz a fifth up: %+.2f dB", loss);
+    Check(loss >= -kMaxHighLossDb, what);
     return Finish();
 }
