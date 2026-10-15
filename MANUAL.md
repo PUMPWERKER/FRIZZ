@@ -2443,8 +2443,8 @@ feedback](#midi-feedback) on.
   output's, by up to a millisecond or so, also while FRIZZ reads a loop from the card. For
   tight timing, use TRS.
 - Over USB, what no app on the computer takes for a tenth of a second is dropped: a DAW that
-  opens FRIZZ's port later gets the clock as it runs from then on, with at most a fraction of
-  a beat of old messages.
+  opens FRIZZ's port later gets the clock as it runs from then on, after less than a beat of
+  old messages.
 - A DAW that follows FRIZZ's clock (synced to an external MIDI clock): set its project tempo
   roughly to the loop's. REAPER, for one, keeps its own tempo and follows a clock smoothly
   only within about half to twice it (measured); further off, it plays in jumps. So the
