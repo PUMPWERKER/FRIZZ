@@ -44,7 +44,8 @@ older one can't, and isn't asked). Every slot is checked before anything is buil
 
 The launcher 1.6 colours each key: the colour chosen for the file on it (its COLOR, kept on the
 card in /FIRMWARE/key_colors.txt with the file's name), or one made from that name. --color
-chooses it: the build is stored without starting (--stay), the key coloured, then started (RUN).
+chooses it: the build is stored without starting (--stay), the key coloured, then started (RUN;
+a colour the card fails to keep is said, the build started all the same).
 Since flash.py always writes the same file to a key (12_FRIZZ-TEST.bin), a colour chosen once
 stays with that key's later builds; without --color nothing about colours is sent.
 
@@ -200,10 +201,16 @@ def main():
     if args.color is not None and not colour:
         print("this launcher can't colour its keys (1.6 can): sent without --color")
     if colour:
-        # stored, coloured (the key must hold it first), then started
-        sys.argv += ["--stay", "--color", str(slot), args.color]
+        # stored, coloured (the key must hold it first), then started: a colour that fails
+        # (the card) is said, and the build started all the same
+        sys.argv.append("--stay")
     midi_send.main()
     if colour:
+        sys.argv = ["midi_send.py", "--color", str(slot), args.color, "--device", device]
+        try:
+            midi_send.main()
+        except SystemExit as e:
+            print("key %d not coloured: %s" % (slot, e))
         chompi.send_run(device, slot)
     chompi.started(slot)
     chompi.noted_image(slot, image, md5)

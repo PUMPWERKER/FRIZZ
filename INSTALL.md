@@ -68,8 +68,9 @@ pressing one starts it. FRIZZ works as one of them, next to TAPE, TEMPO and WAVE
    **Or by hand:** copy `FRIZZ.bin` into the card's `FIRMWARE` folder, named after the key you
    want it on, for example `FIRMWARE/04_FRIZZ.bin` for white key 4.
 
-   The setup page gives FRIZZ's key FRIZZ's colour, a violet. A firmware the page doesn't know
-   gets a colour made from its file's name, the same on every card. The colours are kept in
+   The setup page gives FRIZZ's key FRIZZ's colour. A firmware the page doesn't know, or one
+   copied by hand until the page next connects, gets a colour made from its file's name, the
+   same on every card. The colours are kept in
    `FIRMWARE/key_colors.txt`, one line per key (`04 8A4DFF 04_FRIZZ.bin`: the key, the colour
    as on a screen, the file it's for), which you can edit by hand.
 3. Copy your `FRIZZ` folder over too, if you have scenes or loops from another card. Otherwise FRIZZ

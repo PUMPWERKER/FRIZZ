@@ -629,8 +629,8 @@ for args in (["--slot", "13"], ["--sl", "10"], ["--slot=15"], ["--clear", "10"],
     // the launcher 1.5 and 1.6, stubbed (their PING, LIST, COLOR and RUN): the tools tell the
     // launcher from FRIZZ, read a key's file and list the keys with either; 1.6's LIST adds the
     // key's colour (7 bits a channel, so #8A4DFF lists as #8B4CFF). flash.py --color stores
-    // without starting, colours the key, then starts it; with 1.5 it sends without, and without
-    // --color it sends as before
+    // without starting, colours the key, then starts it (a colour the card fails is said, the
+    // build started all the same); with 1.5 it sends without, and without --color as before
     rc = Python(R"(
 import contextlib, os, sys, chompi, flash, midi_send
 log = []
@@ -681,6 +681,12 @@ for minor in (5, 6):
     midi_send.main = lambda: log.append(" ".join(sys.argv[1:]))
     run("1.%d test" % minor, flash.main, "flash.py", "--test", "--no-build")
     run("1.%d test colour" % minor, flash.main, "flash.py", "--test", "--no-build", "--color", "8A4DFF")
+def fails():
+    if "--color" in sys.argv:
+        sys.exit("color failed: writing to the card failed")
+    log.append(" ".join(sys.argv[1:]))
+midi_send.main = fails
+run("1.6 colour fails", flash.main, "flash.py", "--test", "--no-build", "--color", "8A4DFF")
 run("bad colour", flash.main, "flash.py", "--test", "--color", "violet")
 run("colour, nothing sent", flash.main, "flash.py", "--run", "12", "--color", "8A4DFF")
 os.remove("image.bin")
@@ -701,8 +707,11 @@ os.remove("image.bin")
               && Has(out, "1.5 test colour: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l']\n")
               && Has(out, "this launcher can't colour its keys (1.6 can): sent without --color")
               && Has(out, "1.6 test colour: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l "
-                          "--stay --color 12 8A4DFF', 'run 12']\n"),
+                          "--stay', '--color 12 8A4DFF --device l', 'run 12']\n"),
           "tools: flash.py --color stores, colours, then starts with 1.6; sends as before without it or with 1.5");
+    Check(Has(out, "key 12 not coloured: color failed: writing to the card failed\n")
+              && Has(out, "1.6 colour fails: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l --stay', 'run 12']\n"),
+          "tools: flash.py --color whose COLOR the card fails says so and starts the build all the same");
     Check(Has(out, "bad colour: exit: --color takes a colour like 8A4DFF") && Has(out, "colour, nothing sent: exit: --color takes"),
           "tools: flash.py --color takes a colour, with a build sent only");
     if (rc != 0 || !Has(out, "colour, nothing sent: exit"))
