@@ -1874,7 +1874,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--slot", type=int, choices=chompi.FRIZZ_SLOTS + (chompi.BENCH_SLOT,), default=chompi.TEST_SLOT,
                     help="the FRIZZ slot (12 by default), started unless it runs; the bench's (13) "
-                    "for trs-relisten, once its bench is done (remote.py bench --wait)")
+                    "for trs-relisten: the one running, once its bench is done (remote.py bench --wait)")
     ap.add_argument("--device", help="FRIZZ's raw MIDI node (as remote.py's; the twin's for the host check)")
     ap.add_argument("--trs", help="the raw MIDI node on the TRS jack (FRIZZ_TRS_MIDI; found by name)")
     ap.add_argument("--wiring", choices=["auto"] + list(WIRINGS), default="auto")
@@ -1892,7 +1892,16 @@ def main():
     cases = chosen(CASES, a)
     stop_on_signals()
 
-    device = a.device or chompi.to_frizz(a.slot)
+    if a.slot == chompi.BENCH_SLOT and not a.device:
+        # the bench that runs, its bench done (remote.py bench --wait): not started again,
+        # which would run its bench anew
+        device = chompi.wait_for("frizz", 30)
+        info = chompi.ident(device)
+        if not info or info["kind"] != "bench":
+            sys.exit("--slot %d: the bench doesn't run (flash.py --bench, then remote.py bench --wait)"
+                     % chompi.BENCH_SLOT)
+    else:
+        device = a.device or chompi.to_frizz(a.slot)
     f = remote.Frizz(device)
     trs_node = a.trs or (None if a.wiring == "none" else midiport.trs_midi())
     chompi.device_guard(trs_node)
