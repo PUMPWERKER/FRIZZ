@@ -1057,10 +1057,10 @@ Instruments' Warps.
 - **MIDI:** CC 23 on the phaser's channel (7) sets the mode, 0-63 the phaser, 64-127 the
   frequency shifter (see [Controllers](#controllers)). Notes do as your hand: SHIFT's note 45
   held, key 7's note 59 twice.
-- **How it works:** two chains of seven allpass filters turn each channel into a pair of
+- **How it works:** two chains of six allpass filters turn each channel into a pair of
   signals 90 degrees apart; a carrier at the shift's frequency multiplies them, and their
-  difference or sum is the sound moved up or down alone. The other direction stays 45 dB down
-  from 25 Hz to 19 kHz.
+  difference or sum is the sound moved up or down alone. The other direction stays about 40 dB
+  down from 25 Hz to 19 kHz.
 - LEDs in frequency-shifter mode: the key is azure; the knobs go azure to orange, the shift's
   synced half green to yellow, the direction blue, white and orange.
 

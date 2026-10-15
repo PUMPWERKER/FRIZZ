@@ -13,13 +13,13 @@ namespace chompi
 {
 
 // The frequency shifter's allpass pair (Phaser::Chain): Warps' AllPassFilter's coefficients
-// (which its Init takes as -pole), fitted for 48kHz to a 90 degree difference within .65
-// degrees from 25Hz to 19kHz
-static const size_t kShiftStages = 7;
-static const float kShiftI[kShiftStages] = {-.998965763f, -.995742255f, -.983517101f, -.941340022f,
-                                            -.797460598f, -.420813829f, .298537921f};
-static const float kShiftQ[kShiftStages] = {-.997290086f, -.992065396f, -.967980159f, -.891331600f,
-                                            -.640285696f, -.110620437f, .744728924f};
+// (which its Init takes as -pole), fitted for 48kHz to a 90 degree difference within 1.25
+// degrees from 25Hz to 19kHz; a seventh pair would make it .65 for half a point of the block
+static const size_t kShiftStages = 6;
+static const float kShiftI[kShiftStages] = {-.998399628f, -.983978526f, -.942594583f, -.795442138f,
+                                            -.414807544f, .276425238f};
+static const float kShiftQ[kShiftStages] = {-.993727251f, -.966852645f, -.894634862f, -.642969373f,
+                                            -.103465642f, .728583257f};
 
 /** A classic phaser: kStages first-order allpasses in a row, all on one break frequency,
  *  added to the input, with feedback from the end of the chain back into it. Six stages put
@@ -47,7 +47,7 @@ static const float kShiftQ[kShiftStages] = {-.997290086f, -.992065396f, -.967980
  *  (pichenettes/eurorack, warps/dsp/quadrature_transform.h, MIT; THIRD_PARTY.md). Two chains
  *  of first-order allpasses (Warps' AllPassFilter) turn the input into a pair 90 degrees
  *  apart, kShiftStages each, their coefficients (kShiftI, kShiftQ) fitted for 48kHz to within
- *  0.65 degrees from 25Hz to 19kHz (Warps' 17 are for 96kHz): an unwanted sideband 45dB down.
+ *  1.25 degrees from 25Hz to 19kHz (Warps' 17 are for 96kHz): an unwanted sideband 39dB down.
  *  A quadrature carrier multiplies them, and their difference or sum is the upper or lower
  *  sideband alone. The same eight knobs, read the other way: 0 the shift (the left half free,
  *  kShiftLowHz to 10000 times that on an exponential curve; the right half one cycle per
@@ -239,7 +239,7 @@ private:
 
     /** The rate knob (rate_) as the mode reads it: synced, or the free LFO's or carrier's
      *  advance a sample */
-    __attribute__((noinline, optimize("Os"))) FRIZZ_AFTER_RUN void SetRate()
+    __attribute__((noinline)) FRIZZ_AFTER_RUN_LAST void SetRate()
     {
         synced_ = SplitUpper(rate_);
         resync_ = kResync; // the carrier where the LFO is, at the next retune
@@ -262,14 +262,10 @@ private:
         const float coeff = FxSlewOver(n, snap);
         const float depth = depth_.Process(coeff);
         const float centre = centre_.Process(coeff);
-        // a mode switch starts with its dip (Dip)
-        if (want_ != shifting_ && !dipping_)
-            dipping_ = dip_down_ = true;
-        if (shifting_)
-        {
-            RetuneShift(feedback_knob_.Process(coeff), depth, centre);
+        // the frequency shifter's, or a mode switch's start: out of line, so the phaser's code
+        // before FxChain::Run keeps its size (FRIZZ_AFTER_RUN_LAST)
+        if (__builtin_expect(shifting_ | (want_ != shifting_), 0) && RetuneShift(coeff, depth, centre))
             return;
-        }
         feedback_ = kMaxFeedback * feedback_knob_.Process(coeff);
         wet_ = fminf(depth / kFullWetDepth, 1.f);
         // half the input and half the chain, so the notches go all the way down; the feedback's
@@ -309,11 +305,18 @@ private:
     }
 
     /** The frequency shifter's Retune: the knobs, and the carrier set again where the LFO is,
-     *  its turn a sample at the free rate or the clock's. The shifter's code (this, Shift, Dip,
-     *  SetRate, Clear) is linked after FxChain::Run (FRIZZ_AFTER_RUN), so it doesn't move Run */
-    __attribute__((noinline)) FRIZZ_AFTER_RUN void RetuneShift(float feedback, float depth, float direction)
+     *  its turn a sample at the free rate or the clock's; false in the phaser's mode, where it
+     *  only starts a switch. The shifter's code (this, Shift, Dip,
+     *  SetRate, Clear) is linked after FxChain::Run and the other effects' code there
+     *  (FRIZZ_AFTER_RUN_LAST), so it moves neither */
+    __attribute__((noinline)) FRIZZ_AFTER_RUN_LAST bool RetuneShift(float coeff, float depth, float direction)
     {
-        feedback_ = kMaxShiftFeedback * feedback;
+        // a mode switch starts with its dip (Dip); the phaser's Retune goes on until it's done
+        if (want_ != shifting_ && !dipping_)
+            dipping_ = dip_down_ = true;
+        if (!shifting_)
+            return false;
+        feedback_ = kMaxShiftFeedback * feedback_knob_.Process(coeff);
         wet_ = depth;
         gain_ = 1.f - .5f * feedback_; // the repeats add up
         dir_[0] = 2.f * direction - 1.f;
@@ -346,25 +349,30 @@ private:
             cr_ = cosf(kTwoPi * turn);
             sr_ = sinf(kTwoPi * turn);
         }
+        return true;
     }
 
     /** A sample of the frequency shifter, both channels (file comment), gate: the key's fade */
-    __attribute__((noinline)) FRIZZ_AFTER_RUN void Shift(float* l, float* r, float gate)
+    __attribute__((noinline)) FRIZZ_AFTER_RUN_LAST void Shift(float* l, float* r, float gate)
     {
-        float* const io[2] = {l, r};
+        // both inputs read first: a store to the state may be one to l or r, as far as the
+        // compiler knows, so a channel's read after the other's stores would keep the two
+        // channels from overlapping
+        const float dry[2] = {*l, *r};
+        float wet[2];
         for (size_t c = 0; c < 2; c++)
         {
-            const float dry = *io[c];
-            const float x = dry + feedback_ * fed_[c];
+            const float x = dry[c] + feedback_ * fed_[c];
             float* const st = pair_[c]; // the input a sample ago, then each stage's output
             const float i = Chain(kShiftI, x, st[0], st + 1);
             const float q = Chain(kShiftQ, x, st[0], st + 1 + kShiftStages);
             st[0] = x;
             const float y = i * co_ + dir_[c] * q * so_;
             fed_[c] += kShiftFeedbackLp * (SoftLimit(y) - fed_[c]);
-            const float out = dry + wet_ * (gain_ * y - dry);
-            *io[c] = dry + gate * (out - dry);
+            wet[c] = dry[c] + wet_ * (gain_ * y - dry[c]);
         }
+        *l = dry[0] + gate * (wet[0] - dry[0]);
+        *r = dry[1] + gate * (wet[1] - dry[1]);
         const float co = co_ * cr_ - so_ * sr_;
         so_ = so_ * cr_ + co_ * sr_;
         co_ = co;
@@ -393,7 +401,7 @@ private:
 
     /** A sample of a mode switch's dip, 1 to 0 and back: at the bottom the mode switches,
      *  starting from silence. Wanted back meanwhile, it comes up as it was */
-    __attribute__((noinline)) FRIZZ_AFTER_RUN float Dip()
+    __attribute__((noinline)) FRIZZ_AFTER_RUN_LAST float Dip()
     {
         const float step = 1.f / static_cast<float>(kDipSamples);
         if (dip_down_)
@@ -437,7 +445,7 @@ private:
         Snap();
         Retune(true);
     }
-    __attribute__((noinline, optimize("Os"))) FRIZZ_AFTER_RUN void Clear()
+    __attribute__((noinline, optimize("Os"))) FRIZZ_AFTER_RUN_LAST void Clear()
     {
         for (size_t c = 0; c < 2; c++)
         {
