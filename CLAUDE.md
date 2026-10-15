@@ -340,8 +340,9 @@ nothing else reaches FRIZZ then; `firmware/README.md`, *REAPER: a real DAW again
 ## Toolchain: GCC 10.3, and the pin matters
 
 FRIZZ builds with **GNU Arm Embedded 10.3-2021.10** (GCC 10.3.1): newer GCC intermittently
-breaks SD-card communication. On this machine it is at `~/opt/gcc-arm-none-eabi-10.3-2021.10/`,
-on `PATH` via `~/.bashrc`; non-interactive shells may not read it, so prepend it explicitly:
+breaks SD-card communication. It goes in `~/opt/gcc-arm-none-eabi-10.3-2021.10/`
+(`firmware/README.md`, *0. Set up a development machine*), on `PATH` via `~/.bashrc`;
+non-interactive shells may not read it, so prepend it explicitly:
 `PATH=~/opt/gcc-arm-none-eabi-10.3-2021.10/bin:$PATH make`. Run `make` in
 `firmware/code/src`, never from the repo root, and read the memory table it prints.
 
@@ -359,6 +360,11 @@ a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME`
 `comp`, `level`, `sleep`, `inserts`, `resonator`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `splice`, `usbmidi`, `routing`, `measure`, `loops`, `loopxfer`, `sddisk`, `twinlib`, `compare`, `rtalloc`, `usbtransport`, `usbdevice`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
 `NAME.cpp`; [`firmware/test/README.md`](firmware/test/README.md) says what each covers.
 `check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail.
+
+**Several sessions on one machine:** heavy host runs (`all.sh`, `compare.sh`, `check.sh`,
+`ui-at.sh`, `tools/builds.py`, the twin's and the host checks' builds) go one at a time, under
+`flock ~/.cache/frizz-host.lock systemd-run --user --scope -p MemoryMax=4G -p MemorySwapMax=0 …`:
+parallel ones have run the machine out of memory. A single `./unit.sh NAME` may run alongside.
 
 `firmware/twin/` is the **virtual CHOMPI**: the whole firmware compiled unchanged for the host
 on a simulated board, deterministic and 13-20x real time. `./run.sh -o out.wav -l - SCRIPT`
@@ -432,3 +438,11 @@ region and the ways to make room. Never use `make program-boot`, and never swap 
 libDaisy: the vendored copy is patched (`THIRD_PARTY.md`).
 `__attribute__((optimize("-O0")))` and similar per-function overrides (`ProcessAllControls`)
 are deliberate workarounds, not leftovers.
+
+## A new development machine
+
+The repo carries everything the code and its checks need: `firmware/README.md`, *0. Set up a
+development machine*. What lives outside it and moves by hand: Claude Code's project memory
+(`~/.claude/projects/<the clone's path, slashes as dashes>/memory/`: keep the clone at the same
+path, or rename that folder), the user's own Claude skills under `~/.claude/skills/`, and the
+songs in `firmware/card/audio/`.
