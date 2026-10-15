@@ -491,6 +491,9 @@ UartHandler::Result UartHandler::Impl::DmaTransmit(
 }
 
 
+// FRIZZ: the handle listening, for its DMA stream's half and full transfer (DMA1_Stream5_IRQHandler)
+static UartHandler::Impl* volatile dma_listener = nullptr;
+
 UartHandler::Result
 UartHandler::Impl::DmaListenStart(uint8_t* buff,
                                   size_t   size,
@@ -540,10 +543,15 @@ UartHandler::Impl::DmaListenStart(uint8_t* buff,
 
     /** cache maintanence to allow memory from cache-able regions  */
     dsy_dma_invalidate_cache_for_buffer(buff, size);
+    dma_listener = this;
     if(HAL_UART_Receive_DMA(&huart_, buff, size) != HAL_OK)
         return UartHandler::Result::ERR;
-    
-    HAL_NVIC_DisableIRQ(DMA1_Stream5_IRQn);
+
+    // FRIZZ: the DMA's half and full transfer hand over too, so a line that never pauses and
+    // carries no tick loses nothing to the ring wrapping (#356). WAVE had the stream's
+    // interrupt off. Only those two: TE and DME would end the reception (UART_DMAError)
+    __HAL_DMA_DISABLE_IT(&hdma_rx_, DMA_IT_TE | DMA_IT_DME);
+    HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
     dma_active_peripheral_ = int(config_.periph);
     return UartHandler::Result::OK;
 }
@@ -1090,6 +1098,17 @@ void HalUartDmaRxStreamCallback(void)
 }
 extern "C" void DMA1_Stream5_IRQHandler(void)
 {
+    // FRIZZ: while listening, the half and full transfer by the stream's own flags (#356), not
+    // HAL's handler: that one leaves them set while dma_active_peripheral_ is -1 (after a DMA
+    // transmit), the interrupt pending for ever
+    UartHandler::Impl* listener = dma_listener;
+    if(listener && listener->listener_mode_)
+    {
+        DMA1->HIFCR = DMA_HIFCR_CHTIF5 | DMA_HIFCR_CTCIF5 | DMA_HIFCR_CTEIF5
+                      | DMA_HIFCR_CDMEIF5 | DMA_HIFCR_CFEIF5;
+        UART_CheckRxListener(listener);
+        return;
+    }
     HalUartDmaRxStreamCallback();
 }
 

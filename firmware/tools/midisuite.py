@@ -1155,7 +1155,73 @@ def block_trs(r):
     r.check("lower D# on again: channel 3 over TRS", up, "%.2f -> %.2f" % (a, b), "moves")
 
 
-@case("shifter-page", "8: CC 18 on channel 2 moves the shifter's mix; note 36 on channel 16 turns "
+def all_knobs(r):
+    """The effects' knobs (channels 1-14) as GET reads them: {(channel, knob 0-7): 0-1}"""
+    got = {}
+    for ch in range(1, 15):
+        vals = r.get(WHITE_FX[ch])
+        for i in range(8):
+            got[(ch, i)] = remote.knob(vals[i])
+    return got
+
+
+@case("cc-burst-trs", "8: automation over TRS that never pauses and has no clock in it (a DAW "
+      "writing CCs back to back): every CC counts, however long the line stays busy (#356)", needs=("in",))
+def cc_burst_trs(r):
+    # each effect's knobs (channels 1-14, CC 14-21) to 0 over USB, then in one write over TRS
+    # each to a value of its own, once, 3 CCs FRIZZ leaves alone after each (the mod wheel on
+    # channel 16): 12 bytes a knob, 1272 in all, no pause, no tick. A lost lap of libDaisy's
+    # 256-byte ring loses the knobs in it
+    knobs = [(ch, i) for ch in range(1, 15) for i in range(8) if (WHITE_FX[ch], i) not in EMPTY]
+    before = r.state()
+    for ch in range(1, 15):
+        r.send_usb(b"".join(cc(ch, 14 + i, 0) for c, i in knobs if c == ch))
+        time.sleep(.02)
+    time.sleep(.3)
+    zero = all_knobs(r)
+    r.check("before: every knob at 0 (CCs over USB)", all(zero[k] < .05 for k in knobs),
+            "%d of %d" % (sum(zero[k] < .05 for k in knobs), len(knobs)), "all")
+    want = {k: 80 + n % 48 for n, k in enumerate(knobs)}
+    burst = b"".join(cc(ch, 14 + i, want[(ch, i)]) + b"".join(cc(GLOBAL, 1, (3 * n + j) & 0x7F) for j in range(3))
+                     for n, (ch, i) in enumerate(knobs))
+    t0 = time.monotonic()
+    r.send_trs(burst)
+    # the first knobs (the freezer's, its first 96 bytes) while the line is still busy: a
+    # Scarlett 18i20 sends a byte every ~0.5 ms, 0.7 s for the burst
+    time.sleep(.2)
+    vals = r.get("freezer")
+    early = time.monotonic() - t0
+    first = [k for k in knobs if k[0] == 1]
+    moved = sum(remote.knob(vals[i]) > .3 for _, i in first)
+    r.check("the freezer's knobs, first in the burst, %.0f ms after it was sent, the line still busy" % (early * 1000),
+            moved == len(first), "%d of %d set" % (moved, len(first)), "all: handed over as they come")
+    time.sleep(max(0., len(burst) * .0005 + 1. - (time.monotonic() - t0)))
+    got = all_knobs(r)
+    lost = [n for n, k in enumerate(knobs) if got[k] <= .3]
+    off = max(abs(got[k] - knob7(want[k])) for k in knobs)
+    r.note("%d bytes over TRS in one write; the knobs within %.3f of their CCs' values (stepped ones "
+           "take the nearest step)" % (len(burst), off))
+    r.check("every knob set by the burst (%d CCs, %d bytes)" % (len(knobs), len(burst)), not lost,
+            "%d of %d%s" % (len(knobs) - len(lost), len(knobs), ", not: the knobs at bytes %s" % ", ".join(
+                "%d-%d" % (12 * a, 12 * b + 11) for a, b in runs(lost)) if lost else ""), "all")
+    after = r.state()
+    r.check("the mod wheel on channel 16 moved nothing", (after["latched"], after["selected"], after["scene"])
+            == (before["latched"], before["selected"], before["scene"]),
+            "latched %s, selected %s" % (after["latched"], after["selected"]), "as before")
+
+
+def runs(ns):
+    """Sorted numbers as (first, last) runs"""
+    out = []
+    for n in ns:
+        if out and n == out[-1][1] + 1:
+            out[-1] = (out[-1][0], n)
+        else:
+            out.append((n, n))
+    return out
+
+
+@case("shifter-page","8: CC 18 on channel 2 moves the shifter's mix; note 36 on channel 16 turns "
       "the page (#44)")
 def shifter_page(r):
     up, a, b = moved(r, "shifter", 4, lambda v: r.send_usb(cc(2, 18, v)))
