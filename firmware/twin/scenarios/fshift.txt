@@ -1,5 +1,5 @@
 # The frequency shifter (#306), the phaser's second mode on the 7th white key: SHIFT + KEY_7,
-# then KEY_7 again in the same hold, switches it, the key azure and knob 4 (the direction)
+# then KEY_7 again in the same hold, switches it, the key ice blue and knob 4 (the direction)
 # white in the middle. Latched on a sine against a MIDI clock: all wet, a barber pole (a few
 # Hz, feedback up), then about 90 Hz, the direction down and up, page 2's stereo up, the shift
 # synced (knob 1 green); then back to the phaser the same way, and off. Nothing is saved.
@@ -15,7 +15,7 @@ tap KEY_7
 wait 100
 up KEY_26
 wait 500
-expect led smt 18 000c24
+expect led smt 18 101424
 expect led pth 4 fdfdfd
 # latched
 down KEY_7
@@ -52,7 +52,7 @@ wait 300
 turn 4 13 130
 wait 3586
 expect led pth 1 00fd00
-# back to the phaser: violet, knob 4 the phaser's centre
+# back to the phaser: blue, knob 4 the phaser's centre
 down KEY_26
 wait 60
 tap KEY_7
@@ -62,9 +62,9 @@ wait 100
 up KEY_26
 wait 500
 expect led pth 4 fd8f37
-# off again: its key dim violet
+# off again: its key dim blue
 down KEY_7
 wait 80
 up KEY_7
 wait 1000
-expect led smt 18 0c0024
+expect led smt 18 000024

@@ -699,6 +699,12 @@ The details of the timing:
 
 ### Keys and knobs
 
+The FX keys are coloured by their place in the signal chain: the keys of a stage share a
+colour, the two of a pair in neighbouring shades (the freezer purple and the shifter indigo,
+the folder scarlet and the crusher orange, the flanger light blue and the phaser blue, wow &
+flutter red and the tape stop rose, the delay green and the reverb teal), and the next stage
+in a colour well apart. The chaos key, which has no place in the chain, is magenta.
+
 The FX keys are dimly lit in their effect's colour while off and at full brightness while
 on, where the audio coming out of the effect pushes the colour towards white, from -30 dBFS
 up, the peaks most. The delay and reverb keys follow their returns, so after release they
@@ -862,7 +868,7 @@ Feedback shifts again on every pass.
   into fifths.
 - Two overlapping taps keep the pitch within about a cent of the interval, without wobble or
   buzz. The grain is how long each tap reads before it starts over.
-- LEDs: the key is red; the shift and the grain go blue (down) through white (the centre) to
+- LEDs: the key is indigo; the shift and the grain go blue (down) through white (the centre) to
   orange (up), as every knob with a centre does, feedback and swoop blue to red.
 
 ## Folder
@@ -892,7 +898,7 @@ gritty overtones.
 - **Aliasing:** the sine fold stays clean; the triangle adds some grit on bright material
   high up the drive (the numbers are in [Audio](#audio)).
 - In the resonator's loop, the folder folds the ringing on every trip.
-- LEDs: the key is magenta; the knobs go magenta to orange.
+- LEDs: the key is scarlet; the knobs go magenta to orange.
 
 ## Crusher
 <!-- summary: Fewer bits and a lower sample rate, down to 480 Hz, with a dive on every press. -->
@@ -1016,7 +1022,7 @@ SP-404MK2's Phaser and the Elektron Tonverk's Phase 98). Its second mode is a
   feedback from the end of the chain back into it. They cut three notches into the sound, the
   middle one on the sweep's frequency, one about two octaves below it and one about two above;
   a triangle LFO sweeps them up and down in octaves around the centre (knob 4).
-- LEDs: the key is violet; the knobs go violet to orange, the rate's synced half green to
+- LEDs: the key is blue; the knobs go violet to orange, the rate's synced half green to
   yellow.
 
 ### Frequency shifter
@@ -1028,7 +1034,7 @@ barber pole, a sweep that rises (or falls) and never ends; tens to hundreds of H
 metallic and bell-like. After Mutable Instruments' Warps.
 
 - **Switching:** hold SHIFT and press key 7, which selects the phaser as ever, then press key
-  7 again: the frequency shifter, the key azure. Every further press in the same hold switches
+  7 again: the frequency shifter, the key ice blue. Every further press in the same hold switches
   back and forth, however long you wait between them. Letting go of SHIFT, or pressing any
   other key, starts over: the next SHIFT + key 7 only selects. Holding key 7 and then pressing
   SHIFT (the latch) never switches. The key lights up fully for a moment on each switch. It
@@ -1077,7 +1083,7 @@ metallic and bell-like. After Mutable Instruments' Warps.
   signals 90 degrees apart; a carrier at the shift's frequency multiplies them, and their
   difference or sum is the sound moved up or down alone. The other direction stays about 40 dB
   down from 25 Hz to 19 kHz.
-- LEDs in frequency-shifter mode: the key is azure; the knobs go azure to orange, the shift's
+- LEDs in frequency-shifter mode: the key is ice blue; the knobs go azure to orange, the shift's
   synced half green to yellow, the direction blue, white and orange.
 
 ## Resonator
@@ -1157,7 +1163,7 @@ tape's dropouts.
   roller's. It brings the effect in over the first quarter of its knob, so it works without
   the wow.
 - **Tone** darkens what comes off the tape, not the untouched sound.
-- LEDs: the key is teal; the knobs go teal to purple.
+- LEDs: the key is red; the knobs go teal to purple.
 
 ## Tape stop
 <!-- summary: Winds the tape down to a standstill while you hold the key, and spins it back up when you let go. -->
@@ -1191,7 +1197,7 @@ up when you let go.
   latched tape stop, or a scene that latches one, keeps the input/loop mix silent, and the
   sends get nothing new, until it's unlatched. Page 2's Mix and Level stay on while it spins
   up after you let go.
-- LEDs: the key is amber; the knobs go amber to red.
+- LEDs: the key is rose; the knobs go amber to red.
 
 ## Delay
 <!-- summary: Echoes in time with the tempo, with random events and shimmer. They keep ringing after you let go. -->
@@ -1242,7 +1248,7 @@ White key 13. From a room to a long wash; the tail rings on after you let go.
 - Its first diffusion moves a little all the time, as in Mutable Instruments' Clouds and
   Elements, so the same hit rings a little differently each time: a smooth tail rather than a
   metallic one.
-- LEDs: the key is blue; the knobs go light blue to purple. On page 2, knob 4's LED shows
+- LEDs: the key is teal; the knobs go light blue to purple. On page 2, knob 4's LED shows
   the room coming back (see [Page 2](#page-2)).
 
 ## Chaos key
@@ -1282,7 +1288,7 @@ latch, part of scenes and morphs. It has no page 2: a knob press does nothing.
 - Effects that react to coming on do so each time chaos lets them back in: the freezer
   grabs, the tape stop stops, the slicer attacks. A latched tape stop under chaos makes
   random stops.
-- LEDs: the key is rose; the knobs go light blue to rose.
+- LEDs: the key is magenta; the knobs go light blue to rose.
 
 ## Finalizer
 <!-- summary: A master section on key 15: input and drive, a 3-band EQ, compression and width, and a limiter that makes it loud. -->
