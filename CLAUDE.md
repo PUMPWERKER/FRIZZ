@@ -414,8 +414,8 @@ anything else about the chip ([`firmware/twin/README.md`](firmware/twin/README.m
 
 ## The audio callback is CPU-bound
 
-The callback has 0.5 ms per 24-sample block. Idle it uses ~34 %, a loop with every effect
-~72 % on average and ~82 % at worst; only the bench's page-2 extreme (all 13 effects, page 2
+The callback has 0.5 ms per 24-sample block. Idle it uses ~29 %, a loop with every effect
+~73 % on average and ~80 % at worst (~81 % and ~88 % with every finalizer module working); only the bench's page-2 extreme (all 13 effects, page 2
 off its defaults) goes past 100 % and crackles (#21, settled by the user for 1.0). Effects that are off must stay
 cheap (`FxGate::Asleep`). A change that only shifts the memory layout has made it crackle on
 the device (b5c658c) while the host stayed bit-identical, so suspect the CPU when crackles
