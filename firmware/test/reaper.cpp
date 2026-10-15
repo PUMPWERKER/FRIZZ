@@ -33,8 +33,9 @@ int Reaper(const std::string& args, std::string& out, int limit,
 }
 
 /** The tool on ids with the jack wired out (A) or not at all: each case's line, the summary's.
- *  A case that failed on timing alone with the twin behind isn't judged (ptytwin.h's
- *  Unjudged()), said so; a run that failed so behind runs once more (Twice()) */
+ *  A run that failed with the twin behind, or left a case unjudged (failed on timing alone so
+ *  behind, ptytwin.h's Unjudged()), runs once more (Twice()); unjudged again, it fails
+ *  (NotJudged()) */
 void Run(const std::string& name, bool out_wired, const std::string& ids, const std::vector<std::string>& lines,
          int exit_code, const std::vector<std::pair<std::string, std::string>>& env = {}, int limit = 170)
 {
@@ -74,10 +75,10 @@ void Run(const std::string& name, bool out_wired, const std::string& ids, const 
         printf("%s: %ld s, the twin up to %ld ms behind\n", name.c_str(),
                long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()), lag);
         unjudged = Unjudged(out);
-        return exited() && says();
+        return exited() && says() && unjudged.empty();
     });
-    for (const std::string& id : unjudged)
-        printf("%s: %s not judged, the twin %ld ms behind the wall clock\n", name.c_str(), id.c_str(), lag);
+    for (const std::string& line : NotJudged(name, out))
+        Check(false, line.c_str());
     Check(exited(), (name + ": exit " + std::to_string(rc) + ", not " + std::to_string(exit_code)).c_str());
     for (const std::string& line : lines)
         if (wanted(line))

@@ -1956,6 +1956,9 @@ def main():
     print(text)
     if timing_only:
         print("failed on timing alone: %s" % ",".join(timing_only))
+    if midiport.LATE[0]:
+        # this computer's part in the timing: a tick sent late, the next ones close behind it
+        print("the clock from here: sent up to %.1f ms late" % (midiport.LATE[0] * 1000))
     if a.out:
         with open(a.out, "w") as out:
             out.write(text)
