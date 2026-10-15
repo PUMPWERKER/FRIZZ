@@ -351,7 +351,7 @@ class LoopTransfer
 {
 public:
     /** send: an answer's bytes after 0x78 (MidiControl::Reply's); log: a job's begin (what, the
-     *  slot's id) and end (0x80 | its status, DETAIL), or null; flags: a FRIZZ slot's SLOT flags
+     *  slot's id) and end (0x80 | its status, DETAIL), or null; flags: a slot's SLOT flags
      *  1 and 2 (it plays, it's ready, LoopControls'), or null */
     void Init(loopxfer::Intake* intake, LoopLoader* loader, loopxfer::Mem* mem, FATFS* fs, uint32_t (*ms)(),
               void (*send)(const uint8_t* d, size_t n), void (*log)(uint8_t what, uint16_t value),
@@ -415,6 +415,11 @@ public:
         if (!ans_len_ && in_->TakeRequest(q))
             Handle(q, now);
         const bool card = e.card && !e.lent && !e.loading && !e.card_busy;
+        // a count goes on over a load (it only reads), not over a pass that may change the
+        // FAT (5.4): from the start again
+        if (!e.card || e.lent || e.card_busy || !fs_->fs_type || Open() || unlink_
+            || loader_->GetState() == LoopLoader::WRITING)
+            count_sector_ = count_free_ = 0;
         if (card && unlink_)
         {
             f_unlink(kTmp);
@@ -426,16 +431,16 @@ public:
             CountStep();
         if (job_ == WRITE && phase_ == RUNNING && now - heard_ms_ >= kTimeoutMs)
             End(TIMED_OUT, 0, false);
-        Acks(now);
     }
 
     /** The pass's messages, from the play page's one answer a pass (NormalPage::Remote): an
-     *  ack, which takes no answer's place, then the answer; true if one went */
+     *  ack, which takes no answer's place, then the answer; true if one went. The ack is made
+     *  here, so NEXT and DROPS are as they stand when it goes, not a pass of the page before */
     bool Send()
     {
-        if (ack_len_)
-            send_(ack_, ack_len_);
-        ack_len_ = 0;
+        uint8_t ack[9];
+        if (Ack(ms_(), ack))
+            send_(ack, sizeof ack);
         const bool answer = ans_len_ != 0;
         if (answer)
             send_(ans_, ans_len_);
@@ -651,7 +656,7 @@ private:
             n = Put7(d, n, s.beats, 2);
             n = Put7(d, n, s.result == loops::EMPTY ? 0 : s.size, 4);
             d[n++] = s.name_len;
-            const uint8_t more = flags_ && Frizz(a[0], a[1]) ? flags_(a[0] * loops::kSlots + a[1]) : 0;
+            const uint8_t more = flags_ ? flags_(a[0] * loops::kSlots + a[1]) : 0;
             d[n++] = static_cast<uint8_t>((s.name_cut ? 1 : 0) | more << 1);
             return OK;
         }
@@ -1017,13 +1022,18 @@ private:
         char path[LoopLoader::kPathLen];
         loader_->SlotPath(path, bank_, slot_);
         FILINFO info;
-        const bool there = f_stat(path, &info) == FR_OK;
+        FRESULT r = f_stat(path, &info);
+        const bool there = r == FR_OK;
         if (there && !replace_)
         {
             End(EXISTS, 0, true);
             return;
         }
-        FRESULT r = there ? f_unlink(path) : FR_OK;
+        // a check that failed is a card error, not "no file" (3.9)
+        if (there)
+            r = f_unlink(path);
+        else if (r == FR_NO_FILE)
+            r = FR_OK;
         if (r == FR_OK)
             r = f_rename(kTmp, path);
         if (r != FR_OK)
@@ -1081,12 +1091,10 @@ private:
 
     /** The write's ack for this pass, if one is due (3.7): what it took (NEXT) or dropped
      *  moved, a repeat came, a pause began (and every kAckEveryMs of it) or ended, FRIZZ ended
-     *  it; else a stale app's NO_TRANSFER, every kAckEveryMs at most */
-    LOOP_LOADER_ONCE void Acks(uint32_t now)
+     *  it; else a stale app's NO_TRANSFER, every kAckEveryMs at most. True if one's due, into d */
+    LOOP_LOADER_ONCE bool Ack(uint32_t now, uint8_t* d)
     {
         using namespace loopxfer;
-        if (ack_len_)
-            return;
         uint8_t st = 0xFF, tid = tid_, drops = in_->Drops();
         uint32_t next = next_;
         if (end_ack_)
@@ -1113,20 +1121,19 @@ private:
             stale_ms_ = now;
         }
         if (st == 0xFF)
-            return;
+            return false;
         if (st != NO_TRANSFER)
         {
             acked_next_ = next;
             acked_drops_ = drops;
         }
-        uint8_t* d = ack_;
         d[0] = CHUNK;
         d[1] = 0;
         d[2] = st;
         d[3] = tid;
         Put7(d, 4, next, 4);
         d[8] = drops;
-        ack_len_ = 9;
+        return true;
     }
 
     loopxfer::Intake* in_ = nullptr;
@@ -1139,9 +1146,8 @@ private:
     uint8_t (*flags_)(int) = nullptr;
     loopxfer::Env env_ = {};
 
-    // the answer waiting, the ack; the request remembered (1.5)
+    // the answer waiting; the request remembered (1.5)
     uint8_t ans_[40] = {}, ans_len_ = 0;
-    uint8_t ack_[9] = {}, ack_len_ = 0;
     bool remembered_ = false;
     uint8_t mem_op_ = 0, mem_seq_ = 0, mem_len_ = 0, mem_ans_[8] = {};
     uint8_t detail_out_ = 0;

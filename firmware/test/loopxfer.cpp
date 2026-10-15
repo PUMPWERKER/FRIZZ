@@ -6,9 +6,11 @@
 //    what loopxfer.py vectors writes (8.1);
 //  - what the vectors don't reach (8.2): COPY's TOO_LONG, the fragment check (a file in 300
 //    fragments), a power cut after every name change of a write, a copy and a swap with the
-//    boot after it (whole files only), no FatFs call while a load's DMA has the card, the free
-//    space counted a FAT sector a pass, and after every case that only the allowed names
-//    changed: /FRIZZ's slots and temp files, never /TAPE, the root or FRIZZ's other files.
+//    boot after it (whole files only), 3.9 step 4's check of the slot failing (CARD_ERROR with
+//    its FRESULT), no FatFs call while a load's DMA has the card, the free space counted a FAT
+//    sector a pass (paused by a load, counted again after a save), and after every case that
+//    only the allowed names changed: /FRIZZ's slots and temp files, never /TAPE, the root or
+//    FRIZZ's other files.
 // Exits 0 when everything passes. Run by unit.sh loopxfer.
 // unit includes: loopxfer
 #include <cstdio>
@@ -787,6 +789,33 @@ static void TestCardErrors()
     }
 }
 
+/** 3.9's step 4: the slot's check failing is CARD_ERROR with its FRESULT, the old file kept */
+static void TestCheckError()
+{
+    NewCard(Base());
+    const auto before = card.files;
+    Frizz f;
+    Boot(f);
+    App app{f};
+    const std::string fresh = Wav(321, 11);
+    const uint8_t tid = app.Write(0, 0, fresh, kReplace, false);
+    card.stat_fails = true;
+    std::vector<uint8_t> e = {tid};
+    const auto crc = App::N(Crc(fresh), 5);
+    e.insert(e.end(), crc.begin(), crc.end());
+    const uint8_t ended = app.Ask(WRITE_END, e);
+    std::vector<std::vector<uint8_t>> out;
+    f.Settle(out);
+    uint8_t phase, result;
+    app.Job(phase, result);
+    const uint8_t detail = app.last[20];
+    printf("      WRITE_END %u, phase %u, result %u, detail %u\n", ended, phase, result, detail);
+    Check(tid && ended == OK && !card.stat_fails && phase == 5 && result == CARD_ERROR && detail == FR_DISK_ERR
+              && card.files.at("/FRIZZ/a1.wav") == before.at("/FRIZZ/a1.wav") && !card.files.count(kTmp),
+          "card error: the slot's check before the rename failing: CARD_ERROR with its FRESULT, the old "
+          "file kept, xfer.tmp deleted");
+}
+
 /** A load's DMA in flight: no FatFs call from the transfer meanwhile (it pauses for the load) */
 static void TestLoadInFlight()
 {
@@ -831,6 +860,47 @@ static void TestFreeCount()
     App app{f};
     const uint32_t kb = (app.Ask(STATUS), Get7(app.last.data() + 2, 4));
     Check(kb == card.Free() * 4 && (app.last[0] & 64), "free space: STATUS says it, in KB");
+
+    // a save (card_busy) changing the FAT in the middle of a count: counted again from the start
+    NewCard(Base());
+    card.fsinfo = false;
+    card.clusters = 1000;
+    Frizz g;
+    g.Boot();
+    g.Pass();
+    g.Pass();
+    g.env.card_busy = true;
+    card.files["/FRIZZ/frizz_master.txt"] = std::string(300 * 4096, 'x'); // 300 clusters
+    g.Pass();
+    g.env.card_busy = false;
+    passes = 0;
+    while (fs.free_clst > fs.n_fatent - 2 && passes < 100)
+    {
+        g.Pass();
+        passes++;
+    }
+    printf("      counted %u free in %d passes after the save, the card %u\n", fs.free_clst, passes, card.Free());
+    Check(fs.free_clst == card.Free() && passes == (1002 + 127) / 128,
+          "free space: a save in the middle of the count: counted again from the FAT's start, as the card is");
+
+    // loads (the env's loading, every other pass) only pause it: it reads, the FAT stays
+    NewCard(Base());
+    card.fsinfo = false;
+    card.clusters = 1000;
+    Frizz h;
+    h.Boot();
+    passes = 0;
+    int counting = 0;
+    while (fs.free_clst > fs.n_fatent - 2 && passes < 100)
+    {
+        h.env.loading = passes % 2 == 1;
+        counting += !h.env.loading;
+        h.Pass();
+        passes++;
+    }
+    h.env.loading = false;
+    Check(fs.free_clst == card.Free() && counting == (1002 + 127) / 128,
+          "free space: loads between the count's passes only pause it: (1002 + 127) / 128 passes counting");
 }
 
 int main()
@@ -840,6 +910,7 @@ int main()
     TestFragments();
     TestPowerCuts();
     TestCardErrors();
+    TestCheckError();
     TestLoadInFlight();
     TestFreeCount();
     return Finish();
