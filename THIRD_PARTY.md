@@ -62,7 +62,7 @@ In TEMPO and WAVE:
   compilation: the firmware builds against pristine upstream, but its MIDI output timing won't
   match the released firmware. Keep the vendored file.
 
-FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with eight changes:
+FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with nine changes:
 - `src/usbd/usbd_desc.c` names the USB product "FrizZ".
 - `src/hid/midi_parser.cpp` follows MIDI 1.0 where WAVE's didn't:
   - A real-time byte (a clock tick, 0xF8-0xFF) inside a SysEx or another message is passed on,
@@ -103,12 +103,23 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with eight changes:
   match like IDLE, once the DMA has the byte. Before, a tick followed closely by other bytes
   reached the parser only after them, 0.32 ms late a byte (#322). Listening (`DmaListenStart`)
   is MIDI's alone in FRIZZ.
+- `src/per/uart.cpp` also hands over at each half of the listener's 256-byte ring, the DMA's
+  half and full transfer: WAVE turned DMA1 Stream 5's interrupt off (`HAL_NVIC_DisableIRQ` in
+  `DmaListenStart`, not in libDaisy itself), so a line that never paused for a byte's time and
+  carried no tick wrapped the ring, more than 256 bytes and the laps were lost (#356).
+  `DmaListenStart` enables it with only the half and full transfer (TE and DME off: HAL's
+  `UART_DMAError` would end the reception), and `DMA1_Stream5_IRQHandler` takes them while
+  listening by the stream's own flags, not HAL's handler, which skips them once
+  `dma_active_peripheral_` is -1 (after a DMA transmit, as WAVE's MIDI out made: the likely
+  reason WAVE had it off, the interrupt pending for ever). FRIZZ sends the jack's bytes itself
+  (`MidiClock::TrsPut`), no DMA transmit. Same priority as the USART's interrupt (0), so the two
+  never run into each other.
 
 Its prebuilt `build/libdaisy.a` is WAVE's with only the objects of those changes rebuilt:
 `usbd_desc.o`, `midi_parser.o`, `usb_midi.o`, `usbd_conf.o`, `fatfs.o`, `system.o` (twice, the
 second time without the handlers: from the source before, it disassembled as the archive's),
 `usbd_cdc.o` (whose code changes with `usbd_conf.h`'s macro; of the other objects that include
-it none does) and `uart.o` (from the source before #322, it disassembled as the archive's). They were built with GCC 10.3 and libDaisy's own flags (`make
+it none does) and `uart.o` (from the source before #322, and again before #356, it disassembled as the archive's). They were built with GCC 10.3 and libDaisy's own flags (`make
 build/src/hid/midi_parser.o` in its folder, then `arm-none-eabi-ar r build/libdaisy.a
 build/src/hid/midi_parser.o`; delete the object first to rebuild it, `make -B` fails on the
 `build` folder). The loose objects in `build/src/` stay WAVE's: only the archive is linked.

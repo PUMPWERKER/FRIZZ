@@ -112,6 +112,11 @@ struct Arrival
 };
 std::mutex arrivals_mutex;
 std::deque<Arrival> arrivals;
+// The jack's, apart: a byte every 0.32 ms at the most, as the cable carries them (31250 baud),
+// so a burst the tool wrote at once comes over a while, not into one block (#356), and the USB
+// bytes sent meanwhile don't wait behind it
+std::deque<Arrival> trs_arrivals;
+const double kTrsByteMs = .32;
 std::atomic<bool> reading{false};
 
 /** Reads what the suite sends as it comes, timed: a twin that fell behind (all.sh's load) still
@@ -119,6 +124,7 @@ std::atomic<bool> reading{false};
  *  release would fall into one debounce */
 void Reader(std::chrono::steady_clock::time_point start)
 {
+    double trs_free = 0.; // when the jack's line is free for the next byte, ms
     while (reading)
     {
         pollfd fds[2] = {{usb.fd, POLLIN, 0}, {trs.fd, POLLIN, 0}}; // one < 0: not polled
@@ -135,7 +141,13 @@ void Reader(std::chrono::steady_clock::time_point start)
             {
                 std::lock_guard<std::mutex> lock(arrivals_mutex);
                 for (ssize_t i = 0; i < n; i++)
-                    arrivals.push_back({ms, p == 0, buf[i]});
+                    if (p == 0)
+                        arrivals.push_back({ms, true, buf[i]});
+                    else
+                    {
+                        trs_free = std::max(trs_free, static_cast<double>(ms)) + kTrsByteMs;
+                        trs_arrivals.push_back({static_cast<long>(trs_free), false, buf[i]});
+                    }
             }
         }
     }
@@ -218,6 +230,12 @@ void Pump(long ms)
                 ToTwinUsb(a.byte);
             else if (trs_in)
                 Midi(a.byte);
+        }
+        while (!trs_arrivals.empty() && trs_arrivals.front().ms <= ms)
+        {
+            if (trs_in)
+                Midi(trs_arrivals.front().byte);
+            trs_arrivals.pop_front();
         }
     }
     FromTwin();
@@ -368,6 +386,7 @@ int Exec(const std::string& cmd, std::string& out, int limit,
     lag = 0;
     const auto start = std::chrono::steady_clock::now();
     arrivals.clear();
+    trs_arrivals.clear();
     reading = true;
     std::thread reader(Reader, start);
     const uint32_t twin_start = NowMs();
@@ -438,7 +457,13 @@ int Exec(const std::string& cmd, std::string& out, int limit,
                 arrivals.push_back({end, p == 0, buf[i]});
         }
     }
-    while (long(NowMs() - twin_start) <= end)
+    long last = end; // and the jack's bytes still on the line
+    {
+        std::lock_guard<std::mutex> lock(arrivals_mutex);
+        if (!trs_arrivals.empty())
+            last = std::max(last, trs_arrivals.back().ms);
+    }
+    while (long(NowMs() - twin_start) <= last)
         step();
     audio.Close();
     char buf[512];
