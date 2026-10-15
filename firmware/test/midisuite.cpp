@@ -121,7 +121,7 @@ int main()
     // effect channels four of them)
     const std::vector<std::vector<std::string>> both = {
         {"clock-trs", "usb-late", "sources-usb"}, {"sources-trs"}, {"transport-trs", "start-free"},
-        {"start-spp"}, {"factor"}, {"tick-tail"}, {"out-idle", "out-loop", "out-pass"}, {"out-factor", "out-knobs"},
+        {"start-spp"}, {"factor"}, {"tick-tail"}, {"out-idle", "out-loop", "out-pass"}, {"out-factor", "out-knobs"}, {"out-fin-delay"},
         {"loop-drift"}, {"out-x2"}, {"cc-channels", "rpn"},
         {"cc-global", "cc-global-trs", "block-trs", "cc-burst-trs", "shifter-page", "chaos-cc"}, {"morph-back", "morph-hold"}, {"morph-sequences"},
         {"feedback", "no-double", "sysex-thru", "sysex-cut"}, {"input-cc"}};
@@ -168,6 +168,42 @@ int main()
               "interrupted: Ctrl-C in a case stops the run, things put back, exit 130");
         if (rc != 130)
             printf("exit %d\n%s\n", rc, out.c_str());
+    }});
+    // out-fin-delay's spans (span_offsets, #386): FRIZZ's clock 200 ppm off this computer's,
+    // jitter, and the capture's own trend within the first span. With Loud back at 0 the last
+    // span is where the first was, within the case's 0.5 ms (a period from span 0 alone put it
+    // 0.3-0.5 ms off); one left 1 ms late is caught; the delay reads 1 ms
+    cases.push_back({"fin-delay-fit", [] {
+        char dir[] = "/tmp/frizz-fin-delay-XXXXXX";
+        if (!mkdtemp(dir))
+        {
+            Check(false, "fin-delay-fit: a temporary directory");
+            return;
+        }
+        tmp_dir = dir;
+        std::string out;
+        const int rc = Python(R"(
+import random, midisuite
+P = 60. / (120 * 24) * (1 + 200e-6)
+def spans(delays, seed):
+    rng = random.Random(seed)
+    at = []
+    for n in range(700):
+        t = n * P
+        at.append(t + delays[0 if t < 5 else 1 if t < 10 else 2] + (.0001 - .00005 * t if t < 5 else 0.)
+                  + rng.gauss(0, .0002))
+    return [[t for t in at if a <= t < b] for a, b in ((.5, 4.5), (5.5, 9.5), (10.5, 14.))]
+for seed in range(5):
+    _, (a, d, z) = midisuite.span_offsets(spans((0, .001, 0), seed))
+    _, (_, _, stuck) = midisuite.span_offsets(spans((0, .001, .001), seed))
+    print("delay %.2f back %.2f stuck %.2f" % ((d - (a + z) / 2) * 1000, z * 1000, stuck * 1000),
+          abs(d - (a + z) / 2 - .001) < .0003 and abs(z) < .0005 and stuck > .0005)
+)", out);
+        std::system(("rm -rf '" + tmp_dir + "'").c_str());
+        Check(rc == 0 && Has(out, "True") && !Has(out, "False"),
+              "fin-delay-fit: Loud back at 0 is where it was through drift and a wander, one left 1 ms late isn't");
+        if (rc != 0 || Has(out, "False"))
+            printf("%s\n", out.c_str());
     }});
     // the processes mostly wait on the wall clock: all at once, not a core each
     setenv("CASE_JOBS", "16", 0);
