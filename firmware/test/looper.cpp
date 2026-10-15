@@ -1,8 +1,8 @@
 // looper.cpp: checks the looper (Looper.h) on the host, without MIDI clock: a free recording
 // plays back what was recorded at its length, play / pause, erase, the speed ladder and the
 // refused quantized record, a glide that lands exactly on its speed, memory that wasn't cleared at
-// boot sounding the same as cleared, and the soft limit on what's written. Exits 0 when everything
-// passes. Run by unit.sh looper.
+// boot sounding the same as cleared, the soft limit on what's written, and a switch while
+// another's fade-out runs (#318). Exits 0 when everything passes. Run by unit.sh looper.
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -606,6 +606,79 @@ static void TestSoftLimit()
     Check(fabsf(peak - .5f) < .001f && worst < .001f, "after a loud recording: the next as it came");
 }
 
+/** Loops from the card (Switch), each a level held, its head again after its end */
+static const size_t kShort = 192; // 4 ms
+static int16_t loop_a[(kShort + kXfadeFrames) * 2], loop_b[(kShort + kXfadeFrames) * 2],
+    loop_c[(kShort + kXfadeFrames) * 2];
+static void Level(int16_t* loop, float v)
+{
+    for (size_t i = 0; i < (kShort + kXfadeFrames) * 2; i++)
+        loop[i] = static_cast<int16_t>(v * 32767.f);
+}
+static float last_l = 0.f;
+/** The largest step between two samples (left) over blocks, from the last one before */
+static float Steps(size_t blocks)
+{
+    float in[kBlock] = {}, out_l[kBlock], out_r[kBlock], worst = 0.f;
+    for (size_t b = 0; b < blocks; b++)
+    {
+        looper.Process(in, in, out_l, out_r, kBlock);
+        for (size_t i = 0; i < kBlock; i++)
+        {
+            worst = std::max(worst, fabsf(out_l[i] - last_l));
+            last_l = out_l[i];
+        }
+    }
+    return worst;
+}
+
+/** #318: a switch while the other voice still fades (a switch's fade-out, the crossfader
+ *  held or let go) ends that fade early but smoothly, and the loop it leaves fades out from
+ *  the gain it's heard at: no step. A hard step here is ~.1-.3 of these levels; the tail's
+ *  2 ms fade steps under .01 */
+static void TestSwitchDuringFade()
+{
+    looper.Init(mem, &midi_clock);
+    Level(loop_a, .5f);
+    Level(loop_b, -.4f);
+    Level(loop_c, .25f);
+    looper.Switch(loop_a, kShort, 0, Looper::kSwitchNow);
+    Steps(300);
+    // at once, then at the loop point 192 frames later, 40 % into the first's fade
+    uint32_t was = looper.Switches();
+    looper.Switch(loop_b, kShort, 0, Looper::kSwitchNow);
+    float step = Steps(1);
+    looper.Switch(loop_c, kShort, 0, looper.Wraps() + 1);
+    step = std::max(step, Steps(60));
+    printf("      at the loop point in a switch's fade: %u switches, largest step %.4f\n", looper.Switches() - was, step);
+    Check(looper.Switches() - was == 2 && step < .01f, "a switch at the loop point within a switch's fade-out: no step");
+    // the crossfader held at the middle, and a switch at once
+    Steps(300);
+    looper.Switch(loop_a, kShort, 0, Looper::kSwitchFade);
+    Steps(2);
+    looper.Fade(.5f);
+    Steps(60);
+    was = looper.Switches();
+    looper.Switch(loop_b, kShort, 0, Looper::kSwitchNow);
+    step = Steps(60);
+    printf("      the crossfader held, a switch at once: %u switches, largest step %.4f\n", looper.Switches() - was, step);
+    Check(looper.Switches() - was == 1 && step < .01f, "a switch at once with the crossfader held: no step");
+    // the crossfader let go from the middle, and a switch at the loop point while it glides
+    Steps(300);
+    looper.Switch(loop_c, kShort, 0, Looper::kSwitchFade);
+    Steps(2);
+    looper.Fade(.5f);
+    Steps(60);
+    was = looper.Switches();
+    looper.EndFade(false);
+    step = Steps(1);
+    looper.Switch(loop_a, kShort, 0, looper.Wraps() + 1);
+    step = std::max(step, Steps(60));
+    printf("      the crossfader let go, a switch at the loop point: %u switches, largest step %.4f\n",
+           looper.Switches() - was, step);
+    Check(looper.Switches() - was == 1 && step < .01f, "a switch at the loop point while the crossfader glides home: no step");
+}
+
 int main()
 {
     TestRecordAndPlay();
@@ -618,5 +691,6 @@ int main()
     TestStandstill();
     TestUnclearedMemory();
     TestSoftLimit();
+    TestSwitchDuringFade();
     return Finish();
 }
