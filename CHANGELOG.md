@@ -123,6 +123,9 @@ what FRIZZ does.
   Mutable's Clouds and Elements, so the same hit rings a little differently each time instead of
   through the same diffusion. Its knobs, decay, level and freeze are as they were. See
   [Reverb](MANUAL.md#reverb).
+- **The reverb's tail wobbles less in pitch** (#313), as in Mutable's: the slow modulation in
+  its loop swings half as far as before (it was twice Mutable's), so a long tail sounds
+  steadier, with less of a chorus on held notes. Its knobs are as they were.
 
 ### Fixed
 
