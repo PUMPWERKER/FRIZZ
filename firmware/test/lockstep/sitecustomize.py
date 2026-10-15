@@ -82,8 +82,12 @@ def _install(addr):
             self.reads = 0  # time read since the last wait: a loop that spins on it
             self.up = set()
             self.twin_fds = set()
-            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self.sock.connect("\0" + addr[1:] if addr.startswith("@") else addr)
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.connect("\0" + addr[1:] if addr.startswith("@") else addr)
+            # the bare fd, which nothing closes but the process's end: a socket object would be
+            # closed when Python tears its modules down, and the twin would take that for the end
+            # while the process still runs
+            self.fd = sock.detach()
             self.buf = b""
             self.send("HELLO %d" % os.getpid())
             cmd, ms = self.readline().split()
@@ -102,11 +106,13 @@ def _install(addr):
             return BASE + self.ms / 1000.
 
         def send(self, line):
-            self.sock.sendall((line + "\n").encode())
+            data = (line + "\n").encode()
+            while data:
+                data = data[os.write(self.fd, data):]
 
         def readline(self):
             while b"\n" not in self.buf:
-                data = self.sock.recv(4096)
+                data = os.read(self.fd, 4096)
                 if not data:
                     return None
                 self.buf += data
@@ -130,12 +136,15 @@ def _install(addr):
                 else:
                     self.idle()
 
-        def register(self, deadline, fds=None, queue=None):
+        def register(self, deadline, fds=None, queue=None, off=True):
+            """A waiter for this thread, the thread off unless off is False: then the caller
+            takes it off (off()) once it has let go of what another may be waiting for"""
             w = Waiter(deadline, fds)
             if queue is not None:
                 queue.append(w)
             self.waiters.append(w)
-            self.off()
+            if off:
+                self.off()
             return w
 
         def wake(self, w, notified):
@@ -180,8 +189,13 @@ def _install(addr):
                     os._exit(75)
                 cmd, arg = line.split()
                 if cmd == "NOW":
+                    if not self.now_came.locked():
+                        # one at a time, the next only after IDLE: else this process said IDLE
+                        # while a thread of it ran, and its timing can't be trusted
+                        sys.stderr.write("lockstep: NOW %s before the round at %d ended\n" % (arg, self.ms))
+                        os._exit(70)
                     self.next_ms = int(arg)
-                    self.now_came.release()  # one at a time: the next only after IDLE
+                    self.now_came.release()
                 elif cmd == "UP":
                     with self.lock:
                         self.up.add(int(arg))
@@ -416,9 +430,13 @@ def _install(addr):
             if timeout is not None and timeout <= 0:
                 self._acquire_restore(self._release_save())
                 return False
+            # off only once the lock is let go: letting it go can hand it to a thread that waits
+            # for it, which runs then; off before, the process could say IDLE while that one runs
             with S.lock:
-                w = S.register(INF if timeout is None else S.now() + timeout, queue=self._waiters)
+                w = S.register(INF if timeout is None else S.now() + timeout, queue=self._waiters, off=False)
             state = self._release_save()
+            with S.lock:
+                S.off()
             notified = False
             try:
                 notified = S.block(w)

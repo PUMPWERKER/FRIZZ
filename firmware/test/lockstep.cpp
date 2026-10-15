@@ -150,6 +150,34 @@ at("join-timeout %s" % h2.is_alive())
         if (rc != 0 || !Has(out, want))
             printf("%s\n", out.c_str());
     }});
+    // a Condition's wait lets go of its lock, handing it to a thread that waits for it, which
+    // runs then: the process doesn't say IDLE before that. It did once, before its first wait:
+    // the twin went on to the wait's timeout while that thread still ran (here a real stall of
+    // 50 ms, the computer's) and was about to notify
+    cases.push_back({"handover", [] {
+        usb.Open();
+        std::string out;
+        const int rc = Piece(R"(
+import select, threading, time
+t0 = time.monotonic()
+cond = threading.Condition(threading.Lock())
+def other():
+    with cond:
+        select.select([], [], [], .05)
+        cond.notify()
+with cond:
+    b = threading.Thread(target=other)
+    b.start()
+    select.select([], [], [], .05)
+    got = cond.wait(.2)
+print("waited %s at %.1f" % (got, (time.monotonic() - t0) * 1000))
+b.join()
+)", out);
+        Check(rc == 0 && Has(out, "waited True at 0.0"),
+              "handover: a wait that hands its lock on is notified, the twin's time standing still meanwhile");
+        if (rc != 0 || !Has(out, "waited True at 0.0"))
+            printf("%s\n", out.c_str());
+    }});
     // a Python child takes the same clock: it starts at the parent's time, its sleep is the
     // twin's, and the parent's wait for it too
     cases.push_back({"child", [] {

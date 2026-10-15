@@ -13,6 +13,7 @@
 // open (remote.cpp: remote.py on usb alone, no TRS; usb_drop loses messages on the way). For a
 // check (NAME.cpp) that includes twin.h first.
 #pragma once
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -601,16 +602,27 @@ void TakeIn(long ms, double& trs_free)
     }
 }
 
-/** Whether process pid has ended (a zombie, or gone): its socket closes a little before */
+/** Whether process pid has ended, so its parent can take it (waitpid): a zombie, every thread
+ *  of it gone (a leader is one while the others still end, and waitpid doesn't take it yet),
+ *  or gone itself. Its socket closes a little before */
 bool Ended(pid_t pid)
 {
-    FILE* f = fopen(("/proc/" + std::to_string(pid) + "/stat").c_str(), "r");
+    const std::string proc = "/proc/" + std::to_string(pid);
+    FILE* f = fopen((proc + "/stat").c_str(), "r");
     if (!f)
         return true;
     char state = 0;
     const int got = fscanf(f, "%*d (%*[^)]) %c", &state);
     fclose(f);
-    return got != 1 || state == 'Z' || state == 'X';
+    if (got == 1 && state != 'Z' && state != 'X')
+        return false;
+    DIR* tasks = opendir((proc + "/task").c_str());
+    int n = 0;
+    while (tasks && readdir(tasks))
+        n++;
+    if (tasks)
+        closedir(tasks);
+    return n <= 3; // ., .. and the leader
 }
 
 /** Exec() on the twin's clock (lockstep, #388): CMD's Python processes keep their time by the
@@ -784,7 +796,7 @@ int ExecLockstep(const std::string& cmd, std::string& out, int limit,
             if (n <= 0)
             {
                 // ended: the twin goes on once it has, as what it did last is done then
-                for (int k = 0; k < 1000 && c->pid && !Ended(c->pid); k++)
+                for (int k = 0; k < 10000 && c->pid && !Ended(c->pid); k++)
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 if (waking == c->fd)
                     waking = -1;
