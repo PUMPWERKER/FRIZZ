@@ -373,7 +373,7 @@ semitones running on through a standstill into reverse (#174: the speed onto 0x 
 level with it, no click), the play fade back on 1 exactly after a pause (#168), the refused
 quantized record, and a switch while another's fade-out runs (#318: at the loop point within a
 switch's fade, at once with the crossfader held, at the loop point while it glides home), each
-without a step. `unit.sh tempo` checks the FX's tempo: tap tempo (`TapTempo.h`), how
+without a step, and the soft limit on a hot chord (#372: 220 + 330 Hz, no sidebands by FFT). `unit.sh tempo` checks the FX's tempo: tap tempo (`TapTempo.h`), how
 a loop's beats are fitted or guessed, the tempo clock locked to a loop (`TempoClock.h`: beat 1
 on the loop's start, counting down in reverse, standing still when paused, the tempo times the
 speed, a tap refitting the beats, the loop overriding MIDI clock), the clock factor on each
