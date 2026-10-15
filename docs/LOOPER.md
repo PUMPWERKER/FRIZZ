@@ -90,7 +90,7 @@ been quiet for a byte's time (IDLE), on every clock tick (0xF8: the USART's char
 them off, `THIRD_PARTY.md`). A tick then counts in the next audio block (0.5 ms) whatever
 follows it on the cable, and a line that never pauses loses nothing: before the halves, more
 than 256 bytes without a pause or a tick wrapped the ring, the laps lost (`midisuite.py
---cases cc-burst-trs`: 1356 bytes of CCs in one go, a knob in each 12). Before the
+--cases cc-burst-trs`: 1272 bytes of CCs in one go, a knob in each 12). Before the
 match, a tick waited for the bytes right behind it, 0.32 ms each or more (a Scarlett 18i20
 leaves gaps shorter than a byte between them: ~0.5 ms a byte). Measured with
 `tools/midisuite.py --cases tick-tail` (a clock in on TRS, passed on over USB): a 3-note chord

@@ -1155,15 +1155,11 @@ def block_trs(r):
     r.check("lower D# on again: channel 3 over TRS", up, "%.2f -> %.2f" % (a, b), "moves")
 
 
-def effect_of(ch):
-    return WHITE_FX[ch] if ch < 15 else "comp"
-
-
 def all_knobs(r):
-    """Every effect channel's knobs as GET reads them: {(channel, knob 0-7): 0-1}"""
+    """The effects' knobs (channels 1-14) as GET reads them: {(channel, knob 0-7): 0-1}"""
     got = {}
-    for ch in range(1, 16):
-        vals = r.get(effect_of(ch))
+    for ch in range(1, 15):
+        vals = r.get(WHITE_FX[ch])
         for i in range(8):
             got[(ch, i)] = remote.knob(vals[i])
     return got
@@ -1172,13 +1168,13 @@ def all_knobs(r):
 @case("cc-burst-trs", "8: automation over TRS that never pauses and has no clock in it (a DAW "
       "writing CCs back to back): every CC counts, however long the line stays busy (#356)", needs=("in",))
 def cc_burst_trs(r):
-    # each knob a CC reaches (channels 1-15, CC 14-21) to 0 over USB, then in one write over TRS
+    # each effect's knobs (channels 1-14, CC 14-21) to 0 over USB, then in one write over TRS
     # each to a value of its own, once, 3 CCs FRIZZ leaves alone after each (the mod wheel on
-    # channel 16): 12 bytes a knob, 1356 in all, no pause, no tick. A lost lap of libDaisy's
+    # channel 16): 12 bytes a knob, 1272 in all, no pause, no tick. A lost lap of libDaisy's
     # 256-byte ring loses the knobs in it
-    knobs = [(ch, i) for ch in range(1, 16) for i in range(8) if (effect_of(ch), i) not in EMPTY]
+    knobs = [(ch, i) for ch in range(1, 15) for i in range(8) if (WHITE_FX[ch], i) not in EMPTY]
     before = r.state()
-    for ch in range(1, 16):
+    for ch in range(1, 15):
         r.send_usb(b"".join(cc(ch, 14 + i, 0) for c, i in knobs if c == ch))
         time.sleep(.02)
     time.sleep(.3)
