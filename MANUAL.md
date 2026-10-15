@@ -873,7 +873,7 @@ gritty overtones.
 - **The fold:** past the fold point the signal is mirrored back, again and again as the
   drive rises, each fold adding harmonics. Drive is the folding: on loud material the folds
   start low on the knob, on quiet material higher up.
-- **Level:** at 1× a quiet sound comes out at its own level. Driven, a folder's output
+- **Level:** at 1× a quiet sound comes out at its own level, the bass too. Driven, a folder's output
   rises towards full scale whatever goes in, so the folder gets louder as you drive it, the
   more so on quiet material. Nothing evens that out by itself: page 2's Level and Mix are
   there for it.

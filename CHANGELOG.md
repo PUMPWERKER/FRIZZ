@@ -101,6 +101,11 @@ what FRIZZ does.
   clock out over USB keeps its time while FRIZZ reads the card (it could come up to 8 ms late
   while a cubbi loaded, #265). FrizZ asks the computer for 100 mA, where it asked for 160. See
   [MIDI out](MANUAL.md#midi-out).
+- **The folder keeps the bass** (white key 3): it cut everything below about 76 Hz, even with
+  the drive at off, 5 dB at 50 Hz and 9 dB at 30 Hz, so a latched folder took the weight out of
+  kicks and bass. Now 50 Hz comes through within half a dB, and turning Symmetry no longer
+  thumps on a quiet signal. With Symmetry up and a loud hit at medium drive, the bass a hit
+  pushes up rings out a little longer than before. See [Folder](MANUAL.md#folder).
 - **Effects that are off take less of the CPU:** the filter, the crusher, the shifter, wow &
   flutter and the flanger no longer keep running unheard while off; they start afresh when
   punched in, without a click. More headroom when only a few effects are on. A punched-in
