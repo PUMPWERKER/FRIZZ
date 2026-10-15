@@ -83,7 +83,9 @@ and pull requests.
 FRIZZ builds on the [CHOMPI open-source release](https://github.com/CHOMPI-Club/CHOMPI) by
 CHOMPI Club and was forked from its WAVE firmware. It runs on Electrosmith's Daisy platform
 (libDaisy, DaisySP), and several effects are ported from Bastl Instruments' Kastle 2 FX
-Wizard. Its USB audio and the card drive run on TinyUSB and build on lost-tty's
+Wizard. The reverb (Rings', with the smear of Clouds), the frequency shifter (after Warps), the
+filter's core and the safety limiter come from Émilie Gillet's Mutable Instruments modules (MIT).
+Its USB audio and the card drive run on TinyUSB and build on lost-tty's
 [MIXTAPE](https://github.com/lost-tty/CHOMPI), USB audio for TAPE (MIT).
 [`THIRD_PARTY.md`](THIRD_PARTY.md) has the full list.
 

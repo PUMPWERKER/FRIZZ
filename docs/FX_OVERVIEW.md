@@ -55,10 +55,11 @@ drive the VU LEDs.
   Level on the return. The resonator's comb loops from after the phaser back to after the
   freezer. The input and output gains and the safety limiter are TAPE's (its Volume Engine in
   `DSPEngine.h`), so the levels match the hardware as TAPE tuned them; the limiter is TAPE's
-  master compressor at its lowest setting, which is what FRIZZ's own knob for it started at.
+  master compressor at its lowest setting, which is what FRIZZ's own master compressor (key 15
+  until 1.5) started at.
   Each effect is a punch-in key, and the keys run in this order left to right, the chaos key
   (`FxChaos.h`, no sound of its own: it gates the latched effects and scrambles the loop)
-  after the sends and before the compressor. (A randomizer that played the inserts on gate
+  after the sends and before the finalizer. (A randomizer that played the inserts on gate
   patterns sat on the last key until it was removed.)
 
 ## Unused effects in the vendored DaisySP
@@ -90,7 +91,7 @@ their keys' order left to right (see the FRIZZ chain above). Their controls are 
 | 4th white | Crusher (insert) | TEMPO's sample-rate reducer, plus FRIZZ's own bit quantizer and tone lowpass, and the XOR and trigger dive from Bastl Instruments' Kastle 2 FX Wizard crusher (MIT) |
 | 5th white | DJ filter (insert) | WAVE's knob law and cutoff ranges on stmlib's state-variable filter (MIT), one a channel, lowpass or highpass (#304; WAVE's was `DJFilter.h` + `BasicMMF.h`, a lowpass and a highpass in series); the coefficients retuned every 8 samples; the triangle LFO follows WAVE's filter LFO but is synced by `TempoClock.h` |
 | 6th white | Flanger (insert) | Bastl Instruments' Kastle 2 FX Wizard flanger (MIT) |
-| 7th white | Phaser (insert) | FRIZZ's own (#68): six first-order allpass stages a channel with feedback, the coefficient retuned every 8 samples from a triangle LFO, free (the flanger's rate curve) or synced by `TempoClock.h` (the filter LFO's divisions) on one split knob; knobs after the SP-404MK2's Phaser and the Elektron Tonverk's Phase 98 |
+| 7th white | Phaser (insert) | FRIZZ's own (#68): six first-order allpass stages a channel with feedback, the coefficient retuned every 8 samples from a triangle LFO, free (the flanger's rate curve) or synced by `TempoClock.h` (the filter LFO's divisions) on one split knob; knobs after the SP-404MK2's Phaser and the Elektron Tonverk's Phase 98. Its second mode (SHIFT + the key twice, #306), a frequency shifter on the same knobs: Mutable Instruments' Warps' easter egg (MIT), two allpass chains 90 degrees apart (coefficients FRIZZ's own, fitted for 48 kHz) and a quadrature carrier, free or synced as the phaser's rate, with feedback through a soft limit and a lowpass |
 | 8th white | Resonator (comb loop from after the phaser back to after the freezer) | the feedback comb Bastl Instruments' Kastle 2 FX Wizard runs around every mode (MIT) |
 | 9th white | Slicer (insert) | Bastl Instruments' Kastle 2 FX Wizard slicer (MIT) |
 | 10th white | Wow & flutter (insert) | TAPE's `Warble.h` as knob 1, plus FRIZZ's own flutter, tone and stereo |
