@@ -302,6 +302,8 @@ void HAL_GPIO_Init(GPIO_TypeDef  *GPIOx, GPIO_InitTypeDef *GPIO_Init)
   *          This parameter can be one of GPIO_PIN_x where x can be (0..15).
   * @retval None
   */
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 void HAL_GPIO_DeInit(GPIO_TypeDef  *GPIOx, uint32_t GPIO_Pin)
 {
   uint32_t position = 0x00U;
@@ -365,6 +367,7 @@ void HAL_GPIO_DeInit(GPIO_TypeDef  *GPIOx, uint32_t GPIO_Pin)
     position++;
   }
 }
+#pragma GCC pop_options
 
 /**
   * @}

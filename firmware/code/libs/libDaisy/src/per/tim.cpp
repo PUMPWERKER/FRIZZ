@@ -89,6 +89,8 @@ static TimerHandle::Impl* get_tim_impl_from_instance(TIM_TypeDef* per_instance)
 
 // TIM functions
 
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 TimerHandle::Result TimerHandle::Impl::Init(const TimerHandle::Config& config)
 {
     const int tim_idx = int(config.periph);
@@ -143,6 +145,7 @@ TimerHandle::Result TimerHandle::Impl::Init(const TimerHandle::Config& config)
 
     return TimerHandle::Result::OK;
 }
+#pragma GCC pop_options
 
 TimerHandle::Result TimerHandle::Impl::DeInit()
 {
@@ -247,6 +250,8 @@ void TimerHandle::Impl::InternalCallback()
 // HAL Functions
 extern "C"
 {
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
     void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle)
     {
         TimerHandle::Impl* impl
@@ -321,6 +326,7 @@ extern "C"
             }
         }
     }
+#pragma GCC pop_options
 
     void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* tim_baseHandle)
     {
