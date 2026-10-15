@@ -120,7 +120,12 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with nine changes:
   battery (I2C), timer, SysTick or SD interrupts or the audio callback reach disassembles as
   before (`HAL_UART_IRQHandler`, `InternalCallback`, `HAL_DMA_IRQHandler`, the SAI's and the
   UART's DMA callbacks, `MidiParser::Parse` among them); an object where one of those changed
-  at `-Os` stays `-O2` (the PR's table, #323). The SD card's objects (`stm32h7xx_hal_sd`,
+  at `-Os` stays `-O2` (the PR's table, #323), but for five whose changed functions never run
+  per block or per event: `stm32h7xx_hal_rcc` and `rcc_ex` (the MIDI interrupt reaches them only
+  through a UART error's `HAL_UART_Init`), `UI.o` (the audio callback runs `UI::Process` only
+  while booting, before `MainLoop()`), `stm32h7xx_hal_qspi` (QSPI is memory-mapped with its
+  timeout off and no transfer is started, so its interrupt never fires) and `system.o` (only
+  `HardFault_Handler` changed). The SD card's objects (`stm32h7xx_hal_sd`,
   `ll_sdmmc`, `sdmmc`, `sd_diskio`, `bsp_sd_diskio`) stay `-O2` all of them: the GCC pin is
   about the card's communication. This changes compilation, not behaviour.
 

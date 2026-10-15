@@ -29,7 +29,9 @@ from every interrupt handler, the HAL's DMA callbacks and FRIZZ's own callbacks 
 callback, the LEDs' and the battery's) gave each libDaisy function that runs in an interrupt
 or per block; each object was rebuilt `-O2` and `-Os` with libDaisy's flags and compared
 function by function. An object goes `-Os` whole when every such function of it comes out the
-same; where one changes, only its init functions do (a pragma), checked the same way.
+same, or changes only on a path that never runs per block or per event (an error's re-init, the
+boot, a fault: five objects, `THIRD_PARTY.md`); where one changes otherwise, only its init
+functions do (a pragma), checked the same way.
 
 | Change | Code |
 |---|---|
