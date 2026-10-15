@@ -43,7 +43,8 @@
  *
  *  The input level, output level and safety limiter are ported from TAPE's DSPEngine
  *  so the gains match the hardware the way TAPE tuned them. The limiter is TAPE's master
- *  compressor at its lowest setting, which is what FRIZZ's own knob for it started at.
+ *  compressor at its lowest setting, which is what FRIZZ's master compressor (the
+ *  finalizer's before #345) started at.
  */
 #pragma once
 #include "FrizzHot.h"

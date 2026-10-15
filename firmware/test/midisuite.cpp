@@ -1,7 +1,7 @@
 // midisuite.cpp: firmware/tools/midisuite.py against the virtual CHOMPI (twin/twin.h), as
 // remote.cpp does remote.py's: the twin's USB MIDI and its TRS jack each on a pseudo-terminal,
-// in place of the CHOMPI's ALSA node and the audio interface's, the twin at the wall clock's
-// pace. The jack is wired one way, the other or both, as the TRS adapter can be: the suite has
+// in place of the CHOMPI's ALSA node and the audio interface's, the suite on the twin's clock
+// (ptytwin.h's lockstep). The jack is wired one way, the other or both, as the TRS adapter can be: the suite has
 // to find that out, run what the wiring shows, and pass on the firmware as it is; what the
 // wiring can't show is a SKIP, never a FAIL. It checks the suite's logic, not the firmware's
 // timing (sync.cpp, midiout.cpp do that, the device the rest): --quick runs the long cases
@@ -83,8 +83,7 @@ void Run(const std::string& name, bool in, bool out_wired, const std::vector<std
     Twice(name, [&] {
         const auto t0 = std::chrono::steady_clock::now();
         rc = Suite("--quick -v --cases " + list, out, 55);
-        printf("%s: %ld s, the twin up to %ld ms behind\n", name.c_str(),
-               long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()), lag);
+        Took(name, t0);
         return exited() && Missing(out, ids, want).empty() && says() && Unjudged(out).empty();
     });
     for (const std::string& line : NotJudged(name, out))
@@ -214,11 +213,12 @@ for seed in range(5):
         if (rc != 0 || Has(out, "False"))
             printf("%s\n", out.c_str());
     }});
-    // judging under load (ptytwin.h): lag counts the tool's own clock sent late too (midiport.py's
-    // Clock, a late wake: the ticks behind it close), as its line says; a case left unjudged
-    // twice fails, naming it
+    // judging under load on the wall clock (FRIZZ_TWIN_CLOCK=0, ptytwin.h's ExecWall()): lag
+    // counts the tool's own clock sent late too (midiport.py's Clock, a late wake: the ticks
+    // behind it close), as its line says; a case left unjudged twice fails, naming it
     cases.push_back({"judging", [] {
         std::string out;
+        lockstep = false;
         usb.Open();
         Exec("python3 - <<'EOF'\n"
              "import time, midiport\n"
@@ -244,8 +244,9 @@ for seed in range(5):
         Check(NotJudged("both ways, tick-tail", "failed on timing alone: tick-tail\n").empty(),
               "judging: with the twin on time it was judged (its FAIL is the case's)");
     }});
-    // the processes mostly wait on the wall clock: all at once, not a core each
-    setenv("CASE_JOBS", "16", 0);
+    // on the wall clock the processes mostly wait: all at once; on the twin's, a core each
+    if (!lockstep)
+        setenv("CASE_JOBS", "16", 0);
     RunAllCases();
     return Finish();
 }
