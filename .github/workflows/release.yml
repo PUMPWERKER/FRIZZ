@@ -1,0 +1,90 @@
+# Release builds: on a pushed v* tag, builds FRIZZ.bin with the pinned GCC 10.3 and checks or
+# attaches it on the tag's GitHub release (CLAUDE.md, "Releases and the release test"):
+#
+# - the tag must be kFrizzVersion's (tools/builds.py's check_version: v1.5.0 is 1, 5, 0, 0,
+#   v1.5.0-beta.1 is 1, 5, 0, 1); another tag fails the build;
+# - a release for the tag (published or a draft, made by a session or by hand) with a FRIZZ.bin:
+#   that FRIZZ.bin must be the CI's byte for byte, the proof that the build is the tag's;
+#   a mismatch fails loudly;
+# - one without a FRIZZ.bin gets the CI's;
+# - no release yet: a draft one (a pre-release for a -beta.N tag) with FRIZZ.bin and its md5.
+#   Publishing it stays a person's step: the website only picks up published releases.
+#
+# The rolling `beta` tag doesn't match v* and isn't touched. Nothing here reaches a CHOMPI.
+name: Release build
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FRIZZ_NO_DEVICE: "1"
+
+jobs:
+  build:
+    name: Firmware (builds.py)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      md5: ${{ steps.build.outputs.md5 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The tag is kFrizzVersion's
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python3 -c 'import sys; sys.path.insert(0, "firmware/tools"); import builds; builds.check_version(sys.argv[1]); print(sys.argv[1], "is kFrizzVersion")' "$TAG"
+      - name: GCC 10.3 from the cache
+        id: gcc
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/opt/gcc-arm-none-eabi-10.3-2021.10
+          key: gcc-arm-none-eabi-10.3-2021.10-x86_64-linux-97dbb4f019ad1650b732faffcc881689cedc14e2b7ee863d390e0a41ef16c9a3
+      - name: GCC 10.3 from ARM
+        if: steps.gcc.outputs.cache-hit != 'true'
+        run: .github/scripts/gcc-arm.sh
+      - name: builds.py
+        id: build
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          firmware/tools/builds.py | tee builds.out
+          .github/scripts/build-summary.py "$TAG ($GITHUB_SHA)" < builds.out >> "$GITHUB_STEP_SUMMARY"
+          echo "md5=$(md5sum firmware/code/src/build/FRIZZ.bin | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Keep the builds
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: FRIZZ-${{ github.ref_name }}
+          path: |
+            firmware/code/src/build/FRIZZ.bin
+            firmware/code/src/build-bench/FRIZZ-bench.bin
+          retention-days: 14
+
+  release:
+    name: The tag's release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: FRIZZ-${{ github.ref_name }}
+          path: builds
+      - name: Check or attach FRIZZ.bin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          MD5: ${{ needs.build.outputs.md5 }}
+        run: .github/scripts/release.sh builds/build/FRIZZ.bin
