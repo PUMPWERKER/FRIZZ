@@ -1139,18 +1139,25 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     json.replace(cut, json.find(',', cut) - cut, "0.25");
     const size_t latched = json.find("\"latched\": [") + 12;
     json.insert(latched, "\"filter\"");
+    // and the phaser as the frequency shifter (#306)
+    const size_t modes = json.find("\"modes\": [") + 10;
+    Check(modes > 10 && json.compare(modes, 1, "]") == 0, "remote: scene get says no effect is in its second mode");
+    json.insert(modes, "\"phaser\"");
     Write(mine, json);
     rc = Remote({"scene", "put", "2", mine, "--save"}, out);
     RunMs(2500);
     const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
-    Check(rc == 0 && Has(scenes, "scene 2\n") && Has(scenes, "filter 1 250"),
-          "remote: scene put stores it in slot 2, on the card");
+    const size_t phaser = scenes.find("phaser ", scenes.find("scene 2\n"));
+    Check(rc == 0 && Has(scenes, "scene 2\n") && Has(scenes, "filter 1 250") && phaser != std::string::npos
+              && scenes.compare(scenes.find('\n', phaser) - 2, 2, " 1") == 0,
+          "remote: scene put stores it in slot 2, on the card, the phaser's mode its ninth value");
     if (rc != 0)
         printf("%s\n", out.c_str());
     rc = Remote({"scene", "get", "2", back}, out);
     json = Read(back);
-    Check(rc == 0 && fabsf(JsonParam(json, "filter", 0) - .25f) < 1e-4f && Has(json, "\"filter\"\n"),
-          "remote: and scene get reads it back, the same within 14 bits");
+    Check(rc == 0 && fabsf(JsonParam(json, "filter", 0) - .25f) < 1e-4f && Has(json, "\"filter\"\n")
+              && Has(json, "\"modes\": [\n  \"phaser\"\n ]"),
+          "remote: and scene get reads it back, the same within 14 bits, the phaser's mode too");
     rc = Remote({"scene", "put", "0", mine, "--save"}, out);
     Check(rc != 0 && Has(out, "refused"), "remote: never into the blank scene");
     Check(fabsf(JsonParam(json, "shifter", 4) - 1.f) < 1e-4f,

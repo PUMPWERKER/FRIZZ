@@ -1060,8 +1060,12 @@ def scene_get(f, slot):
                 round(knob(get14(d[2 * k], d[2 * k + 1])), 6) for k in range(4)]
     last = parts[-1]
     latched = get14(last[1], last[2])
+    # the effects in their second mode (the phaser's frequency shifter, #306), from a FRIZZ
+    # that sends them
+    modes = get14(last[3], last[4]) if len(last) >= 5 else 0
     return {"used": bool(last[0]),
             "latched": [n for i, n in enumerate(FX_NAMES) if latched >> i & 1],
+            "modes": [n for i, n in enumerate(FX_NAMES) if modes >> i & 1],
             "params": params}
 
 
@@ -1085,8 +1089,9 @@ def scene_put(f, slot, scene):
         if f.ask(SCENE_PUT, [slot, p] + data)[2] != 0:
             sys.exit("part %d refused" % p)
     latched = sum(1 << FX_NAMES.index(n) for n in scene.get("latched", []))
+    modes = sum(1 << FX_NAMES.index(n) for n in scene.get("modes", []))
     if f.ask(SCENE_PUT, [slot, SCENE_PARTS - 1, int(scene.get("used", True)),
-                         latched >> 7, latched & 0x7F])[2] != 0:
+                         latched >> 7, latched & 0x7F, modes >> 7, modes & 0x7F])[2] != 0:
         sys.exit("refused: slots 1-4 only")
 
 
