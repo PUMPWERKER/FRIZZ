@@ -135,8 +135,8 @@ a FRIZZ from before PERSIST is refused without it. Before the restart, and at th
 script, IDENT says whether FRIZZ still keeps the card out of it: if it restarted meanwhile,
 what came after went to the card, and the run fails, saying so.
 
-It plays on the FRIZZ that runs, and says which slot that is (10 FRIZZ, 12 FRIZZ-TEST, 13
-FRIZZ-BETA): by
+It plays on the FRIZZ that runs, and says which slot that is (10 FRIZZ, 11 FRIZZ-BETA, 12
+FRIZZ-TEST): by
 the build it runs (IDENT) and the builds flash.py sent, or, from a FRIZZ before IDENT, as the
 tools that started it noted (tools/chompi.py); --slot N plays on that one, started if it
 isn't the one running. FRIZZ is started first if the CHOMPI is elsewhere: at the launcher's
@@ -1444,7 +1444,7 @@ def main():
         (["--no-start"], dict(action="store_true",
                               help="don't start FRIZZ if the CHOMPI is elsewhere")),
         (["--slot"], dict(type=int, choices=chompi.FRIZZ_SLOTS,
-                          help="the FRIZZ slot to play on (10, 12, 13), started unless it runs; "
+                          help="the FRIZZ slot to play on (10, 11, 12), started unless it runs; "
                           "default the one running")))
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("state", parents=[common])

@@ -436,7 +436,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     on_frizz = argparse.ArgumentParser(add_help=False)
     on_frizz.add_argument("--slot", type=int, choices=chompi.FRIZZ_SLOTS,
-                          help="the FRIZZ slot to measure (10, 12, 13), started unless it runs; "
+                          help="the FRIZZ slot to measure (10, 11, 12), started unless it runs; "
                           "default the one running (remote.py)")
     p = sub.add_parser("clock", parents=[on_frizz])
     p.add_argument("--mode", choices=["single", "pairs", "catchup", "late"], default="single")

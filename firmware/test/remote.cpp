@@ -103,6 +103,15 @@ static std::string Quoted(const std::string& arg)
     return q + "'";
 }
 
+/** How often WHAT is in S */
+static size_t Count(const std::string& s, const std::string& what)
+{
+    size_t n = 0;
+    for (size_t at = s.find(what); at != std::string::npos; at = s.find(what, at + 1))
+        n++;
+    return n;
+}
+
 /** remote.py ARGS, the twin running at the wall clock's pace until it's done (30 s at most,
  *  ptytwin.h's Exec), interrupted (SIGINT, Ctrl-C) once it has printed interrupt_at, if given.
  *  Its exit code; out gets what it printed, stdout and stderr; lag how far the twin fell
@@ -204,12 +213,12 @@ card.main()
         close(lock);
         unlink((tmp_dir + "/lock").c_str());
     }
-    // where the slot started afterwards is waited for: a FRIZZ until it answers (both of them)
+    // where the slot started afterwards is waited for: a FRIZZ until it answers (all three)
     int rc = Python("import chompi, card\ncalls = []\n"
                     "chompi.run = lambda slot, wanted, *rest: calls.append((slot, wanted))\n"
-                    "card.finish(12)\ncard.finish(None)\ncard.finish(11)\nprint(calls)\n", out);
-    Check(rc == 0 && Has(out, "[(12, 'frizz'), (10, 'frizz'), (11, None)]"),
-          "tools: card.py --then 12 waits for FRIZZ-TEST as for FRIZZ, not for the bench");
+                    "card.finish(12)\ncard.finish(None)\ncard.finish(11)\ncard.finish(13)\nprint(calls)\n", out);
+    Check(rc == 0 && Has(out, "[(12, 'frizz'), (10, 'frizz'), (11, 'frizz'), (13, None)]"),
+          "tools: card.py --then 12 or 11 waits for FRIZZ-TEST or FRIZZ-BETA as for FRIZZ, not for the bench");
     if (rc != 0)
         printf("%s\n", out.c_str());
     // a FRIZZ whose USB names came garbled (product "Љ", maker "FrizZ": no "chompi" in them)
@@ -267,6 +276,7 @@ case("then", [True, False], lambda: card.finish(12))
 open("image.bin", "wb").write(b"x")
 midi_send.main = lambda: log.append("sent")
 chompi.slot_file = lambda *rest: None
+chompi.features = lambda *rest: 0  # a launcher before 1.6: no colour
 def flash_to(*argv):
     sys.argv = ["flash.py", "image.bin"] + list(argv)
     flash.main()
@@ -435,7 +445,8 @@ for path in ("FIRMWARE/", "TAPE/x.wav", "frizz/frizz_master.txt"):
 
     // the user's keys stay guarded whatever FRIZZ_SLOT and BETA_SLOT say; a slot is checked
     // before anything is built or the CHOMPI restarted, another key than FRIZZ's and the
-    // bench's only with --other-slot; FRIZZ's keys keep another firmware on them unasked
+    // bench's only with --other-slot; FRIZZ's keys keep another firmware on them unasked, and
+    // the test slot and the bench the user's FRIZZ and FRIZZ-BETA (the keys moved, #171)
     rc = Python(R"(
 import os, sys
 os.environ.update(FRIZZ_SLOT="5", BETA_SLOT="14", TEST_SLOT="10")
@@ -446,6 +457,7 @@ chompi.wait_for = lambda *rest: "node"
 chompi.renamed = lambda slot, node, *rest: node
 chompi.ident = lambda node: None
 chompi.started = chompi.noted_image = lambda *rest: None
+chompi.features = lambda *rest: 0
 midi_send.main = lambda: log.append("sent %s" % sys.argv[3])
 there = {}
 chompi.slot_file = lambda device, slot: there.get(slot)
@@ -461,11 +473,11 @@ def flash_to(*argv):
         got = "exit: %s" % e
     print("%s: %s %s" % (" ".join(argv), got, log), flush=True)
 print("user slots", chompi.USER_SLOTS)
-for argv in (("image.bin", "--slot", "13"), ("image.bin", "--slot", "10"), ("--test", "--no-build"),
+for argv in (("image.bin", "--slot", "11"), ("image.bin", "--slot", "10"), ("--test", "--no-build"),
              ("image.bin", "--slot", "5"), ("image.bin", "--slot", "14")):
     flash_to(*argv)
 print("-- the defaults", flush=True)
-os.environ.update(FRIZZ_SLOT="10", BETA_SLOT="13", TEST_SLOT="12")
+os.environ.update(FRIZZ_SLOT="10", BETA_SLOT="11", TEST_SLOT="12")
 import importlib
 importlib.reload(chompi)
 flash.chompi = chompi
@@ -475,6 +487,7 @@ chompi.renamed = lambda slot, node, *rest: node
 chompi.ident = lambda node: None
 chompi.started = chompi.noted_image = lambda *rest: None
 chompi.slot_file = lambda device, slot: there.get(slot)
+chompi.features = lambda *rest: 0
 for argv in (("image.bin", "--slot", "15"), ("image.bin", "--slot", "0"), ("image.bin", "--slot", "16"),
              ("image.bin", "--slot", "15", "--other-slot"), ("image.bin", "--slot", "12")):
     flash_to(*argv)
@@ -482,14 +495,20 @@ there[12] = "12_TAPE.bin"
 flash_to("image.bin", "--slot", "12")
 flash_to("--test", "--no-build")
 flash_to("image.bin", "--slot", "12", "--other-slot")
+there[13] = "13_FRIZZ-BETA.bin"
+flash_to("--bench", "--no-build")
+there[12] = "12_FRIZZ.bin"
+flash_to("--test", "--no-build")
+there[12] = "12_FRIZZ-TEST.bin"
+flash_to("--test", "--no-build")
 os.remove("image.bin")
 )", out);
-    Check(rc == 0 && Has(out, "user slots (5, 10, 13, 14)\n")
-              && Has(out, "image.bin --slot 13: exit: key 13 is the latest beta, the user's: only a release's")
+    Check(rc == 0 && Has(out, "user slots (5, 10, 11, 14)\n")
+              && Has(out, "image.bin --slot 11: exit: key 11 is the latest beta, the user's: only a release's")
               && Has(out, "image.bin --slot 10: exit: key 10 is ") && Has(out, "--test --no-build: exit: key 10 is ")
               && Has(out, "image.bin --slot 5: exit: key 5 is ") && Has(out, "image.bin --slot 14: exit: key 14 is ")
               && Has(out, "-- the defaults") && !Has(out.substr(0, out.find("-- the defaults")), "'sent"),
-          "tools: flash.py keeps keys 10 and 13 the user's whatever FRIZZ_SLOT, BETA_SLOT and TEST_SLOT say");
+          "tools: flash.py keeps keys 10 and 11 the user's whatever FRIZZ_SLOT, BETA_SLOT and TEST_SLOT say");
     Check(Has(out, "image.bin --slot 15: exit: key 15 isn't FRIZZ's or the bench's (10, 11, 12, 13): ")
               && Has(out, "image.bin --slot 0: exit: no key 0: the launcher's are 1-15 []\n")
               && Has(out, "image.bin --slot 16: exit: no key 16") && Has(out, "image.bin --slot 15: exit: key 15 isn't FRIZZ's or the bench's (10, 11, 12, 13): sending replaces what's there, so --other-slot says it's meant (never in a session's run) []\n")
@@ -500,6 +519,11 @@ os.remove("image.bin")
               && Has(out, "--test --no-build: exit: key 12 holds 12_TAPE.bin")
               && Has(out, "image.bin --slot 12 --other-slot: ok ['launcher', 'sent 12']\n"),
           "tools: flash.py replaces another firmware on FRIZZ's keys only with --other-slot, --slot or not");
+    Check(Has(out, "--bench --no-build: exit: key 13 holds 13_FRIZZ-BETA.bin, the user's: a test or a bench "
+                   "build never replaces it ['launcher']\n")
+              && Has(out, "--test --no-build: exit: key 12 holds 12_FRIZZ.bin, the user's")
+              && Has(out, "--test --no-build: ok ['launcher', 'sent 12']\n"),
+          "tools: flash.py --test and --bench never replace the user's FRIZZ or FRIZZ-BETA on their keys (#171)");
     if (rc != 0 || !Has(out, "--other-slot: ok ['launcher', 'sent 12']"))
         printf("%s\n", out.c_str());
 
@@ -604,23 +628,133 @@ print("trs", midiport.trs_midi(), flush=True)
     if (rc != 0 || !Has(out, "trs snd/midiC2D0"))
         printf("%s\n", out.c_str());
 
-    // tools/midi_send.py run by hand takes the lock and leaves the user's keys, the storage
-    // firmware's and the launcher to flash.py; another key goes on as before
+    // tools/midi_send.py run by hand takes the lock and leaves the user's keys (sending, clearing
+    // or colouring them), the storage firmware's and the launcher to flash.py; another key goes
+    // on as before
     rc = Python(R"(
 import subprocess, sys
 open("x.bin", "wb").write(b"x")
 by_hand = "import runpy, sys\nsys.argv[0] = 'midi_send.py'\nrunpy.run_module('midi_send', run_name='__main__')\n"
-for args in (["--slot", "13"], ["--sl", "10"], ["--slot=15"], ["--clear", "10"], ["--launcher"], ["--slot", "12"]):
+for args in (["--slot", "11"], ["--sl", "10"], ["--slot=15"], ["--clear", "10"], ["--launcher"], ["--slot", "12"],
+             ["--color", "11", "8A4DFF"], ["--color", "12", "8A4DFF"], ["--slot", "13"]):
     p = subprocess.run([sys.executable, "-c", by_hand, "x.bin", "--device", "nowhere"] + args,
                        capture_output=True, text=True)
     print(" ".join(args), p.returncode, (p.stderr.strip().splitlines() or [""])[-1], flush=True)
 )", out);
-    Check(rc == 0 && Has(out, "--slot 13 1 midi_send.py by hand leaves keys 10, 13, 15 and the launcher alone")
+    Check(rc == 0 && Has(out, "--slot 11 1 midi_send.py by hand leaves keys 10, 11, 15 and the launcher alone")
               && Has(out, "--sl 10 1 midi_send.py by hand") && Has(out, "--slot=15 1 midi_send.py by hand")
               && Has(out, "--clear 10 1 midi_send.py by hand") && Has(out, "--launcher 1 midi_send.py by hand")
-              && Has(out, "--slot 12 1 FileNotFoundError"),
-          "tools: midi_send.py by hand leaves keys 10, 13, 15 and the launcher to flash.py");
+              && Has(out, "--slot 12 1 FileNotFoundError") && Has(out, "--slot 13 1 FileNotFoundError")
+              && Has(out, "--color 11 8A4DFF 1 midi_send.py by hand")
+              && Has(out, "--color 12 8A4DFF 2 midi_send.py: error: --slot is needed"),
+          "tools: midi_send.py by hand leaves keys 10, 11, 15 (their colour too) and the launcher to flash.py");
     if (rc != 0 || !Has(out, "--slot 12 1 FileNotFoundError"))
+        printf("%s\n", out.c_str());
+
+    // the launcher 1.5 and 1.6, stubbed (their PING, LIST, COLOR and RUN): the tools tell the
+    // launcher from FRIZZ, read a key's file and list the keys with either; 1.6's LIST adds the
+    // key's colour (7 bits a channel, so #8A4DFF lists as #8B4CFF). flash.py stores without
+    // starting, colours the key, then starts it (a colour the card fails is said, the build
+    // started all the same): in its slot's colour (#171: 12 and 13 red), in --color's when given,
+    // another key only with --color; with 1.5 it sends without, said only for a --color given
+    rc = Python(R"(
+import contextlib, os, sys, chompi, flash, midi_send
+log = []
+class Launcher:
+    def __init__(self, minor):
+        self.minor = minor
+    def call(self, cmd, payload=b"", timeout=0.3, retries=10, required=True, match=None):
+        if cmd == midi_send.PING:
+            features = 0x3F if self.minor >= 6 else 0x1F
+            return bytes([0, 1]) + midi_send.put7(256, 4) + bytes([15, features, 1, self.minor, 0])
+        if cmd == midi_send.LIST:
+            name = {12: b"12_FRIZZ-TEST.bin", 3: b"03_WAVE.bin"}.get(payload[0], b"")
+            r = bytes([0, payload[0], len(name)]) + name + midi_send.put7(248344 if name else 0, 4)
+            return r + (bytes([0x45, 0x26, 0x7F] if name else [0, 0, 0]) if self.minor >= 6 else b"")
+        if cmd == midi_send.COLOR:
+            log.append("color %d %s" % (payload[0], payload[1:].hex()))
+            return bytes([0, payload[0]])
+        if cmd == chompi.RUN:
+            log.append("run %d" % payload[0])
+            return bytes([0, payload[0]])
+        return bytes([1])  # BAD_MESSAGE, to FRIZZ's SETTINGS among others
+chompi.to_launcher = lambda *rest: log.append("launcher") or "l"
+chompi.wait_for = lambda *rest: "node"
+chompi.renamed = lambda slot, node, *rest: node
+chompi.ident = lambda node: None
+chompi.started = chompi.noted_image = lambda *rest: None
+sent = midi_send.main
+open("image.bin", "wb").write(b"x")
+flash.builds.build = flash.builds.built = lambda bench: "image.bin"
+def run(what, main, *argv):
+    log.clear()
+    sys.argv = list(argv)
+    try:
+        main()
+        got = "ok"
+    except SystemExit as e:
+        got = "exit: %s" % e
+    print("%s: %s %s" % (what, got, log), flush=True)
+for minor in (5, 6):
+    there = Launcher(minor)
+    chompi.link = contextlib.contextmanager(lambda node: (yield there))
+    midi_send.Link = lambda path, verbose=False: there
+    print("1.%d state %s, key 12 %r, key 1 %r, features %#x" % (minor, chompi.ask_midi("l"),
+          chompi.slot_file("l", 12), chompi.slot_file("l", 1), chompi.features("l")), flush=True)
+    midi_send.main = sent
+    run("1.%d list" % minor, flash.main, "flash.py", "--list")
+    run("1.%d color by hand" % minor, midi_send.main, "midi_send.py", "--color", "12", "8A4DFF", "--device", "l")
+    midi_send.main = lambda: log.append(" ".join(sys.argv[1:]))
+    run("1.%d test" % minor, flash.main, "flash.py", "--test", "--no-build")
+    run("1.%d test colour" % minor, flash.main, "flash.py", "--test", "--no-build", "--color", "8A4DFF")
+    run("1.%d bench" % minor, flash.main, "flash.py", "--bench", "--no-build")
+    run("1.%d another key" % minor, flash.main, "flash.py", "image.bin", "--slot", "3", "--other-slot")
+    run("1.%d another key, coloured" % minor, flash.main, "flash.py", "image.bin", "--slot", "3", "--other-slot",
+        "--color", "8A4DFF")
+def fails():
+    if "--color" in sys.argv:
+        sys.exit("color failed: writing to the card failed")
+    log.append(" ".join(sys.argv[1:]))
+midi_send.main = fails
+run("1.6 colour fails", flash.main, "flash.py", "--test", "--no-build", "--color", "8A4DFF")
+run("bad colour", flash.main, "flash.py", "--test", "--color", "violet")
+run("colour, nothing sent", flash.main, "flash.py", "--run", "12", "--color", "8A4DFF")
+os.remove("image.bin")
+)", out);
+    Check(rc == 0 && Has(out, "1.5 state launcher, key 12 '12_FRIZZ-TEST.bin', key 1 '', features 0x1f\n")
+              && Has(out, "1.6 state launcher, key 12 '12_FRIZZ-TEST.bin', key 1 '', features 0x3f\n"),
+          "tools: the launcher 1.5 and 1.6 are told from FRIZZ, and their keys read, alike");
+    Check(Has(out, "  key 12: 12_FRIZZ-TEST.bin (248344 bytes)\n")
+              && Has(out, "  key 12: 12_FRIZZ-TEST.bin (248344 bytes)  #8B4CFF\n")
+              && Has(out, "  key  3: 03_WAVE.bin (248344 bytes)  #8B4CFF\n") && Has(out, "  key  1: -\n")
+              && Has(out, "1.5 list: ok") && Has(out, "1.6 list: ok"),
+          "tools: flash.py --list lists the keys from either launcher, 1.6's with their colour");
+    Check(Has(out, "1.5 color by hand: exit: this launcher cannot colour its keys")
+              && Has(out, "1.6 color by hand: ok ['color 12 45267f']"),
+          "tools: midi_send.py --color sends 1.6's COLOR, 7 bits a channel; 1.5 can't");
+    Check(Has(out, "1.5 test: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l']\n")
+              && Has(out, "1.5 test colour: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l']\n")
+              && Has(out, "1.5 bench: ok ['launcher', 'image.bin --slot 13 --name FRIZZ-BENCH --device l']\n")
+              && Has(out, "this launcher can't colour its keys (1.6 can): sent without --color")
+              && Count(out, "this launcher can't colour its keys") == 2
+              && Has(out, "1.6 test colour: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l "
+                          "--stay', '--color 12 8A4DFF --device l', 'run 12']\n"),
+          "tools: flash.py --color stores, colours, then starts with 1.6; 1.5 sends without, said for a --color given");
+    Check(Has(out, "1.6 test: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l --stay', "
+                   "'--color 12 FF0000 --device l', 'run 12']\n")
+              && Has(out, "1.6 bench: ok ['launcher', 'image.bin --slot 13 --name FRIZZ-BENCH --device l --stay', "
+                          "'--color 13 FF0000 --device l', 'run 13']\n")
+              && Has(out, "1.5 another key: ok ['launcher', 'image.bin --slot 3 --name FRIZZ --device l']\n")
+              && Has(out, "1.6 another key: ok ['launcher', 'image.bin --slot 3 --name FRIZZ --device l']\n")
+              && Has(out, "1.6 another key, coloured: ok ['launcher', 'image.bin --slot 3 --name FRIZZ --device l "
+                          "--stay', '--color 3 8A4DFF --device l', 'run 3']\n"),
+          "tools: flash.py gives the test slot and the bench their red unasked (#171), another key a colour only with --color");
+    Check(Has(out, "key 12 not coloured: color failed: writing to the card failed\n")
+              && Has(out, "1.6 colour fails: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l --stay', 'run 12']\n"),
+          "tools: flash.py --color whose COLOR the card fails says so and starts the build all the same");
+    Check(Has(out, "bad colour: exit: --color takes a colour like 8A4DFF") && Has(out, "colour, nothing sent: exit: --color takes"),
+          "tools: flash.py --color takes a colour, with a build sent only");
+    if (rc != 0 || !Has(out, "colour, nothing sent: exit"))
         printf("%s\n", out.c_str());
 
     // usbjitter.py turns PERSIST 0 on: the user's FRIZZ it measured is started again at the end,
@@ -681,7 +815,7 @@ for code in (0, 1, 2):
 flash.tagged = lambda where=flash.HERE: "v1.5.0-beta.1"
 class A:
     bench = False
-for slot in (10, 13):
+for slot in (10, 11):
     flash.builds.check_version = lambda tag: print("checked", tag)
     try:
         print("beta tag, key %d:" % slot, flash.user_slot(slot, A()), flush=True)
@@ -700,8 +834,9 @@ print("in_ram:", remote.in_ram(F()))
     Check(Has(out, "make -q 0: stale False\nmake -q 1: stale True\nmake -q 2: stale True\n"),
           "tools: builds.py takes a build for fresh only when make -q says so (0), not when it fails");
     Check(Has(out, "beta tag, key 10: exit: key 10 is the latest release: v1.5.0-beta.1 is a pre-release's tag")
-              && Has(out, "checked v1.5.0-beta.1\nbeta tag, key 13: v1.5.0-beta.1\n"),
-          "tools: flash.py sends a pre-release's build to key 13, never to key 10");
+              && Has(out, "whose build goes to key 11 (--slot 11)")
+              && Has(out, "checked v1.5.0-beta.1\nbeta tag, key 11: v1.5.0-beta.1\n"),
+          "tools: flash.py sends a pre-release's build to key 11, never to key 10");
     Check(Has(out, "short ident None True\n") && Has(out, "show_ident: IDENT's answer is cut short (10 bytes)")
               && Has(out, "in_ram: no answer to IDENT"),
           "tools: an IDENT cut short is no IDENT, said so, never an IndexError");
@@ -736,7 +871,7 @@ case("test asked", frizz, 12, 12)
 case("other asked", frizz, 10, 12)
 case("unknown asked", frizz, 12)
 case("unknown", frizz, None)
-case("bench", frizz, None, 11)
+case("bench", frizz, None, 13)
 case("booting", [(None, None), ("other", "x"), ("frizz", "node")], None, 12)
 case("launcher, this hold", [("launcher", "l")], None, 12)
 case("launcher, another", [("launcher", "l")], None, 12, hold="8")
@@ -745,13 +880,14 @@ open("image.bin", "wb").write(b"x")
 midi_send.main = lambda: None
 chompi.to_launcher = lambda *rest: "l"
 chompi.slot_file = lambda *rest: None
+chompi.features = lambda *rest: 0
 states[:] = [("launcher", "l"), (None, None), ("frizz", "node")]
 sys.argv = ["flash.py", "image.bin", "--slot", "12"]
 flash.main()
 print("noted", chompi.last_started()[0])
 # and the bench, which answers as FRIZZ does
 states[:] = [("launcher", "l"), (None, None), ("frizz", "node")]
-sys.argv = ["flash.py", "image.bin", "--slot", "11", "--name", "FRIZZ-BENCH"]
+sys.argv = ["flash.py", "image.bin", "--slot", "13", "--name", "FRIZZ-BENCH"]
 flash.main()
 print("left", states)
 chompi.forget()
@@ -764,7 +900,7 @@ os.remove("image.bin")
     Check(Has(out, "other asked: started [10]\n") && Has(out, "unknown asked: started [12]\n")
               && Has(out, "unknown: node []\n") && Has(out, "a slot the tools didn't start"),
           "tools: --slot starts the slot asked for, unless noted as running; without, an unknown one is said");
-    Check(Has(out, "the bench runs (slot 11") && Has(out, "bench: started [10]\n"),
+    Check(Has(out, "the bench runs (slot 13") && Has(out, "bench: started [10]\n"),
           "tools: the bench isn't taken for FRIZZ");
     Check(Has(out, "booting: node []\n"), "tools: a firmware still starting is waited for, not restarted");
     Check(Has(out, "launcher, this hold: started [12]\n")
@@ -772,7 +908,7 @@ os.remove("image.bin")
           "tools: from the launcher, the FRIZZ last started in this hold, else FRIZZ's");
     Check(Has(out, "FRIZZ-TEST answers on slot 12") && Has(out, "noted 12\n"),
           "tools: flash.py waits until the FRIZZ it sent answers, and notes its slot");
-    Check(Has(out, "FRIZZ-BENCH answers on slot 11") && Has(out, "left [('frizz', 'node')]\n"),
+    Check(Has(out, "FRIZZ-BENCH answers on slot 13") && Has(out, "left [('frizz', 'node')]\n"),
           "tools: and until the bench answers, so a tool run right after finds it");
     if (rc != 0 || !Has(out, "noted 12"))
         printf("%s\n", out.c_str());
@@ -1658,6 +1794,7 @@ case("old noted", None)
 sys.argv = ["flash.py", "a.bin", "--slot", "12"]
 chompi.to_launcher = lambda *rest: "l"
 chompi.slot_file = lambda *rest: None  # key 12 holds FRIZZ-TEST
+chompi.features = lambda *rest: 0
 chompi.wait_for = lambda *rest: "node"
 chompi.renamed = lambda slot, node, *rest: node
 midi_send.main = lambda: None
@@ -1914,9 +2051,10 @@ remote.run(argparse.Namespace(cmd="play", script="x.txt", cpu=False, fresh=True,
     if (rc != 0 || !Has(out, "sent 0x14 [1]"))
         printf("%s\n", out.c_str());
 
-    // keys 10 and 13 are the user's (#171): flash.py sends there only when the key is named, and
+    // keys 10 and 11 are the user's (#171): flash.py sends there only when the key is named, and
     // only the build of a clean v* tag's checkout; refused before anything is built or the
-    // CHOMPI restarted (to_launcher). A bare ./flash.py sends nothing
+    // CHOMPI restarted (to_launcher). A bare ./flash.py sends nothing. Each key gets its colour
+    // (a launcher 1.6): 10 green, 11 orange, 12 and 13 red
     rc = Python(R"(
 import os, subprocess, sys, builds, chompi, flash, midi_send
 sys.stdout.reconfigure(line_buffering=True)
@@ -1952,6 +2090,8 @@ chompi.slot_file = lambda *rest: None
 chompi.wait_for = lambda *rest: "node"
 chompi.renamed = lambda slot, node, *rest: node
 chompi.ident = lambda node: None
+chompi.features = lambda *rest: midi_send.FEATURE_COLOR
+chompi.send_run = lambda node, slot: log.append("run %d" % slot)
 midi_send.main = lambda: log.append(" ".join(sys.argv[1:]))
 open("tag.bin", "wb").write(b"the tag's build")
 open("other.bin", "wb").write(b"another")
@@ -1973,18 +2113,18 @@ def case(name, *argv):
     print("%s: %s" % (name, log))
 case("bare")
 case("10 untagged", "--slot", "10")
-case("13 untagged", "--no-build", "--slot", "13")
+case("11 untagged", "--no-build", "--slot", "11")
 case("file to 10 untagged", "other.bin", "--slot", "10")
 tag[0] = "v1.0.0"
-case("13 tagged", "--slot", "13")
+case("11 tagged", "--slot", "11")
 case("10 tagged", "--no-build", "--slot", "10")
 case("its file to 10", "tag.bin", "--slot", "10")
 case("another file to 10", "other.bin", "--slot", "10")
-case("the bench to 13", "--bench", "--slot", "13")
+case("the bench to 11", "--bench", "--slot", "11")
 builds.frizz_version = lambda: (1, 5, 0, 1)
 case("10 tagged, another version", "--slot", "10")
 tag[0] = "v1.5.0-beta.1"
-case("13 its beta", "--no-build", "--slot", "13")
+case("11 its beta", "--no-build", "--slot", "11")
 tag[0] = "v1.5.0"
 case("10 not its release", "--no-build", "--slot", "10")
 print("versions:", builds.tag_version("v1.5.0"), builds.tag_version("v1.5.0-beta.12"), builds.tag_version("v1.0"),
@@ -1992,7 +2132,8 @@ print("versions:", builds.tag_version("v1.5.0"), builds.tag_version("v1.5.0-beta
 tag[0] = None
 case("test", "--test")
 case("file to 12", "other.bin", "--slot", "12")
-case("file to 11", "other.bin", "--slot", "11")
+case("file to 13", "other.bin", "--slot", "13")
+case("bench", "--bench", "--no-build")
 )", out);
     Check(rc == 0 && Has(out, "tagged beta: None\n") && Has(out, "tagged v9.9.9: v9.9.9\n")
               && Has(out, "tagged, code changed: None\n") && Has(out, "tagged, a file added in code: None\n")
@@ -2000,29 +2141,39 @@ case("file to 11", "other.bin", "--slot", "11")
           "tools: flash.py's tagged(): a v* tag on HEAD, nothing changed or added in code/ (#171)");
     Check(Has(out, "exit: which slot?") && Has(out, "bare: []\n")
               && Has(out, "exit: key 10 is the latest release, the user's: only a release's or a beta's build")
-              && Has(out, "10 untagged: []\n") && Has(out, "exit: key 13 is the latest beta, the user's")
-              && Has(out, "13 untagged: []\n") && Has(out, "file to 10 untagged: []\n"),
-          "tools: flash.py sends nothing without a slot, nor an untagged build to 10 or 13, before restarting "
+              && Has(out, "10 untagged: []\n") && Has(out, "exit: key 11 is the latest beta, the user's")
+              && Has(out, "11 untagged: []\n") && Has(out, "file to 10 untagged: []\n"),
+          "tools: flash.py sends nothing without a slot, nor an untagged build to 10 or 11, before restarting "
           "the CHOMPI (#171)");
-    Check(Has(out, "sending tag.bin to key 13, v1.0.0's\n")
-              && Has(out, "13 tagged: ['build', 'launcher', 'tag.bin --slot 13 --name FRIZZ-BETA --device l']\n")
-              && Has(out, "10 tagged: ['launcher', 'tag.bin --slot 10 --name FRIZZ --device l']\n")
-              && Has(out, "its file to 10: ['launcher', 'tag.bin --slot 10 --name FRIZZ --device l']\n"),
-          "tools: a v* tag's build goes to 13 (FRIZZ-BETA) or 10 when the key is named, its file too");
+    Check(Has(out, "sending tag.bin to key 11, v1.0.0's\n")
+              && Has(out, "11 tagged: ['build', 'launcher', 'tag.bin --slot 11 --name FRIZZ-BETA --device l --stay', "
+                          "'--color 11 FF7000 --device l', 'run 11']\n")
+              && Has(out, "10 tagged: ['launcher', 'tag.bin --slot 10 --name FRIZZ --device l --stay', "
+                          "'--color 10 00C000 --device l', 'run 10']\n")
+              && Has(out, "its file to 10: ['launcher', 'tag.bin --slot 10 --name FRIZZ --device l --stay', "
+                          "'--color 10 00C000 --device l', 'run 10']\n"),
+          "tools: a v* tag's build goes to 11 (FRIZZ-BETA, orange) or 10 (green) when the key is named, its file too");
     Check(Has(out, "exit: other.bin isn't the build of v1.0.0 made here") && Has(out, "another file to 10: []\n")
-              && Has(out, "exit: key 13 is the latest beta, the user's: never the bench")
-              && Has(out, "the bench to 13: []\n"),
+              && Has(out, "exit: key 11 is the latest beta, the user's: never the bench")
+              && Has(out, "the bench to 11: []\n"),
           "tools: another file isn't, nor the bench, on a tag too");
     Check(Has(out, "exit: code/src/Version.h's kFrizzVersion is v1.5.0-beta.1, the tag v1.0.0")
               && Has(out, "10 tagged, another version: []\n")
-              && Has(out, "13 its beta: ['launcher', 'tag.bin --slot 13 --name FRIZZ-BETA --device l']\n")
+              && Has(out, "11 its beta: ['launcher', 'tag.bin --slot 11 --name FRIZZ-BETA --device l --stay', "
+                          "'--color 11 FF7000 --device l', 'run 11']\n")
               && Has(out, "10 not its release: []\n")
               && Has(out, "versions: (1, 5, 0, 0) (1, 5, 0, 12) None v1.5.0-beta.1\n"),
-          "tools: 10 and 13 take a tag's build only where kFrizzVersion is the tag's (the loop transfer's HELLO)");
-    Check(Has(out, "test: ['build', 'launcher', 'tag.bin --slot 12 --name FRIZZ-TEST --device l']\n")
-              && Has(out, "file to 12: ['launcher', 'other.bin --slot 12 --name FRIZZ-TEST --device l']\n")
-              && Has(out, "file to 11: ['launcher', 'other.bin --slot 11 --name FRIZZ-BENCH --device l']\n"),
-          "tools: a branch's build goes to the test slot as before, as FRIZZ-TEST; a file to 11 as FRIZZ-BENCH");
+          "tools: 10 and 11 take a tag's build only where kFrizzVersion is the tag's (the loop transfer's HELLO)");
+    Check(Has(out, "test: ['build', 'launcher', 'tag.bin --slot 12 --name FRIZZ-TEST --device l --stay', "
+                   "'--color 12 FF0000 --device l', 'run 12']\n")
+              && Has(out, "file to 12: ['launcher', 'other.bin --slot 12 --name FRIZZ-TEST --device l --stay', "
+                          "'--color 12 FF0000 --device l', 'run 12']\n")
+              && Has(out, "file to 13: ['launcher', 'other.bin --slot 13 --name FRIZZ-BENCH --device l --stay', "
+                          "'--color 13 FF0000 --device l', 'run 13']\n")
+              && Has(out, "bench: ['launcher', 'tag.bin --slot 13 --name FRIZZ-BENCH --device l --stay', "
+                          "'--color 13 FF0000 --device l', 'run 13']\n"),
+          "tools: a branch's build goes to the test slot as FRIZZ-TEST, the bench and a file to 13 as FRIZZ-BENCH, "
+          "both red (#171)");
     if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 

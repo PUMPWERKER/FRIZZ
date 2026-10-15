@@ -867,7 +867,7 @@ patch, pre-release: 0 for a release, N for `-beta.N`). It can't come from the gi
 time: the same commit would build to another md5 before and after it's tagged, and a build's
 md5 names it (CLAUDE.md). So the commit before a tag sets it, when a beta or a release is cut.
 
-A check holds the two together: `tools/builds.py` (and `flash.py --slot 10`/`--slot 13`, which
+A check holds the two together: `tools/builds.py` (and `flash.py --slot 10`/`--slot 11`, which
 send only a clean `v*` tag's build) compares the tag at `HEAD` with `kFrizzVersion` and refuses a
 build whose constant doesn't match its tag. A commit without a tag (a branch, `main`) may carry
 any value, normally the next version's. Whether CLAUDE.md's release steps mention it is the

@@ -150,24 +150,37 @@ it takes a firmware over USB MIDI, writes it to its slot and starts it:
 cd firmware
 ./flash.py --test     # builds FRIZZ.bin, restarts the CHOMPI into the launcher, sends it to the
                       # test slot (12), as FRIZZ-TEST: a branch's build
-./flash.py --bench    # FRIZZ-bench.bin to slot 11
+./flash.py --bench    # FRIZZ-bench.bin to slot 13, as FRIZZ-BENCH
 ./flash.py --no-build # the build that's in code/src/build/ (build-bench/ with --bench), as it is
-./flash.py --run 11   # starts what's in slot 11 already, sending nothing
-./flash.py --slot 13  # a beta's build, from a worktree of its v* tag, to key 13 (below)
+./flash.py --run 13   # starts what's in slot 13 already, sending nothing
+./flash.py --slot 11  # a beta's build, from a worktree of its v* tag, to key 11 (below)
 ./flash.py --list     # what's on each key: restarts FRIZZ into the launcher, a loop in RAM lost
 ```
 
+**Key colours.** Launcher 1.6 lights each key in a colour: the one chosen for the file on it
+(its `COLOR` over USB MIDI, kept in `/FIRMWARE/key_colors.txt` with the file's name), or else
+one made from that name. `--list` shows them. `flash.py` gives FRIZZ's keys their colour with
+every build it sends there (decided 2026-10-15, #171): 10 green (`00C000`, the release), 11
+orange (`FF7000`, the beta), 12 and 13 red (`FF0000`, the builds sessions make), so nobody has
+to remember them. It stores the build without starting it, colours its key, then starts it;
+`--color RRGGBB` gives another colour instead, and another key (`--other-slot`) gets one only
+from `--color`. The setup page gives a key it recognises as a FRIZZ release
+FRIZZ's colour from its catalogue (`#8A4DFF`) each time it connects. The tools work the same
+with launcher 1.5, whose keys breathe white: `--list` without colours, a build sent without
+one (saying so only for a `--color` given).
+
 Each send prints the md5 of what it sends, the name of that build in a pull request.
 
-**The keys** (#171): 10 is the latest release (`FRIZZ`), 13 the latest beta (`FRIZZ-BETA`),
-both the user's; 12 a branch's build under test (`FRIZZ-TEST`), 11 the bench, 15 the USB
-storage firmware. `flash.py` sends to 10 or 13 only when the key is named (`--slot 10`,
-`--slot 13`) and only a release's or a beta's build: the checkout stands on a `v*` tag with
-nothing changed or added in `code/`, and what's sent is the build `make` makes there (a file
+**The keys** (#171, reordered 2026-10-15): 10 is the latest release (`FRIZZ`), 11 the latest
+beta (`FRIZZ-BETA`), both the user's; 12 a branch's build under test (`FRIZZ-TEST`), 13 the
+bench (`FRIZZ-BENCH`), 15 the USB storage firmware. `flash.py` sends to 10 or 11 only when the
+key is named (`--slot 10`, `--slot 11`) and only a release's or a beta's build: the checkout
+stands on a `v*` tag with nothing changed or added in `code/`, and what's sent is the build `make` makes there (a file
 named too: the same bytes). So a release or a beta goes on from a worktree of its tag (`git
 worktree add ../FrizZ-v1.0.0 v1.0.0`, then `./flash.py --slot 10` there), when the user asks.
 A bare `./flash.py` sends nothing and says which options there are; the bench never goes to 10
-or 13. Sessions never send to 10 or 13 unasked (CLAUDE.md). Keys 10 and 13 stay guarded
+or 11, and a test or bench build never over a key the launcher lists as the user's `FRIZZ` or
+`FRIZZ-BETA`. Sessions never send to 10 or 11 unasked (CLAUDE.md). Keys 10 and 11 stay guarded
 whatever `FRIZZ_SLOT` and `BETA_SLOT` say (they add keys to guard), and `--slot` takes FRIZZ's
 keys and the bench's; another key (1-15: a stock firmware, the storage firmware's 15) only with
 `--other-slot`, checked before anything is built or FRIZZ restarted.
@@ -182,7 +195,7 @@ length of the image it runs, which `tools/builds.py` prints next to the md5, and
 the bench. `flash.py` notes the build it sends to a slot, beside the lock, and after sending
 asks the build running and fails if it isn't the one sent; `--run N` says which build it
 started. `remote.py` and `measure.py` find the slot of the build running by those notes (one
-started by hand too), say which it is, take `--slot 10|12|13` for one in particular, started
+started by hand too), say which it is, take `--slot 10|11|12` for one in particular, started
 unless it's the one running, and never take the bench for FRIZZ. A FRIZZ from before IDENT
 (or a build the tools didn't send) can't say, and answers as FRIZZ-TEST and the bench do; for
 those the tools go by the slot they last started, also noted beside the lock (`hold` without
@@ -199,8 +212,8 @@ Sending replaces whatever is in that slot, so set yours (`FRIZZ_SLOT`, `BETA_SLO
 `BENCH_SLOT`, `TEST_SLOT`, or `--slot`) if your keys differ. It refuses a key that holds another
 firmware than FRIZZ (`--other-slot` replaces it anyway). Nothing restarts FRIZZ while it lends
 the card to the computer (`tools/chompi.py`'s `restart`): the drive would go from under it;
-eject it first. Run by hand, `tools/midi_send.py` takes the lock too and leaves keys 10, 13, 15
-and the launcher to `flash.py`. Linux only (ALSA), Python 3, no
+eject it first. Run by hand, `tools/midi_send.py` takes the lock too and leaves keys 10, 11, 15
+(sending, clearing or colouring them) and the launcher to `flash.py`. Linux only (ALSA), Python 3, no
 packages; it uses the launcher's own client, `tools/midi_send.py`. On macOS or Windows, the
 launcher's web page (https://ugrossek.github.io/CHOMPI/, Chrome or Edge) does the same.
 FRIZZ keeps its files in `/FRIZZ`, so it shares the card with the other firmwares.
@@ -230,10 +243,11 @@ wherever it is.
 All of them go through the launcher (`tools/chompi.py`): a running FRIZZ restarts into it over
 USB MIDI (the SysEx `F0 7D 43 48 10 F7`, `MidiClock.h`), the storage firmware restarts on an
 eject, and the launcher starts a slot on its `RUN` command. The last two need
-[launcher v1.5](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE/releases/tag/launcher-v1.5)
-(the [setup page](https://ugrossek.github.io/CHOMPI/setup/) updates an older one) and
+[launcher v1.6](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE/releases/tag/launcher-v1.6)
+(or 1.5; the [setup page](https://ugrossek.github.io/CHOMPI/setup/) updates an older one, or
+copy the release's `CHOMPI.bin` to the card's root) and
 [USB storage v1.6](https://github.com/lnetzel/CHOMPI-lnetzel/releases/tag/usb-storage-v1.6).
-A card set up from the launcher's v1.5 release still has USB storage v1.5 on key 15: copy
+A card set up from the launcher's v1.5 or v1.6 release still has USB storage v1.5 on key 15: copy
 v1.6's `.bin` over `FIRMWARE/15_USB_STORAGE.bin` (or `./flash.py FILE --slot 15 --other-slot
 --name USB_STORAGE`). With an older launcher or storage firmware the tools still work, but say which
 key to press (15 for the card, overdub then CHOMPI to leave it, 10 for FRIZZ). With an older FRIZZ or
@@ -661,7 +675,7 @@ cd firmware/code/src
 make BENCH=1      # build-bench/FRIZZ-bench.bin; the normal build is untouched
 ```
 
-1. With the launcher, `./flash.py --bench` puts it on its own key (11) and starts it. Without
+1. With the launcher, `./flash.py --bench` puts it on its own key (13) and starts it. Without
    it, put `FRIZZ-bench.bin` on the card instead of
    `FRIZZ.bin` (the bootloader takes the first `.bin` it finds, whatever its name) and switch
    on. The bootloader flashes it as usual.
