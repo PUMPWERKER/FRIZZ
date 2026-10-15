@@ -88,7 +88,9 @@ def stats(intervals, period):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--slot", type=int, choices=(10, 12, 13))
+    ap.add_argument("--slot", type=int, choices=chompi.FRIZZ_SLOTS, default=chompi.TEST_SLOT,
+                    help="the FRIZZ to measure (default the test slot's); another than the test "
+                    "slot's is started again at the end, from the card, so it saves again")
     ap.add_argument("--bank", default="cubbi_a")
     ap.add_argument("--slots", default="1,2", help="the bank's slots loaded in turn")
     ap.add_argument("--loads", type=int, default=10)
@@ -123,6 +125,10 @@ def main():
         if len(before) > 3:
             f.send(remote.SETTING, [3, before[3]])
         f.link.running = False
+        # PERSIST 0 stays until FRIZZ restarts: the user's key 10 or 13 would keep their saves
+        # in RAM, unsaid (remote.py's restore, as after a script)
+        a.found = True
+        remote.restore(f, a)
 
     ticks = f.link.ticks
     iv = [(ticks[i], ticks[i] - ticks[i - 1]) for i in range(1, len(ticks))]

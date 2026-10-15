@@ -69,8 +69,9 @@ BETA_SLOT = int(os.environ.get("BETA_SLOT", 13))  # the latest beta, the user's 
 STORAGE_SLOT = int(os.environ.get("STORAGE_SLOT", 15))
 FRIZZ_SLOTS = (FRIZZ_SLOT, TEST_SLOT, BETA_SLOT)  # the slots with a FRIZZ that answers its SysEx
 # the user's: flash.py sends there only when it's named (--slot), and only a release's or a
-# beta's build, from its v* tag (flash.py's tagged())
-USER_SLOTS = (FRIZZ_SLOT, BETA_SLOT)
+# beta's build, from its v* tag (flash.py's tagged()). Keys 10 and 13 whatever FRIZZ_SLOT and
+# BETA_SLOT say: they can add keys to guard (another CHOMPI's), never take these away
+USER_SLOTS = tuple(sorted({10, 13, FRIZZ_SLOT, BETA_SLOT}))
 STORAGE_LABEL = "CHOMPI-SD"
 
 RESTART = midi_send.HEADER + bytes([0x10, 0xF7])  # FRIZZ's (MidiClock.h)
@@ -310,17 +311,22 @@ def by_usb_id():
     """(the card, its raw MIDI node) of the first sound card with the Daisy's USB id, or
     (None, None)"""
     for usbid in sorted(glob.glob(os.path.join(ASOUND, "card*", "usbid"))):
-        try:
-            with open(usbid) as f:
-                if f.read().strip() != DAISY_USB_ID:
-                    continue
-        except OSError:
-            continue
         card = re.search(r"card(\d+)", usbid).group(1)
+        if usb_id(card) != DAISY_USB_ID:
+            continue
         nodes = sorted(glob.glob(os.path.join(SND, "midiC%sD*" % card)))
         if nodes:
             return card, nodes[0]
     return None, None
+
+
+def usb_id(card):
+    """Sound card CARD's USB id ("0483:5740"), None for one without (not on USB)"""
+    try:
+        with open(os.path.join(ASOUND, "card%s" % card, "usbid")) as f:
+            return f.read().strip()
+    except OSError:
+        return None
 
 
 def garbled():
@@ -340,9 +346,26 @@ def card_names(card):
     return " / ".join(g.strip() for g in m.groups()) if m else "?"
 
 
+# Set by the host checks' Python() (test/pytool.h): nothing reaches a real device from there,
+# however a stub falls short. A pseudo-terminal (the twin's) still goes
+NO_DEVICE = "FRIZZ_NO_DEVICE"
+
+
+def device_guard(what):
+    """Stops the process at once, finally blocks and all (they'd reach for the device too), when
+    a host check has reached for a real device: WHAT, a node under /dev (not a pty's), or
+    "udisks"; the twin's ptys and a stub's made-up names pass"""
+    if not os.environ.get(NO_DEVICE):
+        return
+    if what == "udisks" or (str(what).startswith("/dev/") and not str(what).startswith("/dev/pts/")):
+        say("a host check reached for a real device (%s): stub it. Stopped" % what)
+        os._exit(70)
+
+
 @contextlib.contextmanager
 def link(node):
     """A midi_send.Link to the raw MIDI node, closed afterwards; takes the CHOMPI first"""
+    device_guard(node)
     claim()
     to = midi_send.Link(node)
     try:
@@ -366,7 +389,13 @@ def ask_midi(device):
 def restart(device, hard=False):
     """Asks a running FRIZZ to restart into the launcher; the launcher ignores it. HARD: its
     developers' RESET, from the audio callback, for one whose MainLoop doesn't answer: at once,
-    not waiting for the card (a scene or the settings being written are cut short)"""
+    not waiting for the card (a scene or the settings being written are cut short). Exits,
+    sending nothing, while FRIZZ lends the card to the computer: the drive would go from under
+    it, its cache unwritten (lent())"""
+    why = lent(device)
+    if why:
+        sys.exit("FRIZZ lends the card to the computer (%s): not restarted, the drive would go from "
+                 "under it. Eject it there (or take it back on the CHOMPI) and run this again" % why)
     try:
         with link(device) as to:
             os.write(to.fd, RESET_SYSEX if hard else RESTART)
@@ -386,6 +415,8 @@ def frizz_node(node):
 def card_partition():
     """/dev/sdXN of the CHOMPI-SD file system, if it is there, whoever offers it"""
     link = "/dev/disk/by-label/" + STORAGE_LABEL
+    if os.environ.get(NO_DEVICE):
+        return None  # a host check: this computer's own drives aren't its business
     return os.path.realpath(link) if os.path.exists(link) else None
 
 
@@ -413,6 +444,28 @@ def lent_partition():
     return part if part and lent_by_frizz(part) else None
 
 
+USB_SUB = 0x0E  # kCmdDev's USB (MidiControl.h): its first data byte's 4 is "the card lent"
+CARD_LENT = 4
+
+
+def lent(device):
+    """Why the card counts as lent to the computer by the FRIZZ at DEVICE ("CHOMPI-SD at
+    /dev/sdX1", or what USB's flags say), None if it isn't: the drive FRIZZ offers (#196), or
+    FRIZZ's own word, which a lend the computer hasn't shown as a drive yet has too. A FRIZZ
+    that doesn't answer USB (one from before TinyUSB, or hung) has only the drive to go by"""
+    part = lent_partition()
+    if part:
+        return "%s at %s" % (STORAGE_LABEL, part)
+    try:
+        with link(device) as to:
+            reply = dev_call(to, USB_SUB, [0], timeout=0.3, retries=1)
+    except OSError:
+        return None
+    if reply and reply[0] == OK and reply[1] and reply[1][0] & CARD_LENT:
+        return "FRIZZ says so"
+    return None
+
+
 def storage_disk(part):
     """The whole disk the file system is on: /dev/sdX (a card without partitions: itself)"""
     parent = subprocess.run(["lsblk", "-no", "PKNAME", part], capture_output=True,
@@ -431,6 +484,7 @@ def mountpoint(part):
 
 def udisks(*args, check=True):
     """udisksctl's output; None if it failed and check is off"""
+    device_guard("udisks")
     quiet = [] if args[0] == "info" else ["--no-user-interaction"]  # info takes no such
     result = subprocess.run(["udisksctl", *args, *quiet], capture_output=True, text=True)
     if result.returncode == 0:

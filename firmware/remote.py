@@ -235,6 +235,7 @@ class Frizz:
         device = device or chompi.find_device()
         if not device:
             sys.exit("no CHOMPI on USB MIDI")
+        chompi.device_guard(device)
         chompi.claim()
         self.link = midi_send.Link(device)
         # one write at a time, so messages don't interleave; one query at a time, whose wait
@@ -250,15 +251,17 @@ class Frizz:
         with self.write_lock:
             os.write(self.link.fd, bytes(data))
 
-    def dev(self, sub, args=(), retries=3):
-        """kCmdDev's SUB: (status, data), asked again while unanswered (its queue full, or the
-        USB lost it); None if nothing answers, a FRIZZ from before it"""
+    def dev(self, sub, args=(), retries=3, wait=0.5):
+        """kCmdDev's SUB: (status, data), asked again while unanswered for WAIT s (its queue
+        full, or the USB lost it), with the same SEQ, so a late answer to the first ask still
+        counts; None if nothing answers, a FRIZZ from before it. FRIZZ runs each ask it gets:
+        what starts a job (a load, the write test) asks once (retries=1)"""
         with self.query_lock:
+            chompi._seq[0] = chompi._seq[0] % 127 + 1
+            seq = chompi._seq[0]
             for _ in range(retries):
-                chompi._seq[0] = chompi._seq[0] % 127 + 1
-                seq = chompi._seq[0]
                 self.send(chompi.DEV, [sub, seq] + list(args))
-                reply = self.link.recv(chompi.DEV, 0.5,
+                reply = self.link.recv(chompi.DEV, wait,
                                        match=lambda r: len(r) >= 3 and r[0] == sub and r[1] == seq)
                 if reply is not None:
                     return reply[2], bytes(reply[3:])
@@ -443,10 +446,8 @@ def try_set(f, name, index, value):
     if name not in GROUPS:
         return "no group %s: %s" % (name, ", ".join(GROUPS))
     group = GROUPS[name]
-    names = {GROUP_SETTINGS: SETTING_NAMES, GROUP_VOLUME: VOLUME_NAMES,
-             GROUP_LATCH: FX_NAMES}.get(group, [])
     try:
-        i = names.index(index) if index in names else int(index)
+        i = set_index(group, index)
         if group in (GROUP_SETTINGS, GROUP_LATCH):
             v = {"on": 1, "off": 0}.get(value)
             v = int(value) if v is None else v
@@ -473,10 +474,24 @@ def dev_set(f, name, index, value):
         sys.exit("SET %s %s %s: %s" % (name, index, value, why))
 
 
+def set_index(group, index):
+    """The index of a SET in GROUP (a number), as named or as a number (" 1", "01", "+1" too):
+    try_set's and set_saves's alike. ValueError if it's neither"""
+    names = {GROUP_SETTINGS: SETTING_NAMES, GROUP_VOLUME: VOLUME_NAMES,
+             GROUP_LATCH: FX_NAMES}.get(group, [])
+    return names.index(index) if index in names else int(index)
+
+
 def set_saves(group, index):
     """Whether a SET of GROUP INDEX (as named) is what FRIZZ saves to the card: a setting, the
-    compressor's knobs, VOLUME's input gain (#171)"""
-    return group in ("settings", "comp") or group == "volume" and index in ("in", "1")
+    compressor's knobs, VOLUME's input gain (#171); an index try_set would refuse saves nothing,
+    as it isn't sent"""
+    if group in ("settings", "comp"):
+        return True
+    try:
+        return group == "volume" and set_index(GROUP_VOLUME, index) == VOLUME_NAMES.index("in")
+    except ValueError:
+        return False
 
 
 def bench_state(f, missing_ok=False):
@@ -858,7 +873,7 @@ def loops_load(f, bank, slot, fault, check):
     import zlib
     load(f)  # the meter from here
     loops_status(f)  # and MainLoop's longest step
-    got = f.dev(chompi.LOOPS, [4, bank, slot - 1, LOOP_FAULTS.get(fault, 0)])
+    got = f.dev(chompi.LOOPS, [4, bank, slot - 1, LOOP_FAULTS.get(fault, 0)], retries=1, wait=1.5)
     if not got:
         sys.exit("no answer to LOOPS: a FRIZZ from before it")
     if got[0] != chompi.OK:
@@ -899,7 +914,7 @@ def loops_write(f, kb, chunk, fault=None):
     before = loops_status(f)
     # the fault in KB's high group (KB up to 1024: 8 at most there; the SysEx takes 5 bytes)
     args = [6, kb >> 7 | WRITE_FAULTS.get(fault, 0), kb & 0x7F, chunk >> 7, chunk & 0x7F]
-    got = f.dev(chompi.LOOPS, args)
+    got = f.dev(chompi.LOOPS, args, retries=1, wait=1.5)
     if not got or got[0] != chompi.OK:
         sys.exit("loops write: refused")
     s, secs, worst = loops_wait(f, [6], 120)

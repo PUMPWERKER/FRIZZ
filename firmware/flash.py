@@ -6,7 +6,9 @@
     ./flash.py --bench       builds FRIZZ-bench.bin, sends it to slot 11
     ./flash.py --no-build    sends the build that's there (code/src/build/, build-bench/) instead
     ./flash.py --slot 10|13  a release's (10) or a beta's (13) build, from its v* tag: below
-    ./flash.py FILE --slot N sends any .bin to slot N (10 and 13: only the tag's build)
+    ./flash.py FILE --slot N sends any .bin to slot N: 11 or 12 (10 and 13: only the tag's
+                             build); another key (a stock firmware, the storage firmware's 15)
+                             only with --other-slot, which a session never gives
     ./flash.py --run N       starts what's in slot N already (10 FRIZZ, 11 the bench, 12 a test,
                              13 the beta)
     ./flash.py --list        what's on each key: restarts FRIZZ into the launcher (a loop in
@@ -32,9 +34,10 @@ right after finds it, and notes the slot and the build sent there, so that tool 
 is (tools/chompi.py). It then asks FRIZZ which build it runs (IDENT: the image's CRC-32 and
 length) and fails if that isn't the one sent; --run says which build it started.
 One that came up with its USB names garbled (#88) is started again, not sent again.
-FRIZZ_SLOT, BETA_SLOT, BENCH_SLOT and TEST_SLOT set other slots; without --slot, a key that holds another
-firmware than FRIZZ is refused (launcher 1.5 lists its keys; an older one can't, and isn't
-asked). It waits while another tool has the CHOMPI (tools/chompi.py, the lock).
+FRIZZ_SLOT, BETA_SLOT, BENCH_SLOT and TEST_SLOT set other slots (FRIZZ_SLOT and BETA_SLOT add
+keys to guard as the user's: 10 and 13 stay guarded whatever they say); a key that holds another
+firmware than FRIZZ is refused but with --other-slot (launcher 1.5 lists its keys; an older one
+can't, and isn't asked). Every slot is checked before anything is built or the CHOMPI restarted. It waits while another tool has the CHOMPI (tools/chompi.py, the lock).
 
 It prints the md5 of what it sends: that names the build (tools/builds.py). Builds aren't in
 git, so --no-build needs one made first (make, make BENCH=1 in code/src), and refuses one older
@@ -68,7 +71,7 @@ def tagged(where=HERE):
 def user_slot(slot, args):
     """Exits unless what's asked may go to the user's key SLOT (10, 13): a release's or a beta's
     build, from a checkout of its tag; the tag"""
-    what = "the latest release" if slot == chompi.FRIZZ_SLOT else "the latest beta"
+    what = "the latest release" if slot in (10, chompi.FRIZZ_SLOT) else "the latest beta"
     if args.bench:
         sys.exit("key %d is %s, the user's: never the bench" % (slot, what))
     tag = tagged()
@@ -81,6 +84,23 @@ def user_slot(slot, args):
     return tag
 
 
+SLOTS = range(1, 16)  # the launcher's keys
+
+
+def check_slot(slot, args):
+    """Exits unless SLOT may be sent to as asked: FRIZZ's keys (the user's behind user_slot's
+    tag check) and the bench's, another key of the launcher's only with --other-slot"""
+    if slot not in SLOTS:
+        sys.exit("no key %d: the launcher's are %d-%d" % (slot, SLOTS[0], SLOTS[-1]))
+    # never the storage firmware's, whatever BENCH_SLOT or TEST_SLOT say: card.py needs it
+    ours = tuple(s for s in chompi.USER_SLOTS + (chompi.BENCH_SLOT, chompi.TEST_SLOT)
+                 if s not in (15, chompi.STORAGE_SLOT))
+    if slot not in ours and not args.other_slot:
+        sys.exit("key %d isn't FRIZZ's or the bench's (%s): sending replaces what's there, so "
+                 "--other-slot says it's meant (never in a session's run)"
+                 % (slot, ", ".join(str(s) for s in sorted(set(ours)))))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("image", nargs="?", help="a .bin to send instead of building one")
@@ -89,8 +109,12 @@ def main():
                     help="to the test slot (12), as FRIZZ-TEST: a branch's build, checked by a session")
     ap.add_argument("--no-build", action="store_true", help="send the build make left in code/src")
     ap.add_argument("--slot", type=int,
-                    help="the launcher slot (key) to put it in; 10 and 13, the user's, take only "
-                    "a v* tag's build")
+                    help="the launcher slot (key) to put it in: 11, 12; 10 and 13, the user's, take "
+                    "only a v* tag's build; another only with --other-slot")
+    ap.add_argument("--other-slot", action="store_true",
+                    help="let --slot be another key than FRIZZ's and the bench's (1-15: a stock "
+                    "firmware, the storage firmware), or one holding another firmware: replaces "
+                    "what's there. Never a session's")
     ap.add_argument("--run", type=int, metavar="SLOT", help="start what's in SLOT, sending nothing")
     ap.add_argument("--list", action="store_true",
                     help="show what's on each key, sending nothing: restarts FRIZZ into the "
@@ -101,7 +125,7 @@ def main():
     ap.add_argument("--device", help="its raw MIDI node, e.g. /dev/snd/midiC1D0 (default: found)")
     args = ap.parse_args()
 
-    if args.run:
+    if args.run is not None:
         node = chompi.start(args.run, args.wait, args.device)
         info = node and chompi.ident(node)
         if info:
@@ -109,16 +133,19 @@ def main():
         return
     if args.list:
         device = chompi.to_launcher(args.wait, args.device)
+        chompi.device_guard(device)
         sys.argv = ["midi_send.py", "--list", "--device", device]
         midi_send.main()
         return
-    if args.image and not args.slot:
+    if args.image and args.slot is None:
         sys.exit("a file of your own needs --slot: sending replaces what's in it")
-    slot = args.slot or (chompi.BENCH_SLOT if args.bench else chompi.TEST_SLOT if args.test else None)
+    slot = args.slot if args.slot is not None else (
+        chompi.BENCH_SLOT if args.bench else chompi.TEST_SLOT if args.test else None)
     if slot is None:
         sys.exit("which slot? --test (12) for a branch's build, --bench (11), or --slot N; keys "
                  "10 and 13 take a release's or a beta's build, from its v* tag")
-    # the user's keys: refused before anything is built or the CHOMPI restarted
+    # the slot and the user's keys: refused before anything is built or the CHOMPI restarted
+    check_slot(slot, args)
     tag = user_slot(slot, args) if slot in chompi.USER_SLOTS else None
     if args.image:
         image = args.image
@@ -141,12 +168,13 @@ def main():
     print("sending %s to key %d%s" % (builds.describe(image), slot, ", %s's" % tag if tag else ""))
 
     device = chompi.to_launcher(args.wait, args.device)
-    if not args.slot:
-        # the default keys are FRIZZ's: never replace another firmware on them unasked
+    if not args.other_slot and not tag:
+        # FRIZZ's keys: never replace another firmware on them unasked
         there = chompi.slot_file(device, slot)
         if there and not there.upper().split("_", 1)[-1].startswith("FRIZZ"):
-            sys.exit("key %d holds %s, not FRIZZ: give --slot %d to replace it anyway, "
-                     "or set BENCH_SLOT / TEST_SLOT" % (slot, there, slot))
+            sys.exit("key %d holds %s, not FRIZZ: give --other-slot to replace it anyway, "
+                     "or set BENCH_SLOT / TEST_SLOT" % (slot, there))
+    chompi.device_guard(device)
     sys.argv = ["midi_send.py", image, "--slot", str(slot), "--name", name, "--device", device]
     midi_send.main()
     chompi.started(slot)
