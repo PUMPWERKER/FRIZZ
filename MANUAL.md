@@ -2331,8 +2331,9 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
 
 ### Processing load
 
-Effects that are off cost (almost) no processing time, but the ones that are on do. Some
-heavy combinations (the shifter and the crusher with a loop playing and the master compressor
+Effects that are off cost little processing time, about 5% of each block's together (most of
+it the resonator and the shifter keeping their recent sound for a punch-in), but the ones that
+are on do. Some heavy combinations (the shifter and the crusher with a loop playing and the master compressor
 working hard, for example) can need more time than there is, which is heard as crackles;
 switching one of them off clears it.
 

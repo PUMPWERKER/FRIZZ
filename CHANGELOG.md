@@ -115,7 +115,8 @@ what FRIZZ does.
   pushes up rings out a little longer than before. See [Folder](MANUAL.md#folder).
 - **Effects that are off take less of the CPU:** the filter, the crusher, the shifter, wow &
   flutter and the flanger no longer keep running unheard while off; they start afresh when
-  punched in, without a click. More headroom when only a few effects are on. A punched-in
+  punched in, without a click: FRIZZ with every effect off takes about 22% of the processing
+  time where it took 31%, more headroom when only a few effects are on. A punched-in
   crusher's steps fall at other moments than before, and wow & flutter's wow goes on from
   where it rested.
 - **The reverb's tail is smoother, less metallic:** its first allpass is modulated, as in
