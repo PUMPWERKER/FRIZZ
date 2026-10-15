@@ -85,3 +85,7 @@ $(BUILD_DIR)/fxchain-tu.ok: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).bi
 
 # TinyUSB at -Os, as lost-tty/CHOMPI builds it: its code isn't the audio callback's
 $(addprefix $(BUILD_DIR)/,$(notdir $(TINYUSB_SOURCES:.c=.o))): OPT = -Os
+
+# FatFs at -Os too: the card's, MainLoop's, never the audio callback's (no file I/O there), and
+# its time goes to the SD transfers, not its own code; -6.8 KB of code
+$(addprefix $(BUILD_DIR)/,$(notdir $(FATFS_SOURCES:.c=.o))): OPT = -Os
