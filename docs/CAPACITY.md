@@ -266,7 +266,7 @@ b5c658c, #286).
    audio and MIDI interrupts run (`sai.cpp`, `audio.cpp`, `dma.c`, the HAL's DMA and SAI,
    `midi_parser`): estimated −5…7 KB from the functions FRIZZ links (the HAL's UART −1.8 KB,
    `UART_SetConfig` alone 5.3 KB; libDaisy's `uart.cpp` −1.5 KB, `UI.cpp` −0.8 KB), a rebuild
-   of vendored code with GCC 10.3, listed in `THIRD_PARTY.md`. What's left beside it: the QSPI
+   of vendored code with GCC 10.3, listed in `THIRD_PARTY.md` (#323). What's left beside it: the QSPI
    driver (3.7 KB).
 
 Not recommended: link-time optimisation (GCC 10.3, and it would merge the `-O0` workarounds
