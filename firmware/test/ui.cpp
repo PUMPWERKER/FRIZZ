@@ -4071,6 +4071,54 @@ int main()
               "loops-midi-modes: notes 66, 68, 70 arm no mode on the Loops page, and on the play page do");
     }});
 
+    // the knob presses' notes (36-39) do nothing on the Loops and Cubbi pages, as the hand's
+    // there (#360): no page turned, SHIFT's note 45 + one resets nothing
+    cases.push_back({"loops-midi-knobs", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a5", SineWav(96000, 2, 220.f)}, {"/cubbi_a1.wav", SineWav(96000, 2, 220.f)}});
+        auto page = [] {
+            const std::string state = Ask({0x20});
+            return state.size() > 24 ? state[24] : -1; // the FX knobs' page
+        };
+        auto shift = [] { // the shifter's page-1 knob 1
+            const std::string p = Ask({0x21, 1});
+            return p.size() == 17 ? KnobOf(p[1], p[2]) : -1.f;
+        };
+        auto note = [](int n) {
+            Trs({kNoteOn, n, 100});
+            RunMs(100);
+            Trs({kNoteOff, n, 0});
+            RunMs(100);
+        };
+        Tap("KEY_2"); // the shifter on the knobs
+        RunMs(200);
+        Turn(kKnob1Encoder, -30);
+        RunMs(400);
+        const float turned = shift();
+        bool none = true;
+        for (int on_cubbi = 0; on_cubbi < 2; on_cubbi++)
+        {
+            on_cubbi ? CubbiPage() : LoopsPage();
+            for (int n : {36, 37, 38, 39})
+            {
+                note(n);
+                none = none && page() == 0;
+            }
+            Trs({kNoteOn, 45, 100}); // SHIFT
+            RunMs(50);
+            note(36);
+            Trs({kNoteOff, 45, 0});
+            RunMs(200);
+            none = none && LoopsShown() && shift() == turned;
+        }
+        CubbiPage(); // home
+        note(36);
+        const bool home = !LoopsShown() && page() == 1;
+        Check(turned < .4f && none && home,
+              "loops-midi-knobs: notes 36-39 turn no page and reset nothing on the Loops and "
+              "Cubbi pages, and on the play page turn it");
+    }});
+
     // loops over MIDI (#259): CC 0 picks the program changes' bank (0 the scenes, 1-8 FRIZZ's
     // a-h, 9-13 the cubbis a-e), a program change 0-14 the key; CC 54 when: 0 at once, 1-8 at
     // the n-th pass end, 127 with the waiting scene sequence (at once if none); CC 81 cancels
