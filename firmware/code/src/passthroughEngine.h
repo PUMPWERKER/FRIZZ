@@ -435,6 +435,12 @@ public:
         if (!morph_.SetParam(fx, param, val))
             fx_.SetParam(fx, param, val);
     }
+    /** An effect's second mode (FxChain::SetMode), as a parameter */
+    inline void SetFxMode(size_t fx, bool second)
+    {
+        if (!morph_.SetMode(fx, second))
+            fx_.SetMode(fx, second);
+    }
     /** Before a scene recall's SetFxParams: they land at the recall's slew (FxCommon.h) */
     inline void FastFxSlew() { fx_.FastSlew(); }
     /** A scene morph (FxMorph.h) to the next bar line of the FX's clock, one more per
@@ -466,17 +472,17 @@ public:
     /** Makes the held morph a drop on its landing, gliding there first for a build-up
      *  (FxMorph::Drop); with the audio interrupt blocked */
     bool DropFxMorph(const float to[chompi::kNumFx][chompi::kNumFxParams], uint16_t ui_on,
-                     uint16_t on, bool glide)
+                     uint16_t on, bool glide, uint16_t modes)
     {
-        return morph_.Drop(to, ui_on, on, glide);
+        return morph_.Drop(to, ui_on, on, glide, modes);
     }
     inline bool FxDropping() const { return morph_.Dropping(); }
     /** Stops the morph where it is (FxMorph::Freeze); with the audio interrupt blocked */
     bool FreezeFxMorph(float params[chompi::kNumFx][chompi::kNumFxParams],
-                       uint16_t* unswitched, uint16_t* was_on)
+                       uint16_t* unswitched, uint16_t* was_on, uint16_t* modes)
     {
         morph_wraps_on_ = false;
-        return morph_.Freeze(params, unswitched, was_on);
+        return morph_.Freeze(params, unswitched, was_on, modes);
     }
     inline bool FxMorphing() const { return morph_.Active(); }
     /** Started and still held for SHIFT (FxMorph::Holding) */

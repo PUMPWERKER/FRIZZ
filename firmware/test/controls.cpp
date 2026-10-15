@@ -28,6 +28,13 @@ struct FakeEngine
         param_calls++;
     }
     void FastFxSlew() { fast_slews++; }
+    uint16_t modes = 0; // bit fx: its second mode, as sent
+    int mode_calls = 0;
+    void SetFxMode(size_t fx, bool second)
+    {
+        modes = static_cast<uint16_t>(second ? modes | 1u << fx : modes & ~(1u << fx));
+        mode_calls++;
+    }
     float comp[kNumFxParams] = {};
     void SetCompParam(size_t p, float v) { comp[p] = v; }
 
@@ -76,8 +83,11 @@ struct FakeEngine
     float drop_to[kNumFx][kNumFxParams] = {};
     uint16_t drop_ui_on = 0, drop_on = 0;
     bool drop_glide = false; // a build-up
-    bool DropFxMorph(const float to[kNumFx][kNumFxParams], uint16_t ui_on, uint16_t o, bool glide)
+    uint16_t drop_modes = 0;
+    bool DropFxMorph(const float to[kNumFx][kNumFxParams], uint16_t ui_on, uint16_t o, bool glide,
+                     uint16_t m)
     {
+        drop_modes = m;
         if (!morphing || !held || dropping)
             return false;
         for (size_t f = 0; f < kNumFx; f++)
@@ -91,10 +101,12 @@ struct FakeEngine
     }
     bool FxDropping() const { return morphing && dropping; }
     // a freeze reports the plan's start values, as if it hadn't moved yet
-    bool FreezeFxMorph(float live[kNumFx][kNumFxParams], uint16_t* unswitched, uint16_t* was_on)
+    bool FreezeFxMorph(float live[kNumFx][kNumFxParams], uint16_t* unswitched, uint16_t* was_on,
+                       uint16_t* m)
     {
         if (!morphing)
             return false;
+        *m = plan.mode_start;
         for (size_t f = 0; f < kNumFx; f++)
             for (size_t p = 0; p < kNumFxParams; p++)
                 live[f][p] = plan.start[f][p];
@@ -1220,6 +1232,49 @@ static void TestSplit()
     Check(e.plan.how[FX_PHASER][kRate] == MorphParam::HOLD, "split: a morph into the synced half holds");
 }
 
+/** An effect's second mode (#306, the phaser's frequency shifter): a setting beside its knobs,
+ *  edited, kept by a scene, recalled and morphed as a stepped parameter */
+static void TestModes()
+{
+    FakeEngine e;
+    Fx fx;
+    Fresh(e, fx);
+    const uint16_t phaser = 1u << FX_PHASER;
+    Check(e.modes == 0 && !fx.Mode(FX_PHASER), "modes: at first every effect in its first, as the engine");
+    fx.SetMode(FX_FILTER, true);
+    Check(!fx.Mode(FX_FILTER) && e.mode_calls == 0, "modes: an effect without a second mode stays as it is");
+    FxScene a, b;
+    fx.Snapshot(a);
+    fx.SetMode(FX_PHASER, true);
+    Check(fx.Mode(FX_PHASER) && e.modes == phaser && fx.Edited(), "modes: the phaser's set, sent and the scene edited");
+    fx.SetMode(FX_PHASER, true);
+    Check(e.mode_calls == 1, "modes: set again, nothing sent");
+    fx.Snapshot(b);
+    Check(a.modes == 0 && b.modes == phaser, "modes: a scene keeps it");
+    fx.Recall(a);
+    Check(!fx.Mode(FX_PHASER) && e.modes == 0 && !fx.Edited(), "modes: a recall sets it");
+
+    // a morph: off now, at once; on, at the landing (the engine's morph has it)
+    e.mode_calls = 0;
+    fx.Morph(b);
+    Check(fx.Mode(FX_PHASER) && e.modes == phaser && e.plan.mode_start == phaser && e.plan.mode_target == phaser,
+          "modes: a morph sets an effect that's off at once");
+    e.LandFxMorph();
+    fx.SetLatch(FX_PHASER, true);
+    fx.Snapshot(b);
+    a = b;
+    a.modes = 0;
+    e.mode_calls = 0;
+    fx.Morph(a);
+    Check(!fx.Mode(FX_PHASER) && e.mode_calls == 0 && e.plan.mode_start == phaser && e.plan.mode_target == 0,
+          "modes: on in both, the morph switches it, not the controls");
+    // stopped where it is, before the landing: the mode it had then
+    Check(fx.FreezeMorph() && fx.Mode(FX_PHASER), "modes: a morph stopped keeps the mode the engine had");
+    // a drop takes its scene's
+    fx.Morph(a);
+    Check(fx.Drop(&b, false) && e.drop_modes == phaser && fx.Mode(FX_PHASER), "modes: a drop goes to its scene's");
+}
+
 int main()
 {
     TestInit();
@@ -1234,5 +1289,6 @@ int main()
     TestFader();
     TestPool();
     TestSplit();
+    TestModes();
     return Finish();
 }
