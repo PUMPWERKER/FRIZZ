@@ -299,7 +299,8 @@ anyway. Linux only, Python 3, no packages, like `flash.py`.
 
 **The loop transfer** (`0x38`, the web app's: list, upload, move, delete the loops, copy a
 cubbi) is a protocol of its own, stable and versioned: [`docs/LOOP_PROTOCOL.md`](../docs/LOOP_PROTOCOL.md)
-(#278, specified, not built yet).
+(#278; `LoopTransfer.h`, its reference client and model `tools/loopxfer.py`, `remote.py loops`
+on the command line).
 
 **The developers' SysEx** (`0x3E`, `MidiControl.h`'s `namespace dev`) is for the tools, not
 for players (MANUAL.md lists it only briefly): `F0 7D 43 48 3E SUB SEQ ARGS F7`, over USB
@@ -337,14 +338,17 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | | `03` / `04` BANK SLOT FAULTS | scans again / loads the slot (banks and slots from 0). FAULTS for a test: 1 the flow control off for it, 2 its third run read past the card's end, 4 its third run given no time, 8 the recovery after it sets the card up from scratch (`HAL_SD_DeInit`, `BSP_SD_Init`), 16 FatFs's next read as it opens the file given no time, 32 that read past the card's end (`SdDisk.h`, #213). Refused (status 1) while something runs |
 | | `05` [`01`] | the state, the CRC-32 (5) of the data loaded (zlib's); with `01` it starts, 16 KB a MainLoop pass |
 | | `06` KB(2) CHUNK(2) | the write test: KB (1-1024) written to `/FRIZZ/T/w.tmp` in CHUNK-byte writes, the `.bin` it replaces deleted, renamed, read back, compared, then the file and the folder deleted. KB's high group can carry a fault for a test, in FatFs's next write of more than a sector (its data, never the FAT or a folder): 16 given no time, 32 past the card's end |
+| `0E` USB | `00` [`01`] | USB (`UsbDevice.h`, #196; `tools/usbaudio.py stats`). Every answer starts with the flags (1 a computer on the bus, 2 it plays to FRIZZ, 4 the card lent, 8 USB audio on, 16 it records from FRIZZ); `00` then the audio's counts (5 each: blocks from the computer, the stream run dry, its starts, blocks to the computer, the IN FIFO full), the FIFOs' fill (2 each) and the enumerations (2). With `01` instead the computer's packets (5 each: all, short, long, the FIFO full) and the fill's range since the last such ask (2 each), which this resets |
+| | `01` | the flags, then the drive's counts (5 each: reads, writes, KB read, KB written, errors, ms in the card), TEST UNIT READY and READ CAPACITY asked (2 each) |
+| | `02` X | the flags; the card lent (X 1) or taken back (0), as the settings page's SHIFT + LOOP |
 
 The groups of GET and SET: `00`-`1F` an effect's knobs by its FxId (`FxParams.h`: 0-3 page 1,
 4-7 page 2), `20` the compressor's, `21` the latches (index by FxId, 0 or 1), `22` VOLUME's
 (0 output gain, 1 input gain, 2 mix, 3 headphone feed), `23` the card's settings as
 `masterfile::kLines` lists them (`MasterSettings.h`: mono, MIDI channel, transport, clock
 factor, clock source, MIDI out, LED brightness, the effect channels over TRS, MIDI feedback,
-AUX dry, the input gains of AUX and the mic, the mic dry, AUX live, the mic live), their values
-as `frizz_master.txt` has them.
+AUX dry, the input gains of AUX and the mic, the mic dry, AUX live, the mic live, USB's input
+gain, dry and live, USB audio), their values as `frizz_master.txt` has them.
 The groups don't follow the MIDI map (CCs), so a tool keeps working when it changes. SETs
 aren't in the event log: a bug report taken after them won't replay them.
 
@@ -739,6 +743,8 @@ UsbMidiTransport.h     libDaisy's MIDI transport on TinyUSB (test/usbtransport.c
 CardLend.h             the card lent to the computer: what the settings page shows and asks
 LoopLoader.h           loops from the card (#70): the slots' scan (a WAV's header and name), a load
                        straight into SDRAM by the SDMMC's DMA
+SdCard.h, SdDisk.h     the card under FatFs: the SDMMC's settings libDaisy has no field for, runs of
+                       sectors read past FatFs for the loop loader, FatFs's own reads and writes
 LoopControls.h         the Loops page's and the Cubbi page's loops: the plan, the loads, the switch
 LoopTransfer.h         the loop transfer over USB MIDI (#278, ../../docs/LOOP_PROTOCOL.md), the
                        Companion's: SysEx 0x38, the CHUNKs' ring, MainLoop's job; Version.h kFrizzVersion
@@ -799,11 +805,15 @@ chompi_sram.lds        linker script (the firmware runs from SRAM, placed there 
 
 ## Rules the code follows
 
-- **No file I/O and no blocking calls in the audio callback.** FRIZZ reads the SD card once at
-  boot (the FX scenes and the master settings, after changing into `/FRIZZ`, which it
-  creates on a new card) and writes it only from `MainLoop`, when a scene is saved, copied or
-  deleted, 2 s after the compressor's knobs, the mono input or the MIDI settings were last
-  changed (`SceneStore.h`), or for a bug report (`EventLog.h`).
+- **No file I/O and no blocking calls in the audio callback.** FRIZZ reads and writes the SD
+  card only from `MainLoop`, and not while it lends it to the computer (`CardLend.h`). It reads
+  the FX scenes and the master settings at boot (after changing into `/FRIZZ`, which it creates
+  on a new card) and again, where the computer changed them, when it takes the card back
+  (#314); loops when one is loaded (`LoopLoader.h`, the slots scanned at boot, after a lend and
+  on RESCAN). It writes when a scene is saved, copied or deleted, 2 s after the compressor's
+  knobs, the mono input or the MIDI settings were last changed (`SceneStore.h`), when the loop
+  transfer writes, moves or deletes a slot (`LoopTransfer.h`, through `/FRIZZ/xfer.tmp`), or
+  for a bug report (`EventLog.h`).
 - **TinyUSB is called only from its task and the USB interrupt** (`UsbDevice.h`): MainLoop
   posts what it wants (a transfer done, the bus left for a switch) and the task does it.
   TinyUSB's lock masks the USB interrupt, not the task's timer, so a call from MainLoop could be
