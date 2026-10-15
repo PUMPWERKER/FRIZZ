@@ -24,7 +24,10 @@
  *  level, page 1's knob 4 until then and a gain from 0 to 1, with their ducking on page 2's
  *  knob 4, where the level is on the inserts' dB scale (#172, SendsTo5); the freezer's roll
  *  became a divider by hand there (#173), its five steps on the knob where the automatic
- *  roll's five were, so a scene's roll keeps its step. Millionths because a coarse
+ *  roll's five were, so a scene's roll keeps its step. The phaser's line may have a ninth
+ *  value, its mode (#306): 1 the frequency shifter, written only then; without it, or 0, the
+ *  phaser. An older FRIZZ reads the eight it knows and leaves the rest of the line, so it
+ *  loads such a scene as the phaser, without a new layout. Millionths because a coarse
  *  grid's points must come back on the grid: the resonator's pitch grid is .0157 apart and
  *  counts a value within 1.6e-4 as on a point.
  */
@@ -44,8 +47,8 @@ static const size_t kNumScenes = 4;
 // holding the file's scene s
 static const size_t kBlankSlot = 0;
 static const size_t kNumSlots = kNumScenes + 1;
-// The file's size at most: 4 scenes of 14 effects with both pages, every value 7 digits, take
-// 4172 bytes (test/scenes.cpp); in 32-byte lines, as the card's buffers are, and no more than
+// The file's size at most: 4 scenes of 14 effects with both pages, every value 7 digits, the
+// phaser's mode too, take 4180 bytes (test/scenes.cpp); in 32-byte lines, as the card's buffers are, and no more than
 // the event log reads it through (EventLog::Snapshot)
 static const size_t kSceneFileMax = 4224;
 
@@ -53,6 +56,7 @@ struct FxScene
 {
     bool used;
     uint16_t latched; // bit fx: latched
+    uint16_t modes;   // bit fx: in its second mode (kFxModes, the phaser's frequency shifter)
     float params[kNumFx][kNumFxParams];
 };
 static_assert(kNumFx <= 16, "a latch bit per effect");
@@ -234,6 +238,8 @@ inline __attribute__((noinline, optimize("Os"))) size_t FormatScenes(const FxSce
             Put(buf, size, pos, kFxNames[fx]);
             Put(buf, size, pos, scenes[s].latched & (1u << fx) ? " 1" : " 0");
             PutValues(buf, size, pos, scenes[s].params[fx], kNumFxParams);
+            if (scenes[s].modes >> fx & 1)
+                Put(buf, size, pos, " 1"); // its mode, the ninth value
             Put(buf, size, pos, "\n");
         }
     }
@@ -247,12 +253,13 @@ namespace scenefile
 constexpr size_t Digits(uint32_t n) { return n < 10 ? 1 : 1 + Digits(n / 10); }
 constexpr size_t Length(const char* s) { return *s ? 1 + Length(s + 1) : 0; }
 /** The longest text FormatScenes writes, its terminator too: every scene used, every effect
- *  latched, every value 1 (7 digits) */
+ *  latched and in its second mode, every value 1 (7 digits) */
 constexpr size_t LongestFile()
 {
     size_t fx_lines = 0;
-    for (size_t fx = 0; fx < kNumFx; fx++) // name, latch, values (1 in millionths), newline
-        fx_lines += Length(kFxNames[fx]) + 2 + kNumFxParams * (1 + Digits(1000000)) + 1;
+    for (size_t fx = 0; fx < kNumFx; fx++) // name, latch, values (1 in millionths), mode, newline
+        fx_lines += Length(kFxNames[fx]) + 2 + kNumFxParams * (1 + Digits(1000000))
+                    + (kFxModes >> fx & 1 ? 2 : 0) + 1;
     const size_t scene = Length("scene ") + Digits(kNumScenes) + 1 + fx_lines;
     return sizeof(kHeader) - 1 + Length("\nlayout ") + Digits(kLayoutNow) + 1 + kNumScenes * scene + 1;
 }
@@ -310,7 +317,7 @@ inline __attribute__((noinline, optimize("Os"))) bool ParseScenes(const char* te
                 continue; // its lines are skipped
             scene = &scenes[n - 1];
             scene->used = true;
-            scene->latched = 0;
+            scene->latched = scene->modes = 0;
             for (size_t fx = 0; fx < kNumFx; fx++)
                 for (size_t i = 0; i < kNumFxParams; i++)
                     scene->params[fx][i] = defaults[fx][i];
@@ -335,6 +342,10 @@ inline __attribute__((noinline, optimize("Os"))) bool ParseScenes(const char* te
             if (layout < 4)
                 SwapStereo(fx, v);
             ReadValues(p, v, kNumFxParams);
+            // the ninth value, its mode: past the eight an older FRIZZ reads
+            const char* mode = Word(p, len);
+            if (mode && (kFxModes >> fx & 1) && Is(mode, len, "1"))
+                scene->modes |= static_cast<uint16_t>(1u << fx);
             if (layout < 4)
             {
                 float old[kNumFxParams];

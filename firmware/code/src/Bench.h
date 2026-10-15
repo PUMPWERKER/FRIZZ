@@ -344,6 +344,8 @@ private:
         MIC = 256,    // the mic (#152): the tune into it, not on the master
         FADER = 512,  // two loops on the crossfader (#70): the loop beside itself, half a pass
                       // on, mixed at the middle (Looper::BenchFade)
+        MODES = 1024, // the effects with a second mode in it (kFxModes): the phaser's
+                      // frequency shifter (#306)
     };
     struct Segment
     {
@@ -360,7 +362,7 @@ private:
     static const uint16_t kScene4 = (1u << FX_SHIFTER) | (1u << FX_FOLDER) | (1u << FX_CRUSHER)
                                     | (1u << FX_SLICER);
 
-    static constexpr size_t kNumSegments = 28;
+    static constexpr size_t kNumSegments = 29;
     static const Segment kSegments[kNumSegments];
 
     static const size_t kMaxBlock = 48;
@@ -444,6 +446,9 @@ private:
         engine.SetFxParam(FX_FREEZER, Freezer::ROLL, 1.f);
         if (seg.flags & SCENE4)
             engine.SetFxParam(FX_SHIFTER, 0, .5f + 7.f / 24.f);
+        for (size_t fx = 0; fx < kNumFx; fx++)
+            if (kFxModes >> fx & 1)
+                engine.SetFxMode(fx, seg.flags & MODES);
         engine.SetFxPool(seg.flags & CHAOS ? kInserts : 0);
         if (seg.flags & CHAOS)
             engine.SetFxParam(FX_CHAOS, Chaos::GRID, 0.f);
@@ -768,6 +773,8 @@ const Bench::Segment Bench::kSegments[Bench::kNumSegments] = {
     {"warble", Bench::Bit(FX_WARBLE), 0},
     {"tapestop", Bench::Bit(FX_TAPESTOP), 0},
     {"phaser", Bench::Bit(FX_PHASER), 0},
+    // the phaser's second mode (#306), after the segments FRIZZ had before, the effect by itself
+    {"freqshift", Bench::Bit(FX_PHASER), Bench::MODES},
     {"compressor", 0, Bench::COMP},
     {"inserts", Bench::kInserts, 0},
     {"recording", 0, Bench::RECORD},

@@ -9,7 +9,7 @@ prints the memory table after every build; the numbers below come from it and fr
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 261,292 B (94 %) | **~16.8 KB** (17,236 B; the bench build 260,628 B, ~17.5 KB) | all the code, and the initial values of `.data` |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 268,116 B (96 %) | **~10.2 KB** (10,412 B; the bench build 267,164 B, ~11.1 KB) | all the code, and the initial values of `.data` |
 | `SRAM` (AXI SRAM) | 240 KB | 217,664 B (89 %) | ~27.4 KB (the bench build 225,496 B, ~19.8 KB) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,804 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
@@ -94,6 +94,14 @@ Hermite) showed the same rise. The shifter's per-sample code (`Process`, `Taps`,
 `.frizz_after_run`, `chompi_sram.lds`): `Run` lies 2,976 B earlier than before, and every
 segment without the shifter reads as `main`'s. Any other change to code before `Run` draws the
 I-cache's lots again (#285, #298): bench it against `main` in one hold.
+
+**The phaser's frequency shifter (#306)** takes 3.4 KB of code (`main` 264,708 B, ~13.5 KB left,
+to 268,116 B): its per-sample code ~1.6 KB (`Shift` with both channels unrolled; a call per
+channel would save ~450 B for ~0.25 points), the phaser's sample copied into its out-of-line
+path, the rest the gesture, LEDs, MIDI, scenes and the morph. Its code links after the other
+effects' after-`Run` code (`FRIZZ_AFTER_RUN_LAST`, `.frizz_after_run_last`), so it moves
+neither `Run` nor theirs; before `Run` the phaser grew 72 B, and the delay reads 0.3 points
+lower than `main`. One block's max in `loop+scene4+delay` stands 12 points higher (#353).
 
 **The loop loader (#70, for 1.1)** adds a second loop buffer, 16 bars at 50 BPM (14.75 MB,
 `.sdram_noinit.later`, linked after the loop and the event log so they keep their addresses),

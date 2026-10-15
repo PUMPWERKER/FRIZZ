@@ -46,6 +46,7 @@ public:
         Pulse(pos, reverse, (reverse ? 1.f : -1.f) * static_cast<float>(since) * pulse_inc_);
     }
     inline void SetReverse(bool reverse) { reverse_ = reverse; }
+    inline bool Reverse() const { return reverse_; }
     /** The LFO's advance a sample, in pulses */
     inline float PulseInc() const { return pulse_inc_; }
 

@@ -94,6 +94,7 @@ namespace feedback
 static const uint8_t kKeys = 15;    // the white keys: their channels 1-15 (MidiControl.h)
 static const uint8_t kKeySlots = 9; // a key's knobs 1-8 (CC 14-21), then its latch (CC 22)
 static const uint8_t kLatchSlot = 8;
+static const uint8_t kModeKey = 6; // the phaser's: its mode on its channel (MidiControl.h)
 static const uint32_t kSweepMs = 10;
 /** What's sent, each its own CC: white key k's slot s on its channel at k * kKeySlots + s,
  *  then the global channel's */
@@ -112,12 +113,13 @@ enum Item : uint8_t
     kSource,
     kDry,  // CC 116, the source's effects (#177)
     kLive, // CC 117, the source live
+    kMode, // CC 23 on kModeKey's channel, the phaser's mode (#306)
     kNumItems,
 };
 static const uint8_t kNone = 0xFF; // in the table: not sent yet
 
-/** kFocus .. kLive's CCs, in their order */
-static constexpr uint8_t kGlobalCc[] = {23, 85, 86, 87, 89, 90, 80, 84, 116, 117};
+/** kFocus .. kMode's CCs, in their order */
+static constexpr uint8_t kGlobalCc[] = {23, 85, 86, 87, 89, 90, 80, 84, 116, 117, 23};
 static_assert(sizeof(kGlobalCc) == kNumItems - kFocus, "a CC per global item");
 
 /** An item's CC number. MidiControl.h checks them against its map (midimap) */
@@ -193,7 +195,9 @@ public:
             uint8_t v;
             if (!value(c, v) || v == shadow_[c])
                 continue;
-            msg[3 * n] = static_cast<uint8_t>(0xB0 | (c < kGlobalLatches ? c / kKeySlots : global - 1));
+            msg[3 * n] = static_cast<uint8_t>(0xB0 | (c < kGlobalLatches ? c / kKeySlots
+                                                      : c == kMode     ? kModeKey
+                                                                       : global - 1));
             msg[3 * n + 1] = Cc(c);
             msg[3 * n + 2] = v;
             item[n] = c;

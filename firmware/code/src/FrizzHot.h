@@ -26,8 +26,13 @@
 // move Run against the code it calls. The shifter's Hermite reads (#305) moved Run 796 B,
 // which cost the delay a point of the block by the I-cache alone (#308). Off with ITCM=1,
 // where FRIZZ_HOT puts the same code in .itcmram
+// FRIZZ_AFTER_RUN_LAST: the same, linked after all of that (.frizz_after_run_last), so a newer
+// effect's code doesn't move an older one's there either (the phaser's frequency shifter,
+// #306)
 #if defined(__arm__) && !defined(FRIZZ_ITCM)
 #define FRIZZ_AFTER_RUN __attribute__((section(".frizz_after_run")))
+#define FRIZZ_AFTER_RUN_LAST __attribute__((section(".frizz_after_run_last")))
 #else
 #define FRIZZ_AFTER_RUN
+#define FRIZZ_AFTER_RUN_LAST
 #endif
