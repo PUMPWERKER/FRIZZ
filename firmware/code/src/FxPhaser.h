@@ -101,7 +101,7 @@ public:
         free_phase_ = 0.f;
         since_ = 0;
         asleep_ = true;
-        want_ = shifting_ = dipping_ = dip_down_ = false;
+        want_ = shifting_ = dipping_ = dip_down_ = other_ = false;
         dip_ = 1.f;
         co_ = 1.f;
         so_ = cr_ = sr_ = turn_ = 0.f;
@@ -147,7 +147,7 @@ public:
 
     void Process(float* l, float* r)
     {
-        float gate = gate_.Process();
+        const float gate = gate_.Process();
         if (gate_.Asleep())
         {
             since_++;
@@ -158,15 +158,19 @@ public:
             Wake();
         else if (++since_ >= kRetune)
             Retune(false);
-        // a mode switch: out of line, as the other mode
-        if (__builtin_expect(dipping_, 0))
-            gate *= Dip();
-        if (__builtin_expect(shifting_, 0))
+        // the other mode or a switch's dip: out of line, so the phaser's own sample costs one
+        // check more than before them
+        if (__builtin_expect(other_, 0))
         {
-            Shift(l, r, gate);
+            Other(l, r, gate);
             return;
         }
+        Sample(l, r, gate);
+    }
 
+    /** A sample of the phaser, both channels, gate: the key's fade */
+    inline void Sample(float* l, float* r, float gate)
+    {
         float* const io[2] = {l, r};
         for (size_t c = 0; c < 2; c++)
         {
@@ -313,7 +317,7 @@ private:
     {
         // a mode switch starts with its dip (Dip); the phaser's Retune goes on until it's done
         if (want_ != shifting_ && !dipping_)
-            dipping_ = dip_down_ = true;
+            dipping_ = dip_down_ = other_ = true;
         if (!shifting_)
             return false;
         feedback_ = kMaxShiftFeedback * feedback_knob_.Process(coeff);
@@ -399,6 +403,17 @@ private:
         return x - (4.f / 27.f) * x * x * x;
     }
 
+    /** A sample in the frequency shifter's mode or a switch's dip (other_) */
+    __attribute__((noinline)) FRIZZ_AFTER_RUN_LAST void Other(float* l, float* r, float gate)
+    {
+        if (dipping_)
+            gate *= Dip();
+        if (shifting_)
+            Shift(l, r, gate);
+        else
+            Sample(l, r, gate);
+    }
+
     /** A sample of a mode switch's dip, 1 to 0 and back: at the bottom the mode switches,
      *  starting from silence. Wanted back meanwhile, it comes up as it was */
     __attribute__((noinline)) FRIZZ_AFTER_RUN_LAST float Dip()
@@ -412,7 +427,7 @@ private:
                 // to the mode wanted, from silence, as from asleep; then back up
                 if (want_ != shifting_)
                     Wake();
-                dipping_ = true;
+                dipping_ = other_ = true;
                 dip_down_ = false;
                 dip_ = 0.f;
             }
@@ -424,6 +439,7 @@ private:
             {
                 dip_ = 1.f;
                 dipping_ = false;
+                other_ = shifting_;
             }
         }
         return dip_;
@@ -440,6 +456,7 @@ private:
             shifting_ = want_;
             SetRate();
         }
+        other_ = shifting_;
         resync_ = kResync; // the carrier where the LFO is
         Clear();
         Snap();
@@ -483,6 +500,7 @@ private:
     volatile bool want_;        // the mode set (SetMode)
     bool shifting_;             // and the one the audio runs
     bool dipping_, dip_down_;   // a switch's dip under way, and going down
+    bool other_;                // shifting_ or dipping_: Process's one check for both
     float dip_;                 // its gain, 1 to 0 and back
     float pair_[2][1 + 2 * kShiftStages]; // the allpass pair's (Chain), per channel
     float fed_[2];              // the shifted sound a sample ago, limited and lowpassed
