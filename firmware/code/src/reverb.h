@@ -116,9 +116,11 @@ class Reverb {
     c.WriteAllPass(ap4, -kap);
     c.Write(apout);
 
-    // Main reverb loop.
+    // Main reverb loop. del2 and del1 read 6261 + 50 and 4460 + 40 times Mutable's LFOs,
+    // which run 0..1, so they end on each line's last sample; FRIZZ's run -1..1, so the same
+    // span is the middle plus or minus half (#313: it was twice as deep, centred lower)
     c.Load(apout);
-    c.Interpolate(del2, 6261.0f, LFO_2, 50.0f, krt);
+    c.Interpolate(del2, 6286.0f, LFO_2, 25.0f, krt);
     c.Lp(lp_1, klp);
     c.Read(dap1a TAIL, -kap);
     c.WriteAllPass(dap1a, kap);
@@ -130,7 +132,7 @@ class Reverb {
     *left = wet;
 
     c.Load(apout);
-    c.Interpolate(del1, 4460.0f, LFO_1, 40.0f, krt);
+    c.Interpolate(del1, 4480.0f, LFO_1, 20.0f, krt);
     c.Lp(lp_2, klp);
     c.Read(dap2a TAIL, kap);
     c.WriteAllPass(dap2a, -kap);
