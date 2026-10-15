@@ -95,6 +95,7 @@ def _install(addr):
                 raise SystemExit("lockstep: the twin answered %r" % cmd)
             self.ms = int(ms)
             self.next_ms = None
+            self.in_round = False  # from a NOW until the IDLE that ends its round
             self.now_came = RealLock()  # released when a NOW came, for the rounds' thread
             self.now_came.acquire()
             # two threads of its own, not counted: one reads the twin's lines, one wakes the
@@ -189,11 +190,12 @@ def _install(addr):
                     os._exit(75)
                 cmd, arg = line.split()
                 if cmd == "NOW":
-                    if not self.now_came.locked():
-                        # one at a time, the next only after IDLE: else this process said IDLE
-                        # while a thread of it ran, and its timing can't be trusted
+                    if self.in_round:
+                        # one at a time, the next only after this one's IDLE: else this process
+                        # said IDLE while a thread of it ran, and its timing can't be trusted
                         sys.stderr.write("lockstep: NOW %s before the round at %d ended\n" % (arg, self.ms))
                         os._exit(70)
+                    self.in_round = True
                     self.next_ms = int(arg)
                     self.now_came.release()
                 elif cmd == "UP":
@@ -220,7 +222,7 @@ def _install(addr):
                         self.lock.release()
                         self.settled.acquire()
                         self.lock.acquire()
-                self.round = False
+                self.round = self.in_round = False  # before IDLE, which the next NOW follows
                 if self.running == 0:
                     self.idle()
 
