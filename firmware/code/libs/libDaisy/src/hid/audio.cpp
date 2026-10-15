@@ -106,6 +106,8 @@ static AudioHandle::Impl audio_handle;
 // Private Implementation
 // ================================================================
 
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 AudioHandle::Result AudioHandle::Impl::Init(const AudioHandle::Config config,
                                             SaiHandle                 sai)
 {
@@ -133,7 +135,10 @@ AudioHandle::Result AudioHandle::Impl::Init(const AudioHandle::Config config,
     buff_tx_[0] = dsy_audio_tx_buffer[0];
     return Result::OK;
 }
+#pragma GCC pop_options
 
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 AudioHandle::Result AudioHandle::Impl::Init(const AudioHandle::Config config,
                                             SaiHandle                 sai1,
                                             SaiHandle                 sai2)
@@ -145,6 +150,7 @@ AudioHandle::Result AudioHandle::Impl::Init(const AudioHandle::Config config,
     // How do we want to handle the rx/tx buffs for the second peripheral of audio..?
     return Result::OK;
 }
+#pragma GCC pop_options
 
 AudioHandle::Result AudioHandle::Impl::DeInit()
 {
@@ -166,6 +172,8 @@ AudioHandle::Result AudioHandle::Impl::DeInit()
     return Result::OK;
 }
 
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 AudioHandle::Result
 AudioHandle::Impl::Start(AudioHandle::AudioCallback callback)
 {
@@ -192,6 +200,7 @@ AudioHandle::Impl::Start(AudioHandle::AudioCallback callback)
     interleaved_callback_ = nullptr;
     return Result::OK;
 }
+#pragma GCC pop_options
 
 AudioHandle::Result
 AudioHandle::Impl::Start(AudioHandle::InterleavingAudioCallback callback)
@@ -509,13 +518,18 @@ void AudioHandle::Impl::InternalCallback(int32_t* in, int32_t* out, size_t size)
 // SaiHandle -> SaiHandle::Pimpl
 // ================================================================
 
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 AudioHandle::Result AudioHandle::Init(const Config& config, SaiHandle sai)
 {
     // Figure out proper pattern for singleton behavior here.
     pimpl_ = &audio_handle;
     return pimpl_->Init(config, sai);
 }
+#pragma GCC pop_options
 
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 AudioHandle::Result
 AudioHandle::Init(const Config& config, SaiHandle sai1, SaiHandle sai2)
 {
@@ -523,6 +537,7 @@ AudioHandle::Init(const Config& config, SaiHandle sai1, SaiHandle sai2)
     pimpl_ = &audio_handle;
     return pimpl_->Init(config, sai1, sai2);
 }
+#pragma GCC pop_options
 
 AudioHandle::Result AudioHandle::DeInit()
 {
@@ -555,10 +570,13 @@ AudioHandle::SetSampleRate(SaiHandle::Config::SampleRate samplerate)
     return pimpl_->SetSampleRate(samplerate);
 }
 
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 AudioHandle::Result AudioHandle::Start(AudioCallback callback)
 {
     return pimpl_->Start(callback);
 }
+#pragma GCC pop_options
 
 AudioHandle::Result AudioHandle::Start(InterleavingAudioCallback callback)
 {

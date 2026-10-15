@@ -62,7 +62,7 @@ In TEMPO and WAVE:
   compilation: the firmware builds against pristine upstream, but its MIDI output timing won't
   match the released firmware. Keep the vendored file.
 
-FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with eight changes:
+FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with nine changes:
 - `src/usbd/usbd_desc.c` names the USB product "FrizZ".
 - `src/hid/midi_parser.cpp` follows MIDI 1.0 where WAVE's didn't:
   - A real-time byte (a clock tick, 0xF8-0xFF) inside a SysEx or another message is passed on,
@@ -103,15 +103,38 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with eight changes:
   match like IDLE, once the DMA has the byte. Before, a tick followed closely by other bytes
   reached the parser only after them, 0.32 ms late a byte (#322). Listening (`DmaListenStart`)
   is MIDI's alone in FRIZZ.
+- Code that no interrupt and not the audio callback runs is built for size (`-Os`), for code
+  room (#323); libDaisy builds everything `-O2`. Fourteen objects are built `-Os` whole:
+  `UI.o`, `gpio.o`, `system.o`, `daisy_seed.o`, `codec_wm8731.o` and the HAL's `rcc`, `rcc_ex`,
+  `qspi`, `ll_fmc`, `uart_ex`, `i2c_ex`, `tim_ex`, `pwr` and `stm32h7xx_hal.o`. In nine objects
+  that do run in an interrupt, a `#pragma GCC optimize("Os")` (marked `FRIZZ`, #323) builds
+  only the functions Init runs, or a blocking call from `MainLoop()`: the HAL UART's
+  `UART_SetConfig` (5.3 KB at `-O2`, reached from the MIDI interrupt only through an error's
+  `HAL_UART_Init`), the SAI's `HAL_SAI_Init`, `HAL_SAI_InitProtocol`, `HAL_SAI_Transmit_DMA`
+  and `HAL_SAI_Receive_DMA`, `sai.cpp`'s `Init`, `InitPins` and `StartDmaTransfer`,
+  `audio.cpp`'s `Init`s and `Start`, `tim.cpp`'s `Init` and `HAL_TIM_Base_MspInit`, the HAL
+  timer's `TIM_Base_SetConfig` and `HAL_TIM_ConfigClockSource`, the HAL I2C's blocking
+  `HAL_I2C_Master_Transmit` and `HAL_I2C_Slave_Transmit` with their waits, `i2c.cpp`'s `Init`
+  and `ReceiveDma`, and `HAL_GPIO_DeInit`. What runs per block or in an interrupt stays as it
+  was: in every one of these objects, each function the audio, MIDI, USB, LED (the PWM's DMA),
+  battery (I2C), timer, SysTick or SD interrupts or the audio callback reach disassembles as
+  before (`HAL_UART_IRQHandler`, `InternalCallback`, `HAL_DMA_IRQHandler`, the SAI's and the
+  UART's DMA callbacks, `MidiParser::Parse` among them); an object where one of those changed
+  at `-Os` stays `-O2` (the PR's table, #323). The SD card's objects (`stm32h7xx_hal_sd`,
+  `ll_sdmmc`, `sdmmc`, `sd_diskio`, `bsp_sd_diskio`) stay `-O2` all of them: the GCC pin is
+  about the card's communication. This changes compilation, not behaviour.
 
 Its prebuilt `build/libdaisy.a` is WAVE's with only the objects of those changes rebuilt:
 `usbd_desc.o`, `midi_parser.o`, `usb_midi.o`, `usbd_conf.o`, `fatfs.o`, `system.o` (twice, the
 second time without the handlers: from the source before, it disassembled as the archive's),
 `usbd_cdc.o` (whose code changes with `usbd_conf.h`'s macro; of the other objects that include
-it none does) and `uart.o` (from the source before #322, it disassembled as the archive's). They were built with GCC 10.3 and libDaisy's own flags (`make
+it none does), `uart.o` (from the source before #322, it disassembled as the archive's), and
+for #323 the fourteen objects built `-Os` (`make OPT=-Os build/src/ui/UI.o`) and the nine with
+the pragmas (at libDaisy's own `-O2`). They were built with GCC 10.3 and libDaisy's own flags (`make
 build/src/hid/midi_parser.o` in its folder, then `arm-none-eabi-ar r build/libdaisy.a
 build/src/hid/midi_parser.o`; delete the object first to rebuild it, `make -B` fails on the
-`build` folder). The loose objects in `build/src/` stay WAVE's: only the archive is linked.
+`build` folder). Each of the other objects FRIZZ links, rebuilt the same way, disassembles as
+the archive's (checked for all of them, #323). The loose objects in `build/src/` stay WAVE's: only the archive is linked.
 These reproduce WAVE's objects from WAVE's source: the same code, only the debug information's
 paths differ, and FRIZZ.bin comes out byte for byte the same (checked for `usb_midi.o`, #157,
 and `usbd_conf.o`, #88; `midi_parser.o` rebuilt from the source before #166, and `fatfs.o`,

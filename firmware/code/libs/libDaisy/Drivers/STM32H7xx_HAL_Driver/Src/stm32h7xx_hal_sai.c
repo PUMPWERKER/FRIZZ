@@ -329,6 +329,8 @@ static void SAI_DMAAbort(DMA_HandleTypeDef *hdma);
   * @param  nbslot Number of slot.
   * @retval HAL status
   */
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 HAL_StatusTypeDef HAL_SAI_InitProtocol(SAI_HandleTypeDef *hsai, uint32_t protocol, uint32_t datasize, uint32_t nbslot)
 {
   HAL_StatusTypeDef status;
@@ -360,6 +362,7 @@ HAL_StatusTypeDef HAL_SAI_InitProtocol(SAI_HandleTypeDef *hsai, uint32_t protoco
 
   return status;
 }
+#pragma GCC pop_options
 
 /**
   * @brief  Initialize the SAI according to the specified parameters.
@@ -368,6 +371,8 @@ HAL_StatusTypeDef HAL_SAI_InitProtocol(SAI_HandleTypeDef *hsai, uint32_t protoco
   *              the configuration information for SAI module.
   * @retval HAL status
   */
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 HAL_StatusTypeDef HAL_SAI_Init(SAI_HandleTypeDef *hsai)
 {
   uint32_t tmpregisterGCR;
@@ -678,6 +683,7 @@ HAL_StatusTypeDef HAL_SAI_Init(SAI_HandleTypeDef *hsai)
 
   return HAL_OK;
 }
+#pragma GCC pop_options
 
 /**
   * @brief  DeInitialize the SAI peripheral.
@@ -1539,6 +1545,8 @@ HAL_StatusTypeDef HAL_SAI_Abort(SAI_HandleTypeDef *hsai)
   * @param  Size Amount of data to be sent
   * @retval HAL status
   */
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 HAL_StatusTypeDef HAL_SAI_Transmit_DMA(SAI_HandleTypeDef *hsai, uint8_t *pData, uint16_t Size)
 {
   uint32_t tickstart = HAL_GetTick();
@@ -1617,6 +1625,7 @@ HAL_StatusTypeDef HAL_SAI_Transmit_DMA(SAI_HandleTypeDef *hsai, uint8_t *pData, 
     return HAL_BUSY;
   }
 }
+#pragma GCC pop_options
 
 /**
   * @brief  Receive an amount of data in non-blocking mode with DMA.
@@ -1626,6 +1635,8 @@ HAL_StatusTypeDef HAL_SAI_Transmit_DMA(SAI_HandleTypeDef *hsai, uint8_t *pData, 
   * @param  Size Amount of data to be received
   * @retval HAL status
   */
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 HAL_StatusTypeDef HAL_SAI_Receive_DMA(SAI_HandleTypeDef *hsai, uint8_t *pData, uint16_t Size)
 {
 
@@ -1687,6 +1698,7 @@ HAL_StatusTypeDef HAL_SAI_Receive_DMA(SAI_HandleTypeDef *hsai, uint8_t *pData, u
     return HAL_BUSY;
   }
 }
+#pragma GCC pop_options
 
 /**
   * @brief  Enable the Tx mute mode.
