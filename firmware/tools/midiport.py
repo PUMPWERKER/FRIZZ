@@ -29,13 +29,21 @@ import midi_send  # noqa: E402
 TICK, START, CONTINUE, STOP, SPP = 0xF8, 0xFA, 0xFB, 0xFC, 0xF2
 
 
+# On the virtual CHOMPI's clock (test/lockstep, the host checks): the time stands still while
+# this computer runs, so wait_until can't spin on it
+LOCKSTEP = bool(os.environ.get("FRIZZ_LOCKSTEP") and os.environ.get("FRIZZ_NO_DEVICE"))
+
+
 def wait_until(t):
-    """Sleeps most of the way, then spins: ticks to about 0.1 ms"""
+    """Sleeps most of the way, then spins: ticks to about 0.1 ms (on the twin's clock it sleeps
+    all the way: LOCKSTEP)"""
     while True:
         d = t - time.perf_counter()
         if d <= 0:
             return
-        if d > .002:
+        if LOCKSTEP:
+            time.sleep(d)
+        elif d > .002:
             time.sleep(d - .0015)
 
 

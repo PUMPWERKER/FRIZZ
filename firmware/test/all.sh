@@ -6,16 +6,16 @@
 # what a check couldn't run on this machine (its lines "SKIP: local only (what's missing)": stage
 # 1b, CLAUDE.md). A
 # changed sound (check.sh not bit-identical) counts as a failure: run ./check.sh to
-# see what changed. A run of a tool against the twin (midisuite, reaper) that failed with the
-# twin far behind the wall clock and passed when run again is listed as FLAKY under its check
-# (ptytwin.h's Twice(), #183).
+# see what changed. The tools against the twin (remote, midisuite, reaper) run on the twin's
+# clock (ptytwin.h's lockstep, #388), their timing the same under any load; with
+# FRIZZ_TWIN_CLOCK=0 on the wall clock, where a run that failed with the twin far behind and
+# passed when run again is listed as FLAKY under its check (ptytwin.h's Twice(), #183).
 #
 # The checks run side by side, one per core (JOBS=N sets how many), once DaisySP and the twins
 # they share are built; their lines come in the order above. The ones on the twin go first,
 # the longest; ui, sync, midi and midiout each run their cases side by side too (cases.h,
-# CASE_JOBS). remote.cpp, midisuite.cpp and reaper.cpp, which play the twin at the wall
-# clock's pace against their tools' timeouts, and bench.cpp, the longest single process,
-# start first and at the normal priority, the others behind them (nice). CASES (for working
+# CASE_JOBS). remote.cpp, midisuite.cpp and reaper.cpp, long, and bench.cpp, the longest
+# single process, start first and at the normal priority, the others behind them (nice). CASES (for working
 # on a few cases) is ignored: all.sh runs every case.
 #
 # A check that fails is named, with what it printed but its ok lines; one that exits non-zero
