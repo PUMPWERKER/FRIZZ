@@ -60,7 +60,8 @@ the card), the build folders.
 To build the firmware for the CHOMPI, FRIZZ needs **GNU Arm Embedded 10.3-2021.10** (GCC 10.3.1), the Daisy toolchain default. Newer
 compilers can build it, but their builds sometimes break SD card communication intermittently.
 
-- **Linux:** download ARM's official tarball (`gcc-arm-none-eabi-10.3-2021.10-x86_64-linux.tar.bz2`),
+- **Linux:** download ARM's official tarball (`gcc-arm-none-eabi-10.3-2021.10-x86_64-linux.tar.bz2`,
+  MD5 `2383e4eb4ea23f248d33adc70dc3227e`; `.github/scripts/gcc-arm.sh` fetches and checks it),
   unpack it, for example to `~/opt/`, and put its `bin/` first on your `PATH`:
 
   ```bash
@@ -765,6 +766,16 @@ branch's build on the test slot, key 12, named by the md5 `flash.py` printed: th
 `cpu.txt` against `main`'s `bin/cpu.txt`, scenarios played with `remote.py play --cpu`), and what only a player can
 judge, for the release test (feel, sound by ear, real MIDI gear).
 [`CLAUDE.md`](../CLAUDE.md) has the full workflow, including the release test and test builds.
+
+**CI** on GitHub Actions repeats this on every pull request and push to `main`
+(`.github/workflows/ci.yml`): `test/all.sh`, `tools/doclinks.py`, `twin/compare.sh` against the
+PR's base (in the job summary: differences are for the PR to explain, a scenario the twin
+couldn't play fails it), and `tools/builds.py` with ARM's GCC 10.3 (`.github/scripts/gcc-arm.sh`,
+checked against ARM's checksums), both builds' md5 and memory tables in the job summary and the
+builds as artifacts for 14 days. On a pushed `v*` tag, `release.yml` builds it again and checks
+the release's `FRIZZ.bin` against its md5, attaches one where there's none, or drafts the
+release. Nothing there reaches a CHOMPI (`FRIZZ_NO_DEVICE`). The local runs stay authoritative:
+when Actions is down, merging and releases go on without it.
 
 ## 5. Debug
 

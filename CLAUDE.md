@@ -131,6 +131,14 @@ A branch merges into `main` once stages 1 and 2 pass and are in its PR. **The us
 merge**; sessions never merge into `main`. `main` is therefore checked, not played: what the
 user has tested is a release tag.
 
+**CI on GitHub Actions** (`.github/workflows/ci.yml`) repeats stage 1 on every PR and
+push to `main`: `all.sh`, `doclinks.py`, `compare.sh` against the PR's base (its output in the
+job summary; a difference doesn't fail it, a scenario the twin couldn't play does) and both
+builds with ARM's GCC 10.3, their md5 and memory tables in the job summary, next to the md5 the
+PR's stage 2 names (the build of the branch's head, not of GitHub's merge commit). The local
+runs stay authoritative: when Actions is down, merging and releases go on without it, and no
+check is required for a merge.
+
 **One worktree per branch.** Several sessions work on this repo at once, so never switch
 branches in the main checkout (`~/git-projects/FrizZ` stays on `main`). Work on a branch in its
 own worktree next to it:
@@ -263,6 +271,14 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   it's cut, from the clean worktree of its tag: `./flash.py --slot 11` (or `--slot 10`) there.
   `flash.py` sends to 10 or 11 nothing else: only when the key is named, and only the build of
   a clean `v*` tag's checkout.
+- **CI checks the release's build** (`.github/workflows/release.yml`): a pushed `v*` tag is
+  built there too, refused unless it is `kFrizzVersion`'s. If the tag's release (or a draft of
+  it) carries a `FRIZZ.bin`, CI's must have the same md5, or the run fails loudly; one without
+  gets CI's attached; with no release yet, CI makes a draft (a pre-release for `-beta.N`) with
+  `FRIZZ.bin` and its md5, never published, never Latest, and `beta` is never touched. A
+  release never waits for it: make it as above, right after pushing the tag (`gh release
+  create <tag> --verify-tag …`); should CI's draft be there first, finish that one (`gh release
+  edit`) instead of making a second.
 
 ## The CHOMPI is shared: the lock and the slots
 
