@@ -516,9 +516,11 @@ int PlayScript(std::istream& src_in, FILE* leds, std::vector<float>* out)
         }
         else if (cmd == "turn")
         {
-            int enc = 0, detents = 0;
+            int enc = 0, detents = 0, ms = 8;
             in >> enc >> detents;
-            Turn(enc, detents);
+            if (!(in >> ms))
+                ms = 8;
+            Turn(enc, detents, ms);
         }
         else if (cmd == "toggle")
         {
