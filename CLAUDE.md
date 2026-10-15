@@ -25,7 +25,7 @@ The stock firmwares, bootloader and hardware files under `reference/`:
 | `docs/` | design notes: `LOOPER.md`, `FX_OVERVIEW.md`, `CAPACITY.md`, `STOCK_FIRMWARES.md`, `LOOP_PROTOCOL.md` | developers |
 | `reference/` | the original CHOMPI release, unchanged except for links | reference only |
 | `images/` | the manual's diagrams (SVG, drawn by `firmware/tools/diagrams/`) | users |
-| `site/` | the website's front-page text (`landing.md`, read by the site at the tag) | users |
+| `site/` | the website's front-page text (`landing.md`) and what the release's firmware can do (`features.json`, the Companion page's), both read by the site at the tag | users |
 | `LICENSE`, `THIRD_PARTY.md`, `TRADEMARKS.md`, `CLAUDE.md` | legal, this file | — |
 
 Keep the root user-facing: anything that only helps development goes in `docs/` or
@@ -42,7 +42,9 @@ scope searches to `firmware/`.
 ## Docs that feed the website
 
 https://frizz.friedrichwagner.eu is built from `MANUAL.md`, `QUICKSTART.md`, `INSTALL.md`,
-`images/`, `site/landing.md` and the key colours in `LedColors.h`/`FxSlots.h` (repo
+`images/`, `site/landing.md`, `site/features.json` (what the Companion page offers:
+`loopTransfer`, the loop transfer's protocol major, [`docs/LOOP_PROTOCOL.md`](docs/LOOP_PROTOCOL.md)
+2.2) and the key colours in `LedColors.h`/`FxSlots.h` (repo
 `friedrich/frizz-web` on the user's Gitea), fetched at the **latest stable release** tag (and
 `/beta/` at the newest pre-release), so a docs change on `main` goes live with the next tag.
 FrizZ holds every fact the site shows; frizz-web only renders it (design, layout, the trademark
@@ -394,12 +396,16 @@ task on TIM7 at 4 kHz (priority 2, below the audio callback). TinyUSB is called 
 task and the USB interrupt; `MainLoop()` posts what it wants. A change to USB gets `test/unit.sh
 usbtransport` and a first flash of `make USB_SAFETY=1` before anything else.
 
-**No file I/O and no blocking call from the audio ISR.** FRIZZ reads the card once at boot and
-writes it only from `MainLoop()`: when an FX scene is saved, copied or deleted, 2 s after the
-master compressor's knobs, the mono input or the MIDI settings rest (`SceneStore.h`,
-`MasterSettings.h`), or when a bug report is asked for (`EventLog.h`). Its files live in
-`/FRIZZ` (`frizz_scenes.txt`, `frizz_master.txt`, `.bak` copies, `bug-N.txt`), which
-`EnterFrizzDir()` creates at boot on a card without it. MIDI: clock in over TRS and USB
+**No file I/O and no blocking call from the audio ISR.** FRIZZ reads and writes the card only
+from `MainLoop()`, and leaves it alone while it lends it to the computer (`CardLend.h`). It
+reads the scenes and settings at boot and again, where the computer changed them, when it takes
+the card back (#314), and loops when one is loaded (`LoopLoader.h`, the slots scanned at boot,
+after a lend and on RESCAN). It writes when an FX scene is saved, copied or deleted, 2 s after
+the master compressor's knobs, the mono input or the MIDI settings rest (`SceneStore.h`,
+`MasterSettings.h`), when the loop transfer writes, moves or deletes a slot (`LoopTransfer.h`,
+through `/FRIZZ/xfer.tmp`), or when a bug report is asked for (`EventLog.h`). Its files live in
+`/FRIZZ` (`frizz_scenes.txt`, `frizz_master.txt`, `.bak` copies, `bug-N.txt`, the loops
+`aN.wav`), which `EnterFrizzDir()` creates at boot on a card without it. MIDI: clock in over TRS and USB
 (`MidiClock.h` → `TempoClock.h`, `TapTempo.h` as the fallback), notes, CCs, program changes and
 FRIZZ's SysEx (`MidiControl.h`), answered over USB from `MainLoop()`. MIDI out
 (`MidiOut.h`, off unless the settings page asks): the clock and the loop's transport, out of
