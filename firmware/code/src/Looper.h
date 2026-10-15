@@ -31,7 +31,8 @@
  *
  *  The soft limit (#152): the loop is int16, so what's written is held under kLoopCeiling by a
  *  peak limiter, stereo-linked, rather than clipped at full scale: it takes a peak at once,
- *  holds kLoopHoldFrames (a period of 47 Hz, so it doesn't ripple on a steady tone) and lets go
+ *  holds kLoopHoldFrames (a period of 47 Hz, so it doesn't ripple on a steady tone), holds
+ *  afresh on a peak nearly as high (kLoopRenew, so a chord doesn't either) and lets go
  *  over some 150 ms. Below the ceiling it isn't there, sample for sample; a recording starts it
  *  afresh. Live the input is float up to the safety limiter, so without it a hot input sounded
  *  clean live and clipped in the loop (tools/loopclip.py).
@@ -88,6 +89,9 @@ static const size_t kTailFrames = 96;      // 2 ms: a fade-out a switch at the l
 // The soft limit: what's written stays under this, full scale 1 (see the file comment)
 static const float kLoopCeiling = .95f;
 static const uint32_t kLoopHoldFrames = 1024;
+// A peak this close under the one held holds it afresh: a chord's sampled peaks differ a few
+// percent from one period to the next, and the hold ran out between them, rippling (#372)
+static const float kLoopRenew = .95f;
 static const float kLoopRelease = 1.f - 1.f / 7200.f; // a frame's, ~150 ms
 
 // Speed ladder, in semitones: octaves (12k) and fifths above them (12k + 7), as TAPE.
@@ -1276,6 +1280,8 @@ private:
             rec_peak_ = peak;
             rec_hold_ = kLoopHoldFrames;
         }
+        else if (peak >= kLoopRenew * rec_peak_)
+            rec_hold_ = kLoopHoldFrames;
         else if (rec_hold_)
             rec_hold_--;
         else

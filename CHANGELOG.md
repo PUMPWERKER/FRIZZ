@@ -176,9 +176,16 @@ what FRIZZ does.
   Mutable's Clouds and Elements, so the same hit rings a little differently each time instead of
   through the same diffusion. Its knobs, decay, level and freeze are as they were. See
   [Reverb](MANUAL.md#reverb).
+- **The reverb's tail wobbles less in pitch** (#313), as in Mutable's: the slow modulation in
+  its loop swings half as far as before (it was twice Mutable's), so a long tail sounds
+  steadier, with less of a chorus on held notes. Its knobs are as they were.
 
 ### Fixed
 
+- **A hot chord records clean into the loop** (#372): recorded loud enough for the loop's soft
+  limit to take it, a chord came back with a faint rough flutter, the limit's gain moving with
+  the chord's beat (sidebands about 51 dB under it). Now it holds still: a single tone was clean
+  already, a chord is too.
 - **The knob presses' notes do nothing on the Loops and Cubbi pages** (#360), as knobs 1-4 there:
   notes 36-39 turned the selected effect's page, and with SHIFT's note 45 reset its knob. See
   [Notes: the keys](MANUAL.md#notes-the-keys).

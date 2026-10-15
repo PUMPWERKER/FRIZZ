@@ -606,6 +606,76 @@ static void TestSoftLimit()
     Check(fabsf(peak - .5f) < .001f && worst < .001f, "after a loud recording: the next as it came");
 }
 
+/** #372: a chord recorded hot, 220 + 330 Hz at amp each (the right at half), 3 s, played back:
+ *  its spectrum over 1 s from the middle (1 Hz bins, so both tones and every sideband of a gain
+ *  that moves with the chord's 10 Hz pattern sit on a bin), the loudest bin away from the two
+ *  tones in dB under the 220 Hz one, and the playback's peak */
+static float ChordSidebands(float amp, float& peak)
+{
+    looper.Erase();
+    for (int b = 0; b < 1000 && looper.GetState() != Looper::State::EMPTY; b++)
+        Block();
+    looper.StartRecording(false);
+    const size_t blocks = 3 * 48000 / kBlock;
+    float in_l[kBlock], in_r[kBlock], out_l[kBlock], out_r[kBlock];
+    size_t n = 0;
+    for (size_t b = 0; b <= blocks; b++)
+    {
+        if (b == blocks)
+            looper.StopRecording();
+        for (size_t i = 0; i < kBlock; i++, n++)
+        {
+            const double t = n / 48000.;
+            in_l[i] = amp * static_cast<float>(sin(2 * M_PI * 220 * t) + sin(2 * M_PI * 330 * t));
+            in_r[i] = .5f * in_l[i];
+        }
+        looper.Process(in_l, in_r, out_l, out_r, kBlock);
+    }
+    std::vector<float> got;
+    for (size_t b = 0; b < blocks - 1; b++)
+    {
+        float zl[kBlock] = {}, zr[kBlock] = {};
+        looper.Process(zl, zr, out_l, out_r, kBlock);
+        got.insert(got.end(), out_l, out_l + kBlock);
+    }
+    const size_t from = 48000, len = 48000;
+    peak = 0.f;
+    for (size_t i = from; i < from + len; i++)
+        peak = fmaxf(peak, fabsf(got[i]));
+    double tone = 0., side = 0.;
+    for (int f = 1; f <= 2000; f++)
+    {
+        double re = 0., im = 0.;
+        const double w = 2 * M_PI * f / 48000.;
+        for (size_t i = 0; i < len; i++)
+        {
+            re += got[from + i] * cos(w * i);
+            im -= got[from + i] * sin(w * i);
+        }
+        const double mag = sqrt(re * re + im * im);
+        if (f == 220)
+            tone = mag;
+        else if (f != 330)
+            side = std::max(side, mag);
+    }
+    return static_cast<float>(20 * log10(side / tone + 1e-30));
+}
+
+/** #372: a hot chord's sampled peaks differ from one period to the next; the soft limit holds
+ *  across them, so its gain stays put and adds no sidebands (it ran out between them: -51 dB) */
+static void TestChordLimit()
+{
+    looper.Init(mem, &midi_clock);
+    float peak;
+    const float hot = ChordSidebands(.9f, peak);
+    printf("      220 + 330 Hz at .9 each: sidebands %.1f dB under the tone, peak %.4f\n", hot, peak);
+    Check(peak <= kLoopCeiling + .0001f && peak > kLoopCeiling - .02f, "a hot chord: held at the ceiling");
+    Check(hot < -90.f, "a hot chord: the limit's gain stays put, no sidebands (#372)");
+    const float cool = ChordSidebands(.4f, peak);
+    printf("      220 + 330 Hz at .4 each: sidebands %.1f dB\n", cool);
+    Check(cool < -90.f, "a chord under the ceiling: no sidebands either");
+}
+
 /** Loops from the card (Switch), each a level held, its head again after its end */
 static const size_t kShort = 192; // 4 ms
 static int16_t loop_a[(kShort + kXfadeFrames) * 2], loop_b[(kShort + kXfadeFrames) * 2],
@@ -691,6 +761,7 @@ int main()
     TestStandstill();
     TestUnclearedMemory();
     TestSoftLimit();
+    TestChordLimit();
     TestSwitchDuringFade();
     return Finish();
 }
