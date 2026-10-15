@@ -3794,8 +3794,7 @@ int main()
 
     // the computer changing the loops while the card is lent: taken back, the scan finds them as
     // the card has them: one deleted (its key dark), one new (dim, and it loads), the one playing
-    // replaced (as the loop transfer's replace: the old loop plays on, its key dim, not lit; a
-    // tap loads the new one)
+    // replaced (the old loop plays on, a tap loads the new one; its key: loops-lent-replaced)
     cases.push_back({"loops-lent-changed", [] {
         RunMs(kReadyMs);
         amp = 0.f;
@@ -3823,7 +3822,6 @@ int main()
         Check(a1_lit && lent && back && dark(1) && dim(2),
               "loops-lent-changed: taken back: a2 the computer deleted dark, a3 it added dim");
         Check(Probe().loop_length == 48000, "loops-lent-changed: a1 it replaced while it played: the old loop plays on");
-        Known(dim(0) && !lit(0), "loops-lent-changed: and a1's key dim, as after the loop transfer's replace, not bright (#332)");
         Tap(kLoopKeys[2]);
         const int a3 = UntilLength(30000, 2000);
         Tap(kLoopKeys[0]);
