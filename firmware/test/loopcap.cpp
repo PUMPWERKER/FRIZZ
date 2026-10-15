@@ -3,7 +3,8 @@
 // as FRIZZ would play them: at once with a 10 ms crossfade by time, a hard cut, the crossfader's
 // equal-power mix, the 6 kHz marker; and its judging of a program change's landing, at once and
 // at the n-th pass end, right and wrong. The analysis needs numpy, from ~/.venvs/frizz
-// (measure.py's; CI makes one): without it, SKIP: local only.
+// (measure.py's; CI makes one): without it, SKIP: local only. And feedback's device run against
+// a stand-in FRIZZ (chompi, remote, arecord and the clock faked): its playback from a fresh start.
 #include <unistd.h>
 #include <cmath>
 #include <cstdio>
@@ -93,9 +94,67 @@ ok, text = judged(dict(kind="pc", marker_sent=0.5, first=13, events=[dict(mode=0
 print("JUDGE-LATE %s" % ok)
 )";
 
+// feedback against a stand-in: what it asks of the CHOMPI, in order (#400: the playback ran on
+// what the hand's run left, the loop playing and the mix wet, so its grid and marker were off)
+static const char* kFeedback = R"(
+import os, sys, types
+calls = []
+clock = [0.0]
+def sleep(s):
+    clock[0] += max(s, 0.001)
+chompi = types.ModuleType("chompi")
+chompi.SIGNAL = 9
+chompi.find_device = lambda: calls.append("find") or "node"
+chompi.to_frizz = lambda slot=None, again=False, **k: calls.append("to_frizz again=%s" % again) or "node"
+remote = types.ModuleType("remote")
+remote.SETTING_NAMES = ["usb_audio", "midi_channel", "aux_live"]
+remote.GROUP_SETTINGS, remote.SWITCH = 0, 1
+remote.dev_get = lambda f, g: [1, 16, 1]
+remote.try_set = lambda f, g, n, v: None
+remote.signal_args = lambda *a: [0]
+remote.midi_messages = lambda data: []
+class Link:
+    def __init__(self):
+        self.fd, self.w = os.pipe()
+    def close(self):
+        calls.append("close")
+class Frizz:
+    def __init__(self, node):
+        calls.append("frizz")
+        self.link = Link()
+    def ram_only(self): return True
+    def send(self, *a): pass
+    def dev(self, *a): pass
+    def key(self, *a): pass
+    def raw(self, m): pass
+    def release(self): pass
+    def state(self): return []
+remote.Frizz = Frizz
+sys.modules["chompi"], sys.modules["remote"] = chompi, remote
+import loopcap as L
+class Rec:
+    def __init__(self, *a, **k): calls.append("record")
+    def wait(self): pass
+    def poll(self): return 0
+    def terminate(self): pass
+L.np = None
+L.time = types.SimpleNamespace(monotonic=lambda: clock[0], sleep=sleep)
+L.subprocess = types.SimpleNamespace(Popen=Rec, run=lambda *a, **k: types.SimpleNamespace(stdout=""))
+L.cmd_feedback(types.SimpleNamespace(out="fb", secs=22))
+print("CALLS " + ", ".join(calls))
+)";
+
 int main()
 {
     firmware_dir = std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/')) + "/..";
+    char dir[] = "/tmp/frizz-loopcap-XXXXXX";
+    tmp_dir = mkdtemp(dir);
+    std::string out;
+    int rc = Python(kFeedback, out);
+    printf("%s%s", out.c_str(), rc ? "\n(the Python above exited with an error)\n" : "");
+    // the hand's run, its link closed, then the playback's: the slot started again first
+    Check(rc == 0 && Has(out, "CALLS find, frizz, record, close, to_frizz again=True, frizz, record"),
+          "loopcap: feedback's playback starts the slot again first, as the hand's run did");
     const std::string venv = std::string(getenv("HOME") ? getenv("HOME") : "") + "/.venvs/frizz/bin";
     if (access((venv + "/python3").c_str(), X_OK) != 0)
     {
@@ -103,10 +162,7 @@ int main()
         return Finish();
     }
     setenv("PATH", (venv + ":" + std::string(getenv("PATH") ? getenv("PATH") : "")).c_str(), 1);
-    char dir[] = "/tmp/frizz-loopcap-XXXXXX";
-    tmp_dir = mkdtemp(dir);
-    std::string out;
-    const int rc = Python(kCode, out);
+    rc = Python(kCode, out);
     printf("%s%s", out.c_str(), rc ? "\n(the Python above exited with an error)\n" : "");
     auto line = [&](const std::string& key) {
         const size_t at = out.find(key + " ");
