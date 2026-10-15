@@ -1054,8 +1054,8 @@ namespace chompi
                 midi_->TakeLoad(max, mean, over, blocks);
                 n = Put14(d, n, max);
                 n = Put14(d, n, mean);
-                n = Put7s(d, n, over, 3);
-                n = Put7s(d, n, blocks, 3);
+                n = loopxfer::Put7(d, n, over, 3);
+                n = loopxfer::Put7(d, n, blocks, 3);
                 break;
             }
             case kCmdSettings:
@@ -1091,16 +1091,6 @@ namespace chompi
             return n;
         }
 
-        /** v in `groups` 7-bit groups, the highest first; saturated at the most they hold */
-        MIDI_CONTROL_ONCE static size_t Put7s(uint8_t* d, size_t n, uint32_t v, size_t groups)
-        {
-            const uint32_t top = groups >= 5 ? 0xFFFFFFFFu : (1u << (7 * groups)) - 1;
-            v = v > top ? top : v;
-            for (size_t g = groups; g-- > 0;)
-                d[n++] = static_cast<uint8_t>(g * 7 < 32 ? (v >> (g * 7)) & 0x7F : 0);
-            return n;
-        }
-
         /** A kCmdDev request (MidiControl.h's namespace dev), answered over USB: SUB SEQ
          *  STATUS, then what it asked for. Every one is answered */
         MIDI_CONTROL_ONCE void DevAnswer(const MidiControl::DevQuery& q)
@@ -1121,11 +1111,11 @@ namespace chompi
                 }
                 d[n++] = kVersion;
                 d[n++] = info.kind;
-                n = Put7s(d, n, info.crc, 5);
-                n = Put7s(d, n, info.image_len, 3);
-                n = Put7s(d, n, System::GetNow(), 5);
-                n = Put7s(d, n, info.passes, 5);
-                n = Put7s(d, n, info.reset_cause, 5);
+                n = loopxfer::Put7(d, n, info.crc, 5);
+                n = loopxfer::Put7(d, n, info.image_len, 3);
+                n = loopxfer::Put7(d, n, System::GetNow(), 5);
+                n = loopxfer::Put7(d, n, info.passes, 5);
+                n = loopxfer::Put7(d, n, info.reset_cause, 5);
                 d[n++] = scenes_->InRam() ? kRamOnly : 0;
                 break;
             case PERSIST:
@@ -1201,9 +1191,9 @@ namespace chompi
                 }
                 else if (q.len)
                     status = BAD;
-                n = Put7s(d, n, info.seed, 5);
+                n = loopxfer::Put7(d, n, info.seed, 5);
                 for (size_t i = 0; i < FxChain::kRandoms; i++)
-                    n = Put7s(d, n, engine_->RandomState(i), 5);
+                    n = loopxfer::Put7(d, n, engine_->RandomState(i), 5);
                 break;
             case BATTERY:
             {
@@ -1215,9 +1205,9 @@ namespace chompi
                 d[n++] = hw_->batt_check_state;
                 d[n++] = hw_->read_error ? 1 : 0;
                 for (uint8_t b : bounces)
-                    n = Put7s(d, n, b, 2);
+                    n = loopxfer::Put7(d, n, b, 2);
                 for (size_t i = 0; i < 6; i++)
-                    n = Put7s(d, n, hw_->mp_buff_[i], 2);
+                    n = loopxfer::Put7(d, n, hw_->mp_buff_[i], 2);
                 break;
             }
             case CRASH:
@@ -1239,11 +1229,11 @@ namespace chompi
                     const uint32_t words[] = {r.count, r.ms, r.crc, r.len, r.rsr, r.sp, info.option_bytes};
                     const uint8_t groups[] = {3, 5, 5, 3, 5, 5, 5};
                     for (size_t i = 0; i < sizeof(groups); i++)
-                        n = Put7s(d, n, words[i], groups[i]);
+                        n = loopxfer::Put7(d, n, words[i], groups[i]);
                 }
                 else
                     for (uint32_t w : {r.pc, r.lr, r.xpsr, r.cfsr, r.hfsr, r.mmfar, r.bfar})
-                        n = Put7s(d, n, w, 5);
+                        n = loopxfer::Put7(d, n, w, 5);
                 break;
             }
 #if FRIZZ_BENCH
@@ -1287,7 +1277,7 @@ namespace chompi
         /** v * by in 7-bit groups, 0 below 0 */
         static size_t PutScaled(uint8_t* d, size_t n, float v, float by, size_t groups)
         {
-            return Put7s(d, n, v > 0.f ? static_cast<uint32_t>(v * by + .5f) : 0u, groups);
+            return loopxfer::Put7(d, n, v > 0.f ? static_cast<uint32_t>(v * by + .5f) : 0u, groups);
         }
 
         /** PROBE 0: the clock, as MidiClock counts it, and the tempo the effects follow */
@@ -1303,12 +1293,12 @@ namespace chompi
                                           | (midi_->Transport() ? 16 : 0));
             n = PutScaled(d, n, clock.GetBpm(), 100.f, 3);
             n = PutScaled(d, n, clock.SenderBpm(), 100.f, 3);
-            n = Put7s(d, n, clock.GetTicks(), 5);
-            n = Put7s(d, n, clock.GetLocks(), 3);
+            n = loopxfer::Put7(d, n, clock.GetTicks(), 5);
+            n = loopxfer::Put7(d, n, clock.GetLocks(), 3);
             n = PutScaled(d, n, tempo.GetFxBpm(), 100.f, 3);
-            n = Put7s(d, n, static_cast<uint32_t>(tempo.GetTempo()), 2);
-            n = Put7s(d, n, tempo.Position(), 3);
-            return Put7s(d, n, tempo.LoopPulses(), 3);
+            n = loopxfer::Put7(d, n, static_cast<uint32_t>(tempo.GetTempo()), 2);
+            n = loopxfer::Put7(d, n, tempo.Position(), 3);
+            return loopxfer::Put7(d, n, tempo.LoopPulses(), 3);
         }
 
         /** PROBE 1: the looper */
@@ -1320,13 +1310,13 @@ namespace chompi
             d[n++] = static_cast<uint8_t>((looper.IsClosing() ? 1 : 0) | (looper.IsErasePending() ? 2 : 0)
                                           | (looper.IsErasing() ? 4 : 0)
                                           | (looper.CanRecordQuantized() ? 8 : 0));
-            n = Put7s(d, n, length, 4);
+            n = loopxfer::Put7(d, n, length, 4);
             n = PutScaled(d, n, looper.GetPosition(), static_cast<float>(length), 4);
-            n = Put7s(d, n, looper.GetBeats(), 3);
+            n = loopxfer::Put7(d, n, looper.GetBeats(), 3);
             d[n++] = static_cast<uint8_t>(looper.GetSemitones() + 64);
             n = PutScaled(d, n, looper.GetSpeed() + 2.f, 1000.f, 2);
             n = PutScaled(d, n, looper.GetActualSpeed() + 2.f, 1000.f, 2);
-            return Put7s(d, n, looper.Rewinds(), 3);
+            return loopxfer::Put7(d, n, looper.Rewinds(), 3);
         }
 
         /** LEVELS: part 0 the effects' meters; part 1 the VU meter, the compressor's reduction
