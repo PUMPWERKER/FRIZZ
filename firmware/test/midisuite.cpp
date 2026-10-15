@@ -123,7 +123,7 @@ int main()
         {"clock-trs", "usb-late", "sources-usb"}, {"sources-trs"}, {"transport-trs", "start-free"},
         {"start-spp"}, {"factor"}, {"tick-tail"}, {"out-idle", "out-loop", "out-pass"}, {"out-factor", "out-knobs"},
         {"loop-drift"}, {"out-x2"}, {"cc-channels", "rpn"},
-        {"cc-global", "cc-global-trs", "block-trs", "shifter-page", "chaos-cc"}, {"morph-back", "morph-hold"}, {"morph-sequences"},
+        {"cc-global", "cc-global-trs", "block-trs", "cc-burst-trs", "shifter-page", "chaos-cc"}, {"morph-back", "morph-hold"}, {"morph-sequences"},
         {"feedback", "no-double", "sysex-thru", "sysex-cut"}, {"input-cc"}};
     for (const auto& ids : both)
         cases.push_back({ids[0], [ids] { Run("both ways, " + ids[0], true, true, ids, "PASS", {"wiring: both ways (found)"}, 0); }});
@@ -151,6 +151,11 @@ int main()
     // no TRS MIDI at all: USB only
     cases.push_back({"usb only", [] {
         Run("no TRS", false, false, {"sources-trs", "out-factor"}, "SKIP", {"wiring: no TRS MIDI (USB only)"}, 0);
+    }});
+    // trs-relisten needs the bench build's TEST (kUartError): on FRIZZ.bin a SKIP that says so
+    // (#361)
+    cases.push_back({"trs-relisten", [] {
+        Run("trs-relisten", true, true, {"trs-relisten"}, "SKIP", {"FRIZZ-bench.bin only"}, 0);
     }});
     // stopped from outside (Ctrl-C) in a case: things put back, the summary, exit 130, not 0
     // (#171)

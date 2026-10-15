@@ -1164,7 +1164,108 @@ def block_trs(r):
     r.check("lower D# on again: channel 3 over TRS", up, "%.2f -> %.2f" % (a, b), "moves")
 
 
-@case("shifter-page", "8: CC 18 on channel 2 moves the shifter's mix; note 36 on channel 16 turns "
+def all_knobs(r):
+    """The effects' knobs (channels 1-14) as GET reads them: {(channel, knob 0-7): 0-1}"""
+    got = {}
+    for ch in range(1, 15):
+        vals = r.get(WHITE_FX[ch])
+        for i in range(8):
+            got[(ch, i)] = remote.knob(vals[i])
+    return got
+
+
+@case("cc-burst-trs", "8: automation over TRS that never pauses and has no clock in it (a DAW "
+      "writing CCs back to back): every CC counts, however long the line stays busy (#356)", needs=("in",))
+def cc_burst_trs(r):
+    # each effect's knobs (channels 1-14, CC 14-21) to 0 over USB, then in one write over TRS
+    # each to a value of its own, once, 3 CCs FRIZZ leaves alone after each (the mod wheel on
+    # channel 16): 12 bytes a knob, 1272 in all, no pause, no tick. A lost lap of libDaisy's
+    # 256-byte ring loses the knobs in it
+    knobs = [(ch, i) for ch in range(1, 15) for i in range(8) if (WHITE_FX[ch], i) not in EMPTY]
+    before = r.state()
+    for ch in range(1, 15):
+        r.send_usb(b"".join(cc(ch, 14 + i, 0) for c, i in knobs if c == ch))
+        time.sleep(.02)
+    time.sleep(.3)
+    zero = all_knobs(r)
+    r.check("before: every knob at 0 (CCs over USB)", all(zero[k] < .05 for k in knobs),
+            "%d of %d" % (sum(zero[k] < .05 for k in knobs), len(knobs)), "all")
+    want = {k: 80 + n % 48 for n, k in enumerate(knobs)}
+    burst = b"".join(cc(ch, 14 + i, want[(ch, i)]) + b"".join(cc(GLOBAL, 1, (3 * n + j) & 0x7F) for j in range(3))
+                     for n, (ch, i) in enumerate(knobs))
+    t0 = time.monotonic()
+    r.send_trs(burst)
+    # the first knobs (the freezer's, its first 96 bytes) while the line is still busy: a
+    # Scarlett 18i20 sends a byte every ~0.5 ms, 0.7 s for the burst
+    time.sleep(.2)
+    vals = r.get("freezer")
+    early = time.monotonic() - t0
+    first = [k for k in knobs if k[0] == 1]
+    moved = sum(remote.knob(vals[i]) > .3 for _, i in first)
+    r.check("the freezer's knobs, first in the burst, %.0f ms after it was sent, the line still busy" % (early * 1000),
+            moved == len(first), "%d of %d set" % (moved, len(first)), "all: handed over as they come")
+    time.sleep(max(0., len(burst) * .0005 + 1. - (time.monotonic() - t0)))
+    got = all_knobs(r)
+    lost = [n for n, k in enumerate(knobs) if got[k] <= .3]
+    off = max(abs(got[k] - knob7(want[k])) for k in knobs)
+    r.note("%d bytes over TRS in one write; the knobs within %.3f of their CCs' values (stepped ones "
+           "take the nearest step)" % (len(burst), off))
+    r.check("every knob set by the burst (%d CCs, %d bytes)" % (len(knobs), len(burst)), not lost,
+            "%d of %d%s" % (len(knobs) - len(lost), len(knobs), ", not: the knobs at bytes %s" % ", ".join(
+                "%d-%d" % (12 * a, 12 * b + 11) for a, b in runs(lost)) if lost else ""), "all")
+    after = r.state()
+    r.check("the mod wheel on channel 16 moved nothing", (after["latched"], after["selected"], after["scene"])
+            == (before["latched"], before["selected"], before["scene"]),
+            "latched %s, selected %s" % (after["latched"], after["selected"]), "as before")
+
+
+UART_ERROR = 5  # kCmdDev TEST's kUartError (MidiControl.h): FRIZZ-bench.bin only
+
+
+def trs_restarts(r):
+    """PROBE 0's count of the jack's receive started again after an error, None before it (#361)"""
+    d = remote.dev_data(r.f, chompi.PROBE, [0], "PROBE")
+    return chompi.get7(d[29:32]) if len(d) >= 32 else None
+
+
+@case("trs-relisten", "8: a receive error on the TRS jack (a cable plugged in while the other end "
+      "sends, a bad contact): MIDI in over TRS comes back by itself, without a restart (#361). "
+      "FRIZZ-bench.bin only (--slot 13)", needs=("in",))
+def trs_relisten(r):
+    up, a, b = moved(r, "folder", 0, lambda v: r.send_trs(cc(3, 14, v)))
+    r.check("before: CC 14 on channel 3 over TRS", up, "%.2f -> %.2f" % (a, b), "moves")
+    before = trs_restarts(r)
+    # a dense stream (the mod wheel on channel 16, 900 bytes, ~0.45 s from a Scarlett 18i20), and
+    # in it the UART at twice its rate for 20 ms: its bytes break their frames meanwhile
+    r.send_trs(b"".join(cc(GLOBAL, 1, n & 0x7F) for n in range(300)))
+    time.sleep(.1)
+    got = r.f.dev(chompi.TEST, [UART_ERROR], retries=1)
+    if not got or got[0] != chompi.OK:
+        raise Skip("TEST %d: %s (FRIZZ-bench.bin only)" % (
+            UART_ERROR, chompi.DEV_STATUS.get(got[0], got[0]) if got else "no answer"))
+    time.sleep(1.)
+    after = trs_restarts(r)
+    if after is None:
+        r.note("no restart count in PROBE 0: a FRIZZ from before #361")
+    else:
+        r.check("the receive ended on an error and started again", after > before,
+                "%d times" % (after - before), "at least once")
+    up, a, b = moved(r, "folder", 1, lambda v: r.send_trs(cc(3, 15, v)))
+    r.check("after: CC 15 on channel 3 over TRS", up, "%.2f -> %.2f" % (a, b), "moves: TRS MIDI in is back")
+
+
+def runs(ns):
+    """Sorted numbers as (first, last) runs"""
+    out = []
+    for n in ns:
+        if out and n == out[-1][1] + 1:
+            out[-1] = (out[-1][0], n)
+        else:
+            out.append((n, n))
+    return out
+
+
+@case("shifter-page","8: CC 18 on channel 2 moves the shifter's mix; note 36 on channel 16 turns "
       "the page (#44)")
 def shifter_page(r):
     up, a, b = moved(r, "shifter", 4, lambda v: r.send_usb(cc(2, 18, v)))
@@ -1780,8 +1881,9 @@ def put_back(r, snap):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--slot", type=int, choices=chompi.FRIZZ_SLOTS, default=chompi.TEST_SLOT,
-                    help="the FRIZZ slot (12 by default), started unless it runs")
+    ap.add_argument("--slot", type=int, choices=chompi.FRIZZ_SLOTS + (chompi.BENCH_SLOT,), default=chompi.TEST_SLOT,
+                    help="the FRIZZ slot (12 by default), started unless it runs; the bench's (13) "
+                    "for trs-relisten: the one running, once its bench is done (remote.py bench --wait)")
     ap.add_argument("--device", help="FRIZZ's raw MIDI node (as remote.py's; the twin's for the host check)")
     ap.add_argument("--trs", help="the raw MIDI node on the TRS jack (FRIZZ_TRS_MIDI; found by name)")
     ap.add_argument("--wiring", choices=["auto"] + list(WIRINGS), default="auto")
@@ -1799,7 +1901,16 @@ def main():
     cases = chosen(CASES, a)
     stop_on_signals()
 
-    device = a.device or chompi.to_frizz(a.slot)
+    if a.slot == chompi.BENCH_SLOT and not a.device:
+        # the bench that runs, its bench done (remote.py bench --wait): not started again,
+        # which would run its bench anew
+        device = chompi.wait_for("frizz", 30)
+        info = chompi.ident(device)
+        if not info or info["kind"] != "bench":
+            sys.exit("--slot %d: the bench doesn't run (flash.py --bench, then remote.py bench --wait)"
+                     % chompi.BENCH_SLOT)
+    else:
+        device = a.device or chompi.to_frizz(a.slot)
     f = remote.Frizz(device)
     trs_node = a.trs or (None if a.wiring == "none" else midiport.trs_midi())
     chompi.device_guard(trs_node)
