@@ -84,7 +84,7 @@ what FRIZZ does.
   with the power switch. See [Power and battery](MANUAL.md#power-and-battery).
 
 - **Figures in the manual:** each effect's chapter, the [chaos key](MANUAL.md#chaos-key)'s and
-  the [compressor](MANUAL.md#finalizer)'s show where its white key is and its knobs'
+  the [finalizer](MANUAL.md#finalizer)'s show where its white key is and its knobs'
   colours; the panel, with what a chapter plays lit, opens
   [Playing an effect](MANUAL.md#playing-an-effect), [Looper](MANUAL.md#looper),
   [FX scenes](MANUAL.md#fx-scenes), [Scene changes in time](MANUAL.md#scene-changes-in-time),

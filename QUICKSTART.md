@@ -65,7 +65,7 @@ the loop's steps (see [Chaos key](MANUAL.md#chaos-key)).
 | Effect | Freezer | Shifter | Folder | Crusher | Filter | Flanger | Phaser | Resonator | Slicer | Wow & flutter | Tape stop | Delay | Reverb | Chaos | Finalizer |
 
 White key 7 has a second mode, the [frequency shifter](MANUAL.md#frequency-shifter): hold
-SHIFT and tap the key twice (it turns azure); twice again for the phaser.
+SHIFT and tap the key twice (it turns azure); the same again goes back to the phaser.
 
 ![Keys: an FX key held, then SHIFT, latches it; SHIFT, then an FX key, picks it for the knobs; SHIFT + a knob turned jumps in big steps; a knob pressed turns to its page 2](images/keys-quickstart.svg)
 
