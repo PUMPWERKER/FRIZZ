@@ -39,6 +39,11 @@
  *  MainLoop held up by the card (a scene saved) doesn't hold them up (#265). Ticks leave room
  *  in a ring for the transport (kTransportRoom): held up long enough to fill it, USB drops
  *  ticks, not a Stop, a Song Position and Continue or a Start.
+ *
+ *  While the finalizer's limiter delays the output (PassthroughEngine::OutputLatency, 1 ms,
+ *  #345), everything the clock sends is held back as long, in order, ticks, Start, Stop, Song
+ *  Position and Continue alike, passing on too (Held), so the gear behind stays in time with
+ *  what it hears. The delay goes in and out at once: one tick then comes 1 ms late or early.
  */
 #pragma once
 #include "MidiClock.h"
@@ -64,6 +69,16 @@ public:
     {
         ports_ = ports;
         playing_ &= Ports(MidiClock::Source::NONE); // a port left out: its gear unknown
+        // what was held back for the output's delay, out when it's due (all of it once the
+        // delay is gone), before anything new
+        delay_ = engine.OutputLatency();
+        while (held_read_ != held_write_
+               && (!delay_ || static_cast<int32_t>(now_ - held_[held_read_ % kHeld].due) >= 0))
+        {
+            const Held& h = held_[held_read_ % kHeld];
+            SendNow(h.msg, h.n, h.ports);
+            held_read_++;
+        }
         const TempoClock& tempo = engine.Tempo();
         const bool loop = tempo.HasLoop();
         // a standstill (the transport's hold zone, #174) is a pause to the gear behind too
@@ -157,6 +172,7 @@ public:
             continue_at_ = kNone;
             trs_.Clear();
             feedback_->Clear();
+            held_read_ = held_write_;
         }
 
         last_ticks_ = ticks;
@@ -242,9 +258,25 @@ private:
                | (ports_ == MidiOutPorts::TRS_USB && not_to != MidiClock::Source::USB ? kUsb : 0);
     }
 
-    /** A message to ports: the ones it went to. A tick leaves kTransportRoom in a ring. Not
-     *  inlined: Process sends from many places */
+    /** A message to ports: the ones it went to, or will go to once the output's delay has
+     *  passed (Held). Not inlined: Process sends from many places */
     __attribute__((noinline)) uint8_t Send(const uint8_t* msg, size_t n, uint8_t ports)
+    {
+        if (!delay_ || !ports)
+            return SendNow(msg, n, ports);
+        if (static_cast<uint8_t>(held_write_ - held_read_) >= kHeld)
+            return 0; // full: MainLoop or the UART is stuck, as a full ring
+        Held& h = held_[held_write_ % kHeld];
+        h.due = now_ + delay_;
+        h.ports = ports;
+        h.n = static_cast<uint8_t>(n);
+        for (size_t i = 0; i < n; i++)
+            h.msg[i] = msg[i];
+        held_write_++;
+        return ports;
+    }
+    /** And now: a tick leaves kTransportRoom in a ring */
+    uint8_t SendNow(const uint8_t* msg, size_t n, uint8_t ports)
     {
         uint8_t sent = 0;
         if ((ports & kTrs) && Push(trs_, msg, n))
@@ -345,6 +377,16 @@ private:
     bool half_due_ = false;   // a halfway tick waits for half_at_
     uint32_t half_at_ = 0;
     uint32_t last_tick_at_ = 0; // when the last tick went out
+    // the messages held back for the output's delay (delay_ samples, 0: none): a few blocks'
+    struct Held
+    {
+        uint32_t due; // now_ when it goes
+        uint8_t ports, n, msg[3];
+    };
+    static const size_t kHeld = 16;
+    Held held_[kHeld];
+    uint8_t held_write_ = 0, held_read_ = 0;
+    uint32_t delay_ = 0;
 };
 
 } // namespace chompi

@@ -108,8 +108,54 @@ static void Factor(int presses)
     RunMs(300);
 }
 
+/** The ticks' mean phase on the 120 BPM grid, ms, from the first of them */
+static double Phase(const std::vector<MidiOutByte>& v, double origin)
+{
+    double sum = 0.;
+    int n = 0;
+    for (const MidiOutByte& b : v)
+        if (b.byte == 0xF8)
+        {
+            double ph = fmod(b.ms - origin, kTick120);
+            if (ph > kTick120 / 2)
+                ph -= kTick120;
+            sum += ph;
+            n++;
+        }
+    return n ? sum / n : 1e9;
+}
+
 int main()
 {
+    // the finalizer's Loud (#345): while its limiter delays the output 1 ms, the clock out is
+    // 1 ms later too, and back once it's off
+    cases.push_back({"fin-delay", [] {
+        RunMs(kReadyMs);
+        SetOut(1);
+        RunMs(500);
+        TakeSent();
+        RunMs(2000);
+        const std::vector<MidiOutByte> before = TakeSent().trs;
+        const double origin = before.empty() ? 0. : before[0].ms;
+        for (uint8_t b : {0xBF, 27, 10}) // Loud a little up: its limiter and delay in
+            UsbMidi(b);
+        RunMs(500);
+        TakeSent();
+        RunMs(2000);
+        const std::vector<MidiOutByte> delayed = TakeSent().trs;
+        for (uint8_t b : {0xBF, 27, 0})
+            UsbMidi(b);
+        RunMs(500);
+        TakeSent();
+        RunMs(2000);
+        const std::vector<MidiOutByte> after = TakeSent().trs;
+        const double a = Phase(before, origin), d = Phase(delayed, origin), z = Phase(after, origin);
+        Report("fin-delay: the ticks' phase %.3f ms, with Loud %.3f, after %.3f", a, d, z);
+        Check(fabs(d - a - 1.) < .1, "fin-delay: Loud up: the clock out 1 ms later, as the output");
+        Check(fabs(z - a) < .1, "fin-delay: Loud at 0: back where it was");
+        Check(Count(delayed, 0xF8) >= 95, "fin-delay: and no tick lost");
+    }});
+
     // off at first: a clock in, a loop, a pause: nothing goes out anywhere
     cases.push_back({"off", [] {
         RunMs(kReadyMs);

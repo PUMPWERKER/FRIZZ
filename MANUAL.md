@@ -10,7 +10,7 @@ FRIZZ turns the CHOMPI into a stereo effects box and looper for whatever you plu
 input, for its built-in microphone, or for a computer on USB. You record a loop, or load your
 own from the SD card, and play it faster, slower or backwards, punch effects in over it and
 over the input on the white keys, and keep the effects' settings as scenes, to recall, morph or
-drop to on the bar line. A master compressor sits on the outputs, MIDI over TRS and USB reaches
+drop to on the bar line. A finalizer sits on the outputs, MIDI over TRS and USB reaches
 every control, and on a computer FRIZZ is a USB sound card too.
 
 ### How to read this manual
@@ -33,8 +33,8 @@ every control, and on a computer FRIZZ is a USB sound card too.
 
 <!-- summary: Every control at a glance. -->
 
-![A schematic of the panel: the 15 white keys with the effects, the chaos key and the master
-compressor; above them the 10 dark keys with the blank scene, scenes 1-4, save, copy and
+![A schematic of the panel: the 15 white keys with the effects, the chaos key and the
+finalizer; above them the 10 dark keys with the blank scene, scenes 1-4, save, copy and
 delete; behind them the mode switch, CHOMPI, knobs 1-4, the transport knob, PLAY, LOOP and
 VOLUME; and the jacks](images/panel.svg)
 
@@ -44,11 +44,11 @@ On the play page (the mode switch down), the controls are:
 |---|---|
 | White keys 1-13 | The [punch-in effects](#punch-in-fx), in the order the sound goes through them: [Freezer](#freezer), [Shifter](#shifter), [Folder](#folder), [Crusher](#crusher), [Filter](#filter), [Flanger](#flanger), [Phaser](#phaser), [Resonator](#resonator), [Slicer](#slicer), [Wow & flutter](#wow--flutter), [Tape stop](#tape-stop), [Delay](#delay), [Reverb](#reverb) |
 | White key 14 | The [Chaos key](#chaos-key) |
-| White key 15 | The [Master compressor](#master-compressor) on knobs 1-4 |
+| White key 15 | The [Finalizer](#finalizer) on knobs 1-4: input and drive, EQ, compression, width, a limiter |
 | Lower C# and D# | With SHIFT, the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page): loops from the card |
 | Lower F#, G#, A#, upper C#, D# | The [FX scenes](#fx-scenes): the blank scene, then scenes 1-4 |
 | Upper F#, G#, A# | [Save, copy and delete](#save-copy-and-delete) a scene |
-| Knobs 1-4 | The effect picked last, or the compressor; a press turns them to its [page 2](#page-2) |
+| Knobs 1-4 | The effect picked last, or the finalizer; a press turns them to its [page 2](#page-2) |
 | The transport knob, the big purple one | The loop's speed and direction, a scrub while it's paused ([Transport knob](#transport-knob)); with a scene morph held, the crossfader and the drop |
 | VOLUME | Output gain, input gain and the headphone feed; with SHIFT, the input/loop mix ([VOLUME knob](#volume-knob)) |
 | CHOMPI | SHIFT; it confirms a save, copy or delete |
@@ -115,7 +115,7 @@ CHOMPI first doesn't also change the page.
   to red.
 - **Headphone feed (page 3):** the master out always carries the full signal. Turned left, the
   headphones carry the input alone instead (AUX, the mic or USB, after input gain and VOLUME): no
-  loop, no effects, no compressor. It's where you hear the mic while it isn't monitored (see
+  loop, no effects, no finalizer. It's where you hear the mic while it isn't monitored (see
   [Input: AUX, the mic or USB](#input-aux-the-mic-or-usb)). Use it when the master goes to a PA, mixer
   or recorder and you listen on the headphones; with headphones alone, leave it at the
   master. It's back on the master at every power-on.
@@ -125,7 +125,7 @@ CHOMPI first doesn't also change the page.
 Every effect has its own colour, on its key and its knobs (see [Keys and knobs](#keys-and-knobs)).
 Throughout FRIZZ, 3 quick red blinks mean refused or not stored, and 3 white ones done.
 Besides the effects' own colours, red lit or blinking slowly means something else: LOOP
-recording or waiting to erase, the compressor's key while the safety limiter works, the input gain near 100% (VOLUME's page
+recording or waiting to erase, the finalizer's key while the safety limiter works, the input gain near 100% (VOLUME's page
 2), on the settings page the clock factor on double, on the Loops and Cubbi pages a file FRIZZ
 can't play (dim red), and VOLUME in the low-battery countdown.
 
@@ -580,17 +580,17 @@ How the sound goes through FRIZZ, from the input to the outputs.
 ### Signal flow
 
 ![The signal flow: the input, AUX, the mic or USB, after its gain to the looper and the
-input/loop mix, that through the effects and the master compressor, a source past the effects
+input/loop mix, that through the effects and the finalizer, a source past the effects
 joining after them, the master to the computer over USB, then VOLUME and a safety limiter on
 the line out and on the headphones, whose feed can blend in the input alone](images/signal-flow.svg)
 
 The input is AUX, the built-in microphone while no cable is in AUX, or a computer on USB (see
 [Input: AUX, the mic or USB](#input-aux-the-mic-or-usb)). It goes to the looper and, through the
-input/loop mix (SHIFT + VOLUME), to the effects on the white keys, then to the master
-compressor, VOLUME and a fixed safety limiter on every output. The looper records the input
+input/loop mix (SHIFT + VOLUME), to the effects on the white keys, then to the
+finalizer, VOLUME and a fixed safety limiter on every output. The looper records the input
 before the effects, so an effect is never printed into a loop; a loop
 [from the card](#loop-loader) plays from the looper as a recording does. The settings page can
-send the input past the effects and the compressor instead; it joins again before VOLUME.
+send the input past the effects and the finalizer instead; it joins again before VOLUME.
 
 The master out always carries the whole signal; the headphones carry the same, or the input
 alone (see [VOLUME knob](#volume-knob)). Over USB, the computer gets the master before VOLUME
@@ -600,7 +600,7 @@ alone (see [VOLUME knob](#volume-knob)). Over USB, the computer gets the master 
 
 ![The effects in the order FRIZZ computes them: the freezer, the shifter to the phaser inside
 the resonator's feedback loop, the slicer, wow & flutter and the tape stop, the delay and
-reverb as sends; then the input past the effects, the master compressor, VOLUME and the safety
+reverb as sends; then the input past the effects, the finalizer, VOLUME and the safety
 limiters; below them every insert's page 2](images/fx-chain.svg)
 
 The white keys run in signal order, left to right:
@@ -622,7 +622,7 @@ The white keys are of these kinds:
 - **Sends**, white keys 12 and 13 (the delay and reverb): the key opens the effect's input,
   and its output is added to the signal, so tails ring out after the key is released.
 - **White key 14**, the [chaos key](#chaos-key), makes no sound of its own but plays with the
-  others. White key 15 is the [master compressor](#master-compressor)'s, after the chain.
+  others. White key 15 is the [finalizer](#finalizer)'s, after the chain.
 
 What the order does:
 
@@ -650,8 +650,8 @@ FRIZZ's clock and the loop's transport: see [Appendix: MIDI](#appendix-midi).
 ## Punch-in FX
 <!-- summary: Playing the effects on the white keys: hold, latch, select, knobs. -->
 
-Effects sit on the white keys and act on the whole input/loop mix, before the master
-compressor and VOLUME. The looper records the input before the effects, so an effect is never
+Effects sit on the white keys and act on the whole input/loop mix, before the
+finalizer and VOLUME. The looper records the input before the effects, so an effect is never
 printed into a loop. Inserts stop the moment they're off, the delay and reverb ring out (see
 [Effect chain](#effect-chain)). Some heavy combinations of effects can need more processing
 time than there is, heard as crackles (see [Processing load](#processing-load)).
@@ -733,14 +733,12 @@ Each effect has its own chapter after this one, with its knobs on both pages and
 
 ### Page 2
 
-A press on any of knobs 1-4 turns all four over to the selected effect's page 2 (or the
-compressor's): the parameters you set and leave rather than play. Another press turns them
+A press on any of knobs 1-4 turns all four over to the selected effect's page 2: the parameters you set and leave rather than play. Another press turns them
 back. Turning the page blinks its number on the four knob LEDs in white, as VOLUME's pages
 do: twice for page 2, once for page 1 (a turn cuts it short). A knob the effect has nothing on
-is dark and does nothing. Every effect but the chaos key has a page 2, and the compressor
-too.
+is dark and does nothing. Every effect but the chaos key has a page 2; the finalizer has none.
 
-Pressing or selecting another effect, or the compressor's key, always brings back page 1, so
+Pressing or selecting another effect, or the finalizer's key, always brings back page 1, so
 the main controls are under your fingers whenever you pick an effect; pressing the key of the
 one already selected keeps its page. SHIFT + turn and SHIFT + press work on page 2 as on
 page 1. Turning the page doesn't edit the scene, and scenes, recalls and morphs carry page
@@ -761,8 +759,7 @@ bright as Level turns it, the way VOLUME's LED is as bright as VOLUME. So page 2
 whenever the effect sounds, and you see what Level does. It's measured after Level and Mix,
 so at less than full Mix it shows some of the dry sound too. An effect that's off shows only
 the dim floor. On the delay and reverb it shows their return (the echoes, the room, their
-tails too, after the key is let go). The compressor's page 2 shows its Makeup's value
-instead, as its other knobs show theirs: its key already shows how hard it works.
+tails too, after the key is let go).
 
 - **Nothing evens out levels by itself.** An effect that adds level, like the folder driven
   or the crusher's XOR on a quiet sound, comes out louder, and Level is how you set it.
@@ -1265,50 +1262,173 @@ latch, part of scenes and morphs. It has no page 2: a knob press does nothing.
   random stops.
 - LEDs: the key is rose; the knobs go light blue to rose.
 
-## Master compressor
-<!-- summary: A stereo compressor on the master out, always in the path; its key hands knobs 1 to 4 over to it. A limiter guards every output. -->
+## Finalizer
+<!-- summary: A master section on key 15: input and drive, a 3-band EQ, compression and width, and a limiter that makes it loud. -->
 
-White key 15. A stereo compressor on the master out, after the effects and before VOLUME, so
-turning VOLUME doesn't change how hard it works. It's always in the signal path; at the
-default threshold (0 dB) it does nothing. It only turns loud parts down, and turns anything up
-only by its Makeup knob.
+White key 15. A master section on the outputs, after the effects and before VOLUME, so turning
+VOLUME doesn't change how hard it works (after Endorphin.es' Golden Master and OTO's BOUM). Its
+four modules always run in this order:
 
-![The white keys from above, the master compressor lit on key 15; its knobs 1 to 4 are threshold, ratio, attack, release](images/key-compressor.svg)
+Input → EQ → Comp → Width → Drive → Limiter → VOLUME → the safety limiter
 
-The key selects it for knobs 1-4, which then turn it the way they turn an effect: 1% per
-detent, SHIFT + turn coarse, SHIFT + press resets, and a knob press for its
-[page 2](#page-2). Pressing an FX key gives the knobs back to that effect. The key does
-nothing else: it has no latch, and holding it doesn't switch anything. With SHIFT it's a
-select, as an FX key's is.
+EQ, Comp and Width share three bands, split at 300 Hz and 3 kHz. Every module is neutral at its
+defaults, and then the finalizer leaves the sound untouched and costs next to nothing. Nothing in
+it turns anything up by itself: the compressors have no makeup, and level comes back through
+Drive and Loud.
 
-| Knob | Page 1 | Page 2 |
-|---|---|---|
-| 1 | Threshold: from 0 dB down to -30 dB (default 0, off) | Mix: dry to fully compressed, for parallel compression (default fully compressed) |
-| 2 | Ratio: 1.5:1, 2:1, 4:1, 8:1, 20:1 across the knob, which are also its coarse points (default 4:1) | — |
-| 3 | Attack: 1 ms to 30 ms (default 5.5 ms) | Sidechain highpass: what the compressor listens to, off or from 20 Hz up to 500 Hz, so the bass doesn't pump everything else (default off) |
-| 4 | Release: 40 ms to 600 ms (default 155 ms) | Makeup: 0 dB to +24 dB, 3 dB a coarse step (default 0 dB) |
+![The white keys from above, the finalizer lit on key 15; its knobs 1 to 4 are input, drive, type, Loud](images/key-finalizer.svg)
 
-The compressor's Mix, Sidechain and Makeup sit on the knobs an effect has its Mix, Band and
-Level on.
+- **Selecting it:** the key selects the finalizer for knobs 1-4, which then turn it the way they
+  turn an effect: 1% per detent, SHIFT + turn coarse, SHIFT + press resets. Pressing an FX key
+  gives the knobs back to that effect. There's no page 2: a plain knob press does nothing in
+  Level, and [mutes a band](#band-mutes) in the other modules.
+- **The modules:** hold SHIFT, tap key 15 (it's selected, as ever), then tap it again: the knobs
+  show the next module, 1 to 4 and round, the key in its colour. Every further tap in the same
+  hold goes on to the next. Letting go of SHIFT, or pressing any other key, starts over: the
+  next SHIFT + key 15 only selects. Holding key 15 and then pressing SHIFT never switches (that's
+  the [bypass](#finalizer-presets-and-bypass)). It doesn't work on the Loops and Cubbi pages.
 
-- **Linked:** one detector for both channels, so the stereo image doesn't shift. It has a
-  soft knee, 6 dB wide.
-- **Level:** a threshold of 0 dB is an AUX signal about 7 dB below full scale, at the
-  default input gain. At threshold 0 and makeup 0 dB the signal passes untouched; at threshold
-  0 with makeup, it's that gain alone.
+### Level module
+
+Module 1, white: what goes in, its drive, and how loud it comes out.
+
+| Knob | Function |
+|---|---|
+| 1 | Input: a clean trim, -12 dB to +12 dB, 3 dB a coarse step (default 0 dB, the centre) |
+| 2 | Drive: 0 to +30 dB into a saturation, 0 off (default off) |
+| 3 | Type: Boost, Tube, Fuzz (default Boost) |
+| 4 | Loud: 0 to +18 dB into the limiter, 3 dB a coarse step, 0 off (default off) |
+
+- **Input (knob 1)** sets the level everything after it works with: more drives the
+  compressors and the saturation harder. Its LED is a level meter, as VOLUME's input meter.
+  Pink means hotter than the finalizer is set for (Loud's ceiling, the drive's level
+  compensation): a source that peaks near AUX's full scale wants Input turned down a few dB
+  first, until its peaks no longer reach pink.
+- **Drive (knob 2) and Type (knob 3):** Boost is a soft clip, Tube an asymmetric one that adds
+  mostly the second harmonic, Fuzz a hard clip. It runs at twice the sample rate, so its
+  harmonics don't fold back, with a gentle hi-cut after it. Drive is level-compensated: turning
+  it up changes the character, not the level, for a signal at a normal level.
+- **Loud (knob 4)** turns the signal up into a limiter with a ceiling of -1 dB, so the loud
+  parts stay where they are and the rest comes up. It looks 1 ms ahead, so it's down before a
+  peak arrives, and its release adapts: short for a short peak, longer the longer it limits.
+  At 0 the limiter is off. While it's on, the output comes 1 ms later; switching it on or off
+  crossfades, and [MIDI out](#midi-out)'s clock moves by the same 1 ms, so gear behind FRIZZ
+  stays in time with what it hears. Its LED shows the limiter's gain reduction.
+
+### EQ module
+
+Module 2, yellow: the three bands' levels, as on a DJ mixer.
+
+| Knob | Function |
+|---|---|
+| 1 | Low: the band below 300 Hz, -20 dB to +8 dB (default 0 dB, the centre) |
+| 2 | Mid: 300 Hz to 3 kHz, -20 dB to +8 dB (default 0 dB, the centre) |
+| 3 | High: above 3 kHz, -20 dB to +8 dB (default 0 dB, the centre) |
+| 4 | — |
+
+- **The bands:** Linkwitz-Riley crossovers, 24 dB an octave, that add up flat again: with all
+  three at 0 dB, nothing changes but a little phase around the crossovers.
+- Their LEDs show each band's level after the EQ, a spectrum in three bars (dim, green,
+  yellow, pink as it gets louder).
+
+### Comp module
+
+Module 3, cyan: a compressor on each band, set by its character, all three by one Depth.
+
+| Knob | Function |
+|---|---|
+| 1 | Low character: Light & fast, Standard & fast, Standard & slow, Parallel, Keep loud, Beat FX (default Standard & slow) |
+| 2 | Mid character: as the low band's (default Standard & slow) |
+| 3 | High character: as the low band's (default Standard & slow) |
+| 4 | Depth: the three bands' thresholds together, from 0 dB down to -30 dB, 0 off (default off) |
+
+- **Depth (knob 4)** is how much the three compress: at 0 they're off, turned up their
+  thresholds come down together.
+- **The characters** each set the attack, release, ratio and knee; the low band's are 1.5x
+  slower, so the bass isn't pumped by its own waveform:
+  - **Light & fast:** a gentle ratio, quick to react, for a little glue.
+  - **Standard & fast:** a medium ratio, quick: tames peaks.
+  - **Standard & slow:** a medium ratio with a slow attack that lets the transients through:
+    the classic bus compression.
+  - **Parallel:** heavy compression mixed half and half with the band as it was, so it gets
+    denser and the transients stay.
+  - **Keep loud:** slow and even, it holds the band's level steady.
+  - **Beat FX:** fast and hard, it pumps: an effect, not a correction.
+- Each band's detector hears both channels, so the image doesn't shift. There's no makeup
+  gain: compression only turns down. Bring the level back with Drive or Loud.
+- Their LEDs show each band's gain reduction, brighter the deeper it compresses, and knob 4
+  its Depth.
+
+### Width module
+
+Module 4, magenta: each band's stereo width.
+
+| Knob | Function |
+|---|---|
+| 1 | Low width: mono at the left, as it is at the centre, wider to the right, up to 1.5x (default the centre) |
+| 2 | Mid width: mono at the left, as it is at the centre, wider to the right, up to 2x (default the centre) |
+| 3 | High width: mono at the left, as it is at the centre, wider to the right, up to 2x (default the centre) |
+| 4 | — |
+
+- **Width** scales the difference between the channels (the side): at the left there's none,
+  so the band is mono, which keeps the bass solid on a club system; to the right the side is
+  turned up.
+- Their LEDs show each band's correlation, how alike the two channels are: green mono or
+  nearly, yellow a normal width, pink very wide, red out of phase, where the band would
+  cancel itself on a mono system (watch the low band).
+
+### Band mutes
+
+In EQ, Comp and Width a plain press of knob 1, 2 or 3 mutes the low, mid or high band, and
+another press brings it back, as the kill switches on a DJ mixer: to take the bass out for a
+moment, or to hear one band alone. The mute fades in about 5 ms, without a click. A muted
+band's knob LED is nearly dark, dimmer than a band that's only quiet, and flashes as it
+toggles. Mutes are for playing: they aren't kept, and power-on or recalling a preset unmutes
+all three.
+
+### Finalizer presets and bypass
+
+- **Bypass:** hold key 15, then press SHIFT: the finalizer is switched off, an exact
+  pass-through, with a crossfade of about 10 ms (and Loud's 1 ms delay faded out with it); the
+  same again switches it on. The key is dim while it's bypassed. It isn't kept: at power-on
+  the finalizer is on.
+- **Presets:** four, kept on the card with the finalizer, not in the scenes, so the master
+  stays as the scenes change. Hold key 15: the keys of scenes 1-4 (the lower G# and A#, the
+  upper C# and D#) show the presets, lit where one is stored, the one recalled last white. Holding key 15 changes
+  nothing in the sound.
+  - **Recall:** hold key 15 and press a scene key: the knobs glide to the preset, and every
+    band is unmuted.
+  - **Save, copy and delete** go as for [scenes](#save-copy-and-delete): hold key 15 and press
+    the upper F#, G# or A#, which starts that mode for the presets rather than the scenes; let
+    go of key 15 if you like. The scene keys show the presets in the mode's colour (green,
+    blue, red). Pick the preset (for a copy the one to copy, then where to), confirm with
+    SHIFT: white for done, red if the card refused. While such a mode waits, SHIFT is its
+    confirm, never the bypass, even with key 15 still held.
+
+### Finalizer LEDs and settings
+
+- **Its key** is in the colour of the module the knobs show: Level white, EQ yellow, Comp
+  cyan, Width magenta. It's never darker than a glow that lets the colour be seen, and it
+  pulses brighter with the deepest gain reduction (a band's or the limiter's), at full from
+  12 dB; it flashes when pressed, white, or dark while it's already bright. Dim while bypassed.
 - **Safety limiter:** after VOLUME, every output has a fixed limiter that keeps it within
-  full scale. It's the only thing FRIZZ does to the level by itself, so it shows: the
-  compressor's key turns red while it limits, from 1 dB of limiting on and fully red from
-  3 dB, held 0.3 s so a short peak is seen. Red means turn something down: VOLUME, an
-  effect's Level, the makeup.
-- **Kept:** the settings are saved to `FRIZZ/frizz_master.txt` on the card 2 s after the
-  last turn, and come back at power-on. They're not part of a scene. Without a card, or when
-  the card can't be written, the key blinks red 3 times instead, and FRIZZ tries again 2 s
-  later, up to 3 times; the settings then last until power-off.
-- LEDs: the key is white, dim, lighting up with the gain reduction, at full brightness from
-  12 dB, and red while the safety limiter works (above); it flashes when pressed, white, or
-  dark while it's already bright. While selected, the knobs go light blue (0%) to orange
-  (100%).
+  full scale. It's the only thing FRIZZ does to the level by itself, so it shows: key 15
+  turns red over everything while it limits, from 1 dB of limiting on and fully red from 3 dB,
+  held 0.3 s so a short peak is seen. Red means turn something down: VOLUME, an effect's
+  Level, the finalizer's Input or Loud. Loud's own limiter keeps it from working at VOLUME
+  full.
+- **The knob LEDs** are meters while the knobs rest (above, module by module); a knob you turn
+  shows its value for a moment, from light blue (0%) to orange (100%), then the meter again.
+  Knobs 2 and 3 of Level and knob 4 of Comp always show their values. The output's own meter
+  stays VOLUME's.
+- **Level:** 0 dB at the input is an AUX signal about 7 dB below full scale, at the default
+  input gain.
+- **Kept:** the knobs and presets are saved to `FRIZZ/frizz_master.txt` on the card 2 s after
+  the last turn, and come back at power-on. They're not part of a scene. Without a card, or
+  when the card can't be written, the key blinks red 3 times instead, and FRIZZ tries again
+  2 s later, up to 3 times; the settings then last until power-off.
+- LEDs: the key is white, yellow, cyan or magenta, by its module; the knobs go light blue to
+  orange.
 
 <!-- part: Scenes and settings -->
 
@@ -1356,8 +1476,8 @@ crossfade by hand (see [Scene changes in time](#scene-changes-in-time)).
 - **Delay and reverb tails ring out** after a scene unlatches them, as they were: a scene
   changes the settings of a delay or reverb that's off only when its key next comes on.
   Turning its knobs meanwhile still moves the tail.
-- The input/loop mix, the volumes, the master compressor and the looper aren't part of a
-  scene. The compressor keeps its settings on the card on its own.
+- The input/loop mix, the volumes, the finalizer and the looper aren't part of a
+  scene. The finalizer keeps its settings and presets on the card on its own.
 
 ### Save, copy and delete
 
@@ -1592,7 +1712,7 @@ and knob 1 set the rest:
 | Upper F# | [The input's source](#input-aux-the-mic-or-usb), each press the next: AUX, the built-in mic, USB (a computer). Not saved: AUX's jack picks AUX or the mic again when a cable goes in or out, but leaves USB | green (AUX), magenta (mic), blue (USB; dim while [USB audio](#usb-audio) is off) |
 | SHIFT + upper F# | With AUX or the mic: [mono input](#mono-input), mono / stereo (default). With USB: [USB audio](#usb-audio) on (default) / off. While you hold SHIFT, the upper F# shows it: lit when on, dim when off. With the card lent to the computer, USB audio can't switch: it blinks red 3 times | white; red (refused) |
 | Upper G# | [The source's monitoring](#input-aux-the-mic-or-usb), on the outputs: on (lit) / off (dim). AUX and USB on, the mic off at first | white |
-| Upper A# | [The source's effects](#input-aux-the-mic-or-usb): through them (default) / past them and the compressor. Dark while the source isn't monitored: pressed then, it blinks red 3 times and changes nothing | green (through), white (past) |
+| Upper A# | [The source's effects](#input-aux-the-mic-or-usb): through them (default) / past them and the finalizer. Dark while the source isn't monitored: pressed then, it blinks red 3 times and changes nothing | green (through), white (past) |
 | Knob 1 | [LED brightness](#led-brightness): turned, 5% a detent from 25% to 100% (default); SHIFT + turn the next of 25, 50, 75, 100%; SHIFT + press 100% | its LED white, as bright as the LEDs are |
 
 The dark keys are grouped by topic: the lower ones are MIDI in, the upper ones MIDI out and
@@ -1629,7 +1749,7 @@ the input.
   saved, copied or deleted, and you're out of the function when you flip back down.
 - The low-battery warning dims with the LEDs too.
 - Every setting but the source itself (AUX, the mic or USB) is saved on the card with the
-  master compressor, 2 s after the last change, so it comes back at power-on: each source's
+  finalizer, 2 s after the last change, so it comes back at power-on: each source's
   monitoring and effects, all three input gains and USB audio too. None is part of a scene. Without a card, or when the
   card can't be written, the key you changed last (or knob 1's LED, for the brightness) blinks
   red 3 times, and FRIZZ tries again 2 s later, up to 3 times; the setting then lasts until
@@ -1659,7 +1779,7 @@ not, and the upper A# sends it **through the effects** or past them.
 ![The input: AUX, the mic or USB, each with its own gain, picked by the upper F# (or AUX's jack, between AUX and the mic); the
 source as it is to the looper and the headphone feed; the upper G# its monitoring, on the
 outputs or not, the upper A# through the effects or past them; the share past the effects joining after the
-compressor](images/input.svg)
+finalizer](images/input.svg)
 
 - **Upper F#, the source:** AUX (green), the mic (magenta) or USB (blue), each press the next.
   AUX's jack picks between AUX and the mic: with a cable plugged in, it's AUX; pull it out and
@@ -1671,7 +1791,7 @@ compressor](images/input.svg)
   a DAW: the looper records the source either way. Unmonitored, you can still record it and
   hear it alone on the headphones' feed, without it on the master.
 - **Upper A#, the effects:** through them, through the input/loop mix, the effects and the
-  master compressor; or **past them**, past the effects and the compressor, at the input/loop
+  finalizer; or **past them**, past the effects and the finalizer, at the input/loop
   mix's input share, straight to VOLUME and the safety limiter. Lit green for through, white
   for past; dark while the source isn't monitored, when it doesn't matter (pressed then, it
   blinks red 3 times and changes nothing; its setting is kept for when it's monitored again).
@@ -1693,13 +1813,13 @@ it turned left, a blend between:
 
 | Upper F# source | Upper G# monitoring | Upper A# effects | Line, mix at "input" (no loop, or after an erase) | Line, mix in the middle | Line, mix at "loop" (after a recording) | Headphones, feed left |
 |---|---|---|---|---|---|---|
-| AUX | on | through | AUX through the effects + compressor | AUX and the loop together through the effects + compressor | the loop through the effects + compressor | AUX pure |
+| AUX | on | through | AUX through the effects + finalizer | AUX and the loop together through the effects + finalizer | the loop through the effects + finalizer | AUX pure |
 | AUX | on | past | AUX pure (VOLUME and the limiter only) | AUX pure + the loop through the effects | the loop through the effects | AUX pure |
 | AUX | off | – | silence (delay/reverb tails at most) | the loop alone through the effects, at its share | the loop through the effects | AUX pure |
-| mic | on ⚠ | through | the mic through the effects + compressor | the mic and the loop together through the effects | the loop through the effects | mic pure |
+| mic | on ⚠ | through | the mic through the effects + finalizer | the mic and the loop together through the effects | the loop through the effects | mic pure |
 | mic | on ⚠ | past | the mic pure | the mic pure + the loop through the effects | the loop through the effects | mic pure |
 | mic | off | – | silence | the loop alone through the effects, at its share | the loop through the effects | mic pure |
-| USB | on | through | the computer through the effects + compressor | the computer and the loop together through the effects + compressor | the loop through the effects + compressor | the computer pure |
+| USB | on | through | the computer through the effects + finalizer | the computer and the loop together through the effects + finalizer | the loop through the effects + finalizer | the computer pure |
 | USB | on | past | the computer pure | the computer pure + the loop through the effects | the loop through the effects | the computer pure |
 | USB | off | – | silence | the loop alone through the effects, at its share | the loop through the effects | the computer pure |
 
@@ -1784,7 +1904,7 @@ loops from there. Leave the card in.
 | File | Holds | Written |
 |---|---|---|
 | `FRIZZ/frizz_scenes.txt` | The 4 [FX scenes](#fx-scenes) | When you save, copy or delete a scene |
-| `FRIZZ/frizz_master.txt` | The [master compressor](#master-compressor) and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, USB audio, and for AUX, the mic and USB each their input gain, monitoring and effects | 2 s after the last change |
+| `FRIZZ/frizz_master.txt` | The [finalizer](#finalizer) and its presets, and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, USB audio, and for AUX, the mic and USB each their input gain, monitoring and effects | 2 s after the last change |
 | `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | A file FRIZZ couldn't read, or the computer's version that FRIZZ's own replaced ([The card as a USB drive](#the-card-as-a-usb-drive)) | When FRIZZ's save replaces it |
 | `FRIZZ/bug-1.txt`, `bug-2.txt` … | [Bug reports](#bug-reports) | When you ask for one |
 | `FRIZZ/a1.wav` … `h15.wav` | Your [loops](#loops-on-the-card) | Only by the [Companion](#the-companion), as it uploads, moves or deletes them |
@@ -1819,7 +1939,8 @@ on again, so the scenes on the card aren't replaced by the session's.
 | `aux_dry`, `mic_dry`, `usb_dry` | Each source's effects ([Input: AUX, the mic or USB](#input-aux-the-mic-or-usb)) | 0 through them, 1 past them |
 | `aux_live`, `mic_live`, `usb_live` | Each source's monitoring | 1 on, 0 off |
 | `usb_audio` | [USB audio](#usb-audio) | 1 on, 0 off |
-| `compressor2` | The master compressor's knobs | |
+| `finalizer` | The [finalizer](#finalizer)'s knobs, Level's four, EQ's three, Comp's four, Width's three | 0-1000000 each |
+| `finalizer_preset1` ... `4` | Its [presets](#finalizer-presets-and-bypass), each as `finalizer`, only those stored | |
 
 A line FRIZZ doesn't know is skipped, a setting left out or out of its range keeps its
 default, and a word where a number belongs makes the whole file unreadable: FRIZZ then starts
@@ -1844,7 +1965,7 @@ lent). The loop and the effects play on meanwhile.
   `frizz_scenes.txt` and `frizz_master.txt` again if the computer changed them, as at power-on
   ([Scenes and settings on the card](#scenes-and-settings-on-the-card)). A file the computer
   left as it was changes nothing.
-  - The settings apply at once. The input gains and the compressor's knobs glide there as when
+  - The settings apply at once. The input gains and the finalizer's knobs glide there as when
     you turn them, and `usb_audio` switched takes FRIZZ off USB and back on as the settings
     page does. What MIDI set without the card (an input gain by CC, say) goes to the file's
     value, as after a restart.
@@ -1917,7 +2038,12 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | SHIFT, then an FX key | Select it for the knobs, without hearing it | [Playing an effect](#playing-an-effect) |
 | SHIFT + key 7, then key 7 again | The phaser's other mode: the frequency shifter, and back | [Frequency shifter](#frequency-shifter) |
 | An FX key on a latched effect | Unlatch it; on until you let go | [Playing an effect](#playing-an-effect) |
-| White key 15 | The master compressor on the knobs | [Master compressor](#master-compressor) |
+| White key 15 | The finalizer on the knobs | [Finalizer](#finalizer) |
+| SHIFT + key 15, then key 15 again | The finalizer's next module: Level, EQ, Comp, Width | [Finalizer](#finalizer) |
+| Hold key 15, then SHIFT | The finalizer bypassed, or on again | [Finalizer presets and bypass](#finalizer-presets-and-bypass) |
+| Hold key 15 + a key of scenes 1-4 | Recall a finalizer preset | [Finalizer presets and bypass](#finalizer-presets-and-bypass) |
+| Hold key 15 + upper F#, G# or A# | Save, copy or delete a finalizer preset | [Finalizer presets and bypass](#finalizer-presets-and-bypass) |
+| Press knob 1-3 on the finalizer's EQ, Comp or Width | Mute that band, or unmute it | [Band mutes](#band-mutes) |
 | Turn knobs 1-4 | The selected effect's parameters | [Keys and knobs](#keys-and-knobs) |
 | SHIFT + turn knobs 1-4 | Coarse, to the next point of the grid | [Coarse steps](#coarse-steps) |
 | SHIFT + press knobs 1-4 | That parameter back to its default | [Playing an effect](#playing-an-effect) |
@@ -2015,7 +2141,7 @@ On the [settings page](#settings-page) (mode switch up), hold SHIFT and
 press and hold the VOLUME knob for 2 seconds: FRIZZ writes everything you did since switching
 on to the card, as `/FRIZZ/bug-1.txt` (the next one `bug-2.txt`, and so on): every key, knob detent and
 mode-switch flip with its time, the MIDI clock's tempo, every MIDI message FRIZZ acted on, and
-the scenes and compressor the card held at power-on. Do it right after something went wrong
+the scenes and finalizer the card held at power-on. Do it right after something went wrong
 (flip the switch up, hold, flip it back down) and send the file with your report:
 FRIZZ's developers play it on a virtual CHOMPI on their computer, which then does what yours
 did, key for key.
@@ -2081,11 +2207,11 @@ FRIZZ listens on 16 channels, with two kinds of map:
 
 - **The global channel**, **16** at first: notes (the keys), program changes (scenes, and
   loops from the card after a bank select), the
-  looper, the scenes, the gains, every effect's latch, the compressor, and the knobs of the
+  looper, the scenes, the gains, every effect's latch, the finalizer, and the knobs of the
   effect in focus. That alone covers FRIZZ from a hardware controller or a TRS chain.
 - **The effect channels 1-15**, one per white key, left to right: 1 freezer, 2 shifter,
   3 folder, 4 crusher, 5 filter, 6 flanger, 7 phaser, 8 resonator, 9 slicer, 10 wow & flutter,
-  11 tape stop, 12 delay, 13 reverb, 14 chaos key, 15 master compressor. Each has the same
+  11 tape stop, 12 delay, 13 reverb, 14 chaos key, 15 finalizer. Each has the same
   CCs, so in a DAW one MIDI track per effect has the same automation lanes everywhere.
 
 On the global channel, its own map wins: set it to 5, and channel 5 is the global channel,
@@ -2130,13 +2256,13 @@ save, copy and delete 66, 68 and 70. Below them:
 
 ### Controllers
 
-**On each effect channel (1-15)**, and on the global channel for the effect in focus:
+**On each effect channel (1-14)**, and on the global channel for the effect in focus:
 
 | CC | Function |
 |---|---|
 | 14, 15, 16, 17 | Page 1's knobs 1-4, set outright |
 | 18, 19, 20, 21 | [Page 2](#page-2)'s knobs 1-4 (Mix or the sends' Freeze, stereo or its own, Band, Level), set outright |
-| 22 | Latch: 64 and above on, below off, acting as the value crosses 64. The compressor (channel 15) has none, nor a page 2 knob 2: its CC 19 does nothing |
+| 22 | Latch: 64 and above on, below off, acting as the value crosses 64 |
 | 23 | On the phaser's channel (7) only: its mode, 0-63 the phaser, 64-127 the [frequency shifter](#frequency-shifter). On the other effect channels it does nothing; on the global channel it's the focus |
 
 **On the global channel:**
@@ -2144,8 +2270,9 @@ save, copy and delete 66, 68 and 70. Below them:
 | CC | Function |
 |---|---|
 | 14-22 | The effect in focus, as on its own channel |
-| 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the compressor). It's the effect the knobs edit, as SHIFT + its key picks it, and it follows when you pick one by hand |
-| 24-31 | The master compressor's knobs, as channel 15's 14-21: 24-27 page 1 (threshold, ratio, attack, release), 28, 30 and 31 page 2 (the compressor's Mix, sidechain highpass, Makeup); 29 does nothing |
+| 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the finalizer: CC 14-17 reach the module its knobs show). It's the effect the knobs edit, as SHIFT + its key picks it, and it follows when you pick one by hand |
+| 24-27 | The finalizer's Level module: input, drive, type, Loud, as channel 15's 14-17 |
+| 28 | The finalizer's Depth, as channel 15's 27 |
 | 84 | [The input's source](#input-aux-the-mic-or-usb) in thirds: 0-42 AUX, 43-85 the mic, 86-127 USB, as the settings page's upper F# picks it |
 | 85 | Output gain |
 | 86 | Input gain, of the input heard (AUX, the mic or USB) |
@@ -2165,6 +2292,20 @@ save, copy and delete 66, 68 and 70. Below them:
 | 117 | [The source's monitoring](#input-aux-the-mic-or-usb), the source heard now: 0-63 off, 64-127 on, as the settings page's upper G# |
 | 120, 123 | All Sound Off, All Notes Off: let go of every key MIDI holds |
 
+**On the finalizer's channel (15)**, a map of its own, every parameter at a fixed CC, so each
+module's knobs are four CCs in a row:
+
+| CC | Function |
+|---|---|
+| 14, 15, 16, 17 | [Level](#level-module): input, drive, type, Loud |
+| 18, 19, 20 | [EQ](#eq-module): low, mid, high |
+| 21 | Recall [preset](#finalizer-presets-and-bypass) 1-4 (0 none), as the value changes |
+| 22 | On or bypassed: 64 and above on, below bypassed, acting as the value crosses 64 |
+| 23 | The module the knobs show: 0-31 Level, 32-63 EQ, 64-95 Comp, 96-127 Width |
+| 24, 25, 26, 27 | [Comp](#comp-module): low, mid and high character, Depth |
+| 28, 29, 30 | [Width](#width-module): low, mid, high |
+| 102, 103, 104 | [Mute](#band-mutes) the low, mid or high band: 64 and above muted |
+
 - **Set outright**, a value does what the knob or key would: the LEDs follow, the scene key
   pulses as edited, a morph lands where the CC put the parameter, a send ringing out takes it at
   once. The knobs stay on the effect you picked (except with CC 23). 64 is a knob's centre
@@ -2174,14 +2315,14 @@ save, copy and delete 66, 68 and 70. Below them:
   same value again does nothing, so a latch you switched by hand stays as you left it until the
   lane crosses 64 again. Use 0 and 127.
 - **Automation isn't saved:** nothing that comes in by CC goes to the card. After a restart the
-  compressor is as you left it by hand (its knobs, the settings page, or FRIZZ's SysEx), the
+  finalizer is as you left it by hand (its knobs, the settings page, or FRIZZ's SysEx), the
   source (CC 84) as the jack picks it, each source's effects and monitoring (CC 116, 117) as the
   settings page's upper G# and A# left them, the input gains as you last turned them,
   and the output gain and the input/loop mix at their power-on levels. Scenes you save keep what the CCs set, as ever.
 - **Left free on purpose**, so what hosts and keyboards send by themselves reaches nothing:
   bank select's LSB (32), mod wheel (1), breath (2), foot (4), volume (7), pan (10), expression
   (11), the pedals (64-69), keyboards' sound controllers (70-79), NRPN and RPN with their data entry (6, 38,
-  96-101: a DAW's pitch-bend range doesn't turn a knob), 88, effects depths (91-95: a
+  96-101: a DAW's pitch-bend range doesn't turn a knob), 29-31 (the finalizer's, kept for later), 88, effects depths (91-95: a
   keyboard sends reverb depth, 91, at power-on), Reset All
   Controllers (121). CC 46-53 stay free for a 14-bit mode later.
 - Notes 36-39, the knob presses, turn the page as your hand does. Mod wheel, pitch bend,
@@ -2306,7 +2447,8 @@ where [MIDI out](#midi-out) goes, so MIDI out has to be on too.
 - **What goes out:** an effect's knobs (CC 14-21) and latch (CC 22) on its own channel, and
   for the effect in focus also on the global channel (CC 14-22); the phaser's mode (CC 23 on
   its channel, 0 or 127); the latches by key (CC
-  102-115), the focus (CC 23) as you pick an effect, the compressor (CC 24-31), the gains and
+  102-115), the focus (CC 23) as you pick an effect, the finalizer (on its channel, 15, every
+  parameter at its CC there, and the module, mutes and on or off), the gains and
   the input/loop mix (CC 85-87), the headphone feed (CC 89), the input (CC 84: 0 AUX, 64 the mic, 127 USB, also
   when the jack switches it; CC 116 and 117, 0 or 127, the source's effects and monitoring, also
   when a switch of the source brings up the other's), the loop's speed (CC 90), and the crossfader
@@ -2375,8 +2517,12 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
   the input's full scale at input gain 75%).
 - The freezer records up to 5 s; the delay holds 10 s, so 2 bars fit at the slowest tempo.
 - The tempo: 50-300 BPM, 120 at power-on.
-- Every output has a fixed safety limiter after VOLUME (see [Master
-  compressor](#master-compressor)).
+- Every output has a fixed safety limiter after VOLUME (see [Finalizer LEDs and
+  settings](#finalizer-leds-and-settings)).
+- The finalizer: its bands split at 300 Hz and 3 kHz, Linkwitz-Riley 4th order; its drive at
+  twice the sample rate; its limiter 1 ms ahead, a ceiling of -1 dB, with its peaks between
+  samples estimated at twice the rate. While Loud is up, the outputs and MIDI clock out are
+  1 ms later.
 - USB audio (see [USB audio](#usb-audio)): USB Audio Class 1 at full speed, 48 kHz, 24 bit, 2
   channels each way, asynchronous: the computer follows FRIZZ's clock, about 2 ms of buffer
   each way in FRIZZ. To the computer, the master before VOLUME and the safety limiter, at the
@@ -2392,14 +2538,16 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
 
 Effects that are off cost little processing time, about 5% of each block's together (most of
 it the resonator and the shifter keeping their recent sound for a punch-in), but the ones that
-are on do. Some heavy combinations (the shifter and the crusher with a loop playing and the master compressor
+are on do. Some heavy combinations (the shifter and the crusher with a loop playing and the finalizer
 working hard, for example) can need more time than there is, which is heard as crackles;
 switching one of them off clears it.
 
 Measured on a build that runs a set of combinations by itself, as a share of the time each
 block has: FRIZZ alone about 35%, one effect at most about 50%, all the inserts with a loop
-about 70%, every effect at once about 80%. Every effect at once with a loop, and every
-effect's page 2 turned off its defaults (Mix, Band and Level), needs more than there is.
+about 70%, every effect at once about 80%. The finalizer with every module working takes about
+13% more, its compressors alone (Depth up) about 5%; at its defaults nothing. Every effect at
+once with a loop, and every effect's page 2 turned off its defaults (Mix, Band and Level),
+needs more than there is.
 
 ### Timing
 

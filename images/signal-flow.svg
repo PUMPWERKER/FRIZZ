@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 440" width="720" height="440" role="img" aria-labelledby="title desc">
 <title id="title">FRIZZ signal flow</title>
-<desc id="desc">The whole way of the sound. The input, AUX, the built-in mic or USB after its input gain, goes to the looper and to the input/loop mix; the looper's playback is the input/loop mix's other side. The input/loop mix goes through the effects of the white keys and the master compressor. A source set past the effects: the input/loop mix's input share skips the effects and the compressor and joins after them. From there the master goes to the computer over USB, and through VOLUME, the output gain, and a safety limiter on each output: the line out, and the headphones, whose feed can blend in the input alone.</desc>
+<desc id="desc">The whole way of the sound. The input, AUX, the built-in mic or USB after its input gain, goes to the looper and to the input/loop mix; the looper's playback is the input/loop mix's other side. The input/loop mix goes through the effects of the white keys and the finalizer. A source set past the effects: the input/loop mix's input share skips the effects and the finalizer and joins after them. From there the master goes to the computer over USB, and through VOLUME, the output gain, and a safety limiter on each output: the line out, and the headphones, whose feed can blend in the input alone.</desc>
 <style>svg{font-size:13px}text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
 <defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
 <rect width="720" height="440" fill="#131314"/>
@@ -27,13 +27,13 @@
 <text x="480" y="82.5" class="m" font-size="12">white keys 1–14</text>
 <polyline points="540,70 560,70" class="la" marker-end="url(#ma)"/>
 <rect x="560" y="42" width="110" height="56" class="ba"/>
-<text x="615" y="66.5" class="t" font-weight="bold">COMPRESSOR</text>
+<text x="615" y="66.5" class="t" font-weight="bold">FINALIZER</text>
 <text x="615" y="82.5" class="m" font-size="12">white key 15</text>
 <polyline points="670,70 679,70" class="la" marker-end="url(#ma)"/>
 <circle cx="688" cy="70" r="9" class="b"/>
 <path d="M683,70h10M688,65v10" class="ls"/>
 <polyline points="385,98 385,205 688,205 688,79" class="ls" marker-end="url(#ms)"/>
-<text x="537" y="223" class="m" font-size="12">the input's share, past the effects and the compressor</text>
+<text x="537" y="223" class="m" font-size="12">the input's share, past the effects and the finalizer</text>
 <polyline points="697,70 708,70 708,240 75,240 75,268" class="la" marker-end="url(#ma)"/>
 <circle cx="600" cy="240" r="3" class="ds"/>
 <polyline points="600,240 600,300" class="ls" marker-end="url(#ms)"/>

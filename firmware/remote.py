@@ -25,7 +25,7 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
     ./remote.py ident                 which build runs (its CRC-32, and which slot's that is),
                                       the bench or FRIZZ, uptime, why it last reset, RAM only
     ./remote.py ram-only              the card isn't written until FRIZZ restarts (PERSIST 0)
-    ./remote.py get GROUP             an effect's knobs (by name, both pages), comp, latch,
+    ./remote.py get GROUP             an effect's knobs (by name, both pages), fin, latch,
                                       volume or settings
     ./remote.py set GROUP INDEX VALUE [--save]
                                       one of them: a knob's 0-1, a latch's 0/1, a setting's
@@ -34,8 +34,9 @@ and the developers' (kCmdDev, code/src/MidiControl.h; firmware/README.md):
                                       the bench's progress; --wait until it's done, --out
                                       writes its cpu.txt, as it went to the card, to FILE
     ./remote.py probe                 the clock as FRIZZ counts it, the effects' tempo, the looper
-    ./remote.py levels                the effects' meters, the VU meter, the compressor's
-                                      reduction, the inputs' and outputs' peaks over 0.25 s
+    ./remote.py levels                the effects' meters, the VU meter, the finalizer's
+                                      reduction, the inputs' and outputs' peaks over 0.25 s, the
+                                      finalizer's meters
     ./remote.py signal sine|saw|noise HZ LEVEL | off
                                       a test signal in the input's place (LEVEL 0-1 of full
                                       scale), in RAM until FRIZZ restarts; off the input again
@@ -110,7 +111,7 @@ the computer everything goes over USB, `midi` lines too: with the device's clock
 a script's clock and Start / Stop are ignored there (MANUAL.md, "Clock source").
 
 `play` first stops FRIZZ writing the card until it restarts (PERSIST 0, ram-only above), so a
-script may change the settings, the compressor or the scenes: they stay in RAM, the card keeps
+script may change the settings, the finalizer or the scenes: they stay in RAM, the card keeps
 what the FRIZZ on key 10 shares. It says so, and, on a slot other than the test slot (12),
 starts that slot again at the end, from the card, so it saves again. --save leaves the card
 written as FRIZZ writes it. A FRIZZ from before PERSIST, or --save, gets the old guard:
@@ -122,13 +123,13 @@ bug reports, which end with SHIFT + VOLUME held there), a key or knob while the 
 up (the upper G# and A# too: each source's effects and live are saved, #177, so mic.txt; knob 1, the
 brightness, #176), or a settings SysEx (#58);
 VOLUME turned on its page 2, the input gain (#152, volume.txt); knobs 1-4 turned with the
-compressor selected (comp.txt, or in focus by CC 23); MIDI's CCs never (#97). /FRIZZ/frizz_scenes.txt, whose .bak keeps only the one before: SAVE /
+finalizer selected (comp.txt, or in focus by CC 23); MIDI's CCs never (#97). /FRIZZ/frizz_scenes.txt, whose .bak keeps only the one before: SAVE /
 COPY / DELETE confirmed with CHOMPI once a slot is picked (scenes.txt), or a scene put over
 SysEx (#78). It reads where the device stands before it decides (the page, what the knobs edit,
 the scene mode); --force plays it anyway.
 
 The setters that FRIZZ saves to the card (channel, transport, source, out, scene put, and set
-for the settings, the compressor and VOLUME's input gain) keep it out of it the same way first:
+for the settings, the finalizer and VOLUME's input gain) keep it out of it the same way first:
 the change stays in RAM, and on a slot other than the test slot, FRIZZ is started again from
 the card afterwards, so it saves again, the change gone (#171). --save writes it to the card;
 a FRIZZ from before PERSIST is refused without it. Before the restart, and at the end of a
@@ -183,9 +184,12 @@ FX_NAMES = ["freezer", "shifter", "folder", "crusher", "filter", "flanger", "res
             "slicer", "warble", "tapestop", "delay", "reverb", "phaser", "chaos"]
 # kCmdDev's GET / SET groups (MidiControl.h's namespace dev): the effects by FxId, then these;
 # the settings as masterfile::kLines lists them (MasterSettings.h), VOLUME's as NormalPage has them
-GROUP_COMP, GROUP_LATCH, GROUP_VOLUME, GROUP_SETTINGS = 0x20, 0x21, 0x22, 0x23
-GROUPS = dict({n: i for i, n in enumerate(FX_NAMES)}, comp=GROUP_COMP, latch=GROUP_LATCH,
-              volume=GROUP_VOLUME, settings=GROUP_SETTINGS)
+GROUP_FIN, GROUP_LATCH, GROUP_VOLUME, GROUP_SETTINGS = 0x20, 0x21, 0x22, 0x23
+# the finalizer's (#345; "comp", the master compressor's group before it, the same)
+GROUPS = dict({n: i for i, n in enumerate(FX_NAMES)}, fin=GROUP_FIN, comp=GROUP_FIN,
+              latch=GROUP_LATCH, volume=GROUP_VOLUME, settings=GROUP_SETTINGS)
+# its four modules, four knobs each (Finalizer.h)
+FIN_MODULES = ["level", "eq", "comp", "width"]
 SETTING_NAMES = ["mono", "midi_channel", "midi_transport", "clock_factor", "clock_source",
                  "midi_out", "led_brightness", "midi_block_trs", "midi_feedback", "aux_dry",
                  "gain_aux", "gain_mic", "mic_dry", "aux_live", "mic_live",
@@ -197,7 +201,7 @@ MODES = ["none", "save", "copy", "delete"]
 # What a script can change on the card (#58, #78), and what keeps the one before
 MASTER = "frizz_master.txt", "with no .bak"
 SCENES = "frizz_scenes.txt", "whose .bak keeps only the one before"
-# the play page's keys that matter there (NormalPage.h, FxSlots.h): the compressor's, the
+# the play page's keys that matter there (NormalPage.h, FxSlots.h): the finalizer's, the
 # effects', the scene slots and SAVE / COPY / DELETE (MODES' order)
 COMP_KEY = "KEY_15"
 FX_KEYS = {"KEY_%d" % k for k in range(1, 15)}
@@ -205,7 +209,7 @@ SLOT_KEYS = {"KEY_%d" % k for k in range(18, 23)}
 MODE_KEYS = {"KEY_23": 1, "KEY_24": 2, "KEY_25": 3}
 VOLUME_KNOB, VOLUME_KEY, SHIFT_KEY = 6, "ENC_6_SW", "KEY_26"
 INPUT_GAIN_PAGE = 1  # VOLUME's page 2 (PAGES), the input gain, saved (#152)
-# MidiControl.h's midimap: the morph to a scene, the focus (15 the compressor), the notes
+# MidiControl.h's midimap: the morph to a scene, the focus (15 the finalizer), the notes
 MORPH_CC, FOCUS_CC, COMP_FOCUS = 3, 23, 15
 BASE_NOTE, CHOMPI_NOTE = 48, 45
 
@@ -359,7 +363,7 @@ def show_state(f):
     print("looper     %s, speed %+.3f, at %d%%" % (
         LOOPER[d[0]] if d[0] < 4 else d[0], knob(get14(d[1], d[2])) * 4 - 2,
         round(d[3] / 1.27)))
-    print("knobs on   %s%s" % ("compressor" if sel == len(FX_NAMES) else FX_NAMES[sel],
+    print("knobs on   %s%s" % ("finalizer" if sel == len(FX_NAMES) else FX_NAMES[sel],
                                ", page 2" if len(d) > 24 and d[24] else ""))
     print("scene      %s%s%s, mode %s" % (active - 1 if active else "none",
                                          ", edited" if flags & 1 else "",
@@ -438,6 +442,9 @@ def show_get(f, name):
         print("latched    %s" % " ".join(n for n, v in zip(FX_NAMES, values) if v))
     elif group == GROUP_VOLUME:
         print("  ".join("%s %.4f" % (n, knob(v)) for n, v in zip(VOLUME_NAMES, values)))
+    elif group == GROUP_FIN:
+        for m, n in enumerate(FIN_MODULES):
+            print("%-6s  %s" % (n, "  ".join("%.4f" % knob(v) for v in values[4 * m:4 * m + 4])))
     else:
         print("page 1  %s\npage 2  %s" % tuple("  ".join("%.4f" % knob(v) for v in values[p:p + 4])
                                               for p in (0, 4)))
@@ -487,9 +494,9 @@ def set_index(group, index):
 
 def set_saves(group, index):
     """Whether a SET of GROUP INDEX (as named) is what FRIZZ saves to the card: a setting, the
-    compressor's knobs, VOLUME's input gain (#171); an index try_set would refuse saves nothing,
+    finalizer's knobs, VOLUME's input gain (#171); an index try_set would refuse saves nothing,
     as it isn't sent"""
-    if group in ("settings", "comp"):
+    if group in ("settings", "fin", "comp"):
         return True
     try:
         return group == "volume" and set_index(GROUP_VOLUME, index) == VOLUME_NAMES.index("in")
@@ -618,11 +625,32 @@ def levels(f):
     fx = dev_data(f, chompi.LEVELS, [0], "LEVELS")
     print("effects    %s" % "  ".join("%s %.2f" % (n, g(fx[2 * i:2 * i + 2]) / 16383)
                                       for i, n in enumerate(FX_NAMES)))
-    print("VU meter   %.3f; the compressor reducing %.2f dB" % (g(d[1:3]) / 16383, g(d[3:5]) / 100))
+    print("VU meter   %.3f; the finalizer reducing %.2f dB" % (g(d[1:3]) / 16383, g(d[3:5]) / 100))
     print("peaks over %.2f s:" % LEVELS_S)
     for i, n in enumerate(PEAKS):
         v = g(d[5 + 2 * i:7 + 2 * i]) / 8192
         print("  %-13s %.4f %s" % (n, v, dbfs(v)))
+    fin = fin_levels(f)
+    if fin:
+        print("finalizer  input %s; bands %s; reducing %s dB; correlation %s; limiter %.2f dB" % (
+            dbfs(fin["input"]).strip(), "  ".join(dbfs(v).strip() for v in fin["bands"]),
+            " ".join("%.2f" % v for v in fin["reduction"]),
+            " ".join("%+.2f" % v for v in fin["correlation"]), fin["limiter"]))
+
+
+def fin_levels(f):
+    """LEVELS 2, the finalizer's meters (#345) since the last ask: its input's peak and its
+    bands' (full scale 1), their gain reductions (dB down), their correlations (-1 to +1) and
+    the limiter's deepest reduction (dB down); None from a FRIZZ before it. The bands' meters
+    run while key 15 shows EQ or Width"""
+    got = f.dev(chompi.LEVELS, [2])
+    if not got or got[0] != chompi.OK or len(got[1]) < 2 * 11:
+        return None
+    d = got[1]
+    v = [chompi.get7(d[2 * i:2 * i + 2]) for i in range(11)]
+    return {"input": v[0] / 8192, "bands": [x / 8192 for x in v[1:4]],
+            "reduction": [x / 100 for x in v[4:7]], "correlation": [x / 16383 * 2 - 1 for x in v[7:10]],
+            "limiter": v[10] / 100}
 
 
 def signal_args(wave, hz, level):
@@ -1145,19 +1173,22 @@ def midi_messages(data):
 def card_use(path, up, comp, mode, page=0):
     """Where a script would change what FRIZZ keeps on the card, (line, what, (file, its
     .bak)), or None. Where the device stands when the script starts: up, the settings page
-    shown; comp, the compressor's knobs selected; mode, a scene mode (MODES), its slot taken
+    shown; comp, the finalizer's knobs selected; mode, a scene mode (MODES), its slot taken
     as picked; page, VOLUME's (PAGES).
 
     The settings page: a key or a knob while the mode switch is up, or a setting over SysEx
     (frizz_master.txt, #58). The play page: VOLUME turned on its page 2 without SHIFT, the
-    input gain (#152), knobs 1-4 turned with the compressor selected, by
-    its key or MIDI's focus (frizz_master.txt), SAVE / COPY / DELETE confirmed with the CHOMPI
-    key once a slot is picked, or a scene put over SysEx (frizz_scenes.txt, #78). The hand's
+    input gain (#152), knobs 1-4 turned with the finalizer selected, by
+    its key or MIDI's focus, a finalizer preset recalled by hand (key 15 held + a scene key)
+    or saved, copied or deleted (key 15 held + a mode key, a preset, the CHOMPI key: #345)
+    (frizz_master.txt), SAVE / COPY / DELETE confirmed with the CHOMPI key once a slot is
+    picked, or a scene put over SysEx (frizz_scenes.txt, #78). The hand's
     and SysEx's keys and knobs reach the page the switch shows, MIDI's notes and controllers
     the play page always"""
     by_toggle = up
     picked = mode != 0
     shift = vol_shift = False
+    fin_held = fin_mode = False  # key 15 held; the mode its presets' (#345)
 
     def volume(name, down):
         """VOLUME's page as its press steps it on the play page: on the release of one
@@ -1171,19 +1202,29 @@ def card_use(path, up, comp, mode, page=0):
             page = (page + 1) % len(PAGES)
 
     def key(name, what):
-        nonlocal comp, mode, picked
+        nonlocal comp, mode, picked, fin_held, fin_mode
         if name == COMP_KEY:
-            comp = True
+            comp = fin_held = True
         elif name in FX_KEYS:
             comp = False
         elif name in MODE_KEYS:
-            mode = 0 if mode == MODE_KEYS[name] else MODE_KEYS[name]
+            # with key 15 held or its mode on, the presets' mode, else the scenes'
+            presets = fin_held or fin_mode
+            mode = 0 if mode == MODE_KEYS[name] and fin_mode == presets else MODE_KEYS[name]
+            fin_mode = presets and mode != 0
             picked = False
         elif name in SLOT_KEYS and mode:
             picked = True
+        elif name in SLOT_KEYS and fin_held:
+            return "a finalizer preset recalled (%s)" % what, MASTER
         elif name == "KEY_26" and mode and picked:
-            return "%s confirmed (%s)" % (MODES[mode].upper(), what), SCENES
+            return "%s confirmed (%s)" % (MODES[mode].upper(), what), MASTER if fin_mode else SCENES
         return None
+
+    def key_up(name):
+        nonlocal fin_held
+        if name == COMP_KEY:
+            fin_held = False
 
     for line_no, cmd, args in script_lines(path):
         used = None
@@ -1199,10 +1240,12 @@ def card_use(path, up, comp, mode, page=0):
                 volume(args[0], False)
             if cmd != "up":
                 used = key(args[0], "%s %s" % (cmd, args[0]))
+            if cmd != "down":
+                key_up(args[0])
         elif cmd == "turn" and int(args[0]) == VOLUME_KNOB and page == INPUT_GAIN_PAGE and not shift:
             used = "turn %s on VOLUME's page 2, the input gain" % args[0], MASTER
         elif cmd == "turn" and comp and 1 <= int(args[0]) <= 4:
-            used = "turn %s with the compressor selected" % args[0], MASTER
+            used = "turn %s with the finalizer selected" % args[0], MASTER
         elif cmd == "set" and len(args) >= 2 and set_saves(args[0], args[1]):
             used = "set %s" % " ".join(args), MASTER
         elif cmd in ("midi", "usb"):
@@ -1223,15 +1266,19 @@ def card_use(path, up, comp, mode, page=0):
                         volume(SW_NAMES[m[5]], m[6:7] != [0])
                         if m[6:7] != [0]:
                             used = key(SW_NAMES[m[5]], "a SysEx key")
+                        else:
+                            key_up(SW_NAMES[m[5]])
                     elif m[4] == TURN and up and m[5] in (4, VOLUME_KNOB):  # SW4: knob 1, the brightness
                         used = "a SysEx turn on the settings page", MASTER
                     elif (m[4] == TURN and m[5] == VOLUME_KNOB and page == INPUT_GAIN_PAGE
                           and not shift):
                         used = "a SysEx turn on VOLUME's page 2, the input gain", MASTER
                     elif m[4] == TURN and not up and comp and 1 <= m[5] <= 4:
-                        used = "a SysEx turn with the compressor selected", MASTER
+                        used = "a SysEx turn with the finalizer selected", MASTER
                 elif kind == 0x90 and len(m) == 3 and m[2] and note_key(m[1]):
                     used = key(note_key(m[1]), "note %d" % m[1])
+                elif kind in (0x80, 0x90) and len(m) == 3 and note_key(m[1]):
+                    key_up(note_key(m[1]))
                 elif kind == 0xC0 and mode:
                     picked = True  # a program change is its scene key, pressed
                 elif kind == 0xB0 and len(m) == 3:
@@ -1487,7 +1534,7 @@ def main():
                         "the twin, not after what played before (#123)")
     p.add_argument("--force", action="store_true",
                    help="with --save (or a FRIZZ from before PERSIST): play a script that changes "
-                        "the card: the settings page, the compressor's knobs, a scene saved, "
+                        "the card: the settings page, the finalizer's knobs, a scene saved, "
                         "copied or deleted")
     p.add_argument("--save", action="store_true",
                    help="don't keep it in RAM (PERSIST 0): what the script changes goes to the card")
@@ -1697,7 +1744,7 @@ CARD_SETTERS = ("channel", "transport", "source", "out")
 
 def writes_card(a):
     """Whether the command changes what FRIZZ saves to the card: a setting, a scene put, the
-    compressor's knobs, VOLUME's input gain (#171)"""
+    finalizer's knobs, VOLUME's input gain (#171)"""
     if a.cmd == "scene":
         return a.action == "put"
     if a.cmd == "set":

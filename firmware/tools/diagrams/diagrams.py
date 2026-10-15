@@ -6,7 +6,7 @@ the quick start's quickstart-flow; and the chapters' figures: a key locator for 
 Plain block diagrams, by hand in coordinates of a 720 px wide picture (the quick start's and the
 chapters' figures 480, so they read on a phone): boxes, arrows, lettered
 switches and a legend. What they show is the code's (firmware/code/src: passthroughEngine.h,
-FxChain.h, FxOutput.h, MasterComp.h, TempoClock.h, MidiClock.h, MidiOut.h, SettingsPage.h) and
+FxChain.h, FxOutput.h, Finalizer.h, TempoClock.h, MidiClock.h, MidiOut.h, SettingsPage.h) and
 MANUAL.md's; the panel's positions come from firmware/twin/web/layout.json (CHOMPI's board
 file) and the enclosure's drawings in reference/hardware. The chapters' figures read their
 colours from the firmware as the website does (LedColors.h, FxSlots.h, NormalPage.h's banks) and
@@ -200,11 +200,11 @@ def signal_flow():
             'The whole way of the sound. The input, AUX, the built-in mic or USB after its input gain, '
             'goes to the looper and to the input/loop mix; the looper\'s playback is the input/loop '
             'mix\'s other side. The input/loop mix goes through the effects of the white keys and '
-            'the master compressor. A source set past the effects: the input/loop mix\'s input '
-            'share skips the effects and the compressor and joins after them. From there the master '
+            'the finalizer. A source set past the effects: the input/loop mix\'s input '
+            'share skips the effects and the finalizer and joins after them. From there the master '
             'goes to the computer over USB, and through VOLUME, the output gain, and a safety limiter on each output: the line '
             'out, and the headphones, whose feed can blend in the input alone.')
-    # row 1: input, looper, mix, effects, compressor, the branch past them joining
+    # row 1: input, looper, mix, effects, finalizer, the branch past them joining
     s.box(20, 42, 110, 56, ['INPUT', ('AUX, mic or USB', 'm'), ('input gain', 'm')], accent=True)
     s.line([(130, 70), (295, 70)], 'a')
     s.dot(150, 70, 'a')
@@ -217,11 +217,11 @@ def signal_flow():
     s.line([(400, 70), (420, 70)], 'a')
     s.box(420, 42, 120, 56, ['EFFECTS', ('white keys 1–14', 'm')], accent=True)
     s.line([(540, 70), (560, 70)], 'a')
-    s.box(560, 42, 110, 56, ['COMPRESSOR', ('white key 15', 'm')], accent=True)
+    s.box(560, 42, 110, 56, ['FINALIZER', ('white key 15', 'm')], accent=True)
     s.line([(670, 70), (679, 70)], 'a')
     s.sum(688, 70)
     s.line([(385, 98), (385, 205), (688, 205), (688, 79)])
-    s.text(537, 223, 'the input\'s share, past the effects and the compressor', 12, cls='m')
+    s.text(537, 223, 'the input\'s share, past the effects and the finalizer', 12, cls='m')
     # on to row 2
     s.line([(697, 70), (708, 70), (708, 240), (75, 240), (75, 268)], 'a')
     # the master before VOLUME to the computer
@@ -260,7 +260,7 @@ def input_diagram():
             'to the headphone feed. Switch B (upper G#), its monitoring, has it on the outputs or '
             'not, switch C (upper A#) sends it through the effects or past them. The input/loop '
             'mix sets the input\'s share against the loop\'s; the share past the effects joins '
-            'after the compressor, before VOLUME.')
+            'after the finalizer, before VOLUME.')
     # AUX
     s.jack(28, 90)
     s.text(20, 72, 'AUX IN', 13, anchor='start', bold=True)
@@ -321,14 +321,14 @@ def input_diagram():
                                    ('against the loop\'s,', 'm'), ('on both inputs', 'm')], check=False)
     s.line([(470, 315 + D), (505, 315 + D)], 'a')
     s.text(512, 319.5 + D, 'to the effects', 13, anchor='start', bold=True)
-    s.text(512, 336 + D, 'and the compressor', 12, anchor='start', cls='m')
+    s.text(512, 336 + D, 'and the finalizer', 12, anchor='start', cls='m')
     s.line([(470, 385 + D), (505, 385 + D)])
     s.text(512, 389.5 + D, 'past the effects:', 13, anchor='start')
-    s.text(512, 406 + D, 'joins after the compressor', 12, anchor='start', cls='m')
+    s.text(512, 406 + D, 'joins after the finalizer', 12, anchor='start', cls='m')
     s.legend(28, 540 + D, [
         ('A', 'upper F#: the source, AUX, the mic or USB. The AUX jack picks AUX or the mic'),
         ('B', 'upper G#: monitoring, on the outputs or not'),
-        ('C', 'upper A#: through the effects, or past them and the compressor'),
+        ('C', 'upper A#: through the effects, or past them and the finalizer'),
         ('M', 'SHIFT + upper F#: AUX mono, its left channel to both sides'),
     ])
     s.text(28, 634 + D, 'On the settings page (mode switch up). Each source keeps its own gain, B and C.',
@@ -336,7 +336,7 @@ def input_diagram():
     return s
 
 
-# ---------- 3. the effects, the compressor and the outputs ----------
+# ---------- 3. the effects, the finalizer and the outputs ----------
 def fx_chain():
     s = Svg(830, 'FRIZZ effects chain',
             'The order FRIZZ computes the effects in. From the input/loop mix: the freezer (key 1), then the '
@@ -347,7 +347,7 @@ def fx_chain():
             'goes in, page 2\'s Band filters it, Level sets the return, which is added to the '
             'signal; the reverb gets the delay\'s echoes too. The keys and knobs come from the '
             'panel, MIDI and scene morphs; the chaos key (14) drops latched effects and scrambles '
-            'the loop. After the effects the master compressor (key 15); then the input past the effects joins, '
+            'the loop. After the effects the finalizer (key 15); then the input past the effects joins, '
             'then VOLUME and a safety limiter on the line out and on the headphones, whose feed blends '
             'towards the input alone. Below: every insert\'s page 2, Band, Level and Mix.')
     # what plays the effects
@@ -402,10 +402,10 @@ def fx_chain():
         s.sum(sx, y)
     s.text(414, 283, 'sends', 12, cls='m')
     s.text(568, 283, 'echoes into the reverb', 12, cls='m')
-    # row 3: the compressor, the input past the effects, VOLUME, the outputs
+    # row 3: the finalizer, the input past the effects, VOLUME, the outputs
     s.line([(661, y), (708, y), (708, 440), (24, 440), (24, 480), (40, 480)], 'a')
     y = 480
-    s.box(40, y - 24, 120, 48, ['COMPRESSOR', ('15, always on', 'm')], accent=True)
+    s.box(40, y - 24, 120, 48, ['FINALIZER', ('15, neutral at first', 'm')], accent=True)
     s.line([(160, y), (176, y)], 'a')
     s.sum(185, y)
     s.line([(185, 535), (185, y + 9)])
@@ -546,7 +546,7 @@ def clock_midi():
 
 # ---------- 5. the panel ----------
 EFFECTS = ['Freezer', 'Shifter', 'Folder', 'Crusher', 'Filter', 'Flanger', 'Phaser', 'Resonator',
-           'Slicer', 'Wow & flutter', 'Tape stop', 'Delay', 'Reverb', 'Chaos', 'Compressor']
+           'Slicer', 'Wow & flutter', 'Tape stop', 'Delay', 'Reverb', 'Chaos', 'Finalizer']
 # the dark keys on the play page, left to right (KEY16-25); '' does nothing there
 DARK = ['', '', 'blank', '1', '2', '3', '4', 'save', 'copy', 'delete']
 # the dark keys as MANUAL.md names them, left to right
@@ -589,7 +589,7 @@ def panel():
     s = Svg(410, 'FRIZZ panel',
             'A schematic of the panel, not its artwork. Front row: 15 white keys, the effects '
             'freezer, shifter, folder, crusher, filter, flanger, phaser, resonator, slicer, '
-            'wow & flutter, tape stop, delay, reverb, the chaos key and the master compressor. '
+            'wow & flutter, tape stop, delay, reverb, the chaos key and the finalizer. '
             'Above them 10 dark keys: the blank scene, scenes 1-4, save, copy and delete. Behind '
             'them the mode switch, the CHOMPI key (SHIFT), knobs 1-4, the transport wheel, PLAY, '
             'LOOP and VOLUME. Jacks: MIDI in and out on the left, AUX in and the headphones on '
@@ -672,7 +672,7 @@ def quickstart_flow():
             'looper, which records it before the effects, so nothing is printed into the loop; '
             'and, if monitored (the mic starts off), on to the input/loop mix, SHIFT + VOLUME, '
             'where the loop joins it. From there input and loop alike go through the effects '
-            '(white keys 1-14), the compressor (white key 15) and VOLUME, the output gain, to '
+            '(white keys 1-14), the finalizer (white key 15) and VOLUME, the output gain, to '
             'the line out and the headphones.', w=480)
     s.box(50, 20, 200, 60, ['INPUT', ('AUX, the mic or USB', 'm'), ('input gain', 'm')],
           accent=True)
@@ -692,7 +692,7 @@ def quickstart_flow():
     s.box(50, 292, 200, 60, ['EFFECTS', ('white keys 1–14,', 'm'), ('on input and loop alike', 'm')],
           accent=True)
     s.line([(150, 352), (150, 372)], 'a')
-    s.box(80, 372, 140, 48, ['COMPRESSOR', ('white key 15', 'm')], accent=True)
+    s.box(80, 372, 140, 48, ['FINALIZER', ('white key 15', 'm')], accent=True)
     s.line([(220, 396), (240, 396)], 'a')
     s.box(240, 372, 110, 48, ['VOLUME', ('output gain', 'm')], accent=True)
     s.line([(350, 396), (385, 396)], 'a')
@@ -773,7 +773,7 @@ def slug(name):
 
 # ---------- 8. a key locator for each effect's chapter ----------
 # The chapters' own names in MANUAL.md, where they differ from EFFECTS'
-CHAPTER = {'Chaos': 'Chaos key', 'Compressor': 'Master compressor'}
+CHAPTER = {'Chaos': 'Chaos key'}
 LW = 480  # the chapters' figures: as wide as the quick start's, so they read on a phone
 
 
@@ -790,7 +790,7 @@ def locator(n):
     s = Svg(84, '%s: white key %d' % (chapter, n),
             'The keys from above: the %s is white key %d of 15, counted from the left, lit in its '
             'colour. Its knobs 1 to 4 are %s; their LEDs go from one colour to the other.'
-            % (chapter.lower() if name not in ('Chaos', 'Compressor') else chapter.lower(), n,
+            % (chapter.lower(), n,
                ', '.join(knobs)), w=LW)
     for name_ in DARK_NAMES:
         kx = X(at[name_][0])
@@ -807,7 +807,7 @@ def locator(n):
                  ' font-weight="bold"' if on else '', ink(colour) if on else MUTED, k))
     # the key's name under it, kept within the picture; the knobs' colours on the other side
     kx = X(at['w%d' % n][0])
-    label = chapter if name != 'Compressor' else 'Master compressor'
+    label = chapter
     lw = width(label, 13, True)
     lx = min(max(kx, 8 + lw / 2), LW - 8 - lw / 2)
     s.text(lx, 74, label, 13, bold=True)
