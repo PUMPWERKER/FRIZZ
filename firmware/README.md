@@ -28,6 +28,33 @@ tools/                    what those share (chompi.py, the launcher's midi_send.
 Design notes live in [`../docs/`](../docs/): the looper spec (`LOOPER.md`) and an overview of
 the effects across the CHOMPI firmwares (`FX_OVERVIEW.md`).
 
+
+## 0. Set up a development machine
+
+Everything below is Linux (the device tools use ALSA's raw MIDI and udisks); the host checks
+and the twin also build elsewhere. A new machine, in order:
+
+1. **Toolchain:** GCC 10.3 in `~/opt/gcc-arm-none-eabi-10.3-2021.10` ([1](#1-toolchain)), `make`,
+   `g++` and `python3` for the host checks.
+2. **Clone and hooks:** clone FrizZ, then `firmware/tools/install-hooks.sh` (refuses commits on
+   `main`); `gh auth login` for issues and PRs. Branches go in worktrees next to the clone
+   (`../FrizZ-<branch>`).
+3. **Check it:** `firmware/test/all.sh` green, and `firmware/tools/builds.py md5` gives the same
+   md5 as on any other machine for the same commit: then the toolchain is the pinned one.
+4. **Optional, for the browser twin:** Emscripten in `~/opt/emsdk` ([3](#3-test-on-the-host)).
+5. **The CHOMPI** (stage 2): your user in the `audio` group (raw MIDI under `/dev/snd`), udisks
+   for the card as a drive, the multi-firmware launcher on the card ([4](#4-put-it-on-the-chompi)).
+6. **Sound and timing checks:** a venv with numpy (`python3 -m venv ~/.venvs/frizz &&
+   ~/.venvs/frizz/bin/pip install numpy`), the audio interface routed as in
+   [Measure timing and sound](#measure-timing-and-sound-on-the-device) and kept with
+   `sudo alsactl store`, and the `FRIZZ_AUX_SINK` / `FRIZZ_LINE_SOURCE` / `FRIZZ_TRS_MIDI`
+   variables if your interface isn't a Scarlett 18i20.
+7. **DAW cases:** REAPER 7 at `~/Apps/REAPER/reaper` (or `FRIZZ_REAPER`), and your own songs
+   in `firmware/card/audio/`. They're git-ignored: copy them over by hand.
+
+Machine state the tools keep, none of it in git: the CHOMPI's lock and its slot notes
+(`$XDG_RUNTIME_DIR/frizz-chompi.lock`, `FRIZZ_CHOMPI_LOCK`), `card/` (what the tools fetch from
+the card), the build folders.
 ## 1. Toolchain
 
 To build the firmware for the CHOMPI, FRIZZ needs **GNU Arm Embedded 10.3-2021.10** (GCC 10.3.1), the Daisy toolchain default. Newer
