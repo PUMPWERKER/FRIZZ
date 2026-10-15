@@ -292,7 +292,9 @@ card as it was: it first turns PERSIST 0 on (nothing written until FRIZZ restart
 scenarios that change what key 10 shares, the settings page (`settings.txt`, #58), the
 compressor's knobs (`comp.txt`), the scenes (`scenes.txt`, #78) and the input (`mic.txt`, `volume.txt`, #152), play in stage 2 too. Never `--save` or `--force` on the device: a
 FRIZZ without PERSIST (key 10's from before it) is still refused, as before. The card holds
-the user's own settings, which a session never changes; `expect led` lines are judged at the
+the user's own settings and loops, which a session never changes. PERSIST 0 doesn't cover the
+loop transfer: `remote.py loops put`, `mv`, `swap`, `rm` and `cp` write the card at once, so on
+the device a session moves only loops it put there itself, in slots the user's loops aren't in; `expect led` lines are judged at the
 card's LED brightness, and on the device `settings.txt` fails the battery's line (VOLUME white
 on USB, green on the twin). The user takes
 the CHOMPI for playing with `tools/chompi.py hold` (until Ctrl-C),
