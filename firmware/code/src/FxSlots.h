@@ -52,6 +52,11 @@ static const FxSlot kFxSlots[] = {
 };
 static_assert(sizeof(kFxSlots) / sizeof(kFxSlots[0]) == kNumFx, "one per FxId");
 
+// The phaser's second mode, the frequency shifter (#306, kFxModes): its key and knob LEDs, as
+// a slot's
+static const float* const kShifterKeyColor = azure;
+static const float* const kShifterKnobColors[3] = {azure, white, orange};
+
 // The finalizer's key (Finalizer.h, #345; the master compressor's until 1.5), the last white
 // key: in the colour of the module its knobs show (kFinColors), lighting up with its gain
 // reduction. Its knob LEDs at 0 / .5 / 1 when they show a value

@@ -9,6 +9,12 @@
 
 using namespace chompi;
 
+// The scene file's reader as v1.0.0 to v1.5.0-beta.1 have it (their FxScenes.h, the same
+// file, verbatim), apart from the one now: for an older FRIZZ reading a newer file (#306)
+namespace v100
+{
+#include "legacy/FxScenes-v1.0.0.h"
+}
 
 static float defaults[kNumFx][kNumFxParams];
 
@@ -20,7 +26,7 @@ static bool SameScenes(const FxScene* a, const FxScene* b)
             return false;
         if (!a[s].used)
             continue;
-        if (a[s].latched != b[s].latched)
+        if (a[s].latched != b[s].latched || a[s].modes != b[s].modes)
             return false;
         if (memcmp(a[s].params, b[s].params, sizeof(a[s].params)) != 0)
             return false;
@@ -142,6 +148,7 @@ int main()
                 drift += .01f;
             scenes[2].params[fx][p] = fminf(drift, 1.f);
         }
+    scenes[0].modes = 1u << FX_PHASER; // the frequency shifter (#306)
     scenes[0].params[FX_RESONATOR][0] = .436295f + 17 * .0156585f; // a coarse pitch point
     scenes[0].params[FX_SHIFTER][0] = 19.f / 24.f;
     scenes[2].params[FX_FILTER][0] = 0.f;
@@ -158,7 +165,8 @@ int main()
     bool same_latches = true;
     for (size_t s = 0; s < kNumScenes; s++)
     {
-        if (read[s].used != scenes[s].used || (scenes[s].used && read[s].latched != scenes[s].latched))
+        if (read[s].used != scenes[s].used
+            || (scenes[s].used && (read[s].latched != scenes[s].latched || read[s].modes != scenes[s].modes)))
             same_latches = false;
         if (!scenes[s].used)
             continue;
@@ -166,7 +174,37 @@ int main()
             for (size_t p = 0; p < kNumFxParams; p++)
                 worst = fmaxf(worst, fabsf(read[s].params[fx][p] - scenes[s].params[fx][p]));
     }
-    Check(same_latches, "slots and latches come back");
+    Check(same_latches, "slots, latches and modes come back");
+    {
+        // the phaser's mode its line's ninth value, only when it's the frequency shifter
+        const char* line = strstr(strstr(text, "scene 1\n"), "phaser ");
+        const char* end = strchr(line, '\n');
+        const char* line3 = strstr(strstr(text, "scene 3\n"), "phaser ");
+        int words = 0, words3 = 0;
+        for (const char* c = line; c < end; c++)
+            words += *c == ' ';
+        for (const char* c = line3; *c != '\n'; c++)
+            words3 += *c == ' ';
+        Check(words == 10 && end[-2] == ' ' && end[-1] == '1' && words3 == 9,
+              "the phaser as the frequency shifter: a ninth value, 1, on its line; as the phaser none");
+    }
+
+    // an older FRIZZ (v1.0.0 to v1.5.0-beta.1, its reader verbatim) reads that file's eight
+    // values on the phaser's line and the rest as before, the scene as the phaser: no new
+    // layout needed (#306)
+    {
+        v100::chompi::FxScene old[kNumScenes];
+        bool same = v100::chompi::ParseScenes(text, defaults, old);
+        for (size_t s = 0; s < kNumScenes; s++)
+        {
+            same = same && old[s].used == read[s].used;
+            if (read[s].used)
+                same = same && old[s].latched == read[s].latched
+                       && memcmp(old[s].params, read[s].params, sizeof(old[s].params)) == 0;
+        }
+        Check(same && strstr(text, "layout 5\n"), "an older FRIZZ (v1.0.0's reader) reads the file, the phaser's "
+                                                   "eight values and every other line as the reader now, layout 5");
+    }
     printf("      worst parameter error %.2g\n", worst);
     Check(worst <= 1e-6f, "parameters within 1e-6");
     // CoarseStep counts a value within 1% of the spacing as on a grid point
@@ -249,6 +287,7 @@ int main()
         {
             full[s].used = true;
             full[s].latched = (1u << kNumFx) - 1;
+            full[s].modes = kFxModes;
             for (size_t fx = 0; fx < kNumFx; fx++)
                 for (size_t p = 0; p < kNumFxParams; p++)
                     full[s].params[fx][p] = 1.f;
@@ -270,6 +309,15 @@ int main()
     Check(!(h[3].latched >> FX_PHASER & 1) && h[3].params[FX_PHASER][0] == defaults[FX_PHASER][0]
               && h[3].params[FX_PHASER][5] == defaults[FX_PHASER][5],
           "a file from before the phaser: it loads off, on its defaults");
+    {
+        // the ninth value: on the phaser's line its mode; none, or on another line, nothing
+        const char* text9 = "FRIZZ scenes 1\nlayout 5\nscene 1\nphaser 1 1 2 3 4 5 6 7 8 1\n"
+                            "filter 0 1 2 3 4 5 6 7 8 1\nscene 2\nphaser 1 1 2 3 4 5 6 7 8\n";
+        FxScene m[kNumScenes];
+        Check(ParseScenes(text9, defaults, m) && m[0].modes == 1u << FX_PHASER && m[1].modes == 0
+                  && m[0].params[FX_PHASER][7] == 8e-6f,
+              "a phaser line's ninth value 1: the frequency shifter; without it the phaser; another line's ignored");
+    }
     {
         const char* chaos = "FRIZZ scenes 1\nlayout 3\nscene 2\nchaos 1 300000 600000 750000 1000000\n";
         FxScene c[kNumScenes];

@@ -96,7 +96,7 @@ struct MasterSettings
     float fin_presets[kFinPresets][kNumFinParams];
 
     /** Every setting on its default */
-    void Reset()
+    __attribute__((noinline, optimize("Os"))) void Reset()
     {
         for (size_t p = 0; p < kNumFinParams; p++)
         {

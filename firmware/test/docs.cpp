@@ -266,7 +266,7 @@ static const Colour kColours[] = {
     {"blue", blue, "blue"},          {"pink", pink, "pink"},       {"purple", purple, "purple"},
     {"orange", orange, "orange"},    {"lime", lime, "lime"},       {"magenta", magenta, "magenta"},
     {"teal", teal, "teal"},          {"amber", amber, "amber"},    {"rose", rose, "rose"},
-    {"violet", violet, "violet"},    {"cyan", cyan, "cyan"},
+    {"violet", violet, "violet"},    {"azure", azure, "azure"},  {"cyan", cyan, "cyan"},
 };
 
 static std::string ColourName(const std::string& id)
@@ -281,7 +281,7 @@ static std::string ColourName(const std::string& id)
 static Strings ColourWords(const std::string& text)
 {
     static const std::regex re("\\b(light blue|white|red|yellow|green|blue|pink|purple|orange|lime|"
-                               "magenta|teal|amber|rose|violet|cyan)\\b");
+                               "magenta|teal|amber|rose|violet|azure|cyan)\\b");
     Strings out;
     for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it)
         out.push_back(it->str());
@@ -475,6 +475,22 @@ static void CheckChapter(size_t fx)
     const std::string pair = knob_colours[0] + " to " + knob_colours[2];
     CheckF(leds.find(pair) != std::string::npos, "%s: the knobs go %s (FxSlots.h)", name,
            pair.c_str());
+
+    // the phaser's second mode (#306): its LEDs, FxSlots.h's kShifter... colours
+    if (fx == FX_PHASER)
+    {
+        const std::string fxs = Source("FxSlots.h");
+        std::smatch k, kn;
+        std::regex_search(fxs, k, std::regex("kShifterKeyColor = (\\w+);"));
+        std::regex_search(fxs, kn, std::regex("kShifterKnobColors\\[3\\] = \\{(\\w+), (\\w+), (\\w+)\\}"));
+        const std::string shifter = Strip(Bullet(lines, "LEDs in frequency-shifter mode:"), kParens);
+        const std::string key_is = k.empty() ? "" : "the key is " + ColourName(k[1]);
+        const std::string knobs_go = kn.empty() ? "" : ColourName(kn[1]) + " to " + ColourName(kn[3]);
+        CheckF(!key_is.empty() && !knobs_go.empty() && shifter.find(key_is) != std::string::npos
+                   && shifter.find(knobs_go) != std::string::npos,
+               "%s: \"LEDs in frequency-shifter mode\": %s, the knobs %s (FxSlots.h)", name, key_is.c_str(),
+               knobs_go.c_str());
+    }
 }
 
 // ---- stepped parameters
@@ -1218,7 +1234,12 @@ static void CheckMidi()
     const int knob_cc = Midi("kKnobCC"), params = Midi("kKeyParams");
     const Table own = FindTable(ccs, "| CC | Function", 0), global = FindTable(ccs, "| CC | Function", 1);
     CheckRows("MIDI's effect channels' CCs", NumberRows(own),
-              {{knob_cc, 4, "page 1"}, {knob_cc + 4, 4, "page 2"}, {Midi("kLatchCC"), 1, "latch"}});
+              {{knob_cc, 4, "page 1"}, {knob_cc + 4, 4, "page 2"}, {Midi("kLatchCC"), 1, "latch"},
+               {Midi("kModeCC"), 1, "phaser"}});
+    // the mode's CC on the phaser's channel (#306): the white key MidiControl.h names
+    CheckF(Midi("kModeKey") + 1 == WhiteOf(slots[FX_PHASER].key) && Midi("kModeCC") == Midi("kFocusCC"),
+           "MIDI: CC %d sets the mode on the phaser's channel, white key %d (MidiControl.h's kModeKey)",
+           Midi("kModeCC"), Midi("kModeKey") + 1);
     const int key_latch = Midi("kKeyLatchCC");
     const std::vector<Expect> global_ccs = {
         {knob_cc, params + 1, "in focus"},

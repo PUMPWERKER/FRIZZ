@@ -128,6 +128,13 @@ class Link:
         self.buf = bytearray()
         self.verbose = verbose
 
+    def close(self):
+        """The node closed: ALSA's raw MIDI takes one opener at a time, so another Link (a
+        second main() in the same process, flash.py's COLOR) is refused while this is open"""
+        if self.fd >= 0:
+            os.close(self.fd)
+            self.fd = -1
+
     def send(self, cmd, payload=b""):
         msg = HEADER + bytes([cmd]) + payload + b"\xF7"
         os.write(self.fd, msg)
@@ -210,6 +217,7 @@ def main():
         if not args.color[0].isdigit() or not re.fullmatch(r"[0-9A-Fa-f]{6}", args.color[1]):
             ap.error("--color takes a key number and a colour like FF9431")
 
+    image = name = None
     if args.image:
         image = open(args.image, "rb").read()
         name = args.name.upper() if args.name else default_name(args.image)
@@ -220,7 +228,14 @@ def main():
         sys.exit("CHOMPI not found in /proc/asound/cards; plug it in or pass --device")
 
     link = Link(device, args.verbose)
+    try:
+        talk(link, args, device, image, name)
+    finally:
+        link.close()
 
+
+def talk(link, args, device, image, name):
+    """main()'s part with the node open"""
     reply = link.call(PING)
     check(reply, "ping")
     version, max_chunk = reply[1], get7(reply[2:6])

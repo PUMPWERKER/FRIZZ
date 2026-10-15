@@ -1088,8 +1088,12 @@ def scene_get(f, slot):
                 round(knob(get14(d[2 * k], d[2 * k + 1])), 6) for k in range(4)]
     last = parts[-1]
     latched = get14(last[1], last[2])
+    # the effects in their second mode (the phaser's frequency shifter, #306), from a FRIZZ
+    # that sends them
+    modes = get14(last[3], last[4]) if len(last) >= 5 else 0
     return {"used": bool(last[0]),
             "latched": [n for i, n in enumerate(FX_NAMES) if latched >> i & 1],
+            "modes": [n for i, n in enumerate(FX_NAMES) if modes >> i & 1],
             "params": params}
 
 
@@ -1113,8 +1117,9 @@ def scene_put(f, slot, scene):
         if f.ask(SCENE_PUT, [slot, p] + data)[2] != 0:
             sys.exit("part %d refused" % p)
     latched = sum(1 << FX_NAMES.index(n) for n in scene.get("latched", []))
+    modes = sum(1 << FX_NAMES.index(n) for n in scene.get("modes", []))
     if f.ask(SCENE_PUT, [slot, SCENE_PARTS - 1, int(scene.get("used", True)),
-                         latched >> 7, latched & 0x7F])[2] != 0:
+                         latched >> 7, latched & 0x7F, modes >> 7, modes & 0x7F])[2] != 0:
         sys.exit("refused: slots 1-4 only")
 
 
@@ -1174,13 +1179,16 @@ def card_use(path, up, comp, mode, page=0):
     The settings page: a key or a knob while the mode switch is up, or a setting over SysEx
     (frizz_master.txt, #58). The play page: VOLUME turned on its page 2 without SHIFT, the
     input gain (#152), knobs 1-4 turned with the finalizer selected, by
-    its key or MIDI's focus (frizz_master.txt), SAVE / COPY / DELETE confirmed with the CHOMPI
-    key once a slot is picked, or a scene put over SysEx (frizz_scenes.txt, #78). The hand's
+    its key or MIDI's focus, a finalizer preset recalled by hand (key 15 held + a scene key)
+    or saved, copied or deleted (key 15 held + a mode key, a preset, the CHOMPI key: #345)
+    (frizz_master.txt), SAVE / COPY / DELETE confirmed with the CHOMPI key once a slot is
+    picked, or a scene put over SysEx (frizz_scenes.txt, #78). The hand's
     and SysEx's keys and knobs reach the page the switch shows, MIDI's notes and controllers
     the play page always"""
     by_toggle = up
     picked = mode != 0
     shift = vol_shift = False
+    fin_held = fin_mode = False  # key 15 held; the mode its presets' (#345)
 
     def volume(name, down):
         """VOLUME's page as its press steps it on the play page: on the release of one
@@ -1194,19 +1202,29 @@ def card_use(path, up, comp, mode, page=0):
             page = (page + 1) % len(PAGES)
 
     def key(name, what):
-        nonlocal comp, mode, picked
+        nonlocal comp, mode, picked, fin_held, fin_mode
         if name == COMP_KEY:
-            comp = True
+            comp = fin_held = True
         elif name in FX_KEYS:
             comp = False
         elif name in MODE_KEYS:
-            mode = 0 if mode == MODE_KEYS[name] else MODE_KEYS[name]
+            # with key 15 held or its mode on, the presets' mode, else the scenes'
+            presets = fin_held or fin_mode
+            mode = 0 if mode == MODE_KEYS[name] and fin_mode == presets else MODE_KEYS[name]
+            fin_mode = presets and mode != 0
             picked = False
         elif name in SLOT_KEYS and mode:
             picked = True
+        elif name in SLOT_KEYS and fin_held:
+            return "a finalizer preset recalled (%s)" % what, MASTER
         elif name == "KEY_26" and mode and picked:
-            return "%s confirmed (%s)" % (MODES[mode].upper(), what), SCENES
+            return "%s confirmed (%s)" % (MODES[mode].upper(), what), MASTER if fin_mode else SCENES
         return None
+
+    def key_up(name):
+        nonlocal fin_held
+        if name == COMP_KEY:
+            fin_held = False
 
     for line_no, cmd, args in script_lines(path):
         used = None
@@ -1222,6 +1240,8 @@ def card_use(path, up, comp, mode, page=0):
                 volume(args[0], False)
             if cmd != "up":
                 used = key(args[0], "%s %s" % (cmd, args[0]))
+            if cmd != "down":
+                key_up(args[0])
         elif cmd == "turn" and int(args[0]) == VOLUME_KNOB and page == INPUT_GAIN_PAGE and not shift:
             used = "turn %s on VOLUME's page 2, the input gain" % args[0], MASTER
         elif cmd == "turn" and comp and 1 <= int(args[0]) <= 4:
@@ -1246,6 +1266,8 @@ def card_use(path, up, comp, mode, page=0):
                         volume(SW_NAMES[m[5]], m[6:7] != [0])
                         if m[6:7] != [0]:
                             used = key(SW_NAMES[m[5]], "a SysEx key")
+                        else:
+                            key_up(SW_NAMES[m[5]])
                     elif m[4] == TURN and up and m[5] in (4, VOLUME_KNOB):  # SW4: knob 1, the brightness
                         used = "a SysEx turn on the settings page", MASTER
                     elif (m[4] == TURN and m[5] == VOLUME_KNOB and page == INPUT_GAIN_PAGE
@@ -1255,6 +1277,8 @@ def card_use(path, up, comp, mode, page=0):
                         used = "a SysEx turn with the finalizer selected", MASTER
                 elif kind == 0x90 and len(m) == 3 and m[2] and note_key(m[1]):
                     used = key(note_key(m[1]), "note %d" % m[1])
+                elif kind in (0x80, 0x90) and len(m) == 3 and note_key(m[1]):
+                    key_up(note_key(m[1]))
                 elif kind == 0xC0 and mode:
                     picked = True  # a program change is its scene key, pressed
                 elif kind == 0xB0 and len(m) == 3:

@@ -663,6 +663,8 @@ log = []
 class Launcher:
     def __init__(self, minor):
         self.minor = minor
+    def close(self):
+        pass
     def call(self, cmd, payload=b"", timeout=0.3, retries=10, required=True, match=None):
         if cmd == midi_send.PING:
             features = 0x3F if self.minor >= 6 else 0x1F
@@ -755,6 +757,77 @@ os.remove("image.bin")
     Check(Has(out, "bad colour: exit: --color takes a colour like 8A4DFF") && Has(out, "colour, nothing sent: exit: --color takes"),
           "tools: flash.py --color takes a colour, with a build sent only");
     if (rc != 0 || !Has(out, "colour, nothing sent: exit"))
+        printf("%s\n", out.c_str());
+
+    // the launcher's node as ALSA's raw MIDI has it: one opener at a time (EBUSY). flash.py's
+    // midi_send.main() for the build, then again for COLOR (and chompi's links between), each
+    // must close it: the first left it open, COLOR's open failed uncaught and nothing was
+    // started. A COLOR that fails so anyway is said, and the build started all the same
+    rc = Python(R"(
+import contextlib, errno, os, sys, chompi, flash, midi_send
+log = []
+class Node:
+    """The launcher 1.6 behind an exclusive node"""
+    users = 0
+    def __init__(self, path, verbose=False):
+        if Node.users:
+            raise OSError(errno.EBUSY, "Device or resource busy")
+        Node.users += 1
+        self.fd = 0
+        self.length = 0
+    def close(self):
+        if self.fd >= 0:
+            Node.users -= 1
+            self.fd = -1
+    def call(self, cmd, payload=b"", timeout=0.3, retries=10, required=True, match=None):
+        if cmd == midi_send.PING:
+            return bytes([0, 1]) + midi_send.put7(256, 4) + bytes([15, 0x3F, 1, 6, 0])
+        if cmd == midi_send.LIST:
+            name = b"12_FRIZZ-TEST.bin" if payload[0] == 12 else b""
+            return bytes([0, payload[0], len(name)]) + name + midi_send.put7(1, 4) + bytes([0, 0, 0])
+        if cmd == midi_send.BEGIN:
+            self.length = midi_send.get7(payload[:4])
+            return bytes([0])
+        if cmd == midi_send.DATA:
+            return bytes([0]) + midi_send.put7(self.length, 4)
+        if cmd == midi_send.END:
+            log.append('stored%s' % (' (stay)' if payload[5:] else ''))
+            return bytes([0])
+        if cmd == midi_send.COLOR:
+            if colour_fails:
+                raise OSError(errno.EBUSY, "Device or resource busy")
+            log.append("color %d" % payload[0])
+            return bytes([0, payload[0]])
+        if cmd == chompi.RUN:
+            log.append("run %d" % payload[0])
+            return bytes([0, payload[0]])
+        return bytes([1])
+midi_send.Link = Node
+chompi.to_launcher = lambda *rest: "l"
+chompi.wait_for = lambda *rest: "node"
+chompi.renamed = lambda slot, node, *rest: node
+chompi.ident = lambda node: None
+chompi.started = chompi.noted_image = lambda *rest: None
+open("image.bin", "wb").write(b"x")
+flash.builds.build = flash.builds.built = lambda bench: "image.bin"
+for colour_fails in (False, True):
+    log.clear()
+    sys.argv = ["flash.py", "--test", "--no-build"]
+    try:
+        flash.main()
+        got = "ok"
+    except BaseException as e:
+        got = "%s: %s" % (type(e).__name__, e)
+    print("exclusive%s: %s %s, open %d" % (", COLOR fails" if colour_fails else "", got, log, Node.users), flush=True)
+    Node.users = 0
+os.remove("image.bin")
+)", out);
+    Check(rc == 0 && Has(out, "exclusive: ok ['stored (stay)', 'color 12', 'run 12'], open 0\n"),
+          "tools: flash.py with the launcher 1.6 on a node one opener at a time: stored, coloured, started, the node closed");
+    Check(Has(out, "key 12 not coloured: [Errno 16] Device or resource busy\n")
+              && Has(out, "exclusive, COLOR fails: ok ['stored (stay)', 'run 12'], open 0\n"),
+          "tools: and a COLOR the node refuses (EBUSY) is said, the build started all the same");
+    if (rc != 0 || !Has(out, "exclusive: ok"))
         printf("%s\n", out.c_str());
 
     // usbjitter.py turns PERSIST 0 on: the user's FRIZZ it measured is started again at the end,
@@ -1139,18 +1212,25 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     json.replace(cut, json.find(',', cut) - cut, "0.25");
     const size_t latched = json.find("\"latched\": [") + 12;
     json.insert(latched, "\"filter\"");
+    // and the phaser as the frequency shifter (#306)
+    const size_t modes = json.find("\"modes\": [") + 10;
+    Check(modes > 10 && json.compare(modes, 1, "]") == 0, "remote: scene get says no effect is in its second mode");
+    json.insert(modes, "\"phaser\"");
     Write(mine, json);
     rc = Remote({"scene", "put", "2", mine, "--save"}, out);
     RunMs(2500);
     const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
-    Check(rc == 0 && Has(scenes, "scene 2\n") && Has(scenes, "filter 1 250"),
-          "remote: scene put stores it in slot 2, on the card");
+    const size_t phaser = scenes.find("phaser ", scenes.find("scene 2\n"));
+    Check(rc == 0 && Has(scenes, "scene 2\n") && Has(scenes, "filter 1 250") && phaser != std::string::npos
+              && scenes.compare(scenes.find('\n', phaser) - 2, 2, " 1") == 0,
+          "remote: scene put stores it in slot 2, on the card, the phaser's mode its ninth value");
     if (rc != 0)
         printf("%s\n", out.c_str());
     rc = Remote({"scene", "get", "2", back}, out);
     json = Read(back);
-    Check(rc == 0 && fabsf(JsonParam(json, "filter", 0) - .25f) < 1e-4f && Has(json, "\"filter\"\n"),
-          "remote: and scene get reads it back, the same within 14 bits");
+    Check(rc == 0 && fabsf(JsonParam(json, "filter", 0) - .25f) < 1e-4f && Has(json, "\"filter\"\n")
+              && Has(json, "\"modes\": [\n  \"phaser\"\n ]"),
+          "remote: and scene get reads it back, the same within 14 bits, the phaser's mode too");
     rc = Remote({"scene", "put", "0", mine, "--save"}, out);
     Check(rc != 0 && Has(out, "refused"), "remote: never into the blank scene");
     Check(fabsf(JsonParam(json, "shifter", 4) - 1.f) < 1e-4f,
@@ -1637,6 +1717,24 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
           "remote: play refuses a scene saved with SAVE, a slot and CHOMPI, naming the scenes file (#78)");
     if (rc == 0 || !Has(refused_save, "frizz_scenes"))
         printf("%s\n", refused_save.c_str());
+    // the finalizer's presets (#345): key 15 held + SAVE starts their mode, the confirm writes
+    // the master file; key 15 held + a scene key recalls one, which the master file keeps too
+    Write(script, "booted\ndown KEY_15\nwait 100\ntap KEY_23\nwait 100\nup KEY_15\nwait 100\ntap KEY_20\n"
+                  "wait 100\ntap KEY_26\nwait 500\n");
+    rc = Remote({"play", script, "--save"}, out);
+    Check(rc != 0 && Has(out, "line 10: SAVE confirmed (tap KEY_26)") && Has(out, "/FRIZZ/frizz_master.txt"),
+          "remote: play refuses a finalizer preset saved (key 15 + SAVE, a preset, CHOMPI), naming the master file");
+    if (rc == 0)
+        printf("%s\n", out.c_str());
+    Write(script, "booted\ndown KEY_15\nwait 100\ntap KEY_19\nwait 100\nup KEY_15\nwait 500\n");
+    rc = Remote({"play", script, "--save"}, out);
+    Check(rc != 0 && Has(out, "line 4: a finalizer preset recalled (tap KEY_19)") && Has(out, "/FRIZZ/frizz_master.txt"),
+          "remote: and one recalled by hand (key 15 held + a scene key)");
+    Write(script, "booted\ndown KEY_15\nwait 100\nup KEY_15\nwait 100\ntap KEY_23\nwait 100\ntap KEY_19\n"
+                  "wait 100\ntap KEY_26\nwait 500\n");
+    rc = Remote({"play", script, "--save"}, out);
+    Check(rc != 0 && Has(out, "SAVE confirmed (tap KEY_26)") && Has(out, "/FRIZZ/frizz_scenes.txt"),
+          "remote: SAVE after key 15 is let go is the scenes' again");
 
     // a script's set (twin/README.md) goes as the developers' SET, in RAM as the rest (#214);
     // one FRIZZ refuses, or that can't be sent, fails its line. The old guard (--save) refuses

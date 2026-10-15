@@ -342,6 +342,13 @@ public:
         else
             keys_.fetch_and(~(1u << fx), std::memory_order_relaxed);
     }
+    /** From the UI or the morph: fx in its second mode (kFxModes, FxParams.h) or not: the
+     *  phaser's frequency shifter (#306), which switches with a dip of its own */
+    inline void SetMode(size_t fx, bool second)
+    {
+        if (fx == FX_PHASER)
+            phaser_.SetMode(second);
+    }
     __attribute__((noinline)) void SetParam(size_t fx, size_t param, float val)
     {
         if (fx == FX_CHAOS)

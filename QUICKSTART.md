@@ -115,7 +115,9 @@ Things to try first:
 - **Phaser (white key 7):** latch it, turn knob 3 (depth) up to hear the sweep and knob 2 for
   its resonance. Turn knob 1 right past the centre (its LED turns green) and the sweep locks
   to the tempo, 1/16 first, slower as you go on. With the resonator latched too, the sweep
-  moves through its ringing.
+  moves through its ringing. Hold SHIFT and tap the key twice: it turns azure, a
+  [frequency shifter](MANUAL.md#frequency-shifter). Knob 1 at a few Hz and knob 2 up make a
+  barber pole.
 - **Delay + reverb (white keys 12 and 13):** tap them to throw echoes and tails onto single
   notes.
 - **Tape stop (white key 11)** with the delay or reverb latched: hold it on a beat and the

@@ -73,7 +73,7 @@ public:
 
         FxScene& blank = scenes_[kBlankSlot];
         blank.used = true;
-        blank.latched = 0;
+        blank.latched = blank.modes = 0; // the phaser a phaser
         for (size_t f = 0; f < kNumFx; f++)
             for (size_t p = 0; p < kNumFxParams; p++)
                 blank.params[f][p] = kFxParams[f].defaults[p];

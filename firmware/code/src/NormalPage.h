@@ -27,6 +27,14 @@
  *  back down that soon after its release is a bounce, and takes the release back
  *  (FxControls::Rebound).
  *
+ *  An effect with a second mode (kFxModes, the phaser's frequency shifter, #306): SHIFT + its
+ *  key selects it as any; the key again in the same hold, with no other key between, switches
+ *  the mode (tap_fx_), however long after, and each further tap switches again. Only a press
+ *  with SHIFT down counts (ShiftAt, its grace too), so the latch gesture (the key, then SHIFT)
+ *  never does; letting go of SHIFT or another key starts the count again. Not on the Loops
+ *  page, where the white keys are loops. The key lights in the mode's colour (FxSlots.h), at
+ *  full for kModeFlashMs after a switch.
+ *
  *  The finalizer's key (kCompKey, #345) selects it for the knobs, and flashes white. Its knobs
  *  go to the card (SceneStore's master file) kMasterSaveDelayMs after the last turn, so a
  *  sweep is one write. The key lights in the colour of the module the knobs show (kFinColors),
@@ -130,6 +138,7 @@ namespace chompi
     static const uint32_t kPendingBlinkMs = 250;
     static const uint32_t kTapFlashMs = 80;      // LOOP flashes on a tempo tap
     static const uint32_t kSelectFlashMs = 80;   // an FX key flashes on a select
+    static const uint32_t kModeFlashMs = 250;    // and at full in its new colour on a mode switch
     static const uint32_t kShiftGraceMs = 15;    // SHIFT this near an FX key's press: first (#115)
     static const float kFlashDarkAbove = .5f;    // a flash goes dark on an LED this white (Flash)
     static const float kSemiStepPerTurn = .5f;   // 2 transport detents per semitone
@@ -421,6 +430,14 @@ namespace chompi
                       bool isRetriggering) override
         {
             const bool rising = numberOfPresses == 1;
+            // a mode's taps (tap_fx_): another key between, SHIFT's release, start again
+            if (rising ? tap_fx_ >= kNumFx || buttonID != static_cast<uint16_t>(kFxSlots[tap_fx_].key)
+                       : buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_26))
+                tap_fx_ = kNumFx;
+            // and the finalizer's module taps (tap_fin_) the same way
+            if (rising ? buttonID != static_cast<uint16_t>(kCompKey)
+                       : buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_26))
+                tap_fin_ = false;
 #if !FRIZZ_BENCH
             // anything but SHIFT between its taps: no double tap
             if (buttonID % kLoopsKeyBase != static_cast<uint16_t>(Hardware::SwId::KEY_26))
@@ -475,8 +492,18 @@ namespace chompi
                 fin_down_ = rising;
                 if (rising)
                 {
-                    FxKeyDown(true);
-                    fx_.FinKeyPressed(ShiftAt(buttonID));
+                    // SHIFT + the key again in the same hold: the next module (#345), as an
+                    // effect's second mode (#306)
+                    const bool shift = ShiftAt(buttonID);
+                    const bool next = shift && tap_fin_ && !LoopsShownNow();
+                    FxKeyDown(!next);
+                    fx_.FinKeyPressed(shift);
+                    if (next)
+                    {
+                        fx_.NextModule();
+                        mode_flash_.Start(System::GetNow(), kModeFlashMs);
+                    }
+                    tap_fin_ = shift;
                 }
                 return true;
             }
@@ -489,8 +516,13 @@ namespace chompi
                     else if (!(Grace(buttonID, false, buttonID) && fx_.Rebound(fx)))
                     {
                         const bool shift = ShiftAt(buttonID);
-                        FxKeyDown(shift);
+                        // SHIFT + the key again in the same hold: its other mode (#306)
+                        const bool mode = shift && tap_fx_ == fx && !LoopsShownNow();
+                        FxKeyDown(shift && !mode);
                         fx_.KeyPressed(fx, true, shift);
+                        if (mode)
+                            SwitchMode(fx);
+                        tap_fx_ = shift && (kFxModes >> fx & 1) ? fx : kNumFx;
                     }
                     return true;
                 }
@@ -853,6 +885,13 @@ namespace chompi
                 ScopedIrqBlocker irq;
                 scene_ctl_.FaderTo(value);
             }
+            else if (id == kMode)
+            {
+                const size_t fx = FxOnWhiteKey(kModeKey);
+                if (fx < kNumFx && fx_.Mode(fx) != (raw >= 64))
+                    SwitchMode(fx);
+                Heard(feedback::kMode);
+            }
         }
 
         /** The finalizer's preset i (0-3), if one is stored there: its knobs glide there, every
@@ -947,6 +986,11 @@ namespace chompi
             case kLive:
                 v = engine_->Live(engine_->Source()) ? 127 : 0;
                 return true;
+            case kMode:
+                // on the phaser's channel, as its knobs: not where the global one is (CC 23 the
+                // focus there), nor while a morph runs
+                v = fx_.Mode(FxOnWhiteKey(kModeKey)) ? 127 : 0;
+                return channel && kModeKey + 1 != channel && !fx_.Morphing() && !hand_fader_;
             }
             return false;
         }
@@ -1585,14 +1629,14 @@ namespace chompi
         }
 
         /** A scene's part for kCmdSceneGet: kFxPerPart effects' knobs on one page, 14 bits
-         *  each (parts 0-3 page 1, 4-7 page 2), or (the last) whether it's used and its
-         *  latches */
+         *  each (parts 0-3 page 1, 4-7 page 2), or (the last) whether it's used, its latches
+         *  and its modes (FxScene::modes, #306) */
         static size_t ScenePart(const FxScene& scene, uint8_t part, uint8_t* d, size_t n)
         {
             if (part == kSceneParts - 1)
             {
                 d[n++] = scene.used ? 1 : 0;
-                return Put14(d, n, scene.latched);
+                return Put14(d, Put14(d, n, scene.latched), scene.modes);
             }
             const size_t first = part % kFxParts * kFxPerPart, page = part / kFxParts;
             for (size_t fx = first; fx < first + kFxPerPart; fx++)
@@ -1620,6 +1664,8 @@ namespace chompi
                     return false;
                 put_scene_.used = v[0] != 0;
                 put_scene_.latched = static_cast<uint16_t>((v[1] << 7) | v[2]);
+                // its modes, from a tool that sends them (#306): else none
+                put_scene_.modes = q.len >= 5 ? static_cast<uint16_t>(((v[3] << 7) | v[4]) & kFxModes) : 0;
                 scenes_->scenes[q.a] = put_scene_;
                 put_slot_ = kNoScene;
                 // the sound stays, so it no longer matches the active scene (as COPY onto it);
@@ -1655,6 +1701,8 @@ namespace chompi
 #endif
             const uint16_t shift = static_cast<uint16_t>(Hardware::SwId::KEY_26);
             bool select = Grace(static_cast<uint16_t>(kCompKey), true, shift);
+            if (select)
+                tap_fin_ = true; // the first of the finalizer's module taps
             for (size_t fx = 0; fx < kNumFx; fx++)
             {
                 if (Grace(static_cast<uint16_t>(kFxSlots[fx].key), true, shift))
@@ -1665,6 +1713,8 @@ namespace chompi
                     // not a tap. Not a slip: keep it
                     fx_.LateSelect(fx);
                     select = true;
+                    if (kFxModes >> fx & 1)
+                        tap_fx_ = fx; // the first of a mode's taps (#306)
                 }
             }
             // key 15 held, then SHIFT: the finalizer bypassed or on again (#345), unless a mode
@@ -1738,6 +1788,22 @@ namespace chompi
         inline void EraseAtEnd() { engine_->looper.EraseAtEnd(); }
         inline void CancelErase() { engine_->looper.CancelErase(); }
         inline bool ErasePending() const { return engine_->looper.IsErasePending(); }
+
+        /** fx's other mode (#306), SHIFT + its key twice or MIDI's CC: its key flashes in the
+         *  new mode's colour */
+        void SwitchMode(size_t fx)
+        {
+            fx_.SetMode(fx, !fx_.Mode(fx));
+            mode_flash_.Start(System::GetNow(), kModeFlashMs);
+        }
+        inline bool LoopsShownNow() const
+        {
+#if !FRIZZ_BENCH
+            return loops_shown_;
+#else
+            return false;
+#endif
+        }
 
         /** An FX or the compressor's key going down: tells PlayKeys, and flashes the
          *  key white for a select */
@@ -2204,11 +2270,8 @@ namespace chompi
             if (fin_presets_.Armed())
             {
                 // a preset of the finalizer's: to the card at once, flashing once written
-                float now[kNumFinParams];
-                for (size_t p = 0; p < kNumFinParams; p++)
-                    now[p] = fx_.FinParam(p);
                 const SceneMode mode = fin_presets_.Mode();
-                fin_flash_ = fin_presets_.Confirm(now);
+                fin_flash_ = fin_presets_.Confirm(fx_.FinParams());
                 if (mode == SceneMode::SAVE)
                     fin_preset_ = static_cast<uint8_t>(fin_flash_);
                 else if (mode == SceneMode::DELETE && fin_flash_ == fin_preset_)
@@ -2427,7 +2490,10 @@ namespace chompi
             // VU meter (#117); a page just turned blinks its number on all four, white
             const size_t selected = fx_.Selected();
             const bool comp = selected == kFinSelected;
-            const float* const* colors = comp ? kCompKnobColors : kFxSlots[selected].knob_colors;
+            const bool shifter = !comp && fx_.Mode(selected); // the phaser's second mode (#306)
+            const float* const* colors = comp      ? kCompKnobColors
+                                         : shifter ? kShifterKnobColors
+                                                   : kFxSlots[selected].knob_colors;
             // the finalizer's meters run while its knobs show them
             const uint8_t meter = comp ? static_cast<uint8_t>(fx_.Module()) : Finalizer::kNoMeter;
             if (meter != fin_meter_)
@@ -2450,6 +2516,8 @@ namespace chompi
                     FinKnobLed(k, now, knobs, rgb);
                 else if (fx_.KnobUsed(k) && fx_.Page() && k == kVuKnob)
                     FxVu(selected, rgb);
+                else if (shifter && fx_.ParamOf(k) == Phaser::DIRECTION)
+                    Xfade3(kBipolarLow, white, kBipolarHigh, fx_.Knob(k), rgb); // down, both, up
                 else if (fx_.KnobUsed(k))
                     KnobColor(knobs, fx_.ParamOf(k), fx_.Knob(k), colors, rgb);
                 SetPthLedFloat(kFxKnobLeds[k], rgb[0], rgb[1], rgb[2]);
@@ -2457,9 +2525,11 @@ namespace chompi
 
             for (size_t fx = 0; fx < kNumFx; fx++)
             {
-                const float* color = kFxSlots[fx].key_color;
+                const float* color = fx_.Mode(fx) ? kShifterKeyColor : kFxSlots[fx].key_color;
                 const float meter = FxMeter(fx);
-                float level = kFxOffLevel;
+                // a mode switched: at full in the new colour, or a flash if it's on (#306)
+                const bool mode_flash = fx == selected && mode_flash_.Active(now);
+                float level = mode_flash ? 1.f : kFxOffLevel;
                 float whiten = 0.f; // how far towards white
                 // dropped from this step by the chaos key: dim, as if off
                 if (fx_.IsOn(fx) && !(engine_->FxDropped() >> fx & 1))
@@ -2477,7 +2547,7 @@ namespace chompi
                 for (int c = 0; c < 3; c++)
                     rgb[c] = level * (color[c] + whiten * (1.f - color[c]));
                 // a select (SHIFT + the key): a flash
-                if (fx == selected && select_flash_.Active(now))
+                if (fx == selected && (select_flash_.Active(now) || (mode_flash && fx_.IsOn(fx))))
                     Flash(rgb);
                 SetSmtLedFloat(KeyLedOf(kFxSlots[fx].key), rgb[0], rgb[1], rgb[2]);
             }
@@ -2486,7 +2556,9 @@ namespace chompi
             // kFinFloor up to full, dim while it's bypassed; turning red while the safety
             // limiter works, the one thing that sets the level by itself; a select flashes
             const float reduced = -engine_->GetFinReduction() / kFinMeterDb;
-            const float level = fx_.Bypassed() ? kFxOffLevel
+            // a module just picked (SHIFT + the key twice): at full in its colour a moment
+            const float level = comp && mode_flash_.Active(now) ? 1.f
+                                : fx_.Bypassed()               ? kFxOffLevel
                                                : kFinFloor + (1.f - kFinFloor) * fclamp(reduced, 0.f, 1.f);
             const float* fin_color = kFinColors[fx_.Module()];
             const float lim_db = -20.f * log10f(fmaxf(engine_->TakeLimiterGain(), 1e-6f));
@@ -2896,9 +2968,14 @@ namespace chompi
         uint32_t beat_at_ = 0;      // when it began
         bool downbeat_ = false;     // it's a bar's 1
         LedSignal select_flash_; // on the selected FX's key
+        LedSignal mode_flash_;   // on its key after its mode switched (#306)
+        bool tap_fin_ = false;   // SHIFT + key 15 last in this hold: again, its next module
+        size_t tap_fx_ = kNumFx; // SHIFT + this key last in this hold, nothing since: the key
+                                 // again switches its mode (kFxModes); kNumFx: none
         LedSignal mute_flash_[kFinBands]; // a finalizer knob as its band (un)mutes (#347)
-        uint32_t fin_turned_[kNumFxKnobs] = {}; // when each knob last turned (FinKnobLed)
-        float fin_level_[1 + kFinBands] = {}; // the finalizer's input and bands' meters, falling
+        uint32_t fin_turned_[kNumFxKnobs]; // when each knob last turned (FinKnobLed); the page
+                                           // is static, so these start at 0
+        float fin_level_[1 + kFinBands];   // the finalizer's input and bands' meters, falling
         float fin_lim_ = 0.f;                   // and its limiter's reduction, dB, rising back
         uint8_t fin_meter_ = Finalizer::kNoMeter; // the module whose meters the engine runs
         uint8_t fin_preset_ = kNoFinPreset;       // the finalizer's preset recalled last

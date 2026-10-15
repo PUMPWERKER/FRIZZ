@@ -14,10 +14,18 @@
 //  - the rate knob: its left half free, .02 to 50 Hz on the flanger's curve, the right half
 //    the filter LFO's divisions, 1/16 at the centre to 4 bars at the top; and the free LFO
 //    really runs at its rate, the synced one with the clock's pulses
+//  - the frequency shifter (its second mode, #306): a pure tone moved by the shift's Hz, up,
+//    down or both ways by the direction knob (a Goertzel on f+N, f and f-N: the other
+//    sideband at least 40 dB down), the right channel the other way with stereo; its rate
+//    knob's free half on its curve, .1 Hz to 1 kHz; a barber pole at the top of its feedback
+//    stays bounded over a minute of noise and rings down; locked to the clock when synced
+//  - a mode switch: on, it dips out and in again without a click, the other mode starting at
+//    the bottom; asleep, it switches at once
 // The knob's turns (fine, stepped and SHIFT across both halves) are controls.cpp's.
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <utility>
 #include "check.h"
 #include "FxChain.h"
 
@@ -349,6 +357,180 @@ static void Rate()
     Check(fabsf(p.CoeffNow(0) - want) < .005f, "rate: synced, it glides on between the clock's pulses");
 }
 
+/** The amplitude of hz in x (n samples), by Goertzel */
+static float ToneAt(const float* x, size_t n, float hz)
+{
+    const double w = 2. * M_PI * hz / kSr, k = 2. * cos(w);
+    double s1 = 0., s2 = 0.;
+    for (size_t i = 0; i < n; i++)
+    {
+        const double s0 = x[i] + k * s1 - s2;
+        s2 = s1;
+        s1 = s0;
+    }
+    return static_cast<float>(2. * sqrt(s1 * s1 + s2 * s2 - k * s1 * s2) / n);
+}
+
+/** A shifter on: shift hz free, direction, stereo, feedback, all wet */
+static void SetupShift(Ph& p, float hz, float direction, float stereo, float feedback)
+{
+    p.Init(kSr);
+    p.SetMode(true);
+    p.SetParam(Ph::SHIFT, .5f * log10f(hz / Ph::kShiftLowHz) / Ph::kShiftDecades);
+    p.SetParam(Ph::FEEDBACK, feedback);
+    p.SetParam(Ph::DEPTH, 1.f);
+    p.SetParam(Ph::DIRECTION, direction);
+    p.SetParam(Ph::STEREO, stereo);
+    p.SetOn(true);
+}
+
+static void FreqShifter()
+{
+    static Ph p;
+    static float outl[48000], outr[48000];
+    char what[200];
+    const float f = 1000.f, n = 100.f;
+    struct
+    {
+        float direction, stereo;
+        float up_l, down_l, up_r, down_r; // the sidebands' amplitudes wanted, for .5 in
+        const char* name;
+    } cases[] = {
+        {1.f, 0.f, .5f, 0.f, .5f, 0.f, "up"},
+        {0.f, 0.f, 0.f, .5f, 0.f, .5f, "down"},
+        {.5f, 0.f, .25f, .25f, .25f, .25f, "both"},
+        {1.f, 1.f, .5f, 0.f, 0.f, .5f, "up, stereo 1: the right down"},
+    };
+    for (const auto& c : cases)
+    {
+        SetupShift(p, n, c.direction, c.stereo, 0.f);
+        for (size_t i = 0; i < 96000; i++)
+        {
+            float l = .5f * sinf(2.f * float(M_PI) * f * i / kSr), r = l;
+            p.Process(&l, &r);
+            if (i >= 48000)
+            {
+                outl[i - 48000] = l;
+                outr[i - 48000] = r;
+            }
+        }
+        const float ul = ToneAt(outl, 48000, f + n), dl = ToneAt(outl, 48000, f - n),
+                    fl = ToneAt(outl, 48000, f), ur = ToneAt(outr, 48000, f + n),
+                    dr = ToneAt(outr, 48000, f - n);
+        printf("      %s: left %.4f at %g Hz, %.4f at %g, %.5f at %g; right %.4f up, %.4f down\n", c.name,
+               ul, f + n, dl, f - n, fl, f, ur, dr);
+        bool ok = fl < .005f; // the tone itself gone (-40 dB)
+        for (auto pair : {std::make_pair(ul, c.up_l), std::make_pair(dl, c.down_l),
+                          std::make_pair(ur, c.up_r), std::make_pair(dr, c.down_r)})
+            ok &= pair.second > 0.f ? fabsf(pair.first - pair.second) < .02f : pair.first < .005f;
+        snprintf(what, sizeof(what), "shifter %s: a 1 kHz tone lands on 1100 and/or 900 Hz, the other "
+                 "sideband and the tone 40 dB down", c.name);
+        Check(ok, what);
+    }
+
+    // the shift's free half on its curve: .1 Hz at 0, 10 Hz in its middle, 1 kHz at its top
+    p.Init(kSr);
+    p.SetMode(true);
+    float l = 0.f, r = 0.f;
+    p.SetOn(true);
+    p.Process(&l, &r); // wakes it in the shifter's mode, which reads the rate knob its way
+    bool curve = true;
+    for (auto k : {std::make_pair(0.f, .1f), std::make_pair(.25f, 10.f), std::make_pair(.499999f, 1000.f)})
+    {
+        p.SetParam(Ph::SHIFT, k.first);
+        curve &= fabsf(p.FreeHz() / k.second - 1.f) < .001f;
+    }
+    Check(curve, "shifter: the shift's free half from .1 Hz up to 1 kHz, 10 Hz in its middle");
+
+    // a barber pole at the top of the feedback: a minute of loud noise in, bounded, no NaN;
+    // then silence, and it rings down
+    SetupShift(p, 3.f, 1.f, 0.f, 1.f);
+    Rng rng;
+    rng.Seed(5);
+    float peak = 0.f;
+    bool finite = true;
+    for (size_t i = 0; i < 60 * 48000; i++)
+    {
+        float a = 2.f * rng.Uniform() - 1.f, b = 2.f * rng.Uniform() - 1.f;
+        p.Process(&a, &b);
+        finite &= std::isfinite(a) && std::isfinite(b);
+        peak = fmaxf(peak, fmaxf(fabsf(a), fabsf(b)));
+    }
+    float tail = 0.f;
+    for (size_t i = 0; i < 4 * 48000; i++)
+    {
+        float a = 0.f, b = 0.f;
+        p.Process(&a, &b);
+        if (i >= 3 * 48000)
+            tail = fmaxf(tail, fmaxf(fabsf(a), fabsf(b)));
+    }
+    printf("      barber pole, feedback at the top: peak %.3f over a minute of noise, %.6f after 3 s of silence\n",
+           peak, tail);
+    Check(finite && peak < 2.5f && tail < 1e-4f,
+          "shifter: a barber pole at the top of the feedback stays bounded, and rings down");
+
+    // synced: one cycle a division, locked to the clock; 1/16 at 120 BPM (2000 samples a pulse,
+    // 3 pulses) is 8 Hz
+    p.Init(kSr);
+    p.SetMode(true);
+    p.SetParam(Ph::SHIFT, .5f); // 1/16
+    p.SetParam(Ph::DEPTH, 1.f);
+    p.SetParam(Ph::DIRECTION, 1.f);
+    p.SetPulseSamples(2000.f);
+    p.SetOn(true);
+    for (size_t i = 0; i < 96000; i++)
+    {
+        if (i % 2000 == 0)
+            p.ClockPulse(static_cast<uint32_t>(i / 2000));
+        float a = .5f * sinf(2.f * float(M_PI) * f * i / kSr), b = a;
+        p.Process(&a, &b);
+        if (i >= 48000)
+            outl[i - 48000] = a;
+    }
+    const float synced = ToneAt(outl, 48000, f + 8.f);
+    printf("      synced 1/16 at 120 BPM: %.4f at %g Hz\n", synced, f + 8.f);
+    Check(fabsf(synced - .5f) < .02f, "shifter: synced, one cycle a division of the clock (1/16 at 120 BPM: 8 Hz)");
+}
+
+/** The mode switched while on: a dip out and in, the other mode at the bottom, no click;
+ *  asleep, at once */
+static void Switching()
+{
+    static Ph p;
+    Setup(p, .5f, 1.f, 0.f, .5f);
+    p.SetParam(Ph::RATE, .3f);
+    float prev = 0.f, step = 0.f;
+    size_t switched_at = 0;
+    for (size_t i = 0; i < 4800; i++)
+    {
+        if (i == 2400)
+            p.SetMode(true);
+        float l = .3f * sinf(2.f * float(M_PI) * 200.f * i / kSr), r = l;
+        p.Process(&l, &r);
+        if (i > 0)
+            step = fmaxf(step, fabsf(l - prev));
+        prev = l;
+        if (p.Shifting() && !switched_at)
+            switched_at = i;
+    }
+    printf("      on: switched %zu samples after it was set, %.4f a sample at most (a 200 Hz tone moves .008)\n",
+           switched_at - 2400, step);
+    Check(switched_at > 2400 && switched_at - 2400 <= Ph::kDipSamples + Ph::kRetune && step < .02f,
+          "mode switch: on, it dips out, switches at the bottom and comes back without a click");
+
+    p.SetOn(false);
+    for (size_t i = 0; i < 9600; i++)
+    {
+        float l = 0.f, r = 0.f;
+        p.Process(&l, &r);
+    }
+    p.SetMode(false);
+    p.SetOn(true);
+    float l = 0.f, r = 0.f;
+    p.Process(&l, &r);
+    Check(!p.Shifting(), "mode switch: asleep, it comes on in the mode set at once");
+}
+
 int main()
 {
     Notches();
@@ -357,5 +539,7 @@ int main()
     Stereo();
     Sleep();
     Rate();
+    FreqShifter();
+    Switching();
     return Finish();
 }

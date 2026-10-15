@@ -137,6 +137,11 @@ struct FxParams
                                   // (the phaser's rate: free in Hz, then tempo divisions)
 };
 
+// The effects with a second mode (#306), by bit: the phaser's frequency shifter (FxPhaser.h),
+// on the same knobs. A scene keeps it (FxScene::modes), SHIFT + the key twice switches it
+// (NormalPage.h)
+static const uint16_t kFxModes = 1u << FX_PHASER;
+
 // Page 2's knob 2, stereo on the effects that have it, and page 1's knob 4, their own
 // setting: the other way round until #117 (FxScenes.h's layout 4)
 static const size_t kFxOwnKnob = kNumFxKnobs - 1, kFxStereoParam = kNumFxKnobs + 1;
