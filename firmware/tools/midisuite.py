@@ -106,6 +106,26 @@ def fit(times, timed=None):
     return slope, worst
 
 
+def span_offsets(spans):
+    """Spans of one clock's ticks, with gaps between (lists of times, 3 or more each): its
+    period, the slope within each span pooled (a line through each, one slope), and each span's
+    offset from span 0's line at that period, s. Over all of them, this computer's clock
+    drifting from FRIZZ's goes into the period, and a wander within one span weighs a third: a
+    period from span 0 alone, its wander carried over the seconds to the last span, put that
+    one 0.3-0.7 ms off with nothing moved (#386)"""
+    p0, _ = fit(spans[0])
+    origin = spans[0][0]
+    ks = [[round((t - origin) / p0) for t in s] for s in spans]
+    num = den = 0.
+    for k, s in zip(ks, spans):
+        mk, mt = sum(k) / len(k), sum(s) / len(s)
+        num += sum((i - mk) * (t - mt) for i, t in zip(k, s))
+        den += sum((i - mk) ** 2 for i in k)
+    p = num / den
+    offs = [sum(t - origin - p * i for i, t in zip(k, s)) / len(s) for k, s in zip(ks, spans)]
+    return p, [o - offs[0] for o in offs]
+
+
 def steps(times, per=48):
     """How far the ticks' position steps, apart from their jitter: the line through them, the
     median of their distances from it every per ticks (two beats), the largest change from one
@@ -851,23 +871,19 @@ def out_fin_delay(r):
         t0 = time.perf_counter()
         time.sleep(4.)
         spans.append(ticks_after(r.captured(port).log, t0, time.perf_counter()))
-    period, _ = fit(spans[0])
-    if not period or not all(spans):
+    if not all(len(ts) >= 3 for ts in spans):
         r.check("MIDI out (%s): its ticks" % port.upper(), False, "none", "ticks")
         return
-    origin = spans[0][0]
-
-    def phase(ts):
-        return sum(((t - origin + period / 2) % period) - period / 2 for t in ts) / len(ts)
-
-    a, d, z = (phase(ts) for ts in spans)
-    # against the mean of before and after, so this computer's clock drifting from FRIZZ's
-    # cancels
+    # each span against span 0 at the period of all three (span_offsets); the delay against
+    # the mean of before and after too
+    _, (a, d, z) = span_offsets(spans)
     delay = (d - (a + z) / 2) * 1000
     r.tcheck("Loud up: MIDI out's clock (%s) later by the limiter's 1 ms" % port.upper(),
              abs(delay - 1.) < .3 * r.loose, "%.2f ms" % delay, "1.00 +-%.1f" % (.3 * r.loose))
-    r.tcheck("Loud at 0: back where it was", abs((z - a) * 1000) < .3 * r.loose, "%.2f ms" % ((z - a) * 1000),
-             "0 +-%.1f" % (.3 * r.loose))
+    # the capture's wander over the 9 s from span 0 to the last stays in this, up to ~0.3 ms;
+    # one not back is 1 ms off
+    r.tcheck("Loud at 0: back where it was", abs((z - a) * 1000) < .5 * r.loose, "%.2f ms" % ((z - a) * 1000),
+             "0 +-%.1f" % (.5 * r.loose))
 
 
 @case("out-loop", "7: MIDI out, record a loop: it starts on the loop's beat 1 and stays in time; "
