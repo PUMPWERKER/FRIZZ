@@ -1,8 +1,11 @@
-// comp.cpp: checks the master compressor (MasterComp.h): off is an exact bypass, its static
-// curve with no makeup of its own, the makeup knob, its attack and release, no gain ripple
-// on bass at its fastest, the linked stereo and the mix; the
-// engine's safety limiter keeping the outputs within 1.0; and the master settings' file
-// format (MasterSettings.h). Exits 0 when everything passes. Run by unit.sh comp.
+// comp.cpp: checks the master section around the finalizer (Finalizer.h, #345; its sound is
+// finalizer.cpp's): the stereo-linked band compressor, the gain not following a bass note's
+// waveform at its fastest; the engine's safety limiter keeping the outputs within 1.0 with
+// everything up, and the finalizer's limiter keeping it from working (no red on key 15) with
+// Loud and VOLUME full on a hot input; and the master settings' file format
+// (MasterSettings.h): the finalizer's knobs and presets round-trip, a file from before (the
+// master compressor's) loads with the finalizer neutral and the rest intact. Exits 0 when
+// everything passes. Run by unit.sh comp.
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -13,201 +16,71 @@
 using namespace chompi;
 
 static const float kSr = 48000.f;
+static const size_t kBlock = 24;
 
-static float Db(float x) { return 20.f * log10f(fabsf(x)); }
-
-/** A compressor with its knobs set, settled; speed sets the attack and the release alike */
-static void Setup(MasterComp& c, float amount, float ratio, float speed, float mix,
-                  float makeup = 0.f)
+/** A finalizer with these parameters, run on n samples of l and r in place, in blocks */
+static void Run(Finalizer& f, float* l, float* r, size_t n)
 {
-    c.Init(kSr);
-    c.SetParam(MasterComp::kThreshold, amount);
-    c.SetParam(MasterComp::kRatio, ratio);
-    c.SetParam(MasterComp::kAttack, speed);
-    c.SetParam(MasterComp::kRelease, speed);
-    c.SetParam(MasterComp::kMix, mix);
-    c.SetParam(MasterComp::kMakeup, makeup);
-    float l = 0.f, r = 0.f;
-    for (int i = 0; i < 48000; i++)
-    {
-        l = r = 0.f;
-        c.Process(&l, &r);
-    }
-}
-
-/** The output level, dB, of a steady level in dB, once settled */
-static float Steady(MasterComp& c, float in_db)
-{
-    const float in = powf(10.f, in_db / 20.f);
-    float l = 0.f, r = 0.f;
-    for (int i = 0; i < 96000; i++)
-    {
-        l = r = in;
-        c.Process(&l, &r);
-    }
-    return Db(l);
-}
-
-static void TestBypass()
-{
-    MasterComp c;
-    Setup(c, 0.f, .5f, .5f, 1.f);
-    bool same = true;
-    uint32_t n = 1;
-    for (int i = 0; i < 48000; i++)
-    {
-        n = n * 1664525u + 1013904223u;
-        const float x = (static_cast<float>(n >> 8) / 16777216.f - .5f) * 8.f;
-        float l = x, r = -x * .5f;
-        c.Process(&l, &r);
-        same = same && l == x && r == -x * .5f;
-    }
-    Check(same, "threshold 0, makeup 0: an exact bypass");
-
-    // threshold 0 with makeup: that gain alone, nothing compressed
-    Setup(c, 0.f, .5f, .5f, 1.f, .25f);
-    const float out = Steady(c, 0.f);
-    Check(fabsf(out - 6.f) < .05f, "threshold 0, makeup +6dB: 6dB louder, nothing else");
-
-    Setup(c, 1.f, 1.f, .5f, 0.f);
-    same = true;
-    for (int i = 0; i < 4800; i++)
-    {
-        float l = 2.f, r = -2.f;
-        c.Process(&l, &r);
-        same = same && l == 2.f && r == -2.f;
-    }
-    Check(same, "mix 0: the dry signal, exactly");
-}
-
-static void TestCurve()
-{
-    MasterComp c;
-    // threshold -30dB; 4:1 reduces 0dB by 22.5dB, and nothing gives any of it back
-    Setup(c, 1.f, .5f, .5f, 1.f);
-    float out = Steady(c, 0.f);
-    printf("      0dB in, threshold -30dB, 4:1: %.2fdB out\n", out);
-    Check(fabsf(out - -22.5f) < .2f, "threshold -30dB, 4:1: 0dB comes out at -22.5dB");
-    out = Steady(c, -40.f);
-    Check(fabsf(out - -40.f) < .05f, "below the threshold: untouched, no makeup of its own");
-    out = Steady(c, -30.f);
-    // in the knee's middle: a quarter of the knee times the slope
-    Check(fabsf(out - (-30.f - .75f * 6.f / 8.f)) < .2f, "at the threshold: the soft knee");
-
-    Setup(c, 1.f, 1.f, .5f, 1.f);
-    out = Steady(c, 0.f);
-    Check(fabsf(out - -28.5f) < .2f, "20:1: 0dB comes out at -28.5dB");
-    const float louder = Steady(c, 6.f);
-    Check(louder - out < .5f, "20:1: 6dB louder in is under 0.5dB louder out");
-
-    Setup(c, .5f, .5f, .5f, 1.f);
-    out = Steady(c, 0.f);
-    Check(fabsf(out - -15.f * .75f) < .2f, "threshold .5: -15dB");
-
-    // the makeup: 0 to +24dB, on everything, set by hand
-    Setup(c, 1.f, .5f, .5f, 1.f, .5f);
-    out = Steady(c, 0.f);
-    Check(fabsf(out - (-22.5f + 12.f)) < .2f, "makeup .5: +12dB on the compressed signal");
-    out = Steady(c, -40.f);
-    Check(fabsf(out - (-40.f + 12.f)) < .2f, "makeup .5: +12dB below the threshold too");
-    Setup(c, 1.f, .5f, .5f, 1.f, 1.f);
-    out = Steady(c, -40.f);
-    Check(fabsf(out - (-40.f + 24.f)) < .2f, "makeup 1: +24dB");
-}
-
-/** The reduction, dB, on a steady sine of freq Hz at 0dB, with the sidechain highpass at sc */
-static float ReductionAt(float freq, float sc)
-{
-    MasterComp c;
-    Setup(c, 1.f, .5f, 0.f, 1.f);
-    c.SetParam(MasterComp::kSidechain, sc);
-    float deepest = 0.f;
-    for (int i = 0; i < 96000; i++)
-    {
-        float l = sinf(2.f * float(M_PI) * freq * i / kSr), r = l;
-        c.Process(&l, &r);
-        if (i > 72000)
-            deepest = fminf(deepest, c.GetReduction());
-    }
-    return deepest;
-}
-
-static void TestSidechain()
-{
-    const float bass = ReductionAt(50.f, 0.f), bass_hp = ReductionAt(50.f, 1.f);
-    const float mid = ReductionAt(2000.f, 0.f), mid_hp = ReductionAt(2000.f, 1.f);
-    printf("      sidechain highpass: 50Hz %.1f -> %.1fdB, 2kHz %.1f -> %.1fdB\n", bass, bass_hp, mid,
-           mid_hp);
-    Check(bass_hp > bass + 10.f, "sidechain: at the top, a bass note is compressed far less");
-    Check(fabsf(mid_hp - mid) < 1.f, "sidechain: the mids are compressed as before");
-    MasterComp c;
-    Setup(c, 0.f, .5f, .5f, 1.f);
-    c.SetParam(MasterComp::kSidechain, 1.f);
-    bool same = true;
-    for (int i = 0; i < 4800; i++)
-    {
-        float l = .7f, r = -.3f;
-        c.Process(&l, &r);
-        same = same && l == .7f && r == -.3f;
-    }
-    Check(same, "sidechain: with the threshold off, still an exact bypass");
-}
-
-/** ms until the reduction has recovered to 3dB after a loud burst stops */
-static float Recovery(float speed)
-{
-    MasterComp c;
-    Setup(c, 1.f, .5f, speed, 1.f);
-    Steady(c, 0.f);
-    for (int i = 0; i < 96000; i++)
-    {
-        float l = .01f, r = .01f;
-        c.Process(&l, &r);
-        if (c.GetReduction() > -3.f)
-            return i / 48.f;
-    }
-    return 2000.f;
-}
-
-/** ms until the reduction reaches 10dB after a loud signal starts */
-static float Grab(float speed)
-{
-    MasterComp c;
-    Setup(c, 1.f, .5f, speed, 1.f);
-    Steady(c, -60.f);
-    for (int i = 0; i < 96000; i++)
-    {
-        float l = 1.f, r = 1.f;
-        c.Process(&l, &r);
-        if (c.GetReduction() < -10.f)
-            return i / 48.f;
-    }
-    return 2000.f;
-}
-
-static void TestSpeed()
-{
-    const float r0 = Recovery(0.f), r5 = Recovery(.5f), r1 = Recovery(1.f);
-    const float a0 = Grab(0.f), a5 = Grab(.5f), a1 = Grab(1.f);
-    printf("      to 3dB after a burst: %.0f / %.0f / %.0fms; to 10dB on a step: %.2f / %.2f / %.2fms\n",
-           r0, r5, r1, a0, a5, a1);
-    Check(r0 < r5 && r5 < r1 && r1 < 2000.f, "release: slows from fast to slow");
-    Check(a0 < a5 && a5 < a1, "attack: slows from fast to slow");
-    Check(a0 < 1.f && a1 < 30.f, "attack: under 1ms fast, under 30ms slow");
+    for (size_t i = 0; i + kBlock <= n; i += kBlock)
+        f.Process(l + i, r + i, kBlock);
 }
 
 static void TestLinked()
 {
-    MasterComp c;
-    Setup(c, 1.f, .5f, .5f, 1.f);
-    float l = 0.f, r = 0.f;
-    for (int i = 0; i < 48000; i++)
+    // a loud left and a quiet right in the mid band, Depth full: the same gain on both
+    Finalizer f;
+    f.Init(kSr);
+    f.SetParam(Finalizer::DEPTH, 1.f);
+    const size_t n = 48000;
+    static float l[n], r[n];
+    for (size_t i = 0; i < n; i++)
     {
-        l = 1.f;
-        r = .01f;
-        c.Process(&l, &r);
+        const float s = sinf(2.f * static_cast<float>(M_PI) * 1000.f * i / kSr);
+        l[i] = .5f * s;
+        r[i] = .005f * s;
     }
-    Check(fabsf(l / 1.f - r / .01f) < 1e-4f, "stereo linked: the quiet side gets the loud side's gain");
+    Run(f, l, r, n);
+    float pl = 0.f, pr = 0.f;
+    for (size_t i = n / 2; i < n; i++)
+    {
+        pl = fmaxf(pl, fabsf(l[i]));
+        pr = fmaxf(pr, fabsf(r[i]));
+    }
+    printf("      left %.4f, right %.6f, reduced %.2f dB\n", pl, pr, f.BandReduction(1));
+    Check(f.BandReduction(1) < -6.f && fabsf(pl / .5f - pr / .005f) < 2e-3f,
+          "stereo linked: the quiet side gets the loud side's gain");
+}
+
+/** The gain's ripple, dB, on a steady sine of freq Hz at 0dB, the low band at its fastest
+ *  (Beat FX) and Depth full: max minus min reduction over a second, once settled */
+static float Ripple(float freq)
+{
+    Finalizer f;
+    f.Init(kSr);
+    f.SetParam(Finalizer::DEPTH, 1.f);
+    f.SetParam(Finalizer::CHARACTER_LOW, 1.f);
+    float lo = 0.f, hi = -100.f;
+    float l[kBlock], r[kBlock];
+    for (size_t b = 0; b < 96000 / kBlock; b++)
+    {
+        for (size_t i = 0; i < kBlock; i++)
+            l[i] = r[i] = sinf(2.f * static_cast<float>(M_PI) * freq * (b * kBlock + i) / kSr);
+        f.Process(l, r, kBlock);
+        if (b >= 48000 / kBlock)
+        {
+            lo = fminf(lo, f.BandReduction(0));
+            hi = fmaxf(hi, f.BandReduction(0));
+        }
+    }
+    return hi - lo;
+}
+
+static void TestRipple()
+{
+    const float r50 = Ripple(50.f), r100 = Ripple(100.f);
+    printf("      gain ripple, Beat FX on the low band, a 0dB sine: %.2fdB at 50Hz, %.2fdB at 100Hz\n",
+           r50, r100);
+    Check(r50 < 1.f && r100 < 1.f, "fast: the gain doesn't follow a bass note's waveform");
 }
 
 static int16_t loop_mem[kLoopMemSize];
@@ -221,97 +94,131 @@ static daisysp::Reverb reverb;
 static MidiClock midi_clock;
 static PassthroughEngine engine;
 
-static void TestCeiling()
+/** The engine at VOLUME and the input gain full, the finalizer's parameters as given; x(n)
+ *  on AUX for n seconds: the outputs' peak, and the safety limiter's deepest gain after the
+ *  first second */
+static float Engine(std::initializer_list<std::pair<int, float>> fin, float (*x)(size_t), float& lim)
 {
-    // everything up: input, volume, the compressor's makeup, and a full-scale square that
-    // starts from silence, so its first milliseconds come through before the reduction does
     engine.Init(kSr, loop_mem, &midi_clock, delay_mem, kDelayFrames, &reverb,
                 freezer_mem_l, freezer_mem_r, kFreezerFrames,
                 tapestop_mem_l, tapestop_mem_r, kTapeStopFrames);
     engine.SetMainGain(1.f);
     engine.SetInputGain(false, 1.f);
-    engine.SetCompParam(MasterComp::kThreshold, 1.f);
-    engine.SetCompParam(MasterComp::kRatio, 0.f);
-    engine.SetCompParam(MasterComp::kAttack, 1.f);
-    engine.SetCompParam(MasterComp::kRelease, 1.f);
-    engine.SetCompParam(MasterComp::kMix, 1.f);
-    engine.SetCompParam(MasterComp::kMakeup, 1.f);
-    const size_t kBlock = 24;
+    for (auto& p : fin)
+        engine.SetFinParam(p.first, p.second);
     float zero[kBlock] = {}, inl[kBlock], inr[kBlock];
     float o[4][kBlock];
     const float* in[4] = {zero, zero, inl, inr};
     float* out[4] = {o[0], o[1], o[2], o[3]};
     float peak = 0.f;
-    for (size_t b = 0; b < 48000 / kBlock; b++)
+    lim = 1.f;
+    for (size_t b = 0; b < 3 * 48000 / kBlock; b++)
     {
         for (size_t i = 0; i < kBlock; i++)
-        {
-            const size_t n = b * kBlock + i;
-            const float x = n < 12000 ? 0.f : ((n / 50) % 2 ? 1.f : -1.f);
-            inl[i] = inr[i] = x;
-        }
+            inl[i] = inr[i] = x(b * kBlock + i);
         engine.Process(in, out, kBlock);
         for (size_t c = 0; c < 4; c++)
             for (size_t i = 0; i < kBlock; i++)
                 peak = fmaxf(peak, fabsf(o[c][i]));
+        const float g = engine.TakeLimiterGain();
+        if (b >= 48000 / kBlock)
+            lim = fminf(lim, g);
     }
+    return peak;
+}
+
+// a full-scale square that starts from silence, so its first milliseconds come through
+// before any reduction does
+static float Square(size_t n) { return n < 12000 ? 0.f : ((n / 50) % 2 ? 1.f : -1.f); }
+// a hot input: a bass and a tone near full scale, with bursts
+static float Hot(size_t n)
+{
+    const float t = static_cast<float>(n) / kSr;
+    return ((n % 9600) < 960 ? 1.f : .5f)
+           * (.5f * sinf(2.f * static_cast<float>(M_PI) * 55.f * t) + .45f * sinf(2.f * static_cast<float>(M_PI) * 2300.f * t));
+}
+
+static void TestCeiling()
+{
+    // everything up: input, volume, the finalizer's input and EQ boosts (no Loud, whose
+    // limiter would hold the level back, nor drive, which keeps it as it was)
+    float lim;
+    const float peak = Engine({{Finalizer::INPUT, 1.f}, {Finalizer::EQ_LOW, 1.f}, {Finalizer::EQ_LOW + 2, 1.f}},
+                              Square, lim);
     printf("      peak out, everything up: %.7f\n", peak);
     // the soft clip's top (daisysp::SoftClip at 3) rounds to a float's step over 1.0
     Check(peak <= 1.f + 1e-6f && peak > .5f, "safety limiter: the outputs stay within 1.0");
+
+    // Loud full, VOLUME full, a hot input: the finalizer's limiter keeps the safety limiter
+    // under the 1dB where key 15 starts turning red (NormalPage's kLimStartDb)
+    Engine({{Finalizer::LOUD, 1.f}}, Hot, lim);
+    const float db = -20.f * log10f(lim);
+    printf("      the safety limiter behind Loud full: %.2f dB at most\n", db);
+    Check(db < 1.f, "Loud full, VOLUME full, a hot input: no red on key 15");
+    // without the finalizer's limiter the same input does turn it red: the check sees red
+    Engine({}, Hot, lim);
+    Check(-20.f * log10f(lim) > 1.f, "and without Loud, the same input does");
 }
 
 static void TestFile()
 {
     MasterSettings a, b;
     a.Reset();
-    a.comp[0] = .3f;
-    a.comp[1] = .75f;
-    a.comp[2] = 0.f;
-    a.comp[3] = .123457f;
-    a.comp[4] = .4f;
-    a.comp[7] = .625f;
+    a.fin[0] = .3f;
+    a.fin[2] = 1.f;
+    a.fin[5] = .123457f;
+    a.fin[11] = .4f;
+    a.fin[14] = .625f;
     char buf[kMasterFileMax];
-    const size_t len = FormatMaster(a, buf, sizeof(buf));
+    size_t len = FormatMaster(a, buf, sizeof(buf));
     printf("%s", buf);
     bool same = ParseMaster(buf, b) && len > 0;
-    for (size_t p = 0; p < kNumFxKnobs; p++)
-        same = same && fabsf(a.comp[p] - b.comp[p]) < 1e-6f;
-    Check(same, "file: round-trips");
+    for (size_t p = 0; p < kNumFinParams; p++)
+        same = same && fabsf(a.fin[p] - b.fin[p]) < 1e-6f;
+    Check(same, "file: the finalizer round-trips");
+    Check(!strstr(buf, "finalizer_preset"), "file: no preset stored, none written");
 
-    // the coarse ratio's points come back on the grid
-    a.comp[1] = .25f;
+    // presets: the ones stored, and only those
+    a.fin_presets[1][1] = .75f;
+    a.fin_presets[1][12] = 0.f;
+    a.fin_presets[3][3] = 1.f;
+    a.fin_presets_used = 0x0a;
     FormatMaster(a, buf, sizeof(buf));
-    ParseMaster(buf, b);
-    Check(b.comp[1] == .25f, "file: a grid point comes back exactly");
+    same = ParseMaster(buf, b) && b.fin_presets_used == 0x0a;
+    for (size_t i = 0; i < kFinPresets; i++)
+        for (size_t p = 0; p < kNumFinParams; p++)
+            same = same && (!(a.fin_presets_used >> i & 1) || fabsf(a.fin_presets[i][p] - b.fin_presets[i][p]) < 1e-6f);
+    Check(same && strstr(buf, "finalizer_preset2 ") && strstr(buf, "finalizer_preset4 ")
+              && !strstr(buf, "finalizer_preset1") && !strstr(buf, "finalizer_preset3"),
+          "file: the presets stored round-trip, the others aren't written");
+    Check(ParseMaster("FRIZZ master 1\nfinalizer_preset5 1 1 1\nfinalizer_preset0 1\n", b)
+              && b.fin_presets_used == 0,
+          "file: a preset past 4, or 0, is skipped");
 
-    Check(!ParseMaster("FRIZZ scenes 1\n", b) && b.comp[3] == kCompParams.defaults[3],
+    Check(!ParseMaster("FRIZZ scenes 1\n", b) && b.fin[0] == kFinalizerKnobs[0].defaults[0],
           "file: another file isn't read, the defaults stay");
     Check(!ParseMaster("FRIZZ master 10\n", b), "file: another version isn't read");
-    Check(ParseMaster("FRIZZ master 1\r\nvolume 3\r\ncompressor2 500000 2000000\r\n", b) &&
-              b.comp[0] == .5f && b.comp[1] == 1.f && b.comp[2] == kCompParams.defaults[2],
+    Check(ParseMaster("FRIZZ master 1\r\nvolume 3\r\nfinalizer 300000 2000000\r\n", b) &&
+              b.fin[0] == .3f && b.fin[1] == 1.f && b.fin[2] == kFinalizerKnobs[0].defaults[2],
           "file: unknown lines skipped, values clamped, missing ones on their defaults");
 
-    // one from before the compressor's page 2: its speed is the attack and the release, its
-    // mix moves to page 2, and the makeup starts at 0dB (it was automatic)
-    Check(ParseMaster("FRIZZ master 1\ncompressor 300000 750000 200000 600000\n", b) &&
-              b.comp[0] == .3f && b.comp[1] == .75f && b.comp[2] == .2f && b.comp[3] == .2f &&
-              b.comp[4] == .6f && b.comp[7] == 0.f,
-          "file: the old compressor line, speed to attack and release, makeup 0dB");
-    Check(ParseMaster("FRIZZ master 1\ncompressor2 100000 0 0 0 1000000 0 0 500000\n"
-                      "compressor 300000 750000 200000 600000\n", b) &&
-              b.comp[0] == .1f && b.comp[7] == .5f,
-          "file: the new line wins over an old one");
+    // a file from before the finalizer, the master compressor's: its lines skipped, the
+    // finalizer neutral, every other setting read, and the old lines not written again
+    Check(ParseMaster("FRIZZ master 1\ncompressor2 300000 500000 500000 500000 1000000 0 0 250000\n"
+                      "compressor 300000 750000 200000 600000\nmono 1\nmidi_channel 5\ngain_aux 60\n",
+                      b),
+          "file: one from before the finalizer is read");
+    same = b.mono && b.midi_channel == 5 && b.gain_aux == 60 && b.fin_presets_used == 0;
+    for (size_t p = 0; p < kNumFinParams; p++)
+        same = same && b.fin[p] == kFinalizerKnobs[p / kNumFxKnobs].defaults[p % kNumFxKnobs];
+    Check(same, "file: its settings intact, the finalizer neutral (its defaults)");
     FormatMaster(b, buf, sizeof(buf));
-    Check(strstr(buf, "compressor2 ") && !strstr(buf, "\ncompressor "),
-          "file: written as the new line only");
-    Check(ParseMaster("FRIZZ master 1\n", b) && b.comp[0] == kCompParams.defaults[0],
-          "file: an empty one, every default");
+    Check(!strstr(buf, "compressor") && strstr(buf, "\nfinalizer "), "file: written with the finalizer, not the old lines");
+    Check(ParseMaster("FRIZZ master 1\n", b) && b.fin[11] == 0.f, "file: an empty one, every default");
     Check(FormatMaster(a, buf, 20) == 0, "file: one that doesn't fit isn't written");
 
     // a file from when there was a randomizer: its line is skipped and not written again
-    Check(ParseMaster("FRIZZ master 1\ncompressor 500000 500000 500000 500000\n"
-                      "randomizer 125000 500000 1000000 0\nmono 1\n", b) &&
-              b.comp[0] == .5f && b.mono,
+    Check(ParseMaster("FRIZZ master 1\nrandomizer 125000 500000 1000000 0\nmono 1\n", b) && b.mono,
           "file: one with the randomizer's line, the rest read");
     FormatMaster(b, buf, sizeof(buf));
     Check(!strstr(buf, "randomizer"), "file: the randomizer's line isn't written again");
@@ -324,8 +231,6 @@ static void TestFile()
     a.mono = false;
     FormatMaster(a, buf, sizeof(buf));
     Check(ParseMaster(buf, b) && !b.mono, "file: stereo round-trips");
-    Check(ParseMaster("FRIZZ master 1\ncompressor 500000 500000 500000 500000\n", b) && !b.mono,
-          "file: one from before the mono switch, stereo");
 
     // MIDI's channel and transport following (MidiControl.h)
     a.Reset();
@@ -369,55 +274,31 @@ static void TestFile()
     Check(ParseMaster(buf, b) && b.midi_out == 2, "file: MIDI out round-trips");
     Check(ParseMaster("FRIZZ master 1\nmidi_out 3\n", b) && b.midi_out == 0,
           "file: one from before it, or a value past 2: off");
-    // every setting at its longest still fits the file's buffer
+
+    // every setting at its longest, every preset stored, still fits the file's buffer
     a.Reset();
-    for (size_t p = 0; p < kNumFxKnobs; p++)
-        a.comp[p] = 1.f;
+    for (size_t p = 0; p < kNumFinParams; p++)
+    {
+        a.fin[p] = 1.f;
+        for (size_t i = 0; i < kFinPresets; i++)
+            a.fin_presets[i][p] = .999999f;
+    }
+    a.fin_presets_used = 0x0f;
     a.mono = a.midi_transport = true;
     a.midi_channel = 16;
     a.clock_factor = 200;
     a.clock_source = 3;
     a.midi_out = 2;
     char big[kMasterFileMax];
-    Check(FormatMaster(a, big, sizeof(big)) > 0, "file: every setting at its longest fits");
-}
-
-/** The gain's ripple, dB, on a steady sine of freq Hz at 0dB: max minus min reduction
- *  over a second, once settled */
-static float Ripple(float freq, float speed)
-{
-    MasterComp c;
-    Setup(c, 1.f, 1.f, speed, 1.f);
-    float lo = 0.f, hi = -100.f;
-    for (int i = 0; i < 96000; i++)
-    {
-        float l = sinf(2.f * static_cast<float>(M_PI) * freq * i / kSr), r = l;
-        c.Process(&l, &r);
-        if (i >= 48000)
-        {
-            lo = fminf(lo, c.GetReduction());
-            hi = fmaxf(hi, c.GetReduction());
-        }
-    }
-    return hi - lo;
-}
-
-static void TestRipple()
-{
-    const float r50 = Ripple(50.f, 0.f), r100 = Ripple(100.f, 0.f);
-    printf("      gain ripple at 20:1, fast, on a 0dB sine: %.2fdB at 50Hz, %.2fdB at 100Hz\n",
-           r50, r100);
-    Check(r50 < 1.f && r100 < 1.f, "fast: the gain doesn't follow a bass note's waveform");
+    len = FormatMaster(a, big, sizeof(big));
+    printf("      the longest file: %zu bytes of %zu\n", len, kMasterFileMax);
+    Check(len > 0, "file: every setting at its longest, four presets, fits");
 }
 
 int main()
 {
-    TestBypass();
-    TestCurve();
-    TestSpeed();
-    TestSidechain();
-    TestRipple();
     TestLinked();
+    TestRipple();
     TestCeiling();
     TestFile();
     return Finish();

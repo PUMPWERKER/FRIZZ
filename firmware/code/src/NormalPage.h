@@ -10,7 +10,7 @@
  *  where the loop's soft limit takes it (Looper.h's kLoopCeiling), the gain's colour for
  *  kGainShownMs after a turn. The mode switch up shows the settings page instead
  *  (SettingsPage.h, ShowSettings): the hand's keys go there, while MIDI's still come here,
- *  and its settings go to the master file as the compressor's knobs do. VOLUME works there
+ *  and its settings go to the master file as the finalizer's knobs do. VOLUME works there
  *  too, handled here: its turns and presses, pages 1 and 2 only.
  *
  *  The CHOMPI, PLAY and LOOP keys' rules are in PlayKeys.h: SHIFT, the confirm tap in a scene
@@ -22,7 +22,7 @@
  *  flashes white. Knobs 1-4 edit the FX pressed or selected last. Which came first is judged
  *  with kShiftGraceMs of grace (#115), by when the audio callback saw the keys (KeyEdge), not
  *  when MainLoop gets to their events: SHIFT going down that soon after an FX key's or the
- *  compressor's press, or let go that soon before it, is SHIFT first, a select
+ *  finalizer's press, or let go that soon before it, is SHIFT first, a select
  *  (FxControls::LateSelect); the latch gesture leaves far more time between them. An FX key
  *  back down that soon after its release is a bounce, and takes the release back
  *  (FxControls::Rebound).
@@ -35,9 +35,12 @@
  *  page, where the white keys are loops. The key lights in the mode's colour (FxSlots.h), at
  *  full for kModeFlashMs after a switch.
  *
- *  The master compressor's key (kCompKey) selects it for the knobs, and flashes white; it's
- *  always on, so the key does nothing else. Its knobs go to the card (SceneStore's master
- *  file) kMasterSaveDelayMs after the last turn, so a sweep is one write.
+ *  The finalizer's key (kCompKey, #345) selects it for the knobs, and flashes white. Its knobs
+ *  go to the card (SceneStore's master file) kMasterSaveDelayMs after the last turn, so a
+ *  sweep is one write. The key lights in the colour of the module the knobs show (kFinColors),
+ *  never darker than kFinFloor, its gain reduction a pulse over that, and red over everything
+ *  while the safety limiter works. Its knob LEDs are the module's meters while they rest
+ *  (FinMeterLed), a knob's value for kFinValueMs after it's turned.
  *
  *
  *  Scenes: a recall sends only the parameters that change, within one audio block and at the
@@ -67,7 +70,7 @@
  *  MIDI (MidiControl.h): notes and FRIZZ's SysEx keys and detents come as the hand's do (ui.h);
  *  the rest, Remote() takes from MainLoop: a controller sets a parameter, a latch, a gain, the
  *  mix or the loop's speed outright, as its knob or key would, a program change is a scene key,
- *  a morph over MIDI glides at once over the bars set; the compressor's CCs aren't kept on the
+ *  a morph over MIDI glides at once over the bars set; the finalizer's CCs aren't kept on the
  *  card. The loop follows MIDI's transport in the audio callback (Looper::Follow). It answers
  *  SysEx queries over USB.
  */
@@ -80,6 +83,7 @@
 #include "PanelLeds.h"
 #include "PlayKeys.h"
 #include "SceneControls.h"
+#include "FinPresets.h"
 #include "SettingsPage.h"
 #include "TapTempo.h"
 #include "SceneStore.h"
@@ -153,7 +157,12 @@ namespace chompi
     // FX key LEDs: off, every FX key dimly in its colour (kFxOffLevel, PanelLeds.h)
     static const float kFxMeterFloorDb = -30.f; // the meters' range, up to 0 dBFS
     static const float kFxWhiteMax = .8f;     // on: how far the loudest audio pushes to white
-    static const float kCompMeterDb = 12.f;   // the compressor key's full brightness, dB reduced
+    static const float kFinMeterDb = 12.f;    // the finalizer's key at full, dB reduced, and a
+                                              // reduction's knob LED (FinKnobLed)
+    static const float kFinFloor = .35f;      // the finalizer's key at least, so its colour reads
+    static const float kFinMutedLevel = .05f; // a muted band's knob LED: a step of the chain, below kVuDim's glow
+    static const uint32_t kFinValueMs = 1500; // a finalizer knob turned shows its value this long
+    static const uint32_t kFinMuteFlashMs = 120; // and flashes this long as its band (un)mutes
     // A bipolar knob's LED (KnobColor): blue below its neutral point, white on it, orange above
     static constexpr const float* kBipolarLow = blue;
     static constexpr const float* kBipolarHigh = orange;
@@ -247,14 +256,15 @@ namespace chompi
             SetHpCue(0.f); // the headphones mirror the master at power-on
 
             fx_.Init(engine_);
-            // the compressor's knobs as they were left, from the card
-            for (size_t p = 0; p < kNumFxParams; p++)
-                fx_.SetComp(p, scenes_->master.comp[p]);
-            fx_.TakeCompChanged();
+            // the finalizer's knobs as they were left, from the card
+            for (size_t p = 0; p < kNumFinParams; p++)
+                fx_.SetFin(p, scenes_->master.fin[p]);
+            fx_.TakeFinChanged();
             // and the settings page's: the mono input, the clock's factor, the LEDs, the input
             // gains and AUX's variant
             settings_.Init(engine_, midi_, hw_, scenes_->master);
             scene_ctl_.Init(scenes_->scenes, &fx_);
+            fin_presets_.Init(&scenes_->master);
             keys_.Init(this);
 
             ResetSmtLeds();
@@ -282,7 +292,7 @@ namespace chompi
         bool MasterWaiting() const { return master_unsaved_; }
 
         /** The card taken back from the computer: what SceneStore::Reread took from it,
-         *  applied as at boot. The master settings at once, the compressor's knobs and the
+         *  applied as at boot. The master settings at once, the finalizer's knobs and the
          *  input gains gliding there as a turn does (and USB audio switched over MainLoop's
          *  way); what MIDI set without the card goes to the file's. The scenes for their next
          *  recall: what plays stays, an active one changed counts as edited, one emptied is no
@@ -291,9 +301,9 @@ namespace chompi
         {
             if (taken & SceneStore::kRereadMaster)
             {
-                for (size_t p = 0; p < kNumFxParams; p++)
-                    fx_.SetComp(p, scenes_->master.comp[p]);
-                fx_.TakeCompChanged();
+                for (size_t p = 0; p < kNumFinParams; p++)
+                    fx_.SetFin(p, scenes_->master.fin[p]);
+                fx_.TakeFinChanged();
                 settings_.Init(engine_, midi_, hw_, scenes_->master);
                 midi_->SetChannel(scenes_->master.midi_channel);
                 midi_->SetTransport(scenes_->master.midi_transport);
@@ -355,7 +365,10 @@ namespace chompi
                 drew_settings_ = settings;
                 ResetSmtLeds();
                 if (settings)
+                {
                     scene_ctl_.Cancel();
+                    fin_presets_.Cancel(); // the finalizer's presets' mode too (#345)
+                }
             }
             if (settings)
             {
@@ -403,7 +416,7 @@ namespace chompi
             // CHOMPI key: blinking in the mode's colour while a tap would confirm a scene
             // action, otherwise white while it is acting as SHIFT; on a sub-page dim in its
             // colour (nothing else may use it)
-            if (scene_ctl_.Armed() && !keys_.ShiftCombo())
+            if (SceneArmed() && !keys_.ShiftCombo())
                 PthLed(kChompiKeyLed, SceneModeColor(), BlinkOn(now, kPendingBlinkMs) ? 1.f : 0.f);
 #if !FRIZZ_BENCH
             else if (loops_shown_ && !Shift())
@@ -424,6 +437,10 @@ namespace chompi
             if (rising ? tap_fx_ >= kNumFx || buttonID != static_cast<uint16_t>(kFxSlots[tap_fx_].key)
                        : buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_26))
                 tap_fx_ = kNumFx;
+            // and the finalizer's module taps (tap_fin_) the same way
+            if (rising ? buttonID != static_cast<uint16_t>(kCompKey)
+                       : buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_26))
+                tap_fin_ = false;
 #if !FRIZZ_BENCH
             // anything but SHIFT between its taps: no double tap
             if (buttonID % kLoopsKeyBase != static_cast<uint16_t>(Hardware::SwId::KEY_26))
@@ -473,11 +490,23 @@ namespace chompi
 
             if (buttonID == static_cast<uint16_t>(kCompKey))
             {
-                // the compressor is always on: its key only selects, and always flashes
+                // the finalizer's key selects, and always flashes; held, the scene keys are
+                // its presets and SHIFT its bypass (FinHeld)
+                fin_down_ = rising;
                 if (rising)
                 {
-                    FxKeyDown(true);
-                    fx_.CompKeyPressed(ShiftAt(buttonID));
+                    // SHIFT + the key again in the same hold: the next module (#345), as an
+                    // effect's second mode (#306)
+                    const bool shift = ShiftAt(buttonID);
+                    const bool next = shift && tap_fin_ && !LoopsShownNow();
+                    FxKeyDown(!next);
+                    fx_.FinKeyPressed(shift);
+                    if (next)
+                    {
+                        fx_.NextModule();
+                        mode_flash_.Start(System::GetNow(), kModeFlashMs);
+                    }
+                    tap_fin_ = shift;
                 }
                 return true;
             }
@@ -564,12 +593,23 @@ namespace chompi
                 if (buttonID == static_cast<uint16_t>(kSceneKeys[slot]))
                 {
                     keys_.Used();
-                    ScenePressed(slot, Shift());
+                    if (FinPresetsShown())
+                        FinPresetPressed(slot);
+                    else
+                        ScenePressed(slot, Shift());
                     return true;
                 }
             }
             for (const SceneModeKey& key : kSceneModeKeys)
             {
+                if (buttonID == static_cast<uint16_t>(key.key) && FinPresetsShown())
+                {
+                    // the finalizer's presets' mode (#345), instead of the scenes'
+                    keys_.Used();
+                    scene_ctl_.Cancel();
+                    fin_presets_.ModePressed(key.mode);
+                    return true;
+                }
                 if (buttonID == static_cast<uint16_t>(key.key))
                 {
 #if !FRIZZ_BENCH
@@ -589,8 +629,17 @@ namespace chompi
                 if (buttonID == static_cast<uint16_t>(kFxKnobSwitches[knob]))
                 {
                     const size_t page = fx_.Page();
+                    const bool muted = fx_.Muted(knob);
                     if (fx_.KnobPressed(knob, Shift()))
                         keys_.Used();
+                    if (fx_.Selected() == kFinSelected)
+                    {
+                        // the finalizer: a band (un)muted flashes, a reset shows its value
+                        if (fx_.Muted(knob) != muted)
+                            mute_flash_[knob].Start(System::GetNow(), kFinMuteFlashMs);
+                        else
+                            fin_turned_[knob] = System::GetNow();
+                    }
                     // the page turned: its number blinks on the knob LEDs, as VOLUME's do
                     if (fx_.Page() != page)
                     {
@@ -629,6 +678,7 @@ namespace chompi
                     keys_.Used();
                 fx_.KnobTurned(encoderID, turns, Shift());
                 knob_page_flash_.Stop(); // a turn shows what it turns at once
+                fin_turned_[encoderID] = System::GetNow(); // on the finalizer: its value
             }
             else if (encoderID == kVolumeEncoder)
             {
@@ -662,7 +712,7 @@ namespace chompi
             if (midi_->TakeFocus(key))
             {
                 const size_t fx = FxOnWhiteKey(key);
-                fx_.Select(fx < kNumFx ? fx : kCompSelected);
+                fx_.Select(fx < kNumFx ? fx : kFinSelected);
                 Heard(feedback::kFocus);
             }
             MidiControl::Event event;
@@ -670,12 +720,17 @@ namespace chompi
                 RemoteEvent(event, now);
             bool on;
             while (midi_->TakeLatch(key, on))
+            {
                 if (FxOnWhiteKey(key) < kNumFx)
-                {
                     fx_.SetLatch(FxOnWhiteKey(key), on);
-                    HeardKey(key, feedback::kLatchSlot);
-                }
+                else
+                    fx_.SetBypass(!on); // the finalizer's CC 22: on, or bypassed
+                HeardKey(key, feedback::kLatchSlot);
+            }
             uint8_t id, raw;
+            // the finalizer's module first, so the focus's knobs after it reach the new one
+            if (midi_->TakeValueOf(midimap::kFinModule, raw))
+                RemoteValue(midimap::kFinModule, raw);
             while (midi_->TakeValue(id, raw))
                 RemoteValue(id, raw);
             // the focus as the hand or MIDI left it, for the global channel's knobs
@@ -740,6 +795,9 @@ namespace chompi
             case Event::INPUT:
                 RemoteInput(e.arg & 3, e.arg >> 2);
                 break;
+            case Event::FIN_PRESET:
+                RecallFinPreset(e.arg);
+                break;
 #if !FRIZZ_BENCH
             static_assert(midimap::kLoopBanks == loops::kBanks && midimap::kLoopPrograms == loops::kSlots
                               && midimap::kCubbiProgramBank == loops::kCubbiBank + 1,
@@ -771,21 +829,36 @@ namespace chompi
             Heard(which == 0 ? feedback::kSource : which == 1 ? feedback::kDry : feedback::kLive);
         }
 
-        /** A controller's value (midimap::Value): a knob, the compressor's too, which the card
+        /** A controller's value (midimap::Value): a knob, the finalizer's too, which the card
          *  doesn't get (#97 D6), a gain, the loop's speed or the crossfader */
         MIDI_CONTROL_ONCE void RemoteValue(uint8_t id, uint8_t raw)
         {
             using namespace midimap;
-            static_assert(kKeyParams == kNumFxParams, "a CC per parameter");
+            static_assert(kKeyParams == kNumFxParams && kNumValues - kFinParam == kNumFinParams,
+                          "a CC per parameter");
             const float value = MidiToKnob(raw, false);
             if (id < kOutGain)
             {
                 const size_t fx = FxOnWhiteKey(id / kKeyParams), param = id % kKeyParams;
                 if (fx < kNumFx)
+                {
                     fx_.SetParamTo(fx, param, value);
-                else
-                    fx_.SetComp(param, value, false);
-                HeardKey(id / kKeyParams, param);
+                    HeardKey(id / kKeyParams, param);
+                }
+                else // the finalizer's, through the focus: the module shown's
+                    RemoteFin(fx_.Module() * kNumFxKnobs + param, value);
+            }
+            else if (id >= kFinParam)
+                RemoteFin(id - kFinParam, value);
+            else if (id == kFinModule)
+            {
+                fx_.SetModule(raw / 32);
+                Heard(feedback::kFinModule);
+            }
+            else if (id >= kFinMute)
+            {
+                fx_.SetMute(id - kFinMute, raw >= 64);
+                Heard(static_cast<uint8_t>(feedback::kFinMutes + id - kFinMute));
             }
 
             else if (id <= kHpCue)
@@ -824,6 +897,26 @@ namespace chompi
             }
         }
 
+        /** The finalizer's preset i (0-3), if one is stored there: its knobs glide there, every
+         *  band unmuted (#345, #347). keep: the hand's, for the card; MIDI's CC 21 isn't (#97).
+         *  The knobs' new values go out as feedback */
+        MIDI_CONTROL_ONCE void RecallFinPreset(size_t i, bool keep = false)
+        {
+            if (i >= kFinPresets || !(scenes_->master.fin_presets_used >> i & 1))
+                return;
+            for (size_t p = 0; p < kNumFinParams; p++)
+                fx_.SetFin(p, scenes_->master.fin_presets[i][p], keep);
+            fx_.Unmute();
+            fin_preset_ = static_cast<uint8_t>(i);
+        }
+
+        /** The finalizer's parameter p from MIDI: not for the card */
+        void RemoteFin(size_t p, float value)
+        {
+            fx_.SetFin(p, value, false);
+            HeardFin(p);
+        }
+
         // ---- MIDI feedback (MidiFeedback.h) ----
 
         /** A feedback item's value now: false for nothing to send (an effect's while a morph
@@ -840,10 +933,29 @@ namespace chompi
             }
             if (item < kFocusItems)
                 return KeyValue(item - kGlobalLatches, kLatchSlot, v);
-            if (item < kCompItems)
-                return KeyValue(WhiteKeyOfFx(fx_.Selected()), item - kFocusItems, v);
+            if (item < kFinItems)
+            {
+                // the finalizer in focus: the module shown's knobs on CC 14-17
+                const size_t slot = item - kFocusItems;
+                if (fx_.Selected() == kFinSelected)
+                    return slot < kNumFxKnobs && FinValue(fx_.Module() * kNumFxKnobs + slot, v);
+                return KeyValue(WhiteKeyOfFx(fx_.Selected()), slot, v);
+            }
             if (item < kFocus)
-                return KeyValue(WhiteKeyOfFx(kNumFx), item - kCompItems, v);
+            {
+                // the rest of the finalizer's channel, not where the global one is
+                if (!channel || channel == kKeys)
+                    return false;
+                if (item < kFinModule)
+                    return FinValue(kNumFxParams + item - kFinItems, v);
+                if (item == kFinModule)
+                {
+                    v = static_cast<uint8_t>(fx_.Module() * 32);
+                    return true;
+                }
+                v = fx_.Muted(item - kFinMutes) ? 127 : 0;
+                return true;
+            }
             switch (item)
             {
             case kFocus:
@@ -886,14 +998,26 @@ namespace chompi
             return false;
         }
 
-        /** White key key's knob 0-7 or latch (feedback::kLatchSlot) */
+        /** The finalizer's parameter p, if it has one there */
+        bool FinValue(size_t p, uint8_t& v)
+        {
+            v = feedback::KnobTo7(fx_.FinParam(p < kNumFinParams ? p : 0));
+            return FxControls<PassthroughEngine>::FinUsed(p);
+        }
+
+        /** White key key's knob 0-7 or latch (feedback::kLatchSlot); the finalizer's
+         *  parameters 0-6 there, and its on or off on the latch's CC */
         bool KeyValue(size_t key, size_t slot, uint8_t& v)
         {
             const size_t fx = FxOnWhiteKey(key);
             if (fx == kNumFx)
             {
-                v = feedback::KnobTo7(fx_.CompParam(slot < kNumFxParams ? slot : 0));
-                return slot < kNumFxParams && ((kCompParams.knobs >> slot) & 1);
+                if (slot == feedback::kLatchSlot)
+                {
+                    v = fx_.Bypassed() ? 0 : 127;
+                    return true;
+                }
+                return slot < midimap::kFinPresetCC - midimap::kKnobCC && FinValue(slot, v);
             }
             // a morph: where it lands goes out, once it has
             if (fx_.Morphing() || hand_fader_)
@@ -921,8 +1045,17 @@ namespace chompi
                 Heard(static_cast<uint8_t>(kGlobalLatches + key));
             if (key == WhiteKeyOfFx(fx_.Selected()))
                 Heard(static_cast<uint8_t>(kFocusItems + slot));
-            if (FxOnWhiteKey(key) == kNumFx && slot < kNumFxParams)
-                Heard(static_cast<uint8_t>(kCompItems + slot));
+        }
+        /** The finalizer's parameter p, every CC it goes out on */
+        void HeardFin(size_t p)
+        {
+            using namespace feedback;
+            if (p < kNumFxParams)
+                Heard(static_cast<uint8_t>((kKeys - 1) * kKeySlots + p));
+            else
+                Heard(static_cast<uint8_t>(kFinItems + p - kNumFxParams));
+            if (fx_.Selected() == kFinSelected && p / kNumFxKnobs == fx_.Module())
+                Heard(static_cast<uint8_t>(kFocusItems + p % kNumFxKnobs));
         }
 
         /** A pass of MIDI feedback's sweep: over USB if MIDI out goes there, into the jack's
@@ -1057,13 +1190,13 @@ namespace chompi
                 break;
             }
             case kCmdParams:
-                // both pages of an effect's or the compressor's
+                // both pages of an effect's, or the finalizer's four modules
                 if (q.a > kNumFx)
                     return;
                 d[n++] = q.a;
-                for (size_t p = 0; p < kNumFxParams; p++)
-                    n = Put14(d, n, KnobToMidi14(q.a == kNumFx ? fx_.CompParam(p)
-                                                               : fx_.Param(q.a, p)));
+                static_assert(1 + 2 * kNumFinParams <= MidiControl::kMaxReply, "the finalizer's fit");
+                for (size_t p = 0; p < (q.a == kNumFx ? kNumFinParams : kNumFxParams); p++)
+                    n = Put14(d, n, KnobToMidi14(q.a == kNumFx ? fx_.FinParam(p) : fx_.Param(q.a, p)));
                 break;
             case kCmdLeds:
             {
@@ -1349,8 +1482,12 @@ namespace chompi
             return loopxfer::Put7(d, n, looper.Rewinds(), 3);
         }
 
-        /** LEVELS: part 0 the effects' meters; part 1 the VU meter, the compressor's reduction
-         *  and the peaks since the last ask, the meters started by the first */
+        /** LEVELS: part 0 the effects' meters; part 1 the VU meter, the finalizer's reduction
+         *  and the peaks since the last ask, the meters started by the first; part 2 the
+         *  finalizer's meters: the input's peak and the bands' since the last ask (full scale
+         *  8192, up to twice it), their reductions (dB down, x100), their correlations (+1 at
+         *  16383, -1 at 0) and the limiter's deepest reduction since the last ask, the band
+         *  meters run while key 15 shows EQ or Width */
         MIDI_CONTROL_ONCE size_t DevLevels(uint8_t part, uint8_t* d, size_t n)
         {
             using namespace dev;
@@ -1359,6 +1496,18 @@ namespace chompi
                 for (size_t fx = 0; fx < kNumFx; fx++)
                     n = PutScaled(d, n, engine_->GetFxLevel(fx), 16383.f, 2);
                 return n;
+            }
+            if (part == 2)
+            {
+                Finalizer& fin = engine_->Fin();
+                n = PutScaled(d, n, fin.TakeInputPeak(), 8192.f, 2);
+                for (size_t b = 0; b < Finalizer::kBands; b++)
+                    n = PutScaled(d, n, fin.TakeBandPeak(b), 8192.f, 2);
+                for (size_t b = 0; b < Finalizer::kBands; b++)
+                    n = PutScaled(d, n, -fin.BandReduction(b), 100.f, 2);
+                for (size_t b = 0; b < Finalizer::kBands; b++)
+                    n = PutScaled(d, n, .5f + .5f * fin.BandCorrelation(b), 16383.f, 2);
+                return PutScaled(d, n, -fin.TakeLimiterReduction(), 100.f, 2);
             }
             Audio& audio = midi_->audio;
             float peak[Audio::kPeaks];
@@ -1371,7 +1520,7 @@ namespace chompi
             audio.metering = true;
             audio.on = true;
             n = PutScaled(d, n, engine_->GetVUSample(), 16383.f, 2);
-            n = PutScaled(d, n, -engine_->GetCompReduction(), 100.f, 2);
+            n = PutScaled(d, n, -engine_->GetFinReduction(), 100.f, 2);
             for (float p : peak)
                 n = PutScaled(d, n, p, 8192.f, 2); // full scale 8192, up to twice it
             return n;
@@ -1405,11 +1554,17 @@ namespace chompi
         size_t DevValues(uint8_t group, uint16_t* v)
         {
             using namespace dev;
-            if (group < kNumFx || group == kGroupComp)
+            if (group < kNumFx)
             {
                 for (size_t p = 0; p < kNumFxParams; p++)
-                    v[p] = KnobToMidi14(group == kGroupComp ? fx_.CompParam(p) : fx_.Param(group, p));
+                    v[p] = KnobToMidi14(fx_.Param(group, p));
                 return kNumFxParams;
+            }
+            if (group == kGroupFin)
+            {
+                for (size_t p = 0; p < kNumFinParams; p++)
+                    v[p] = KnobToMidi14(fx_.FinParam(p));
+                return kNumFinParams;
             }
             if (group == kGroupLatch)
             {
@@ -1447,10 +1602,10 @@ namespace chompi
                 fx_.SetParamTo(group, index, value);
                 HeardKey(WhiteKeyOfFx(group), index);
             }
-            else if (group == kGroupComp && index < kNumFxParams)
+            else if (group == kGroupFin && FxControls<PassthroughEngine>::FinUsed(index))
             {
-                fx_.SetComp(index, value);
-                HeardKey(WhiteKeyOfFx(kNumFx), index);
+                fx_.SetFin(index, value);
+                HeardFin(index);
             }
             else if (group == kGroupLatch && index < kNumFx && raw <= 1)
             {
@@ -1537,7 +1692,7 @@ namespace chompi
 
         // PlayKeys' Host
         friend class PlayKeys<NormalPage>;
-        inline bool SceneArmed() const { return scene_ctl_.Armed(); }
+        inline bool SceneArmed() const { return scene_ctl_.Armed() || fin_presets_.Armed(); }
         /** SHIFT going down: SHIFT + key after all if an FX key's or the compressor's press
          *  came at most kShiftGraceMs before it, a select, which a plain press of an FX key
          *  takes back (FxControls::LateSelect); otherwise the FX keys held will latch */
@@ -1549,6 +1704,8 @@ namespace chompi
 #endif
             const uint16_t shift = static_cast<uint16_t>(Hardware::SwId::KEY_26);
             bool select = Grace(static_cast<uint16_t>(kCompKey), true, shift);
+            if (select)
+                tap_fin_ = true; // the first of the finalizer's module taps
             for (size_t fx = 0; fx < kNumFx; fx++)
             {
                 if (Grace(static_cast<uint16_t>(kFxSlots[fx].key), true, shift))
@@ -1562,6 +1719,15 @@ namespace chompi
                     if (kFxModes >> fx & 1)
                         tap_fx_ = fx; // the first of a mode's taps (#306)
                 }
+            }
+            // key 15 held, then SHIFT: the finalizer bypassed or on again (#345), unless a mode
+            // waits for SHIFT's confirm
+            if (!select && fin_down_ && fin_presets_.Mode() == SceneMode::NONE && !scene_ctl_.Armed())
+            {
+                fx_.SetBypass(!fx_.Bypassed());
+                Heard(static_cast<uint8_t>((feedback::kKeys - 1) * feedback::kKeySlots + feedback::kLatchSlot));
+                fx_.ShiftUsed();
+                return true;
             }
             if (!select)
                 return fx_.ShiftPressed();
@@ -1731,6 +1897,7 @@ namespace chompi
             if (on)
             {
                 scene_ctl_.Cancel();
+                fin_presets_.Cancel();
                 if (!loops_.Show(cubbi))
                 {
                     bank_refused_key_ = kBothBankKeys;
@@ -1875,19 +2042,20 @@ namespace chompi
                 scene_flash_signal_.Start(now);
             }
 
-            // the compressor's knobs to the card, once they've been left alone a while: those
+            // the finalizer's knobs to the card, once they've been left alone a while: those
             // the hand or SysEx set, not MIDI's CCs (#97 D6)
-            if (const uint8_t comp = fx_.TakeCompChanged())
+            if (const uint16_t fin = fx_.TakeFinChanged())
             {
-                for (size_t p = 0; p < kNumFxParams; p++)
-                    if ((comp >> p) & 1)
-                        scenes_->master.comp[p] = fx_.CompParam(p);
+                for (size_t p = 0; p < kNumFinParams; p++)
+                    if ((fin >> p) & 1)
+                        scenes_->master.fin[p] = fx_.FinParam(p);
                 MasterChanged(now);
             }
-            // a failed write: the compressor's key blinks red, and the settings page's key
+            // a failed write: the finalizer's key blinks red, and the settings page's key
             // changed last, and it's tried again a few times
             if (scenes_->TakeMasterFailed())
             {
+                FinFlash(now, false);
                 master_refused_.Start(now);
                 settings_.SaveFailed(now);
                 master_saving_ = false;
@@ -1901,6 +2069,7 @@ namespace chompi
             {
                 settings_.Saved();
                 master_saving_ = false;
+                FinFlash(now, true);
             }
             if (master_unsaved_ && now - master_changed_at_ > kMasterSaveDelayMs)
             {
@@ -2102,9 +2271,58 @@ namespace chompi
 
         void ConfirmScene()
         {
+            if (fin_presets_.Armed())
+            {
+                // a preset of the finalizer's: to the card at once, flashing once written
+                const SceneMode mode = fin_presets_.Mode();
+                fin_flash_ = fin_presets_.Confirm(fx_.FinParams());
+                if (mode == SceneMode::SAVE)
+                    fin_preset_ = static_cast<uint8_t>(fin_flash_);
+                else if (mode == SceneMode::DELETE && fin_flash_ == fin_preset_)
+                    fin_preset_ = kNoFinPreset;
+                fin_flash_waiting_ = true;
+                fin_flash_signal_.Stop();
+                MasterChanged(System::GetNow());
+                master_changed_at_ = System::GetNow() - kMasterSaveDelayMs - 1;
+                return;
+            }
             const int slot = scene_ctl_.Confirm();
             if (slot != kNoScene)
                 FlashWhenSaved(slot);
+        }
+
+        /** The scene keys show the finalizer's presets: key 15 held, or a mode for them */
+        inline bool FinPresetsShown() const
+        {
+            return (fin_down_ || fin_presets_.Mode() != SceneMode::NONE) && !LoopsShownFin();
+        }
+        inline bool LoopsShownFin() const
+        {
+#if !FRIZZ_BENCH
+            return loops_shown_;
+#else
+            return false;
+#endif
+        }
+
+        /** A scene key while the presets show: scenes 1-4's keys are presets 1-4, the blank
+         *  scene's nothing. In a mode it picks; else it recalls a stored one, the knobs gliding
+         *  there, every band unmuted; one it can't blinks red */
+        void FinPresetPressed(size_t slot)
+        {
+            if (slot == kBlankSlot)
+                return;
+            const size_t p = slot - 1;
+            const bool ok = fin_presets_.Mode() != SceneMode::NONE ? fin_presets_.Pressed(p)
+                                                                    : fin_presets_.Used(p);
+            if (!ok)
+            {
+                fin_refused_ = static_cast<int>(slot);
+                fin_refused_signal_.Start(System::GetNow());
+                return;
+            }
+            if (fin_presets_.Mode() == SceneMode::NONE)
+                RecallFinPreset(p, true);
         }
 
         /** A slot changed: to the card, and it flashes once SceneStore::Process has written
@@ -2126,16 +2344,84 @@ namespace chompi
         /** The current scene mode's colour, white without one */
         const float* SceneModeColor() const
         {
+            // the finalizer's presets' mode where one runs (#345)
+            const SceneMode mode = fin_presets_.Mode() != SceneMode::NONE ? fin_presets_.Mode() : scene_ctl_.Mode();
             for (const SceneModeKey& key : kSceneModeKeys)
             {
-                if (scene_ctl_.Mode() == key.mode)
+                if (mode == key.mode)
                     return key.color;
             }
             return white;
         }
 
+        /** A preset's write came out: its key flashes white, or red where it failed */
+        void FinFlash(uint32_t now, bool ok)
+        {
+            if (!fin_flash_waiting_)
+                return;
+            fin_flash_waiting_ = false;
+            fin_flash_ok_ = ok;
+            fin_flash_signal_.Start(now);
+        }
+
+        /** The finalizer's presets on scenes 1-4's keys (FinPresetsShown): in a mode as the
+         *  scenes' are, its colour on the mode keys; else the stored ones dim, the recalled one
+         *  white; a write's flash, a refusal's red */
+        void DrawFinPresetLeds(uint32_t now)
+        {
+            const SceneMode mode = fin_presets_.Mode();
+            const float* mode_color = white;
+            for (const SceneModeKey& key : kSceneModeKeys)
+            {
+                SmtLed(KeyLedOf(key.key), key.color, mode == key.mode ? 1.f : kFxOffLevel);
+                if (mode == key.mode)
+                    mode_color = key.color;
+            }
+            const bool blink_on = BlinkOn(now, kPendingBlinkMs);
+            for (size_t slot = 0; slot < kNumSlots; slot++)
+            {
+                const int s = static_cast<int>(slot), p = s - 1;
+                const float* color = white;
+                float level = 0.f;
+                if (slot == kBlankSlot)
+                    level = 0.f;
+                else if (p == fin_flash_ && fin_flash_waiting_)
+                    level = 1.f;
+                else if (p == fin_flash_ && fin_flash_signal_.Active(now))
+                {
+                    color = fin_flash_ok_ ? white : red;
+                    level = fin_flash_signal_.BlinkLevel(now);
+                }
+                else if (s == fin_refused_ && fin_refused_signal_.Active(now))
+                {
+                    color = red;
+                    level = fin_refused_signal_.BlinkLevel(now);
+                }
+                else if (mode != SceneMode::NONE)
+                {
+                    color = mode_color;
+                    if (p == fin_presets_.Source())
+                        level = 1.f;
+                    else if (p == fin_presets_.Selected())
+                        level = blink_on ? 1.f : 0.f;
+                    else if (fin_presets_.Valid(static_cast<size_t>(p)))
+                        level = kFxOffLevel;
+                }
+                else if (p == fin_preset_ && fin_presets_.Used(static_cast<size_t>(p)))
+                    level = 1.f;
+                else if (fin_presets_.Used(static_cast<size_t>(p)))
+                    level = kFxOffLevel;
+                SmtLed(KeyLedOf(kSceneKeys[slot]), color, level);
+            }
+        }
+
         void DrawSceneLeds(uint32_t now)
         {
+            if (FinPresetsShown())
+            {
+                DrawFinPresetLeds(now);
+                return;
+            }
             const SceneMode mode = scene_ctl_.Mode();
             const float* mode_color = SceneModeColor();
             for (const SceneModeKey& key : kSceneModeKeys)
@@ -2209,11 +2495,20 @@ namespace chompi
             // knob the page doesn't use is dark. On an effect's page 2, knob 4's is its output's
             // VU meter (#117); a page just turned blinks its number on all four, white
             const size_t selected = fx_.Selected();
-            const bool comp = selected == kCompSelected;
+            const bool comp = selected == kFinSelected;
             const bool shifter = !comp && fx_.Mode(selected); // the phaser's second mode (#306)
             const float* const* colors = comp      ? kCompKnobColors
                                          : shifter ? kShifterKnobColors
                                                    : kFxSlots[selected].knob_colors;
+            // the finalizer's meters run while its knobs show them
+            const uint8_t meter = comp ? static_cast<uint8_t>(fx_.Module()) : Finalizer::kNoMeter;
+            if (meter != fin_meter_)
+            {
+                fin_meter_ = meter;
+                engine_->SetFinMeter(meter);
+            }
+            if (comp)
+                FinMeters();
             // the page it blinks for, so another effect's page 1 isn't blinked over
             const bool flash = knob_page_flash_.Active(now) && fx_.Page() == knob_flash_page_;
             const float lit = knob_page_flash_.BlinkLevel(now);
@@ -2223,7 +2518,9 @@ namespace chompi
                 float rgb[3] = {0.f, 0.f, 0.f};
                 if (flash)
                     rgb[0] = rgb[1] = rgb[2] = lit;
-                else if (fx_.KnobUsed(k) && fx_.Page() && !comp && k == kVuKnob)
+                else if (comp)
+                    FinKnobLed(k, now, knobs, rgb);
+                else if (fx_.KnobUsed(k) && fx_.Page() && k == kVuKnob)
                     FxVu(selected, rgb);
                 else if (shifter && fx_.ParamOf(k) == Phaser::DIRECTION)
                     Xfade3(kBipolarLow, white, kBipolarHigh, fx_.Knob(k), rgb); // down, both, up
@@ -2261,11 +2558,15 @@ namespace chompi
                 SetSmtLedFloat(KeyLedOf(kFxSlots[fx].key), rgb[0], rgb[1], rgb[2]);
             }
 
-            // the compressor's key: its gain reduction, from dim up to full, white; turning red
-            // while the safety limiter works, the one thing that sets the level by itself; a
-            // select flashes
-            const float reduced = -engine_->GetCompReduction() / kCompMeterDb;
-            const float level = kFxOffLevel + (1.f - kFxOffLevel) * fclamp(reduced, 0.f, 1.f);
+            // the finalizer's key: the module's colour, its gain reduction a pulse from
+            // kFinFloor up to full, dim while it's bypassed; turning red while the safety
+            // limiter works, the one thing that sets the level by itself; a select flashes
+            const float reduced = -engine_->GetFinReduction() / kFinMeterDb;
+            // a module just picked (SHIFT + the key twice): at full in its colour a moment
+            const float level = comp && mode_flash_.Active(now) ? 1.f
+                                : fx_.Bypassed()               ? kFxOffLevel
+                                               : kFinFloor + (1.f - kFinFloor) * fclamp(reduced, 0.f, 1.f);
+            const float* fin_color = kFinColors[fx_.Module()];
             const float lim_db = -20.f * log10f(fmaxf(engine_->TakeLimiterGain(), 1e-6f));
             const float lim = fclamp((lim_db - kLimStartDb) / (kLimFullDb - kLimStartDb), 0.f, 1.f);
             if (lim >= lim_shown_ || now - lim_at_ > kLimHoldMs)
@@ -2273,15 +2574,87 @@ namespace chompi
                 lim_shown_ = lim;
                 lim_at_ = now;
             }
-            float rgb[3] = {level, level, level};
+            float rgb[3];
             for (int c = 0; c < 3; c++)
-                rgb[c] += lim_shown_ * (red[c] - rgb[c]);
+                rgb[c] = level * fin_color[c] + lim_shown_ * (red[c] - level * fin_color[c]);
             if (comp && select_flash_.Active(now))
                 Flash(rgb);
             if (master_refused_.Active(now))
                 SmtLed(kCompKeyLed, red, master_refused_.BlinkLevel(now));
             else
                 SetSmtLedFloat(kCompKeyLed, rgb[0], rgb[1], rgb[2]);
+        }
+
+        /** The finalizer's meters, falling back slowly as the input's: from the engine's peaks */
+        void FinMeters()
+        {
+            Finalizer& fin = engine_->Fin();
+            fin_level_[0] = fmaxf(fin.TakeInputPeak(), fin_level_[0] * kInMeterFall);
+            for (size_t b = 0; b < kFinBands; b++)
+                fin_level_[1 + b] = fmaxf(fin.TakeBandPeak(b), fin_level_[1 + b] * kInMeterFall);
+            fin_lim_ = fminf(fin.TakeLimiterReduction(), fin_lim_ * kInMeterFall);
+        }
+
+        /** A finalizer knob's LED: a muted band's nearly dark (a flash as it toggles), a knob
+         *  just turned its value, else the module's meter there (#345): Level's knob 1 the
+         *  input, 4 the limiter's reduction; EQ's the bands' levels after it; Comp's their
+         *  reductions; Width's their correlations; the rest their values */
+        void FinKnobLed(size_t k, uint32_t now, const FxParams& knobs, float* rgb)
+        {
+            if (!fx_.KnobUsed(k))
+                return;
+            const size_t m = fx_.Module();
+            const float* color = kFinColors[m];
+            const bool band = m != kFinLevel && k < kFinBands;
+            if (band && mute_flash_[k].Active(now))
+            {
+                rgb[0] = rgb[1] = rgb[2] = 1.f;
+                return;
+            }
+            if (band && fx_.Muted(k))
+            {
+                for (int c = 0; c < 3; c++)
+                    rgb[c] = kFinMutedLevel * color[c];
+                return;
+            }
+            const bool meter = band || (m == kFinLevel && (k == 0 || k == kNumFxKnobs - 1));
+            if (!meter || now - fin_turned_[k] < kFinValueMs)
+            {
+                KnobColor(knobs, fx_.ParamOf(k), fx_.Knob(k), kCompKnobColors, rgb);
+                return;
+            }
+            Finalizer& fin = engine_->Fin();
+            float t, gr;
+            switch (m)
+            {
+            case Finalizer::WIDTH:
+            {
+                static const float* const kCorr[4] = {green, yellow, pink, red};
+                const float* c = kCorr[Finalizer::CorrelationLed(fin.BandCorrelation(k))];
+                rgb[0] = c[0];
+                rgb[1] = c[1];
+                rgb[2] = c[2];
+                return;
+            }
+            case Finalizer::COMP:
+                gr = fin.BandReduction(k);
+                break;
+            case Finalizer::EQ:
+            default:
+                if (m == kFinLevel && k != 0)
+                {
+                    gr = fin_lim_;
+                    break;
+                }
+                // a level: dim to green to yellow to pink, from kInMeterFloorDb to the reference
+                t = fclamp(1.f - 20.f * log10f(fmaxf(fin_level_[m == kFinLevel ? 0 : 1 + k], 1e-6f)) / kInMeterFloorDb, 0.f, 1.f);
+                Xfade4(kVuDim, green, yellow, pink, t, rgb);
+                return;
+            }
+            // a reduction: the module's colour, from the meter's floor up to full
+            const float level = kVuDim[0] + (1.f - kVuDim[0]) * fclamp(-gr / kFinMeterDb, 0.f, 1.f);
+            for (int c = 0; c < 3; c++)
+                rgb[c] = level * color[c];
         }
 
         /** fx's meter (about its output's amplitude, a send's return) on a dB scale: 0 at
@@ -2602,8 +2975,24 @@ namespace chompi
         bool downbeat_ = false;     // it's a bar's 1
         LedSignal select_flash_; // on the selected FX's key
         LedSignal mode_flash_;   // on its key after its mode switched (#306)
+        bool tap_fin_ = false;   // SHIFT + key 15 last in this hold: again, its next module
         size_t tap_fx_ = kNumFx; // SHIFT + this key last in this hold, nothing since: the key
                                  // again switches its mode (kFxModes); kNumFx: none
+        LedSignal mute_flash_[kFinBands]; // a finalizer knob as its band (un)mutes (#347)
+        uint32_t fin_turned_[kNumFxKnobs]; // when each knob last turned (FinKnobLed); the page
+                                           // is static, so these start at 0
+        float fin_level_[1 + kFinBands];   // the finalizer's input and bands' meters, falling
+        float fin_lim_ = 0.f;                   // and its limiter's reduction, dB, rising back
+        uint8_t fin_meter_ = Finalizer::kNoMeter; // the module whose meters the engine runs
+        uint8_t fin_preset_ = kNoFinPreset;       // the finalizer's preset recalled last
+        static const uint8_t kNoFinPreset = 0xFF;
+        bool fin_down_ = false;                   // key 15 held (FinPresetsShown)
+        FinPresets fin_presets_;                  // their SAVE / COPY / DELETE
+        int fin_flash_ = kNoScene;                // the preset written last, flashing
+        bool fin_flash_waiting_ = false, fin_flash_ok_ = false;
+        LedSignal fin_flash_signal_;
+        int fin_refused_ = kNoScene;              // a scene key a preset refused
+        LedSignal fin_refused_signal_;
         // when each key of this page last went down ([1]) and up ([0]), by the audio
         // callback's clock (KeyEdge), for the grace of kShiftGraceMs
         static const int kEdgeKeys = static_cast<int>(Hardware::SwId::SR_LAST);

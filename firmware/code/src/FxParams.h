@@ -50,6 +50,10 @@ static const float kPhaserRatePoints[] = {0.f, .1f, .2f, .3f, .4f, .5f, .5f + 1.
                                           .5f + 2.f / 12.f, .75f, .5f + 4.f / 12.f,
                                           .5f + 5.f / 12.f, 1.f};
 
+// The finalizer's stepped knobs (Finalizer.h): its drive's types, Boost, Tube and Fuzz, and
+// its compressor's characters
+static const uint8_t kFinTypes = 3, kFinCharacters = 6;
+
 /** The coarse grids, by index into kFxGrids: FxParams keeps a byte per parameter rather than
  *  a copy of its grid */
 enum FxGridId : uint8_t
@@ -58,9 +62,8 @@ enum FxGridId : uint8_t
     GRID_TONE,     // octaves of a tone lowpass, 200Hz * 100^val, counted down from fully
                    // open at the top: 20k, 10k, 5k ... 312Hz
     GRID_LEVEL,    // Level (FxOutput.h): 6dB steps, 0dB on one
-    GRID_QUARTER,  // quarters: the shifter's stereo in quarter semitones, the compressor's
-                   // ratio on its points 1.5, 2, 4, 8 and 20:1
-    GRID_EIGHTH,   // eighths: the compressor's makeup in 3dB
+    GRID_QUARTER,  // quarters: the shifter's stereo in quarter semitones
+    GRID_EIGHTH,   // eighths: the finalizer's input in 3dB
     GRID_SHIFT,    // the shifter's shift: octaves, fifths and fourths (kShiftPoints)
     GRID_DRIVE,    // the folder's drive: doublings, 1x to 32x
     GRID_RATE,     // the crusher's rate: 48kHz / 4, 8 ... 64, so 12k, 6k, 3k, 1.5k, 750Hz
@@ -77,7 +80,10 @@ enum FxGridId : uint8_t
     GRID_DELAY_DIVISION,
     GRID_CHAOS_GRID,
     GRID_PHASER_RATE, // the phaser's rate: 10% in Hz, then its divisions (kPhaserRatePoints)
-    GRID_OCTAVE6,     // octaves of a knob six octaves wide: the phaser's centre
+    GRID_OCTAVE6,     // octaves of a knob six octaves wide: the phaser's centre; sixths: the
+                      // finalizer's Loud in 3dB
+    GRID_FIN_TYPE,    // the finalizer's drive types
+    GRID_FIN_CHARACTER, // and its compressor's characters
     kNumFxGrids,
 };
 static const FxGrid kFxGrids[] = {
@@ -103,6 +109,8 @@ static const FxGrid kFxGrids[] = {
     StepGrid(Chaos::kNumGrids),
     {0.f, 1.f, kPhaserRatePoints, sizeof(kPhaserRatePoints) / sizeof(kPhaserRatePoints[0])},
     {0.f, 1.f / 6.f, nullptr, 0},
+    StepGrid(kFinTypes),
+    StepGrid(kFinCharacters),
 };
 static_assert(sizeof(kFxGrids) / sizeof(kFxGrids[0]) == kNumFxGrids, "one per FxGridId");
 
@@ -245,13 +253,21 @@ static_assert(DelaySend::LEVEL == FxOutput::kLevel && ReverbSend::LEVEL == FxOut
                   && DelaySend::DUCKING == kFxOwnKnob && ReverbSend::DUCKING == kFxOwnKnob,
               "the sends' level on page 2's knob 4, their ducking on page 1's (#172)");
 
-// The master compressor's knobs (MasterComp.h), edited like an FX's from its own key, but
-// always on and not part of a scene: threshold (off), ratio (4:1), attack (5.5ms), release
-// (155ms); page 2: mix (fully compressed) on Mix's knob, the sidechain highpass (off) on
-// Band's, makeup (0dB) on Level's. Coarse ratio: its points 1.5, 2, 4, 8 and 20:1; coarse
-// makeup: 3dB
-static const FxParams kCompParams = {
-    0xdf, {0.f, .5f, .5f, .5f, 1.f, 0.f, 0.f, 0.f}, {0, 0, 0, 0},
-    {GRID_10, GRID_QUARTER, GRID_10, GRID_10, GRID_10, GRID_10, GRID_10, GRID_EIGHTH}, 0, 0};
+// The finalizer's knobs (Finalizer.h), edited like an FX's from its own key, but always on
+// and not part of a scene: four modules of four knobs, no page 2, parameter m * 4 + k on
+// module m's knob k. Each at its default is neutral, and all of them together an exact bypass.
+// Level: input (0dB, the centre), drive (off), type (Boost), Loud (off); coarse input and Loud
+// in 3dB. EQ: the low, mid and high bands' levels (0dB, the centre). Comp: the three bands'
+// characters (Standard & slow), Depth (off). Width: the three bands' widths (unchanged, the
+// centre)
+static const size_t kFinModules = 4, kNumFinParams = kFinModules * kNumFxKnobs;
+static const FxParams kFinalizerKnobs[kFinModules] = {
+    {0x0f, {.5f, 0.f, 0.f, 0.f}, {0, 0, kFinTypes, 0},
+     {GRID_EIGHTH, GRID_10, GRID_FIN_TYPE, GRID_OCTAVE6}, 0, 0x01},
+    {0x07, {.5f, .5f, .5f, 0.f}, {0, 0, 0, 0}, {GRID_10, GRID_10, GRID_10, GRID_10}, 0, 0x07},
+    {0x0f, {.4f, .4f, .4f, 0.f}, {kFinCharacters, kFinCharacters, kFinCharacters, 0},
+     {GRID_FIN_CHARACTER, GRID_FIN_CHARACTER, GRID_FIN_CHARACTER, GRID_10}, 0, 0},
+    {0x07, {.5f, .5f, .5f, 0.f}, {0, 0, 0, 0}, {GRID_10, GRID_10, GRID_10, GRID_10}, 0, 0x07},
+};
 
 } // namespace chompi

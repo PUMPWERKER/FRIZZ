@@ -11,10 +11,15 @@
 //    the output steps no further than the sweep does (a guard; it never clicked)
 //  - the crusher and the filter punched in after they've gone to sleep (FxGate::Asleep), at
 //    their harshest: no step and no peak in the first 100ms beyond what they make settled
+//  - the finalizer (#345) switching what changes its phase or latency: the bands (an EQ
+//    turned off its centre and back), the drive on and off, Loud's 1 ms delay in and out, its
+//    bypass, a band muted and unmuted: each fades, no step beyond the sine's own (a cut
+//    straight to the 1 ms later signal would step by up to .6)
 //  - every insert and the resonator punched in from asleep through the chain, in the
 //    device's runs of 24 samples (FxChain::Insert), on a 220Hz and a 50Hz sine: the same
 #include <cmath>
 #include <vector>
+#include "Finalizer.h"
 #include "FxChain.h"
 #include "check.h"
 
@@ -304,8 +309,67 @@ static void TestChainPunchIns()
             ChainPunchIn(c.fx, c.name, c.vals, c.amp, hz);
 }
 
+/** The finalizer on the 220Hz sine in runs of 24, a change made at 0.5 s, back at 1.5 s: the
+ *  largest step of its output over the 3 s */
+static float FinStep(void (*change)(Finalizer&, bool))
+{
+    Finalizer f;
+    f.Init(kSr);
+    float step = 0.f, last = 0.f;
+    float l[24], r[24];
+    for (size_t b = 0; b < 3 * 48000 / 24; b++)
+    {
+        if (b == 1000)
+            change(f, true);
+        if (b == 3000)
+            change(f, false);
+        for (size_t i = 0; i < 24; i++)
+            l[i] = r[i] = Sine(b * 24 + i);
+        f.Process(l, r, 24);
+        for (size_t i = 0; i < 24; i++)
+        {
+            step = fmaxf(step, fabsf(l[i] - last));
+            last = l[i];
+        }
+    }
+    return step;
+}
+
+static void TestFinalizer()
+{
+    struct Case
+    {
+        const char* what;
+        void (*change)(Finalizer&, bool);
+    };
+    const Case cases[] = {
+        {"the bands woken and put to sleep (EQ low)", [](Finalizer& f, bool on) { f.SetParam(Finalizer::EQ_LOW, on ? .55f : .5f); }},
+        {"the drive on and off", [](Finalizer& f, bool on) { f.SetParam(Finalizer::DRIVE, on ? .05f : 0.f); }},
+        {"Loud's 1 ms delay in and out", [](Finalizer& f, bool on) { f.SetParam(Finalizer::LOUD, on ? .01f : 0.f); }},
+        {"the bypass, everything on", [](Finalizer& f, bool on) {
+             if (on)
+             {
+                 f.SetParam(Finalizer::DRIVE, .05f);
+                 f.SetParam(Finalizer::LOUD, .01f);
+                 f.SetParam(Finalizer::WIDTH_LOW + 1, .6f);
+                 return;
+             }
+             f.SetBypass(true);
+         }},
+        {"a band muted and unmuted (the low band, a 220Hz sine in it)", [](Finalizer& f, bool on) { f.SetMute(0, on); }},
+    };
+    for (const Case& c : cases)
+    {
+        const float step = FinStep(c.change);
+        char what[200];
+        snprintf(what, sizeof(what), "finalizer: %s: no step beyond the sine's (%.4f, at most %.2f)", c.what, step, kMaxStep);
+        Check(step < kMaxStep, what);
+    }
+}
+
 int main()
 {
+    TestFinalizer();
     TestFlanger();
     TestFlangerRecall();
     TestFreezer();
