@@ -604,13 +604,15 @@ print("trs", midiport.trs_midi(), flush=True)
     if (rc != 0 || !Has(out, "trs snd/midiC2D0"))
         printf("%s\n", out.c_str());
 
-    // tools/midi_send.py run by hand takes the lock and leaves the user's keys, the storage
-    // firmware's and the launcher to flash.py; another key goes on as before
+    // tools/midi_send.py run by hand takes the lock and leaves the user's keys (sending, clearing
+    // or colouring them), the storage firmware's and the launcher to flash.py; another key goes
+    // on as before
     rc = Python(R"(
 import subprocess, sys
 open("x.bin", "wb").write(b"x")
 by_hand = "import runpy, sys\nsys.argv[0] = 'midi_send.py'\nrunpy.run_module('midi_send', run_name='__main__')\n"
-for args in (["--slot", "13"], ["--sl", "10"], ["--slot=15"], ["--clear", "10"], ["--launcher"], ["--slot", "12"]):
+for args in (["--slot", "13"], ["--sl", "10"], ["--slot=15"], ["--clear", "10"], ["--launcher"], ["--slot", "12"],
+             ["--color", "13", "8A4DFF"], ["--color", "12", "8A4DFF"]):
     p = subprocess.run([sys.executable, "-c", by_hand, "x.bin", "--device", "nowhere"] + args,
                        capture_output=True, text=True)
     print(" ".join(args), p.returncode, (p.stderr.strip().splitlines() or [""])[-1], flush=True)
@@ -618,9 +620,101 @@ for args in (["--slot", "13"], ["--sl", "10"], ["--slot=15"], ["--clear", "10"],
     Check(rc == 0 && Has(out, "--slot 13 1 midi_send.py by hand leaves keys 10, 13, 15 and the launcher alone")
               && Has(out, "--sl 10 1 midi_send.py by hand") && Has(out, "--slot=15 1 midi_send.py by hand")
               && Has(out, "--clear 10 1 midi_send.py by hand") && Has(out, "--launcher 1 midi_send.py by hand")
-              && Has(out, "--slot 12 1 FileNotFoundError"),
-          "tools: midi_send.py by hand leaves keys 10, 13, 15 and the launcher to flash.py");
+              && Has(out, "--slot 12 1 FileNotFoundError") && Has(out, "--color 13 8A4DFF 1 midi_send.py by hand")
+              && Has(out, "--color 12 8A4DFF 2 midi_send.py: error: --slot is needed"),
+          "tools: midi_send.py by hand leaves keys 10, 13, 15 (their colour too) and the launcher to flash.py");
     if (rc != 0 || !Has(out, "--slot 12 1 FileNotFoundError"))
+        printf("%s\n", out.c_str());
+
+    // the launcher 1.5 and 1.6, stubbed (their PING, LIST, COLOR and RUN): the tools tell the
+    // launcher from FRIZZ, read a key's file and list the keys with either; 1.6's LIST adds the
+    // key's colour (7 bits a channel, so #8A4DFF lists as #8B4CFF). flash.py --color stores
+    // without starting, colours the key, then starts it (a colour the card fails is said, the
+    // build started all the same); with 1.5 it sends without, and without --color as before
+    rc = Python(R"(
+import contextlib, os, sys, chompi, flash, midi_send
+log = []
+class Launcher:
+    def __init__(self, minor):
+        self.minor = minor
+    def call(self, cmd, payload=b"", timeout=0.3, retries=10, required=True, match=None):
+        if cmd == midi_send.PING:
+            features = 0x3F if self.minor >= 6 else 0x1F
+            return bytes([0, 1]) + midi_send.put7(256, 4) + bytes([15, features, 1, self.minor, 0])
+        if cmd == midi_send.LIST:
+            name = {12: b"12_FRIZZ-TEST.bin", 3: b"03_WAVE.bin"}.get(payload[0], b"")
+            r = bytes([0, payload[0], len(name)]) + name + midi_send.put7(248344 if name else 0, 4)
+            return r + (bytes([0x45, 0x26, 0x7F] if name else [0, 0, 0]) if self.minor >= 6 else b"")
+        if cmd == midi_send.COLOR:
+            log.append("color %d %s" % (payload[0], payload[1:].hex()))
+            return bytes([0, payload[0]])
+        if cmd == chompi.RUN:
+            log.append("run %d" % payload[0])
+            return bytes([0, payload[0]])
+        return bytes([1])  # BAD_MESSAGE, to FRIZZ's SETTINGS among others
+chompi.to_launcher = lambda *rest: log.append("launcher") or "l"
+chompi.wait_for = lambda *rest: "node"
+chompi.renamed = lambda slot, node, *rest: node
+chompi.ident = lambda node: None
+chompi.started = chompi.noted_image = lambda *rest: None
+sent = midi_send.main
+open("image.bin", "wb").write(b"x")
+flash.builds.build = flash.builds.built = lambda bench: "image.bin"
+def run(what, main, *argv):
+    log.clear()
+    sys.argv = list(argv)
+    try:
+        main()
+        got = "ok"
+    except SystemExit as e:
+        got = "exit: %s" % e
+    print("%s: %s %s" % (what, got, log), flush=True)
+for minor in (5, 6):
+    there = Launcher(minor)
+    chompi.link = contextlib.contextmanager(lambda node: (yield there))
+    midi_send.Link = lambda path, verbose=False: there
+    print("1.%d state %s, key 12 %r, key 1 %r, features %#x" % (minor, chompi.ask_midi("l"),
+          chompi.slot_file("l", 12), chompi.slot_file("l", 1), chompi.features("l")), flush=True)
+    midi_send.main = sent
+    run("1.%d list" % minor, flash.main, "flash.py", "--list")
+    run("1.%d color by hand" % minor, midi_send.main, "midi_send.py", "--color", "12", "8A4DFF", "--device", "l")
+    midi_send.main = lambda: log.append(" ".join(sys.argv[1:]))
+    run("1.%d test" % minor, flash.main, "flash.py", "--test", "--no-build")
+    run("1.%d test colour" % minor, flash.main, "flash.py", "--test", "--no-build", "--color", "8A4DFF")
+def fails():
+    if "--color" in sys.argv:
+        sys.exit("color failed: writing to the card failed")
+    log.append(" ".join(sys.argv[1:]))
+midi_send.main = fails
+run("1.6 colour fails", flash.main, "flash.py", "--test", "--no-build", "--color", "8A4DFF")
+run("bad colour", flash.main, "flash.py", "--test", "--color", "violet")
+run("colour, nothing sent", flash.main, "flash.py", "--run", "12", "--color", "8A4DFF")
+os.remove("image.bin")
+)", out);
+    Check(rc == 0 && Has(out, "1.5 state launcher, key 12 '12_FRIZZ-TEST.bin', key 1 '', features 0x1f\n")
+              && Has(out, "1.6 state launcher, key 12 '12_FRIZZ-TEST.bin', key 1 '', features 0x3f\n"),
+          "tools: the launcher 1.5 and 1.6 are told from FRIZZ, and their keys read, alike");
+    Check(Has(out, "  key 12: 12_FRIZZ-TEST.bin (248344 bytes)\n")
+              && Has(out, "  key 12: 12_FRIZZ-TEST.bin (248344 bytes)  #8B4CFF\n")
+              && Has(out, "  key  3: 03_WAVE.bin (248344 bytes)  #8B4CFF\n") && Has(out, "  key  1: -\n")
+              && Has(out, "1.5 list: ok") && Has(out, "1.6 list: ok"),
+          "tools: flash.py --list lists the keys from either launcher, 1.6's with their colour");
+    Check(Has(out, "1.5 color by hand: exit: this launcher cannot colour its keys")
+              && Has(out, "1.6 color by hand: ok ['color 12 45267f']"),
+          "tools: midi_send.py --color sends 1.6's COLOR, 7 bits a channel; 1.5 can't");
+    Check(Has(out, "1.5 test: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l']\n")
+              && Has(out, "1.6 test: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l']\n")
+              && Has(out, "1.5 test colour: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l']\n")
+              && Has(out, "this launcher can't colour its keys (1.6 can): sent without --color")
+              && Has(out, "1.6 test colour: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l "
+                          "--stay', '--color 12 8A4DFF --device l', 'run 12']\n"),
+          "tools: flash.py --color stores, colours, then starts with 1.6; sends as before without it or with 1.5");
+    Check(Has(out, "key 12 not coloured: color failed: writing to the card failed\n")
+              && Has(out, "1.6 colour fails: ok ['launcher', 'image.bin --slot 12 --name FRIZZ-TEST --device l --stay', 'run 12']\n"),
+          "tools: flash.py --color whose COLOR the card fails says so and starts the build all the same");
+    Check(Has(out, "bad colour: exit: --color takes a colour like 8A4DFF") && Has(out, "colour, nothing sent: exit: --color takes"),
+          "tools: flash.py --color takes a colour, with a build sent only");
+    if (rc != 0 || !Has(out, "colour, nothing sent: exit"))
         printf("%s\n", out.c_str());
 
     // usbjitter.py turns PERSIST 0 on: the user's FRIZZ it measured is started again at the end,

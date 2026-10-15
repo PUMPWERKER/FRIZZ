@@ -11,8 +11,11 @@
                              only with --other-slot, which a session never gives
     ./flash.py --run N       starts what's in slot N already (10 FRIZZ, 11 the bench, 12 a test,
                              13 the beta)
-    ./flash.py --list        what's on each key: restarts FRIZZ into the launcher (a loop in
-                             RAM is lost) and leaves the CHOMPI at its picker
+    ./flash.py --list        what's on each key (and its colour, launcher 1.6 on): restarts
+                             FRIZZ into the launcher (a loop in RAM is lost) and leaves the
+                             CHOMPI at its picker
+    --color RRGGBB           with a build sent: the colour its key breathes in at the picker
+                             (launcher 1.6 on; off unless given, an older launcher sends without)
 
 Keys 10 and 13 are the user's: 10 the latest release, 13 the latest beta (FRIZZ-BETA). A build
 goes there only when the key is named (--slot 10, --slot 13), and only a release's or a beta's:
@@ -36,8 +39,15 @@ length) and fails if that isn't the one sent; --run says which build it started.
 One that came up with its USB names garbled (#88) is started again, not sent again.
 FRIZZ_SLOT, BETA_SLOT, BENCH_SLOT and TEST_SLOT set other slots (FRIZZ_SLOT and BETA_SLOT add
 keys to guard as the user's: 10 and 13 stay guarded whatever they say); a key that holds another
-firmware than FRIZZ is refused but with --other-slot (launcher 1.5 lists its keys; an older one
-can't, and isn't asked). Every slot is checked before anything is built or the CHOMPI restarted. It waits while another tool has the CHOMPI (tools/chompi.py, the lock).
+firmware than FRIZZ is refused but with --other-slot (launcher 1.5 and later list their keys; an
+older one can't, and isn't asked). Every slot is checked before anything is built or the CHOMPI restarted. It waits while another tool has the CHOMPI (tools/chompi.py, the lock).
+
+The launcher 1.6 colours each key: the colour chosen for the file on it (its COLOR, kept on the
+card in /FIRMWARE/key_colors.txt with the file's name), or one made from that name. --color
+chooses it: the build is stored without starting (--stay), the key coloured, then started (RUN;
+a colour the card fails to keep is said, the build started all the same).
+Since flash.py always writes the same file to a key (12_FRIZZ-TEST.bin), a colour chosen once
+stays with that key's later builds; without --color nothing about colours is sent.
 
 It prints the md5 of what it sends: that names the build (tools/builds.py). Builds aren't in
 git, so --no-build needs one made first (make, make BENCH=1 in code/src), and refuses one older
@@ -48,6 +58,7 @@ Linux only (ALSA's raw MIDI), Python 3 without packages; building needs the ARM 
 """
 import argparse
 import os
+import re
 import subprocess
 import sys
 
@@ -124,10 +135,17 @@ def main():
                     "launcher (a loop in RAM is lost), the CHOMPI left at its picker")
     ap.add_argument("--name", help="its name on the card (default FRIZZ, FRIZZ-BETA, FRIZZ-TEST "
                     "or FRIZZ-BENCH)")
+    ap.add_argument("--color", metavar="RRGGBB",
+                    help="also colour the key it goes to, e.g. 8A4DFF (launcher 1.6 on, kept on "
+                    "the card for that key's later builds; 000000 the launcher's own); off unless "
+                    "given")
     ap.add_argument("--wait", type=int, default=120, help="seconds to wait for the launcher")
     ap.add_argument("--device", help="its raw MIDI node, e.g. /dev/snd/midiC1D0 (default: found)")
     args = ap.parse_args()
 
+    if args.color is not None and (args.run is not None or args.list
+                                   or not re.fullmatch(r"[0-9A-Fa-f]{6}", args.color)):
+        sys.exit("--color takes a colour like 8A4DFF, and goes with a build sent")
     if args.run is not None:
         node = chompi.start(args.run, args.wait, args.device)
         info = node and chompi.ident(node)
@@ -179,7 +197,21 @@ def main():
                      "or set BENCH_SLOT / TEST_SLOT" % (slot, there))
     chompi.device_guard(device)
     sys.argv = ["midi_send.py", image, "--slot", str(slot), "--name", name, "--device", device]
+    colour = args.color is not None and chompi.features(device) & midi_send.FEATURE_COLOR
+    if args.color is not None and not colour:
+        print("this launcher can't colour its keys (1.6 can): sent without --color")
+    if colour:
+        # stored, coloured (the key must hold it first), then started: a colour that fails
+        # (the card) is said, and the build started all the same
+        sys.argv.append("--stay")
     midi_send.main()
+    if colour:
+        sys.argv = ["midi_send.py", "--color", str(slot), args.color, "--device", device]
+        try:
+            midi_send.main()
+        except SystemExit as e:
+            print("key %d not coloured: %s" % (slot, e))
+        chompi.send_run(device, slot)
     chompi.started(slot)
     chompi.noted_image(slot, image, md5)
     if slot in chompi.FRIZZ_SLOTS + (chompi.BENCH_SLOT,) and name.upper().startswith("FRIZZ"):
