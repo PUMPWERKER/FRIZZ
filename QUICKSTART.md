@@ -6,7 +6,7 @@ Your first ten minutes with FRIZZ. Every detail is in the [manual](MANUAL.md).
 
 ## How the sound flows
 
-![The input, AUX, the mic or USB after its input gain, goes to the looper, which records it before the effects, and, if monitored, to the input/loop mix, where the loop joins it; from there input and loop alike go through the effects, the compressor and VOLUME to the outputs](images/quickstart-flow.svg)
+![The input, AUX, the mic or USB after its input gain, goes to the looper, which records it before the effects, and, if monitored, to the input/loop mix, where the loop joins it; from there input and loop alike go through the effects, the finalizer and VOLUME to the outputs](images/quickstart-flow.svg)
 
 Plug a source into AUX. The looper records it **before** the effects, so you can play effects
 over a loop and nothing gets printed into it. The effects come **after** the input/loop mix,
@@ -56,13 +56,13 @@ A loop can be up to 2:45 long and is gone when you switch off.
 ## 3. Play the effects
 
 The white keys hold 13 effects, counted from the left, in the order the sound goes through
-them, then the chaos key and the master compressor on white key 15 (below). The chaos key
+them, then the chaos key and the finalizer on white key 15 (below). The chaos key
 makes no sound of its own: it drops the effects you've latched out at random and scrambles
 the loop's steps (see [Chaos key](MANUAL.md#chaos-key)).
 
 | White key | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Effect | Freezer | Shifter | Folder | Crusher | Filter | Flanger | Phaser | Resonator | Slicer | Wow & flutter | Tape stop | Delay | Reverb | Chaos | Compressor |
+| Effect | Freezer | Shifter | Folder | Crusher | Filter | Flanger | Phaser | Resonator | Slicer | Wow & flutter | Tape stop | Delay | Reverb | Chaos | Finalizer |
 
 ![Keys: an FX key held, then SHIFT, latches it; SHIFT, then an FX key, picks it for the knobs; SHIFT + a knob turned jumps in big steps; a knob pressed turns to its page 2](images/keys-quickstart.svg)
 
@@ -88,11 +88,14 @@ freezer, slicer, tape stop, delay and reverb work from the first press: the free
 whole bar, the slicer pumps gently, the tape stop stops, and the delay and reverb throw
 echoes and a room (their level is knob 4 on their page 2, as every effect's).
 
-**Master compressor:** press white key 15, and knobs 1-4 set the compressor on the master
-out: threshold (off at first), ratio, attack and release; press a knob for its Mix, sidechain
-highpass and makeup. Its key lights up as it compresses, and turns red when the output is so
-loud the safety limiter has to step in. It's always on, and FRIZZ remembers its settings when
-you switch off. Press an effect key to give the knobs back to the effect.
+**Finalizer:** press white key 15, and knobs 1-4 set the master section on the outputs,
+neutral at first. They show its Level module: the input, a drive and its type (Boost, Tube,
+Fuzz), and Loud, which pushes the sound into a limiter so it gets louder without clipping.
+Hold SHIFT and tap key 15 twice for the next module: EQ (yellow) for the low, mid and high
+bands, Comp (cyan) to compress them (knob 4, Depth, brings it in), Width (magenta) for each
+band's stereo; tap again to go on. Its key turns red when the output is so loud the safety
+limiter has to step in. FRIZZ remembers its settings when you switch off. Press an effect key
+to give the knobs back to the effect. See [Finalizer](MANUAL.md#finalizer).
 
 Delay and reverb tails keep ringing after you let go. The other effects stop the moment you
 release the key, except the tape stop, which spins back up first. Effect settings reset when

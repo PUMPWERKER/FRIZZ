@@ -333,7 +333,9 @@ private:
         LOOP = 1,     // a loop plays (recorded just before the first of these)
         STRESS = 2,   // the harness's STRESS: every feedback at the top
         SCENE4 = 4,   // PR #7's scene 4: shifter +7, folder, crusher, slicer, compressor at 1
-        COMP = 8,     // the compressor's amount at 1
+                      // (since #345 the finalizer's Comp at a Depth of 1)
+        COMP = 8,     // the finalizer's Comp at a Depth of 1 (the master compressor's amount
+                      // at 1 until #345); without it, the finalizer neutral and asleep
         RECORD = 16,  // records the loop, 4 s
         CHAOS = 64,   // the chaos key on the inserts, every 16th: half its chances, the loop
                       // scrambled too
@@ -344,7 +346,13 @@ private:
         MIC = 256,    // the mic (#152): the tune into it, not on the master
         FADER = 512,  // two loops on the crossfader (#70): the loop beside itself, half a pass
                       // on, mixed at the middle (Looper::BenchFade)
+        FIN = 2048,   // the finalizer with every module working (#345, kFinBench): its bands,
+                      // drive and limiter
     };
+    // FIN's finalizer: input +3dB, Tube drive at .5, Loud +9dB; the EQ low up, mid down, high
+    // up; Comp at its default characters, Depth .7; the low band narrower, mid and high wider
+    static constexpr float kFinBench[kNumFinParams] = {.625f, .5f, .5f, .5f, .6f, .45f, .55f, 0.f,
+                                                       .4f, .4f, .4f, .7f, .3f, .6f, .7f, 0.f};
     struct Segment
     {
         const char* name;
@@ -360,7 +368,7 @@ private:
     static const uint16_t kScene4 = (1u << FX_SHIFTER) | (1u << FX_FOLDER) | (1u << FX_CRUSHER)
                                     | (1u << FX_SLICER);
 
-    static constexpr size_t kNumSegments = 28;
+    static constexpr size_t kNumSegments = 30;
     static const Segment kSegments[kNumSegments];
 
     static const size_t kMaxBlock = 48;
@@ -409,7 +417,10 @@ private:
         engine.SetAuxDry(seg.flags & DRY);
         mic_ = seg.flags & MIC;
         engine.SetMicInput(mic_);
-        engine.SetCompParam(MasterComp::kThreshold, seg.flags & (COMP | SCENE4) ? 1.f : .3f);
+        for (size_t p = 0; p < kNumFinParams; p++)
+            engine.SetFinParam(p, seg.flags & FIN ? kFinBench[p] : kFinalizerKnobs[p / kNumFxKnobs].defaults[p % kNumFxKnobs]);
+        if (seg.flags & (COMP | SCENE4))
+            engine.SetFinParam(Finalizer::DEPTH, 1.f);
         for (size_t fx = 0; fx < kNumFx; fx++)
         {
             for (size_t p = 0; p < kNumFxKnobs; p++) // page 1's
@@ -755,6 +766,7 @@ private:
 // The clean segments first, the sends last: a delay or reverb tail would run on into the next
 // segments (the delay sleeps only after 10 s of silence). The delay before the reverb, so the
 // loop with the delay, the case that crackled, is measured on its own
+constexpr float Bench::kFinBench[kNumFinParams];
 const Bench::Segment Bench::kSegments[Bench::kNumSegments] = {
     {"idle", 0, 0},
     {"freezer", Bench::Bit(FX_FREEZER), 0},
@@ -787,6 +799,9 @@ const Bench::Segment Bench::kSegments[Bench::kNumSegments] = {
     {"loop+inserts+mic", Bench::kInserts, Bench::LOOP | Bench::MIC},
     // the crossfader with two loops (#70): the looper reads two of them
     {"loop+everything+fader", Bench::kEverything, Bench::LOOP | Bench::COMP | Bench::FADER},
+    // the finalizer with every module working (#345), on the loop alone and with everything
+    {"loop+finalizer", 0, Bench::LOOP | Bench::FIN},
+    {"loop+everything+fin", Bench::kEverything, Bench::LOOP | Bench::FIN}, // fin: the finalizer, as above
     // last: the segment after it would start with every insert's page 2 settling back to its
     // defaults, page 2's cost, as the chaos segment did after it (114 % for a block)
     {"loop+everything+page2", Bench::kEverything, Bench::LOOP | Bench::COMP | Bench::PAGE2},

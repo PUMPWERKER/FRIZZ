@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include "check.h"
+#include "Finalizer.h"
 #include "SceneControls.h"
 
 using namespace chompi;
@@ -28,8 +29,12 @@ struct FakeEngine
         param_calls++;
     }
     void FastFxSlew() { fast_slews++; }
-    float comp[kNumFxParams] = {};
-    void SetCompParam(size_t p, float v) { comp[p] = v; }
+    float fin[kNumFinParams] = {};
+    void SetFinParam(size_t p, float v) { fin[p] = v; }
+    bool fin_bypass = false;
+    void SetFinBypass(bool b) { fin_bypass = b; }
+    bool fin_mute[3] = {};
+    void SetFinMute(size_t b, bool m) { fin_mute[b] = m; }
 
     // the morph: what it was started with, and its bar lines
     FxMorphPlan plan = {};
@@ -422,19 +427,9 @@ static void TestPages()
     fx.KnobPressed(0, false);
     Check(fx.Page() == 0, "pages: a second press turns back to page 1");
     fx.KnobPressed(0, false);
-    fx.CompKeyPressed(false);
-    Check(fx.Page() == 0, "pages: the compressor's key goes back to page 1");
-    Check(fx.KnobPressed(0, false) && fx.Page() == 1, "pages: the compressor has a page 2");
-    Check(fx.KnobUsed(0) && !fx.KnobUsed(1) && fx.KnobUsed(2) && fx.KnobUsed(3)
-              && fx.Knob(0) == 1.f && fx.Knob(2) == 0.f && fx.Knob(3) == 0.f,
-          "pages: the compressor's page 2: Mix on knob 1 (fully compressed), the sidechain "
-          "highpass on knob 3 (off), Makeup on knob 4 (0dB)");
-    fx.KnobTurned(3, 25.f, false);
-    Check(Near(fx.CompParam(7), .25f) && Near(e.comp[7], .25f) && fx.CompParam(3) == .5f,
-          "pages: the compressor's knob 4 there turns its makeup, not its release");
-    fx.KnobPressed(3, true);
-    Check(fx.CompParam(7) == 0.f, "pages: SHIFT + press resets the makeup to 0dB");
-    fx.KnobPressed(0, false);
+    fx.FinKeyPressed(false);
+    Check(fx.Page() == 0, "pages: the finalizer's key goes back to page 1");
+    Check(!fx.KnobPressed(3, false) && fx.Page() == 0, "pages: the finalizer has no page 2");
     // MIDI: page 2 outright, but not where an effect has none
     fx.SetParamTo(FX_SHIFTER, 4, .25f);
     fx.SetParamTo(FX_FLANGER, 4, .25f);
@@ -458,57 +453,105 @@ static void TestPages()
           "pages: a morph glides page 2's knobs too");
 }
 
-static void TestComp()
+static void TestFinalizer()
 {
     FakeEngine e;
     Fx fx;
     Fresh(e, fx);
     bool defaults = true;
-    for (size_t p = 0; p < kNumFxKnobs; p++)
-        defaults = defaults && e.comp[p] == kCompParams.defaults[p] &&
-                   fx.CompParam(p) == kCompParams.defaults[p];
-    Check(defaults, "compressor: init on its defaults, also in the engine");
-    Check(!fx.TakeCompChanged(), "compressor: init isn't a change to keep");
+    for (size_t p = 0; p < kNumFinParams; p++)
+    {
+        const float def = kFinalizerKnobs[p / kNumFxKnobs].defaults[p % kNumFxKnobs];
+        defaults = defaults && fx.FinParam(p) == def && (!Fx::FinUsed(p) || e.fin[p] == def);
+    }
+    Check(defaults && fx.Module() == 0, "finalizer: init on its defaults, also in the engine, on Level");
+    Check(!fx.TakeFinChanged(), "finalizer: init isn't a change to keep");
 
-    // its key selects it; the knobs then edit it and leave the FX alone
+    // its key selects it; the knobs then edit the module shown and leave the FX alone
     fx.KeyPressed(FX_FILTER, true, false);
     fx.KeyPressed(FX_FILTER, false, false);
     const float filter = fx.Param(FX_FILTER, 0);
-    fx.CompKeyPressed(false);
-    Check(fx.Selected() == kCompSelected, "compressor key: the knobs edit it");
-    fx.KnobTurned(0, 10.f, false);
-    Check(Near(fx.CompParam(0), .1f) && Near(e.comp[0], .1f) && fx.Param(FX_FILTER, 0) == filter,
-          "compressor: a fine turn moves its knob, not the FX's");
-    Check(fx.TakeCompChanged() == 1 && !fx.TakeCompChanged(), "compressor: a turn is a change, once, of its knob");
-    fx.SetComp(1, .9f, false);
-    Check(Near(fx.CompParam(1), .9f) && Near(e.comp[1], .9f) && !fx.TakeCompChanged(),
-          "compressor: set by MIDI's CC it changes, but isn't a change to keep (#97)");
-    fx.SetComp(1, kCompParams.defaults[1]);
-    fx.TakeCompChanged();
-    Check(!fx.Edited(), "compressor: not part of a scene, so the scene isn't edited");
+    fx.FinKeyPressed(false);
+    Check(fx.Selected() == kFinSelected, "finalizer key: the knobs edit it");
+    fx.KnobTurned(1, 10.f, false);
+    Check(Near(fx.FinParam(Finalizer::DRIVE), .1f) && Near(e.fin[Finalizer::DRIVE], .1f)
+              && fx.Param(FX_FILTER, 0) == filter,
+          "finalizer: a fine turn moves Level's drive, not the FX's");
+    Check(fx.TakeFinChanged() == 1u << Finalizer::DRIVE && !fx.TakeFinChanged(),
+          "finalizer: a turn is a change, once, of its knob");
+    fx.SetFin(Finalizer::DEPTH, .9f, false);
+    Check(Near(fx.FinParam(Finalizer::DEPTH), .9f) && Near(e.fin[Finalizer::DEPTH], .9f) && !fx.TakeFinChanged(),
+          "finalizer: set by MIDI's CC it changes, but isn't a change to keep (#97)");
+    fx.SetFin(Finalizer::DEPTH, 0.f);
+    fx.TakeFinChanged();
+    Check(!fx.Edited(), "finalizer: not part of a scene, so the scene isn't edited");
 
-    // coarse: the ratio's grid points
-    fx.KnobTurned(1, 1.f, true);
-    Check(Near(fx.CompParam(1), .75f), "compressor: a coarse ratio turn goes to the next point");
-    fx.KnobPressed(1, true);
-    Check(fx.CompParam(1) == kCompParams.defaults[1], "compressor: SHIFT + knob press resets it");
+    // the modules: each its own knobs
+    fx.SetModule(2);
+    Check(fx.Module() == 2 && fx.KnobUsed(0) && fx.KnobUsed(3), "finalizer: Comp's four knobs");
+    fx.KnobTurned(3, 50.f, false);
+    Check(Near(fx.FinParam(Finalizer::DEPTH), .5f) && Near(fx.FinParam(Finalizer::DRIVE), .1f),
+          "finalizer: Comp's knob 4 its Depth, Level's drive as it was");
+    // a stepped character: a step every few detents, coarse a step a detent
+    fx.KnobTurned(0, 3.f, false);
+    Check(Near(fx.FinParam(Finalizer::CHARACTER_LOW), .6f), "finalizer: a character a step on");
+    fx.KnobTurned(0, -2.f, true);
+    Check(Near(fx.FinParam(Finalizer::CHARACTER_LOW), .2f), "finalizer: coarse, a step a detent");
+    fx.SetFin(Finalizer::CHARACTER_LOW, .33f);
+    Check(Near(fx.FinParam(Finalizer::CHARACTER_LOW), .4f), "finalizer: set outright, on its nearest step");
+    fx.SetModule(1);
+    Check(fx.KnobUsed(2) && !fx.KnobUsed(3), "finalizer: EQ has three knobs, the fourth dark");
+    const int fin_depth = static_cast<int>(fx.FinParam(Finalizer::DEPTH) * 100.f);
+    fx.KnobTurned(3, 10.f, false);
+    Check(static_cast<int>(fx.FinParam(Finalizer::DEPTH) * 100.f) == fin_depth
+              && fx.FinParam(7) == 0.f,
+          "finalizer: an unused knob does nothing");
+    fx.NextModule();
+    fx.NextModule();
+    Check(fx.Module() == 3, "finalizer: the next module, Width");
+    fx.NextModule();
+    Check(fx.Module() == 0, "finalizer: and round to Level");
+
+    // coarse Input in 3dB, SHIFT + press resets
+    fx.KnobTurned(0, 1.f, true);
+    Check(Near(fx.FinParam(Finalizer::INPUT), .625f), "finalizer: coarse input, 3dB a detent");
+    fx.KnobPressed(0, true);
+    Check(fx.FinParam(Finalizer::INPUT) == .5f, "finalizer: SHIFT + knob press resets it");
     fx.KnobTurned(3, 200.f, false);
-    Check(fx.CompParam(3) == 1.f, "compressor: knobs stop at 1");
+    Check(fx.FinParam(Finalizer::LOUD) == 1.f, "finalizer: knobs stop at 1");
+
+    // mutes: a plain press of knob 1-3 in the band modules, not in Level, nor knob 4
+    fx.TakeFinChanged();
+    Check(!fx.KnobPressed(0, false) && !fx.Muted(0), "mute: a press in Level does nothing");
+    fx.SetModule(1);
+    Check(fx.KnobPressed(1, false) && fx.Muted(1) && e.fin_mute[1], "mute: knob 2 in EQ mutes the mid band");
+    fx.SetModule(3);
+    Check(fx.KnobPressed(1, false) && !fx.Muted(1) && !e.fin_mute[1], "mute: and in Width unmutes it");
+    Check(!fx.KnobPressed(3, false), "mute: knob 4 has none");
+    fx.SetModule(2);
+    fx.KnobPressed(0, false);
+    fx.KnobPressed(2, false);
+    fx.Unmute();
+    Check(!fx.Muted(0) && !fx.Muted(2) && !e.fin_mute[0] && !e.fin_mute[2], "mute: Unmute, all three");
+    Check(!fx.TakeFinChanged(), "mute: not kept");
+    fx.SetBypass(true);
+    Check(fx.Bypassed() && e.fin_bypass, "bypass: to the engine");
+    fx.SetBypass(false);
 
     // with SHIFT, a select as an FX key's: a key held doesn't latch
     fx.KeyPressed(FX_CRUSHER, true, false);
     fx.ShiftPressed();
-    fx.CompKeyPressed(true);
+    fx.FinKeyPressed(true);
     fx.KeyPressed(FX_CRUSHER, false, true);
-    Check(fx.Selected() == kCompSelected && !fx.IsLatched(FX_CRUSHER),
-          "key, SHIFT, the compressor key: it's selected, the key doesn't latch");
+    Check(fx.Selected() == kFinSelected && !fx.IsLatched(FX_CRUSHER),
+          "key, SHIFT, the finalizer's key: it's selected, the key doesn't latch");
 
     // an FX key takes the knobs back
     fx.KeyPressed(FX_FILTER, true, false);
     fx.KeyPressed(FX_FILTER, false, false);
     fx.KnobTurned(0, 1.f, false);
     Check(fx.Selected() == FX_FILTER && Near(fx.Param(FX_FILTER, 0), filter + .01f) &&
-              Near(fx.CompParam(0), .1f),
+              Near(fx.FinParam(Finalizer::DRIVE), .1f),
           "an FX key: the knobs edit it again");
 
     // a scene recall leaves it as it is
@@ -516,11 +559,14 @@ static void TestComp()
     fx.Snapshot(scene);
     scene.params[FX_FILTER][0] = .9f;
     fx.Recall(scene);
-    Check(Near(fx.CompParam(0), .1f) && Near(e.comp[0], .1f), "a recall leaves the compressor alone");
+    Check(Near(fx.FinParam(Finalizer::DRIVE), .1f) && Near(e.fin[Finalizer::DRIVE], .1f),
+          "a recall leaves the finalizer alone");
 
     // set from the card
-    fx.SetComp(0, 1.5f);
-    Check(fx.CompParam(0) == 1.f && e.comp[0] == 1.f, "SetComp: clamped and sent");
+    fx.SetFin(Finalizer::DRIVE, 1.5f);
+    Check(fx.FinParam(Finalizer::DRIVE) == 1.f && e.fin[Finalizer::DRIVE] == 1.f, "SetFin: clamped and sent");
+    fx.SetFin(7, .5f);
+    Check(fx.FinParam(7) == 0.f, "SetFin: a parameter it doesn't use stays");
 }
 
 static void TestScenes()
@@ -1226,7 +1272,7 @@ int main()
     TestKeys();
     TestKnobs();
     TestPages();
-    TestComp();
+    TestFinalizer();
     TestScenes();
     TestMorph();
     TestGestures();

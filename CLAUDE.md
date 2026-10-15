@@ -77,8 +77,8 @@ these files is checked against this before it merges:
      chapter must have one, and it is its card on the landing page: 1 to 2 sentences, at most
      160 characters, written for players. `INSTALL.md` and `QUICKSTART.md` each have one
      under their H1, their description on the site.
-   - Each chapter of a white key's effect (the chaos key and the master compressor too) keeps
-     its knob table, `| Knob | Page 1 | …`, rows 1 to 4: the landing page's knob labels are
+   - Each chapter of a white key's effect (the chaos key and the finalizer too) keeps
+     its knob table, `| Knob | Page 1 | …` (the finalizer's first module's `| Knob | Function |`), rows 1 to 4: the landing page's knob labels are
      each Page 1 cell's text up to the first ":", "," or " (", so that start names the knob.
    - `site/landing.md` is the landing page's text (hero, the moves, the steps, the section
      hints, credits) in frizz-web's fixed format: its sections in order, `- Name: value` fields
@@ -218,7 +218,9 @@ working on a branch:
 **1.0 is out** (`v1.0.0`, 2026-10-13; the feature freeze before it, decided 2026-10-12, is
 over). From 1.0 on the controls, the MIDI map and the scene files stay as they are: a feature
 goes into 1.x, a fix into 1.0.x, and only a break of the controls would be 2.0. A change to
-how a control behaves goes to the user as a `decision` issue first, even within 1.x.
+how a control behaves goes to the user as a `decision` issue first, even within 1.x. One
+exception: 1.5 replaces the master compressor with the finalizer (#345), decided by the user on
+2026-10-15, key 15's knobs and its settings changing.
 
 The open **release-test issue** (label `release test`, one at a time, titled for the next
 version) collects every merged PR's *For the release test* items, under the PR's number, plus
@@ -405,7 +407,7 @@ from `MainLoop()`, and leaves it alone while it lends it to the computer (`CardL
 reads the scenes and settings at boot and again, where the computer changed them, when it takes
 the card back (#314), and loops when one is loaded (`LoopLoader.h`, the slots scanned at boot,
 after a lend and on RESCAN). It writes when an FX scene is saved, copied or deleted, 2 s after
-the master compressor's knobs, the mono input or the MIDI settings rest (`SceneStore.h`,
+the finalizer's knobs, the mono input or the MIDI settings rest (`SceneStore.h`,
 `MasterSettings.h`), when the loop transfer writes, moves or deletes a slot (`LoopTransfer.h`,
 through `/FRIZZ/xfer.tmp`), or when a bug report is asked for (`EventLog.h`). Its files live in
 `/FRIZZ` (`frizz_scenes.txt`, `frizz_master.txt`, `.bak` copies, `bug-N.txt`, the loops
@@ -416,7 +418,7 @@ FRIZZ's SysEx (`MidiControl.h`), answered over USB from `MainLoop()`. MIDI out
 the jack from the audio callback without waiting, over USB from TinyUSB's task (#265).
 
 The play page is `NormalPage.h`; the engine is `passthroughEngine.h` → `Looper.h` +
-`FxMorph.h` → `FxChain.h` → `MasterComp.h` → output gain → `limiter.h`. Large buffers live in
+`FxMorph.h` → `FxChain.h` → `Finalizer.h` → output gain → `limiter.h`. Large buffers live in
 SDRAM (`DSY_SDRAM_BSS`), cleared by `ZeroSDRAM()` at boot because startup code doesn't; the
 loop and the event log (`SDRAM_NOINIT`) aren't, as they're always written before read. Card
 buffers live in internal RAM, 32-byte aligned, written in whole sectors (`EventLog::Flush`).

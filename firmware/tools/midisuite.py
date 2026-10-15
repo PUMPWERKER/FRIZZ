@@ -69,7 +69,7 @@ READY = 6.5  # s from power-on to the play page taking keys: the boot and the ra
 WHITE_FX = [None, "freezer", "shifter", "folder", "crusher", "filter", "flanger", "phaser",
             "resonator", "slicer", "warble", "tapestop", "delay", "reverb", "chaos"]
 # the knobs an effect has nothing on (MANUAL.md "Page 2"): (effect, knob 0-7), dark, doing nothing
-EMPTY = {("flanger", 4), ("resonator", 4), ("comp", 5)} | {("chaos", i) for i in range(4, 8)}
+EMPTY = {("flanger", 4), ("resonator", 4)} | {("chaos", i) for i in range(4, 8)}
 # the settings each case starts from: the global channel 16, the effect channels over TRS on,
 # AUX live through the effects and the mic through them, not live (#177), nothing else
 BASELINE = dict(midi_channel=16, midi_transport=0, clock_factor=100, clock_source=0, midi_out=0,
@@ -896,18 +896,22 @@ def latch_follows(r, fx, send, wait):
     return missed
 
 
-@case("cc-channels", "8: DAW automation per effect channel: CC 14-21 on channels 1-15 move that "
-      "effect's knobs, CC 22 latches it; re-sending the same latch value doesn't fight the hand (#108)")
+@case("cc-channels", "8: DAW automation per effect channel: CC 14-21 on channels 1-14 move that "
+      "effect's knobs, on 15 the finalizer's at their fixed CCs (#345), CC 22 latches an effect; "
+      "re-sending the same latch value doesn't fight the hand (#108)")
 def cc_channels(r):
     bad, n = [], 0
     for ch in (1, 7, 14, 15) if r.args.quick else range(1, 16):
-        fx = WHITE_FX[ch] if ch < 15 else "comp"
-        for i in range(8):
-            up, a, b = moved(r, fx, i, lambda v: r.send_usb(cc(ch, 14 + i, v)))
+        # an effect's knobs at CC 14-21; the finalizer's parameters 0-6 at 14-20, 8-14 at 24-30
+        fx = WHITE_FX[ch] if ch < 15 else "fin"
+        knobs = [(14 + i, i) for i in range(8)] if ch < 15 else \
+            [(14 + p, p) for p in range(7)] + [(16 + p, p) for p in range(8, 15)]
+        for c, i in knobs:
+            up, a, b = moved(r, fx, i, lambda v: r.send_usb(cc(ch, c, v)))
             empty = (fx, i) in EMPTY
             n += not empty
             if (b != a) if empty else not up:
-                bad.append("ch %d CC %d: %.2f -> %.2f" % (ch, 14 + i, a, b))
+                bad.append("ch %d CC %d: %.2f -> %.2f" % (ch, c, a, b))
     r.check("CC 14-21 at 20, then 100, on channels %s: the effect's knob" % ("1, 7, 14, 15" if r.args.quick else "1-15"),
             not bad, "; ".join(bad) or "all %d moved, the empty ones didn't" % n,
             "each moves up; a knob with nothing on it doesn't")
@@ -933,7 +937,7 @@ def global_map(r, port):
     send(cc(GLOBAL, 23, 5))
     time.sleep(.1)
     r.check("CC 23 5 (%s): the focus" % port.upper(), r.state()["selected"] == remote.FX_NAMES.index("filter"),
-            remote.FX_NAMES[r.state()["selected"]] if r.state()["selected"] < 14 else "comp", "filter")
+            remote.FX_NAMES[r.state()["selected"]] if r.state()["selected"] < 14 else "fin", "filter")
     up, a, b = moved(r, "filter", 0, lambda v: send(cc(GLOBAL, 14, v)))
     r.check("then CC 14 on channel 16: the filter's knob 1", up, "%.2f -> %.2f" % (a, b), "moves up")
     bad = []
@@ -1169,7 +1173,7 @@ def morph_sequences(r):
 @case("rpn", "8: a DAW that sets its pitch-bend range (RPN 0, then RPN null) on FRIZZ's channels: "
       "no knob moves (#85)")
 def rpn(r):
-    groups = remote.FX_NAMES + ["comp", "volume"]
+    groups = remote.FX_NAMES + ["fin", "volume"]
     before = {g: r.get(g) for g in groups}
     for ch in range(1, 17):
         r.send_usb(cc(ch, 101, 0) + cc(ch, 100, 0) + cc(ch, 6, 12) + cc(ch, 38, 0)
@@ -1255,7 +1259,7 @@ def input_cc(r):
     r.send_usb(cc(GLOBAL, 84, 0))  # AUX: the cable is in on the device
     time.sleep(.2)
     start = input_bits(r)
-    groups = remote.FX_NAMES + ["comp", "volume"]
+    groups = remote.FX_NAMES + ["fin", "volume"]
     before = {g: r.get(g) for g in groups}
     for ch in (1, GLOBAL):
         r.send_usb(cc(ch, 88, 0) + cc(ch, 91, 40) + cc(ch, 91, 0))
@@ -1450,7 +1454,7 @@ def runnable(c, wiring):
 class Snapshot:
     """What the cases change, to put back: the knobs, latches, VOLUME's levels, scenes 1-2"""
 
-    GROUPS = remote.FX_NAMES + ["comp", "latch", "volume"]
+    GROUPS = remote.FX_NAMES + ["fin", "latch", "volume"]
 
     def __init__(self, r):
         self.values = {g: r.get(g) for g in self.GROUPS}

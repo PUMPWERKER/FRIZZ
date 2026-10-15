@@ -2,9 +2,12 @@
 // hand; its tables are checked here, so a change of a knob, a step, a colour or a CC that the
 // manual doesn't follow fails. Built and run by unit.sh docs; DOCS_MANUAL=FILE checks another
 // copy of the manual (to see a check fail on a falsified one).
-//  - each effect's chapter (and the master compressor's): "White key N." is its key; its knob
-//    table, | Knob | Page 1 | Page 2 |, has a text in the cells of the knobs it uses
-//    (FxParams::knobs) and "—" in the others, and no Page 2 column without a page 2
+//  - each effect's chapter: "White key N." is its key; its knob table, | Knob | Page 1 | Page 2 |,
+//    has a text in the cells of the knobs it uses (FxParams::knobs) and "—" in the others, and
+//    no Page 2 column without a page 2
+//  - the finalizer's (#345): "White key N.", a | Knob | Function | table per module with the
+//    knobs it uses (kFinalizerKnobs), its types and characters by their number and default,
+//    its ranges and coarse steps as Finalizer.h has them, the key's colours by module
 //  - stepped parameters: their cell lists their steps (1/16, 1/8T ... in bars, the slicer's
 //    patterns bit for bit, "-12 to +12 semitones", "two steps") as the code's tables have
 //    them, and its "(default ...)" is the default's step; Punch-in FX's "Stepped parameters"
@@ -37,6 +40,7 @@
 #include "check.h"
 // the ranges some effects keep to themselves, to compare
 #define private public
+#include "Finalizer.h"
 #include "FxControls.h"
 #undef private
 #include "LedColors.h"
@@ -262,7 +266,7 @@ static const Colour kColours[] = {
     {"blue", blue, "blue"},          {"pink", pink, "pink"},       {"purple", purple, "purple"},
     {"orange", orange, "orange"},    {"lime", lime, "lime"},       {"magenta", magenta, "magenta"},
     {"teal", teal, "teal"},          {"amber", amber, "amber"},    {"rose", rose, "rose"},
-    {"violet", violet, "violet"},
+    {"violet", violet, "violet"},    {"cyan", cyan, "cyan"},
 };
 
 static std::string ColourName(const std::string& id)
@@ -277,7 +281,7 @@ static std::string ColourName(const std::string& id)
 static Strings ColourWords(const std::string& text)
 {
     static const std::regex re("\\b(light blue|white|red|yellow|green|blue|pink|purple|orange|lime|"
-                               "magenta|teal|amber|rose|violet)\\b");
+                               "magenta|teal|amber|rose|violet|cyan)\\b");
     Strings out;
     for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it)
         out.push_back(it->str());
@@ -332,8 +336,9 @@ struct Slot
 };
 static std::vector<Slot> slots;   // by FxId
 static std::vector<int> white_keys, dark_keys; // KEY_N, left to right
-static int comp_key;
+static int comp_key;            // the finalizer's (kCompKey)
 static std::string comp_knob[3];
+static std::string fin_colour[4]; // its modules' (kFinColors)
 
 /** White key 1-15 of a KEY_N, 0 if it's none */
 static int WhiteOf(int key)
@@ -376,7 +381,11 @@ static void ReadKeys()
     for (int i = 0; !m.empty() && i < 3; i++)
         comp_knob[i] = ColourName(m[1 + i]);
     Check(comp_key && !comp_knob[0].empty() && !comp_knob[2].empty(),
-          "FxSlots.h: the compressor's key and knob colours read");
+          "FxSlots.h: the finalizer's key and knob colours read");
+    std::regex_search(fx, m, std::regex("kFinColors\\[4\\] = \\{(\\w+), (\\w+), (\\w+), (\\w+)\\}"));
+    for (int i = 0; !m.empty() && i < 4; i++)
+        fin_colour[i] = ColourName(m[1 + i]);
+    Check(!fin_colour[0].empty() && !fin_colour[3].empty(), "FxSlots.h: the finalizer's module colours read");
     while (slots.size() < kNumFx)
         slots.push_back({});
 }
@@ -387,34 +396,32 @@ static const char* const kChapters[kNumFx] = {
     "Freezer", "Shifter", "Folder", "Crusher", "Filter", "Flanger", "Resonator",
     "Slicer", "Wow & flutter", "Tape stop", "Delay", "Reverb", "Phaser", "Chaos key",
 };
-static const char* const kCompChapter = "Master compressor";
+static const char* const kFinChapter = "Finalizer";
 // the effects as prose names them
 static const char* const kFxWords[kNumFx] = {
     "freezer", "shifter", "folder", "crusher", "filter", "flanger", "resonator",
     "slicer", "wow", "tape stop", "delay", "reverb", "phaser", "chaos",
 };
 
-static const size_t kComp = kNumFx; // the compressor, after the effects
-
 struct Knobs
 {
     std::string cell[kNumFxParams]; // page 1's knobs 1-4, then page 2's
     bool page2 = false;             // the table has a Page 2 column
 };
-static Knobs knobs[kNumFx + 1];
+static Knobs knobs[kNumFx];
 
-static const FxParams& ParamsOf(size_t fx) { return fx == kComp ? kCompParams : kFxParams[fx]; }
+static const FxParams& ParamsOf(size_t fx) { return kFxParams[fx]; }
 
 static void CheckChapter(size_t fx)
 {
-    const char* name = fx == kComp ? kCompChapter : kChapters[fx];
+    const char* name = kChapters[fx];
     const Strings lines = Under(manual, std::string("## ") + name);
     if (lines.empty())
         return;
     const FxParams& p = ParamsOf(fx);
 
     // its key
-    const int key = fx == kComp ? comp_key : slots[fx].key;
+    const int key = slots[fx].key;
     int said = 0;
     std::smatch m;
     for (const auto& l : lines)
@@ -459,12 +466,12 @@ static void CheckChapter(size_t fx)
     std::string leds = Bullet(lines, "LEDs:");
     CheckF(!leds.empty(), "%s: a bullet \"LEDs: ...\"", name);
     leds = Strip(leds, kParens);
-    const std::string key_colour = fx == kComp ? "white" : slots[fx].colour;
+    const std::string key_colour = slots[fx].colour;
     std::regex_search(leds, m, std::regex("the key is ([a-z ]+?)[;,.]"));
     const Strings said_key = m.empty() ? Strings() : ColourWords(m[1]);
     CheckF(said_key.size() == 1 && said_key[0] == key_colour, "%s: the key is %s (FxSlots.h)",
            name, key_colour.c_str());
-    const std::string* knob_colours = fx == kComp ? comp_knob : slots[fx].knob;
+    const std::string* knob_colours = slots[fx].knob;
     const std::string pair = knob_colours[0] + " to " + knob_colours[2];
     CheckF(leds.find(pair) != std::string::npos, "%s: the knobs go %s (FxSlots.h)", name,
            pair.c_str());
@@ -971,28 +978,129 @@ static void CheckCoarse()
                          kFxWords[fx], q / kNumFxKnobs + 1, q % kNumFxKnobs + 1);
 }
 
-/** The compressor's ratio and makeup, which its chapter gives with their coarse steps */
-static void CheckCompCoarse()
+// ---- the finalizer (#345)
+
+static const char* const kFinModuleNames[chompi::kFinModules] = {"Level", "EQ", "Comp", "Width"};
+
+/** The names a stepped cell lists before its "(default ...)", comma-separated after its ": " */
+static Strings StepNames(const std::string& cell)
 {
-    const std::string& ratio = knobs[kComp].cell[1];
-    std::vector<double> ratios;
-    static const std::regex re("([\\d.]+):1");
-    for (std::sregex_iterator it(ratio.begin(), ratio.end(), re), end; it != end; ++it)
-        ratios.push_back(atof((*it)[1].str().c_str()));
-    if (!ratios.empty())
-        ratios.pop_back(); // the default's
-    const size_t points = Points(GridOf(kComp, 1)).size();
-    const size_t at = StepIndex(kCompParams.defaults[1], points);
+    Strings out;
+    const size_t colon = cell.find(": ");
+    const size_t paren = cell.find(" (default");
+    if (colon == std::string::npos || paren == std::string::npos || paren < colon)
+        return out;
+    std::stringstream list(cell.substr(colon + 2, paren - colon - 2));
+    std::string name;
+    while (std::getline(list, name, ','))
+        out.push_back(Trim(name));
+    return out;
+}
+
+static void CheckFinalizer()
+{
+    const Strings lines = Under(manual, std::string("## ") + kFinChapter);
+    if (lines.empty())
+        return;
     std::smatch m;
-    std::regex_search(ratio, m, std::regex("\\(default ([\\d.]+):1\\)"));
-    CheckF(ratios.size() == points && !m.empty() && at < ratios.size() && atof(m[1].str().c_str()) == ratios[at],
-           "Master compressor: its %zu ratios, its coarse points, the default on point %zu", points, at + 1);
+    int said = 0;
+    for (const auto& l : lines)
+        if (std::regex_search(l, m, std::regex("^White key (\\d+)\\.")))
+        {
+            said = atoi(m[1].str().c_str());
+            break;
+        }
+    CheckF(said == WhiteOf(comp_key), "Finalizer: \"White key %d.\", it's white key %d (FxSlots.h)", said,
+           WhiteOf(comp_key));
+
+    std::string cell[kNumFinParams];
+    for (size_t mod = 0; mod < chompi::kFinModules; mod++)
+    {
+        const std::string heading = std::string("### ") + kFinModuleNames[mod] + " module";
+        const Strings sub = Under(lines, heading);
+        const Table t = FindTable(sub, "| Knob | Function");
+        CheckF(t.rows.size() == kNumFxKnobs, "Finalizer: %s's table, | Knob | Function |, a row per knob (%zu)",
+               kFinModuleNames[mod], t.rows.size());
+        Group cells(std::string("Finalizer: ") + kFinModuleNames[mod] + "'s cells, \"—\" for the knobs it doesn't use (kFinalizerKnobs)");
+        for (const auto& row : t.rows)
+        {
+            const int k = atoi(row[0].c_str());
+            if (k < 1 || k > static_cast<int>(kNumFxKnobs))
+                continue;
+            const size_t p = mod * kNumFxKnobs + k - 1;
+            cell[p] = row.size() > 1 ? row[1] : "";
+            const bool used = kFinalizerKnobs[mod].knobs >> (k - 1) & 1;
+            const bool says = !cell[p].empty() && cell[p].compare(0, strlen("—"), "—") != 0;
+            cells.Add(says == used, "knob %d \"%.40s\" is %s", k, cell[p].c_str(), used ? "used" : "unused, \"—\"");
+        }
+    }
+
+    // the stepped ones: the types and the characters, by their number and their default
+    const Strings types = StepNames(cell[Finalizer::TYPE]);
+    std::regex_search(cell[Finalizer::TYPE], m, std::regex("\\(default (\\w+)\\)"));
+    CheckF(types.size() == kFinTypes && !m.empty()
+               && m[1] == types[StepIndex(kFinalizerKnobs[0].defaults[Finalizer::TYPE], kFinTypes)],
+           "Finalizer: Type's %d types, its default the default's step", static_cast<int>(kFinTypes));
+    const Strings characters = StepNames(cell[Finalizer::CHARACTER_LOW]);
+    std::regex_search(cell[Finalizer::CHARACTER_LOW], m, std::regex("\\(default ([^)]+)\\)"));
+    const size_t def = StepIndex(kFinalizerKnobs[2].defaults[0], kFinCharacters);
+    CheckF(characters.size() == kFinCharacters && !m.empty() && def < characters.size() && m[1] == characters[def],
+           "Finalizer: Comp's %d characters, its default the default's step", static_cast<int>(kFinCharacters));
+    std::string bullets;
+    for (const auto& l : Under(lines, "### Comp module"))
+        bullets += l + "\n";
+    Group named("Finalizer: each character a bullet of its own");
+    for (const auto& c : characters)
+        named.Add(bullets.find("- **" + c + ":**") != std::string::npos, "\"%s\"", c.c_str());
+
+    // the ranges, as Finalizer.h has them, and the coarse steps in dB
     double lo, hi;
-    const std::string& makeup = knobs[kComp].cell[kNumFxKnobs + 3];
-    const bool range = Range(makeup, "([\\d.]+) dB to \\+([\\d.]+) dB", &lo, &hi);
-    std::regex_search(makeup, m, std::regex("(\\d+) dB a coarse step"));
-    CheckF(range && !m.empty() && Near(GridOf(kComp, 7).spacing * (hi - lo), atof(m[1].str().c_str()), 1e-4),
-           "Master compressor: Makeup, %g dB a coarse step", GridOf(kComp, 7).spacing * (hi - lo));
+    CheckF(Range(cell[Finalizer::INPUT], "(-[\\d.]+) dB to \\+([\\d.]+) dB", &lo, &hi) && lo == -Finalizer::kInputDb
+               && hi == Finalizer::kInputDb,
+           "Finalizer: Input -%g dB to +%g dB", Finalizer::kInputDb, Finalizer::kInputDb);
+    auto coarse = [&](size_t p, double range, const char* what) {
+        const FxParams& f = kFinalizerKnobs[p / kNumFxKnobs];
+        const double step = kFxGrids[f.coarse[p % kNumFxKnobs]].spacing * range;
+        std::regex_search(cell[p], m, std::regex("([\\d.]+) dB a coarse step"));
+        CheckF(!m.empty() && Near(atof(m[1].str().c_str()), step, 1e-4), "Finalizer: %s, %g dB a coarse step", what, step);
+    };
+    coarse(Finalizer::INPUT, 2. * Finalizer::kInputDb, "Input");
+    coarse(Finalizer::LOUD, Finalizer::kLoudDb, "Loud");
+    CheckF(Range(cell[Finalizer::DRIVE], "([\\d.]+) to \\+([\\d.]+) dB", &lo, &hi) && hi == Finalizer::kDriveDb,
+           "Finalizer: Drive to +%g dB", Finalizer::kDriveDb);
+    CheckF(Range(cell[Finalizer::LOUD], "([\\d.]+) to \\+([\\d.]+) dB", &lo, &hi) && hi == Finalizer::kLoudDb,
+           "Finalizer: Loud to +%g dB", Finalizer::kLoudDb);
+    Group eq("Finalizer: EQ's bands, -20 dB to +8 dB (Finalizer.h)");
+    for (size_t b = 0; b < 3; b++)
+        eq.Add(Range(cell[Finalizer::EQ_LOW + b], "(-[\\d.]+) dB to \\+([\\d.]+) dB", &lo, &hi)
+                   && lo == -Finalizer::kEqCutDb && hi == Finalizer::kEqBoostDb,
+               "band %zu", b + 1);
+    CheckF(Range(cell[Finalizer::DEPTH], "([\\d.]+) dB down to (-[\\d.]+) dB", &lo, &hi) && hi == -Finalizer::kDepthDb,
+           "Finalizer: Depth down to -%g dB", Finalizer::kDepthDb);
+    Group width("Finalizer: Width up to 1.5x for the low band, 2x the others (Finalizer.h)");
+    for (size_t b = 0; b < 3; b++)
+    {
+        std::regex_search(cell[Finalizer::WIDTH_LOW + b], m, std::regex("up to ([\\d.]+)x"));
+        width.Add(!m.empty() && atof(m[1].str().c_str()) == (b ? Finalizer::kMaxWidth : Finalizer::kMaxLowWidth),
+                  "band %zu", b + 1);
+    }
+    std::string text;
+    for (const auto& l : lines)
+        text += l + " ";
+    std::regex_search(text, m, std::regex("split at (\\d+) Hz and (\\d+) kHz"));
+    CheckF(!m.empty() && atof(m[1].str().c_str()) == Finalizer::kSplitLow && atof(m[2].str().c_str()) * 1000. == Finalizer::kSplitHigh,
+           "Finalizer: the bands split at %g Hz and %g Hz", Finalizer::kSplitLow, Finalizer::kSplitHigh);
+
+    // its LEDs: the key in the module's colour, the knobs light blue to orange
+    std::string leds = Strip(Bullet(Under(lines, "### Finalizer LEDs and settings"), "LEDs:"), kParens);
+    std::regex_search(leds, m, std::regex("the key is ([a-z ,]+?)[;.]"));
+    const Strings said_key = m.empty() ? Strings() : ColourWords(m[1]);
+    CheckF(said_key.size() == 4 && said_key[0] == fin_colour[0] && said_key[1] == fin_colour[1]
+               && said_key[2] == fin_colour[2] && said_key[3] == fin_colour[3],
+           "Finalizer: the key is %s, %s, %s or %s, by its module (FxSlots.h)", fin_colour[0].c_str(),
+           fin_colour[1].c_str(), fin_colour[2].c_str(), fin_colour[3].c_str());
+    const std::string pair = comp_knob[0] + " to " + comp_knob[2];
+    CheckF(leds.find(pair) != std::string::npos, "Finalizer: the knobs go %s (FxSlots.h)", pair.c_str());
 }
 
 // ---- MIDI
@@ -1095,7 +1203,7 @@ static void CheckMidi()
     {
         const int ch = atoi((*it)[1].str().c_str());
         const std::string name = (*it)[2];
-        int key = name == Lower(kCompChapter) ? comp_key : 0;
+        int key = name == Lower(kFinChapter) ? comp_key : 0;
         for (size_t fx = 0; fx < kNumFx; fx++)
             if (name == Lower(kChapters[fx]))
                 key = slots[fx].key;
@@ -1115,7 +1223,8 @@ static void CheckMidi()
     const std::vector<Expect> global_ccs = {
         {knob_cc, params + 1, "in focus"},
         {Midi("kFocusCC"), 1, "focus"},
-        {Midi("kCompCC"), params, "compressor"},
+        {Midi("kFinGlobalCC"), 4, "finalizer's level"},
+        {Midi("kFinGlobalCC") + 4, 1, "finalizer's depth"},
         {Midi("kSourceCC"), 1, "source"},
         {Midi("kOutGainCC"), 1, "output gain"},
         {Midi("kInGainCC"), 1, "input gain"},
@@ -1148,20 +1257,14 @@ static void CheckMidi()
         for (int n = e.from; n < e.from + e.count; n++)
             used_ccs.insert(n);
 
-    // the compressor's knob without a parameter, its CC that does nothing
-    for (size_t q = 0; q < kNumFxParams; q++)
-        if (!(kCompParams.knobs & (1 << q)))
-        {
-            const auto latch = NumberRows(own).find(Midi("kLatchCC"));
-            const auto comp = global_rows.find(Midi("kCompCC"));
-            CheckF(latch != NumberRows(own).end() && std::regex_search(latch->second, m, std::regex("cc (\\d+) does nothing"))
-                       && atoi(m[1].str().c_str()) == knob_cc + static_cast<int>(q),
-                   "MIDI: the compressor's CC %d does nothing, on its channel", knob_cc + static_cast<int>(q));
-            CheckF(comp != global_rows.end() && std::regex_search(comp->second, m, std::regex("(\\d+) does nothing"))
-                       && atoi(m[1].str().c_str()) == Midi("kCompCC") + static_cast<int>(q),
-                   "MIDI: the compressor's CC %d does nothing, on the global channel",
-                   Midi("kCompCC") + static_cast<int>(q));
-        }
+    // the finalizer's channel (#345): its parameters at fixed CCs, its preset, on, module, mutes
+    const int fin_high = Midi("kFinHighCC"), fin_mute = Midi("kFinMuteCC");
+    CheckRows("MIDI's finalizer channel", NumberRows(FindTable(ccs, "| CC | Function", 2)),
+              {{knob_cc, 4, "level"}, {knob_cc + 4, 3, "eq"}, {Midi("kFinPresetCC"), 1, "preset"},
+               {Midi("kFinOnCC"), 1, "bypassed"}, {Midi("kFinModuleCC"), 1, "module"},
+               {fin_high, 4, "comp"}, {fin_high + 4, 3, "width"}, {fin_mute, 3, "mute"}});
+    CheckF(Midi("kFinPresetCC") == knob_cc + 7 && Midi("kFinOnCC") == Midi("kLatchCC") && Midi("kFinModuleCC") == Midi("kFocusCC"),
+           "MIDI: the finalizer's preset CC after EQ's, its on or off the latch's CC, its module the focus's");
     // a morph's bars
     const auto bars = global_rows.find(Midi("kMorphBarsCC"));
     CheckF(bars != global_rows.end() && std::regex_search(bars->second, m, std::regex("(\\d+)-(\\d+)"))
@@ -1332,15 +1435,15 @@ int main()
     ReadKeys();
     ReadMidi();
 
-    for (size_t fx = 0; fx <= kComp; fx++)
+    for (size_t fx = 0; fx < kNumFx; fx++)
         CheckChapter(fx);
+    CheckFinalizer();
     for (size_t fx = 0; fx < kNumFx; fx++)
         for (size_t q = 0; q < kNumFxParams; q++)
             if (Stepped(fx, q))
                 CheckSteps(fx, q);
     CheckSteppedBullet();
     CheckCoarse();
-    CheckCompCoarse();
     CheckMidi();
     CheckSettings();
     return Finish();

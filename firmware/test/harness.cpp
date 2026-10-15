@@ -8,7 +8,8 @@
 //    pressed and released every 0.5s instead, so it stops and spins up
 //  - the inserts together, then everything twice, then 3s of tails. Without the tape stop,
 //    which would silence them and the sends
-// Every parameter starts at 0.5, the master compressor's amount at 0.3. The input is a 110Hz
+// Every parameter starts at 0.5, the finalizer neutral (the master compressor's amount at 0.3
+// until #345). The input is a 110Hz
 // saw, a gated 2kHz sine and a little noise, all deterministic, as are the effects' random
 // numbers (seeded).
 //
@@ -122,8 +123,10 @@ int main(int argc, char** argv)
                 );
     engine.SetMainGain(.75f);
     engine.SetInputGain(false, .75f);
-    // the master compressor at work: its amount where the old one-knob compressor was
-#if __has_include("MasterComp.h")
+    // the finalizer (#345) at its defaults, neutral and asleep; before it, the master compressor
+    // at work, its amount where the old one-knob compressor was
+#if __has_include("Finalizer.h")
+#elif __has_include("MasterComp.h")
     engine.SetCompParam(chompi::MasterComp::kThreshold, .3f);
 #else
     engine.SetFinalComp(.3f);

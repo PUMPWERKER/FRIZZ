@@ -1592,42 +1592,42 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc != 0 && Has(refused_sysex, "line 2: a setting over SysEx") && Has(out, "channel all,"),
           "remote: and a script that sets the channel over SysEx is refused, the channel kept");
 
-    // the play page writes the card too (#78): the compressor's knobs to frizz_master.txt,
+    // the play page writes the card too (#78): the finalizer's knobs to frizz_master.txt,
     // SAVE / COPY / DELETE to frizz_scenes.txt. Refused without --force, nothing sent (with
     // --save, as from a FRIZZ before PERSIST)
     Write(script, "booted\ntap KEY_15\nwait 100\nturn 4 10\nwait 300\n");
     rc = Remote({"play", script, "--save"}, out);
     const std::string refused_comp = out;
     Remote({"state"}, out);
-    Check(rc != 0 && Has(refused_comp, "line 4: turn 4 with the compressor selected")
+    Check(rc != 0 && Has(refused_comp, "line 4: turn 4 with the finalizer selected")
               && Has(refused_comp, "/FRIZZ/frizz_master.txt") && Has(refused_comp, "--force")
-              && !Has(out, "knobs on   compressor"),
-          "remote: play refuses the compressor's key then a knob, naming the master file, and sends none (#78)");
+              && !Has(out, "knobs on   finalizer"),
+          "remote: play refuses the finalizer's key then a knob, naming the master file, and sends none (#78)");
     if (rc == 0 || !Has(refused_comp, "frizz_master"))
         printf("%s\n", refused_comp.c_str());
-    // the compressor selected already: where the device stands counts, as the switch does
+    // the finalizer selected already: where the device stands counts, as the switch does
     Write(script, "booted\ntap KEY_15\nwait 200\n");
     const int selected = Remote({"play", script, "--save"}, out);
     Remote({"state"}, out);
-    const bool comp_shown = Has(out, "knobs on   compressor");
+    const bool comp_shown = Has(out, "knobs on   finalizer");
     Write(script, "booted\nturn 1 3\nwait 300\n");
     rc = Remote({"play", script, "--save"}, out);
-    Check(selected == 0 && comp_shown && rc != 0 && Has(out, "line 2: turn 1 with the compressor selected"),
-          "remote: and a knob alone with the compressor already selected on the device (#78)");
+    Check(selected == 0 && comp_shown && rc != 0 && Has(out, "line 2: turn 1 with the finalizer selected"),
+          "remote: and a knob alone with the finalizer already selected on the device (#78)");
     Write(script, "booted\ntap KEY_5\nwait 100\nturn 4 2\nwait 300\n");
     rc = Remote({"play", script, "--save"}, out);
     Check(rc == 0, "remote: an effect selected first, its knob turns, played");
     if (rc != 0)
         printf("%s\n", out.c_str());
-    Write(script, "booted\nmidi BF 18 40 BE 0E 40\n"); // CC 24 and channel 15's 14: the compressor's knob 1
+    Write(script, "booted\nmidi BF 18 40 BE 0E 40\n"); // CC 24 and channel 15's 14: the finalizer's knob 1
     rc = Remote({"play", script, "--save"}, out);
     Check(rc == 0, "remote: its knob over MIDI is played: CCs never reach the card (#97)");
     if (rc != 0)
         printf("%s\n", out.c_str());
     Write(script, "booted\ntap KEY_5\nwait 100\nmidi BF 17 0F\nturn 1 2\nwait 300\n");
     rc = Remote({"play", script, "--save"}, out);
-    Check(rc != 0 && Has(out, "line 5: turn 1 with the compressor selected"),
-          "remote: a knob turned once CC 23 put the compressor in focus is refused (#78)");
+    Check(rc != 0 && Has(out, "line 5: turn 1 with the finalizer selected"),
+          "remote: a knob turned once CC 23 put the finalizer in focus is refused (#78)");
     Write(script, "booted\ntap KEY_23\nwait 100\ntap KEY_19\nwait 100\ntap KEY_26\nwait 500\n");
     rc = Remote({"play", script, "--save"}, out);
     const std::string refused_save = out;
@@ -1640,13 +1640,13 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
 
     // a script's set (twin/README.md) goes as the developers' SET, in RAM as the rest (#214);
     // one FRIZZ refuses, or that can't be sent, fails its line. The old guard (--save) refuses
-    // a set FRIZZ would save: the compressor's knobs, a setting, the input gain; not an effect's
-    Write(script, "booted\nset comp 0 0.3\nset settings led_brightness 100\nwait 100\n");
+    // a set FRIZZ would save: the finalizer's knobs, a setting, the input gain; not an effect's
+    Write(script, "booted\nset fin 0 0.3\nset settings led_brightness 100\nwait 100\n");
     rc = Remote({"play", script}, out);
     const std::string set_played = out;
-    Remote({"get", "comp"}, out);
-    Check(rc == 0 && Has(out, "page 1  0.3000  0.5000"),
-          "remote: play's set sets the compressor's knob 1 to 0.3 (#214)");
+    Remote({"get", "fin"}, out);
+    Check(rc == 0 && Has(out, "level   0.3000  0.0000"),
+          "remote: play's set sets the finalizer's knob 1 to 0.3 (#214)");
     if (rc != 0 || !Has(out, "0.3000"))
         printf("%s\n%s\n", set_played.c_str(), out.c_str());
     Write(script, "booted\nset comp 0 0\nset comp 0 2\nset settings 99 1\nset nothing 0 0\nwait 100\n");
@@ -1655,14 +1655,14 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Remote({"get", "comp"}, out);
     Check(rc == 1 && Has(set_failed, "line 3: set comp 0 2: a knob's value is 0-1")
               && Has(set_failed, "line 4: set settings 99 1: refused") && Has(set_failed, "line 5: set nothing 0 0: no group")
-              && Has(out, "page 1  0.0000  0.5000"),
+              && Has(out, "level   0.0000  0.0000"),
           "remote: a set out of range, refused or of no group fails its line; the others are set");
     if (rc != 1)
         printf("%s\n", set_failed.c_str());
     Write(script, "booted\nset filter 0 0.5\nset comp 1 0.5\nwait 100\n");
     rc = Remote({"play", script, "--save"}, out);
     Check(rc != 0 && Has(out, "line 3: set comp 1 0.5") && Has(out, "/FRIZZ/frizz_master.txt"),
-          "remote: and with --save a set of the compressor is refused, naming the master file; an effect's isn't");
+          "remote: and with --save a set of the finalizer is refused, naming the master file; an effect's isn't");
     if (rc == 0)
         printf("%s\n", out.c_str());
 
@@ -1685,7 +1685,7 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     }
 
     // since PERSIST 0, play keeps the card as it was (#58, #78): the settings page's mono key,
-    // a channel over SysEx, the compressor's knob and a scene saved change FRIZZ, not its files
+    // a channel over SysEx, the finalizer's knob and a scene saved change FRIZZ, not its files
     const std::string master_file = CardFiles()["/FRIZZ/frizz_master.txt"];
     const std::string scenes_file = CardFiles()["/FRIZZ/frizz_scenes.txt"];
     Write(script, "booted\ntoggle 1\nwait 100\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n"

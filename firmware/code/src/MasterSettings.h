@@ -1,6 +1,6 @@
 /** @file MasterSettings.h
- *  @brief What the play page keeps on the card outside the scenes: the master compressor's
- *  knobs (MasterComp.h), the settings page's (SettingsPage.h: the mono input, the MIDI
+ *  @brief What the play page keeps on the card outside the scenes: the finalizer's knobs and
+ *  its four presets (Finalizer.h), the settings page's (SettingsPage.h: the mono input, the MIDI
  *  settings, the clock's tempo factor and source, MIDI out, the LEDs' brightness, each
  *  source's effects and live), the input gain of each source, and their text format
  *  (SceneStore.h writes it). No hardware here, so the format can be tested on the host.
@@ -9,7 +9,8 @@
  *  scene file (FxScenes.h):
  *
  *    FRIZZ master 1
- *    compressor2 300000 500000 500000 500000 1000000 0 0 0
+ *    finalizer 500000 0 0 0 500000 500000 500000 400000 400000 400000 0 500000 500000 500000
+ *    finalizer_preset2 500000 300000 500000 0 500000 500000 500000 400000 400000 400000 0 500000 500000 500000
  *    mono 0
  *    midi_channel 16
  *    midi_transport 0
@@ -45,10 +46,12 @@
  *  source USB, a computer's audio (#196); usb_audio whether FRIZZ is a USB sound card at all
  *  (UsbDevice.h; off, MIDI and the card drive alone). A number the setting doesn't take keeps the
  *  default; a word where the number belongs makes the file unreadable (SceneStore.h keeps it
- *  as frizz_master.bak), rather than a garbled gain silencing an input. compressor2 has the compressor's eight parameters, both pages
- *  (MasterComp.h); a file from before has "compressor" with four, threshold, ratio, speed and
- *  mix, which loads with the speed as both attack and release and the makeup at 0dB (it was
- *  automatic then).
+ *  as frizz_master.bak), rather than a garbled gain silencing an input. finalizer has the
+ *  finalizer's knobs, the ones it uses in their order (kFinFileParams: Level's four, EQ's
+ *  three, Comp's four, Width's three), and finalizer_preset1-4 each preset that's stored, the
+ *  same way. The master compressor it replaced in 1.5 (#345) had "compressor2" (and before
+ *  that "compressor"): a file from before loads with the finalizer neutral, its old line
+ *  skipped, and the next write leaves it out.
  *  Reading, unknown lines are skipped and a setting the file leaves out keeps its default, so
  *  more settings can join later. A file from before the randomizer was removed still has its
  *  line; it's skipped, and the next write leaves it out.
@@ -61,12 +64,13 @@
 namespace chompi
 {
 
-// The file's size at most
-static const size_t kMasterFileMax = 512;
+// The file's size at most: the finalizer and its four presets about 600 bytes of it
+static const size_t kMasterFileMax = 1536;
+// The finalizer's presets
+static const size_t kFinPresets = 4;
 
 struct MasterSettings
 {
-    float comp[kNumFxParams];
     bool mono;  // the AUX input's left channel to both sides, for a mono (TS) cable
     uint8_t midi_channel; // the channel FRIZZ listens on, 1-16, or 0 for all
     bool midi_transport;  // MIDI Start, Continue and Stop play and pause the loop
@@ -86,12 +90,21 @@ struct MasterSettings
     bool usb_dry;           // USB past the effects
     bool usb_live;          // USB on the outputs
     bool usb_audio;         // FRIZZ a USB sound card (UsbDevice.h)
+    uint8_t fin_presets_used; // the finalizer's presets: bit p, preset p stored
+    // last, so the settings' bytes before them stay within a Line's offset
+    float fin[kNumFinParams]; // the finalizer's knobs, module by module
+    float fin_presets[kFinPresets][kNumFinParams];
 
     /** Every setting on its default */
     void Reset()
     {
-        for (size_t p = 0; p < kNumFxParams; p++)
-            comp[p] = kCompParams.defaults[p];
+        for (size_t p = 0; p < kNumFinParams; p++)
+        {
+            fin[p] = kFinalizerKnobs[p / kNumFxKnobs].defaults[p % kNumFxKnobs];
+            for (size_t i = 0; i < kFinPresets; i++)
+                fin_presets[i][p] = fin[p];
+        }
+        fin_presets_used = 0;
         mono = false;
         midi_channel = kDefaultMidiChannel;
         midi_transport = false;
@@ -121,7 +134,7 @@ namespace masterfile
 {
 static const char kHeader[] = "FRIZZ master 1";
 
-/** A setting on a line of its own after the compressor's, "name value", in this order */
+/** A setting on a line of its own after the finalizer's, "name value", in this order */
 struct Line
 {
     enum Kind : uint8_t
@@ -174,18 +187,48 @@ inline uint8_t Value(const MasterSettings& settings, const Line& line)
 {
     return reinterpret_cast<const uint8_t*>(&settings)[line.offset];
 }
+
+// The finalizer's line and its presets': the parameters it uses, in their order
+static const uint8_t kFinFileParams[] = {0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14};
+static const size_t kFinFileValues = sizeof(kFinFileParams);
+static const char kFinLine[] = "finalizer";
+static const char kFinPresetLine[] = "finalizer_preset"; // and the preset's number, 1-4
+
+__attribute__((noinline, optimize("Os"))) inline void PutFin(char* buf, size_t size, size_t& pos, const float* fin)
+{
+    for (size_t i = 0; i < kFinFileValues; i++)
+        scenefile::PutValues(buf, size, pos, &fin[kFinFileParams[i]], 1);
+}
+__attribute__((noinline, optimize("Os"))) inline void ReadFin(const char*& p, float* fin)
+{
+    float v[kFinFileValues];
+    for (size_t i = 0; i < kFinFileValues; i++)
+        v[i] = fin[kFinFileParams[i]];
+    scenefile::ReadValues(p, v, kFinFileValues);
+    for (size_t i = 0; i < kFinFileValues; i++)
+        fin[kFinFileParams[i]] = v[i];
+}
 } // namespace masterfile
 
 /** The settings as the file's text, into buf (terminated). Returns its length, or 0 if it
  *  didn't fit */
-inline size_t FormatMaster(const MasterSettings& settings, char* buf, size_t size)
+__attribute__((noinline, optimize("Os"))) inline size_t FormatMaster(const MasterSettings& settings, char* buf, size_t size)
 {
     using namespace scenefile;
     using namespace masterfile;
     size_t pos = 0;
     Put(buf, size, pos, masterfile::kHeader);
-    Put(buf, size, pos, "\ncompressor2");
-    PutValues(buf, size, pos, settings.comp, kNumFxParams);
+    Put(buf, size, pos, "\n");
+    Put(buf, size, pos, kFinLine);
+    PutFin(buf, size, pos, settings.fin);
+    for (size_t i = 0; i < kFinPresets; i++)
+        if (settings.fin_presets_used >> i & 1)
+        {
+            Put(buf, size, pos, "\n");
+            Put(buf, size, pos, kFinPresetLine);
+            PutUint(buf, size, pos, static_cast<uint32_t>(i + 1));
+            PutFin(buf, size, pos, settings.fin_presets[i]);
+        }
     for (const Line& line : kLines)
     {
         Put(buf, size, pos, "\n");
@@ -201,7 +244,7 @@ inline size_t FormatMaster(const MasterSettings& settings, char* buf, size_t siz
 /** Reads the file's text into settings, which start on their defaults. Returns false, with
  *  every setting on its default, if it isn't a settings file, or a setting's value isn't a
  *  number (#168) */
-inline bool ParseMaster(const char* text, MasterSettings& settings)
+__attribute__((noinline, optimize("Os"))) inline bool ParseMaster(const char* text, MasterSettings& settings)
 {
     using namespace scenefile;
     using namespace masterfile;
@@ -210,7 +253,6 @@ inline bool ParseMaster(const char* text, MasterSettings& settings)
     const char* p = AfterHeader(text, masterfile::kHeader);
     if (!p)
         return false;
-    bool new_comp = false; // compressor2 read: an old line after it is ignored
 
     while (*p)
     {
@@ -240,22 +282,19 @@ inline bool ParseMaster(const char* text, MasterSettings& settings)
                 *Field(settings, *found) = static_cast<uint8_t>(found->kind == Line::SWITCH ? v != 0 : v);
             continue;
         }
-        if (Is(word, len, "compressor2"))
+        if (Is(word, len, kFinLine))
         {
-            ReadValues(p, settings.comp, kNumFxParams);
-            new_comp = true;
+            ReadFin(p, settings.fin);
             continue;
         }
-        if (Is(word, len, "compressor") && !new_comp)
+        // a preset: its number, 1-4, right after the name
+        const size_t plen = sizeof(kFinPresetLine) - 1;
+        if (len == plen + 1 && strncmp(word, kFinPresetLine, plen) == 0 && word[plen] >= '1'
+            && word[plen] < static_cast<char>('1' + kFinPresets))
         {
-            // before page 2: threshold, ratio, speed (attack and release together), mix
-            float old[kNumFxKnobs] = {settings.comp[0], settings.comp[1], settings.comp[2],
-                                      settings.comp[4]};
-            ReadValues(p, old, kNumFxKnobs);
-            settings.comp[0] = old[0];
-            settings.comp[1] = old[1];
-            settings.comp[2] = settings.comp[3] = old[2];
-            settings.comp[4] = old[3];
+            const size_t i = static_cast<size_t>(word[plen] - '1');
+            ReadFin(p, settings.fin_presets[i]);
+            settings.fin_presets_used |= static_cast<uint8_t>(1u << i);
         }
     }
     return true;

@@ -95,14 +95,18 @@ static const uint8_t kKeys = 15;    // the white keys: their channels 1-15 (Midi
 static const uint8_t kKeySlots = 9; // a key's knobs 1-8 (CC 14-21), then its latch (CC 22)
 static const uint8_t kLatchSlot = 8;
 static const uint32_t kSweepMs = 10;
-/** What's sent, each its own CC: white key k's slot s on its channel at k * kKeySlots + s,
- *  then the global channel's */
+/** What's sent, each its own CC: white key k's slot s on its channel at k * kKeySlots + s
+ *  (the finalizer's: its parameters 0-6, then its on or off at CC 22), the global channel's
+ *  latches and effect in focus, the rest of the finalizer's on its channel, then the global
+ *  channel's */
 enum Item : uint8_t
 {
     kGlobalLatches = kKeys * kKeySlots, // + key 0-13: CC 102-115
     kFocusItems = kGlobalLatches + kKeys - 1, // + slot: CC 14-22, the effect in focus
-    kCompItems = kFocusItems + kKeySlots,     // + param: CC 24-31
-    kFocus = kCompItems + kKeySlots - 1,      // CC 23
+    kFinItems = kFocusItems + kKeySlots,      // + param - 8: CC 24-31 on the finalizer's channel
+    kFinModule = kFinItems + kKeySlots - 1,   // CC 23 there
+    kFinMutes,                                // + band: CC 102-104 there
+    kFocus = kFinMutes + 3,                   // CC 23
     kOutGain,
     kInGain,
     kMix,
@@ -125,9 +129,18 @@ constexpr uint8_t Cc(uint8_t item)
 {
     return item < kGlobalLatches ? static_cast<uint8_t>(14 + item % kKeySlots)
          : item < kFocusItems    ? static_cast<uint8_t>(102 + item - kGlobalLatches)
-         : item < kCompItems     ? static_cast<uint8_t>(14 + item - kFocusItems)
-         : item < kFocus         ? static_cast<uint8_t>(24 + item - kCompItems)
+         : item < kFinItems      ? static_cast<uint8_t>(14 + item - kFocusItems)
+         : item < kFinModule     ? static_cast<uint8_t>(24 + item - kFinItems)
+         : item == kFinModule    ? 23
+         : item < kFocus         ? static_cast<uint8_t>(102 + item - kFinMutes)
                                  : kGlobalCc[item - kFocus];
+}
+/** An item's channel, 0-15: its key's, the finalizer's (the last key's), or the global one's */
+constexpr uint8_t Channel(uint8_t item, uint8_t global)
+{
+    return item < kGlobalLatches ? static_cast<uint8_t>(item / kKeySlots)
+         : item >= kFinItems && item < kFocus ? static_cast<uint8_t>(kKeys - 1)
+                                              : static_cast<uint8_t>(global - 1);
 }
 
 /** A 0-1 knob as 7 bits, the inverse of MidiToKnob (MidiControl.h): .5 is 64, 1 is 127 */
@@ -193,7 +206,7 @@ public:
             uint8_t v;
             if (!value(c, v) || v == shadow_[c])
                 continue;
-            msg[3 * n] = static_cast<uint8_t>(0xB0 | (c < kGlobalLatches ? c / kKeySlots : global - 1));
+            msg[3 * n] = static_cast<uint8_t>(0xB0 | Channel(c, global));
             msg[3 * n + 1] = Cc(c);
             msg[3 * n + 2] = v;
             item[n] = c;
