@@ -148,6 +148,12 @@ what FRIZZ does.
 
 ### Fixed
 
+- **A MIDI clock on the TRS jack keeps its time with other MIDI on the same cable** (#322): a
+  clock tick followed straight away by other messages (a sequencer's chord, automation for other
+  gear on the cable) reached FRIZZ only once they had passed too: about 3 ms late behind a
+  chord, 15 ms and more behind a stream of CCs, and a cable that never paused held the clock
+  back altogether. MIDI out passed the clock on that late, and a loop started by MIDI's Start
+  started that late. Now each tick counts the moment it arrives.
 - **The shifter and the flanger no longer click when punched in with the feedback up** (#326):
   the feedback's share of what they had stored came in at once under the key's fade, and
   repeated on every trip. Now it fades in with the key.

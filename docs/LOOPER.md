@@ -84,6 +84,20 @@ USB-MIDI implications (already shipped in WAVE/TAPE/TEMPO, so low risk):
   synth that is itself a USB device can't send clock to it over USB (use TRS).
 - USB delivers in 1 ms frames, so ticks jitter by up to 1 ms. Fine at any sane tempo.
 
+TRS: the UART's DMA fills a ring of 256 bytes and hands them to the parser when the line has
+been quiet for a byte's time (IDLE; libDaisy leaves the DMA's own half and full interrupts
+off), and on every clock tick (0xF8: the USART's character match, #322, `THIRD_PARTY.md`). A
+tick then counts in the next audio block (0.5 ms) whatever follows it on the cable. Before the
+match, a tick waited for the bytes right behind it, 0.32 ms each or more (a Scarlett 18i20
+leaves gaps shorter than a byte between them: ~0.5 ms a byte). Measured with
+`tools/midisuite.py --cases tick-tail` (a clock in on TRS, passed on over USB): a 3-note chord
+behind each tick made it 3.2 ms late, 29 bytes of CCs 15 ms (up to 67), and a line that never
+paused delivered nothing (0 ticks counted in 8 s). With the match each stays within 0.35 ms of a
+bare clock's tick (95 %), a loop's Start within 0.4 ms. The line fits (MidiClock's pairing, TempoClock's, the Looper's)
+absorbed most of it, the tempo stayed at 120.00 and a 1-bar loop's length within 0.5 ms, but a
+single tick's time counts as it came: MIDI out passing it on, a loop's Start (Looper::Follow's
+cue), Sync's tick.
+
 ### 1.5 Transport knob (encoder 5, the big purple one)
 
 - **Turn while playing:** speed in **semitones**, 2 detents per step, from **2×** down to
