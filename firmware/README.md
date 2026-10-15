@@ -167,7 +167,10 @@ nothing changed or added in `code/`, and what's sent is the build `make` makes t
 named too: the same bytes). So a release or a beta goes on from a worktree of its tag (`git
 worktree add ../FrizZ-v1.0.0 v1.0.0`, then `./flash.py --slot 10` there), when the user asks.
 A bare `./flash.py` sends nothing and says which options there are; the bench never goes to 10
-or 13. Sessions never send to 10 or 13 unasked (CLAUDE.md).
+or 13. Sessions never send to 10 or 13 unasked (CLAUDE.md). Keys 10 and 13 stay guarded
+whatever `FRIZZ_SLOT` and `BETA_SLOT` say (they add keys to guard), and `--slot` takes FRIZZ's
+keys and the bench's; another key (1-15: a stock firmware, the storage firmware's 15) only with
+`--other-slot`, checked before anything is built or FRIZZ restarted.
 
 **One at a time.** Every tool here takes a lock (`tools/chompi.py`, in `/run/user/UID`) when
 it first reaches for the CHOMPI, and waits while another has it, saying who; what doesn't
@@ -193,9 +196,11 @@ at most, sending nothing, then asks for the power switch. `tools/chompi.py fix-n
 does it for one found running so: it starts the slot noted as running (10, 11, 12 or 13) again.
 
 Sending replaces whatever is in that slot, so set yours (`FRIZZ_SLOT`, `BETA_SLOT`,
-`BENCH_SLOT`, `TEST_SLOT`, or `--slot`) if your keys differ. Without `--slot` (`--test`,
-`--bench`), it refuses a key that holds another firmware than FRIZZ (`--slot` replaces it
-anyway). Linux only (ALSA), Python 3, no
+`BENCH_SLOT`, `TEST_SLOT`, or `--slot`) if your keys differ. It refuses a key that holds another
+firmware than FRIZZ (`--other-slot` replaces it anyway). Nothing restarts FRIZZ while it lends
+the card to the computer (`tools/chompi.py`'s `restart`): the drive would go from under it;
+eject it first. Run by hand, `tools/midi_send.py` takes the lock too and leaves keys 10, 13, 15
+and the launcher to `flash.py`. Linux only (ALSA), Python 3, no
 packages; it uses the launcher's own client, `tools/midi_send.py`. On macOS or Windows, the
 launcher's web page (https://ugrossek.github.io/CHOMPI/, Chrome or Edge) does the same.
 FRIZZ keeps its files in `/FRIZZ`, so it shares the card with the other firmwares.
@@ -206,7 +211,7 @@ up as a drive. `./card.py` uses it with no hands at the panel:
 ```bash
 ./card.py get                  # FRIZZ/cpu.txt and every bug report, into card/
 ./card.py get FRIZZ/x.txt -o . # any file
-./card.py put FILE FRIZZ/      # a file onto the card
+./card.py put FILE FRIZZ/      # a file onto the card: into /FRIZZ or /USBTEST
 ./card.py ls FRIZZ             # a folder
 ./card.py mount                # just mounts it and prints where; ./card.py done ends it
                                # (in a hold, which keeps the CHOMPI between them:
@@ -215,7 +220,11 @@ up as a drive. `./card.py` uses it with no hands at the panel:
 
 Each brings the CHOMPI into the storage firmware, mounts the card, does its part, ejects it and
 starts FRIZZ again (`--then N` another slot, `--then none` stays at the picker), about 30 s in
-all. `remote.py` likewise starts FRIZZ if the CHOMPI is elsewhere, and `flash.py` sends from
+all; it takes the lock first, the card already a drive or not. The card is the user's: `put`
+writes only into `/FRIZZ` and `/USBTEST`, never over the settings and scenes
+(`/FRIZZ/frizz_*`), over a file in `/FRIZZ` that's there (the user's loops) only with
+`--replace`; `--dangerous` writes elsewhere, but never into the root, `/FIRMWARE` or `/TAPE`
+(names matched as the card's FAT does: any case, trailing dots and spaces dropped). `remote.py` likewise starts FRIZZ if the CHOMPI is elsewhere, and `flash.py` sends from
 wherever it is.
 
 All of them go through the launcher (`tools/chompi.py`): a running FRIZZ restarts into it over
@@ -225,8 +234,8 @@ eject, and the launcher starts a slot on its `RUN` command. The last two need
 (the [setup page](https://ugrossek.github.io/CHOMPI/setup/) updates an older one) and
 [USB storage v1.6](https://github.com/lnetzel/CHOMPI-lnetzel/releases/tag/usb-storage-v1.6).
 A card set up from the launcher's v1.5 release still has USB storage v1.5 on key 15: copy
-v1.6's `.bin` over `FIRMWARE/15_USB_STORAGE.bin` (or `./flash.py FILE --slot 15 --name
-USB_STORAGE`). With an older launcher or storage firmware the tools still work, but say which
+v1.6's `.bin` over `FIRMWARE/15_USB_STORAGE.bin` (or `./flash.py FILE --slot 15 --other-slot
+--name USB_STORAGE`). With an older launcher or storage firmware the tools still work, but say which
 key to press (15 for the card, overdub then CHOMPI to leave it, 10 for FRIZZ). With an older FRIZZ or
 another firmware running, switch the CHOMPI off and on when they say so (they wait up to 2
 minutes). Mounting needs udisks, as any desktop has.
@@ -308,8 +317,9 @@ only, answered `F0 7D 43 48 7E SUB SEQ STATUS DATA F7`. SEQ comes back, so a too
 answer; STATUS is 0 ok, 1 refused (an unknown sub-command, group, index, or a value a setting
 doesn't take), 2 not in this build, 3 not yet. Requests wait in a queue of their own (8), apart
 from the other queries' one slot that `play --cpu`'s load readings use, and MainLoop answers
-one every 2 ms; a request that finds the queue full gets no answer, so the tools ask again
-(every request can be repeated: they set, never step). Numbers go in 7-bit groups, the highest
+one every 2 ms, in order; a request that finds the queue full gets no answer, so the tools ask
+again with the same SEQ (most set, never step; a job's start asked twice is refused the second
+time, but the first's answer comes first, and is the one the tool takes). Numbers go in 7-bit groups, the highest
 first; a knob's value in 14 bits, as `0x21` has them.
 
 | SUB | Asks | Answers |

@@ -25,7 +25,6 @@ int Suite(const std::string& args, std::string& out, int limit, const std::strin
     return Tool("midisuite.py", args, out, limit, {}, stop_at, stop_signal);
 }
 
-bool Has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
 
 /** A case's line in out: "PASS out-loop (7 s)", "SKIP clock-trs: ..." */
 bool Line(const std::string& out, const std::string& result, const std::string& id)
