@@ -230,7 +230,7 @@ enum Sub : uint8_t
                  //    1 -> PC, LR, xPSR, CFSR, HFSR, MMFAR, BFAR (5 each); 2 clears it -> flags
     TEST = 12,   // WHAT: the bench's (FRIZZ-bench.bin) faults on purpose, for the tools to
                  //    check RESET, the crash record and the watchdog: kHangMain, kFaultMain,
-                 //    kHangAudio, kFaultAudio
+                 //    kHangAudio, kFaultAudio; and the jack's receive, kUartError
     LOOPS = 0x0D, // PART ...: the loop loader's (LoopLoader::Dev). FRIZZ.bin only
     USB = 0x0E,   // PART ...: USB's counts, the card lent (chompi_main.cpp's UsbDev, #196)
 };
@@ -254,8 +254,9 @@ static const uint8_t kArmed = 1;            // LEVELS 1's flags: the peak meters
 static const uint8_t kResetKey[] = {'R', 'S', 'T'};
 static const uint8_t kCrashValid = 1;       // CRASH's flags: a crash recorded
 // TEST's: MainLoop hangs; reads where nothing is (a bus fault); the audio callback hangs;
-// runs an undefined instruction in it
-static const uint8_t kHangMain = 1, kFaultMain = 2, kHangAudio = 3, kFaultAudio = 4;
+// runs an undefined instruction in it; the jack's UART at twice its rate for 20 ms, so the
+// bytes coming in meanwhile break their frames: a receive error (#361)
+static const uint8_t kHangMain = 1, kFaultMain = 2, kHangAudio = 3, kFaultAudio = 4, kUartError = 5;
 
 /** SIGNAL's test signal in place of the input, and LEVELS' peak meters: off at power-on, in
  *  RAM only, until a restart. The audio callback reads `on` once a block, and off it costs
