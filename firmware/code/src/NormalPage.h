@@ -177,7 +177,7 @@ namespace chompi
     // tempo): green on its first step to yellow on its last, the same on every effect
     static constexpr const float* kSplitLow = green;
     static constexpr const float* kSplitHigh = yellow;
-    // The safety limiter on the compressor's key: red from kLimStartDb of limiting, fully red
+    // The safety limiter on the finalizer's key: red from kLimStartDb of limiting, fully red
     // at kLimFullDb, held kLimHoldMs so a short peak is seen
     static constexpr float kLimStartDb = 1.f, kLimFullDb = 3.f;
     static const uint32_t kLimHoldMs = 300;
@@ -1350,7 +1350,7 @@ namespace chompi
                     status = BAD;
                 break;
             case LEVELS:
-                if (group <= 1)
+                if (group <= 2)
                     n = DevLevels(group, d, n);
                 else
                     status = BAD;
@@ -1735,7 +1735,7 @@ namespace chompi
         // PlayKeys' Host
         friend class PlayKeys<NormalPage>;
         inline bool SceneArmed() const { return scene_ctl_.Armed() || fin_presets_.Armed(); }
-        /** SHIFT going down: SHIFT + key after all if an FX key's or the compressor's press
+        /** SHIFT going down: SHIFT + key after all if an FX key's or the finalizer's press
          *  came at most kShiftGraceMs before it, a select, which a plain press of an FX key
          *  takes back (FxControls::LateSelect); otherwise the FX keys held will latch */
         bool ShiftPressed()
@@ -1850,7 +1850,7 @@ namespace chompi
 #endif
         }
 
-        /** An FX or the compressor's key going down: tells PlayKeys, and flashes the
+        /** An FX or the finalizer's key going down: tells PlayKeys, and flashes the
          *  key white for a select */
         void FxKeyDown(bool flash)
         {
@@ -2178,7 +2178,7 @@ namespace chompi
                 engine_->TapTempo(tap_tempo_.Bpm());
         }
 
-        /** The compressor's knobs or a setting changed: written kMasterSaveDelayMs after the last
+        /** The finalizer's knobs or a setting changed: written kMasterSaveDelayMs after the last
          *  change, with every retry available again */
         void MasterChanged(uint32_t now)
         {
@@ -2533,7 +2533,7 @@ namespace chompi
 
         void DrawFxLeds(uint32_t now)
         {
-            // knob LEDs: the selected FX's parameters in its colours, or the compressor's; a
+            // knob LEDs: the selected FX's parameters in its colours, or the finalizer's; a
             // knob the page doesn't use is dark. On an effect's page 2, knob 4's is its output's
             // VU meter (#117); a page just turned blinks its number on all four, white
             const size_t selected = fx_.Selected();
@@ -2916,7 +2916,7 @@ namespace chompi
         {
             return edge_ms_[1][at] - edge_ms_[down][key] <= kShiftGraceMs;
         }
-        /** SHIFT for an FX key's or the compressor's press: held, or let go at most
+        /** SHIFT for an FX key's or the finalizer's press: held, or let go at most
          *  kShiftGraceMs before it */
         inline bool ShiftAt(uint16_t key) const
         {
@@ -2926,7 +2926,7 @@ namespace chompi
         // LED helpers (a colour at a level: PanelLeds.h): crossfades through two, three or
         // four colours
         /** A short flash over what an LED shows: white, or dark where it's already close to
-         *  white (a loud FX, the compressor working hard, LOOP near the loop's end), so it's
+         *  white (a loud FX, the finalizer working hard, LOOP near the loop's end), so it's
          *  always seen */
         static void Flash(float* rgb)
         {
@@ -3039,20 +3039,20 @@ namespace chompi
         // callback's clock (KeyEdge), for the grace of kShiftGraceMs
         static const int kEdgeKeys = static_cast<int>(Hardware::SwId::SR_LAST);
         volatile uint32_t edge_ms_[2][kEdgeKeys] = {};
-        float lim_shown_ = 0.f;  // the limiter on the compressor's key, 0..1, held from lim_at_
+        float lim_shown_ = 0.f;  // the limiter on the finalizer's key, 0..1, held from lim_at_
         uint32_t lim_at_ = 0;
         float speed_chunk_ = 0.f;   // transport detents towards the next speed step
         bool speed_ladder_ = false; // speed_chunk_ counts towards a step of the ladder (SHIFT)
         SettingsPage settings_;
         volatile bool show_settings_ = false; // the mode switch is up (ui.h)
         bool drew_settings_ = false;          // the last frame was the settings page's
-        bool master_unsaved_ = false;     // the compressor's knobs or a setting,
+        bool master_unsaved_ = false;     // the finalizer's knobs or a setting,
                                           // not yet on the card
         uint32_t master_changed_at_ = 0;  // when they last changed
         bool master_hurried_ = false;     // a restart pulled the save forward (MasterSettled)
         uint32_t master_tries_ = 0;       // failed writes since
         bool master_saving_ = false;      // a write asked for, its outcome not yet seen
-        LedSignal master_refused_;        // a failed write, on the compressor's key
+        LedSignal master_refused_;        // a failed write, on the finalizer's key
 
         FxControls<PassthroughEngine> fx_;
         SceneControls<PassthroughEngine> scene_ctl_;

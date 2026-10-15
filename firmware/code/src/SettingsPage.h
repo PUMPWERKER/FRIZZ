@@ -37,7 +37,7 @@
  *    G# (upper octave)   the source live, on the outputs, on / off
  *                                                            white, lit when on
  *    A# (upper octave)   the source's effects: through them / dry (past them and the
- *                        compressor)                         green / white, lit; dark while
+ *                        finalizer)                          green / white, lit; dark while
  *                                                            the source isn't live
  *
  *  AUX's jack picks AUX or the mic at power-on and whenever a cable goes in or out

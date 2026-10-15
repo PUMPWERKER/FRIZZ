@@ -80,7 +80,7 @@ struct MasterSettings
     uint8_t led_brightness; // percent, 25-100
     bool midi_block_trs;    // the effect channels over the jack too (MidiControl.h)
     bool midi_feedback;     // the panel's changes out as CCs (MidiFeedback.h)
-    bool aux_dry;           // AUX past the effects and the compressor (#152)
+    bool aux_dry;           // AUX past the effects and the finalizer (#152)
     uint8_t gain_aux;       // the input gain in percent, AUX's
     uint8_t gain_mic;       // and the mic's
     bool mic_dry;           // the mic past them, as aux_dry (#177)
