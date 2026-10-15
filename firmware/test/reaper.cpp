@@ -72,8 +72,7 @@ void Run(const std::string& name, bool out_wired, const std::string& ids, const 
     Twice(name, [&] {
         const auto t0 = std::chrono::steady_clock::now();
         rc = Reaper("-v --cases " + ids, out, limit, env);
-        printf("%s: %ld s, the twin up to %ld ms behind\n", name.c_str(),
-               long(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count()), lag);
+        Took(name, t0);
         unjudged = Unjudged(out);
         return exited() && says() && unjudged.empty();
     });
@@ -214,8 +213,9 @@ int main()
     cases.push_back({"no-trs", [] {
         Run("no TRS", false, "daw-jitter", {"SKIP daw-jitter", "needs the CHOMPI's TRS out"}, 0);
     }});
-    // the processes mostly wait on the wall clock: all at once
-    setenv("CASE_JOBS", "6", 0);
+    // on the wall clock the processes mostly wait: all at once; on the twin's, a core each
+    if (!lockstep)
+        setenv("CASE_JOBS", "6", 0);
     RunAllCases();
     return Finish();
 }
