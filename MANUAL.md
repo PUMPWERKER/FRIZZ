@@ -390,7 +390,8 @@ page opens with its white keys dark, and the lower C# and D# blink red 3 times.
 
 While you're on the Loops page, the CHOMPI key glows dimly in the bank's colour (white while
 you hold it as SHIFT). The CHOMPI key's LED only ever shows SHIFT held, the page you're on,
-the confirm of a scene save, copy or delete and the start-up ripple.
+a scene save, copy or delete waiting for its confirm, the start-up ripple and the low-battery
+warning.
 
 ![The panel on the Loops page in bank B: the CHOMPI key glows yellow, held as SHIFT for the page's gestures; the lower C# and D# lead to banks A and C in orange and green, white keys 1 to 9 hold loops in dim yellow, key 3 bright as the loop playing](images/panel-loops.svg)
 
@@ -418,6 +419,7 @@ show where they lead. A white key shows its loop:
 
 The effects can't be punched in by hand there, since the white keys are the loops, but the
 latched ones and the [chaos key](#chaos-key) play on, and MIDI notes still play the effects.
+Notes 66, 68 and 70 do nothing there, as the upper F#, G# and A# don't.
 
 ### The Cubbi page
 
@@ -452,7 +454,7 @@ bank's colour, and the lower C# and D# in the colours of the banks they lead to.
 
 ### Switching loops
 
-- **A white key** switches to its loop at once, with a short crossfade. It keeps time: the
+- **A white key** switches to its loop at once, with a short crossfade (10 ms). It keeps time: the
   new loop starts as far into its pass as the loop playing is into its own, counted round
   the new loop's length. So two loops at the same tempo stay on the beat, whatever their
   lengths and whatever tempo FRIZZ guesses for them. With no loop playing it starts from the
@@ -1794,17 +1796,19 @@ loops from there. Leave the card in.
 |---|---|---|
 | `FRIZZ/frizz_scenes.txt` | The 4 [FX scenes](#fx-scenes) | When you save, copy or delete a scene |
 | `FRIZZ/frizz_master.txt` | The [master compressor](#master-compressor) and the [settings page](#settings-page): the MIDI settings, the LEDs' brightness, AUX mono, USB audio, and for AUX, the mic and USB each their input gain, monitoring and effects | 2 s after the last change |
-| `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | A file FRIZZ couldn't read, or the computer's version that FRIZZ's own replaced ([The card as a USB drive](#the-card-as-a-usb-drive)) | When FRIZZ's save replaces it |
+| `FRIZZ/frizz_scenes.bak`, `frizz_master.bak` | A file FRIZZ couldn't read, or the computer's version that FRIZZ's own replaced ([The card as a USB drive](#the-card-as-a-usb-drive)) | When FRIZZ writes its own in that file's place: at the next save, or when it takes the card back |
+| `FRIZZ/frizz_scenes.tmp`, `frizz_master.tmp` | A save on its way, renamed into place when it's whole | During a save; one a power cut left is finished at power-on |
 | `FRIZZ/bug-1.txt`, `bug-2.txt` … | [Bug reports](#bug-reports) | When you ask for one |
 | `FRIZZ/a1.wav` … `h15.wav` | Your [loops](#loops-on-the-card) | Only by the [Companion](#the-companion), as it uploads, moves or deletes them |
 | `FRIZZ/xfer.tmp` | A Companion upload under way, renamed to its slot when it's whole | During an upload; one left over is deleted at power-on |
+| `FRIZZ/a1-b2.swp` and the like | A Companion swap under way | During a swap; one cut short is put right when FRIZZ next looks for the loops |
 | `TAPE/cubbi_a1.wav` … `cubbi_e15.wav` (or in the card's root) | TAPE's recordings, on the [Cubbi page](#the-cubbi-page) | Never: FRIZZ only reads them |
 
 ### Scenes and settings on the card
 
 The scenes live in `FRIZZ/frizz_scenes.txt` on the card, one line per effect, keyed by its
-name. FRIZZ creates the folder on its first start; after that the card is written only when
-you save, copy or delete, never on a recall. Saving takes a moment in which the LEDs may pause. A scene file FRIZZ can't
+name. FRIZZ creates the folder on its first start; after that the scene file is written only
+when you save, copy or delete, never on a recall. Saving takes a moment in which the LEDs may pause. A scene file FRIZZ can't
 read (from another version, or edited into something else) starts it with no scenes but
 isn't lost: the first save moves it to `frizz_scenes.bak`.
 
@@ -1858,7 +1862,8 @@ lent). The loop and the effects play on meanwhile.
     page does. What MIDI set without the card (an input gain by CC, say) goes to the file's
     value, as after a restart.
   - The scenes come in for their next recall: what plays stays as it is. If the scene that
-    plays changed, its key pulses as edited, as after you turn a knob.
+    plays changed, its key pulses as edited, as after you turn a knob; if the computer deleted
+    it, what plays stays and no scene key is lit for it, as after a delete.
 - **If you changed them on FRIZZ meanwhile, FRIZZ's wins**, file by file: a scene saved, copied
   or deleted while the card was lent, or a setting changed (or still in its 2 s before it's
   saved) when you take the card back. FRIZZ then writes its own over the computer's, and keeps
@@ -2291,6 +2296,9 @@ feedback](#midi-feedback) on.
 - Over USB, the clock goes out between FRIZZ's other work: it's less steady than the TRS
   output's, by up to a millisecond or so, also while FRIZZ reads a loop from the card. For
   tight timing, use TRS.
+- Over USB, what no app on the computer takes for a tenth of a second is dropped: a DAW that
+  opens FRIZZ's port later gets the clock as it runs from then on, with at most a fraction of
+  a beat of old messages.
 - A DAW that follows FRIZZ's clock (synced to an external MIDI clock): set its project tempo
   roughly to the loop's. REAPER, for one, keeps its own tempo and follows a clock smoothly
   only within about half to twice it (measured); further off, it plays in jumps. So the
