@@ -169,6 +169,9 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The knob presses' notes do nothing on the Loops and Cubbi pages** (#360), as knobs 1-4 there:
+  notes 36-39 turned the selected effect's page, and with SHIFT's note 45 reset its knob. See
+  [Notes: the keys](MANUAL.md#notes-the-keys).
 - **A MIDI clock on the TRS jack keeps its time with other MIDI on the same cable** (#322): a
   clock tick followed straight away by other messages (a sequencer's chord, automation for other
   gear on the cable) reached FRIZZ only once they had passed too: about 3 ms late behind a
