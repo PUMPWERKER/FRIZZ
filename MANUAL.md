@@ -48,7 +48,7 @@ On the play page (the mode switch down), the controls are:
 | Lower C# and D# | With SHIFT, the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page): loops from the card |
 | Lower F#, G#, A#, upper C#, D# | The [FX scenes](#fx-scenes): the blank scene, then scenes 1-4 |
 | Upper F#, G#, A# | [Save, copy and delete](#save-copy-and-delete) a scene |
-| Knobs 1-4 | The effect picked last, or the finalizer; a press turns them to its [page 2](#page-2) |
+| Knobs 1-4 | The effect picked last, or the finalizer; a press turns them to the effect's [page 2](#page-2) (on the finalizer, it [mutes a band](#band-mutes)) |
 | The transport knob, the big purple one | The loop's speed and direction, a scrub while it's paused ([Transport knob](#transport-knob)); with a scene morph held, the crossfader and the drop |
 | VOLUME | Output gain, input gain and the headphone feed; with SHIFT, the input/loop mix ([VOLUME knob](#volume-knob)) |
 | CHOMPI | SHIFT; it confirms a save, copy or delete |
@@ -1351,11 +1351,13 @@ Module 3, cyan: a compressor on each band, set by its character, all three by on
 | 1 | Low character: Light & fast, Standard & fast, Standard & slow, Parallel, Keep loud, Beat FX (default Standard & slow) |
 | 2 | Mid character: as the low band's (default Standard & slow) |
 | 3 | High character: as the low band's (default Standard & slow) |
-| 4 | Depth: the three bands' thresholds together, from 0 dB down to -30 dB, 0 off (default off) |
+| 4 | Depth: the three bands' thresholds together, from 0 dB down to -30 dB on most characters (below), 0 off (default off) |
 
 - **Depth (knob 4)** is how much the three compress: at 0 they're off, turned up their
-  thresholds come down together.
-- **The characters** each set the attack, release, ratio and knee; the low band's are 1.5x
+  thresholds come down together, by 30 dB at the top. Each starts from its character's own:
+  0 dB, but -4 dB for Keep loud and -10 dB for Parallel and Beat FX, so those three compress
+  from the first detent.
+- **The characters** each set the attack, release, ratio, knee and where the threshold starts; the low band's are 1.5x
   slower, so the bass isn't pumped by its own waveform:
   - **Light & fast:** a gentle ratio, quick to react, for a little glue.
   - **Standard & fast:** a medium ratio, quick: tames peaks.
@@ -1413,8 +1415,11 @@ all three.
     the upper F#, G# or A#, which starts that mode for the presets rather than the scenes; let
     go of key 15 if you like. The scene keys show the presets in the mode's colour (green,
     blue, red). Pick the preset (for a copy the one to copy, then where to), confirm with
-    SHIFT: white for done, red if the card refused. While such a mode waits, SHIFT is its
-    confirm, never the bypass, even with key 15 still held.
+    SHIFT: white for done, red if the card refused. While such a mode waits (or a scene's),
+    SHIFT is its confirm, never the bypass, even with key 15 still held.
+  - An empty preset's key blinks red when pressed, and the blank scene's key does nothing
+    while the presets show. Flipping to the settings page or opening the Loops page ends a
+    preset's save, copy or delete.
 
 ### Finalizer LEDs and settings
 
@@ -1426,7 +1431,7 @@ all three.
   full scale. It's the only thing FRIZZ does to the level by itself, so it shows: key 15
   turns red over everything while it limits, from 1 dB of limiting on and fully red from 3 dB,
   held 0.3 s so a short peak is seen. Red means turn something down: VOLUME, an effect's
-  Level, the finalizer's Input or Loud. Loud's own limiter keeps it from working at VOLUME
+  Level, the finalizer's Input or Loud. Loud's own limiter keeps it from showing at VOLUME
   full.
 - **The knob LEDs** are meters while the knobs rest (above, module by module); a knob you turn
   shows its value for a moment, from light blue (0%) to orange (100%), then the meter again.
@@ -1434,8 +1439,8 @@ all three.
   stays VOLUME's.
 - **Level:** 0 dB at the input is an AUX signal about 7 dB below full scale, at the default
   input gain.
-- **Kept:** the knobs and presets are saved to `FRIZZ/frizz_master.txt` on the card 2 s after
-  the last turn, and come back at power-on. They're not part of a scene. Without a card, or
+- **Kept:** the knobs are saved to `FRIZZ/frizz_master.txt` on the card 2 s after the last
+  turn, a preset as you confirm it, and they come back at power-on. They're not part of a scene. Without a card, or
   when the card can't be written, the key blinks red 3 times instead, and FRIZZ tries again
   2 s later, up to 3 times; the settings then last until power-off.
 - LEDs: the key is white, yellow, cyan or magenta, by its module; the knobs go light blue to
@@ -2284,7 +2289,7 @@ save, copy and delete 66, 68 and 70. Below them:
 | CC | Function |
 |---|---|
 | 14-22 | The effect in focus, as on its own channel |
-| 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the finalizer: CC 14-17 reach the module its knobs show). It's the effect the knobs edit, as SHIFT + its key picks it, and it follows when you pick one by hand |
+| 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the finalizer: CC 14-17 reach the module its knobs show, CC 18-22 nothing). It's the effect the knobs edit, as SHIFT + its key picks it, and it follows when you pick one by hand |
 | 24-27 | The finalizer's Level module: input, drive, type, Loud, as channel 15's 14-17 |
 | 28 | The finalizer's Depth, as channel 15's 27 |
 | 84 | [The input's source](#input-aux-the-mic-or-usb) in thirds: 0-42 AUX, 43-85 the mic, 86-127 USB, as the settings page's upper F# picks it |
@@ -2329,7 +2334,7 @@ module's knobs are four CCs in a row:
   same value again does nothing, so a latch you switched by hand stays as you left it until the
   lane crosses 64 again. Use 0 and 127.
 - **Automation isn't saved:** nothing that comes in by CC goes to the card. After a restart the
-  finalizer is as you left it by hand (its knobs, the settings page, or FRIZZ's SysEx), the
+  finalizer is as you left it by hand (its knobs, its presets, or FRIZZ's SysEx), the
   source (CC 84) as the jack picks it, each source's effects and monitoring (CC 116, 117) as the
   settings page's upper G# and A# left them, the input gains as you last turned them,
   and the output gain and the input/loop mix at their power-on levels. Scenes you save keep what the CCs set, as ever.
@@ -2462,10 +2467,12 @@ page](#settings-page) switches it (`midi_feedback 1` in `FRIZZ/frizz_master.txt`
 where [MIDI out](#midi-out) goes, so MIDI out has to be on too.
 
 - **What goes out:** an effect's knobs (CC 14-21) and latch (CC 22) on its own channel, and
-  for the effect in focus also on the global channel (CC 14-22); the phaser's mode (CC 23 on
+  for the effect in focus also on the global channel (CC 14-22; the finalizer's module shown on
+  CC 14-17); the phaser's mode (CC 23 on
   its channel, 0 or 127); the latches by key (CC
   102-115), the focus (CC 23) as you pick an effect, the finalizer (on its channel, 15, every
-  parameter at its CC there, and the module, mutes and on or off), the gains and
+  parameter at its CC there, and the module, mutes and on or off; not while the global channel
+  is 15 or every channel, and never as the global CC 24-28), the gains and
   the input/loop mix (CC 85-87), the headphone feed (CC 89), the input (CC 84: 0 AUX, 64 the mic, 127 USB, also
   when the jack switches it; CC 116 and 117, 0 or 127, the source's effects and monitoring, also
   when a switch of the source brings up the other's), the loop's speed (CC 90), and the crossfader

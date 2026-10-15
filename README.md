@@ -67,8 +67,8 @@ alone:
 
 - **On the computer:** a virtual CHOMPI ([`firmware/twin/`](firmware/twin/)) runs the whole
   firmware, unchanged, and the host checks ([`firmware/test/`](firmware/test/)) hold it to
-  about 2,700 individual checks in 35 test programs (keys, LEDs, MIDI, timing, the card, the
-  audio), plus 31 scenarios played from power-on and a bit-for-bit comparison of the engine's
+  about 3,400 individual checks in 43 test programs (keys, LEDs, MIDI, timing, the card, the
+  audio), plus 36 scenarios played from power-on and a bit-for-bit comparison of the engine's
   sound.
 - **On the CHOMPI:** every firmware change runs on the device before it's merged, with its
   CPU load measured against the last one.
