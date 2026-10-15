@@ -563,12 +563,13 @@ def ccs(count):
     return lambda n: bytes([0xB0] + [b for i in range(count) for b in (1, (n + i) & 0x7F)])
 
 
-# what follows a tick on the cable: (name, the bytes after tick n, which ticks have them)
+# what follows a tick on the cable: (name, the bytes after tick n, which ticks have them). Not
+# more: a Scarlett 18i20 sends a byte every ~0.5 ms, so 29 bytes take 15 of a tick's 20.8 ms at
+# 120 BPM, and with 43 its backlog grows, the ticks with it (its delay, not FRIZZ's)
 TAILS = [("bare", None, None),
          ("a chord after each tick (7 bytes)", chord, lambda n: True),
          ("a chord on each beat (7 bytes)", lambda n: chord(n // 24) if n % 24 == 0 else b"", lambda n: n % 24 == 0),
-         ("14 CCs after each tick (29 bytes)", ccs(14), lambda n: True),
-         ("21 CCs after each tick (43 bytes)", ccs(21), lambda n: True)]
+         ("14 CCs after each tick (29 bytes)", ccs(14), lambda n: True)]
 
 
 def pct(vals, q):
