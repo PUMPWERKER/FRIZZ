@@ -167,7 +167,10 @@ nothing changed or added in `code/`, and what's sent is the build `make` makes t
 named too: the same bytes). So a release or a beta goes on from a worktree of its tag (`git
 worktree add ../FrizZ-v1.0.0 v1.0.0`, then `./flash.py --slot 10` there), when the user asks.
 A bare `./flash.py` sends nothing and says which options there are; the bench never goes to 10
-or 13. Sessions never send to 10 or 13 unasked (CLAUDE.md).
+or 13. Sessions never send to 10 or 13 unasked (CLAUDE.md). Keys 10 and 13 stay guarded
+whatever `FRIZZ_SLOT` and `BETA_SLOT` say (they add keys to guard), and `--slot` takes FRIZZ's
+keys and the bench's; another key (1-15: a stock firmware, the storage firmware's 15) only with
+`--other-slot`, checked before anything is built or FRIZZ restarted.
 
 **One at a time.** Every tool here takes a lock (`tools/chompi.py`, in `/run/user/UID`) when
 it first reaches for the CHOMPI, and waits while another has it, saying who; what doesn't
@@ -193,9 +196,11 @@ at most, sending nothing, then asks for the power switch. `tools/chompi.py fix-n
 does it for one found running so: it starts the slot noted as running (10, 11, 12 or 13) again.
 
 Sending replaces whatever is in that slot, so set yours (`FRIZZ_SLOT`, `BETA_SLOT`,
-`BENCH_SLOT`, `TEST_SLOT`, or `--slot`) if your keys differ. Without `--slot` (`--test`,
-`--bench`), it refuses a key that holds another firmware than FRIZZ (`--slot` replaces it
-anyway). Linux only (ALSA), Python 3, no
+`BENCH_SLOT`, `TEST_SLOT`, or `--slot`) if your keys differ. It refuses a key that holds another
+firmware than FRIZZ (`--other-slot` replaces it anyway). Nothing restarts FRIZZ while it lends
+the card to the computer (`tools/chompi.py`'s `restart`): the drive would go from under it;
+eject it first. Run by hand, `tools/midi_send.py` takes the lock too and leaves keys 10, 13, 15
+and the launcher to `flash.py`. Linux only (ALSA), Python 3, no
 packages; it uses the launcher's own client, `tools/midi_send.py`. On macOS or Windows, the
 launcher's web page (https://ugrossek.github.io/CHOMPI/, Chrome or Edge) does the same.
 FRIZZ keeps its files in `/FRIZZ`, so it shares the card with the other firmwares.
@@ -206,7 +211,7 @@ up as a drive. `./card.py` uses it with no hands at the panel:
 ```bash
 ./card.py get                  # FRIZZ/cpu.txt and every bug report, into card/
 ./card.py get FRIZZ/x.txt -o . # any file
-./card.py put FILE FRIZZ/      # a file onto the card
+./card.py put FILE FRIZZ/      # a file onto the card: into /FRIZZ or /USBTEST
 ./card.py ls FRIZZ             # a folder
 ./card.py mount                # just mounts it and prints where; ./card.py done ends it
                                # (in a hold, which keeps the CHOMPI between them:
@@ -215,7 +220,11 @@ up as a drive. `./card.py` uses it with no hands at the panel:
 
 Each brings the CHOMPI into the storage firmware, mounts the card, does its part, ejects it and
 starts FRIZZ again (`--then N` another slot, `--then none` stays at the picker), about 30 s in
-all. `remote.py` likewise starts FRIZZ if the CHOMPI is elsewhere, and `flash.py` sends from
+all; it takes the lock first, the card already a drive or not. The card is the user's: `put`
+writes only into `/FRIZZ` and `/USBTEST`, never over the settings and scenes
+(`/FRIZZ/frizz_*`), over a file in `/FRIZZ` that's there (the user's loops) only with
+`--replace`; `--dangerous` writes elsewhere, but never into the root, `/FIRMWARE` or `/TAPE`
+(names matched as the card's FAT does: any case, trailing dots and spaces dropped). `remote.py` likewise starts FRIZZ if the CHOMPI is elsewhere, and `flash.py` sends from
 wherever it is.
 
 All of them go through the launcher (`tools/chompi.py`): a running FRIZZ restarts into it over
@@ -225,8 +234,8 @@ eject, and the launcher starts a slot on its `RUN` command. The last two need
 (the [setup page](https://ugrossek.github.io/CHOMPI/setup/) updates an older one) and
 [USB storage v1.6](https://github.com/lnetzel/CHOMPI-lnetzel/releases/tag/usb-storage-v1.6).
 A card set up from the launcher's v1.5 release still has USB storage v1.5 on key 15: copy
-v1.6's `.bin` over `FIRMWARE/15_USB_STORAGE.bin` (or `./flash.py FILE --slot 15 --name
-USB_STORAGE`). With an older launcher or storage firmware the tools still work, but say which
+v1.6's `.bin` over `FIRMWARE/15_USB_STORAGE.bin` (or `./flash.py FILE --slot 15 --other-slot
+--name USB_STORAGE`). With an older launcher or storage firmware the tools still work, but say which
 key to press (15 for the card, overdub then CHOMPI to leave it, 10 for FRIZZ). With an older FRIZZ or
 another firmware running, switch the CHOMPI off and on when they say so (they wait up to 2
 minutes). Mounting needs udisks, as any desktop has.
@@ -299,7 +308,8 @@ anyway. Linux only, Python 3, no packages, like `flash.py`.
 
 **The loop transfer** (`0x38`, the web app's: list, upload, move, delete the loops, copy a
 cubbi) is a protocol of its own, stable and versioned: [`docs/LOOP_PROTOCOL.md`](../docs/LOOP_PROTOCOL.md)
-(#278, specified, not built yet).
+(#278; `LoopTransfer.h`, its reference client and model `tools/loopxfer.py`, `remote.py loops`
+on the command line).
 
 **The developers' SysEx** (`0x3E`, `MidiControl.h`'s `namespace dev`) is for the tools, not
 for players (MANUAL.md lists it only briefly): `F0 7D 43 48 3E SUB SEQ ARGS F7`, over USB
@@ -307,8 +317,9 @@ only, answered `F0 7D 43 48 7E SUB SEQ STATUS DATA F7`. SEQ comes back, so a too
 answer; STATUS is 0 ok, 1 refused (an unknown sub-command, group, index, or a value a setting
 doesn't take), 2 not in this build, 3 not yet. Requests wait in a queue of their own (8), apart
 from the other queries' one slot that `play --cpu`'s load readings use, and MainLoop answers
-one every 2 ms; a request that finds the queue full gets no answer, so the tools ask again
-(every request can be repeated: they set, never step). Numbers go in 7-bit groups, the highest
+one every 2 ms, in order; a request that finds the queue full gets no answer, so the tools ask
+again with the same SEQ (most set, never step; a job's start asked twice is refused the second
+time, but the first's answer comes first, and is the one the tool takes). Numbers go in 7-bit groups, the highest
 first; a knob's value in 14 bits, as `0x21` has them.
 
 | SUB | Asks | Answers |
@@ -337,14 +348,17 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | | `03` / `04` BANK SLOT FAULTS | scans again / loads the slot (banks and slots from 0). FAULTS for a test: 1 the flow control off for it, 2 its third run read past the card's end, 4 its third run given no time, 8 the recovery after it sets the card up from scratch (`HAL_SD_DeInit`, `BSP_SD_Init`), 16 FatFs's next read as it opens the file given no time, 32 that read past the card's end (`SdDisk.h`, #213). Refused (status 1) while something runs |
 | | `05` [`01`] | the state, the CRC-32 (5) of the data loaded (zlib's); with `01` it starts, 16 KB a MainLoop pass |
 | | `06` KB(2) CHUNK(2) | the write test: KB (1-1024) written to `/FRIZZ/T/w.tmp` in CHUNK-byte writes, the `.bin` it replaces deleted, renamed, read back, compared, then the file and the folder deleted. KB's high group can carry a fault for a test, in FatFs's next write of more than a sector (its data, never the FAT or a folder): 16 given no time, 32 past the card's end |
+| `0E` USB | `00` [`01`] | USB (`UsbDevice.h`, #196; `tools/usbaudio.py stats`). Every answer starts with the flags (1 a computer on the bus, 2 it plays to FRIZZ, 4 the card lent, 8 USB audio on, 16 it records from FRIZZ); `00` then the audio's counts (5 each: blocks from the computer, the stream run dry, its starts, blocks to the computer, the IN FIFO full), the FIFOs' fill (2 each) and the enumerations (2). With `01` instead the computer's packets (5 each: all, short, long, the FIFO full) and the fill's range since the last such ask (2 each), which this resets |
+| | `01` | the flags, then the drive's counts (5 each: reads, writes, KB read, KB written, errors, ms in the card), TEST UNIT READY and READ CAPACITY asked (2 each) |
+| | `02` X | the flags; the card lent (X 1) or taken back (0), as the settings page's SHIFT + LOOP |
 
 The groups of GET and SET: `00`-`1F` an effect's knobs by its FxId (`FxParams.h`: 0-3 page 1,
 4-7 page 2), `20` the compressor's, `21` the latches (index by FxId, 0 or 1), `22` VOLUME's
 (0 output gain, 1 input gain, 2 mix, 3 headphone feed), `23` the card's settings as
 `masterfile::kLines` lists them (`MasterSettings.h`: mono, MIDI channel, transport, clock
 factor, clock source, MIDI out, LED brightness, the effect channels over TRS, MIDI feedback,
-AUX dry, the input gains of AUX and the mic, the mic dry, AUX live, the mic live), their values
-as `frizz_master.txt` has them.
+AUX dry, the input gains of AUX and the mic, the mic dry, AUX live, the mic live, USB's input
+gain, dry and live, USB audio), their values as `frizz_master.txt` has them.
 The groups don't follow the MIDI map (CCs), so a tool keeps working when it changes. SETs
 aren't in the event log: a bug report taken after them won't replay them.
 
@@ -739,6 +753,8 @@ UsbMidiTransport.h     libDaisy's MIDI transport on TinyUSB (test/usbtransport.c
 CardLend.h             the card lent to the computer: what the settings page shows and asks
 LoopLoader.h           loops from the card (#70): the slots' scan (a WAV's header and name), a load
                        straight into SDRAM by the SDMMC's DMA
+SdCard.h, SdDisk.h     the card under FatFs: the SDMMC's settings libDaisy has no field for, runs of
+                       sectors read past FatFs for the loop loader, FatFs's own reads and writes
 LoopControls.h         the Loops page's and the Cubbi page's loops: the plan, the loads, the switch
 LoopTransfer.h         the loop transfer over USB MIDI (#278, ../../docs/LOOP_PROTOCOL.md), the
                        Companion's: SysEx 0x38, the CHUNKs' ring, MainLoop's job; Version.h kFrizzVersion
@@ -799,11 +815,15 @@ chompi_sram.lds        linker script (the firmware runs from SRAM, placed there 
 
 ## Rules the code follows
 
-- **No file I/O and no blocking calls in the audio callback.** FRIZZ reads the SD card once at
-  boot (the FX scenes and the master settings, after changing into `/FRIZZ`, which it
-  creates on a new card) and writes it only from `MainLoop`, when a scene is saved, copied or
-  deleted, 2 s after the compressor's knobs, the mono input or the MIDI settings were last
-  changed (`SceneStore.h`), or for a bug report (`EventLog.h`).
+- **No file I/O and no blocking calls in the audio callback.** FRIZZ reads and writes the SD
+  card only from `MainLoop`, and not while it lends it to the computer (`CardLend.h`). It reads
+  the FX scenes and the master settings at boot (after changing into `/FRIZZ`, which it creates
+  on a new card) and again, where the computer changed them, when it takes the card back
+  (#314); loops when one is loaded (`LoopLoader.h`, the slots scanned at boot, after a lend and
+  on RESCAN). It writes when a scene is saved, copied or deleted, 2 s after the compressor's
+  knobs, the mono input or the MIDI settings were last changed (`SceneStore.h`), when the loop
+  transfer writes, moves or deletes a slot (`LoopTransfer.h`, through `/FRIZZ/xfer.tmp`), or
+  for a bug report (`EventLog.h`).
 - **TinyUSB is called only from its task and the USB interrupt** (`UsbDevice.h`): MainLoop
   posts what it wants (a transfer done, the bus left for a switch) and the task does it.
   TinyUSB's lock masks the USB interrupt, not the task's timer, so a call from MainLoop could be

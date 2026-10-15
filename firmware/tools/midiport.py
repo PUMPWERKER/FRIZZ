@@ -104,20 +104,22 @@ class Clock:
 
 
 def trs_midi():
-    """The first sound card's raw MIDI node that isn't the CHOMPI's: FRIZZ's card isn't called
-    CHOMPI (its id is FrizZ, or Default), so the CHOMPI's is skipped as the tools find it"""
+    """The first sound card's raw MIDI node that isn't the CHOMPI's, said which: not one with
+    the Daisy's USB id (FRIZZ's, the launcher's: FRIZZ's card is called FrizZ or Default, not
+    CHOMPI, and while it restarts it isn't found as the CHOMPI), nor one called CHOMPI"""
     if os.environ.get("FRIZZ_TRS_MIDI"):
         return os.environ["FRIZZ_TRS_MIDI"]
-    own = re.match(r".*/midiC(\d+)D", chompi.find_device() or "")
     try:
-        cards = open("/proc/asound/cards").read()
+        cards = open(os.path.join(chompi.ASOUND, "cards")).read()
     except OSError:
         cards = ""
     for m in re.finditer(r"^\s*(\d+) \[([^\]]*)\]", cards, re.M):
-        node = "/dev/snd/midiC%sD0" % m.group(1)
-        if own and m.group(1) == own.group(1) or "CHOMPI" in m.group(2):
+        card = m.group(1)
+        node = os.path.join(chompi.SND, "midiC%sD0" % card)
+        if "CHOMPI" in m.group(2) or chompi.usb_id(card) == chompi.DAISY_USB_ID:
             continue
         if os.path.exists(node):
+            chompi.say("the TRS interface: %s (%s)" % (node, chompi.card_names(card)))
             return node
     return None
 

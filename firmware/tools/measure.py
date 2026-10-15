@@ -322,7 +322,9 @@ def cmd_drift(a):
     f = frizz(a)
     if f.state()[0] != 0:
         sys.exit("the looper isn't empty: erase it, or restart FRIZZ (flash.py --run 10)")
-    midi = os.open(trs_midi(), os.O_WRONLY)
+    node = trs_midi()
+    chompi.device_guard(node)
+    midi = os.open(node, os.O_WRONLY)
     clock = Clock(lambda b: os.write(midi, b), a.bpm, a.mode)
     wav = (a.out or "drift") + ".material.wav"
     write_wav(wav, np.repeat(generated()[:, None], 2, 1))

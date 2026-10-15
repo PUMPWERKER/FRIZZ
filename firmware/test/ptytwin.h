@@ -6,9 +6,11 @@
 // Unjudged() which of its cases failed on timing alone that far behind: under load (all.sh, or
 // several side by side) the twin's answers come late and bunched, where a tool's timing can't
 // be judged (#183). With audio_dir set, the twin has an audio interface too, through files a
-// tool's stand-in (reaper_stub.py) shares with it there: Audio's. For a check (NAME.cpp) that
-// includes twin.h first.
+// tool's stand-in (reaper_stub.py) shares with it there: Audio's. Exec() is the same for any
+// command, the ptys open (remote.cpp: remote.py on usb alone, no TRS; usb_drop loses messages on
+// the way). For a check (NAME.cpp) that includes twin.h first.
 #pragma once
+#include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/stat.h>
@@ -24,18 +26,19 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <functional>
 #include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "pytool.h"
+
 using namespace twin;
 
 namespace
 {
-std::string firmware_dir;
-
 /** A pseudo-terminal, raw, so every byte goes through as it is; its far end's path */
 struct Pty
 {
@@ -59,8 +62,11 @@ struct Pty
     }
 };
 
-Pty usb, trs;
+Pty usb, trs; // trs unopened (remote.cpp): no TRS, the twin's MIDI out left to the check
 bool trs_in = true, trs_out = true; // the TRS adapter: the interface's out into the jack, the jack's out into it
+// A SysEx message the tool sent over USB, F0 to F7: lost on the way if this says so, as a USB
+// MIDI packet can be (remote.cpp's lost CHUNKs). Unset, every byte goes through as it comes
+std::function<bool(const std::string&)> usb_drop;
 long lag = 0; // the most the twin fell behind the wall clock, ms
 // Behind by more than this, the twin's timing isn't the wall clock's: a case that failed on
 // timing alone ([timing], "failed on timing alone") isn't judged
@@ -68,7 +74,7 @@ const long kLagMs = 5;
 
 /** The cases a tool's run in out failed on timing alone (its "failed on timing alone: ..."
  *  line, of the checks it tags [timing]), if the twin fell too far behind to judge timing */
-std::vector<std::string> Unjudged(const std::string& out)
+__attribute__((unused)) std::vector<std::string> Unjudged(const std::string& out)
 {
     std::vector<std::string> ids;
     const std::string tag = "failed on timing alone: ";
@@ -114,12 +120,14 @@ void Reader(std::chrono::steady_clock::time_point start)
 {
     while (reading)
     {
-        pollfd fds[2] = {{usb.fd, POLLIN, 0}, {trs.fd, POLLIN, 0}};
+        pollfd fds[2] = {{usb.fd, POLLIN, 0}, {trs.fd, POLLIN, 0}}; // one < 0: not polled
         if (poll(fds, 2, 1) <= 0)
             continue;
         const long ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
         for (int p = 0; p < 2; p++)
         {
+            if (fds[p].fd < 0)
+                continue;
             uint8_t buf[256];
             ssize_t n;
             while ((n = read(fds[p].fd, buf, sizeof(buf))) > 0)
@@ -132,8 +140,71 @@ void Reader(std::chrono::steady_clock::time_point start)
     }
 }
 
-/** What came by the twin's time ms, in; what the twin sent, out (USB both ways; the jack as
- *  it's wired: what isn't is lost, as without a cable) */
+/** A byte the tool sent over USB, into the twin: a SysEx message gathered to its F7 first while
+ *  usb_drop is set, and lost if it says so */
+void ToTwinUsb(uint8_t byte)
+{
+    static std::string message;
+    if (!usb_drop)
+    {
+        UsbMidi(byte);
+        return;
+    }
+    if (byte == 0xF0 || !message.empty())
+        message.push_back(static_cast<char>(byte));
+    else
+        UsbMidi(byte); // between messages: a clock, a note
+    if (byte != 0xF7 || message.empty())
+        return;
+    if (!usb_drop(message))
+        for (char c : message)
+            UsbMidi(static_cast<uint8_t>(c));
+    message.clear();
+}
+
+/** All of data to the pty's far end: a short write's rest written too, waiting while its
+ *  buffer is full (the far end reads it) */
+void WriteAll(int fd, const std::string& data, const char* what)
+{
+    size_t done = 0;
+    while (done < data.size())
+    {
+        const ssize_t n = write(fd, data.data() + done, data.size() - done);
+        if (n > 0)
+            done += size_t(n);
+        else if (n < 0 && errno == EAGAIN)
+        {
+            pollfd p = {fd, POLLOUT, 0};
+            if (poll(&p, 1, 1000) <= 0)
+            {
+                fprintf(stderr, "%s: full for 1 s, %zu bytes lost\n", what, data.size() - done);
+                return;
+            }
+        }
+        else
+        {
+            perror(what);
+            return;
+        }
+    }
+}
+
+/** What the twin sent, out (USB; the jack as it's wired: what isn't is lost, as without a
+ *  cable; with no TRS pty, the jack's MIDI out stays for the check to take) */
+void FromTwin()
+{
+    WriteAll(usb.fd, TakeUsbOut(), "usb pty");
+    if (trs.fd < 0)
+        return;
+    std::string jack;
+    for (const MidiOutByte& b : TakeMidiOut())
+        if (!b.usb)
+            jack += static_cast<char>(b.byte);
+    if (trs_out)
+        WriteAll(trs.fd, jack, "trs pty");
+}
+
+/** What came by the twin's time ms, in; what the twin sent, out */
 void Pump(long ms)
 {
     {
@@ -143,20 +214,12 @@ void Pump(long ms)
             const Arrival a = arrivals.front();
             arrivals.pop_front();
             if (a.usb)
-                UsbMidi(a.byte);
+                ToTwinUsb(a.byte);
             else if (trs_in)
                 Midi(a.byte);
         }
     }
-    const std::string out = TakeUsbOut();
-    if (!out.empty() && write(usb.fd, out.data(), out.size()) < 0)
-        perror("usb pty");
-    std::string jack;
-    for (const MidiOutByte& b : TakeMidiOut())
-        if (!b.usb)
-            jack += static_cast<char>(b.byte);
-    if (trs_out && !jack.empty() && write(trs.fd, jack.data(), jack.size()) < 0)
-        perror("trs pty");
+    FromTwin();
 }
 
 /** Where a tool's stand-in and the twin share its audio (FRIZZ_TWIN_AUDIO), empty for none */
@@ -270,27 +333,18 @@ struct Audio
     }
 };
 
-/** tools/TOOL ARGS (--device and --trs given) against the twin, at the wall clock's pace until
- *  it's done (limit s at most), with env's NAME=VALUE pairs set: its exit code; out gets what
- *  it printed. stop_signal (SIGINT, SIGTERM) goes to it once it has printed stop_at */
-int Tool(const std::string& tool, const std::string& args, std::string& out, int limit,
+/** CMD (sh -c) against the twin, its ptys open, at the wall clock's pace from the twin's time
+ *  now until it's done (limit s at most), with env's NAME=VALUE pairs set and the CHOMPI's lock
+ *  shared (the twin isn't the CHOMPI): its exit code; out gets what it printed, "(timed out)"
+ *  after it if it was stopped so. stop_signal (SIGINT, SIGTERM) goes to it once it has printed
+ *  stop_at. lag says how far the twin fell behind meanwhile */
+int Exec(const std::string& cmd, std::string& out, int limit,
          const std::vector<std::pair<std::string, std::string>>& env = {}, const std::string& stop_at = "",
          int stop_signal = 0)
 {
-    if (!usb.Open() || !trs.Open())
-    {
-        out = "no pseudo-terminal";
-        return -1;
-    }
-    // the boot and the rainbow, as fast as the twin goes: the play page takes keys from here
-    // (midisuite.py waits for it on a FRIZZ just started)
-    while (NowMs() < 7000)
-        Run(2, nullptr, nullptr);
     int pipe_fd[2];
     if (pipe(pipe_fd))
         return -1;
-    const std::string cmd = "exec python3 '" + firmware_dir + "/tools/" + tool + "' --device '" + usb.path
-                            + "' --trs '" + trs.path + "' " + args;
     const pid_t pid = fork();
     if (pid == 0)
     {
@@ -299,6 +353,7 @@ int Tool(const std::string& tool, const std::string& args, std::string& out, int
         close(pipe_fd[0]);
         setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
         setenv("FRIZZ_CHOMPI_HELD", "1", 1); // the twin, not the CHOMPI: no lock (tools/chompi.py)
+        setenv("FRIZZ_NO_DEVICE", "1", 1);   // and never the CHOMPI, but on the ptys (pytool.h)
         signal(SIGINT, SIG_DFL); // a shell's background job (all.sh) ignores it, Python then too
         for (const auto& e : env)
             setenv(e.first.c_str(), e.second.c_str(), 1);
@@ -367,7 +422,30 @@ int Tool(const std::string& tool, const std::string& args, std::string& out, int
     while ((n = read(pipe_fd[0], buf, sizeof(buf))) > 0)
         out.append(buf, n);
     close(pipe_fd[0]);
-    out += "\n(the twin was " + std::to_string(lag) + " ms behind the wall clock at most)\n";
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+
+/** tools/TOOL ARGS (--device and --trs given) against the twin, at the wall clock's pace until
+ *  it's done (limit s at most), with env's NAME=VALUE pairs set: its exit code; out gets what
+ *  it printed, and how far the twin fell behind. stop_signal (SIGINT, SIGTERM) goes to it once
+ *  it has printed stop_at */
+__attribute__((unused)) int Tool(const std::string& tool, const std::string& args, std::string& out, int limit,
+                                 const std::vector<std::pair<std::string, std::string>>& env = {}, const std::string& stop_at = "",
+                                 int stop_signal = 0)
+{
+    if (!usb.Open() || !trs.Open())
+    {
+        out = "no pseudo-terminal";
+        return -1;
+    }
+    // the boot and the rainbow, as fast as the twin goes: the play page takes keys from here
+    // (midisuite.py waits for it on a FRIZZ just started)
+    while (NowMs() < 7000)
+        Run(2, nullptr, nullptr);
+    const std::string cmd = "exec python3 '" + firmware_dir + "/tools/" + tool + "' --device '" + usb.path
+                            + "' --trs '" + trs.path + "' " + args;
+    const int rc = Exec(cmd, out, limit, env, stop_at, stop_signal);
+    out += "\n(the twin was " + std::to_string(lag) + " ms behind the wall clock at most)\n";
+    return rc;
 }
 } // namespace
