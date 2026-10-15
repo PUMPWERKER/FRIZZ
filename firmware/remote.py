@@ -397,6 +397,8 @@ def show_ident(f):
     if not got or got[0] != chompi.OK:
         sys.exit("no answer to IDENT: a FRIZZ from before it")
     info = chompi.parse_ident(got[1])
+    if not info:
+        sys.exit("IDENT's answer is cut short (%d bytes)" % len(got[1]))
     print(chompi.describe_ident(info))
     for path in (os.path.join(HERE, "code/src/build/FRIZZ.bin"),
                  os.path.join(HERE, "code/src/build-bench/FRIZZ-bench.bin")):
@@ -1717,9 +1719,9 @@ def in_ram(f):
     """None while FRIZZ still keeps the card out of it (PERSIST 0), by IDENT; else why not: it
     restarted, which ends PERSIST 0, and writes the card again (#171)"""
     got = f.dev(chompi.IDENT)
-    if not got or got[0] != chompi.OK or len(got[1]) < 26:
+    info = chompi.parse_ident(got[1]) if got and got[0] == chompi.OK else None
+    if not info:
         return "no answer to IDENT: whether FRIZZ still keeps the card out of it, unknown"
-    info = chompi.parse_ident(got[1])
     if info["ram_only"]:
         return None
     return ("FRIZZ restarted (up %.1f s, reset: %s): it writes the card again"

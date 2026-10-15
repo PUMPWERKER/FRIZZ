@@ -31,8 +31,10 @@ forgets the note.
 One process at a time has the CHOMPI: the first time a tool reaches for it (state(), a link
 to it, a restart), it takes a lock (LOCK, flock) for the process's life, and waits, saying who
 has it, while another holds it; what doesn't touch the CHOMPI (measure.py compare) never
-waits. A tool started by one that holds it (FRIZZ_CHOMPI_HELD set) shares it; one that talks
-to the twin, not the CHOMPI (test/remote.cpp), sets it too. To keep the CHOMPI over several
+waits. A tool started by one that holds it (FRIZZ_CHOMPI_HELD set) shares it while that one
+runs (a hold stopped by SIGTERM frees the lock, and what it started takes it again); one that
+talks to the twin, not the CHOMPI (test/remote.cpp), sets it too, and FRIZZ_NO_DEVICE, which
+stops a host check that reaches for a real device (device_guard). To keep the CHOMPI over several
 tools, or for playing it by hand:
 
     tools/chompi.py hold                 holds it until Ctrl-C
@@ -116,10 +118,27 @@ HELD = "FRIZZ_CHOMPI_HELD"
 _lock = None
 
 
+def _holding(held):
+    """Whether HELD (FRIZZ_CHOMPI_HELD: the pid of the process that took the lock) still runs:
+    a hold stopped (SIGTERM) frees the lock while what it started runs on. Not a pid (a check's
+    "1" is init's): taken as held"""
+    try:
+        os.kill(int(held), 0)
+    except ValueError:
+        return True
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
 def claim():
-    """Takes the CHOMPI for this process, waiting while another has it"""
+    """Takes the CHOMPI for this process, waiting while another has it; shared with the hold
+    that started it (HELD) while that runs"""
     global _lock
-    if _lock or os.environ.get(HELD):
+    held = os.environ.get(HELD)
+    if _lock or held and _holding(held):
         return
     f = open(LOCK, "a+")
     try:
@@ -250,8 +269,13 @@ def get7(data):
     return v
 
 
+IDENT_LEN = 26  # IDENT's data, its flags the last byte
+
+
 def parse_ident(data):
-    """IDENT's answer as a dict"""
+    """IDENT's answer as a dict; None for one too short (cut off, or not IDENT's)"""
+    if len(data) < IDENT_LEN:
+        return None
     return {"version": data[0], "kind": "bench" if data[1] == 1 else "frizz",
             "crc": get7(data[2:7]) & 0xFFFFFFFF, "length": get7(data[7:10]),
             "uptime": get7(data[10:15]) / 1000, "passes": get7(data[15:20]),
@@ -265,7 +289,7 @@ def ident(device):
             got = dev_call(to, IDENT, retries=2)
     except OSError:
         return None
-    if not got or got[0] != OK or len(got[1]) < 26:
+    if not got or got[0] != OK:
         return None
     return parse_ident(got[1])
 

@@ -65,7 +65,7 @@ def tagged(where=HERE):
         return subprocess.run(["git", "-C", where] + list(args), capture_output=True,
                               text=True).stdout.strip()
     tag = git("describe", "--exact-match", "--tags", "--match", "v*", "HEAD")
-    return tag if tag and not git("status", "--porcelain", "--", "code") else None
+    return tag if tag and not git("status", "--porcelain", "-unormal", "--", "code") else None
 
 
 def user_slot(slot, args):
@@ -80,6 +80,9 @@ def user_slot(slot, args):
                  "in a checkout of its v* tag with nothing changed in code/ (git worktree add "
                  "../FrizZ-vX.Y.Z vX.Y.Z): this one isn't. A branch's build goes to the test "
                  "slot: --test" % (slot, what))
+    if slot == 10 and "-" in tag:
+        sys.exit("key 10 is the latest release: %s is a pre-release's tag, whose build goes to "
+                 "key 13 (--slot 13)" % tag)
     builds.check_version(tag)
     return tag
 

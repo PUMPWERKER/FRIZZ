@@ -663,6 +663,51 @@ except SystemExit as e:
     if (rc != 0 || !Has(out, "card on:"))
         printf("%s\n", out.c_str());
 
+    // the smaller holes: a hold that's gone (SIGTERMed, its child running on) holds nothing, so
+    // its child takes the lock; make failing (2) isn't a fresh build; key 10 takes no
+    // pre-release's tag; an IDENT cut short is no IDENT, said so
+    rc = Python(R"(
+import os, signal, subprocess, sys, chompi, builds, flash, remote
+p = subprocess.Popen(["true"])
+p.wait()
+os.environ[chompi.HELD] = str(p.pid)  # its hold is gone
+chompi.claim()
+print("dead hold: lock taken", chompi._lock is not None, flush=True)
+codes = []
+builds.subprocess.run = lambda *a, **kw: subprocess.CompletedProcess(a, codes.pop(0))
+for code in (0, 1, 2):
+    codes.append(code)
+    print("make -q %d: stale %s" % (code, builds.stale(builds.image(False))), flush=True)
+flash.tagged = lambda where=flash.HERE: "v1.5.0-beta.1"
+class A:
+    bench = False
+for slot in (10, 13):
+    flash.builds.check_version = lambda tag: print("checked", tag)
+    try:
+        print("beta tag, key %d:" % slot, flash.user_slot(slot, A()), flush=True)
+    except SystemExit as e:
+        print("beta tag, key %d: exit: %s" % (slot, e), flush=True)
+print("short ident", chompi.parse_ident(bytes(25)), chompi.parse_ident(bytes(26)) is not None)
+class F:
+    def dev(self, sub, *rest, **kw): return (chompi.OK, bytes(10))
+try:
+    remote.show_ident(F())
+except SystemExit as e:
+    print("show_ident:", e)
+print("in_ram:", remote.in_ram(F()))
+)", out);
+    Check(rc == 0 && Has(out, "dead hold: lock taken True\n"), "tools: a hold that's gone holds nothing: its child takes the lock");
+    Check(Has(out, "make -q 0: stale False\nmake -q 1: stale True\nmake -q 2: stale True\n"),
+          "tools: builds.py takes a build for fresh only when make -q says so (0), not when it fails");
+    Check(Has(out, "beta tag, key 10: exit: key 10 is the latest release: v1.5.0-beta.1 is a pre-release's tag")
+              && Has(out, "checked v1.5.0-beta.1\nbeta tag, key 13: v1.5.0-beta.1\n"),
+          "tools: flash.py sends a pre-release's build to key 13, never to key 10");
+    Check(Has(out, "short ident None True\n") && Has(out, "show_ident: IDENT's answer is cut short (10 bytes)")
+              && Has(out, "in_ram: no answer to IDENT"),
+          "tools: an IDENT cut short is no IDENT, said so, never an IndexError");
+    if (rc != 0 || !Has(out, "in_ram:"))
+        printf("%s\n", out.c_str());
+
     // which slot runs, no firmware says (the bench answers as FRIZZ does): the tools note the
     // one they started, and go by it. chompi's way to the CHOMPI stubbed: states in turn
     const char* const kSlots = R"(
