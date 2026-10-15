@@ -18,7 +18,7 @@ STRESS=1 ./run.sh work out.bin
 |---|---|
 | `check.sh` | the engine harness (below): every output sample and FX meter of a fixed script, two versions compared; a refactor must be `bit-identical` |
 | `doclinks` | not a `.cpp`: `../tools/doclinks.py --all`, the files the website is built from (MANUAL, QUICKSTART, INSTALL, `site/landing.md`, the key colours in `LedColors.h`/`FxSlots.h`) in every format frizz-web's `fetch-docs.mjs` parses, the pictures in `images/` as `tools/diagrams/diagrams.py` draws them (`--check`), and its `--selftest`, which breaks a copy of them case by case and checks each break is reported; needs `python3` |
-| `pitch`, `splice`, `tape`, `delay`, `crusher`, `freezer`, `comp`, `clicks`, `level`, `sleep`, `inserts`, `page2` | parts of the engine on their own: the shifter's tuning and its splice search (its taps inside their delays, the grain turned at once too), wow and flutter and the tape stop, the delay's pitch-up and random events, its echoes on the beat and its damping turned on by a jump, the crusher's rate, bits and dive (through a sleep too), the freezer's capture and roll, the master compressor, moves that used to click, page 2's Mix, Band and Level (`FxOutput.h`), effects that are off costing no time (and `Smoothed::Settle` landing), the folder's bypass and level, the slicer's patterns, chance and stereo, the filter's centre, cutoff and resonance against WAVE's, page 2's Mix on the shifter, and each effect's own page-2 knob |
+| `pitch`, `splice`, `tape`, `delay`, `crusher`, `freezer`, `comp`, `finalizer`, `clicks`, `level`, `sleep`, `inserts`, `page2` | parts of the engine on their own: the shifter's tuning and its splice search (its taps inside their delays, the grain turned at once too), wow and flutter and the tape stop, the delay's pitch-up and random events, its echoes on the beat and its damping turned on by a jump, the crusher's rate, bits and dive (through a sleep too), the freezer's capture and roll, the master section and the finalizer's sound, moves that used to click, page 2's Mix, Band and Level (`FxOutput.h`), effects that are off costing no time (and `Smoothed::Settle` landing), the folder's bypass and level, the slicer's patterns, chance and stereo, the filter's centre, cutoff and resonance against WAVE's, page 2's Mix on the shifter, and each effect's own page-2 knob |
 | `routing` | the engine's input routing (`passthroughEngine.h`, #177): each source's gates, so a source that isn't live adds nothing to the master at any sample, also while the source switches back and forth mid-fade (#168); every combination of source, effects and live on the master and the headphones' input feed; the looper recording the source live or not; the slews (`Glide`) settling exactly on 0 and 1, the mix at the loop leaving none of the input |
 | `block` | the FX chain a block at a time (`FxChain::Process`, #136) against the same chain a sample at a time, bit for bit, output and meters: blocks of 1 to 40 samples (runs of 24 and the rest) and each block in two calls, through a script with every effect on, the resonator at its highest pitch and stereo with its tone slewing, page 2 off its defaults (the resonator's Band while its key fades out mid-block) and recalls' fast slews ending on a block's first, middle and last sample; page 2 leaving the chain's work (#142) on a block's first, middle and last sample each of three ways (an insert going quiet, an insert's page 2 back at its defaults, a send's Band back in the middle), and which page 2s are part of the work compared block by block. `block OUT` writes the script's output, meters and page-2 bits, to compare them with a build against another version's headers (`check.sh`'s harness never turns page 2) |
 | `phaser` | the phaser (`FxPhaser.h`): its six stages' notches where they belong and unity between them, dry at depth 0, feedback bounded at the top and ringing down, the stereo LFO half a cycle behind, asleep bit for bit the input, the rate knob's free half in Hz and synced half in divisions, the LFOs running at their rate and on the clock's pulses; its second mode, the frequency shifter (#306): a tone moved up, down or both ways by the shift (a Goertzel on f±N, the other sideband 40 dB down (6+6 allpasses: 42 dB at 1 kHz)), the right channel the other way with stereo, the shift's curve, a barber pole bounded and ringing down, synced a cycle a division; a mode switch's dip without a click, at once while asleep |
@@ -100,11 +100,11 @@ no FX switched on, to check that a segment actually exercises its effect; `STRES
 everything at once with the resonator's loop at its most extreme for the whole run.
 
 It drives the engine through `Init`, `SetFxOn`, `SetFxParam` and `GetFxLevel` with the
-`chompi::FX_*` names, so it builds against FRIZZ from `9da090e` on, and sets the master
-compressor's amount (its threshold since #38) to 0.3 (`SetCompParam`, or `SetFinalComp`
-before `MasterComp.h`; the two compressors differ, so a run across that change isn't
-bit-identical; nor is one across #38, which took the automatic makeup out, 1.5 dB at the
-harness's 0.3 and 1.5:1). If that interface changes,
+`chompi::FX_*` names, so it builds against FRIZZ from `9da090e` on. It leaves the finalizer
+(#345) neutral; before it, it set the master compressor's amount (its threshold since #38) to
+0.3 (`SetCompParam`, or `SetFinalComp` before `MasterComp.h`), so a run across #345 isn't
+bit-identical, nor one across those two changes (#38 took the automatic makeup out, 1.5 dB at
+the harness's 0.3 and 1.5:1). If that interface changes,
 update `harness.cpp` along with it.
 
 ## Shifter pitch check
@@ -274,24 +274,47 @@ longest it holds 8 repeats first. Released, the live signal is back bit for bit 
 faded out. (The gate fades in to 1 - 7e-6, not 1, #45, so a repeat carries the live input 100 dB
 down: the check feeds silence once a capture is recorded.)
 
-## Master compressor check
+## Master section check
 
 ```bash
 ./unit.sh comp
 ```
 
-Runs `MasterComp.h` on its own: threshold 0 (makeup 0) and mix 0 are exact bypasses,
-threshold 0 with makeup is that gain alone, the static curve at each end of the ratio and
-the threshold with no makeup of its own (within 0.2 dB, the soft knee too), the makeup knob
-on everything, the attack and the release slowing from fast to slow, no gain ripple at 20:1 and the fastest speed on a
-50 Hz or 100 Hz sine (the detector's hold), and the linked stereo. Then the whole engine with
-everything up and a full-scale square starting from silence, so the outputs must stay within
-1.0 through the safety limiter. Last, the settings file (`MasterSettings.h`): it round-trips,
-grid points come back exactly, and foreign, unknown or partial files are read sensibly; an
-old `compressor` line (four knobs) loads with its speed as attack and release and makeup at
-0 dB, a `compressor2` line wins over it, and only the new line is written; the
-mono line round-trips, a file without it reads as stereo, and the line of the removed
-randomizer is skipped and not written again. It doesn't touch the card or the play page.
+The finalizer's surroundings (`Finalizer.h`, #345; its sound is the finalizer check's): a band
+compressor linked across the channels (the quiet side gets the loud side's gain), no gain
+ripple on a 50 Hz or 100 Hz sine at the low band's fastest character (the detector's hold).
+Then the whole engine with everything up and a full-scale square starting from silence, so
+the outputs must stay within 1.0 through the safety limiter; and Loud full with VOLUME full on
+a hot input, where the finalizer's limiter keeps the safety limiter under the 1 dB that turns
+key 15 red (and without Loud the same input does). Last, the settings file
+(`MasterSettings.h`): the finalizer's knobs and its presets round-trip, only stored presets
+are written, foreign, unknown or partial files are read sensibly, a file from before (the
+master compressor's `compressor2` and `compressor` lines) loads with every other setting and
+the finalizer neutral, and isn't written with them again; the mono line round-trips, the line
+of the removed randomizer is skipped, and the longest file with four presets fits. It doesn't
+touch the card or the play page.
+
+## Finalizer check
+
+```bash
+./unit.sh finalizer
+```
+
+Runs `Finalizer.h` on its own (#345): every knob on its default is an exact bypass, also while
+a meter runs the bands, and asleep again after a knob turned away and back; the three bands sum
+flat (within 0.1 dB, 30 Hz to 18 kHz); each band's compressor reduces a tone in its band by its
+curve (12 dB at 18 dB over a 3:1 threshold, within 0.5 dB, the high band 1.5 dB as its peak is
+sampled 6 times a cycle) and leaves the other bands alone; Width at full left is mono; a muted
+band adds nothing (the other two and it alone add up to all three, within -80 dB), all three
+muted are silence, 25 Hz with the low band muted 80 dB down; the drive's compensation keeps a
+sine at its reference level within 1 dB for every type and amount; the limiter, Loud full,
+keeps a 2x-oversampled peak under -1 dB on a program rolling off from 9 kHz, its delay is
+exactly 48 samples, and Loud at 0 has none. Then its meters against ffmpeg's, a reference of
+its own (`acrossover` for LR4 bands): each band's correlation against `aphasemeter` (within 0.1
+for mono, unrelated and out-of-phase noise; the LED's colour for a normal stereo signal, as
+aphasemeter averages each sample's phase while ours weighs them by their energy), each band's
+peak and the input's against `astats` (within 0.5 dB and 0.05 dB), and the limiter's true peak
+against `ebur128` (4x, at most -1 dBTP). Without ffmpeg those print SKIP.
 
 ## Sleep check
 

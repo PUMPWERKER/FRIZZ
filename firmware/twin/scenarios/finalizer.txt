@@ -1,0 +1,87 @@
+# The finalizer (#345) with every module working, reached by its gesture (SHIFT + key 15, then
+# key 15 again): Level's input, drive and Loud, EQ's bands, Comp's Depth, Width's bands; then a
+# band muted and back, the bypass and back. On a loud bass sine, mono
+input sine 110 0.6
+# every knob where the factory has it, whatever the card keeps (#214)
+set fin 0 0.5
+set fin 1 0
+set fin 2 0
+set fin 3 0
+set fin 4 0.5
+set fin 5 0.5
+set fin 6 0.5
+set fin 8 0.4
+set fin 9 0.4
+set fin 10 0.4
+set fin 11 0
+set fin 12 0.5
+set fin 13 0.5
+set fin 14 0.5
+at 6000
+tap KEY_15
+wait 200
+# Level: input up, drive, Tube, Loud
+turn 4 10
+turn 1 40
+turn 2 3
+turn 3 30
+wait 1500
+# EQ: the lows up, the highs down
+down KEY_26
+wait 100
+tap KEY_15
+wait 100
+tap KEY_15
+wait 100
+up KEY_26
+wait 200
+turn 4 10
+turn 2 -10
+wait 1500
+# Comp: Depth up
+down KEY_26
+wait 100
+tap KEY_15
+wait 100
+tap KEY_15
+wait 100
+up KEY_26
+wait 200
+turn 3 60
+wait 1500
+# Width: the lows narrower, the rest wider
+down KEY_26
+wait 100
+tap KEY_15
+wait 100
+tap KEY_15
+wait 100
+up KEY_26
+wait 200
+turn 4 -20
+turn 1 20
+turn 2 20
+wait 1500
+# the mid band muted and back
+tap ENC_1_SW
+wait 1000
+tap ENC_1_SW
+wait 1000
+# bypassed and back
+down KEY_15
+wait 100
+tap KEY_26
+wait 100
+up KEY_15
+wait 1000
+down KEY_15
+wait 100
+tap KEY_26
+wait 100
+up KEY_15
+wait 2500
+# Width's meters, a mono sine: every band's correlation green
+expect led pth 1 00fd00
+expect led pth 2 00fd00
+expect led pth 3 00fd00
+expect on

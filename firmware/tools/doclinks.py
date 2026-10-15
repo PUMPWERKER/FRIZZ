@@ -340,9 +340,10 @@ def check(root):
         sentences('MANUAL.md', n, s, 1)
         if len(s.split()) > 12:
             warnings.append(f'MANUAL.md:{n}: the summary has {len(s.split())} words, keep it under ~12')
-    for fallback in ('punch-in-fx', 'master-compressor'):
-        if fallback not in anchors['MANUAL.md']:
-            errors.append(f'MANUAL.md: no heading "{fallback}", the site\'s fallback for a white key')
+    # the site falls back to the first of 'punch-in-fx' and 'master-compressor' it finds (the
+    # finalizer replaced the master compressor in 1.5, #345)
+    if 'punch-in-fx' not in anchors['MANUAL.md']:
+        errors.append('MANUAL.md: no heading "punch-in-fx", the site\'s fallback for a white key')
 
     key_colours(root, cells, row[0] if row else 0, errors)
     features(root, errors)
@@ -404,7 +405,7 @@ def key_colours(root, cells, row_line, errors):
             errors.append(f'{SRC}/LedColors.h: {m.group(1)}: a channel outside 0..1')
         colours[m.group(1)] = values
     if 'white' not in colours:
-        errors.append(f'{SRC}/LedColors.h: no white (the compressor\'s key)')
+        errors.append(f'{SRC}/LedColors.h: no white (the finalizer\'s key)')
     table = re.search(r'kFxSlots\[\]\s*=\s*\{(.*?)\n\};', slots, re.S)
     keys = {}
     if not table:
@@ -424,7 +425,7 @@ def key_colours(root, cells, row_line, errors):
             keys[int(m.group(1))] = m.group(2)
     comp = re.search(r'kCompKey\s*=\s*Hardware::SwId::KEY_(\d+)\s*;', slots)
     if not comp:
-        errors.append(f'{SRC}/FxSlots.h: no `kCompKey = Hardware::SwId::KEY_<n>;` (the compressor\'s key)')
+        errors.append(f'{SRC}/FxSlots.h: no `kCompKey = Hardware::SwId::KEY_<n>;` (the finalizer\'s key)')
     elif int(comp.group(1)) in keys:
         errors.append(f'{SRC}/FxSlots.h: kCompKey KEY_{comp.group(1)} has an effect slot too')
     white = re.search(r'kWhiteKeys\[\w*\]\s*=\s*\{([^}]*)\}', panel)

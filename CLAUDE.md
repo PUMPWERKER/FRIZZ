@@ -77,8 +77,8 @@ these files is checked against this before it merges:
      chapter must have one, and it is its card on the landing page: 1 to 2 sentences, at most
      160 characters, written for players. `INSTALL.md` and `QUICKSTART.md` each have one
      under their H1, their description on the site.
-   - Each chapter of a white key's effect (the chaos key and the master compressor too) keeps
-     its knob table, `| Knob | Page 1 | …`, rows 1 to 4: the landing page's knob labels are
+   - Each chapter of a white key's effect (the chaos key and the finalizer too) keeps
+     its knob table, `| Knob | Page 1 | …` (the finalizer's first module's `| Knob | Function |`), rows 1 to 4: the landing page's knob labels are
      each Page 1 cell's text up to the first ":", "," or " (", so that start names the knob.
    - `site/landing.md` is the landing page's text (hero, the moves, the steps, the section
      hints, credits) in frizz-web's fixed format: its sections in order, `- Name: value` fields
@@ -174,7 +174,10 @@ refactor must leave `firmware/test/check.sh` and `firmware/twin/compare.sh` at
 the user still has to make, a test gap, an idea for later. A new finding becomes an issue (the
 repo is public: no private details), with the labels `known fault`, `timing`, `cpu`,
 `test gap`, `decision` or `parked` where they fit; a PR that settles one says `Fixes #N`, and
-a `Known()` check names its issue in its message. Don't keep open topics only in PR texts or
+a `Known()` check names its issue in its message. Each issue also gets a **milestone** for when it's planned (decided 2026-10-15): the
+next release (`v1.5.0` now), `v1.6.0`, `2.0` (a change to the controls), or `später` (parked, no
+version yet); a PR gets the milestone of what it settles. Labels say what kind it is, the
+milestone when. Don't keep open topics only in PR texts or
 notes.
 
 Two artifacts track every branch; keep both current with each change, and read them before
@@ -218,7 +221,9 @@ working on a branch:
 **1.0 is out** (`v1.0.0`, 2026-10-13; the feature freeze before it, decided 2026-10-12, is
 over). From 1.0 on the controls, the MIDI map and the scene files stay as they are: a feature
 goes into 1.x, a fix into 1.0.x, and only a break of the controls would be 2.0. A change to
-how a control behaves goes to the user as a `decision` issue first, even within 1.x.
+how a control behaves goes to the user as a `decision` issue first, even within 1.x. One
+exception: 1.5 replaces the master compressor with the finalizer (#345), decided by the user on
+2026-10-15, key 15's knobs and its settings changing.
 
 The open **release-test issue** (label `release test`, one at a time, titled for the next
 version) collects every merged PR's *For the release test* items, under the PR's number, plus
@@ -371,7 +376,7 @@ off its defaults) goes past 100 % and crackles (#21, settled by the user for 1.0
 cheap (`FxGate::Asleep`). A change that only shifts the memory layout has made it crackle on
 the device (b5c658c) while the host stayed bit-identical, so suspect the CPU when crackles
 appear that the twin can't reproduce. The host can't measure the load; the device can:
-`make BENCH=1` builds `FRIZZ-bench.bin` (`Bench.h`, compiled in only then), which runs 29
+`make BENCH=1` builds `FRIZZ-bench.bin` (`Bench.h`, compiled in only then), which runs 31
 segments by itself and writes `/FRIZZ/cpu.txt`; `firmware/remote.py load` and `remote.py play
 SCRIPT --cpu` read `FRIZZ.bin`'s own load. Every firmware branch runs the bench in stage 2,
 on its final build, and its PR compares it with `main`'s `firmware/bin/cpu.txt`; a segment
@@ -405,7 +410,7 @@ from `MainLoop()`, and leaves it alone while it lends it to the computer (`CardL
 reads the scenes and settings at boot and again, where the computer changed them, when it takes
 the card back (#314), and loops when one is loaded (`LoopLoader.h`, the slots scanned at boot,
 after a lend and on RESCAN). It writes when an FX scene is saved, copied or deleted, 2 s after
-the master compressor's knobs, the mono input or the MIDI settings rest (`SceneStore.h`,
+the finalizer's knobs, the mono input or the MIDI settings rest (`SceneStore.h`,
 `MasterSettings.h`), when the loop transfer writes, moves or deletes a slot (`LoopTransfer.h`,
 through `/FRIZZ/xfer.tmp`), or when a bug report is asked for (`EventLog.h`). Its files live in
 `/FRIZZ` (`frizz_scenes.txt`, `frizz_master.txt`, `.bak` copies, `bug-N.txt`, the loops
@@ -416,13 +421,13 @@ FRIZZ's SysEx (`MidiControl.h`), answered over USB from `MainLoop()`. MIDI out
 the jack from the audio callback without waiting, over USB from TinyUSB's task (#265).
 
 The play page is `NormalPage.h`; the engine is `passthroughEngine.h` → `Looper.h` +
-`FxMorph.h` → `FxChain.h` → `MasterComp.h` → output gain → `limiter.h`. Large buffers live in
+`FxMorph.h` → `FxChain.h` → `Finalizer.h` → output gain → `limiter.h`. Large buffers live in
 SDRAM (`DSY_SDRAM_BSS`), cleared by `ZeroSDRAM()` at boot because startup code doesn't; the
 loop and the event log (`SDRAM_NOINIT`) aren't, as they're always written before read. Card
 buffers live in internal RAM, 32-byte aligned, written in whole sectors (`EventLog::Flush`).
 
 **Memory**: the firmware runs from SRAM, loaded by CHOMPI's bootloader (`APP_TYPE=BOOT_SRAM`).
-Code has about **10.2 KB** left (`SRAM_EXEC`), the bench build **~11.1 KB** (2026-10-15, after the frequency shifter, #306: 3.4 KB), and data (`SRAM`) ~27 KB, the bench build's ~20 KB (after the code-room round, #320: FatFs `-Os`, no SPI driver); `docs/CAPACITY.md` lists every
+Code has about **3.3 KB** left (`SRAM_EXEC`), the bench build **~3.8 KB** (2026-10-15, after the frequency shifter, #306: 3.4 KB, and the finalizer, #345: 7 KB), and data (`SRAM`) ~24.6 KB, the bench build's ~16.7 KB (after the code-room round, #320: FatFs `-Os`, no SPI driver); `docs/CAPACITY.md` lists every
 region and the ways to make room. Never use `make program-boot`, and never swap in upstream
 libDaisy: the vendored copy is patched (`THIRD_PARTY.md`).
 `__attribute__((optimize("-O0")))` and similar per-function overrides (`ProcessAllControls`)
