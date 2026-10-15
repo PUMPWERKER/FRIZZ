@@ -143,6 +143,20 @@ what FRIZZ does.
   deleting the playing loop's slot in the Companion left its key bright, though the slot was
   empty; replacing it did too. Now the key goes dark (deleted) or dim (replaced) while the
   loop plays on, and moving or swapping it in the Companion takes the bright key along.
+- **A loop whose audio starts on a 512-byte boundary lights its key and starts again from the
+  top**: such files (Logic, GarageBand and other CoreAudio apps pad their WAVs that way, so do
+  some Pro Tools writers) played, but every second switch to one left its key dim instead of
+  bright, its key didn't start it again from the top, and FRIZZ didn't tell the Companion it
+  played.
+- **The free space on a card without a free count is counted right**: on a card a computer left
+  without its free count, a scene save, bug report or card lend while FRIZZ was counting could
+  leave it with a wrong number, which it then wrote onto the card. Now it counts again from the
+  start after any of these.
+- **A playing loop the computer replaced while it had the card no longer keeps its key bright**
+  (#332): once the card is back, its key is dim and the old loop plays on, as after a replace in
+  the Companion; a tap loads the new file. A loop whose file wasn't touched stays bright.
+- **FRIZZ tells the Companion which cubbi plays**: it said which of its own slots played and
+  was loaded, but never a cubbi.
 - **With the card lent to the computer, the loop you played before switches at once** (#292):
   it waited until the card was back, though it was already in memory. A loop that has to be
   loaded from the card still waits.

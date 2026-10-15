@@ -6,9 +6,13 @@
 //    what loopxfer.py vectors writes (8.1);
 //  - what the vectors don't reach (8.2): COPY's TOO_LONG, the fragment check (a file in 300
 //    fragments), a power cut after every name change of a write, a copy and a swap with the
-//    boot after it (whole files only), no FatFs call while a load's DMA has the card, the free
-//    space counted a FAT sector a pass, and after every case that only the allowed names
-//    changed: /FRIZZ's slots and temp files, never /TAPE, the root or FRIZZ's other files.
+//    boot after it (whole files only), 3.9 step 4's check of the slot failing (CARD_ERROR with
+//    its FRESULT), no FatFs call while a load's DMA has the card, the free space counted a FAT
+//    sector a pass (paused by a load, counted again after a save), the card's data failing
+//    mid-job (full, a read, a write or a sync failing, xfer.tmp cut short), HELLO's version,
+//    the reference client starting a job the card's lending ended again (loopxfer.py
+//    --lendtest), and after every case that only the allowed names changed: /FRIZZ's slots and
+//    temp files, never /TAPE, the root or FRIZZ's other files.
 // Exits 0 when everything passes. Run by unit.sh loopxfer.
 // unit includes: loopxfer
 #include <cstdio>
@@ -406,6 +410,10 @@ static void TestVectors()
     const std::string repo = Dir() + "../";
     const std::string cmd = "python3 " + repo + "tools/loopxfer.py vectors --check --out " + Dir() + "loopxfer/vectors.json";
     Check(system(cmd.c_str()) == 0, "vectors: vectors.json is what loopxfer.py vectors writes");
+    // the reference client, as the Companion: a write or a copy the card's lending ended starts
+    // again once the card is back, whole; one that can't start fails (3.8)
+    const std::string lend = "PYTHONDONTWRITEBYTECODE=1 python3 " + repo + "tools/loopxfer.py --lendtest";
+    Check(system(lend.c_str()) == 0, "client: a write or a copy that lending the card ended starts again once it's back (3.8)");
     std::ifstream in(Dir() + "loopxfer/vectors.json");
     std::stringstream ss;
     ss << in.rdbuf();
@@ -787,6 +795,33 @@ static void TestCardErrors()
     }
 }
 
+/** 3.9's step 4: the slot's check failing is CARD_ERROR with its FRESULT, the old file kept */
+static void TestCheckError()
+{
+    NewCard(Base());
+    const auto before = card.files;
+    Frizz f;
+    Boot(f);
+    App app{f};
+    const std::string fresh = Wav(321, 11);
+    const uint8_t tid = app.Write(0, 0, fresh, kReplace, false);
+    card.stat_fails = true;
+    std::vector<uint8_t> e = {tid};
+    const auto crc = App::N(Crc(fresh), 5);
+    e.insert(e.end(), crc.begin(), crc.end());
+    const uint8_t ended = app.Ask(WRITE_END, e);
+    std::vector<std::vector<uint8_t>> out;
+    f.Settle(out);
+    uint8_t phase, result;
+    app.Job(phase, result);
+    const uint8_t detail = app.last[20];
+    printf("      WRITE_END %u, phase %u, result %u, detail %u\n", ended, phase, result, detail);
+    Check(tid && ended == OK && !card.stat_fails && phase == 5 && result == CARD_ERROR && detail == FR_DISK_ERR
+              && card.files.at("/FRIZZ/a1.wav") == before.at("/FRIZZ/a1.wav") && !card.files.count(kTmp),
+          "card error: the slot's check before the rename failing: CARD_ERROR with its FRESULT, the old "
+          "file kept, xfer.tmp deleted");
+}
+
 /** A load's DMA in flight: no FatFs call from the transfer meanwhile (it pauses for the load) */
 static void TestLoadInFlight()
 {
@@ -831,6 +866,155 @@ static void TestFreeCount()
     App app{f};
     const uint32_t kb = (app.Ask(STATUS), Get7(app.last.data() + 2, 4));
     Check(kb == card.Free() * 4 && (app.last[0] & 64), "free space: STATUS says it, in KB");
+
+    // a save (card_busy) changing the FAT in the middle of a count: counted again from the start
+    NewCard(Base());
+    card.fsinfo = false;
+    card.clusters = 1000;
+    Frizz g;
+    g.Boot();
+    g.Pass();
+    g.Pass();
+    g.env.card_busy = true;
+    card.files["/FRIZZ/frizz_master.txt"] = std::string(300 * 4096, 'x'); // 300 clusters
+    g.Pass();
+    g.env.card_busy = false;
+    passes = 0;
+    while (fs.free_clst > fs.n_fatent - 2 && passes < 100)
+    {
+        g.Pass();
+        passes++;
+    }
+    printf("      counted %u free in %d passes after the save, the card %u\n", fs.free_clst, passes, card.Free());
+    Check(fs.free_clst == card.Free() && passes == (1002 + 127) / 128,
+          "free space: a save in the middle of the count: counted again from the FAT's start, as the card is");
+
+    // loads (the env's loading, every other pass) only pause it: it reads, the FAT stays
+    NewCard(Base());
+    card.fsinfo = false;
+    card.clusters = 1000;
+    Frizz h;
+    h.Boot();
+    passes = 0;
+    int counting = 0;
+    while (fs.free_clst > fs.n_fatent - 2 && passes < 100)
+    {
+        h.env.loading = passes % 2 == 1;
+        counting += !h.env.loading;
+        h.Pass();
+        passes++;
+    }
+    h.env.loading = false;
+    Check(fs.free_clst == card.Free() && counting == (1002 + 127) / 128,
+          "free space: loads between the count's passes only pause it: (1002 + 127) / 128 passes counting");
+}
+
+/** How a write or a copy into slot (b, s) ended, the card's data failing on the way: "done" with
+ *  the slot what was sent, "failed RESULT" with it as it was, xfer.tmp gone and only the allowed
+ *  names changed; anything else said as it is */
+static std::string Ended(App& app, Frizz& f, const std::map<std::string, std::string>& before,
+                         const std::string& slot, const std::string& sent)
+{
+    std::vector<std::vector<uint8_t>> out;
+    f.Settle(out);
+    uint8_t phase, result;
+    app.Job(phase, result);
+    const auto it = card.files.find(slot);
+    const bool was = before.count(slot) ? it != card.files.end() && it->second == before.at(slot) : it == card.files.end();
+    std::string how = phase == DONE && it != card.files.end() && it->second == sent ? "done"
+                      : phase == FAILED && was ? "failed " + std::to_string(result)
+                                               : "phase " + std::to_string(phase) + " result " + std::to_string(result);
+    if (card.files.count(kTmp))
+        how += ", xfer.tmp left";
+    if (!OnlyAllowed(before))
+        how += ", other names changed";
+    return how;
+}
+
+/** The card's data failing mid-job (8.2): the card full mid-file (NO_SPACE); a write, a sync or
+ *  a copy's read failing (CARD_ERROR), each of the first of them in turn; xfer.tmp not as long
+ *  as what was written when it's opened again after a remount (Reopen: CARD_ERROR). Each ends
+ *  FAILED, the slot as it was, xfer.tmp deleted */
+static void TestDataErrors()
+{
+    const std::string big = Wav(30000, 17); // 120 KB: three blocks of xfer.tmp and the rest
+    const std::string a1 = "/FRIZZ/a1.wav", a2 = "/FRIZZ/a2.wav";
+    {
+        NewCard(Base());
+        const auto before = card.files;
+        Frizz f;
+        Boot(f);
+        App app{f};
+        card.space = 40000;
+        app.Write(0, 0, big, kReplace);
+        const std::string how = Ended(app, f, before, a1, big);
+        Check(how == "failed " + std::to_string(NO_SPACE), "data errors: the card full mid-file: NO_SPACE, a1 as it was");
+        if (how != "failed " + std::to_string(NO_SPACE))
+            printf("  %s\n", how.c_str());
+    }
+    for (int copy = 0; copy < 2; copy++)
+    {
+        bool ok = true;
+        int failed = 0;
+        for (int k = 0; k < 6; k++)
+        {
+            auto files = Base();
+            files["/TAPE/cubbi_a1.wav"] = big;
+            NewCard(files);
+            const auto before = card.files;
+            Frizz f;
+            Boot(f);
+            App app{f};
+            card.fail_io_after = card.io + k;
+            if (copy)
+                app.Ask(COPY, {8, 0, 0, 1, kReplace});
+            else
+                app.Write(0, 0, big, kReplace);
+            const std::string how = Ended(app, f, before, copy ? a2 : a1, big);
+            failed += card.fail_io_after < 0;
+            card.fail_io_after = -1;
+            if (how != "failed " + std::to_string(CARD_ERROR))
+            {
+                printf("  %s, the card's %dth read, write or sync failing: %s\n", copy ? "a copy" : "a write", k + 1,
+                       how.c_str());
+                ok = false;
+            }
+        }
+        Check(ok && failed == 6, copy ? "data errors: a copy's read, write or sync failing, each of its first 6: CARD_ERROR, a2 as it was"
+                                      : "data errors: a write's write or sync failing, each of its first 6: CARD_ERROR, a1 as it was");
+    }
+    {
+        NewCard(Base());
+        const auto before = card.files;
+        Frizz f;
+        Boot(f);
+        App app{f};
+        const uint8_t tid = app.Write(0, 0, big, kReplace, false); // all sent, WRITE_END not yet
+        const bool on_card = card.files.count(kTmp) && card.files[kTmp].size() == 3 * kBlock;
+        card.files[kTmp].resize(3 * kBlock - 1); // shorter than written: a remount's, a hand's
+        f_mount(&fs, "", 1);                     // a save's remount: xfer.tmp opened again
+        std::vector<uint8_t> end = {tid};
+        const auto crc = App::N(Crc(big), 5);
+        end.insert(end.end(), crc.begin(), crc.end());
+        app.Ask(WRITE_END, end);
+        const std::string how = Ended(app, f, before, a1, big);
+        Check(on_card && how == "failed " + std::to_string(CARD_ERROR),
+              "data errors: xfer.tmp shorter than written after a remount: CARD_ERROR, a1 as it was");
+        if (!on_card || how != "failed " + std::to_string(CARD_ERROR))
+            printf("  on the card %d: %s\n", on_card, how.c_str());
+    }
+}
+
+/** HELLO says the firmware's version, kFrizzVersion (Version.h), the vectors masking it (8.1) */
+static void TestHello()
+{
+    NewCard(Base());
+    Frizz f;
+    Boot(f);
+    App app{f};
+    const bool ok = app.Ask(HELLO) == OK && app.last.size() >= 6
+                    && std::equal(kFrizzVersion, kFrizzVersion + 4, app.last.begin() + 2);
+    Check(ok, "hello: says kFrizzVersion, the version Version.h has");
 }
 
 int main()
@@ -840,7 +1024,10 @@ int main()
     TestFragments();
     TestPowerCuts();
     TestCardErrors();
+    TestCheckError();
     TestLoadInFlight();
     TestFreeCount();
+    TestDataErrors();
+    TestHello();
     return Finish();
 }
