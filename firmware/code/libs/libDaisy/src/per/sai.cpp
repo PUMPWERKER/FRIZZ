@@ -75,6 +75,8 @@ static SaiHandle::Impl sai_handles[2];
 // SAI Functions
 // ================================================================
 
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 SaiHandle::Result SaiHandle::Impl::Init(const SaiHandle::Config& config)
 {
     // do some init stuff
@@ -203,6 +205,7 @@ SaiHandle::Result SaiHandle::Impl::Init(const SaiHandle::Config& config)
 
     return Result::OK;
 }
+#pragma GCC pop_options
 
 SaiHandle::Result SaiHandle::Impl::DeInit()
 {
@@ -301,6 +304,8 @@ void SaiHandle::Impl::InternalCallback(size_t offset)
         callback_(in, out, buff_size_ / 2);
 }
 
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 SaiHandle::Result
 SaiHandle::Impl::StartDmaTransfer(int32_t*                       buffer_rx,
                                   int32_t*                       buffer_tx,
@@ -334,6 +339,7 @@ SaiHandle::Impl::StartDmaTransfer(int32_t*                       buffer_rx,
 
     return Result::OK;
 }
+#pragma GCC pop_options
 SaiHandle::Result SaiHandle::Impl::StopDmaTransfer()
 {
     HAL_SAI_DMAStop(&sai_a_handle_);
@@ -363,6 +369,8 @@ float SaiHandle::Impl::GetBlockRate()
     return GetSampleRate() / GetBlockSize();
 }
 
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 void SaiHandle::Impl::InitPins()
 {
     bool             is_master;
@@ -406,6 +414,7 @@ void SaiHandle::Impl::InitPins()
         HAL_GPIO_Init(port, &GPIO_InitStruct);
     }
 }
+#pragma GCC pop_options
 
 void SaiHandle::Impl::DeInitPins()
 {
