@@ -115,6 +115,11 @@ what FRIZZ does.
 
 ### Fixed
 
+- **Opening FRIZZ's USB MIDI port late no longer brings eleven beats of old clock**: with MIDI
+  out on USB and no app on the computer reading FRIZZ's port yet, the clock piled up, and an
+  app opening the port later (a DAW, at any time after) got about 270 ticks at once, eleven
+  beats, and any Start or Stop among them. Now what nobody takes for a tenth of a second is
+  dropped: the app gets at most a fraction of a beat of old clock, then the clock as it runs.
 - **Scenes and settings always save into the card's `FRIZZ` folder:** after the card failed to
   answer once (a hiccup FRIZZ recovers from by itself), the scenes and settings saved from then
   on until a restart could land in the card's root, shown as saved but gone at the next

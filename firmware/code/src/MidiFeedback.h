@@ -17,15 +17,18 @@
  *  goes at once, also between a message's bytes, as MIDI lets real-time bytes.
  */
 #pragma once
+#include <atomic>
 #include <stddef.h>
 #include <stdint.h>
 
 namespace chompi
 {
 
-/** A byte ring between the audio callback and MainLoop, one side writing, the other reading:
- *  whole messages go in at once, so the reader never sees half of one. MIDI out's
- *  (MidiOut.h) and the jack's feedback bytes */
+/** A byte ring between two contexts, one side writing, the other reading: whole messages go
+ *  in at once, so the reader never sees half of one. MIDI out's (MidiOut.h) and the jack's
+ *  feedback bytes. Either side may be the interrupt that preempts the other, so the bytes are
+ *  fenced from the indices: the writer's bytes land before its head, the reader's are read
+ *  before its tail lets them go (only the compiler reorders them on one core) */
 template <uint32_t kSize>
 class ByteRing
 {
@@ -36,21 +39,48 @@ public:
         uint32_t head = head_;
         if (kSize - (head - tail_) < n)
             return false;
+        Acquire();
         for (size_t i = 0; i < n; i++)
             buf_[head++ % kSize] = msg[i];
+        Release();
         head_ = head;
         return true;
     }
-    inline size_t Room() const { return kSize - (head_ - tail_); }
-    inline bool Empty() const { return head_ == tail_; }
+    inline size_t Room() const
+    {
+        const size_t room = kSize - (head_ - tail_);
+        Acquire();
+        return room;
+    }
+    inline bool Empty() const
+    {
+        const bool empty = head_ == tail_;
+        Acquire();
+        return empty;
+    }
     inline uint8_t Front() const { return buf_[tail_ % kSize]; }
     /** The byte i after the front */
     inline uint8_t At(size_t i) const { return buf_[(tail_ + i) % kSize]; }
-    inline void Pop() { tail_ = tail_ + 1; }
-    inline void Drop(size_t n) { tail_ = tail_ + n; }
-    inline void Clear() { tail_ = head_; }
+    inline void Pop()
+    {
+        Release();
+        tail_ = tail_ + 1;
+    }
+    inline void Drop(size_t n)
+    {
+        Release();
+        tail_ = tail_ + n;
+    }
+    inline void Clear()
+    {
+        Release();
+        tail_ = head_;
+    }
 
 private:
+    static inline void Acquire() { std::atomic_signal_fence(std::memory_order_acquire); }
+    static inline void Release() { std::atomic_signal_fence(std::memory_order_release); }
+
     uint8_t buf_[kSize];
     volatile uint32_t head_ = 0, tail_ = 0;
 };

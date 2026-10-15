@@ -32,7 +32,7 @@ namespace usb
 static volatile bool want_audio = true;
 static volatile uint32_t bus_asked = 0; // bumped by each ask
 static uint32_t bus_seen = 0;           // the task's
-static bool on_bus = false;             // the task's
+static volatile bool on_bus = false;    // the task's
 static uint32_t away_ticks = 0;         // the task's passes off the bus still to go
 // long enough off the bus for any computer to see FRIZZ gone: 300 ms of 4 kHz passes
 static const uint32_t kAwayTicks = 1200;
@@ -240,7 +240,8 @@ void SetAudio(bool audio)
 
 bool Audio() { return want_audio; }
 
-bool Host() { return tud_ready(); }
+// off the bus (the USB-audio switch), TinyUSB still says configured until the computer resets it
+bool Host() { return on_bus && tud_ready(); }
 
 void SetTaskHook(void (*hook)()) { task_hook = hook; }
 
