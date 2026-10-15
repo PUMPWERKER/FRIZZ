@@ -19,7 +19,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, ci-actions]   # TEMP: ci-actions while CI is built, before its PR
+    branches: [main]
 
 permissions:
   contents: read
