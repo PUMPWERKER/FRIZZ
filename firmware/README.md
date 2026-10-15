@@ -695,6 +695,58 @@ tools/reaper.py devices --audio dummy           # what REAPER sees, FRIZZ untouc
 - `test/reaper.cpp` runs it on the twin with `test/reaper_stub.py` in REAPER's place, and
   `REAPERCHECK="--cases ID -v" test/unit.sh reaper` plays it there once.
 
+### Loop switches heard, and the Companion in a browser
+
+Two tools for the release test's loop items. Both run in a hold, on the test slot, and write
+the card only where a session may: into bank h's empty slots 13-15.
+
+**`tools/loopcap.py` records the loop loader.** Its three test loops (h13-h15) say by
+their sound which loop plays and on which beat:
+- **The loops:** a bed sine per loop (200, 300 and 500 Hz), whole cycles in every 10 ms;
+- **The beats:** a 10 ms burst on every beat, whose pitch is the beat's number.
+
+From FRIZZ's master over USB audio it reads, to the sample: what plays when, the beat grid
+across switches, the crossfader's power sum, and clicks. The send times line up with the
+capture by a marker of FRIZZ's own test signal.
+
+```bash
+cd firmware
+tools/loopcap.py make ~/.cache/lc && ./remote.py loops ls > /tmp/ls-before.txt   # h13-h15 must be empty
+for s in 13 14 15; do ./remote.py loops put ~/.cache/lc/h$s.wav h $s; done
+PY=~/.venvs/frizz/bin/python                  # numpy, as measure.py
+./flash.py --run 12; $PY tools/loopcap.py pc /tmp/pc --cubbi   # #270: CC 0 + PC, CC 54 at 0, 1, 2, 8, 127
+./flash.py --run 12; $PY tools/loopcap.py feedback /tmp/fb     # #270: switches by hand recorded as MIDI, played back
+./flash.py --run 12; $PY tools/loopcap.py fader /tmp/fd        # #268: the crossfader with two loops
+for s in 13 14 15; do ./remote.py loops rm h $s; done; ./remote.py loops ls | diff /tmp/ls-before.txt -
+$PY tools/loopcap.py analyze /tmp/pc.wav --events /tmp/pc.json # again, from the files
+```
+
+Each run assumes a fresh start (`./flash.py --run 12`): the play page, an empty looper and
+nothing latched. It keeps its settings in RAM (PERSIST 0) and sets PipeWire's profile for
+FRIZZ off while it records, then back. `test/loopcap.cpp` checks the analysis on a capture
+made from the loops as FRIZZ plays them.
+
+**`tools/companion.py` drives the Companion page.** It runs the site's Companion (the `/beta/`
+one by default, `--url` for another) in a headless Chromium against the real FRIZZ, over the
+DevTools protocol. It reads what the page says and its slot buttons:
+- `slots`: the slots the page lists;
+- `playing BANK SLOT`: whether the page says FRIZZ plays that slot, a cubbi's too;
+- `refused`: what the page says with Web MIDI denied;
+- `connect`: only the connection's words, e.g. a FRIZZ without the loop transfer;
+- `upload BANK SLOT FILE…`: a batch into empty slots, its progress followed, `--hide` hiding
+  the tab partway.
+
+About the browser:
+- **Which one:** the Flatpak `org.chromium.Chromium`. Playwright's Chromium 149 crashes on
+  Web MIDI's send.
+- **Its profile:** one of its own under `~/.cache/frizz-companion`, gone after each run.
+- **What it can see:** only the home directory, so the files to upload live there.
+- **The MIDI port:** while the page has FRIZZ's port, no other tool reaches FRIZZ.
+- **No prompt:** Web MIDI's permission is granted, or denied, through CDP.
+
+`test/companion.cpp` checks its WebSocket and CDP client against a stand-in, and what it
+refuses before a browser opens.
+
 ## Measure the CPU load
 
 The audio callback has 0.5 ms per block, and neither the host checks nor the virtual CHOMPI
