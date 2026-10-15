@@ -29,7 +29,8 @@ for n in $NAMES; do
     PIDS+=("$!:$B:$n")
 done
 # a scenario's failed expectations (1) are what the comparison shows; anything else is the twin
-# not getting through it: a crash (a signal) or a script it couldn't read (2)
+# not getting through it: a crash (a signal), a script it couldn't read (2), its queues
+# overflowing (3) or a log or WAV it couldn't write whole (4: a full /tmp, where they go)
 BAD=
 for p in "${PIDS[@]}"; do
     rc=0
@@ -37,6 +38,9 @@ for p in "${PIDS[@]}"; do
     IFS=: read -r _ ref n <<< "$p"
     if [ $rc -gt 128 ]; then
         echo "scenario $n crashed on $ref ($(kill -l $((rc - 128))))"
+        BAD="$BAD $n"
+    elif [ $rc -eq 4 ]; then
+        echo "scenario $n didn't run on $ref: its log or WAV couldn't be written ($RUNS full?)"
         BAD="$BAD $n"
     elif [ $rc -gt 1 ]; then
         echo "scenario $n didn't run on $ref (exit $rc)"

@@ -100,7 +100,8 @@ which may lag behind what's merged.
 `compare.sh` builds the twin on each version's firmware (once per commit, kept in
 `build/compare/`), plays every scenario in `scenarios/` on both and compares what came out:
 `bit-identical`, or from when the sound parts and how far below the signal the difference is,
-and which LEDs differ how often. The scenarios cover every effect on its own, effects latched
+and which LEDs differ how often (LED logs of different lengths, or one cut short, said as such;
+`compare.py --selftest`, run by `../test/unit.sh compare`). The scenarios cover every effect on its own, effects latched
 together with coarse turns and resets, the compressor swept, the looper through every speed,
 scenes saved, recalled, morphed, copied and deleted, VOLUME's pages and the mix, and MIDI clock.
 Their `expect` lines (LEDs that show a state, not a meter: LOOP recording, the transport, the
@@ -177,7 +178,8 @@ in `test/ui.cpp`.
   have fixed sizes, so hosts that drive the twin from a real-time thread can call `Run()`,
   `Midi()`, `UsbMidi()` and the `Take...(buf, max)` calls without allocating
   (`../test/rtalloc.cpp` checks it). A full queue drops the newest and counts it
-  (`Dropped()`): `frizz-twin` then exits 3 with what was dropped, and a case of `ui.cpp`,
+  (`Dropped()`): `frizz-twin` then exits 3 with what was dropped (4 when it couldn't write its
+  WAV or LED log whole, a full disk), and a case of `ui.cpp`,
   `sync.cpp`, `midi.cpp` or `midiout.cpp` fails (`cases.h`).
 - `host/`: what replaces libDaisy's hardware layer (`daisy.h`, `daisy_seed.h`, `per/`, `sys/`, ...).
 - `script.cpp` / `script.h`: the script player; `cli.cpp`: `frizz-twin`, around it.
