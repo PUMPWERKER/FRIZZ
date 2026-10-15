@@ -12,12 +12,12 @@ wait 80
 tap KEY_26
 up KEY_7
 wait 200
-# its knobs at their defaults: rate .25, between violet and orange; feedback .4; depth violet;
+# its knobs at their defaults: rate .25, between blue and orange; feedback .4; depth blue;
 # centre .5
-expect led pth 1 b0429a
-expect led pth 2 9a37b0
-expect led pth 3 6300fd
-expect led pth 4 b0429a
+expect led pth 1 79429a
+expect led pth 2 6337b0
+expect led pth 3 0000fd
+expect led pth 4 79429a
 # depth, feedback up, the centre up an octave
 turn 3 17 130
 wait 2674
@@ -25,9 +25,9 @@ turn 1 50 130
 wait 6600
 turn 2 100
 wait 1000
-expect led pth 2 e7844d
+expect led pth 2 dc844d
 expect led pth 3 fd8f37
-expect led pth 4 c66379
+expect led pth 4 a56379
 # rate (.7 Hz, at .25) up to the centre: the first division, 1/16, green
 turn 4 25 130
 wait 5050
@@ -51,7 +51,7 @@ turn 4 -4
 wait 100
 up KEY_26
 wait 2000
-expect led pth 1 dc7963
+expect led pth 1 c67963
 # page 2: stereo up, the right LFO behind, then back
 tap ENC_4_SW
 wait 300
