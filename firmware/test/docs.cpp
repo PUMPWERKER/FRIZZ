@@ -377,7 +377,18 @@ static void ReadKeys()
     CheckF(slots.size() == kNumFx, "FxSlots.h: kFxSlots read, a row per effect (%zu of %zu)",
            slots.size(), static_cast<size_t>(kNumFx));
     Check(names, "FxSlots.h: every colour of kFxSlots has a name in docs.cpp's kColours");
+    // the knobs start in their key's colour and end in another (the user's decision, 2026-10-15)
+    Group starts("FxSlots.h: each effect's knob LEDs start in its key's colour, white unused between, another at 1");
+    for (const Slot& s : slots)
+        starts.Add(s.knob[0] == s.colour && s.knob[1] == "white" && s.knob[2] != s.colour,
+                   "KEY_%d: %s, its knobs %s, %s, %s", s.key, s.colour.c_str(), s.knob[0].c_str(),
+                   s.knob[1].c_str(), s.knob[2].c_str());
     std::smatch m;
+    std::smatch sk, skn;
+    std::regex_search(fx, sk, std::regex("kShifterKeyColor = (\\w+);"));
+    std::regex_search(fx, skn, std::regex("kShifterKnobColors\\[3\\] = \\{(\\w+), \\w+, (\\w+)\\}"));
+    Check(!sk.empty() && !skn.empty() && skn[1] == sk[1] && skn[2] != sk[1],
+          "FxSlots.h: the frequency shifter's knob LEDs start in its key's colour, another at 1");
     std::regex_search(fx, m, std::regex("kCompKey = Hardware::SwId::KEY_(\\d+)"));
     comp_key = m.empty() ? 0 : atoi(m[1].str().c_str());
     std::regex_search(fx, m, std::regex("kCompKnobColors\\[3\\] = \\{(\\w+), (\\w+), (\\w+)\\}"));
