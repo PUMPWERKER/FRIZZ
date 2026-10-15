@@ -1,0 +1,142 @@
+# CI: stage 1a (the host checks and the virtual CHOMPI) and the firmware's two builds, on every
+# pull request and every push to main (CLAUDE.md, "Testing has three stages"). Nothing here
+# reaches a CHOMPI (FRIZZ_NO_DEVICE); stage 2, on the device, stays with the sessions. No check
+# here is required for a merge: when Actions is down, the same runs go on locally.
+#
+# - checks:  firmware/test/all.sh, every host check (doclinks among them), with numpy for
+#            reaper's cases with music and ffmpeg for the finalizer's meters; what a check
+#            still can't run here it lists as "SKIP: local only" (stage 1b, CLAUDE.md)
+# - docs:    firmware/tools/doclinks.py, the docs the website is built from, on its own so a
+#            docs PR hears back in seconds
+# - compare: firmware/twin/compare.sh against the PR's base, its output in the job summary; a
+#            difference doesn't fail it (the PR explains each one), a scenario the twin
+#            couldn't play does
+# - build:   FRIZZ.bin and FRIZZ-bench.bin with the pinned GCC 10.3 (tools/builds.py), their
+#            md5 and memory tables in the job summary, the builds as artifacts. A PR's build is
+#            its branch's head, not GitHub's merge commit: the md5 its stage 2 names.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FRIZZ_NO_DEVICE: "1"
+
+jobs:
+  checks:
+    name: Stage 1a (all.sh)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # check.sh builds the engine at HEAD
+      - name: ffmpeg for the finalizer's meters against its own
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
+      - name: numpy for reaper's cases with music (measure.py's venv, firmware/README.md)
+        run: |
+          python3 -m venv ~/.venvs/frizz
+          ~/.venvs/frizz/bin/pip install -q --only-binary=:all: numpy==2.5.3
+      - name: Tools
+        run: g++ --version | head -1; ffmpeg -version | head -1; python3 --version; ~/.venvs/frizz/bin/python -c 'import numpy; print("numpy", numpy.__version__)'; nproc; free -h
+      - name: all.sh
+        run: firmware/test/all.sh
+      - name: Keep the checks' output
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: all-last
+          path: firmware/test/build/all-last/
+          retention-days: 14
+
+  docs:
+    name: Docs (doclinks.py)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: doclinks.py
+        run: firmware/tools/doclinks.py
+
+  compare:
+    name: Twin against the base (compare.sh)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # the base's firmware, from git
+      - name: compare.sh
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          rc=0
+          firmware/twin/compare.sh "$BASE" HEAD > compare.out 2>&1 || rc=$?
+          cat compare.out
+          {
+            echo "### Twin: $BASE against this PR"
+            echo
+            if [ $rc = 0 ]; then
+              echo "Every scenario bit-identical."
+            else
+              echo "Differences: each one is explained in the PR (*Checked on the twin*)."
+            fi
+            echo
+            echo '```'
+            cat compare.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # a difference is the PR's to explain; a twin that didn't build or a scenario it
+          # couldn't play is a fault
+          if grep -E "crashed on|didn't run on|the twin didn't build" compare.out; then
+            echo "::error::compare.sh: the twin didn't get through (above)"
+            exit 1
+          fi
+          # compare.sh fails when anything differs; a failure with no comparison printed is
+          # something else
+          if [ $rc != 0 ] && ! grep -q "against HEAD:" compare.out; then
+            echo "::error::compare.sh failed (exit $rc) before comparing"
+            exit 1
+          fi
+
+  build:
+    name: Firmware (builds.py)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: GCC 10.3 from the cache
+        id: gcc
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/opt/gcc-arm-none-eabi-10.3-2021.10
+          key: gcc-arm-none-eabi-10.3-2021.10-x86_64-linux-97dbb4f019ad1650b732faffcc881689cedc14e2b7ee863d390e0a41ef16c9a3
+      - name: GCC 10.3 from ARM
+        if: steps.gcc.outputs.cache-hit != 'true'
+        run: .github/scripts/gcc-arm.sh
+      - name: builds.py
+        env:
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          firmware/tools/builds.py | tee builds.out
+          .github/scripts/build-summary.py "$COMMIT" < builds.out >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the builds
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: FRIZZ-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            firmware/code/src/build/FRIZZ.bin
+            firmware/code/src/build-bench/FRIZZ-bench.bin
+          retention-days: 14
