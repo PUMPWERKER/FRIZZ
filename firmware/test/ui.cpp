@@ -3772,10 +3772,12 @@ int main()
         Ask({0x3E, 0x0E, 1, 2, 1});
         RunMs(300);
         const bool lent = CardLent();
+        const int calls = CardUnmountedCalls();
         Tap(kLoopKeys[0]);
         const int back_to_a1 = UntilLength(48000, 1000);
         Tap(kLoopKeys[2]); // a3: not loaded
         const int a3_lent = UntilLength(36000, 1000);
+        const int lent_calls = CardUnmountedCalls() - calls;
         Ask({0x3E, 0x0E, 1, 2, 0});
         RunMs(20);
         const bool returned = !CardLent();
@@ -3785,6 +3787,48 @@ int main()
               "loops-lent: the card lent: a loop already loaded switches at once");
         Check(a3_lent < 0 && returned && a3 >= 0,
               "loops-lent: a loop to load waits for the card; once it's back and scanned, it loads and plays");
+        Check(lent_calls == 0, "loops-lent: and nothing touches the card while it's lent, no FatFs call, no raw read");
+        if (lent_calls)
+            printf("      %d calls while lent\n", lent_calls);
+    }});
+
+    // the computer changing the loops while the card is lent: taken back, the scan finds them as
+    // the card has them: one deleted (its key dark), one new (dim, and it loads), the one playing
+    // replaced (as the loop transfer's replace: the old loop plays on, its key dim, not lit; a
+    // tap loads the new one)
+    cases.push_back({"loops-lent-changed", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(48000, 2, 220.f)}, {"a2", SineWav(24000, 2, 330.f)}});
+        LoopsPage();
+        auto lit = [](int slot) { return Shows(SmtLedFull(LoopLed(slot)), kOrange, kLoopLit); };
+        auto dim = [](int slot) { return Shows(SmtLedFull(LoopLed(slot)), kOrange, kLoopDim); };
+        auto dark = [](int slot) { return Max(SmtLedFull(LoopLed(slot))) == 0; };
+        Tap(kLoopKeys[0]);
+        UntilLength(48000, 1000);
+        RunMs(100);
+        const bool a1_lit = lit(0);
+        Ask({0x3E, 0x0E, 1, 2, 1});
+        RunMs(300);
+        const bool lent = CardLent();
+        CardFiles()["/FRIZZ/a1.wav"] = SineWav(12000, 2, 660.f);
+        CardFiles().erase("/FRIZZ/a2.wav");
+        CardFiles()["/FRIZZ/a3.wav"] = SineWav(30000, 2, 550.f);
+        Ask({0x3E, 0x0E, 1, 2, 0});
+        RunMs(5000); // back, and the loops scanned again
+        const bool back = !CardLent();
+        printf("      a1 %s a2 %s a3 %s, the loop %zu frames\n", Hex(SmtLedFull(LoopLed(0))).c_str(),
+               Hex(SmtLedFull(LoopLed(1))).c_str(), Hex(SmtLedFull(LoopLed(2))).c_str(),
+               static_cast<size_t>(Probe().loop_length));
+        Check(a1_lit && lent && back && dark(1) && dim(2),
+              "loops-lent-changed: taken back: a2 the computer deleted dark, a3 it added dim");
+        Check(Probe().loop_length == 48000, "loops-lent-changed: a1 it replaced while it played: the old loop plays on");
+        Known(dim(0) && !lit(0), "loops-lent-changed: and a1's key dim, as after the loop transfer's replace, not bright (#332)");
+        Tap(kLoopKeys[2]);
+        const int a3 = UntilLength(30000, 2000);
+        Tap(kLoopKeys[0]);
+        const int a1 = UntilLength(12000, 2000);
+        Check(a3 >= 0 && a1 >= 0, "loops-lent-changed: a3 loads, and a1's new loop on a tap");
     }});
 
     // MIDI's notes still play the effects on the Loops page, and pick no loops; an effect held
@@ -7486,6 +7530,7 @@ int main()
         const Rgb lent = PthLedFull(kLoopLed);
         const bool is_lent = CardLent() && lent.b > 150 && lent.r < 40 && lent.g < 40
                              && Max(PthLedFull(kChompiKeyLed)) == 0;
+        const int calls = CardUnmountedCalls();
         // a scene saved meanwhile waits for the card
         SetToggle(false);
         RunMs(300);
@@ -7496,6 +7541,7 @@ int main()
         const bool waited = Card("/FRIZZ/frizz_scenes.txt") == scenes;
         SetToggle(true);
         RunMs(300);
+        const int lent_calls = CardUnmountedCalls() - calls;
         lend_gesture(); // back
         const bool back = !CardLent() && Max(PthLedFull(kLoopLed)) == 0;
         RunMs(1000);
@@ -7514,6 +7560,9 @@ int main()
         Check(dark, "card-lend: LOOP dark on the settings page");
         Check(is_lent, "card-lend: SHIFT + LOOP held 2 s: lent, LOOP blue, SHIFT's LED its own (dark once let go)");
         Check(waited, "card-lend: a scene saved while it's lent waits");
+        Check(lent_calls == 0, "card-lend: no FatFs call while it's lent, the save's neither");
+        if (lent_calls)
+            printf("      %d calls while lent\n", lent_calls);
         Check(back && saved, "card-lend: the gesture again takes it back, LOOP dark, and the save comes");
         Check(again && ejected, "card-lend: ejected on the computer: taken back");
         Check(unplugged, "card-lend: the computer gone: taken back");

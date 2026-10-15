@@ -1440,6 +1440,7 @@ class Client:
         self.log = log or (lambda *a: None)
         self.other = None  # what gets the messages that aren't the loop transfer's
         self.tick = None   # called as a write goes, with the link's time (remote.py's --cpu)
+        self.started = False  # the job asked for under way (_again_when_back)
         self.stats = dict(chunks=0, rewinds=0, polls=0, ack_ms=[])
 
     def next_seq(self, op):
@@ -1548,12 +1549,35 @@ class Client:
                 raise TimeoutError("%s: no end in %d s" % (what, timeout))
             self.sleep(0.25)
 
+    # a job the card's lending ended (CARD_LENT, 3.8) is started again this often at most, each
+    # start waiting busy_wait s for the card to come back
+    LENT_AGAIN = 2
+
+    def _again_when_back(self, what, job):
+        """job() once more when the card's lending ended it, as the Companion does (3.8): its
+        WRITE_BEGIN or COPY waits for the card (ask's passing statuses), LENT_AGAIN times. One
+        that couldn't start, the card lent for all of busy_wait, isn't started again"""
+        for again in range(self.LENT_AGAIN + 1):
+            self.started = False
+            try:
+                return job()
+            except LoopError as e:
+                if e.status != CARD_LENT or not self.started or again == self.LENT_AGAIN:  # noqa: F821
+                    raise
+                self.log("  %s: the card was lent, so it starts again once it's back" % what)
+
     def write(self, b, s, data, replace=False, progress=None):
         """data, a whole WAV, into FRIZZ slot (b, s): go-back-N (3.7), then WRITE_END and the
-        finishing. Its STATUS at the end"""
+        finishing; from its start again when lending the card ended it (3.8). Its STATUS at the
+        end"""
+        return self._again_when_back("write %s" % slot_name(b, s),
+                                     lambda: self._write(b, s, data, replace, progress))
+
+    def _write(self, b, s, data, replace, progress):
         what = "write %s" % slot_name(b, s)
         size = len(data)
         a = self._check(what, self.ask(WRITE_BEGIN, [b, s, REPLACE if replace else 0] + put7(size, 4)))
+        self.started = True
         tid, max_chunk, window = a.data[0], a.data[1], a.data[2]
         self.acks = []
         acked = sent = drops = 0
@@ -1637,9 +1661,14 @@ class Client:
         return self._job(what, tid)
 
     def copy(self, cubbi_bank, s, b, ts, replace=False):
+        """A cubbi into FRIZZ slot (b, ts), made again when lending the card ended it (3.8)"""
         what = "copy cubbi %s to %s" % (slot_name(cubbi_bank - FRIZZ_BANKS, s), slot_name(b, ts))
-        a = self._check(what, self.ask(COPY, [cubbi_bank, s, b, ts, REPLACE if replace else 0]))
-        return self._job(what, a.data[0])
+
+        def job():
+            a = self._check(what, self.ask(COPY, [cubbi_bank, s, b, ts, REPLACE if replace else 0]))
+            self.started = True
+            return self._job(what, a.data[0])
+        return self._again_when_back(what, job)
 
     def rename(self, b, s, tb, ts, replace=False):
         return self._check("move %s to %s" % (slot_name(b, s), slot_name(tb, ts)),
@@ -2287,18 +2316,73 @@ def selftest(batches, seed, loss=0.03):
     return failures == 0
 
 
+def lendtest():
+    """The client against the model with the card lent while a write and a copy run (3.8):
+    each starts again once the card is back, as the Companion's do, and ends whole; one that
+    can't start, the card lent all along, ends in CARD_LENT after busy_wait. Prints a line
+    each; True if all held"""
+    ok = True
+    for what in ("during a write", "during a copy", "all along"):
+        card = Card({"/TAPE/cubbi_a1.wav": stereo(20000, 1)}, ["/FRIZZ"])
+        frizz = Frizz(card)
+        frizz.settle()
+        link = ModelLink(frizz)
+        said = []
+        client = Client(link, random.Random(1), busy_wait=5.0, log=said.append)
+        lend = {"at": None, "back": None, "lent": 0}
+        recv = link.recv
+
+        def lending(timeout):
+            # the card lent for 2 s of FRIZZ's time once the job is under way, once
+            x = frizz.xfer
+            if lend["at"] is None and x.open_() and (x.job == JOB_COPY or frizz.intake.taken):
+                lend["at"], lend["back"] = frizz.ms, frizz.ms + 2000
+                frizz.set(lent=True)
+                lend["lent"] += 1
+            elif lend["back"] is not None and frizz.ms >= lend["back"] and frizz.env["lent"]:
+                frizz.set(lent=False)
+            return recv(timeout)
+        link.recv = lending
+        data = stereo(3000, 7)
+        try:
+            if what == "all along":
+                frizz.set(lent=True)
+                lend["at"] = 0
+                client.write(0, 0, data)
+                got = "written"
+            elif what == "during a write":
+                client.write(0, 0, data)
+                got = "whole" if card.files.get(card.find(slot_path(0, 0, False))) == data else "NOT whole"
+            else:
+                client.copy(FRIZZ_BANKS, 0, 0, 1)
+                same = card.files.get(card.find(slot_path(0, 1, False))) == card.files["/TAPE/cubbi_a1.wav"]
+                got = "whole" if same else "NOT whole"
+        except LoopError as e:
+            got = "LoopError %s" % status_name(e.status)
+        again = sum("starts again once it's back" in x for x in said)
+        print("the card lent %s: %s, lent %d times, started again %d times, TMP %s" % (
+            what, got, lend["lent"], again, "left" if TMP in card.files else "gone"))
+        want = ("LoopError CARD_LENT", 0, 0) if what == "all along" else ("whole", 1, 1)
+        ok = ok and (got, lend["lent"], again) == want and TMP not in card.files
+    return ok
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("what", nargs="?", choices=["vectors"])
     ap.add_argument("--out", default=VECTORS)
     ap.add_argument("--check", action="store_true", help="vectors: compare with the file instead")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--lendtest", action="store_true",
+                    help="the client against the model with the card lent mid-job (3.8)")
     ap.add_argument("--batches", type=int, default=300)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--loss", type=float, default=0.03, help="selftest: each message's chance of each loss")
     a = ap.parse_args()
     if a.selftest:
         sys.exit(0 if selftest(a.batches, a.seed, a.loss) else 1)
+    if a.lendtest:
+        sys.exit(0 if lendtest() else 1)
     if a.what == "vectors":
         text = vectors_json()
         if a.check:

@@ -45,6 +45,8 @@ void SetCardWriteMs(uint32_t ms);
  *  first); and the FatFs calls made while one ran, which on the device would cut into it */
 void SetCardRawPolls(int polls);
 int CardRawClash();
+/** FatFs's calls (and raw reads) made while the card was unmounted (lent), from power-on */
+int CardUnmountedCalls();
 
 /** Before the first Run(): the firmware's clock (System::GetNow, GetUs, GetTick) starts at ms
  *  instead of 0, so a check can cross the millisecond counter's wrap. NowMs() and the scripts

@@ -452,6 +452,13 @@ A job is never refused halfway because of something the player does. FRIZZ pause
   milliseconds, and the card is lent after it; the job's result is then `OK`. The same holds
   when USB goes away (1.6).
 
+  The app starts a job lending ended (`CARD_LENT` in its ack, its STATUS or its result) again
+  from the start: `WRITE_BEGIN` (or `COPY`) once more, refused with `CARD_LENT` while the card
+  is lent, a passing refusal that the app asks again every 250 ms (4.1). The player sees the
+  upload wait, then start over once the card is back; the slot keeps its old loop until then.
+  The Companion does so, and `tools/loopxfer.py`'s client too, which gives up after its
+  `busy_wait` (120 s) with the card still lent and after two such starts.
+
 While paused, FRIZZ takes no CHUNKs and its 30 s timeout stands still. The app waits as long
 as the pause lasts. A recording can take 77 s or more, so the app tells the player why it
 waits.
