@@ -500,7 +500,7 @@ public:
      *   6 KB(2) CHUNK(2)    the write test: KB written in CHUNK-byte writes; KB's high group
      *               can carry kFaultDiskCutShort or kFaultDiskPastEnd (KB is at most 1024,
      *               the developers' SysEx 5 bytes)
-     *  3-6 are refused (-1) while something runs */
+     *  3-6 are refused (-1) while something runs, and while the card is lent (chompi_main.cpp) */
     LOOP_LOADER_ONCE int Dev(const uint8_t* arg, size_t len, uint8_t* d)
     {
         const uint8_t part = len ? arg[0] : 0xFF;
@@ -597,7 +597,7 @@ private:
             if (dir_open_)
                 f_closedir(&mem_->dir);
             group_ = 0;
-            listed_ = dir_open_ = false;
+            listed_ = dir_open_ = relisted_ = false;
             entries_ = 0;
             ms_ = 0;
             start_ms_ = ms_clock_();
@@ -710,9 +710,12 @@ private:
         for (size_t n = 0; n < loops::kDirEntries; n++)
         {
             const FRESULT r = f_readdir(&dir, &mem_->info);
-            if (r == FR_INVALID_OBJECT)
+            // a remount: opened again at the next pass, past what was read; a card error too,
+            // once a scan, rather than the slots after it read as empty
+            if (r == FR_INVALID_OBJECT || (r != FR_OK && !relisted_))
             {
-                dir_open_ = false; // a remount: opened again at the next pass
+                relisted_ |= r != FR_INVALID_OBJECT;
+                dir_open_ = false;
                 return;
             }
             if (r != FR_OK || !mem_->info.fname[0])
@@ -1131,6 +1134,7 @@ private:
     uint16_t found_[loops::kBanks] = {};
     static const size_t kSwaps = 4; // swaps' temp files a scan puts right
     uint8_t swap_[kSwaps][2] = {}, swaps_ = 0;
+    bool relisted_ = false; // the listing read again after a card error
     // the load
     bool opened_ = false, mapping_ = false, inflight_ = false;
     uint8_t result_ = loops::EMPTY;

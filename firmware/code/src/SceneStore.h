@@ -1,6 +1,6 @@
 /** @file SceneStore.h
- *  @brief The FX scenes (FxScenes.h) and their file on the SD card, frizz_scenes.txt in the
- *  current directory, /FRIZZ (EnterFrizzDir), or the root if that can't be made. Read once at
+ *  @brief The FX scenes (FxScenes.h) and their file on the SD card, /FRIZZ/frizz_scenes.txt
+ *  (EnterFrizzDir makes the folder). Read once at
  *  boot; written only when the play page saves, copies or deletes one, never on a recall, so a
  *  performance doesn't touch the card.
  *
@@ -44,21 +44,25 @@
 namespace chompi
 {
 
-static const char kSceneFile[] = "frizz_scenes.txt";
-static const char kSceneTmpFile[] = "frizz_scenes.tmp";
-static const char kSceneBakFile[] = "frizz_scenes.bak";
-static const char kMasterFile[] = "frizz_master.txt";
-static const char kMasterTmpFile[] = "frizz_master.tmp";
-static const char kMasterBakFile[] = "frizz_master.bak";
-
 // FRIZZ's folder on the card, so it can share a card with other firmwares (the launcher at
 // github.com/sfaber02/CHOMPI gives each its own folder)
 static const char kFrizzDir[] = "/FRIZZ";
 
-/** After f_mount: makes /FRIZZ the current directory, creating it on a card that doesn't have
- *  it yet and moving the scene files a FRIZZ before it left in the root into it. Every path
- *  FRIZZ opens is relative, so they all land there. If the folder can't be made (a file in
- *  the way, a read-only card), FRIZZ stays in the root. Before audio starts */
+// Whole paths, never relative ones: FatFs goes back to the root at every mount, also one of
+// its own (a card that didn't answer is mounted again inside the next f_open), and a save
+// there would land in the root and be lost at the next power-on
+static const char kSceneFile[] = "/FRIZZ/frizz_scenes.txt";
+static const char kSceneTmpFile[] = "/FRIZZ/frizz_scenes.tmp";
+static const char kSceneBakFile[] = "/FRIZZ/frizz_scenes.bak";
+static const char kMasterFile[] = "/FRIZZ/frizz_master.txt";
+static const char kMasterTmpFile[] = "/FRIZZ/frizz_master.tmp";
+static const char kMasterBakFile[] = "/FRIZZ/frizz_master.bak";
+
+/** After f_mount: creates /FRIZZ on a card that doesn't have it yet (or no longer: the computer
+ *  deleted it while the card was lent) and moves the scene files a FRIZZ before it left in the
+ *  root into it, and makes it the current directory. If the folder can't be made (a file in
+ *  the way, a read-only card), FRIZZ's files can't be written: a save fails. Before audio
+ *  starts */
 inline void EnterFrizzDir()
 {
     if (f_chdir(kFrizzDir) == FR_OK)

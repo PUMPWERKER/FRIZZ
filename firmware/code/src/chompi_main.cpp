@@ -256,7 +256,11 @@ static void DevInfo(dev::Info& info)
     info.kind = 1;
     info.bench = [](uint8_t part, uint32_t offset, uint8_t* d) { return bench.Report(part, offset, d); };
 #else
-    info.loops = [](const uint8_t* arg, size_t len, uint8_t* d) { return loop_loader.Dev(arg, len, d); };
+    // what starts something (3-6) waits for the card while it's lent: it would hold the loader
+    // busy past the take-back, whose scan it then refuses
+    info.loops = [](const uint8_t* arg, size_t len, uint8_t* d) {
+        return len && arg[0] >= 3 && cardlend::Get().lent ? -1 : loop_loader.Dev(arg, len, d);
+    };
 #endif
 }
 
@@ -529,7 +533,7 @@ void MainLoop(void* data)
         usb_switch_at = 0;
     else if (!usb_switch_at)
         usb_switch_at = now | 1; // 0 is "not yet"
-    else if (now - usb_switch_at >= kUsbSwitchMs)
+    else if ((now | 1) - usb_switch_at >= kUsbSwitchMs) // now | 1: the same ms ahead of an even now
         usb::SetAudio(ui.UsbAudio());
 #if FRIZZ_USB_SAFETY
     usb::Watch(now); // make USB_SAFETY=1: an enumeration that hangs restarts into the launcher
@@ -573,12 +577,16 @@ void MainLoop(void* data)
     // a restart asked for over MIDI (MidiClock.h), once no report is being written and the
     // master settings that were waiting are on the card, or a second after it was asked for
     // whatever still comes in (a DAW's automation): the chip's reset, as the launcher hands
-    // over, so the bootloader starts what's in QSPI
+    // over, so the bootloader starts what's in QSPI. The card lent to the computer is taken
+    // back first, as the gesture takes it (CardLend.h): no transfer of the computer's cut off
+    // halfway, and what waited for the card is saved before the reset
     if (midi_clock.RestartRequested() && !event_log.Writing())
     {
         if (!restart_asked)
             restart_asked = now | 1; // 0 is "not yet"
-        if ((ui.MasterSettled() && !scene_store.Busy()) || now - restart_asked > kRestartWaitMs)
+        if (card_lent)
+            cardlend::Get().asked = true; // the next pass takes it back
+        else if ((ui.MasterSettled() && !scene_store.Busy()) || (now | 1) - restart_asked > kRestartWaitMs)
             NVIC_SystemReset();
     }
 

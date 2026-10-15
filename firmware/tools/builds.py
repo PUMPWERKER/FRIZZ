@@ -60,12 +60,13 @@ def short(path):
 
 
 def stale(path):
-    """True if make would build the build at PATH again (make -q: by the source it depends on)"""
+    """True if make would build the build at PATH again (make -q: by the source it depends on),
+    or if make can't say (an error, 2): only its 0 is fresh"""
     path = os.path.abspath(path)
     if path not in (image(False), image(True)):
         return False
     args = ["make", "-q"] + (["BENCH=1"] if path == image(True) else [])
-    return subprocess.run(args, cwd=SRC, capture_output=True).returncode == 1
+    return subprocess.run(args, cwd=SRC, capture_output=True).returncode != 0
 
 
 def source_checksum():
