@@ -4318,6 +4318,52 @@ int main()
               "crossfaded (no step)");
     }});
 
+    // #318: a switch at the loop point (CC 54 = 1) within the fade-out of one at once doesn't
+    // cut that fade-out off: it ends early but smoothly (Looper's tail), and the loop the
+    // switch leaves fades out from where it's heard. A/02 is 5 ms (a period of 200 Hz), so its
+    // loop point comes within 5 ms of the switch to it, wherever by time it starts
+    cases.push_back({"loops-loop-point-fade", [] {
+        RunMs(kReadyMs);
+        amp = 0.f;
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(240, 2, 200.f)}});
+        Trs({kCC, 0, 1});
+        Trs({kPC, 0});
+        UntilLength(96000, 1000);
+        Trs({kPC, 1});
+        UntilLength(240, 1000);
+        RunMs(100);
+        Trs({kPC, 0}); // both loaded: A/01 again
+        UntilLength(96000, 1000);
+        RunMs(300);
+        const uint32_t was = Probe().loop_switches;
+        max_step = 0.f;
+        Trs({kPC, 1}); // A/02 at once
+        int first = -1, second = -1;
+        for (int ms = 0; ms < 200 && second < 0; ms++)
+        {
+            RunMs(1);
+            const uint32_t n = Probe().loop_switches - was;
+            if (n >= 1 && first < 0)
+            {
+                first = ms;
+                Trs({kCC, 54, 1}); // A/01 at A/02's loop point
+                Trs({kPC, 0});
+            }
+            if (n >= 2)
+                second = ms;
+        }
+        RunMs(100);
+        const float step = max_step;
+        const ClockState st = Probe();
+        printf("      A/02 at once after %d ms, A/01 at its loop point %d ms later: %u switches, "
+               "largest step %.4f\n",
+               first, second - first, st.loop_switches - was, step);
+        Check(first >= 0 && second > first && second - first < 10 && st.loop_switches - was == 2
+                  && st.loop_length == 96000 && step < .01f,
+              "loops-loop-point-fade: a switch at the loop point within another's fade-out: "
+              "both crossfaded (no step)");
+    }});
+
     // the tape runs on across loops (#70): a switch keeps the speed and the direction, at once
     // and planned, and a standstill; the new loop's tempo its own times the speed. A new
     // recording starts at 1x

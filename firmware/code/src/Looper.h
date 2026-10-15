@@ -50,7 +50,10 @@
  *  into its pass as the loop it leaves was into its own, modulo its length: two loops at one
  *  tempo stay on the beat, whatever their lengths. Heard, the loop it leaves (the other
  *  voice) fades out over kSwitchFrames from where it is, so a switch at the loop point,
- *  where the old loop's head is its natural continuation, is gapless. A recording always
+ *  where the old loop's head is its natural continuation, is gapless. One at once waits for
+ *  a fade-out still running; one at the loop point doesn't (it would leave its gap): the
+ *  fade-out ends early, over kTailFrames from the gain it's heard at (the tail, #318), and
+ *  the loop it leaves fades out from its own. A recording always
  *  goes to the looper's own buffer (Init's), whichever it read before.
  *
  *  The crossfader (#70: SHIFT + a scene key, the transport turned, a white key) plays two
@@ -80,6 +83,7 @@ static const size_t kLoopMaxFrames = kLoopMemSize / 2; // stereo frames
 static const size_t kXfadeFrames = 240; // 5ms loop-point crossfade at 48kHz
 static const float kPlayFadeCoeff = .002f; // ~10ms fade on play / pause / erase
 static const size_t kSwitchFrames = 480;   // 10 ms: the crossfade of a switch to a loaded loop
+static const size_t kTailFrames = 96;      // 2 ms: a fade-out a switch at the loop point ends early
 
 // The soft limit: what's written stays under this, full scale 1 (see the file comment)
 static const float kLoopCeiling = .95f;
@@ -278,6 +282,7 @@ public:
         other_pos_ = length_ ? (play_pos_ + length_ / 2) % length_ : 0;
         other_frac_ = 0.f;
         mix_ = mix_to_ = .5f;
+        tail_mem_ = nullptr;
         fader_ = other_mem_ != nullptr;
         end_ = false;
     }
@@ -288,7 +293,9 @@ public:
      *  waiting, each starting within its first sector (a WAV's data after its header) */
     inline bool Reads(const void* buf) const
     {
-        return (state_ != State::EMPTY && In(mem_, buf)) || In(other_mem_, buf) || In(next_mem_, buf);
+        // the tail after the other voice: a switch moves the other voice's loop there
+        return (state_ != State::EMPTY && In(mem_, buf)) || In(other_mem_, buf) || In(next_mem_, buf)
+               || In(tail_mem_, buf);
     }
     static inline bool In(const int16_t* loop, const void* buf)
     {
@@ -806,6 +813,23 @@ private:
             ByTime(next_length_, pos, frac);
         else if (reverse_)
             pos = next_length_ - 1;
+        // a fade still running (a switch at the loop point within 10 ms of another, or the
+        // crossfader's two loops, #318): its other loop ends early but smoothly, as the tail,
+        // from the gain it's heard at; the loop heard fades out from its own
+        const bool tail = playing && fade_ > .0001f && other_mem_;
+        tail_mem_ = nullptr;
+        other_gain_ = 1.f;
+        if (__builtin_expect(tail, 0))
+        {
+            const float x = mix_;
+            tail_mem_ = other_mem_;
+            tail_length_ = other_length_;
+            tail_pos_ = other_pos_;
+            tail_frac_ = other_frac_;
+            tail_gain_ = fader_ ? EqualPower(x) : x;
+            tail_step_ = tail_gain_ / kTailFrames;
+            other_gain_ = fader_ ? EqualPower(1.f - x) : 1.f - x;
+        }
         other_mem_ = nullptr;
         fader_ = end_ = false;
         if (playing && fade_ > .0001f)
@@ -858,6 +882,7 @@ private:
             return;
         const int16_t* mem = other_mem_;
         other_mem_ = nullptr;
+        tail_mem_ = nullptr;
         if (fader_ && mix_ >= 1.f && state_ != State::EMPTY && !erasing_)
             TakeOver(mem, other_length_, other_beats_, other_pos_, other_frac_);
         fader_ = end_ = false;
@@ -1021,6 +1046,7 @@ private:
         mem_ = rec_mem_;
         next_mem_ = nullptr;
         other_mem_ = nullptr;
+        tail_mem_ = nullptr;
         fader_ = end_ = false;
         mix_ = mix_to_ = 0.f;
         quantized_ = false;
@@ -1143,9 +1169,10 @@ private:
         }
         if (other_mem_)
         {
-            // the mix: a switch's fade linear, the crossfader's equal power
+            // the mix: a switch's fade linear, from the gain the loop left was heard at; the
+            // crossfader's equal power
             const float x = mix_;
-            const float go = fader_ ? EqualPower(x) : x, gm = fader_ ? EqualPower(1.f - x) : 1.f - x;
+            const float go = fader_ ? EqualPower(x) : x * other_gain_, gm = fader_ ? EqualPower(1.f - x) : 1.f - x;
             if (x != mix_to_)
             {
                 const float to = mix_to_, d = 1.f / kSwitchFrames;
@@ -1167,6 +1194,35 @@ private:
                 other_frac_ += 1.f;
                 other_pos_ = other_pos_ ? other_pos_ - 1 : other_length_ - 1;
             }
+            if (__builtin_expect(tail_mem_ != nullptr, 0))
+                ReadTail(l, r, step);
+        }
+    }
+    /** The tail (DoSwitch) added, its gain falling to nothing over kTailFrames, moving as the
+     *  other voice */
+    __attribute__((noinline, cold)) void ReadTail(float* l, float* r, float step)
+    {
+        float tl, tr;
+        ReadAt(tail_mem_, tail_length_, tail_pos_, tail_frac_, &tl, &tr);
+        *l += tl * tail_gain_;
+        *r += tr * tail_gain_;
+        tail_gain_ -= tail_step_;
+        if (tail_gain_ <= 0.f)
+        {
+            tail_mem_ = nullptr;
+            return;
+        }
+        tail_frac_ += step;
+        while (tail_frac_ >= 1.f)
+        {
+            tail_frac_ -= 1.f;
+            if (++tail_pos_ >= tail_length_)
+                tail_pos_ = 0;
+        }
+        while (tail_frac_ < 0.f)
+        {
+            tail_frac_ += 1.f;
+            tail_pos_ = tail_pos_ ? tail_pos_ - 1 : tail_length_ - 1;
         }
     }
     /** sin(x pi/2) within 0.1 %, 0 at 0 and 1 at 1: the crossfader's gains, x and 1 - x */
@@ -1321,6 +1377,14 @@ private:
     double last_x_ = 0., last_y_ = 0.; // the fit's last point (ticks, samples since the first)
     bool last_late_ = false;           // and it came over 1.5 ticks' time after the one before
     uint32_t fit_ticks_ = 0; // the clock's tick count at the last point
+
+    // last, so the members before keep their offsets (the hot path's code): a switch's fade-out
+    // starts from other_gain_ (1 but after a tail); the tail, a fade-out still running when
+    // another switch came (DoSwitch), ended early
+    float other_gain_ = 1.f;
+    const int16_t* tail_mem_ = nullptr;
+    size_t tail_length_ = 0, tail_pos_ = 0;
+    float tail_frac_ = 0.f, tail_gain_ = 0.f, tail_step_ = 0.f;
 };
 
 } // namespace chompi
