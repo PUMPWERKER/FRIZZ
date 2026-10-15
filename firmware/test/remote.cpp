@@ -1263,8 +1263,8 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     rc = Remote({"probe"}, out);
     Check(rc == 0 && Has(out, ", counting none, factor x1")
               && Has(out, "MIDI       0.00 BPM") && Has(out, "looper     empty")
-              && Has(out, "loop       0 frames"),
-          "remote: probe says the clock and the looper");
+              && Has(out, "loop       0 frames") && Has(out, "TRS in     restarted 0 times after a receive error"),
+          "remote: probe says the clock, the jack's receive restarts (#361) and the looper");
     if (rc != 0)
         printf("%s\n", out.c_str());
     rc = Remote({"signal", "sine", "1000", "0.5"}, out);

@@ -62,7 +62,7 @@ In TEMPO and WAVE:
   compilation: the firmware builds against pristine upstream, but its MIDI output timing won't
   match the released firmware. Keep the vendored file.
 
-FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with ten changes:
+FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with eleven changes:
 - `src/usbd/usbd_desc.c` names the USB product "FrizZ".
 - `src/hid/midi_parser.cpp` follows MIDI 1.0 where WAVE's didn't:
   - A real-time byte (a clock tick, 0xF8-0xFF) inside a SysEx or another message is passed on,
@@ -114,6 +114,13 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with ten changes:
   reason WAVE had it off, the interrupt pending for ever). FRIZZ sends the jack's bytes itself
   (`MidiClock::TrsPut`), no DMA transmit. Same priority as the USART's interrupt (0), so the two
   never run into each other.
+- `src/per/uart.cpp` starts the jack's receive again after a receive error (framing, noise,
+  overrun: a cable plugged in while the other end sends): HAL takes any error during DMA
+  reception as blocking and ends it, and `MidiHandler::Listen` starts it again only once
+  `IsListening()` is false, which nothing set. `UART_IRQHandler` clears `listener_mode_` when HAL
+  has ended the reception, and `HAL_UART_ErrorCallback` too, as upstream does since f7c63aee
+  (#662); `DMA1_Stream5_IRQHandler` takes the aborted stream's flags itself meanwhile, so the
+  abort's end doesn't reach `HAL_UART_Init` from the interrupt (#361).
 - Code that no interrupt and not the audio callback runs is built for size (`-Os`), for code
   room (#323); libDaisy builds everything `-O2`. Fourteen objects are built `-Os` whole:
   `UI.o`, `gpio.o`, `system.o`, `daisy_seed.o`, `codec_wm8731.o` and the HAL's `rcc`, `rcc_ex`,
@@ -144,7 +151,7 @@ Its prebuilt `build/libdaisy.a` is WAVE's with only the objects of those changes
 `usbd_desc.o`, `midi_parser.o`, `usb_midi.o`, `usbd_conf.o`, `fatfs.o`, `system.o` (twice, the
 second time without the handlers: from the source before, it disassembled as the archive's),
 `usbd_cdc.o` (whose code changes with `usbd_conf.h`'s macro; of the other objects that include
-it none does), `uart.o` (from the source before #322, and again before #356, it disassembled as the archive's; rebuilt into #323's archive at libDaisy's `-O2`), and
+it none does), `uart.o` (from the source before #322, and again before #356, it disassembled as the archive's; rebuilt into #323's archive at libDaisy's `-O2`, and for #361), and
 for #323 the fourteen objects built `-Os` (`make OPT=-Os build/src/ui/UI.o`) and the nine with
 the pragmas (at libDaisy's own `-O2`). They were built with GCC 10.3 and libDaisy's own flags (`make
 build/src/hid/midi_parser.o` in its folder, then `arm-none-eabi-ar r build/libdaisy.a

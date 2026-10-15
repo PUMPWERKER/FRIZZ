@@ -6005,14 +6005,14 @@ int main()
             Check(false, "midi dev: PROBE 1 answers 21 bytes");
         // PROBE 0, the clock: none, then 120 BPM into the jack; the effects follow the loop
         const std::string none = Ask({0x3E, 5, 3, 0});
-        Check(none.size() == 32 && none[2] == 0 && none[3] == 0 && none[4] == 0 && none[5] == 1
-                  && !(none[6] & 1) && (none[6] & 2) && DevNum(none, 21, 3) > 0,
-              "midi dev: PROBE 0, no clock (source auto, none locked, x1), the loop's tempo");
+        Check(none.size() == 35 && none[2] == 0 && none[3] == 0 && none[4] == 0 && none[5] == 1
+                  && !(none[6] & 1) && (none[6] & 2) && DevNum(none, 21, 3) > 0 && DevNum(none, 32, 3) == 0,
+              "midi dev: PROBE 0, no clock (source auto, none locked, x1), the loop's tempo, the jack's receive never started again (#361)");
         clock_bpm = 120.f;
         clock_next = NowMs();
         RunMs(3000);
         const std::string clock = Ask({0x3E, 5, 4, 0});
-        if (clock.size() == 32)
+        if (clock.size() == 35)
         {
             const double bpm = DevNum(clock, 7, 3) / 100., sent = DevNum(clock, 10, 3) / 100.,
                          fx = DevNum(clock, 21, 3) / 100.;
@@ -6022,7 +6022,7 @@ int main()
                   "midi dev: PROBE 0, the jack's clock locked at 120 and counted, the effects on the loop's");
         }
         else
-            Check(false, "midi dev: PROBE 0 answers 29 bytes");
+            Check(false, "midi dev: PROBE 0 answers 32 bytes");
         Check(Ask({0x3E, 5, 5, 2})[2] == 1, "midi dev: PROBE 2 refused");
     }});
 
