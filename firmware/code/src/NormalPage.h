@@ -165,7 +165,7 @@ namespace chompi
     // free on this page. One language for all three: the mode's colour shows what will happen
     // (the slots it can act on, the pick, the CHOMPI key that confirms), white that it's done,
     // red that it was refused or isn't on the card. Their LEDs: KeyLedOf (PanelKeys.h)
-    static const Hardware::SwId kSceneKeys[kNumSlots] = {
+    static constexpr Hardware::SwId kSceneKeys[kNumSlots] = {
         Hardware::SwId::KEY_18, Hardware::SwId::KEY_19, Hardware::SwId::KEY_20,
         Hardware::SwId::KEY_21, Hardware::SwId::KEY_22,
     };
@@ -184,6 +184,14 @@ namespace chompi
 
     // The Loops page (#70): the hand's keys there come as these IDs plus their SwId (ui.h)
     static const uint16_t kLoopsKeyBase = 128;
+    // those that are the play page's there (LoopsKey): SHIFT, PLAY, LOOP, the transport's and
+    // VOLUME's presses, the scene keys
+    static constexpr uint64_t kLoopsOwnKeys =
+        1ull << static_cast<int>(Hardware::SwId::KEY_26) | 1ull << static_cast<int>(Hardware::SwId::KEY_27)
+        | 1ull << static_cast<int>(Hardware::SwId::KEY_28) | 1ull << ENC_5_SW
+        | 1ull << static_cast<int>(Hardware::SwId::ENC_6_SW) | 1ull << static_cast<int>(kSceneKeys[0])
+        | 1ull << static_cast<int>(kSceneKeys[1]) | 1ull << static_cast<int>(kSceneKeys[2])
+        | 1ull << static_cast<int>(kSceneKeys[3]) | 1ull << static_cast<int>(kSceneKeys[4]);
     static const uint32_t kDoubleTapMs = 400;  // SHIFT's taps home: each, and the gap
     static const uint32_t kLoadingBlinkMs = 100; // a planned loop not loaded yet
     // the banks A-H, around the colour wheel; not red (refused) nor white (flashes)
@@ -507,8 +515,7 @@ namespace chompi
                  || buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_17))
                 && Shift())
             {
-                keys_.Used();
-                ShowLoops(true, buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_17));
+                PageKey(buttonID, true);
                 return true;
             }
 #endif
@@ -1524,6 +1531,10 @@ namespace chompi
             {
                 if (Grace(static_cast<uint16_t>(kFxSlots[fx].key), true, shift))
                 {
+                    // a select whatever LateSelect says: SHIFT and the key in one block come
+                    // SHIFT first (ui.h's Tell, by SwId), so LateSelect finds no press yet; the
+                    // key's, still to come, selects with SHIFT held, and this SHIFT is a combo,
+                    // not a tap. Not a slip: keep it
                     fx_.LateSelect(fx);
                     select = true;
                 }
@@ -1608,12 +1619,7 @@ namespace chompi
         bool LoopsKey(uint16_t key, uint8_t presses)
         {
             using S = Hardware::SwId;
-            bool own = key == static_cast<uint16_t>(S::KEY_26) || key == static_cast<uint16_t>(S::KEY_27)
-                       || key == static_cast<uint16_t>(S::KEY_28) || key == ENC_5_SW
-                       || key == static_cast<uint16_t>(S::ENC_6_SW);
-            for (Hardware::SwId scene : kSceneKeys)
-                own = own || key == static_cast<uint16_t>(scene);
-            if (own)
+            if (kLoopsOwnKeys >> key & 1)
                 return OnButton(key, presses, false);
             if (presses != 1)
                 return true;
@@ -1622,9 +1628,8 @@ namespace chompi
                 // SHIFT + the page's key goes home, SHIFT + the other's to the other page
                 if (Shift())
                 {
-                    keys_.Used();
                     const bool cubbi = key == static_cast<uint16_t>(S::KEY_17);
-                    ShowLoops(cubbi != loops_.Cubbi(), cubbi);
+                    PageKey(key, cubbi != loops_.Cubbi());
                 }
                 else if (!loops_.StepBank(key == static_cast<uint16_t>(S::KEY_16) ? -1 : 1))
                 {
@@ -1640,6 +1645,14 @@ namespace chompi
                     LoopKeyPressed(w);
                 }
             return true;
+        }
+
+        /** SHIFT + the lower C# (the Loops page) or D# (the Cubbi page), with on whether its
+         *  page shows after: from the play page, MIDI's notes on the Loops page too, always */
+        void PageKey(uint16_t key, bool on)
+        {
+            keys_.Used();
+            ShowLoops(on, key == static_cast<uint16_t>(Hardware::SwId::KEY_17));
         }
 
         /** A white key there: its loop, at once or planned (LoopControls::Press). SHIFT + the
