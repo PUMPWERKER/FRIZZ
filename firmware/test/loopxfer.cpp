@@ -6,9 +6,11 @@
 //    what loopxfer.py vectors writes (8.1);
 //  - what the vectors don't reach (8.2): COPY's TOO_LONG, the fragment check (a file in 300
 //    fragments), a power cut after every name change of a write, a copy and a swap with the
-//    boot after it (whole files only), no FatFs call while a load's DMA has the card, the free
-//    space counted a FAT sector a pass, and after every case that only the allowed names
-//    changed: /FRIZZ's slots and temp files, never /TAPE, the root or FRIZZ's other files.
+//    boot after it (whole files only), 3.9 step 4's check of the slot failing (CARD_ERROR with
+//    its FRESULT), no FatFs call while a load's DMA has the card, the free space counted a FAT
+//    sector a pass (paused by a load, counted again after a save), and after every case that
+//    only the allowed names changed: /FRIZZ's slots and temp files, never /TAPE, the root or
+//    FRIZZ's other files.
 // Exits 0 when everything passes. Run by unit.sh loopxfer.
 // unit includes: loopxfer
 #include <cstdio>
@@ -880,6 +882,25 @@ static void TestFreeCount()
     printf("      counted %u free in %d passes after the save, the card %u\n", fs.free_clst, passes, card.Free());
     Check(fs.free_clst == card.Free() && passes == (1002 + 127) / 128,
           "free space: a save in the middle of the count: counted again from the FAT's start, as the card is");
+
+    // loads (the env's loading, every other pass) only pause it: it reads, the FAT stays
+    NewCard(Base());
+    card.fsinfo = false;
+    card.clusters = 1000;
+    Frizz h;
+    h.Boot();
+    passes = 0;
+    int counting = 0;
+    while (fs.free_clst > fs.n_fatent - 2 && passes < 100)
+    {
+        h.env.loading = passes % 2 == 1;
+        counting += !h.env.loading;
+        h.Pass();
+        passes++;
+    }
+    h.env.loading = false;
+    Check(fs.free_clst == card.Free() && counting == (1002 + 127) / 128,
+          "free space: loads between the count's passes only pause it: (1002 + 127) / 128 passes counting");
 }
 
 int main()

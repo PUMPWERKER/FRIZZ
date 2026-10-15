@@ -691,10 +691,9 @@ count from the card's FSINFO sector (`_FS_NOFSINFO` 0). Where FSINFO has none (a
 computer left without it), `f_getfree` would scan the whole FAT in one call: seconds on a
 large card, MainLoop held up. FRIZZ instead counts the free clusters during the scan, a FAT
 sector a pass, and reports "unknown" (flag 6 clear, 0 KB) until then. Changing commands get
-`BUSY_SCANNING` meanwhile. A pass that can't count (the card lent, loading or busy with a save
-or a bug report, a job or the temp file's delete) starts the count again from the FAT's
-first sector: something may have changed the FAT meanwhile, and FatFs keeps no count of its own
-changes until it has one.
+`BUSY_SCANNING` meanwhile. A load only pauses the count (it reads). A pass that may change the
+FAT (the card lent or gone, a save or a bug report, a job, the temp file's delete) starts it
+again from the FAT's first sector: FatFs keeps no count of its own changes until it has one.
 
 ### 5.5 What the player hears
 
@@ -995,14 +994,15 @@ bytes depend on it: where this summary leaves a doubt, they settle it.
   - every refusal;
   - the temp file and its rename;
   - remount mid-write (SceneStore's save), the loader's DMA in flight, the free space counted
-    a step a pass;
+    a step a pass (paused by a load, counted again after a save);
   - the fragment check, a file in 300 fragments;
   - a power cut after every FatFs call: a fresh boot on the card as it was, then the card holds
     whole files only;
   - the swap's repair;
   - a card error (FatFs failing, the card staying) at every name change of a replacing write,
     a copy, RENAME, SWAP and DELETE: every slot's `SLOT` as the card holds it, the swap's two
-    loops still there;
+    loops still there; the slot's check in 3.9's step 4 failing: `CARD_ERROR` with its
+    `FRESULT`;
   - a diff of the card's file list after each case: only the allowed names changed, `/TAPE`
     and the root never.
 - **`loops.cpp`** gets `WavWalk`'s `INAM` cases: a name, one over 28 bytes cut at a UTF-8

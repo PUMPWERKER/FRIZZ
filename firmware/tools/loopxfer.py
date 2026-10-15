@@ -845,6 +845,12 @@ class Transfer:
             q, self.intake.pending = self.intake.pending, None
             self.handle(q, now)
         card = e["card"] and not e["lent"] and not e["loading"] and not e["card_busy"]
+        # a count goes on over a load (it only reads), not over a pass that may change the FAT
+        # (5.4): from the start again (the firmware also over the loader's write test, which
+        # this model hasn't)
+        if (not e["card"] or e["lent"] or e["card_busy"] or not self.card.fs_type or self.open_()
+                or self.unlink):
+            self.count_left = None
         if card and self.unlink:
             self.card.unlink(TMP)
             self.unlink = False
@@ -852,8 +858,6 @@ class Transfer:
             self.job_step()
         elif card and not self.open_() and self.card.fs_type and not self.free_known():
             self.count_step()
-        else:
-            self.count_left = None  # a count goes on only over a FAT nobody changed (5.4)
         if self.job == JOB_WRITE and self.phase == RUNNING and now - self.heard_ms >= TIMEOUT_MS:
             self.end(TIMED_OUT, 0, False)
 

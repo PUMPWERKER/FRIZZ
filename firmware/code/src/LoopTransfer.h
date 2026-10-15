@@ -415,6 +415,11 @@ public:
         if (!ans_len_ && in_->TakeRequest(q))
             Handle(q, now);
         const bool card = e.card && !e.lent && !e.loading && !e.card_busy;
+        // a count goes on over a load (it only reads), not over a pass that may change the
+        // FAT (5.4): from the start again
+        if (!e.card || e.lent || e.card_busy || !fs_->fs_type || Open() || unlink_
+            || loader_->GetState() == LoopLoader::WRITING)
+            count_sector_ = count_free_ = 0;
         if (card && unlink_)
         {
             f_unlink(kTmp);
@@ -424,8 +429,6 @@ public:
             JobStep();
         else if (card && !Open() && fs_->fs_type && !FreeKnown())
             CountStep();
-        else
-            count_sector_ = count_free_ = 0; // a count goes on only over a FAT nobody changed (5.4)
         if (job_ == WRITE && phase_ == RUNNING && now - heard_ms_ >= kTimeoutMs)
             End(TIMED_OUT, 0, false);
     }
