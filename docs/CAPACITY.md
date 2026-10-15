@@ -19,7 +19,7 @@ prints the memory table after every build; the numbers below come from it and fr
 | `BACKUP_SRAM` | 4 KB | 92 B | ~4 KB | libDaisy's `boot_info` (12 B, first: the bootloader and the launcher hand over through it), then the crash record and the build running (80 B, `Crash.h`, #105); a reset leaves it, a power-off doesn't |
 | `SDRAM` | 64 MB | 58.7 MB | **~8.4 MB** | the loop (31.7 MB), the loop loader's buffer (14.75 MB), the tape stop (4.2 MB), the delay (3.8 MB), the event log (2.1 MB), the freezer (1.9 MB), the reverb's pre-delay (0.1 MB), the loop transfer's staging block and ring (34 KB) |
 
-**libDaisy built for size (#323, 2026-10-15).** After the finalizer and #341 `main` (e19f38f) had
+**libDaisy built for size (#323, 2026-10-15).** After the finalizer, #341 and #365 `main` (6db2186) had
 2,804 B of code left in `FRIZZ.bin` (275,724 B) and 3,364 B in the bench build (275,164 B).
 `libdaisy.a` is built `-O2`; FRIZZ's now has what neither an interrupt nor the audio callback
 runs at `-Os` (`THIRD_PARTY.md`): −4,544 B in both builds, nothing else moved (`SRAM`, FRIZZ's
