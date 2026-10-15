@@ -80,7 +80,7 @@ public:
         SnapParams();
     }
 
-    FRIZZ_HOT void Process(float* l, float* r)
+    FRIZZ_HOT FRIZZ_AFTER_RUN void Process(float* l, float* r)
     {
         const float gate = gate_.Process();
 
@@ -171,7 +171,7 @@ public:
     }
 
     /** Channel c's taps on by a sample (Step) and what they read, for the fade */
-    __attribute__((noinline)) float Taps(size_t c)
+    __attribute__((noinline)) FRIZZ_AFTER_RUN float Taps(size_t c)
     {
         const float w0 = Step(c);
         return ring_.ReadHermite(c, delay_[c][0]) * w0
@@ -221,8 +221,8 @@ public:
     }
 
     /** Channels with the right channel's fade (Relock) */
-    __attribute__((noinline)) void FadeChannels(float* l, float* r, float gate, float dry,
-                                                float feedback)
+    __attribute__((noinline)) FRIZZ_AFTER_RUN void FadeChannels(float* l, float* r, float gate,
+                                                                float dry, float feedback)
     {
         Channels<true>(l, r, gate, dry, feedback);
     }
