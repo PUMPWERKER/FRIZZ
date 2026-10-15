@@ -1301,6 +1301,9 @@ Module 1, white: what goes in, its drive, and how loud it comes out.
 
 - **Input (knob 1)** sets the level everything after it works with: more drives the
   compressors and the saturation harder. Its LED is a level meter, as VOLUME's input meter.
+  Pink means hotter than the finalizer is set for (Loud's ceiling, the drive's level
+  compensation): a source that peaks near AUX's full scale wants Input turned down a few dB
+  first, until its peaks no longer reach pink.
 - **Drive (knob 2) and Type (knob 3):** Boost is a soft clip, Tube an asymmetric one that adds
   mostly the second harmonic, Fuzz a hard clip. It runs at twice the sample rate, so its
   harmonics don't fold back, with a gentle hi-cut after it. Drive is level-compensated: turning
