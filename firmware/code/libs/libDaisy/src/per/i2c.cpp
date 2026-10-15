@@ -213,6 +213,8 @@ void I2CHandle::Impl::DmaTransferFinished(I2C_HandleTypeDef* hal_i2c_handle,
 // I2C functions
 // ================================================================
 
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 I2CHandle::Result I2CHandle::Impl::Init(const I2CHandle::Config& config)
 {
     const int i2cIdx = int(config.periph);
@@ -285,6 +287,7 @@ I2CHandle::Result I2CHandle::Impl::Init(const I2CHandle::Config& config)
 
     return I2CHandle::Result::OK;
 }
+#pragma GCC pop_options
 
 I2CHandle::Result I2CHandle::Impl::TransmitBlocking(uint16_t address,
                                                     uint8_t* data,
@@ -839,6 +842,8 @@ I2CHandle::TransmitDma(uint16_t                       address,
     return pimpl_->TransmitDma(address, data, size, callback, callback_context);
 }
 
+#pragma GCC push_options /* FRIZZ: -Os, run at Init only (#323) */
+#pragma GCC optimize("Os")
 I2CHandle::Result I2CHandle::ReceiveDma(uint16_t                       address,
                                         uint8_t*                       data,
                                         uint16_t                       size,
@@ -847,6 +852,7 @@ I2CHandle::Result I2CHandle::ReceiveDma(uint16_t                       address,
 {
     return pimpl_->ReceiveDma(address, data, size, callback, callback_context);
 }
+#pragma GCC pop_options
 
 
 I2CHandle::Result I2CHandle::ReadDataAtAddress(uint16_t address,

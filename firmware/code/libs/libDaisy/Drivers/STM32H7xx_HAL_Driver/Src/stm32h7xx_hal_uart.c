@@ -2780,6 +2780,10 @@ void UART_InitCallbacksToDefault(UART_HandleTypeDef *huart)
   * @param huart UART handle.
   * @retval HAL status
   */
+/* FRIZZ: built for size, as the rest of libdaisy.a's init code: it runs only at Init and on
+   an error's Init again, never per byte; the interrupt's functions stay -O2 (#323) */
+#pragma GCC push_options
+#pragma GCC optimize("Os")
 HAL_StatusTypeDef UART_SetConfig(UART_HandleTypeDef *huart)
 {
   uint32_t tmpreg;
@@ -3059,6 +3063,7 @@ HAL_StatusTypeDef UART_SetConfig(UART_HandleTypeDef *huart)
 
   return ret;
 }
+#pragma GCC pop_options
 
 /**
   * @brief Configure the UART peripheral advanced features.
