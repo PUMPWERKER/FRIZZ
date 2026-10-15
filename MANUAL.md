@@ -419,7 +419,8 @@ show where they lead. A white key shows its loop:
 
 The effects can't be punched in by hand there, since the white keys are the loops, but the
 latched ones and the [chaos key](#chaos-key) play on, and MIDI notes still play the effects.
-Notes 66, 68 and 70 do nothing there, as the upper F#, G# and A# don't.
+Notes 66, 68 and 70 do nothing there, as the upper F#, G# and A# don't, nor do notes 36-39, as
+the knobs' presses don't.
 
 ### The Cubbi page
 
