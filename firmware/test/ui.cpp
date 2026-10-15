@@ -6284,6 +6284,275 @@ int main()
         Check(back.r < 30 && back.g > 60 && back.b > 60, "fin-key-again: from an FX, it shows the module it showed");
     }});
 
+    // the finalizer's bypass (#345): key 15 held, then SHIFT, an exact pass-through and back,
+    // the key dim meanwhile; SHIFT first (within the grace) is a select, no bypass; CC 22 on its
+    // channel the same
+    cases.push_back({"fin-bypass", [] {
+        RunMs(kReadyMs);
+        const float dry = RunMs(300);
+        Trs({kCC, 24, 127, kCC, 28, 127}); // input +12dB, Depth full: a sound of its own
+        RunMs(1500);
+        const float on = RunMs(300);
+        const int bright = Max(SmtLedFull(kCompKeyLed));
+        Keys({"+KEY_15", "100", "+KEY_26", "100", "-KEY_26", "-KEY_15", "300"});
+        const float bypassed = RunMs(300);
+        const int dim = Max(SmtLedFull(kCompKeyLed));
+        printf("      dry %.5f, on %.5f, bypassed %.5f; the key %d, then %d\n", dry, on, bypassed, bright, dim);
+        Check(fabsf(on - dry) > dry * .05f && fabsf(bypassed - dry) < dry * 1e-4f,
+              "fin-bypass: key 15 held, then SHIFT: the finalizer bypassed, the input as it came");
+        Check(dim < bright && dim <= 45, "fin-bypass: its key dim while bypassed");
+        Keys({"+KEY_15", "100", "+KEY_26", "100", "-KEY_26", "-KEY_15", "300"});
+        Check(fabsf(RunMs(300) - on) < on * .01f, "fin-bypass: again: on again");
+        Keys({"+KEY_15", "3", "+KEY_26", "100", "-KEY_15", "100", "-KEY_26", "300"});
+        Check(fabsf(RunMs(300) - on) < on * .01f, "fin-bypass: SHIFT 3 ms after key 15 is a select, no bypass");
+        Trs({0xBE, 22, 0});
+        RunMs(300);
+        Check(fabsf(RunMs(300) - dry) < dry * 1e-4f, "fin-bypass: CC 22 below 64 on channel 15 bypasses it");
+        Trs({0xBE, 22, 127});
+        RunMs(300);
+        Check(fabsf(RunMs(300) - on) < on * .01f, "fin-bypass: and 64 and up switches it on");
+    }});
+
+    // the finalizer's presets (#345): key 15 held + a mode key starts the presets' mode, which
+    // stays once key 15 is let go; a preset picked, SHIFT confirms, even with key 15 held (never
+    // the bypass then); key 15 held + a scene key recalls, unmuting the bands; an empty one is
+    // refused; CC 21 on channel 15 recalls too
+    cases.push_back({"fin-presets", [] {
+        RunMs(kReadyMs);
+        auto drive = [] {
+            const std::string p = Ask({0x21, 14});
+            return p.size() == 33 ? KnobOf(p[3], p[4]) : -1.f;
+        };
+        Tap("KEY_15");
+        Turn(1, 30); // drive .3
+        RunMs(300);
+        Keys({"+KEY_15", "100", "+KEY_23", "60", "-KEY_23", "100", "-KEY_15", "200"}); // SAVE
+        Tap(kSceneKeys[2]); // preset 2
+        RunMs(200);
+        Tap("KEY_26"); // confirm
+        RunMs(3000);
+        const std::string master = Card("/FRIZZ/frizz_master.txt");
+        Check(master.find("\nfinalizer_preset2 500000 300000 ") != std::string::npos,
+              "fin-presets: key 15 + SAVE, then (15 let go) preset 2 and SHIFT: stored on the card");
+        Turn(1, -30);
+        RunMs(500);
+        // a band muted, then the preset recalled: the drive back, every band on again
+        amp = .3f;
+        freq = 1000.f;
+        const float tone = RunMs(300);
+        Trs({0xBE, 103, 127}); // the mid band muted
+        RunMs(300);
+        const float muted = RunMs(300);
+        Keys({"+KEY_15", "100", "+KEY_20", "60", "-KEY_20", "100", "-KEY_15", "500"});
+        const float recalled = RunMs(300);
+        printf("      1kHz %.4f, mid muted %.4f, recalled %.4f; drive %.3f\n", tone, muted, recalled, drive());
+        Check(muted < tone * .05f, "fin-presets: CC 103 on channel 15 mutes the mid band");
+        Check(fabsf(drive() - .3f) < .005f && recalled > tone * .5f,
+              "fin-presets: key 15 + scene 2's key recalls preset 2: the drive back, the mid band unmuted");
+        freq = 220.f;
+        // an empty one: its key blinks red, nothing changes
+        Press("KEY_15", true);
+        RunMs(100);
+        const int blinks = RedBlinks(kSceneKeys[3], kSlot1Led + 2);
+        Press("KEY_15", false);
+        RunMs(300);
+        Check(blinks == 3 && fabsf(drive() - .3f) < .005f, "fin-presets: preset 3, empty: refused, 3 red blinks");
+        // COPY 2 to 4, with key 15 held throughout and SHIFT confirming: never the bypass
+        const float before = RunMs(300);
+        Keys({"+KEY_15", "100", "+KEY_24", "60", "-KEY_24", "100", "+KEY_20", "60", "-KEY_20", "100", "+KEY_22",
+              "60", "-KEY_22", "100", "+KEY_26", "60", "-KEY_26", "100", "-KEY_15", "3000"});
+        const std::string copied = Card("/FRIZZ/frizz_master.txt");
+        Check(copied.find("\nfinalizer_preset4 500000 300000 ") != std::string::npos
+                  && fabsf(RunMs(300) - before) < before * .01f,
+              "fin-presets: key 15 held, COPY 2 to 4, SHIFT: copied, and not bypassed");
+        // DELETE 2
+        Keys({"+KEY_15", "100", "+KEY_25", "60", "-KEY_25", "100", "+KEY_20", "60", "-KEY_20", "100", "-KEY_15",
+              "100", "+KEY_26", "60", "-KEY_26", "3000"});
+        const std::string deleted = Card("/FRIZZ/frizz_master.txt");
+        Check(deleted.find("finalizer_preset2") == std::string::npos && deleted.find("finalizer_preset4") != std::string::npos,
+              "fin-presets: DELETE 2: gone from the card, 4 stays");
+        // the scene keys are the scenes' again: SAVE alone saves a scene
+        Save(1);
+        Check(Card("/FRIZZ/frizz_scenes.txt").find("scene 1") != std::string::npos,
+              "fin-presets: without key 15 the scene keys save scenes again");
+        // CC 21 on channel 15: preset 4 (the drive turned away first)
+        Turn(1, -30);
+        RunMs(300);
+        Trs({0xBE, 21, 4});
+        RunMs(500);
+        Check(fabsf(drive() - .3f) < .005f, "fin-presets: CC 21 at 4 on channel 15 recalls preset 4");
+    }});
+
+    // the finalizer's band mutes (#347): a plain press of knob 1-3 in EQ, Comp or Width mutes
+    // that band, its LED nearly dark, below a quiet band's meter; again unmutes; in Level a press
+    // does nothing
+    cases.push_back({"fin-mutes", [] {
+        RunMs(kReadyMs);
+        freq = 1000.f;
+        Tap("KEY_15");
+        RunMs(100);
+        const float tone = RunMs(300);
+        Tap("ENC_1_SW"); // Level's knob 2: nothing
+        RunMs(300);
+        Check(fabsf(RunMs(300) - tone) < tone * 1e-4f, "fin-mutes: a press in Level does nothing");
+        Trs({0xBE, 23, 32}); // EQ
+        RunMs(100);
+        const Rgb low = PthLedFull(kKnob1Led); // the low band's meter: quiet, its floor
+        Tap("ENC_1_SW"); // the mid band
+        RunMs(300);
+        const float muted = RunMs(300);
+        const Rgb led = PthLedFull(kKnob1Led + 1);
+        printf("      1kHz %.4f, mid muted %.4f; its LED %02x%02x%02x, the low band's %02x%02x%02x\n", tone, muted,
+               led.r, led.g, led.b, low.r, low.g, low.b);
+        Check(muted < tone * .05f, "fin-mutes: knob 2 pressed in EQ mutes the mid band");
+        Check(Max(led) > 0 && Max(led) < Max(low), "fin-mutes: its LED a faint glow, below a quiet band's meter");
+        Trs({0xBE, 23, 96}); // Width: the same mute, knob 2 again unmutes
+        RunMs(100);
+        Tap("ENC_1_SW");
+        RunMs(300);
+        Check(fabsf(RunMs(300) - tone) < tone * .01f, "fin-mutes: and pressed again in Width unmutes it");
+        Tap("ENC_3_SW"); // knob 4: no band
+        RunMs(300);
+        Check(fabsf(RunMs(300) - tone) < tone * .01f, "fin-mutes: knob 4 mutes nothing");
+        freq = 220.f;
+    }});
+
+    // the finalizer over MIDI (#345): channel 15's CCs at their parameters, the global
+    // channel's 24-28, CC 23 the module the focus's CC 14-17 reach, applied first in a pass
+    cases.push_back({"fin-midi", [] {
+        RunMs(kReadyMs);
+        auto params = [] {
+            const std::string p = Ask({0x21, 14});
+            std::vector<float> v;
+            for (size_t i = 0; p.size() == 33 && i < 16; i++)
+                v.push_back(KnobOf(p[1 + 2 * i], p[2 + 2 * i]));
+            return v;
+        };
+        std::vector<int> bytes;
+        for (int c = 14; c <= 20; c++)
+            bytes.insert(bytes.end(), {0xBE, c, 10 + 3 * c});
+        for (int c = 24; c <= 30; c++)
+            bytes.insert(bytes.end(), {0xBE, c, 10 + 3 * c});
+        Usb(bytes);
+        RunMs(100);
+        std::vector<float> v = params();
+        std::string bad;
+        for (int c = 14; c <= 30; c++)
+        {
+            if (c > 20 && c < 24)
+                continue;
+            const int p = c < 21 ? c - 14 : c - 16;
+            const float want = KnobOf7(10 + 3 * c);
+            const bool stepped = p == 2 || (p >= 8 && p <= 10);
+            const int steps = p == 2 ? 3 : 6;
+            const float on_step = roundf(want * (steps - 1)) / (steps - 1);
+            if (!(v.size() == 16 && fabsf(v[p] - (stepped ? on_step : want)) < .01f))
+                bad += " CC " + std::to_string(c) + ": " + std::to_string(v.size() == 16 ? v[p] : -1.f);
+        }
+        if (!bad.empty())
+            printf("      %s\n", bad.c_str());
+        Check(bad.empty(), "fin-midi: channel 15's CC 14-20 and 24-30 set parameters 0-6 and 8-14");
+        Check(v.size() == 16 && v[7] == 0.f && v[15] == 0.f, "fin-midi: the unused ones stay");
+        // the global channel: CC 24-27 Level's knobs, CC 28 Depth
+        Trs({kCC, 24, 64, kCC, 25, 0, kCC, 27, 127, kCC, 28, 0});
+        RunMs(100);
+        v = params();
+        Check(v.size() == 16 && v[0] == .5f && v[1] == 0.f && v[3] == 1.f && v[11] == 0.f,
+              "fin-midi: the global CC 24, 25, 27 Level's input, drive and Loud, CC 28 Depth");
+        // the focus on the finalizer, CC 23 on its channel picks Comp, CC 17 then its Depth
+        Trs({kCC, 23, 15, 0xBE, 23, 64, kCC, 17, 127});
+        RunMs(100);
+        v = params();
+        Check(v.size() == 16 && v[11] == 1.f, "fin-midi: focus 15, module Comp: the global CC 17 is its Depth");
+        // in one packet: the module first, then the focus's knob
+        Usb({0xBE, 23, 127, 0xBF, 14, 0});
+        RunMs(100);
+        v = params();
+        Check(v.size() == 16 && v[12] == 0.f && v[11] == 1.f,
+              "fin-midi: CC 23 and CC 14 in one packet: the knob reaches the new module (Width's low)");
+        Trs({kCC, 27, 0});
+        RunMs(100);
+    }});
+
+    // MIDI feedback for the finalizer: a knob by hand goes out at its channel-15 address
+    cases.push_back({"fin-feedback", [] {
+        RunMs(kReadyMs);
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 3, 2, 0xF7}); // MIDI out: the jack and USB
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_22"); // feedback on
+        SetToggle(false);
+        RunMs(300);
+        Tap("KEY_15");
+        Trs({0xBE, 23, 64}); // Comp
+        RunMs(100);
+        UsbCcs();
+        Turn(3, 50); // knob 4: Depth .5
+        RunMs(500);
+        const std::vector<std::array<int, 3>> usb = UsbCcs();
+        printf("      Depth's CC 27 on channel 15: %d\n", LastCc(usb, 0xBE, 27));
+        Check(LastCc(usb, 0xBE, 27) == Knob7(.5f), "fin-feedback: Comp's Depth by hand goes out as CC 27 on channel 15");
+        Check(LastCc(usb, 0xBF, 28) < 0, "fin-feedback: and not on the global channel");
+        UsbCcs();
+        Turn(1, 3); // knob 2: the mid character a step on
+        RunMs(500);
+        Check(LastCc(UsbCcs(), 0xBE, 25) >= 0, "fin-feedback: a character as CC 25 there");
+    }});
+
+    // the finalizer's LEDs: key 15 in its module's colour, red over it while the safety limiter
+    // works; its knob LEDs meters: the input's level, a band's reduction, its correlation
+    cases.push_back({"fin-leds", [] {
+        RunMs(kReadyMs);
+        Tap("KEY_15");
+        RunMs(300);
+        auto key = [] { RunMs(200); return SmtLedFull(kCompKeyLed); };
+        const Rgb level = key();
+        Trs({0xBE, 23, 32});
+        const Rgb eq = key();
+        Trs({0xBE, 23, 64});
+        const Rgb comp = key();
+        Trs({0xBE, 23, 96});
+        const Rgb width = key();
+        printf("      Level %02x%02x%02x, EQ %02x%02x%02x, Comp %02x%02x%02x, Width %02x%02x%02x\n", level.r, level.g,
+               level.b, eq.r, eq.g, eq.b, comp.r, comp.g, comp.b, width.r, width.g, width.b);
+        Check(level.r == level.g && level.g == level.b && level.r > 60, "fin-leds: Level: key 15 white, never darker than its floor");
+        Check(eq.r > 60 && eq.g > 60 && eq.b < 20, "fin-leds: EQ: yellow");
+        Check(comp.r < 20 && comp.g > 60 && comp.b > 60, "fin-leds: Comp: cyan");
+        Check(width.r > 60 && width.g < 20 && width.b > 60, "fin-leds: Width: magenta");
+        // Width's meters: a mono sine, every band's correlation green
+        const Rgb corr = PthLedFull(kKnob1Led + 1);
+        Check(corr.g > 200 && corr.r < 60, "fin-leds: Width's knob 2: the mid band's correlation, mono: green");
+        // Comp's meters: Depth full, the low band's reduction lights knob 1
+        Trs({0xBE, 23, 64});
+        RunMs(100);
+        const int quiet = Max(PthLedFull(kKnob1Led));
+        freq = 110.f;
+        amp = .8f;
+        Trs({kCC, 28, 127});
+        RunMs(2000);
+        const int working = Max(PthLedFull(kKnob1Led));
+        printf("      Comp's knob 1: %d at rest, %d reducing\n", quiet, working);
+        Check(working > quiet + 50, "fin-leds: Comp's knob 1 lights up with the low band's reduction");
+        // Level's knob 1: the input's meter, louder brighter
+        Trs({0xBE, 23, 0, kCC, 28, 0});
+        RunMs(2000);
+        const Rgb loud = PthLedFull(kKnob1Led);
+        amp = .003f;
+        RunMs(2000);
+        const Rgb soft = PthLedFull(kKnob1Led);
+        Check(!Same(loud, soft) && Max(loud) > Max(soft), "fin-leds: Level's knob 1 is the input's meter");
+        // red over it all while the safety limiter works
+        Trs({0xBE, 23, 32});
+        amp = 1.f;
+        Turn(kVolumeEncoder, 100);
+        RunMs(600);
+        const Rgb red_key = SmtLedFull(kCompKeyLed);
+        Check(red_key.r > 200 && red_key.g < 60 && red_key.b < 60, "fin-leds: the safety limiter: red over EQ's yellow");
+        Turn(kVolumeEncoder, -100);
+        amp = .3f;
+        freq = 220.f;
+    }});
+
     // a setting the card can't take: its key on the settings page blinks red 3 times, and
     // again for each retry (#81)
     cases.push_back({"settings-refused", [] {

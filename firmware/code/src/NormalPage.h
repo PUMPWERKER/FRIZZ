@@ -75,6 +75,7 @@
 #include "PanelLeds.h"
 #include "PlayKeys.h"
 #include "SceneControls.h"
+#include "FinPresets.h"
 #include "SettingsPage.h"
 #include "TapTempo.h"
 #include "SceneStore.h"
@@ -150,7 +151,7 @@ namespace chompi
     static const float kFinMeterDb = 12.f;    // the finalizer's key at full, dB reduced, and a
                                               // reduction's knob LED (FinKnobLed)
     static const float kFinFloor = .35f;      // the finalizer's key at least, so its colour reads
-    static const float kFinMutedLevel = .04f; // a muted band's knob LED: below kVuDim's glow
+    static const float kFinMutedLevel = .05f; // a muted band's knob LED: a step of the chain, below kVuDim's glow
     static const uint32_t kFinValueMs = 1500; // a finalizer knob turned shows its value this long
     static const uint32_t kFinMuteFlashMs = 120; // and flashes this long as its band (un)mutes
     // A bipolar knob's LED (KnobColor): blue below its neutral point, white on it, orange above
@@ -254,6 +255,7 @@ namespace chompi
             // gains and AUX's variant
             settings_.Init(engine_, midi_, hw_, scenes_->master);
             scene_ctl_.Init(scenes_->scenes, &fx_);
+            fin_presets_.Init(&scenes_->master);
             keys_.Init(this);
 
             ResetSmtLeds();
@@ -468,7 +470,9 @@ namespace chompi
 
             if (buttonID == static_cast<uint16_t>(kCompKey))
             {
-                // the finalizer's key selects, and always flashes
+                // the finalizer's key selects, and always flashes; held, the scene keys are
+                // its presets and SHIFT its bypass (FinHeld)
+                fin_down_ = rising;
                 if (rising)
                 {
                     FxKeyDown(true);
@@ -554,12 +558,23 @@ namespace chompi
                 if (buttonID == static_cast<uint16_t>(kSceneKeys[slot]))
                 {
                     keys_.Used();
-                    ScenePressed(slot, Shift());
+                    if (FinPresetsShown())
+                        FinPresetPressed(slot);
+                    else
+                        ScenePressed(slot, Shift());
                     return true;
                 }
             }
             for (const SceneModeKey& key : kSceneModeKeys)
             {
+                if (buttonID == static_cast<uint16_t>(key.key) && FinPresetsShown())
+                {
+                    // the finalizer's presets' mode (#345), instead of the scenes'
+                    keys_.Used();
+                    scene_ctl_.Cancel();
+                    fin_presets_.ModePressed(key.mode);
+                    return true;
+                }
                 if (buttonID == static_cast<uint16_t>(key.key))
                 {
 #if !FRIZZ_BENCH
@@ -1628,7 +1643,7 @@ namespace chompi
 
         // PlayKeys' Host
         friend class PlayKeys<NormalPage>;
-        inline bool SceneArmed() const { return scene_ctl_.Armed(); }
+        inline bool SceneArmed() const { return scene_ctl_.Armed() || fin_presets_.Armed(); }
         /** SHIFT going down: SHIFT + key after all if an FX key's or the compressor's press
          *  came at most kShiftGraceMs before it, a select, which a plain press of an FX key
          *  takes back (FxControls::LateSelect); otherwise the FX keys held will latch */
@@ -1651,6 +1666,15 @@ namespace chompi
                     fx_.LateSelect(fx);
                     select = true;
                 }
+            }
+            // key 15 held, then SHIFT: the finalizer bypassed or on again (#345), unless a mode
+            // waits for SHIFT's confirm
+            if (!select && fin_down_ && fin_presets_.Mode() == SceneMode::NONE && !scene_ctl_.Armed())
+            {
+                fx_.SetBypass(!fx_.Bypassed());
+                Heard(static_cast<uint8_t>((feedback::kKeys - 1) * feedback::kKeySlots + feedback::kLatchSlot));
+                fx_.ShiftUsed();
+                return true;
             }
             if (!select)
                 return fx_.ShiftPressed();
@@ -1961,6 +1985,7 @@ namespace chompi
             // changed last, and it's tried again a few times
             if (scenes_->TakeMasterFailed())
             {
+                FinFlash(now, false);
                 master_refused_.Start(now);
                 settings_.SaveFailed(now);
                 master_saving_ = false;
@@ -1974,6 +1999,7 @@ namespace chompi
             {
                 settings_.Saved();
                 master_saving_ = false;
+                FinFlash(now, true);
             }
             if (master_unsaved_ && now - master_changed_at_ > kMasterSaveDelayMs)
             {
@@ -2175,9 +2201,61 @@ namespace chompi
 
         void ConfirmScene()
         {
+            if (fin_presets_.Armed())
+            {
+                // a preset of the finalizer's: to the card at once, flashing once written
+                float now[kNumFinParams];
+                for (size_t p = 0; p < kNumFinParams; p++)
+                    now[p] = fx_.FinParam(p);
+                const SceneMode mode = fin_presets_.Mode();
+                fin_flash_ = fin_presets_.Confirm(now);
+                if (mode == SceneMode::SAVE)
+                    fin_preset_ = static_cast<uint8_t>(fin_flash_);
+                else if (mode == SceneMode::DELETE && fin_flash_ == fin_preset_)
+                    fin_preset_ = kNoFinPreset;
+                fin_flash_waiting_ = true;
+                fin_flash_signal_.Stop();
+                MasterChanged(System::GetNow());
+                master_changed_at_ = System::GetNow() - kMasterSaveDelayMs - 1;
+                return;
+            }
             const int slot = scene_ctl_.Confirm();
             if (slot != kNoScene)
                 FlashWhenSaved(slot);
+        }
+
+        /** The scene keys show the finalizer's presets: key 15 held, or a mode for them */
+        inline bool FinPresetsShown() const
+        {
+            return (fin_down_ || fin_presets_.Mode() != SceneMode::NONE) && !LoopsShownFin();
+        }
+        inline bool LoopsShownFin() const
+        {
+#if !FRIZZ_BENCH
+            return loops_shown_;
+#else
+            return false;
+#endif
+        }
+
+        /** A scene key while the presets show: scenes 1-4's keys are presets 1-4, the blank
+         *  scene's nothing. In a mode it picks; else it recalls a stored one, the knobs gliding
+         *  there, every band unmuted; one it can't blinks red */
+        void FinPresetPressed(size_t slot)
+        {
+            if (slot == kBlankSlot)
+                return;
+            const size_t p = slot - 1;
+            const bool ok = fin_presets_.Mode() != SceneMode::NONE ? fin_presets_.Pressed(p)
+                                                                    : fin_presets_.Used(p);
+            if (!ok)
+            {
+                fin_refused_ = static_cast<int>(slot);
+                fin_refused_signal_.Start(System::GetNow());
+                return;
+            }
+            if (fin_presets_.Mode() == SceneMode::NONE)
+                RecallFinPreset(p, true);
         }
 
         /** A slot changed: to the card, and it flashes once SceneStore::Process has written
@@ -2207,8 +2285,74 @@ namespace chompi
             return white;
         }
 
+        /** A preset's write came out: its key flashes white, or red where it failed */
+        void FinFlash(uint32_t now, bool ok)
+        {
+            if (!fin_flash_waiting_)
+                return;
+            fin_flash_waiting_ = false;
+            fin_flash_ok_ = ok;
+            fin_flash_signal_.Start(now);
+        }
+
+        /** The finalizer's presets on scenes 1-4's keys (FinPresetsShown): in a mode as the
+         *  scenes' are, its colour on the mode keys; else the stored ones dim, the recalled one
+         *  white; a write's flash, a refusal's red */
+        void DrawFinPresetLeds(uint32_t now)
+        {
+            const SceneMode mode = fin_presets_.Mode();
+            const float* mode_color = white;
+            for (const SceneModeKey& key : kSceneModeKeys)
+            {
+                SmtLed(KeyLedOf(key.key), key.color, mode == key.mode ? 1.f : kFxOffLevel);
+                if (mode == key.mode)
+                    mode_color = key.color;
+            }
+            const bool blink_on = BlinkOn(now, kPendingBlinkMs);
+            for (size_t slot = 0; slot < kNumSlots; slot++)
+            {
+                const int s = static_cast<int>(slot), p = s - 1;
+                const float* color = white;
+                float level = 0.f;
+                if (slot == kBlankSlot)
+                    level = 0.f;
+                else if (p == fin_flash_ && fin_flash_waiting_)
+                    level = 1.f;
+                else if (p == fin_flash_ && fin_flash_signal_.Active(now))
+                {
+                    color = fin_flash_ok_ ? white : red;
+                    level = fin_flash_signal_.BlinkLevel(now);
+                }
+                else if (s == fin_refused_ && fin_refused_signal_.Active(now))
+                {
+                    color = red;
+                    level = fin_refused_signal_.BlinkLevel(now);
+                }
+                else if (mode != SceneMode::NONE)
+                {
+                    color = mode_color;
+                    if (p == fin_presets_.Source())
+                        level = 1.f;
+                    else if (p == fin_presets_.Selected())
+                        level = blink_on ? 1.f : 0.f;
+                    else if (fin_presets_.Valid(static_cast<size_t>(p)))
+                        level = kFxOffLevel;
+                }
+                else if (p == fin_preset_ && fin_presets_.Used(static_cast<size_t>(p)))
+                    level = 1.f;
+                else if (fin_presets_.Used(static_cast<size_t>(p)))
+                    level = kFxOffLevel;
+                SmtLed(KeyLedOf(kSceneKeys[slot]), color, level);
+            }
+        }
+
         void DrawSceneLeds(uint32_t now)
         {
+            if (FinPresetsShown())
+            {
+                DrawFinPresetLeds(now);
+                return;
+            }
             const SceneMode mode = scene_ctl_.Mode();
             const float* mode_color = SceneModeColor();
             for (const SceneModeKey& key : kSceneModeKeys)
@@ -2759,6 +2903,13 @@ namespace chompi
         uint8_t fin_meter_ = Finalizer::kNoMeter; // the module whose meters the engine runs
         uint8_t fin_preset_ = kNoFinPreset;       // the finalizer's preset recalled last
         static const uint8_t kNoFinPreset = 0xFF;
+        bool fin_down_ = false;                   // key 15 held (FinPresetsShown)
+        FinPresets fin_presets_;                  // their SAVE / COPY / DELETE
+        int fin_flash_ = kNoScene;                // the preset written last, flashing
+        bool fin_flash_waiting_ = false, fin_flash_ok_ = false;
+        LedSignal fin_flash_signal_;
+        int fin_refused_ = kNoScene;              // a scene key a preset refused
+        LedSignal fin_refused_signal_;
         // when each key of this page last went down ([1]) and up ([0]), by the audio
         // callback's clock (KeyEdge), for the grace of kShiftGraceMs
         static const int kEdgeKeys = static_cast<int>(Hardware::SwId::SR_LAST);
