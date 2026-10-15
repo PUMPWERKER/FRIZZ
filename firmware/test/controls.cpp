@@ -396,6 +396,73 @@ static void TestKnobs()
           "CoarseStep: nothing past 0 or 1");
 }
 
+// a plain turn speeds up when turned fast (#375): 1% a detent slowly, up to 5% fast, as a
+// factor on the fine step only; SHIFT's grid and the steps as ever
+static void TestAccel()
+{
+    Check(FxKnobAccel(1000) == 1.f && FxKnobAccel(200) == 1.f && FxKnobAccel(125) == 1.f,
+          "accel: 8 detents a second or slower, 1x");
+    Check(FxKnobAccel(25) == 5.f && FxKnobAccel(8) == 5.f && FxKnobAccel(0) == 5.f,
+          "accel: 40 a second or faster, 5x, the cap");
+    bool rising = true;
+    float jump = 0.f;
+    for (uint16_t gap = 1000; gap > 0; gap--)
+    {
+        const float d = FxKnobAccel(gap - 1) - FxKnobAccel(gap);
+        rising = rising && d >= 0.f;
+        jump = d > jump ? d : jump;
+    }
+    printf("      the largest step between two 1 ms gaps: %.3f\n", jump);
+    Check(rising && jump < .25f, "accel: faster never slower, no jump between 1 and 5");
+    Check(Near(FxKnobAccel(50), 2.5f), "accel: 20 a second, 2.5x: linear in detents a second");
+    Check(TurnAccel(25, 125.f, 20.f, 3.f) < 3.f && TurnAccel(20, 125.f, 20.f, 3.f) == 3.f
+              && TurnAccel(0, 125.f, 20.f, 3.f) == 3.f,
+          "accel: another curve (VOLUME's) has its own cap");
+
+    FakeEngine e;
+    Fx fx;
+    Fresh(e, fx);
+    fx.KeyPressed(FX_REVERB, true, false);
+    const float decay = fx.Param(FX_REVERB, 0);
+    fx.KnobTurned(0, 1.f, false, FxKnobAccel(500));
+    Check(Near(fx.Param(FX_REVERB, 0), decay + .01f), "accel: a slow detent moves 1%");
+    fx.KnobTurned(0, 1.f, false, FxKnobAccel(10));
+    Check(Near(fx.Param(FX_REVERB, 0), decay + .06f), "accel: a fast one 5%");
+    fx.KnobTurned(0, 1.f, false, FxKnobAccel(500));
+    Check(Near(fx.Param(FX_REVERB, 0), decay + .07f), "accel: slow again, 1% again");
+    for (int i = 0; i < 40; i++)
+        fx.KnobTurned(0, 1.f, false, FxKnobAccel(10));
+    Check(fx.Param(FX_REVERB, 0) == 1.f, "accel: fast turns stop at 100% exactly");
+    for (int i = 0; i < 40; i++)
+        fx.KnobTurned(0, -1.f, false, FxKnobAccel(10));
+    Check(fx.Param(FX_REVERB, 0) == 0.f, "accel: and at 0% exactly");
+
+    // SHIFT: a grid point a detent, however fast
+    fx.KeyPressed(FX_FOLDER, true, false);
+    fx.KnobTurned(0, 1.f, true, FxKnobAccel(0));
+    Check(Near(fx.Param(FX_FOLDER, 0), .2f), "accel: SHIFT + a fast detent, one grid point");
+    // stepped: a step per 3 detents, however fast
+    fx.KeyPressed(FX_DELAY, true, false);
+    const float div = fx.Param(FX_DELAY, 0);
+    fx.KnobTurned(0, 2.f, false, FxKnobAccel(0));
+    Check(fx.Param(FX_DELAY, 0) == div, "accel: stepped, 2 fast detents do nothing yet");
+    fx.KnobTurned(0, 1.f, false, FxKnobAccel(0));
+    Check(Near(fx.Param(FX_DELAY, 0), div + 1.f / (DelaySend::kNumDivisions - 1)),
+          "accel: the 3rd moves one step");
+    // a split knob's free half: a fast turn still stops on the first division
+    fx.KeyPressed(FX_PHASER, true, false);
+    fx.KnobTurned(0, 4.f, false, FxKnobAccel(0)); // .25 + .2
+    Check(Near(fx.Param(FX_PHASER, chompi::Phaser::RATE), .45f), "accel: the split's free half, 5% fast");
+    fx.KnobTurned(0, 1.f, false, FxKnobAccel(0));
+    Check(fx.Param(FX_PHASER, chompi::Phaser::RATE) == kSplitKnob,
+          "accel: past its top, the first division, not beyond");
+    // the finalizer's knobs as an FX's
+    fx.FinKeyPressed(false);
+    const float trim = fx.FinParam(0);
+    fx.KnobTurned(0, -2.f, false, FxKnobAccel(0));
+    Check(Near(fx.FinParam(0), trim - .1f), "accel: the finalizer's knobs too");
+}
+
 // page 2 (#35): a plain knob press turns all four knobs over to the FX's parameters 4-7
 static void TestPages()
 {
@@ -1326,6 +1393,7 @@ int main()
     TestInit();
     TestKeys();
     TestKnobs();
+    TestAccel();
     TestPages();
     TestFinalizer();
     TestScenes();

@@ -80,8 +80,9 @@ bool Press(const char* name, bool down);
 const char* const* KeyNames();
 
 /** Turns encoder 1..6 (SW1..SW6, hardware.h's EncoderId) by `detents`, + as the firmware's
- *  +1. The detents are played out one after another, 8 ms each */
-void Turn(int encoder, int detents);
+ *  +1. The detents are played out one after another, ms each: 8 a fast turn (FRIZZ's knobs
+ *  speed up from 125 ms down, #375), from 125 the slow one */
+void Turn(int encoder, int detents, int ms = 8);
 
 /** The mode switch, as the 4021 reads it (SW_TOG's raw level) */
 void SetToggle(bool raw_level);

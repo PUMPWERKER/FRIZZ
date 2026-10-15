@@ -838,7 +838,7 @@ static void TestLoadInFlight()
     std::vector<uint8_t> load(loops::kBufBytes / 8);
     // the loader loads a1 meanwhile, as the Loops page would: the env says loading
     const bool asked = f.loader->Request(LoopLoader::LOADING, 0, 0, 0,
-                                         reinterpret_cast<uint8_t*>((reinterpret_cast<uintptr_t>(load.data()) + 31) & ~31u));
+                                         reinterpret_cast<uint8_t*>((reinterpret_cast<uintptr_t>(load.data()) + 31) & ~uintptr_t(31)));
     f.env.loading = true;
     int passes = 0;
     while (f.loader->Busy() && passes++ < 1000)

@@ -19,18 +19,18 @@ expect led pth 2 9a37b0
 expect led pth 3 6300fd
 expect led pth 4 b0429a
 # depth, feedback up, the centre up an octave
-turn 3 17
-wait 600
-turn 1 50
-wait 500
+turn 3 17 130
+wait 2674
+turn 1 50 130
+wait 6600
 turn 2 100
 wait 1000
 expect led pth 2 e7844d
 expect led pth 3 fd8f37
 expect led pth 4 c66379
 # rate (.7 Hz, at .25) up to the centre: the first division, 1/16, green
-turn 4 25
-wait 2000
+turn 4 25 130
+wait 5050
 expect led pth 1 00fd00
 # fine turns step a division per 3 detents: 1/8, a little towards yellow
 turn 4 3

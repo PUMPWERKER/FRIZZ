@@ -18,8 +18,8 @@ tap KEY_26
 up KEY_5
 wait 300
 # the resonance up, the LFO in at full depth, 1/16
-turn 1 20
-wait 300
+turn 1 20 130
+wait 2740
 turn 2 100
 wait 300
 turn 3 -100
@@ -27,10 +27,10 @@ wait 2000
 # the cutoff at the centre, white (flat)
 expect led pth 1 fdfdfd
 # the cutoff to the lowpass side, a little; then right, past the centre
-turn 4 -15
-wait 2000
-turn 4 30
-wait 2000
+turn 4 -15 130
+wait 3830
+turn 4 30 130
+wait 5660
 # right of the centre: the cutoff towards orange (highpass)
 expect led pth 1 fddcbb
 # page 2: stereo up, the right LFO behind, then back
@@ -47,12 +47,12 @@ turn 2 -100
 wait 300
 turn 1 100
 wait 300
-turn 4 -20
-wait 500
-turn 4 -20
-wait 500
-turn 4 -20
-wait 1000
+turn 4 -20 130
+wait 2940
+turn 4 -20 130
+wait 2940
+turn 4 -20 130
+wait 3440
 # far left: blue (lowpass), the resonance at the top
 expect led pth 1 1616fd
 expect led pth 2 00d1fd

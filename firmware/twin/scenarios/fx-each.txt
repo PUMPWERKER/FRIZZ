@@ -20,11 +20,11 @@ turn 3 12
 wait 150
 turn 3 -6
 wait 100
-# KEY_1's knobs as turned
+# KEY_1's knobs as turned (the fine ones fast, #375: up 56 %, back 26 %)
 expect led pth 1 219afd
-expect led pth 2 8416fd
+expect led pth 2 6342fd
 expect led pth 3 426efd
-expect led pth 4 8416fd
+expect led pth 4 6342fd
 wait 300
 up KEY_1
 wait 600
