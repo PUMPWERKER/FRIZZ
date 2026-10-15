@@ -114,7 +114,9 @@ update `harness.cpp` along with it.
 
 Runs a 220 Hz sine and a 220 Hz harmonic tone through the shifter (`FxShifter.h`, working
 tree) at every interval from -12 to +12 semitones, and fails if any comes out more than 5
-cents off or its level wobbles by more than 2 dB. The engine harness can't tell a shifter
+cents off or its level wobbles by more than 2 dB, and a 10 kHz sine a fifth up if it comes
+out more than 0.6 dB under its level (the taps' Hermite reads keep it at -0.3 dB; linear ones,
+before #305, lost 1.3 dB). The engine harness can't tell a shifter
 that's out of tune from one that isn't; this can. Takes about 12 s. (A plain two-tap shifter
 is up to 80 cents off and wobbles up to 10 dB; Kastle's single-tap one fails 48 of the 50.)
 
