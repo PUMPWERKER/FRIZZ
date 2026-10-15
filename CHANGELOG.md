@@ -10,7 +10,7 @@ what FRIZZ does.
 ### Added
 
 - **A frequency shifter** (#306), the phaser's second mode: hold SHIFT, tap white key 7 (it's
-  selected, as ever), then tap it again: the key turns azure, and every frequency in the sound
+  selected, as ever), then tap it again: the key turns ice blue, and every frequency in the sound
   moves up or down by the same number of Hz, so its harmonics no longer line up. A few Hz with
   feedback and the direction to one side make a barber pole that rises (or falls) forever, tens
   to hundreds of Hz a metallic, bell-like sound. Each further tap in the same SHIFT hold switches back and forth. The same
@@ -95,6 +95,14 @@ what FRIZZ does.
 
 ### Changed
 
+- **The FX keys are coloured by their stage in the chain**: the keys of a stage share a colour,
+  the two of a pair in neighbouring shades, and the next stage in one well apart. Freezer
+  purple and shifter indigo, folder scarlet and crusher orange, filter pink, flanger light blue
+  and phaser blue, resonator lime, slicer yellow, wow & flutter red and tape stop rose, delay
+  green and reverb teal. The frequency shifter's key is ice blue, the chaos key magenta. New
+  are the shifter (was red), the folder (magenta), the phaser (violet), wow & flutter (teal),
+  the tape stop (amber), the reverb (blue) and the chaos key (rose); the knobs keep their
+  colours. See [Keys and knobs](MANUAL.md#keys-and-knobs).
 - **Knobs 1-4 and VOLUME speed up when turned fast** (#375): turned slowly, a knob still moves
   1% a detent, so a precise setting is as easy to hit; turned faster than about 8 detents a
   second, its step grows smoothly, up to 5% a detent from about 40 a second, so a quick sweep
