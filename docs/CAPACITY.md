@@ -10,7 +10,7 @@ prints the memory table after every build; the numbers below come from it and fr
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
 | `SRAM_EXEC` (AXI SRAM) | 272 KB | 261,292 B (94 %) | **~16.8 KB** (17,236 B; the bench build 260,628 B, ~17.5 KB) | all the code, and the initial values of `.data` |
-| `SRAM` (AXI SRAM) | 240 KB | 217,664 B (89 %) | ~27.4 KB (the bench build 225,464 B, ~19.8 KB, 225,496 B) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
+| `SRAM` (AXI SRAM) | 240 KB | 217,664 B (89 %) | ~27.4 KB (the bench build 225,496 B, ~19.8 KB) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,804 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
