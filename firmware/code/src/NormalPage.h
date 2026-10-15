@@ -1741,7 +1741,7 @@ namespace chompi
                 if (w == loop_refused_slot_ && loop_refused_key_.Active(now))
                 {
                     c = red;
-                    level = loop_refused_key_.BlinkLit(now) ? 1.f : 0.f;
+                    level = loop_refused_key_.BlinkLevel(now);
                 }
                 else
                     switch (loops_.SlotLed(w))
@@ -1773,7 +1773,7 @@ namespace chompi
                 const int to = loops_.Neighbour(key == Hardware::SwId::KEY_16 ? -1 : 1);
                 if ((static_cast<uint16_t>(key) == bank_refused_key_ || bank_refused_key_ == kBothBankKeys)
                     && bank_refused_.Active(now))
-                    SmtLed(KeyLedOf(key), red, bank_refused_.BlinkLit(now) ? 1.f : 0.f);
+                    SmtLed(KeyLedOf(key), red, bank_refused_.BlinkLevel(now));
                 else
                     SmtLed(KeyLedOf(key), to == LoopControls::kNone ? color : BankColor(static_cast<size_t>(to)),
                            to == LoopControls::kNone ? 0.f : 1.f);
@@ -2002,7 +2002,7 @@ namespace chompi
             if (page_flash_.Active(now))
             {
                 // a page picked: blinks its number in white
-                rgb[0] = rgb[1] = rgb[2] = page_flash_.BlinkLit(now) ? 1.f : 0.f;
+                rgb[0] = rgb[1] = rgb[2] = page_flash_.BlinkLevel(now);
             }
             else if (page == kOutGainPage)
             {
@@ -2113,12 +2113,12 @@ namespace chompi
                 else if (s == scene_flash_ && scene_flash_signal_.Active(now))
                 {
                     color = scene_flash_ok_ ? white : red;
-                    level = scene_flash_signal_.BlinkLit(now) ? 1.f : 0.f;
+                    level = scene_flash_signal_.BlinkLevel(now);
                 }
                 else if (s == scene_refused_ && scene_refused_signal_.Active(now))
                 {
                     color = red;
-                    level = scene_refused_signal_.BlinkLit(now) ? 1.f : 0.f;
+                    level = scene_refused_signal_.BlinkLevel(now);
                 }
                 else if (mode != SceneMode::NONE)
                 {
@@ -2173,7 +2173,7 @@ namespace chompi
             const float* const* colors = comp ? kCompKnobColors : kFxSlots[selected].knob_colors;
             // the page it blinks for, so another effect's page 1 isn't blinked over
             const bool flash = knob_page_flash_.Active(now) && fx_.Page() == knob_flash_page_;
-            const float lit = knob_page_flash_.BlinkLit(now) ? 1.f : 0.f;
+            const float lit = knob_page_flash_.BlinkLevel(now);
             const FxParams& knobs = fx_.Knobs();
             for (size_t k = 0; k < kNumFxKnobs; k++)
             {
@@ -2232,7 +2232,7 @@ namespace chompi
             if (comp && select_flash_.Active(now))
                 Flash(rgb);
             if (master_refused_.Active(now))
-                SmtLed(kCompKeyLed, red, master_refused_.BlinkLit(now) ? 1.f : 0.f);
+                SmtLed(kCompKeyLed, red, master_refused_.BlinkLevel(now));
             else
                 SetSmtLedFloat(kCompKeyLed, rgb[0], rgb[1], rgb[2]);
         }
@@ -2318,7 +2318,7 @@ namespace chompi
             // refused quantized record or tap: 3 red blinks, over whatever LOOP was showing
             if (loop_refused_.Active(now))
             {
-                loop[0] = loop_refused_.BlinkLit(now) ? 1.f : 0.f;
+                loop[0] = loop_refused_.BlinkLevel(now);
                 loop[1] = loop[2] = 0.f;
             }
 
@@ -2360,7 +2360,7 @@ namespace chompi
             if (log_->Writing())
                 level = BlinkOn(now, kPendingBlinkMs) ? 1.f : 0.f;
             else if (log_signal_.Active(now))
-                level = log_signal_.BlinkLit(now) ? 1.f : 0.f;
+                level = log_signal_.BlinkLevel(now);
             if (level < 0.f)
                 return;
             const float* color = log_->Writing() || log_ok_ ? white : red;

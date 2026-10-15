@@ -472,14 +472,14 @@ public:
         const size_t src = engine_->Source();
         const bool live = engine_->Live(src);
         if (no_usb_switch_.Active(now))
-            SmtLed(KeyLedOf(kInSourceKey), red, no_usb_switch_.BlinkLit(now) ? 1.f : 0.f);
+            SmtLed(KeyLedOf(kInSourceKey), red, no_usb_switch_.BlinkLevel(now));
         else if (shift || ShiftHeld())
             KeyLed(kInSourceKey, white, src == kUsb ? usb_audio_ : mono_);
         else
             KeyLed(kInSourceKey, kInSourceColors[src], src != kUsb || usb_audio_);
         KeyLed(kLiveKey, white, live);
         if (dark_fx_.Active(now))
-            SmtLed(KeyLedOf(kInFxKey), red, dark_fx_.BlinkLit(now) ? 1.f : 0.f);
+            SmtLed(KeyLedOf(kInFxKey), red, dark_fx_.BlinkLevel(now));
         else
             SmtLed(KeyLedOf(kInFxKey), engine_->Dry(src) ? white : green, live ? 1.f : 0.f);
         // knob 1 the brightness, white and dimmed with every LED: it shows itself
@@ -494,13 +494,13 @@ public:
         // LOOP: the card lent (blue), or refused (3 red blinks); else dark (CardLend.h)
         cardlend::State& card = cardlend::Get();
         if (card.refused.Active(now))
-            PthLed(kLoopLed, red, card.refused.BlinkLit(now) ? 1.f : 0.f);
+            PthLed(kLoopLed, red, card.refused.BlinkLevel(now));
         else
             PthLed(kLoopLed, blue, card.lent ? 1.f : 0.f);
         PthLed(kChompiKeyLed, white, shift || (held_ & kShiftHeld) ? 1.f : 0.f);
         if (refused_.Active(now))
         {
-            const float lit = refused_.BlinkLit(now) ? 1.f : 0.f;
+            const float lit = refused_.BlinkLevel(now);
             if (unsaved_key_ == kBrightnessKnobKey)
                 PthLed(kKnobLeds[0], red, lit);
             else
