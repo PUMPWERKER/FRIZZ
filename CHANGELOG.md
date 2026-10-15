@@ -188,6 +188,10 @@ what FRIZZ does.
   chord, 15 ms and more behind a stream of CCs, and a cable that never paused held the clock
   back altogether. MIDI out passed the clock on that late, and a loop started by MIDI's Start
   started that late. Now each tick counts the moment it arrives.
+- **Dense MIDI on the TRS jack no longer loses messages** (#356): more than about 80 ms of MIDI
+  without the shortest pause and without a clock tick in it (a DAW's automation for many
+  knobs at once, written back to back) lost whole stretches of it, so knobs it moved stayed
+  where they were. Now every message counts, however long the cable stays busy.
 - **The shifter and the flanger no longer click when punched in with the feedback up** (#326):
   the feedback's share of what they had stored came in at once under the key's fade, and
   repeated on every trip. Now it fades in with the key.
