@@ -208,6 +208,11 @@ what FRIZZ does.
   a program change cut over hard, with a click, instead of fading the old loop out over 10 ms,
   most often when two switches came within a few ms of each other (a program change right
   after a key). Now every switch fades; one that comes during another's fade waits for it.
+- **A loop switch at a pass end no longer clicks right after another switch** (#318): when the
+  loop reached its end within 10 ms of a switch, the switch planned for that end (SHIFT + a
+  white key, or CC 54) cut the earlier switch's fade-out off, a click. Now that fade-out ends
+  early but smoothly, over 2 ms, and the planned switch stays exactly on the pass end. The same
+  holds for a switch while the crossfader still mixes two loops.
 - **The resonator rings on its note with the tone dark** (#303): the darker the tone and the
   higher the note, the flatter it rang, 67 cents (two thirds of a semitone) at 440 Hz with the
   tone at the bottom and still 20 cents with it a quarter up. Now its notes are within 5 cents
