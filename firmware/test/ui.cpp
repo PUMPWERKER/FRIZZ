@@ -1015,7 +1015,7 @@ int main()
 
     // page 2's shared knobs (FxOutput.h, #40, #38): nothing sets a level by itself any more.
     // The folder driven is far louder than its input, its Level turns it down; Mix at 0 is the
-    // dry signal; the compressor's makeup is a knob, also by NRPN in bank 1
+    // dry signal; the finalizer's input trim is a knob, its Comp has no makeup
     cases.push_back({"fx-level", [] {
         amp = .03f; // -30dBFS: quiet, so the folder's drive shows
         RunMs(kReadyMs);
@@ -1043,20 +1043,20 @@ int main()
         RunMs(800);
         Check(RunMs(300) < down * .9f, "fx-level: page 2's knob 3 moves the folder off a 220Hz sine's band");
 
-        // the compressor: threshold off, makeup +12dB by CC 31: only that gain
+        // the finalizer (#345): its input +6dB by the global CC 24: only that gain
         Latch("KEY_3"); // the folder off again
         RunMs(300);
         const float flat = RunMs(300);
-        Trs({kCC, 31, 64});
+        Trs({kCC, 24, 96});
         RunMs(300);
-        const std::string comp = Ask({0x21, 14});
-        Check(comp.size() == 17 && comp[15] == 64 && comp[16] == 0,
-              "fx-level: CC 31 is the compressor's page-2 knob 4, its makeup");
-        const float made_up = RunMs(300);
-        printf("      makeup .5: %.1fdB\n", 20.f * log10f(made_up / flat));
-        Check(fabsf(20.f * log10f(made_up / flat) - 12.f) < .5f,
-              "fx-level: the compressor's makeup at .5 is +12dB, and nothing else changes");
-        Trs({kCC, 24, 40, kCC, 31, 0}); // a threshold, no makeup: quieter, nothing gives it back
+        const std::string fin = Ask({0x21, 14});
+        Check(fin.size() == 33 && fabsf(KnobOf(fin[1], fin[2]) - .75f) < .01f,
+              "fx-level: the global CC 24 is the finalizer's input, Level's knob 1");
+        const float trimmed = RunMs(300);
+        printf("      input .75: %.1fdB\n", 20.f * log10f(trimmed / flat));
+        Check(fabsf(20.f * log10f(trimmed / flat) - 6.f) < .5f,
+              "fx-level: the finalizer's input at .75 is +6dB, and nothing else changes");
+        Trs({kCC, 24, 64, kCC, 28, 100}); // the input at 0dB, Depth up: quieter, nothing gives it back
         RunMs(1500);
         Check(RunMs(300) <= flat * 1.01f, "fx-level: compressing without makeup is never louder");
         amp = .3f;
@@ -1112,7 +1112,7 @@ int main()
     }});
 
     // FX page 2 (#35): a plain knob press turns all four knobs over, and back. Another FX or
-    // the compressor goes back to page 1. The LEDs there: knob-page-blink, fx-vu
+    // the finalizer goes back to page 1. The LEDs there: knob-page-blink, fx-vu
     cases.push_back({"fx-page2", [] {
         RunMs(kReadyMs);
         // how far knob 1's LED swings over 700 ms: steady once the page's number has blinked
@@ -1175,12 +1175,14 @@ int main()
         Check(page() == 0, "fx-page2: and another FX (the shifter) brings page 1 back");
         Tap("ENC_4_SW");
         RunMs(100);
-        Tap("KEY_15"); // the compressor: page 1, and a page 2 of its own
+        Tap("KEY_15"); // the finalizer: page 1, and no page 2 (#345)
         RunMs(100);
-        Check(page() == 0, "fx-page2: the compressor's key goes back to page 1");
+        Check(page() == 0, "fx-page2: the finalizer's key goes back to page 1");
         Tap("ENC_4_SW");
         RunMs(100);
-        Check(page() == 1, "fx-page2: the compressor has a page 2 too");
+        Check(page() == 0, "fx-page2: the finalizer has no page 2: a press stays on page 1");
+        Tap("ENC_4_SW");
+        RunMs(100);
         // a page-2 value is part of a scene: saved with it, the blank scene puts it back
         Tap("KEY_2");
         RunMs(100);
@@ -1987,7 +1989,7 @@ int main()
         SetClockStartMs(static_cast<uint32_t>(0x100000000ull - wrap));
         RunMs(kReadyMs);
         Check(RunMs(300) > .05f, "clock-wrap: it boots on a clock 9 s before its wrap");
-        Tap("KEY_15"); // the compressor's amount: saved 2 s after, across the wrap
+        Tap("KEY_15"); // a finalizer knob: saved 2 s after, across the wrap
         RunMs(300);
         Turn(4, 20);
         RunMs(300);
@@ -2019,8 +2021,8 @@ int main()
         printf("      the loop: %.3f s, recorded for %.3f s\n", Probe().loop_length / kSampleRate, recorded);
         Check(Probe().loop_state == 2 && fabsf(Probe().loop_length / kSampleRate - recorded) < .02f,
               "clock-wrap: the loop recorded across it plays, as long as it was recorded");
-        Check(Card("/FRIZZ/frizz_master.txt").find("comp") != std::string::npos,
-              "clock-wrap: the compressor's knob turned before it is saved after it");
+        Check(Card("/FRIZZ/frizz_master.txt").find("\nfinalizer ") != std::string::npos,
+              "clock-wrap: the finalizer's knob turned before it is saved after it");
         // a scene saved after it, and SAVE's pending blink on CHOMPI
         Latch("KEY_5");
         Save(1);
@@ -2733,7 +2735,7 @@ int main()
 
     cases.push_back({"select-flash", [] {
         RunMs(kReadyMs);
-        // a dim compressor key: a select flashes it white
+        // a dim finalizer key: a select flashes it white
         Press("KEY_26", true);
         RunMs(50);
         Press("KEY_15", true);
@@ -2746,11 +2748,9 @@ int main()
         amp = .9f;
         freq = 110.f;
         Tap("KEY_15");
-        Turn(1, 40); // ratio up
-        RunMs(500);
-        Turn(4, 100); // amount all the way
+        Trs({kCC, 28, 127}); // the finalizer's Depth all the way (#345)
         RunMs(2000);
-        Check(Max(SmtLedFull(kCompKeyLed)) > 150, "select-flash: the compressor key lights up as it reduces");
+        Check(Max(SmtLedFull(kCompKeyLed)) > 150, "select-flash: the finalizer's key lights up as it reduces");
         Press("KEY_26", true);
         RunMs(50);
         Press("KEY_15", true);
@@ -5265,7 +5265,7 @@ int main()
         Check(usb_held && switched && !held(), "midi-notes-gone: USB audio switched, a key a USB note held lets go");
     }});
 
-    // controllers: latches, an effect's channel, the focus, the compressor, a gain
+    // controllers: latches, an effect's channel, the focus, the finalizer, a gain
     cases.push_back({"midi-cc", [] {
         RunMs(kReadyMs);
         const float dry = RunMs(300);
@@ -5301,11 +5301,11 @@ int main()
         Trs({kCC, kCompAmountCC, 127});
         RunMs(50);
         std::string comp = Ask({0x21, 14});
-        Check(comp.size() == 17 && comp[1] == 127, "midi cc: CC 24 is the compressor's threshold");
+        Check(comp.size() == 33 && comp[1] == 127, "midi cc: CC 24 is the finalizer's input");
         Trs({0xBE, 14, 0});
         RunMs(50);
         comp = Ask({0x21, 14});
-        Check(comp.size() == 17 && comp[1] == 0, "midi cc: and CC 14 on its channel, 15");
+        Check(comp.size() == 33 && comp[1] == 0, "midi cc: and CC 14 on its channel, 15");
         // the last latches by key: 114 the reverb's (key 13, FxId 11), 115 the chaos key's
         // (key 14, FxId 13)
         Trs({kCC, 114, 127, kCC, 115, 127});
@@ -5363,7 +5363,7 @@ int main()
         (void)freezer;
     }});
 
-    // nothing that comes in by CC goes to the card (#97 D6): the compressor's CC changes it,
+    // nothing that comes in by CC goes to the card (#97 D6): the finalizer's CC changes it,
     // but what's kept is the hand's
     cases.push_back({"midi-not-kept", [] {
         RunMs(kReadyMs);
@@ -5371,14 +5371,14 @@ int main()
         Trs({kCC, kCompAmountCC, 100, kCC, 85, 10});
         RunMs(2500);
         const std::string comp = Ask({0x21, 14});
-        Check(comp.size() == 17 && comp[1] > 90 && Card("/FRIZZ/frizz_master.txt") == before,
-              "midi-not-kept: CC 24 sets the compressor's threshold, and nothing's written");
+        Check(comp.size() == 33 && comp[1] > 90 && Card("/FRIZZ/frizz_master.txt") == before,
+              "midi-not-kept: CC 24 sets the finalizer's input, and nothing's written");
         Tap("KEY_15");
-        Turn(1, 10); // its ratio, by hand
+        Turn(1, 10); // its drive, by hand
         RunMs(2500);
         const std::string master = Card("/FRIZZ/frizz_master.txt");
-        Check(master.find("\ncompressor2 0 ") != std::string::npos,
-              "midi-not-kept: a knob turned by hand writes the card, with the threshold as the hand left it");
+        Check(master.find("\nfinalizer 500000 100000 ") != std::string::npos,
+              "midi-not-kept: a knob turned by hand writes the card, with the input as the hand left it");
     }});
 
     // a DAW chasing every lane as it starts: more latches in one USB packet than the queue
@@ -5758,7 +5758,7 @@ int main()
             Check(up >= static_cast<uint64_t>(kReadyMs) && up <= NowMs() && passes > 100,
                   "midi dev: with the uptime and MainLoop's passes");
         }
-        // GET: the filter's knobs, both pages; SET its cutoff and the compressor's threshold
+        // GET: the filter's knobs, both pages; SET its cutoff and the finalizer's input
         const std::string filter = Ask({0x3E, 2, 6, 4});
         Check(filter.size() == 5 + 16 && filter[2] == 0 && filter[3] == 4 && filter[4] == 8,
               "midi dev: GET an effect's 8 knobs, by its FxId");
@@ -5769,8 +5769,8 @@ int main()
               "midi dev: SET the cutoff in 14 bits, as kCmdParams then reads it");
         Ask({0x3E, 3, 8, 0x20, 0, 0x7F, 0x7F});
         const std::string comp = Ask({0x3E, 2, 9, 0x20});
-        Check(comp.size() == 21 && comp[5] == 0x7F && comp[6] == 0x7F,
-              "midi dev: the compressor is group 0x20, whatever the effects' number");
+        Check(comp.size() == 5 + 32 && comp[4] == 16 && comp[5] == 0x7F && comp[6] == 0x7F,
+              "midi dev: the finalizer is group 0x20, its 16 knobs, whatever the effects' number");
         // VOLUME's: the output gain to 0
         const float dry = RunMs(300);
         Ask({0x3E, 3, 10, 0x22, 0, 0, 0});
@@ -6142,7 +6142,7 @@ int main()
         Check(RunMs(300) > .05f, "midi kept: transport following off again: Stop doesn't pause");
     }});
 
-    // the controllers midi-cc doesn't: the transport and VOLUME turned, the compressor's other
+    // the controllers midi-cc doesn't: the transport and VOLUME turned, the finalizer's other
     // knobs, the input gain, the mix, mono, a morph's bars and its stop, all sound off; and what
     // FRIZZ ignores: the mod wheel, pitch bend, aftertouch
     cases.push_back({"midi-cc-more", [] {
@@ -6176,11 +6176,13 @@ int main()
         Check(at14(state(), 15) == 4096 && at14(state(), 15) != out_gain && RunMs(300) < dry * .8f,
               "midi cc more: CC 85 sets the master out: down");
 
-        Trs({kCC, 25, 0, kCC, 26, 64, kCC, 27, 127});
+        Trs({kCC, 25, 0, kCC, 26, 64, kCC, 27, 127, kCC, 28, 127});
         RunMs(50);
         const std::string comp = Ask({0x21, 14});
-        Check(comp.size() == 17 && at14(comp, 3) == 0 && at14(comp, 5) == 8192 && at14(comp, 7) == 16383,
-              "midi cc more: CCs 25-27 are the compressor's knobs 2-4");
+        Check(comp.size() == 33 && at14(comp, 3) == 0 && at14(comp, 5) == 8192 && at14(comp, 7) == 16383
+                  && at14(comp, 23) == 16383,
+              "midi cc more: CCs 25-27 are the finalizer's Level knobs 2-4, CC 28 its Depth");
+        Trs({kCC, 27, 0, kCC, 28, 0});
 
         const int in_gain = at14(state(), 17);
         Trs({kCC, 86, 0});
@@ -6299,25 +6301,440 @@ int main()
               "midi automation: 3000 CCs in 1.5 s, and the cutoff lands on the last one");
     }});
 
-    // the compressor's key again keeps its page 2, as an FX key does (#81)
-    cases.push_back({"comp-page2", [] {
+    // the finalizer's key again keeps the module it shows, as an FX key keeps its page (#81)
+    cases.push_back({"fin-key-again", [] {
         RunMs(kReadyMs);
-        auto page = [] {
-            const std::string state = Ask({0x20});
-            return state.size() > 24 ? state[24] : -1; // the FX knobs' page
+        Tap("KEY_15"); // the finalizer on the knobs
+        RunMs(100);
+        Trs({0xBE, 23, 64}); // its channel's CC 23: Comp
+        RunMs(100);
+        Tap("KEY_15");
+        RunMs(300);
+        const Rgb key = SmtLedFull(kCompKeyLed);
+        Check(key.r < 30 && key.g > 60 && key.b > 60, "fin-key-again: pressing its key again keeps Comp, the key cyan");
+        Tap("KEY_2"); // an FX, and the finalizer back: still Comp
+        RunMs(100);
+        Tap("KEY_15");
+        RunMs(300);
+        const Rgb back = SmtLedFull(kCompKeyLed);
+        Check(back.r < 30 && back.g > 60 && back.b > 60, "fin-key-again: from an FX, it shows the module it showed");
+    }});
+
+    // the finalizer's modules (#345): SHIFT + key 15 selects, key 15 again in the same hold the
+    // next module, each further tap the next, round to Level; SHIFT let go, or another key
+    // between, starts over; key 15 held, then SHIFT (the bypass) never switches; the key in the
+    // module's colour, at full a moment as it switches
+    cases.push_back({"fin-cycle", [] {
+        RunMs(kReadyMs);
+        auto module = [] {
+            RunMs(400);
+            const Rgb c = SmtLedFull(kCompKeyLed);
+            return c.r > 40 && c.g > 40 && c.b > 40 ? 0 : c.b < 30 ? 1 : c.r < 30 ? 2 : c.g < 30 ? 3 : -1;
         };
-        Tap("KEY_15"); // the compressor on the knobs
-        RunMs(100);
-        Tap("ENC_4_SW"); // its page 2
+        Press("KEY_26", true);
         RunMs(100);
         Tap("KEY_15");
         RunMs(100);
-        Check(page() == 1, "comp-page2: pressing the compressor's key again keeps page 2");
-        Tap("KEY_2"); // an FX, and the compressor back: page 1
+        const int selected = module();
+        Tap("KEY_15");
+        RunMs(30);
+        const Rgb flash = SmtLedFull(kCompKeyLed);
+        const int second = module();
+        Tap("KEY_15");
+        const int third = module();
+        Tap("KEY_15");
+        const int fourth = module();
+        Tap("KEY_15");
+        const int round = module();
+        Press("KEY_26", false);
+        RunMs(100);
+        printf("      SHIFT + 15: %d, again %d (flash %02x%02x%02x), %d, %d, %d\n", selected, second, flash.r, flash.g,
+               flash.b, third, fourth, round);
+        Check(selected == 0 && second == 1 && third == 2 && fourth == 3 && round == 0,
+              "fin-cycle: SHIFT + key 15, then again: EQ, Comp, Width, round to Level");
+        Check(Max(flash) > 240, "fin-cycle: the key at full in the new module's colour");
+        // SHIFT let go between: the next SHIFT + 15 only selects
+        Press("KEY_26", true);
+        RunMs(100);
+        Tap("KEY_15");
+        Press("KEY_26", false);
+        RunMs(100);
+        Press("KEY_26", true);
+        RunMs(100);
+        Tap("KEY_15");
+        Press("KEY_26", false);
+        Check(module() == 0, "fin-cycle: SHIFT let go between: no switch");
+        // another key between: starts over
+        Press("KEY_26", true);
         RunMs(100);
         Tap("KEY_15");
         RunMs(100);
-        Check(page() == 0, "comp-page2: from an FX, the compressor's key shows page 1");
+        Tap("KEY_5"); // the filter, selected
+        RunMs(100);
+        Tap("KEY_15");
+        Press("KEY_26", false);
+        Check(module() == 0, "fin-cycle: another key between: no switch");
+        // key 15 held, then SHIFT twice: the bypass, never a switch
+        Keys({"+KEY_15", "100", "+KEY_26", "60", "-KEY_26", "100", "+KEY_26", "60", "-KEY_26", "100", "-KEY_15", "300"});
+        Check(module() == 0, "fin-cycle: key 15 held, then SHIFT: no switch");
+        // the knobs follow: Comp's knob 4 is Depth
+        Press("KEY_26", true);
+        RunMs(100);
+        Tap("KEY_15");
+        RunMs(60);
+        Tap("KEY_15");
+        RunMs(60);
+        Tap("KEY_15");
+        Press("KEY_26", false);
+        RunMs(100);
+        Turn(3, 50);
+        RunMs(700); // the detents play out, 8 ms each
+        const std::string p = Ask({0x21, 14});
+        Check(p.size() == 33 && fabsf(KnobOf(p[23], p[24]) - .5f) < .01f, "fin-cycle: on Comp, knob 4 turns its Depth");
+        // not on the Loops page
+        LoopsPage();
+        Press("KEY_26", true);
+        RunMs(100);
+        Tap("KEY_15");
+        RunMs(60);
+        Tap("KEY_15");
+        Press("KEY_26", false);
+        RunMs(100);
+        DoubleTap();
+        RunMs(300);
+        Check(module() == 2, "fin-cycle: on the Loops page, no switch");
+    }});
+
+    // the finalizer's bypass (#345): key 15 held, then SHIFT, an exact pass-through and back,
+    // the key dim meanwhile; SHIFT first (within the grace) is a select, no bypass; CC 22 on its
+    // channel the same
+    cases.push_back({"fin-bypass", [] {
+        RunMs(kReadyMs);
+        const float dry = RunMs(300);
+        Trs({kCC, 24, 127, kCC, 28, 127}); // input +12dB, Depth full: a sound of its own
+        RunMs(1500);
+        const float on = RunMs(300);
+        const int bright = Max(SmtLedFull(kCompKeyLed));
+        Keys({"+KEY_15", "100", "+KEY_26", "100", "-KEY_26", "-KEY_15", "300"});
+        const float bypassed = RunMs(300);
+        const int dim = Max(SmtLedFull(kCompKeyLed));
+        printf("      dry %.5f, on %.5f, bypassed %.5f; the key %d, then %d\n", dry, on, bypassed, bright, dim);
+        Check(fabsf(on - dry) > dry * .05f && fabsf(bypassed - dry) < dry * 1e-4f,
+              "fin-bypass: key 15 held, then SHIFT: the finalizer bypassed, the input as it came");
+        Check(dim < bright && dim <= 45, "fin-bypass: its key dim while bypassed");
+        Keys({"+KEY_15", "100", "+KEY_26", "100", "-KEY_26", "-KEY_15", "300"});
+        Check(fabsf(RunMs(300) - on) < on * .01f, "fin-bypass: again: on again");
+        Keys({"+KEY_15", "3", "+KEY_26", "100", "-KEY_15", "100", "-KEY_26", "300"});
+        Check(fabsf(RunMs(300) - on) < on * .01f, "fin-bypass: SHIFT 3 ms after key 15 is a select, no bypass");
+        Trs({0xBE, 22, 0});
+        RunMs(300);
+        Check(fabsf(RunMs(300) - dry) < dry * 1e-4f, "fin-bypass: CC 22 below 64 on channel 15 bypasses it");
+        Trs({0xBE, 22, 127});
+        RunMs(300);
+        Check(fabsf(RunMs(300) - on) < on * .01f, "fin-bypass: and 64 and up switches it on");
+    }});
+
+    // the finalizer's presets (#345): key 15 held + a mode key starts the presets' mode, which
+    // stays once key 15 is let go; a preset picked, SHIFT confirms, even with key 15 held (never
+    // the bypass then); key 15 held + a scene key recalls, unmuting the bands; an empty one is
+    // refused; CC 21 on channel 15 recalls too
+    cases.push_back({"fin-presets", [] {
+        RunMs(kReadyMs);
+        auto drive = [] {
+            const std::string p = Ask({0x21, 14});
+            return p.size() == 33 ? KnobOf(p[3], p[4]) : -1.f;
+        };
+        Tap("KEY_15");
+        Turn(1, 30); // drive .3
+        RunMs(300);
+        Keys({"+KEY_15", "100", "+KEY_23", "60", "-KEY_23", "100", "-KEY_15", "200"}); // SAVE
+        Tap(kSceneKeys[2]); // preset 2
+        RunMs(200);
+        Tap("KEY_26"); // confirm
+        RunMs(3000);
+        const std::string master = Card("/FRIZZ/frizz_master.txt");
+        Check(master.find("\nfinalizer_preset2 500000 300000 ") != std::string::npos,
+              "fin-presets: key 15 + SAVE, then (15 let go) preset 2 and SHIFT: stored on the card");
+        Turn(1, -30);
+        RunMs(500);
+        // a band muted, then the preset recalled: the drive back, every band on again
+        amp = .3f;
+        freq = 1000.f;
+        const float tone = RunMs(300);
+        Trs({0xBE, 103, 127}); // the mid band muted
+        RunMs(300);
+        const float muted = RunMs(300);
+        Keys({"+KEY_15", "100", "+KEY_20", "60", "-KEY_20", "100", "-KEY_15", "500"});
+        const float recalled = RunMs(300);
+        printf("      1kHz %.4f, mid muted %.4f, recalled %.4f; drive %.3f\n", tone, muted, recalled, drive());
+        Check(muted < tone * .05f, "fin-presets: CC 103 on channel 15 mutes the mid band");
+        Check(fabsf(drive() - .3f) < .005f && recalled > tone * .5f,
+              "fin-presets: key 15 + scene 2's key recalls preset 2: the drive back, the mid band unmuted");
+        freq = 220.f;
+        // an empty one: its key blinks red, nothing changes
+        Press("KEY_15", true);
+        RunMs(100);
+        const int blinks = RedBlinks(kSceneKeys[3], kSlot1Led + 2);
+        Press("KEY_15", false);
+        RunMs(300);
+        Check(blinks == 3 && fabsf(drive() - .3f) < .005f, "fin-presets: preset 3, empty: refused, 3 red blinks");
+        // COPY 2 to 4, with key 15 held throughout and SHIFT confirming: never the bypass
+        const float before = RunMs(300);
+        Keys({"+KEY_15", "100", "+KEY_24", "60", "-KEY_24", "100", "+KEY_20", "60", "-KEY_20", "100", "+KEY_22",
+              "60", "-KEY_22", "100", "+KEY_26", "60", "-KEY_26", "100", "-KEY_15", "3000"});
+        const std::string copied = Card("/FRIZZ/frizz_master.txt");
+        Check(copied.find("\nfinalizer_preset4 500000 300000 ") != std::string::npos
+                  && fabsf(RunMs(300) - before) < before * .01f,
+              "fin-presets: key 15 held, COPY 2 to 4, SHIFT: copied, and not bypassed");
+        // DELETE 2
+        Keys({"+KEY_15", "100", "+KEY_25", "60", "-KEY_25", "100", "+KEY_20", "60", "-KEY_20", "100", "-KEY_15",
+              "100", "+KEY_26", "60", "-KEY_26", "3000"});
+        const std::string deleted = Card("/FRIZZ/frizz_master.txt");
+        Check(deleted.find("finalizer_preset2") == std::string::npos && deleted.find("finalizer_preset4") != std::string::npos,
+              "fin-presets: DELETE 2: gone from the card, 4 stays");
+        // the scene keys are the scenes' again: SAVE alone saves a scene
+        Save(1);
+        Check(Card("/FRIZZ/frizz_scenes.txt").find("scene 1") != std::string::npos,
+              "fin-presets: without key 15 the scene keys save scenes again");
+        // CC 21 on channel 15: preset 4 (the drive turned away first)
+        Turn(1, -30);
+        RunMs(300);
+        Trs({0xBE, 21, 4});
+        RunMs(500);
+        Check(fabsf(drive() - .3f) < .005f, "fin-presets: CC 21 at 4 on channel 15 recalls preset 4");
+    }});
+
+    // the presets' mode, armed, ends where a scene mode does: the settings page shown, the
+    // Loops page opened; a SHIFT tap after it saves nothing. Armed, CHOMPI blinks as for a scene
+    cases.push_back({"fin-preset-cancel", [] {
+        RunMs(kReadyMs);
+        Tap("KEY_15");
+        Turn(1, 30);
+        RunMs(300);
+        auto arm = [] {
+            Keys({"+KEY_15", "100", "+KEY_23", "60", "-KEY_23", "100", "-KEY_15", "200"});
+            Tap(kSceneKeys[2]);
+            RunMs(200);
+        };
+        arm();
+        const std::vector<int> blink = Watch(true, kChompiKeyLed, 600);
+        Check(*std::max_element(blink.begin(), blink.end()) > 100 && *std::min_element(blink.begin(), blink.end()) == 0,
+              "fin-preset-cancel: a preset armed: CHOMPI blinks, as for a scene");
+        SetToggle(true);
+        RunMs(300);
+        SetToggle(false);
+        RunMs(300);
+        Tap("KEY_26");
+        RunMs(3000);
+        Check(Card("/FRIZZ/frizz_master.txt").find("finalizer_preset") == std::string::npos,
+              "fin-preset-cancel: the settings page shown ends it: SHIFT then saves nothing");
+        arm();
+        LoopsPage();
+        RunMs(300);
+        DoubleTap(); // home: two taps of SHIFT
+        RunMs(3000);
+        Check(Card("/FRIZZ/frizz_master.txt").find("finalizer_preset") == std::string::npos,
+              "fin-preset-cancel: the Loops page opened ends it: SHIFT's taps there save nothing");
+    }});
+
+    // a card from before the finalizer, the master compressor's settings on it: FRIZZ boots with
+    // the finalizer neutral and the other settings read; a turn writes the finalizer's line and
+    // not the old ones
+    cases.push_back({"fin-old-file", [] {
+        CardFiles()["/FRIZZ/frizz_master.txt"] =
+            "FRIZZ master 1\ncompressor2 300000 900000 100000 750000 1000000 0 0 250000\n"
+            "compressor 300000 750000 200000 600000\nmidi_channel 5\n";
+        RunMs(kReadyMs);
+        const float dry = RunMs(300);
+        const std::string p = Ask({0x21, 14});
+        static const float kDefaults[16] = {.5f, 0.f, 0.f, 0.f, .5f, .5f, .5f, 0.f, .4f, .4f, .4f, 0.f, .5f, .5f, .5f, 0.f};
+        bool neutral = p.size() == 33;
+        for (int i = 0; neutral && i < 16; i++)
+            neutral = fabsf(KnobOf(p[1 + 2 * i], p[2 + 2 * i]) - kDefaults[i]) < .001f;
+        Check(neutral, "fin-old-file: the compressor's lines skipped, the finalizer on its defaults");
+        Trs({0xB4, 24, 127}); // the input +12dB on channel 5: the global channel the file says
+        RunMs(500);
+        const float louder = RunMs(300);
+        printf("      dry %.4f, input +12dB on channel 5 %.4f\n", dry, louder);
+        Check(louder > dry * 1.5f, "fin-old-file: the file's other settings read: channel 5 is the global one");
+        Trs({0xB4, 24, 64});
+        Tap("KEY_15");
+        Turn(1, 10);
+        RunMs(2500);
+        const std::string now = Card("/FRIZZ/frizz_master.txt");
+        Check(now.find("\nfinalizer 500000 100000 ") != std::string::npos && now.find("compressor") == std::string::npos
+                  && now.find("\nmidi_channel 5\n") != std::string::npos,
+              "fin-old-file: a turn writes the finalizer's line, not the old ones, the channel as it was");
+    }});
+
+    // the finalizer's band mutes (#347): a plain press of knob 1-3 in EQ, Comp or Width mutes
+    // that band, its LED nearly dark, below a quiet band's meter; again unmutes; in Level a press
+    // does nothing
+    cases.push_back({"fin-mutes", [] {
+        RunMs(kReadyMs);
+        freq = 1000.f;
+        Tap("KEY_15");
+        RunMs(100);
+        const float tone = RunMs(300);
+        Tap("ENC_1_SW"); // Level's knob 2: nothing
+        RunMs(300);
+        Check(fabsf(RunMs(300) - tone) < tone * 1e-4f, "fin-mutes: a press in Level does nothing");
+        Trs({0xBE, 23, 32}); // EQ
+        RunMs(100);
+        const Rgb low = PthLedFull(kKnob1Led); // the low band's meter: quiet, its floor
+        Tap("ENC_1_SW"); // the mid band
+        RunMs(300);
+        const float muted = RunMs(300);
+        const Rgb led = PthLedFull(kKnob1Led + 1);
+        printf("      1kHz %.4f, mid muted %.4f; its LED %02x%02x%02x, the low band's %02x%02x%02x\n", tone, muted,
+               led.r, led.g, led.b, low.r, low.g, low.b);
+        Check(muted < tone * .05f, "fin-mutes: knob 2 pressed in EQ mutes the mid band");
+        Check(Max(led) > 0 && Max(led) < Max(low), "fin-mutes: its LED a faint glow, below a quiet band's meter");
+        Trs({0xBE, 23, 96}); // Width: the same mute, knob 2 again unmutes
+        RunMs(100);
+        Tap("ENC_1_SW");
+        RunMs(300);
+        Check(fabsf(RunMs(300) - tone) < tone * .01f, "fin-mutes: and pressed again in Width unmutes it");
+        Tap("ENC_3_SW"); // knob 4: no band
+        RunMs(300);
+        Check(fabsf(RunMs(300) - tone) < tone * .01f, "fin-mutes: knob 4 mutes nothing");
+        freq = 220.f;
+    }});
+
+    // the finalizer over MIDI (#345): channel 15's CCs at their parameters, the global
+    // channel's 24-28, CC 23 the module the focus's CC 14-17 reach, applied first in a pass
+    cases.push_back({"fin-midi", [] {
+        RunMs(kReadyMs);
+        auto params = [] {
+            const std::string p = Ask({0x21, 14});
+            std::vector<float> v;
+            for (size_t i = 0; p.size() == 33 && i < 16; i++)
+                v.push_back(KnobOf(p[1 + 2 * i], p[2 + 2 * i]));
+            return v;
+        };
+        std::vector<int> bytes;
+        for (int c = 14; c <= 20; c++)
+            bytes.insert(bytes.end(), {0xBE, c, 10 + 3 * c});
+        for (int c = 24; c <= 30; c++)
+            bytes.insert(bytes.end(), {0xBE, c, 10 + 3 * c});
+        Usb(bytes);
+        RunMs(100);
+        std::vector<float> v = params();
+        std::string bad;
+        for (int c = 14; c <= 30; c++)
+        {
+            if (c > 20 && c < 24)
+                continue;
+            const int p = c < 21 ? c - 14 : c - 16;
+            const float want = KnobOf7(10 + 3 * c);
+            const bool stepped = p == 2 || (p >= 8 && p <= 10);
+            const int steps = p == 2 ? 3 : 6;
+            const float on_step = roundf(want * (steps - 1)) / (steps - 1);
+            if (!(v.size() == 16 && fabsf(v[p] - (stepped ? on_step : want)) < .01f))
+                bad += " CC " + std::to_string(c) + ": " + std::to_string(v.size() == 16 ? v[p] : -1.f);
+        }
+        if (!bad.empty())
+            printf("      %s\n", bad.c_str());
+        Check(bad.empty(), "fin-midi: channel 15's CC 14-20 and 24-30 set parameters 0-6 and 8-14");
+        Check(v.size() == 16 && v[7] == 0.f && v[15] == 0.f, "fin-midi: the unused ones stay");
+        // the global channel: CC 24-27 Level's knobs, CC 28 Depth
+        Trs({kCC, 24, 64, kCC, 25, 0, kCC, 27, 127, kCC, 28, 0});
+        RunMs(100);
+        v = params();
+        Check(v.size() == 16 && v[0] == .5f && v[1] == 0.f && v[3] == 1.f && v[11] == 0.f,
+              "fin-midi: the global CC 24, 25, 27 Level's input, drive and Loud, CC 28 Depth");
+        // the focus on the finalizer, CC 23 on its channel picks Comp, CC 17 then its Depth
+        Trs({kCC, 23, 15, 0xBE, 23, 64, kCC, 17, 127});
+        RunMs(100);
+        v = params();
+        Check(v.size() == 16 && v[11] == 1.f, "fin-midi: focus 15, module Comp: the global CC 17 is its Depth");
+        // in one packet: the module first, then the focus's knob
+        Usb({0xBE, 23, 127, 0xBF, 14, 0});
+        RunMs(100);
+        v = params();
+        Check(v.size() == 16 && v[12] == 0.f && v[11] == 1.f,
+              "fin-midi: CC 23 and CC 14 in one packet: the knob reaches the new module (Width's low)");
+        Trs({kCC, 27, 0});
+        RunMs(100);
+    }});
+
+    // MIDI feedback for the finalizer: a knob by hand goes out at its channel-15 address
+    cases.push_back({"fin-feedback", [] {
+        RunMs(kReadyMs);
+        Usb({0xF0, 0x7D, 0x43, 0x48, 0x13, 3, 2, 0xF7}); // MIDI out: the jack and USB
+        SetToggle(true);
+        RunMs(300);
+        Tap("KEY_22"); // feedback on
+        SetToggle(false);
+        RunMs(300);
+        Tap("KEY_15");
+        Trs({0xBE, 23, 64}); // Comp
+        RunMs(100);
+        UsbCcs();
+        Turn(3, 50); // knob 4: Depth .5
+        RunMs(500);
+        const std::vector<std::array<int, 3>> usb = UsbCcs();
+        printf("      Depth's CC 27 on channel 15: %d\n", LastCc(usb, 0xBE, 27));
+        Check(LastCc(usb, 0xBE, 27) == Knob7(.5f), "fin-feedback: Comp's Depth by hand goes out as CC 27 on channel 15");
+        Check(LastCc(usb, 0xBF, 28) < 0, "fin-feedback: and not on the global channel");
+        UsbCcs();
+        Turn(1, 3); // knob 2: the mid character a step on
+        RunMs(500);
+        Check(LastCc(UsbCcs(), 0xBE, 25) >= 0, "fin-feedback: a character as CC 25 there");
+    }});
+
+    // the finalizer's LEDs: key 15 in its module's colour, red over it while the safety limiter
+    // works; its knob LEDs meters: the input's level, a band's reduction, its correlation
+    cases.push_back({"fin-leds", [] {
+        RunMs(kReadyMs);
+        Tap("KEY_15");
+        RunMs(300);
+        auto key = [] { RunMs(200); return SmtLedFull(kCompKeyLed); };
+        const Rgb level = key();
+        Trs({0xBE, 23, 32});
+        const Rgb eq = key();
+        Trs({0xBE, 23, 64});
+        const Rgb comp = key();
+        Trs({0xBE, 23, 96});
+        const Rgb width = key();
+        printf("      Level %02x%02x%02x, EQ %02x%02x%02x, Comp %02x%02x%02x, Width %02x%02x%02x\n", level.r, level.g,
+               level.b, eq.r, eq.g, eq.b, comp.r, comp.g, comp.b, width.r, width.g, width.b);
+        Check(level.r == level.g && level.g == level.b && level.r > 60, "fin-leds: Level: key 15 white, never darker than its floor");
+        Check(eq.r > 60 && eq.g > 60 && eq.b < 20, "fin-leds: EQ: yellow");
+        Check(comp.r < 20 && comp.g > 60 && comp.b > 60, "fin-leds: Comp: cyan");
+        Check(width.r > 60 && width.g < 20 && width.b > 60, "fin-leds: Width: magenta");
+        // Width's meters: a mono sine, every band's correlation green
+        const Rgb corr = PthLedFull(kKnob1Led + 1);
+        Check(corr.g > 200 && corr.r < 60, "fin-leds: Width's knob 2: the mid band's correlation, mono: green");
+        // Comp's meters: Depth full, the low band's reduction lights knob 1
+        Trs({0xBE, 23, 64});
+        RunMs(100);
+        const int quiet = Max(PthLedFull(kKnob1Led));
+        freq = 110.f;
+        amp = .8f;
+        Trs({kCC, 28, 127});
+        RunMs(2000);
+        const int working = Max(PthLedFull(kKnob1Led));
+        printf("      Comp's knob 1: %d at rest, %d reducing\n", quiet, working);
+        Check(working > quiet + 50, "fin-leds: Comp's knob 1 lights up with the low band's reduction");
+        // Level's knob 1: the input's meter, louder brighter
+        Trs({0xBE, 23, 0, kCC, 28, 0});
+        RunMs(2000);
+        const Rgb loud = PthLedFull(kKnob1Led);
+        amp = .003f;
+        RunMs(2000);
+        const Rgb soft = PthLedFull(kKnob1Led);
+        Check(!Same(loud, soft) && Max(loud) > Max(soft), "fin-leds: Level's knob 1 is the input's meter");
+        // red over it all while the safety limiter works
+        Trs({0xBE, 23, 32});
+        amp = 1.f;
+        Turn(kVolumeEncoder, 100);
+        RunMs(600);
+        const Rgb red_key = SmtLedFull(kCompKeyLed);
+        Check(red_key.r > 200 && red_key.g < 60 && red_key.b < 60, "fin-leds: the safety limiter: red over EQ's yellow");
+        Turn(kVolumeEncoder, -100);
+        amp = .3f;
+        freq = 220.f;
     }});
 
     // a setting the card can't take: its key on the settings page blinks red 3 times, and
@@ -6777,9 +7194,9 @@ int main()
         const int to1 = turn(false);
         Check(to1 == 1 && all_white == 4, "knob-page-blink: page 1 blinks once");
         Check(turn(true) == 0, "knob-page-blink: SHIFT + press resets, turns no page and blinks nothing");
-        Tap("KEY_15"); // the compressor's page 2 too
+        Tap("KEY_15"); // the finalizer: no page 2, nothing to blink
         RunMs(300);
-        Check(turn(false) == 2, "knob-page-blink: the compressor's page 2 blinks twice too");
+        Check(turn(false) == 0, "knob-page-blink: the finalizer has no page 2, a press blinks nothing");
     }});
 
     // page 2's knob 4 (Level) shows the effect's output as a VU meter in VOLUME's colours, as
@@ -7469,8 +7886,7 @@ int main()
         Usb({kCC, kDryCC, 127}); // AUX dry
         const float to_dry = StepMs(300);
         const float dry = RunMs(500);
-        Usb({kCC, 24, 127}); // the compressor's threshold all the way down
-        Usb({kCC, 25, 127}); // its ratio all the way up
+        Usb({kCC, 28, 127}); // the finalizer's Depth all the way
         RunMs(1000);
         const float dry_comp = RunMs(500);
         Latch("KEY_11"); // the tape stop: silence for what goes through the effects
@@ -7482,11 +7898,11 @@ int main()
         Latch("KEY_11");
         RunMs(3000);
         const float fx_comp = RunMs(500);
-        printf("      AUX through the effects %.4f, dry %.4f; the compressor hard: dry %.4f, through %.4f; "
+        printf("      AUX through the effects %.4f, dry %.4f; the finalizer hard: dry %.4f, through %.4f; "
                "the tape stop: dry %.4f, through %.4f; steps %.4f, to dry %.4f\n", fx, dry, dry_comp, fx_comp,
                dry_stopped, fx_stopped, steady, to_dry);
         Check(dry > .01f && fabsf(dry_comp - dry) < dry * .001f && fx_comp < fx * .7f,
-              "aux-dry: the compressor works on AUX through the effects, not on AUX dry");
+              "aux-dry: the finalizer works on AUX through the effects, not on AUX dry");
         Check(fabsf(dry_stopped - dry) < dry * .001f && fx_stopped < dry * .01f,
               "aux-dry: nor do the effects: the tape stop silences AUX through them only");
         Check(to_dry < steady * 1.5f, "aux-dry: switching to AUX dry crossfades, no click");
@@ -8422,7 +8838,8 @@ int main()
         const bool lent = CardLent();
         const int enumerated = UsbEnumerations();
         const std::string master = "FRIZZ master 1\nmidi_channel 5\nled_brightness 50\ngain_aux 25\n"
-                                   "compressor2 0 500000 500000 500000 1000000 0 400000 0\nusb_audio 0\n";
+                                   "finalizer 500000 0 0 0 500000 500000 500000 400000 400000 400000 400000 500000 "
+                                   "500000 500000\nusb_audio 0\n";
         const std::string scenes = unlatch_filter(Card("/FRIZZ/frizz_scenes.txt"));
         CardFiles()["/FRIZZ/frizz_master.txt"] = master;
         CardFiles()["/FRIZZ/frizz_scenes.txt"] = scenes;
@@ -8433,7 +8850,7 @@ int main()
         const bool back = !CardLent();
         const int channel = setting(1), leds = setting(6), gain = setting(10);
         const std::string comp = Ask({0x3E, 2, 1, 0x20});
-        const float knob7 = comp.size() == 21 ? KnobOf(comp[17], comp[18]) : -1.f;
+        const float knob7 = comp.size() == 37 ? KnobOf(comp[27], comp[28]) : -1.f; // its Depth
         const bool usb_off = !UsbAudioOn() && UsbEnumerations() > enumerated;
         const bool plays = LatchedFx(Ask({0x20})) & kFilterBit;
         const int slot1 = slot_latches(1);
@@ -8443,7 +8860,7 @@ int main()
         RunMs(3000);
         const bool untouched = Card("/FRIZZ/frizz_master.txt") == master && Card("/FRIZZ/frizz_scenes.txt") == scenes
                                && Card("/FRIZZ/frizz_master.bak").empty() && Card("/FRIZZ/frizz_scenes.bak").empty();
-        printf("      lent %d, back %d: channel %d, LEDs %d %%, AUX %d %%, the compressor's knob 7 %.3f, USB audio off %d;"
+        printf("      lent %d, back %d: channel %d, LEDs %d %%, AUX %d %%, the finalizer's Depth %.3f, USB audio off %d;"
                " level %.4f, 2 ms after %.4f, then %.4f; filter plays %d, slot 1 latches %d, recalled %d\n",
                lent, back, channel, leds, gain, knob7, usb_off, before, first, after, plays, slot1, recalled);
         Check(lent && back && channel == 5 && leds == 50 && gain == 25 && fabsf(knob7 - .4f) < 1e-3f,
@@ -9524,7 +9941,7 @@ int main()
             Check(bug.find("# written here") != std::string::npos && CardOpenFiles() == 0,
                   "remount-bug-report: the report written whole, and closed");
             const std::string now = Card("/FRIZZ/frizz_master.txt");
-            Check(now != master && now.find("compressor2") != std::string::npos,
+            Check(now != master && now.find("\nfinalizer ") != std::string::npos,
                   "remount-bug-report: the master settings written after it");
         }});
 
@@ -9561,28 +9978,31 @@ int main()
     cases.push_back({"script-set", [] {
         std::istringstream script(
             "booted\n"
-            "usb F0 7D 43 48 3E 02 01 20 F7\n" // GET comp, before the set
-            "set comp 0 0.25\n"
-            "set comp 3 1\n"
-            "expect usb F0 7D 43 48 7E 02 01 00 20 08 00 00 40 00 40 00 40 00 7F 7F 00 00 00 00 00 00 F7\n"
+            "usb F0 7D 43 48 3E 02 01 20 F7\n" // GET fin, the finalizer's, before the set
+            "set fin 0 0.25\n"
+            "set comp 3 1\n" // its old name too
+            "expect usb F0 7D 43 48 7E 02 01 00 20 10 40 00 00 00 00 00 00 00 40 00 40 00 40 00 00 00 "
+            "33 1A 33 1A 33 1A 00 00 40 00 40 00 40 00 00 00 F7\n"
             "usb F0 7D 43 48 3E 02 02 20 F7\n"
             "wait 20\n"
-            "expect usb F0 7D 43 48 7E 02 02 00 20 08 20 00 40 00 40 00 7F 7F 7F 7F 00 00 00 00 00 00 F7\n"
+            "expect usb F0 7D 43 48 7E 02 02 00 20 10 20 00 00 00 00 00 7F 7F 40 00 40 00 40 00 00 00 "
+            "33 1A 33 1A 33 1A 00 00 40 00 40 00 40 00 00 00 F7\n"
             "set settings led_brightness 50\n"
             "set latch filter on\n"
-            "set comp 0 2\n"        // not a knob's 0-1
+            "set fin 0 2\n"        // not a knob's 0-1
             "set settings 99 1\n"   // no such setting: FRIZZ refuses
             "set nothing 0 0\n");
         Check(PlayScript(script, nullptr, nullptr) == 3,
-              "script-set: set sets the compressor's knobs, a setting, a latch; its answers stay out of expect usb; "
+              "script-set: set sets the finalizer's knobs, a setting, a latch; its answers stay out of expect usb; "
               "a value, setting or group that isn't fails its line");
     }});
 
-    // a card as a player's may be: the compressor's page 1 and most settings not as the factory
+    // a card as a player's may be: the finalizer and most settings not as the factory
     // has them, the LEDs at full though (the twin's expect led doesn't dim). The device's scenarios start
     // from the player's card (#214): each sets what it depends on first
     static const std::string kPlayersCard = "card file /FRIZZ/frizz_master.txt\n|FRIZZ master 1\n"
-                                            "|compressor2 300000 900000 100000 750000 1000000 0 0 0\n"
+                                            "|finalizer 600000 200000 500000 0 600000 450000 550000 400000 600000 200000 "
+                                            "300000 400000 600000 500000\n"
                                             "|mono 1\n|midi_channel 0\n|midi_transport 1\n|clock_factor 50\n"
                                             "|clock_source 1\n|midi_out 0\n|led_brightness 100\n"
                                             "|midi_block_trs 0\n|midi_feedback 0\n|aux_dry 1\n|gain_aux 40\n"
@@ -9595,13 +10015,13 @@ int main()
         std::string text = kPlayersCard, line;
         int sets = 0;
         while (std::getline(comp, line))
-            if (line.rfind("set comp ", 0) == 0)
+            if (line.rfind("set fin ", 0) == 0)
                 sets++;
             else
                 text += line + "\n";
         std::istringstream script(text);
-        Check(sets == 4 && PlayScript(script, nullptr, nullptr) == 4,
-              "script-comp-turns: comp.txt without its four sets, on a player's card: its four LEDs fail (#214)");
+        Check(sets == 14 && PlayScript(script, nullptr, nullptr) == 2,
+              "script-comp-turns: comp.txt without its sets of the finalizer's 14 knobs, on a player's card: its two LEDs fail (#214)");
     }});
 
     // every scenario of ../twin/scenarios played from power-on, its expect lines holding

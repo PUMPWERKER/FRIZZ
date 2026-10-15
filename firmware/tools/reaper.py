@@ -819,7 +819,7 @@ def automation_value(ch, k):
 @case("daw-automation", "8: REAPER automation per effect channel: a track per effect on channels "
       "1-15, CC 14-21 move that effect's knobs, CC 22 latches it (#108)")
 def daw_automation(r, d):
-    groups = WHITE_FX[1:] + ["comp"]
+    groups = WHITE_FX[1:] + ["fin"]  # channel 15 the finalizer's: CC 14-20 its parameters 0-6 (#345)
 
     def read():
         return {fx: [remote.knob(v) for v in r.get(fx)] for fx in groups}, r.get("latch")
@@ -855,7 +855,7 @@ def daw_automation(r, d):
     for ch in range(1, 16):
         fx = groups[ch - 1]
         for k in range(8):
-            if (fx, k) in EMPTY:
+            if (fx, k) in EMPTY or (fx, k) == ("fin", 7):  # the finalizer's CC 21 recalls a preset
                 continue
             n += 1
             moved += abs(played[fx][k] - before[fx][k]) > .01

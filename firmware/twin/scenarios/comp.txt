@@ -1,32 +1,39 @@
-# The master compressor: selected, every knob of page 1 (threshold, ratio, attack, release)
-# swept up and down on a loud input
+# The finalizer (#345), its Level module: selected, its knobs turned on a loud input, the
+# input trim, the drive and its type, Loud into the limiter; then its Comp's Depth by the
+# global channel's CC 28
 input sine 110 0.8
 # its knobs where the factory has them, whatever the card keeps: the device's card holds the
 # player's own (#214); the turns below start from there
-set comp 0 0
-set comp 1 0.5
-set comp 2 0.5
-set comp 3 0.5
+set fin 0 0.5
+set fin 1 0
+set fin 2 0
+set fin 3 0
+set fin 4 0.5
+set fin 5 0.5
+set fin 6 0.5
+set fin 8 0.4
+set fin 9 0.4
+set fin 10 0.4
+set fin 11 0
+set fin 12 0.5
+set fin 13 0.5
+set fin 14 0.5
 at 6000
 tap KEY_15
 wait 200
-turn 4 60
+turn 4 20
+wait 1000
+turn 1 50
+wait 1000
+turn 2 3
+wait 1000
+turn 3 40
 wait 1500
-turn 1 20
+turn 4 -20
 wait 1000
-turn 1 -40
-wait 1000
-turn 2 40
-wait 1000
-turn 2 -30
-wait 800
-turn 3 -50
-wait 800
-turn 4 -30
+usb BF 1C 50
 wait 2000
-# the compressor's knobs where they were turned
-expect led pth 1 42bbbb
-expect led pth 2 42bbbb
-expect led pth 3 8fb084
-expect led pth 4 00d1fd
+# drive and type as they were turned (their values: no meters there)
+expect led pth 2 79b09a
+expect led pth 3 79b09a
 expect on
