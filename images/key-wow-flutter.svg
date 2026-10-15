@@ -32,8 +32,8 @@
 <text x="245.1" y="39.7" font-size="11" style="fill:#999999">8</text>
 <rect x="260.8" y="24" width="24.1" height="23.5" rx="3" fill="#3a3a3c"/>
 <text x="272.8" y="39.7" font-size="11" style="fill:#999999">9</text>
-<rect x="288.5" y="24" width="24.1" height="23.5" rx="3" fill="#00ff8c" stroke="#e2e2e2" stroke-width="1.5"/>
-<text x="300.6" y="40.2" font-size="13" font-weight="bold" style="fill:#131314">10</text>
+<rect x="288.5" y="24" width="24.1" height="23.5" rx="3" fill="#ff0000" stroke="#e2e2e2" stroke-width="1.5"/>
+<text x="300.6" y="40.2" font-size="13" font-weight="bold" style="fill:#ffffff">10</text>
 <rect x="316.3" y="24" width="24.1" height="23.5" rx="3" fill="#3a3a3c"/>
 <text x="328.3" y="39.7" font-size="11" style="fill:#999999">11</text>
 <rect x="344" y="24" width="24.1" height="23.5" rx="3" fill="#3a3a3c"/>

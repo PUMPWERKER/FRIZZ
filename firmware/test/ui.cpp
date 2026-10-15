@@ -478,15 +478,16 @@ static const float kOrange[3] = {1.f, .6f, .24f}, kGreen[3] = {0.f, 1.f, 0.f}, k
 
 // the phaser's key (FxSlots.h) and its second mode's colour (#306)
 static const int kPhaserKeyLed = 18;
-static const float kAzure[3] = {0.f, .4f, 1.f}, kViolet[3] = {.4f, 0.f, 1.f};
-/** The phaser's key in the frequency shifter's colour (azure) or its own (violet): dim, or lit
- *  (on, whitened by its meter, so only which of red and green shows) */
+static const float kIceBlue[3] = {.45f, .6f, 1.f}, kBlue[3] = {0.f, 0.f, 1.f};
+/** The phaser's key in the frequency shifter's colour (ice blue) or its own (blue): dim, or
+ *  lit (on, whitened by its meter, so only whether green stands above red shows: the same in
+ *  blue, above it in ice blue) */
 static bool PhaserShows(bool shifter, bool on = false)
 {
     const Rgb c = SmtLedFull(kPhaserKeyLed);
     if (on)
-        return Max(c) > 200 && (shifter ? c.g > c.r + 20 : c.r > c.g + 20);
-    return Shows(c, shifter ? kAzure : kViolet, kLoopDim, 4);
+        return Max(c) > 200 && (shifter ? c.g > c.r : c.g == c.r);
+    return Shows(c, shifter ? kIceBlue : kBlue, kLoopDim, 4);
 }
 static bool White(const Rgb& c) { return std::min(c.r, std::min(c.g, c.b)) > 200; }
 /** The master out's left at 1100, 900 and 1000 Hz over ms, by Goertzel: amplitudes */
@@ -1710,7 +1711,8 @@ int main()
         Turn(kKnob1Encoder, 100); // its FX chance at the top
         RunMs(300);
         const Rgb chaos = SmtLedFull(kChaosKeyLed);
-        Check(Max(chaos) > 200 && chaos.r > 2 * chaos.g, "chaos-gates: latched, its key lit, rose");
+        Check(Max(chaos) > 200 && chaos.r > 2 * chaos.g && chaos.b > 2 * chaos.g,
+              "chaos-gates: latched, its key lit, magenta");
         // 16ths at 120 BPM: 125 ms; the filter out of about half of them
         int out = 0, in = 0, dim = 0, lit = 0;
         for (int w = 0; w < 64; w++)
@@ -2296,11 +2298,12 @@ int main()
         SetToggle(false);
         RunMs(300);
         // the 7th white key is the phaser's there, the 11th the tape stop's, the 14th the chaos
-        // key's: dimly in their own colours, violet, amber and rose
+        // key's: dimly in their own colours, blue, rose and magenta
         const Rgb phaser = SmtLedFull(18), tapestop = SmtLedFull(kChannel11Led),
                   chaos = SmtLedFull(kChannel14Led);
-        Check(Max(phaser) < 60 && phaser.b > 2 * phaser.r && phaser.r > phaser.g && Max(tapestop) < 60
-                  && tapestop.r > 2 * tapestop.g && tapestop.b == 0 && Max(chaos) < 60 && chaos.r > 2 * chaos.g,
+        Check(Max(phaser) < 60 && phaser.b > 2 * std::max(phaser.r, phaser.g) && Max(tapestop) < 60
+                  && tapestop.r > 2 * tapestop.b && tapestop.b > tapestop.g && Max(chaos) < 60
+                  && chaos.r > 2 * chaos.g && chaos.b > 2 * chaos.g,
               "settings-channel: back on the play page, the 7th key the phaser's, the 11th the tape stop's, the 14th the chaos key's, dim");
         SetToggle(true);
         RunMs(300);
@@ -7037,7 +7040,7 @@ int main()
     }});
 
     // the phaser (#68) on the 11th white key: its notches sweep through a sine at its centre,
-    // its key violet, its rate knob's LED in its colours while free and green once synced, its
+    // its key blue, its rate knob's LED in its colours while free and green once synced, its
     // knobs on NRPN 0/64-67 and 1/64-67
     cases.push_back({"phaser", [] {
         freq = 800.f; // the centre at its default: the middle notch sweeps across it
@@ -7056,10 +7059,10 @@ int main()
         printf("      dry %.3f; latched, 20 ms windows from %.3f to %.3f\n", dry, low, high);
         Check(low < dry * .3f && high > dry * .8f,
               "phaser: KEY_7 latched sweeps a notch through an 800Hz sine, its centre");
-        // lit, violet, whitened by its meter as every key is
+        // lit, blue, whitened by its meter as every key is
         const Rgb key = SmtLedFull(kPhaserKeyLed);
         printf("      its key %02x%02x%02x\n", key.r, key.g, key.b);
-        Check(key.b > 200 && key.b > key.r && key.r > key.g, "phaser: its key lit, violet");
+        Check(key.b > 200 && key.b > key.r && key.r == key.g, "phaser: its key lit, blue");
 
         // knob 1, the rate, at .25: free, between violet and orange; synced over CC 14 on its
         // channel, 7: green
@@ -7094,7 +7097,7 @@ int main()
         Press("KEY_7", false);
         RunMs(300);
         const Rgb off = SmtLedFull(kPhaserKeyLed);
-        Check(Max(off) < 60 && off.b > off.g, "phaser: off, its key dim violet");
+        Check(Max(off) < 60 && off.b > 2 * std::max(off.r, off.g), "phaser: off, its key dim blue");
         Latch("KEY_14");
         const std::string st = Ask({0x20});
         Check(st.size() > 9 && ((static_cast<uint8_t>(st[8]) << 7 | static_cast<uint8_t>(st[9])) == 1u << 13),
@@ -7104,7 +7107,7 @@ int main()
     // ======== #306: the frequency shifter, the phaser's second mode ========
 
     // SHIFT + KEY_7 selects the phaser; KEY_7 again in the same hold switches it to the
-    // frequency shifter, however long after, and each further tap back and forth: the key azure
+    // frequency shifter, however long after, and each further tap back and forth: the key ice blue
     // (FxSlots.h), at full for a moment after each switch, the knob LEDs the mode's (knob 4
     // white in the middle of its direction); letting go of SHIFT, a new hold's SHIFT + KEY_7
     // only selects
@@ -7123,9 +7126,9 @@ int main()
         const bool shifter = PhaserShows(true);
         printf("      selected %s, switched %s (at full %s), knob 4 %s\n", Hex(selected).c_str(),
                Hex(SmtLedFull(kPhaserKeyLed)).c_str(), Hex(flash).c_str(), Hex(PthLedFull(4)).c_str());
-        Check(phaser && knob4, "fshift-gesture: SHIFT + KEY_7 selects the phaser, its key dim violet");
-        Check(shifter && Shows(flash, kAzure, 252, 12) && White(PthLedFull(4)),
-              "fshift-gesture: KEY_7 again in the hold: the frequency shifter, its key azure, at full for a moment; "
+        Check(phaser && knob4, "fshift-gesture: SHIFT + KEY_7 selects the phaser, its key dim blue");
+        Check(shifter && Shows(flash, kIceBlue, 252, 12) && White(PthLedFull(4)),
+              "fshift-gesture: KEY_7 again in the hold: the frequency shifter, its key ice blue, at full for a moment; "
               "knob 4 white, both sidebands");
         Tap("KEY_7");
         RunMs(400);

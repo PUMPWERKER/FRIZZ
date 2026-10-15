@@ -269,6 +269,7 @@ static const Colour kColours[] = {
     {"orange", orange, "orange"},    {"lime", lime, "lime"},       {"magenta", magenta, "magenta"},
     {"teal", teal, "teal"},          {"amber", amber, "amber"},    {"rose", rose, "rose"},
     {"violet", violet, "violet"},    {"azure", azure, "azure"},  {"cyan", cyan, "cyan"},
+    {"indigo", indigo, "indigo"},    {"scarlet", scarlet, "scarlet"}, {"ice_blue", ice_blue, "ice blue"},
 };
 
 static std::string ColourName(const std::string& id)
@@ -282,8 +283,8 @@ static std::string ColourName(const std::string& id)
 /** The colour names in a text, in their order ("light blue" before "blue") */
 static Strings ColourWords(const std::string& text)
 {
-    static const std::regex re("\\b(light blue|white|red|yellow|green|blue|pink|purple|orange|lime|"
-                               "magenta|teal|amber|rose|violet|azure|cyan)\\b");
+    static const std::regex re("\\b(light blue|ice blue|white|red|yellow|green|blue|pink|purple|orange|lime|"
+                               "magenta|teal|amber|rose|violet|azure|cyan|indigo|scarlet)\\b");
     Strings out;
     for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it)
         out.push_back(it->str());
