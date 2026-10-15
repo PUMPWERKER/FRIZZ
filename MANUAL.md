@@ -2500,7 +2500,8 @@ where [MIDI out](#midi-out) goes, so MIDI out has to be on too.
   global channel: CC 0 with its bank, the program change, then CC 0 = 0 (see [Program
   changes](#program-changes)), so a DAW records it and leaves FRIZZ's program changes on the
   scenes after. One planned at the end of a pass (SHIFT + the key) goes out as you let go of
-  SHIFT, with CC 54 = its passes before the program change and CC 54 = 0 after: played back,
+  SHIFT (when its passes start counting), with CC 54 = its passes before the program change
+  and CC 54 = 0 after, so a switch at once later in the take plays back at once: played back,
   it lands on the same pass end. If it then doesn't switch (cancelled with SHIFT + its key,
   another key pressed, the loop erased), CC 81 follows (127, then 0). Any other switch goes
   out the moment it switches, so a switch at once plays back a card load late (up to about
