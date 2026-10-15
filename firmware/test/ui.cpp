@@ -4557,6 +4557,39 @@ int main()
         Check(cancelled == cancel && cancelled_usb == cancel && kept,
               "loops-feedback-plan: a plan told, cancelled by hand: CC 81 = 127, then 0, on the jack and USB");
         Check(by_midi.empty() && kept_midi, "loops-feedback-plan: one cancelled by MIDI's CC 81: nothing back");
+        // told, then replaced by a key at once: CC 81 at the press, then that one as it lands;
+        // replaced by MIDI's program change: nothing back
+        ShiftWith({kLoopKeys[2]});
+        RunMs(300);
+        take();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 1000);
+        RunMs(300);
+        const std::string replaced = hex(take());
+        ShiftWith({kLoopKeys[2]});
+        RunMs(300);
+        take();
+        Trs({kCC, 0, 1});
+        Trs({kPC, 1});
+        UntilLength(72000, 1000);
+        RunMs(300);
+        const std::string by_pc = hex(take());
+        // told, then LOOP's erase: CC 81
+        ShiftWith({kLoopKeys[2]});
+        RunMs(300);
+        take();
+        Tap("KEY_28");
+        RunMs(300);
+        const std::string erased = hex(take());
+        const bool none = Probe().loop_state == 0 && UntilLength(120000, 3000) < 0;
+        usb();
+        printf("      replaced by a key:%s; by MIDI:%s; erased:%s\n", replaced.c_str(), by_pc.c_str(), erased.c_str());
+        Check(replaced == " BF 51 7F BF 51 00 BF 00 01 CF 00 BF 00 00",
+              "loops-feedback-plan: a plan told, replaced by a key at once: CC 81, then that switch as it lands");
+        Check(by_pc.find(" BF 51") == std::string::npos && by_pc.find(" CF") == std::string::npos,
+              "loops-feedback-plan: one replaced by MIDI's program change: nothing back");
+        // (the erase's own: the mix dry, CC 87 = 0)
+        Check(erased.rfind(" BF 51 7F BF 51 00", 0) == 0 && none, "loops-feedback-plan: one taken by LOOP's erase: CC 81");
     }});
 
     // a white key alone: at once. From an empty looper it plays, wet; from a loop, with a 10 ms
