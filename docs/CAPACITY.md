@@ -1,7 +1,7 @@
 # Capacity: what's free on the CHOMPI, and how to make room
 
 What a new feature can still use, measured on 2026-10-15 after the code-room round (#320, on
-`main` 143be34: the loop loader, USB on TinyUSB, the loop transfer; the history below). `make`
+`main` 0170d38: the loop loader, USB on TinyUSB, the loop transfer; the history below). `make`
 prints the memory table after every build; the numbers below come from it and from
 `build/FRIZZ.map`.
 
@@ -9,8 +9,8 @@ prints the memory table after every build; the numbers below come from it and fr
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 261,084 B (94 %) | **~17.0 KB** (17,444 B; the bench build 260,412 B, ~17.7 KB) | all the code, and the initial values of `.data` |
-| `SRAM` (AXI SRAM) | 240 KB | 217,664 B (89 %) | ~27.4 KB (the bench build 225,464 B, ~19.8 KB) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 261,292 B (94 %) | **~16.8 KB** (17,236 B; the bench build 260,628 B, ~17.5 KB) | all the code, and the initial values of `.data` |
+| `SRAM` (AXI SRAM) | 240 KB | 217,664 B (89 %) | ~27.4 KB (the bench build 225,464 B, ~19.8 KB, 225,496 B) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,804 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
@@ -19,8 +19,8 @@ prints the memory table after every build; the numbers below come from it and fr
 | `BACKUP_SRAM` | 4 KB | 92 B | ~4 KB | libDaisy's `boot_info` (12 B, first: the bootloader and the launcher hand over through it), then the crash record and the build running (80 B, `Crash.h`, #105); a reset leaves it, a power-off doesn't |
 | `SDRAM` | 64 MB | 58.7 MB | **~8.4 MB** | the loop (31.7 MB), the loop loader's buffer (14.75 MB), the tape stop (4.2 MB), the delay (3.8 MB), the event log (2.1 MB), the freezer (1.9 MB), the reverb's pre-delay (0.1 MB), the loop transfer's staging block and ring (34 KB) |
 
-**The code-room round (#320, 2026-10-15).** `main` had ~1.7 KB of code left in `FRIZZ.bin`
-(276,804 B, 143be34) and ~2.3 KB in the bench build (276,192 B). Eight changes, none to what the audio
+**The code-room round (#320, 2026-10-15).** `main` had ~1.5 KB of code left in `FRIZZ.bin`
+(277,012 B, 0170d38) and ~2.1 KB in the bench build (276,408 B). Eight changes, none to what the audio
 path computes (`check.sh` and `compare.sh` bit-identical), took 15.7 KB off both; measured one
 at a time, in this order, on `main` 3a77138 (`FRIZZ.bin`, the bench build where it differs):
 
@@ -111,8 +111,8 @@ The CDC class's handle (540 B) moved from the heap into `.bss` in the same chang
 counts it now: 226,760 → 226,568 B, the bench build's 234,856 → 234,664 B (from `main`
 b608028).
 
-**Where the builds stand.** `FRIZZ.bin` has the least code room, ~17.0 KB: it has the loop
-loader and the transfer, which the bench build hasn't (~17.7 KB left, as it carries the bench).
+**Where the builds stand.** `FRIZZ.bin` has the least code room, ~16.8 KB: it has the loop
+loader and the transfer, which the bench build hasn't (~17.5 KB left, as it carries the bench).
 The bench build has the least data room, ~19.8 KB of `SRAM` (`FRIZZ.bin` ~27.4 KB). So a
 feature of more than ~15 KB of code, or ~19 KB of data in internal RAM, needs room made first
 (below), or one of the builds stops linking. Data grows into SDRAM or DTCM where it can; for
