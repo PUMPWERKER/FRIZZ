@@ -19,9 +19,11 @@
 //    device's runs of 24 samples (FxChain::Insert), on a 220Hz and a 50Hz sine: the same;
 //    the shifter with its feedback at .8 and .95 on the 50Hz too, building up from the
 //    punch-in (#249)
-//  - the filter, crusher, shifter, wow & flutter and flanger punched in again and again
+//  - every insert and the resonator punched in again and again
 //    through the chain, at a hand's speed and inside the key's ~5ms fade: no step or peak
-//    beyond one punch-in's (#249; the flanger inside the fade is #392)
+//    beyond one punch-in's (#249, #392); the slicer, the folder, the phaser and the
+//    resonator too
+//  - the flanger's press restarting its sweep from silence, and only there (#392)
 #include <cmath>
 #include <vector>
 #include "Finalizer.h"
@@ -119,6 +121,48 @@ static void TestFlangerRecall()
     printf("      flanger recall: largest step %.4f (after %zu ms of drift), %.4f at stereo 0\n", worst,
            worst_at, mono);
     Check(worst < mono * 1.5f, "flanger: a recall to stereo 0 glides without a click, however far the LFOs drifted");
+}
+
+/** The flanger's press restarts its sweep from silence (Kastle's trigger), and only there
+ *  (#392): two flangers whose sweeps ran apart for different times, then slept on the same
+ *  input (a 200Hz sine, 240 samples a cycle, every stretch a whole number of them), come in
+ *  alike to the bit; pressed 10ms after their release, still heard, each keeps its own */
+static void TestFlangerTrigger()
+{
+    static chompi::Flanger a, b;
+    const auto in = [](size_t i) { return .5f * sinf(2.f * static_cast<float>(M_PI) * static_cast<float>(i % 240) / 240.f); };
+    const auto run = [&](chompi::Flanger& fx, size_t n, std::vector<float>* out) {
+        for (size_t i = 0; i < n; i++)
+        {
+            float l = in(i), r = l;
+            fx.Process(&l, &r);
+            if (out)
+                out->push_back(l);
+        }
+    };
+    const auto pair = [&](size_t off) {
+        std::vector<float> out[2];
+        chompi::Flanger* fx[2] = {&a, &b};
+        for (size_t k = 0; k < 2; k++)
+        {
+            fx[k]->Init(kSr);
+            fx[k]->SetParam(chompi::Flanger::RATE, .5f);
+            fx[k]->SetParam(chompi::Flanger::AMOUNT, .6f);
+            fx[k]->SetParam(chompi::Flanger::FEEDBACK, .5f);
+            fx[k]->SetOn(true);
+            run(*fx[k], 48000 + k * 74 * 240, nullptr); // the second's sweep 0.37s further on
+            fx[k]->SetOn(false);
+            run(*fx[k], off, nullptr);
+            fx[k]->SetOn(true);
+            run(*fx[k], 24000, &out[k]);
+        }
+        return out[0] == out[1];
+    };
+    const bool slept_alike = pair(96000), faded_alike = pair(480);
+    printf("      flanger: pressed from silence %s; 10ms after the release %s\n",
+           slept_alike ? "the same" : "DIFFERENT", faded_alike ? "THE SAME" : "each its own");
+    Check(slept_alike, "flanger: a press from silence restarts the sweep");
+    Check(!faded_alike, "flanger: a press while the release still fades keeps the sweep where it is (#392)");
 }
 
 static void TestFreezer()
@@ -394,10 +438,11 @@ static void ChainRepunch(const ChainCase& c, float hz, size_t interval, float* s
     *peak_over = worst_peak / (1.25f * fmaxf(on_peak, dry_peak) + 1e-4f);
 }
 
-/** #249: filter, crusher, shifter, wow & flutter and flanger punched in again and again, at a
- *  hand's speed (20 to 150ms) and inside the key's fade (0.5 to 5ms: a release bouncing
- *  back, MIDI; the key reaches the effect at a run's start): no step or peak beyond what one
- *  punch-in makes, with ChainPunchIn's margins and the fade's own crossing */
+/** #249: every insert, the resonator and the slicer punched in again and again, at a hand's
+ *  speed (20 to 150ms) and inside the key's fade (0.5 to 5ms: a release bouncing back, MIDI;
+ *  the key reaches the effect at a run's start): no step or peak beyond what one punch-in
+ *  makes, with ChainPunchIn's margins and the fade's own crossing. The flanger's sweep
+ *  restarted under a press inside the fade, a click (#392) */
 static void TestRepunch()
 {
     struct Speed
@@ -405,11 +450,12 @@ static void TestRepunch()
         const char* what;
         size_t intervals[4];
     } speeds[] = {{"at a hand's speed", {960, 1440, 2400, 7200}}, {"inside the key's fade", {24, 48, 120, 240}}};
-    for (const ChainCase& c : kChainCases)
+    // every insert and the resonator (kChainCases), and the slicer, whose press starts its
+    // envelopes, at its densest pattern
+    std::vector<ChainCase> cases(std::begin(kChainCases), std::end(kChainCases));
+    cases.push_back({chompi::FX_SLICER, "slicer", {1.f, .5f, 0.f, 0.f, 0.f}, 1.f});
+    for (const ChainCase& c : cases)
     {
-        if (c.fx != chompi::FX_FILTER && c.fx != chompi::FX_CRUSHER && c.fx != chompi::FX_SHIFTER
-            && c.fx != chompi::FX_WARBLE && c.fx != chompi::FX_FLANGER)
-            continue;
         for (const Speed& sp : speeds)
             for (float hz : {220.f, 50.f})
             {
@@ -429,14 +475,10 @@ static void TestRepunch()
                 char what[180];
                 snprintf(what, sizeof what,
                          "%s: punched in again and again %s at %.0fHz, no click (step %.2f of its bound, every %zu "
-                         "samples; peak %.2f)%s",
-                         c.name, sp.what, hz, worst_step, step_at, worst_peak,
-                         c.fx == chompi::FX_FLANGER && sp.intervals[0] == 24 ? " (#392)" : "");
+                         "samples; peak %.2f)",
+                         c.name, sp.what, hz, worst_step, step_at, worst_peak);
                 const bool ok = worst_step <= 1.f && worst_peak <= 1.f;
-                if (c.fx == chompi::FX_FLANGER && sp.intervals[0] == 24)
-                    Known(ok, what); // #392: a press restarts the sweep, also while still heard
-                else
-                    Check(ok, what);
+                Check(ok, what);
             }
     }
 }
@@ -504,6 +546,7 @@ int main()
     TestFinalizer();
     TestFlanger();
     TestFlangerRecall();
+    TestFlangerTrigger();
     TestFreezer();
     TestFilter();
     TestPunchIns();

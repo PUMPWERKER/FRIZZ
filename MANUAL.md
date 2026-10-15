@@ -967,7 +967,8 @@ vibrato.
 
 - **Amount:** one knob sets both the depth and how much of the swept sound you hear: around
   the middle it flanges and chorus-sweeps, at the top it's all delayed signal, a vibrato.
-- **Pressing the key** restarts the sweep from the centre.
+- **Pressing the key** restarts the sweep from the centre; pressed again right after you let
+  go, while it still fades out, it goes on where it was.
 - **Feedback** goes through the swept delay, a classic flanger's resonance.
 - A ~12 ms delay, swept up to its full length either way by a triangle LFO.
 - LEDs: the key is light blue; the knobs go light blue to purple.
