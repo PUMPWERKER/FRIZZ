@@ -250,9 +250,10 @@ copy the release's `CHOMPI.bin` to the card's root) and
 A card set up from the launcher's v1.5 or v1.6 release still has USB storage v1.5 on key 15: copy
 v1.6's `.bin` over `FIRMWARE/15_USB_STORAGE.bin` (or `./flash.py FILE --slot 15 --other-slot
 --name USB_STORAGE`). With an older launcher or storage firmware the tools still work, but say which
-key to press (15 for the card, overdub then CHOMPI to leave it, 10 for FRIZZ). With an older FRIZZ or
-another firmware running, switch the CHOMPI off and on when they say so (they wait up to 2
-minutes). Mounting needs udisks, as any desktop has.
+key to press (15 for the card, overdub then CHOMPI to leave it, 10 for FRIZZ). Another firmware
+on FRIZZ's platform (its USB names say Chompi Club, GERTT) is sent FRIZZ's restart into the
+launcher first; with an older FRIZZ or a firmware that ignores it, switch the CHOMPI off and on
+when they say so (they wait up to 2 minutes). Mounting needs udisks, as any desktop has.
 
 **Remote control over USB MIDI.** `./remote.py` talks to a running FRIZZ over its SysEx
 (`code/src/MidiControl.h`): `state`, `leds`, `load [--every S]` (with the blocks that took
@@ -499,7 +500,8 @@ tools/usbjitter.py --loads 40           # USB MIDI out's clock while cubbis load
   level (75 % input gain × 3 × the line out's 0.3) and in phase. Use 440 Hz: at 997 Hz one
   49-frame packet is about one period, so a lost one hides.
 - A lent card shows up as a drive with the label `CHOMPI-SD` and the vendor `FrizZ`
-  (`tools/chompi.py` tells it from the USB storage firmware's by that). Write only into a
+  (`tools/chompi.py` tells it from the USB storage firmware's by that, or by MIDI answering
+  beside the drive, which the storage firmware has none of: another firmware's lend too, #368). Write only into a
   folder of its own (`/USBTEST`) and list the root, `/FRIZZ` and `/TAPE` before and after.
 - A build with a new USB stack goes first as `make USB_SAFETY=1`, after `test/unit.sh
   usbtransport`, and every hold chain ends in `; ./flash.py --run 10`.

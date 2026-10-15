@@ -560,8 +560,8 @@ restart("/dev/sdz1", 0, hard=True)
 chompi.dev_call = lambda *rest, **kw: None
 restart(None, 0)
 )", out);
-    Check(rc == 0 && Has(out, "exit: FRIZZ lends the card to the computer (CHOMPI-SD at /dev/sdz1): not restarted, the drive would go from under it. Eject it there (or take it back on the CHOMPI) and run this again nothing\n")
-              && Has(out, "exit: FRIZZ lends the card to the computer (FRIZZ says so): not restarted")
+    Check(rc == 0 && Has(out, "exit: the firmware running lends the card to the computer (CHOMPI-SD at /dev/sdz1): not restarted, the drive would go from under it. Eject it there (or take it back on the CHOMPI) and run this again nothing\n")
+              && Has(out, "exit: the firmware running lends the card to the computer (FRIZZ says so): not restarted")
               && Has(out, "\nsent f07d434810f7\nsent f07d43483e0a00525354f7\nexit: ")
               && Has(out, "\nsent f07d434810f7\n"),
           "tools: chompi.restart refuses while FRIZZ lends the card, by the drive or by FRIZZ's word");
@@ -1996,6 +1996,83 @@ print("names:", frizz_node("/dev/snd/midiC3D0"), frizz_node("/dev/snd/midiC4D0")
               && Has(out, "another: ['wait launcher: None']") && Has(out, "names: True False False"),
           "tools: a silent FRIZZ, by its USB names, is RESET before the power switch is asked for; another firmware isn't");
     if (rc != 0 || !Has(out, "names: True False"))
+        printf("%s\n", out.c_str());
+
+    // another firmware on FRIZZ's platform (#368): by its USB names (Chompi Club) it's asked to
+    // restart into the launcher before the power switch is; IDENT's kinds past the bench are
+    // another firmware's, never taken for FRIZZ; a card it lends isn't the storage firmware's,
+    // and nothing restarts it meanwhile
+    rc = Python(R"(
+import os, sys, time, chompi, midi_send
+time.sleep = lambda s: None
+chompi.BUSY = 0
+log = []
+def case(name, names, reaches):
+    chompi.state = lambda device=None: ("other", "node")
+    chompi.restart = lambda node, hard=False: log.append(("RESET " if hard else "restart ") + node)
+    chompi.frizz_node = lambda node: False
+    chompi.platform_node = lambda node: names
+    chompi.reached = lambda wanted, *rest: log.append("reached? " + wanted) or reaches
+    chompi.wait_for = lambda wanted, timeout, device=None, hint=None, **kw: log.append("wait %s: %s" % (wanted, hint)) or "l"
+    log.clear()
+    chompi.to_launcher()
+    print("%s: %s" % (name, log), flush=True)
+case("platform", True, True)
+case("platform, no restart", True, False)
+case("stock", False, True)
+os.makedirs("asound", exist_ok=True)
+open("asound/cards", "w").write(" 3 [GERTT          ]: USB-Audio - GERTT\n                      Chompi Club GERTT at usb-0000:00:14.0-2, full speed\n"
+                                " 4 [Seed           ]: USB-Audio - Daisy Seed Built In\n                      Electrosmith Daisy Seed Built In at usb-0000:00:14.0-3\n")
+import importlib
+chompi = importlib.reload(chompi)
+chompi.ASOUND = "asound"
+print("names:", chompi.platform_node("/dev/snd/midiC3D0"), chompi.platform_node("/dev/snd/midiC4D0"),
+      chompi.platform_node(None), chompi.frizz_node("/dev/snd/midiC3D0"), flush=True)
+# IDENT's kinds
+for kind in (0, 1, 2, 9):
+    info = chompi.parse_ident(bytes([1, kind]) + bytes(24))
+    print("kind %d: %s / %s" % (kind, info["kind"], chompi.describe_ident(info, [])), flush=True)
+chompi.state = lambda device=None: ("frizz", "node")
+chompi.ident = lambda node: chompi.parse_ident(bytes([1, 2]) + bytes(24))
+chompi.last_started = lambda: (12, True, "this hold")
+chompi.start = lambda slot, *rest: print("start", slot, flush=True) or "n"
+print("to_frizz:", chompi.to_frizz(), flush=True)
+# the card: the storage firmware's, or lent by a firmware
+chompi.card_partition = lambda: "/dev/sdx1"
+for vendor, midi in (("CHOMPI", None), (None, None), ("FrizZ", "/dev/snd/midiC3D0"), ("GERTT", None),
+                     ("XYZ", "/dev/snd/midiC3D0"), ("XYZ", None)):
+    chompi.drive_vendor = lambda part: vendor
+    midi_send.find_device = lambda: midi
+    chompi.by_usb_id = lambda: (None, None)
+    print("drive %s, MIDI %s: storage %s, lent %s, FRIZZ's %s" % (vendor, "yes" if midi else "no",
+          chompi.storage_partition(), chompi.lent_partition(), chompi.lent_by_frizz("/dev/sdx1")), flush=True)
+chompi.drive_vendor = lambda part: "GERTT"
+try:
+    chompi.restart("node")
+    print("restarted while GERTT lends it", flush=True)
+except SystemExit as e:
+    print("exit:", e, flush=True)
+)", out);
+    Check(rc == 0 && Has(out, "platform: ['restart node', 'reached? launcher', 'wait launcher: None']\n")
+              && Has(out, "another firmware on the CHOMPI: asking it to restart into the launcher")
+              && Has(out, "platform, no restart: ['restart node', 'reached? launcher', 'wait launcher: None']\n")
+              && Has(out, "it didn't restart: switch the CHOMPI off and on")
+              && Has(out, "stock: ['wait launcher: None']\n") && Has(out, "names: True False False False\n"),
+          "tools: another firmware on FRIZZ's platform, by its USB names, is asked to restart into the launcher first (#368)");
+    Check(Has(out, "kind 0: frizz / FRIZZ, crc32") && Has(out, "kind 1: bench / the bench, crc32")
+              && Has(out, "kind 2: other 2 / another firmware (IDENT kind 2), crc32")
+              && Has(out, "kind 9: other 9 / another firmware (IDENT kind 9), crc32")
+              && Has(out, "not FRIZZ: another firmware (IDENT kind 2)") && Has(out, "start 12\nto_frizz: n\n"),
+          "tools: IDENT's kinds past the bench are another firmware's, never taken for FRIZZ: its slot is started (#368)");
+    Check(Has(out, "drive CHOMPI, MIDI no: storage /dev/sdx1, lent None, FRIZZ's False\n")
+              && Has(out, "drive None, MIDI no: storage /dev/sdx1, lent None, FRIZZ's False\n")
+              && Has(out, "drive FrizZ, MIDI yes: storage None, lent /dev/sdx1, FRIZZ's True\n")
+              && Has(out, "drive GERTT, MIDI no: storage None, lent /dev/sdx1, FRIZZ's False\n")
+              && Has(out, "drive XYZ, MIDI yes: storage None, lent /dev/sdx1, FRIZZ's False\n")
+              && Has(out, "drive XYZ, MIDI no: storage /dev/sdx1, lent None, FRIZZ's False\n")
+              && Has(out, "exit: the firmware running lends the card to the computer (CHOMPI-SD at /dev/sdx1): not restarted"),
+          "tools: a card another firmware lends (its vendor, or MIDI beside the drive) isn't the storage firmware's, and isn't restarted from under (#368)");
+    if (rc != 0 || !Has(out, "to_frizz: n"))
         printf("%s\n", out.c_str());
 
     // after a script played RAM only, a FRIZZ slot other than the test slot is started again
