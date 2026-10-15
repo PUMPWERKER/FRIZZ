@@ -17,8 +17,8 @@ reads; the loop transfer itself is remote.py loops' (and loopxfer.py's model).
                                                     files put into the slots from BANK SLOT on
                                                     (an empty slot each, or refused), the plan
                                                     written, its progress followed; then the
-                                                    page's listing of them. --hide hides the
-                                                    tab halfway (it keeps going)
+                                                    page's listing of them. --hide puts another
+                                                    tab in front 3 s in (it keeps going)
     tools/companion.py eval JS [--url URL]          connect, then JS's value (the page's
                                                     debugging, no FRIZZ needed with --no-connect)
 
@@ -147,7 +147,7 @@ class Browser:
         os.makedirs(self.profile, exist_ok=True)
         cmd = BROWSER + ["--headless=new", "--remote-debugging-port=%d" % self.port,
                          "--user-data-dir=" + self.profile, "--no-first-run", "--no-default-browser-check",
-                         "--disable-background-timer-throttling", "about:blank"]
+                         "about:blank"]
         self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                      start_new_session=True)
         self.ws = None
@@ -368,19 +368,18 @@ def upload(br, a):
         x = slots.get(at)
         if not x or at[1] > 14 or "empty" not in x["cls"].split():
             sys.exit("upload: %s isn't an empty slot on the page: nothing done" % name_of(*at))
-    # each file onto its slot: the slot picked, its "Upload a file here" input given the file
+    # the slot picked, then the files at once through "Add files" (its input takes several),
+    # as a hand adds a batch: the page plans them into that slot and the empty ones after it
     br.call("DOM.enable")
-    for p, at in zip(files, want):
-        detail_of(br, *at)
-        doc = br.call("DOM.getDocument", {"depth": 0})
-        node = br.call("DOM.querySelector", {"nodeId": doc["root"]["nodeId"],
-                                              "selector": "[data-detail] input[type=file]"})
-        if not node.get("nodeId"):
-            sys.exit("upload: no file input for %s on the page" % name_of(*at))
-        br.call("DOM.setFileInputFiles", {"nodeId": node["nodeId"], "files": [p]})
-        ok = br.wait("(() => /\\S/.test(document.querySelector('[data-plan-list]')?.innerText || '') && "
-                     "(document.querySelector('[data-plan-count]')?.textContent || '').match(/\\d+/))()", 60)
-        print("planned: %s -> %s (%s)" % (os.path.basename(p), name_of(*at), ok), flush=True)
+    detail_of(br, b, s)
+    doc = br.call("DOM.getDocument", {"depth": 0})
+    node = br.call("DOM.querySelector", {"nodeId": doc["root"]["nodeId"],
+                                          "selector": "input[data-file-input]"})
+    if not node.get("nodeId"):
+        sys.exit("upload: no \"Add files\" on the page")
+    br.call("DOM.setFileInputFiles", {"nodeId": node["nodeId"], "files": files})
+    if not br.wait("document.querySelectorAll('[data-plan-list] > li').length >= %d" % len(files), 120):
+        print("not all planned: %s" % br.js("(document.querySelector('[data-notes]')?.innerText || '').trim()"))
     plan = br.js("(document.querySelector('[data-plan-list]')?.innerText || '').trim()")
     print("the plan:\n  " + plan.replace("\n", "\n  "))
     # Review and write, then the dialog's "Write to FRIZZ"
@@ -404,22 +403,20 @@ def upload(br, a):
             print("  %5.1f s  %s" % (time.monotonic() - t0, line), flush=True)
             last = line
         if a.hide and not hidden and time.monotonic() - t0 > 3:
-            if a.hide == "frozen":
-                br.call("Page.setWebLifecycleState", {"state": "frozen"})
-            else:
-                br.call("Emulation.setFocusEmulationEnabled", {"enabled": False})
-                br.js("Object.defineProperty(document, 'visibilityState', {value: 'hidden', configurable: true}),"
-                      " Object.defineProperty(document, 'hidden', {value: true, configurable: true}),"
-                      " document.dispatchEvent(new Event('visibilitychange')), true")
-            print("  the tab hidden (%s)" % a.hide, flush=True)
-            hidden = True
+            # another tab in front, as a hand switches tabs: the page's own visibility as the
+            # browser has it then, said
+            other = br.call("Target.createTarget", {"url": "about:blank"}, ws=br.browser_ws)["targetId"]
+            br.call("Target.activateTarget", {"targetId": other}, ws=br.browser_ws)
+            time.sleep(0.5)
+            print("  another tab in front: the page's visibility %s" % br.js("document.visibilityState"), flush=True)
+            hidden = other
         if prog["title"] in ("Done", "Stopped"):
             done = prog
             break
         time.sleep(0.5)
     print("report: %s" % ((done or {}).get("report") or "none (timed out)").replace("\n", " / "))
-    if a.hide == "frozen":
-        br.call("Page.setWebLifecycleState", {"state": "active"})
+    if hidden:
+        br.call("Target.closeTarget", {"targetId": hidden}, ws=br.browser_ws)
     time.sleep(1)
     tab(br, b)
     for x in br.js(SLOTS_JS):
@@ -444,7 +441,7 @@ def main():
     p.add_argument("bank")
     p.add_argument("slot")
     p.add_argument("files", nargs="+")
-    p.add_argument("--hide", choices=["hidden", "frozen"], help="the tab hidden 3 s in")
+    p.add_argument("--hide", action="store_true", help="another tab in front 3 s in, until it's done")
     p = sub.add_parser("eval", parents=[common])
     p.add_argument("js")
     p.add_argument("--no-connect", action="store_true")
