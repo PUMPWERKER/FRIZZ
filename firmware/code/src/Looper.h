@@ -814,22 +814,11 @@ private:
         else if (reverse_)
             pos = next_length_ - 1;
         // a fade still running (a switch at the loop point within 10 ms of another, or the
-        // crossfader's two loops, #318): its other loop ends early but smoothly, as the tail,
-        // from the gain it's heard at; the loop heard fades out from its own
-        const bool tail = playing && fade_ > .0001f && other_mem_;
+        // crossfader's two loops, #318): its other loop ends early but smoothly, as the tail
         tail_mem_ = nullptr;
         other_gain_ = 1.f;
-        if (__builtin_expect(tail, 0))
-        {
-            const float x = mix_;
-            tail_mem_ = other_mem_;
-            tail_length_ = other_length_;
-            tail_pos_ = other_pos_;
-            tail_frac_ = other_frac_;
-            tail_gain_ = fader_ ? EqualPower(x) : x;
-            tail_step_ = tail_gain_ / kTailFrames;
-            other_gain_ = fader_ ? EqualPower(1.f - x) : 1.f - x;
-        }
+        if (__builtin_expect(playing && fade_ > .0001f && other_mem_, 0))
+            BeginTail();
         other_mem_ = nullptr;
         fader_ = end_ = false;
         if (playing && fade_ > .0001f)
@@ -850,6 +839,22 @@ private:
         if (state_ == State::EMPTY)
             state_ = State::PLAYING;
         TakeOver(mem, next_length_, next_beats_, pos, frac);
+    }
+
+    /** The other voice's loop ends early, from the gain it's heard at to nothing over
+     *  kTailFrames (the tail, ReadTail); the loop heard, about to fade out as the other voice,
+     *  starts that fade from its own gain (other_gain_). Behind FxChain::Run (FRIZZ_AFTER_RUN):
+     *  the rare path's code doesn't move the audio callback's */
+    __attribute__((noinline, cold)) FRIZZ_AFTER_RUN void BeginTail()
+    {
+        const float x = mix_;
+        tail_mem_ = other_mem_;
+        tail_length_ = other_length_;
+        tail_pos_ = other_pos_;
+        tail_frac_ = other_frac_;
+        tail_gain_ = fader_ ? EqualPower(x) : x;
+        tail_step_ = tail_gain_ / kTailFrames;
+        other_gain_ = fader_ ? EqualPower(1.f - x) : 1.f - x;
     }
 
     /** The loop in mem from pos: the looper's from here, a switch (Switches) */
@@ -1200,7 +1205,7 @@ private:
     }
     /** The tail (DoSwitch) added, its gain falling to nothing over kTailFrames, moving as the
      *  other voice */
-    __attribute__((noinline, cold)) void ReadTail(float* l, float* r, float step)
+    __attribute__((noinline, cold)) FRIZZ_AFTER_RUN void ReadTail(float* l, float* r, float step)
     {
         float tl, tr;
         ReadAt(tail_mem_, tail_length_, tail_pos_, tail_frac_, &tl, &tr);
@@ -1232,8 +1237,8 @@ private:
         return x * (1.5707963f - x2 * (.6459640f - .0751677f * x2));
     }
     /** A loop of length frames in mem, at pos and frac, as ReadInterpolated (the other voice's:
-     *  a loaded loop, no post-roll) */
-    static void ReadAt(const int16_t* mem, size_t length, size_t pos, float frac, float* l, float* r)
+     *  a loaded loop, no post-roll); inline, as in ReadScrambled before the tail read it too */
+    __attribute__((always_inline)) static inline void ReadAt(const int16_t* mem, size_t length, size_t pos, float frac, float* l, float* r)
     {
         float xl[4], xr[4];
         for (int k = 0; k < 4; k++)
@@ -1253,7 +1258,7 @@ private:
         return pos >= length_ ? pos - length_ : pos;
     }
 
-    static inline float Hermite(const float* x, float t)
+    __attribute__((always_inline)) static inline float Hermite(const float* x, float t)
     {
         const float c0 = x[1];
         const float c1 = .5f * (x[2] - x[0]);
