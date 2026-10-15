@@ -187,7 +187,7 @@ def bursts(x, rel=0.35):
     return out
 
 
-def clicks(x, rel=8.0, skip=None):
+def clicks(x, rel=8.0, skip=None, floor_db=-50.0, bed=None):
     """Transients: the energy above 4 kHz per ms against its median (the loops have none
     there), with the times where it stood out; not within 150 ms of SKIP (the marker, whose
     edges spread) nor the capture's first and last 20 ms"""
@@ -198,14 +198,19 @@ def clicks(x, rel=8.0, skip=None):
     m = SR // 1000
     e = (hp[:n // m * m].reshape(-1, m) ** 2).mean(1)
     med = np.median(e) + 1e-14
-    hits = np.nonzero(e > rel * rel * med)[0]
+    # over the median by REL, and no quieter than FLOOR_DB under the bed's amplitude: a fader's
+    # step or a gain glide leaves -60 to -70 dB there, a hard cut -20 to -30
+    need = rel * rel * med
+    if bed:
+        need = max(need, (bed * 10 ** (floor_db / 20)) ** 2 / 2)
+    hits = np.nonzero(e > need)[0]
     out = []
     for h in hits:
         if h < 20 or h > len(e) - 20 or (skip is not None and abs(h / 1000.0 - skip) < 0.15):
             continue
         if out and h - out[-1][0] < 20:
             continue
-        out.append((int(h), float(10 * np.log10(e[h] / med))))
+        out.append((int(h), float(10 * np.log10(e[h] * 2 / bed ** 2)) if bed else float(10 * np.log10(e[h] / med))))
     return [(h / 1000.0, db) for h, db in out]
 
 
@@ -256,7 +261,7 @@ def analyze(path, events=None):
     rel_db = 10 * np.log10(power[on] / single ** 2) if on.any() else np.array([0.0])
     mk = marker(x)
     res = dict(file=path, seconds=len(x) / SR, bed=single,
-               marker=mk, segments=segments(lv), bursts=bursts(x), clicks=clicks(x, skip=mk),
+               marker=mk, segments=segments(lv), bursts=bursts(x), clicks=clicks(x, skip=mk, bed=single),
                power_db=dict(min=float(rel_db.min()), max=float(rel_db.max()),
                              p1=float(np.percentile(rel_db, 1)), p99=float(np.percentile(rel_db, 99))))
     res["levels"] = lv.round(5).tolist()
@@ -277,8 +282,8 @@ def show(res):
     print("  bursts: %d; power of the beds against one loop's: %+.2f .. %+.2f dB (1-99 %%: %+.2f .. %+.2f)"
           % (len(res["bursts"]), res["power_db"]["min"], res["power_db"]["max"], res["power_db"]["p1"],
              res["power_db"]["p99"]))
-    print("  transients above 4 kHz: %d%s" % (len(res["clicks"]), "".join(
-        "\n    at %.3f s, %+.1f dB over the median" % c for c in res["clicks"][:20])))
+    print("  transients above 4 kHz, within 50 dB of the bed: %d%s" % (len(res["clicks"]), "".join(
+        "\n    at %.3f s, %+.1f dB against the bed" % c for c in res["clicks"][:20])))
 
 
 def cmd_analyze(a):
@@ -304,14 +309,24 @@ def land(res, t, slot, within=(-0.03, 20.0)):
 
 
 def pass_ends(res, slot, t, count=8):
-    """SLOT's next COUNT pass ends after T: its last beat 0 heard at or before T (a burst
-    while SLOT plays), then a pass's length on and on"""
-    starts = [b[0] for b in res["bursts"] if b[2] == 0 and b[0] <= t + 0.005
-              and any(s - 0.005 <= b[0] < e and sl == slot for s, e, sl in res["segments"])]
-    if not starts:
+    """SLOT's next COUNT pass ends after T, from its last burst heard at or before T while it
+    plays: beat b there means its pass began b beats before (an at-once switch starts a loop
+    by time, anywhere in its pass), then a pass's length on and on"""
+    heard = [b for b in res["bursts"] if b[0] <= t + 0.005
+             and any(s - 0.005 <= b[0] < e and sl == slot for s, e, sl in res["segments"])]
+    if not heard:
         return []
-    length = LOOPS[slot][1]
-    return [starts[-1] + length * k for k in range(1, count + 1)]
+    _, secs, beats = LOOPS[slot]
+    start = heard[-1][0] - heard[-1][2] * secs / beats
+    ends = [start + secs * k for k in range(1, count + 3)]
+    return [e for e in ends if e > t][:count]
+
+
+def beat0_near(res, t, within=0.03):
+    """The onset of a beat 0 burst within WITHIN of T: where a planned switch landed, to the
+    sample (the new loop starts on its beat 0), or None"""
+    near = [b[0] for b in res["bursts"] if b[2] == 0 and abs(b[0] - t) <= within]
+    return min(near, key=lambda x: abs(x - t)) if near else None
 
 
 def judge(ev, res):
@@ -324,6 +339,8 @@ def judge(ev, res):
         for e in ev["events"]:
             t = e["sent"] + off
             got = land(res, t, e["slot"])
+            if got is not None and e["mode"] not in (0, 127):
+                got = beat0_near(res, got) or got  # the segment's 10 ms grid, refined
             ends = pass_ends(res, prev, t)
             want = None
             if e["mode"] in (0, 127):
@@ -331,7 +348,7 @@ def judge(ev, res):
             elif len(ends) >= e["mode"]:
                 want = ends[e["mode"] - 1]
             ok = got is not None and want is not None and (
-                abs(got - want) < (0.12 if e["mode"] in (0, 127) else 0.012))
+                abs(got - want) < (0.12 if e["mode"] in (0, 127) else 0.003))
             line = ("CC 54 = %3d, PC to h%d at %.3f s: heard at %s, %s" % (
                 e["mode"], e["slot"], t, "%.4f s" % got if got else "never",
                 "at once" if e["mode"] in (0, 127) else "pass end %d at %s" % (
@@ -340,7 +357,17 @@ def judge(ev, res):
                 line += " (%+.1f ms)" % ((got - want) * 1000)
             out.append((ok, line))
             prev = e["slot"] if got else prev
-        med, lo, hi = beat_grid(res["bursts"])
+        for e in ev.get("cubbi", []):
+            t = e["sent"] + off
+            lv = np.array(res["levels"])
+            w = int(t * SR / WIN)
+            gone = next((k for k in range(w, len(lv)) if lv[k].max() < 0.2 * res["bed"]), None)
+            out.append((gone is not None and (gone * WIN / SR - t) < 0.15,
+                        "CC 0 = 9, PC %d (cubbi_a%d) at %.3f s: our loops gone at %s" % (
+                            e["cubbi"] - 1, e["cubbi"], t, "%.3f s" % (gone * WIN / SR) if gone is not None else "never")))
+        last = ev["events"][-1]["sent"] + off + 1.0 if ev["events"] else None
+        res["clicks"] = [c for c in res["clicks"] if last is None or c[0] < last]
+        med, lo, hi = beat_grid(res["bursts"], None, last)
         out.append((True, "beats: %d, intervals median %.4f s, %.4f .. %.4f" % (len(res["bursts"]), med, lo, hi)))
     elif kind == "feedback":
         for line in ev.get("notes", []):
@@ -362,8 +389,8 @@ def judge(ev, res):
     for ok, line in out:
         print(("ok    " if ok else "FAIL  ") + line)
     nclick = len(res["clicks"])
-    print("transients above 4 kHz: %d" % nclick)
-    return all(ok for ok, _ in out)
+    print("transients above 4 kHz, within 50 dB of the bed: %d" % nclick)
+    return all(ok for ok, _ in out) and nclick == 0
 
 
 # ======== on the device ========
@@ -384,6 +411,11 @@ class Run:
             sys.exit("USB audio is off: no capture")
         self.settings = st
         self.ch = (st["midi_channel"] or 16) - 1
+        # the marker, FRIZZ's test signal in AUX's place, on the master: AUX live (in RAM)
+        if not st.get("aux_live"):
+            why = remote.try_set(self.f, "settings", "aux_live", "1")
+            if why:
+                sys.exit("aux_live: " + why)
         self.card = self._card()
         self.profile = self._profile() if self.card else None
         self.rec = None
@@ -546,7 +578,7 @@ def cmd_feedback(a):
         run.loops_page()
         th = threading.Thread(target=reader, daemon=True)
         th.start()
-        t = 1.5
+        t = run.now() + 0.5
         for key, planned, gap in (("KEY_13", False, 2.3), ("KEY_14", False, 1.7), ("KEY_15", True, 5.5),
                                   ("KEY_13", False, 2.9), ("KEY_14", False, 2.1)):
             at(run, t)
@@ -574,13 +606,15 @@ def cmd_feedback(a):
     finally:
         run.end()
     take1 = run.out + ".wav"
-    # again: the take played back into FRIZZ, from its first message on, the Loops page shown
+    run.f.link.close()  # ALSA's raw MIDI takes one opener: the second run's
+    # again: the take played back into FRIZZ, from its first message on, the Loops page shown,
+    # as long after the capture's start as by hand
     run2 = Run(a.out + "-back")
     try:
         run2.start(a.secs)
         run2.loops_page()
-        start = 1.5 - (hand[0]["sent"] - (msgs[0][0] if msgs else hand[0]["sent"]))
         base = msgs[0][0] if msgs else 0
+        start = max(run2.now() + 0.2, base)
         for tt, m in msgs:
             at(run2, start + tt - base)
             run2.f.raw(m)

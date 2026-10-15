@@ -11,6 +11,9 @@ reads; the loop transfer itself is remote.py loops' (and loopxfer.py's model).
                                                     cubbi_a 3)
     tools/companion.py refused [--url URL]          Web MIDI refused (the permission denied):
                                                     what the page says
+    tools/companion.py ports [--url URL]            the browser's MIDI ports, and FRIZZ's IDENT sent on
+                                                    the "frizz" ones: exit 0 if it answers (the
+                                                    page's Web MIDI without the page's search)
     tools/companion.py connect [--url URL]          only connect: what the page says (a FRIZZ
                                                     without the loop transfer: "doesn't answer")
     tools/companion.py upload BANK SLOT FILE... [--url URL]
@@ -203,9 +206,9 @@ class Browser:
             self.call("Browser.grantPermissions", {"origin": origin, "permissions": ["midi", "midiSysex"]},
                       ws=self.browser_ws)
         else:
-            for name in ("midi-sysex", "midi"):
-                self.call("Browser.setPermission", {"origin": origin, "permission": {"name": name, "sysex": name == "midi-sysex"},
-                                                    "setting": "denied"}, ws=self.browser_ws)
+            for desc in ({"name": "midi", "sysex": True}, {"name": "midi"}):
+                self.call("Browser.setPermission", {"origin": origin, "permission": desc, "setting": "denied"},
+                          ws=self.browser_ws)
 
     def open(self, url):
         self.call("Page.enable")
@@ -276,15 +279,53 @@ SLOTS_JS = r"""[...document.querySelectorAll('[data-grid] .slot')].map(b => ({
 
 
 def connect(br, url, granted=True):
+    """Connect pressed: the page's state once it's done, its steps meanwhile in words printed
+    (midi.js's search: the ports it opens, skips and asks), and on a failure what the page's
+    console said"""
     br.permission(url, granted)
     br.open(url)
     br.js("document.querySelector('[data-connect]').click(), true")
-    st = br.wait("(() => { const s = %s; return s.state !== 'busy' && s.state !== '' ? s : null })()" % STATE_JS, 40)
+    t0 = time.monotonic()
+    seen = []
+    st = None
+    while time.monotonic() - t0 < 40:
+        cur = br.js(STATE_JS)
+        line = "%s: %s %s" % (cur["state"], cur["text"], cur["detail"])
+        if not seen or seen[-1] != line:
+            seen.append(line)
+            print("  %5.2f s  %s" % (time.monotonic() - t0, line), flush=True)
+        if cur["state"] not in ("busy", ""):
+            st = cur
+            break
+        time.sleep(0.05)
     if st and st["state"] == "connected":
         # the listing read
         st = br.wait("(() => { const s = %s; return s.slots && !/Reading|reading/.test(s.empty) ? s : null })()"
                      % STATE_JS, 120) or st
+    elif st:
+        for e in br.events:
+            if e.get("method") == "Runtime.consoleAPICalled":
+                print("  console.%s: %s" % (e["params"].get("type"), " ".join(
+                    str(a.get("value", a.get("description", ""))) for a in e["params"].get("args", []))))
+            elif e.get("method") == "Runtime.exceptionThrown":
+                print("  exception: %s" % e["params"]["exceptionDetails"].get("text"))
     return st or br.js(STATE_JS)
+
+
+# Web MIDI's ports as the page's browser has them, and FRIZZ's IDENT (the developers' SysEx,
+# chompi.py) sent on each "frizz" output, every SysEx that comes back on any input for 2 s
+PORTS_JS = r"""(async () => {
+  const a = await navigator.requestMIDIAccess({sysex: true});
+  const d = (p) => ({type: p.type, name: p.name, maker: p.manufacturer, state: p.state, connection: p.connection});
+  const got = [];
+  const ins = [...a.inputs.values()];
+  for (const i of ins) { try { await i.open(); } catch (e) { got.push('open ' + i.name + ': ' + e); }
+    i.onmidimessage = (e) => { if (e.data[0] === 0xF0) got.push(i.name + ': ' + [...e.data].map(b => b.toString(16).padStart(2, '0')).join(' ')); }; }
+  for (const o of a.outputs.values()) if (/frizz/i.test(o.name || '')) {
+    try { await o.open(); o.send(%s); got.push('sent IDENT on ' + o.name); } catch (e) { got.push('send ' + o.name + ': ' + e); } }
+  await new Promise((r) => setTimeout(r, 2000));
+  return {ports: [...ins, ...a.outputs.values()].map(d), got};
+})()"""
 
 
 def tab(br, bank):
@@ -319,6 +360,16 @@ def run(a):
     br = Browser()
     print("browser:", br.version, flush=True)
     try:
+        if a.cmd == "ports":
+            br.permission(a.url, True)
+            br.open(a.url)
+            ident = list(chompi.midi_send.HEADER) + [chompi.DEV, chompi.IDENT, 1, 0xF7]
+            got = br.js(PORTS_JS % json.dumps(ident), timeout=30)
+            for p in got["ports"]:
+                print("  %-6s %-30s %-20s %s, %s" % (p["type"], p["name"], p["maker"], p["state"], p["connection"]))
+            for line in got["got"]:
+                print("  " + line)
+            return 0 if any(": f0 7d 43 48" in g for g in got["got"]) else 1
         if a.cmd == "eval" and a.no_connect:
             br.open(a.url)
             print(json.dumps(br.js(a.js), indent=1))
@@ -436,6 +487,7 @@ def main():
     p.add_argument("bank")
     p.add_argument("slot")
     sub.add_parser("refused", parents=[common])
+    sub.add_parser("ports", parents=[common])
     sub.add_parser("connect", parents=[common])
     p = sub.add_parser("upload", parents=[common])
     p.add_argument("bank")
