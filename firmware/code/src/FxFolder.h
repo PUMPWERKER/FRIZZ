@@ -78,7 +78,7 @@ public:
         // the bias's own DC, the fold of the bias alone, taken off before the DC blocker:
         // what's left for it is only what the signal itself brings, so it can sit low enough
         // to keep the bass, and a Symmetry turn doesn't thump through it
-        if (bias != bias_at_ || shape != shape_at_)
+        if (bias != bias_at_ || (shape != shape_at_ && bias != 0.f)) // Fold(0, any shape) is 0
         {
             bias_at_ = bias;
             shape_at_ = shape;
