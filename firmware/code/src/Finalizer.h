@@ -121,7 +121,7 @@ public:
         for (size_t i = 0; i < kQuadStages; i++)
         {
             const float x = PI_F * kQuadHz[i] / sample_rate, t = x * (1.f + x * x * (1.f / 3.f));
-            quad_a_[i] = (t - 1.f) / (t + 1.f);
+            Sp().quad_a[i] = (t - 1.f) / (t + 1.f);
         }
         turned_ = update_pending_ = bypass_ = false;
         since_update_ = 0;
@@ -408,16 +408,16 @@ private:
     /** Space's allpasses at rest, as it wakes, so no tail from before comes back */
     FIN_ONCE void ClearSpace()
     {
-        float* d = SpaceBuffer();
+        SpaceState& st = Sp();
         for (size_t i = 0; i < kSpaceLen; i++)
-            d[i] = 0.f;
+            st.buf[i] = 0.f;
         for (size_t s = 0; s < kSpaceStages; s++)
-            space_pos_[s] = 0;
+            st.pos[s] = 0;
     }
     FIN_ONCE void ClearQuad()
     {
         for (size_t i = 0; i < 3 * kQuadStages / 2; i++)
-            quad_[i] = Allpass();
+            Sp().quad[i] = Allpass();
     }
 
     FIN_ONCE void ClearLimiter()
@@ -794,23 +794,32 @@ private:
         }
     }
 
-    /** Mid's and high's allpasses' delays, one after the other: outside the object, so the
-     *  engine's members after the finalizer stay in reach of short offsets (the code was about
-     *  550 bytes larger with it inside). There's one finalizer, the engine's */
-    static __attribute__((always_inline)) inline float* SpaceBuffer()
+    /** Space's allpasses' state: mid's and high's delays, one after the other, and where each
+     *  is; the quarter turn's chains and their coefficients. Outside the object, so the
+     *  engine's members after the finalizer stay in reach of short offsets (inside, the code
+     *  was about 550 bytes larger). There's one finalizer, the engine's */
+    struct SpaceState
     {
-        static float buf[kSpaceLen];
-        return buf;
+        float buf[kSpaceLen];
+        uint16_t pos[kSpaceStages];
+        Allpass quad[3 * kQuadStages / 2]; // the output mid's chain, its side's, the low band's
+        float quad_a[kQuadStages];
+    };
+    static __attribute__((always_inline)) inline SpaceState& Sp()
+    {
+        static SpaceState state;
+        return state;
     }
 
     /** One of mid's or high's Schroeder allpasses, s: y = v[n - d] - g v, v = x + g v[n - d] */
     __attribute__((always_inline)) inline float Schroeder(size_t s, float* d, float x)
     {
-        const uint32_t p = space_pos_[s];
+        uint16_t* pos = Sp().pos;
+        const uint32_t p = pos[s];
         const float old = d[p];
         const float v = x + kSpaceG * old;
         d[p] = v;
-        space_pos_[s] = static_cast<uint16_t>(p + 1 == kSpaceDelays[s] ? 0 : p + 1);
+        pos[s] = static_cast<uint16_t>(p + 1 == kSpaceDelays[s] ? 0 : p + 1);
         return old - kSpaceG * v;
     }
 
@@ -820,7 +829,7 @@ private:
     {
         for (size_t b = 0; b < kBands; b++)
             sp[b] += dsp[b];
-        float* d = SpaceBuffer();
+        float* d = Sp().buf;
         float x = mb[1];
         for (size_t s = 0; s < kSpaceMid; s++)
         {
@@ -842,12 +851,13 @@ private:
      *  in by qmix), the low band's share of its mid (low) through the second into the side */
     __attribute__((always_inline)) inline void Quad(float& ym, float& ys, float low, float& qmix, float dqmix)
     {
+        SpaceState& st = Sp();
         float am = ym, as = ys, al = low;
         for (size_t i = 0; i < kQuadStages / 2; i++)
         {
-            am = quad_[i].Process(quad_a_[i], am);
-            as = quad_[kQuadStages / 2 + i].Process(quad_a_[i], as);
-            al = quad_[kQuadStages + i].Process(quad_a_[kQuadStages / 2 + i], al);
+            am = st.quad[i].Process(st.quad_a[i], am);
+            as = st.quad[kQuadStages / 2 + i].Process(st.quad_a[i], as);
+            al = st.quad[kQuadStages + i].Process(st.quad_a[kQuadStages / 2 + i], al);
         }
         qmix += dqmix;
         ym += qmix * (am - ym);
@@ -1029,10 +1039,7 @@ private:
     // Space: each band's share (Update) and where it glides from, the allpasses' state
     float space_[kBands], sp_[kBands];
     bool space_run_;
-    uint16_t space_pos_[kSpaceStages];
-    // the low band's quarter turn: the output mid's chain, its side's, the low band's
-    Allpass quad_[3 * kQuadStages / 2];
-    float quad_a_[kQuadStages];
+    // the low band's quarter turn's fade
     float quad_mix_, quad_from_;
     bool quad_run_;
 
