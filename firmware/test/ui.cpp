@@ -982,9 +982,7 @@ int main()
             bool latched_before, latched_after;
             std::vector<const char*> keys;
             // run in both phases of MainLoop's 2 ms tick: a release bouncing back 6 ms on is
-            // taken back in each. 7 ms on, the bounce's press comes kShiftGraceMs after the
-            // release itself, taken back or not by the ms phase, and either is right (#202,
-            // not planned): not checked
+            // taken back in each (select-grace-bounce runs 5-12 ms and 20 ms, #464)
             bool both_phases = false;
         };
         const std::vector<Seq> seqs = {
@@ -1058,31 +1056,53 @@ int main()
         }
     }});
 
-    // #464: SHIFT held, a key's release touching again 7 ms on, in either ms phase: the latch
-    // should stay, as at 6 ms; on the edge of kShiftGraceMs one phase takes the bounce for a new
-    // SHIFT + key press and toggles the latch back (#202's boundary, harmless before #456)
+    // #464: SHIFT held, a key's release touching again 5-12 ms or 20 ms on, in either order
+    // and ms phase: a bounce, taken back (kReboundMs), the latch as the release left it. On
+    // the edge of kShiftGraceMs (7 ms) one phase took it for a new SHIFT + key press and
+    // toggled the latch back. Two taps of the key 60 ms apart, the quickest a hand does, both
+    // count: latched, then unlatched
     cases.push_back({"select-grace-bounce", [] {
         RunMs(kReadyMs);
         const unsigned filter = 1u << 4;
-        bool kept = true;
+        auto filter_latched = [&] { return (LatchedFx(Ask({0x20})) & filter) != 0; };
+        std::string lost;
+        const int gaps[] = {5, 6, 7, 8, 9, 10, 11, 12, 20};
         for (int order = 0; order < 2; order++)
-            for (int pad = 0; pad < 2; pad++)
-            {
-                if (LatchedFx(Ask({0x20})) & filter)
-                    Latch("KEY_5");
-                RunMs(300 + pad);
-                if (order == 0)
-                    Keys({"+KEY_26", "50", "+KEY_5", "100", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5", "100", "-KEY_26"});
-                else
-                    Keys({"+KEY_5", "100", "+KEY_26", "100", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5", "100", "-KEY_26"});
-                RunMs(400);
-                const bool latched = LatchedFx(Ask({0x20})) & filter;
-                printf("      %s, phase %d: %s\n", order ? "the key, then SHIFT" : "SHIFT, then the key", pad,
-                       latched ? "latched" : "unlatched");
-                kept = kept && latched;
-            }
-        Known(kept, "select-grace-bounce: SHIFT held, the key's release touching again 7 ms on: still latched, "
-                    "in either order and ms phase (#464)");
+            for (int gap : gaps)
+                for (int pad = 0; pad < 2; pad++)
+                {
+                    if (filter_latched())
+                        Latch("KEY_5");
+                    RunMs(300 + pad);
+                    const std::string g = std::to_string(gap);
+                    if (order == 0)
+                        Keys({"+KEY_26", "50", "+KEY_5", "100", "-KEY_5", g.c_str(), "+KEY_5", "1", "-KEY_5", "100",
+                              "-KEY_26"});
+                    else
+                        Keys({"+KEY_5", "100", "+KEY_26", "100", "-KEY_5", g.c_str(), "+KEY_5", "1", "-KEY_5", "100",
+                              "-KEY_26"});
+                    RunMs(400);
+                    if (!filter_latched())
+                        lost += std::string(" ") + (order ? "key-first " : "SHIFT-first ") + g + " ms phase "
+                                + std::to_string(pad) + ";";
+                }
+        printf("      unlatched by a bounce:%s\n", lost.empty() ? " none" : lost.c_str());
+        Check(lost.empty(), "select-grace-bounce: SHIFT held, the key's release touching again 5-12 or 20 ms on: "
+                            "still latched, in either order and ms phase (#464)");
+        if (filter_latched())
+            Latch("KEY_5");
+        RunMs(300);
+        bool both = true;
+        for (int pad = 0; pad < 2; pad++)
+        {
+            RunMs(1 + pad);
+            Keys({"+KEY_26", "50", "+KEY_5", "60", "-KEY_5", "60", "+KEY_5"});
+            RunMs(30);
+            const bool on_between = filter_latched();
+            Keys({"60", "-KEY_5", "100", "-KEY_26", "400"});
+            both = both && on_between && !filter_latched();
+        }
+        Check(both, "select-grace-bounce: SHIFT + two taps of the key 60 ms apart: both count, latched, then unlatched");
     }});
 
     // a key pressed sounds at once, the grace window (#115) or not: the filter, turned down,

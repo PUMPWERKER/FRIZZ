@@ -22,8 +22,10 @@
  *  changes the latch (FxControls.h). Knobs 1-4 edit the FX pressed last (or MIDI's focus).
  *  SHIFT let go at most kShiftGraceMs before an FX key's or the finalizer's press still
  *  counts as held (ShiftAt, #115), by when the audio callback saw the keys (KeyEdge), not
- *  when MainLoop gets to their events. An FX key back down that soon after its release is a
- *  bounce, and takes the release back (FxControls::Rebound).
+ *  when MainLoop gets to their events. An FX key back down within kReboundMs of its release
+ *  is a bounce, and takes the release back (FxControls::Rebound): wider than the grace, as a
+ *  bounce with SHIFT held would otherwise toggle the latch again (#464), and far below the
+ *  quickest second tap by hand.
  *
  *  An effect with a second mode (kFxModes, the phaser's frequency shifter, #306): SHIFT + its
  *  key latches it as any; the key again in the same hold, with no other key between, switches
@@ -151,6 +153,7 @@ namespace chompi
     static const uint32_t kSelectFlashMs = 80;   // the finalizer's key flashes on a select
     static const uint32_t kModeFlashMs = 250;    // and at full in its new colour on a mode switch
     static const uint32_t kShiftGraceMs = 15;    // SHIFT this near a key's press: with it (#115)
+    static const uint32_t kReboundMs = 20;       // an FX key back down this soon: a bounce (#464)
     static const float kFlashDarkAbove = .5f;    // a flash goes dark on an LED this white (Flash)
     static const float kSemiStepPerTurn = .5f;   // 2 transport detents per semitone
     static const float kSpeedStepPerTurn = .25f; // SHIFT: 4 detents per step of the ladder
@@ -537,8 +540,13 @@ namespace chompi
                 if (buttonID == static_cast<uint16_t>(kFxSlots[fx].key))
                 {
                     if (!rising)
+                    {
                         fx_.KeyPressed(fx, false, Shift());
-                    else if (!(Grace(buttonID, false, buttonID) && fx_.Rebound(fx)))
+                        released_ms_[fx] = edge_ms_[0][buttonID];
+                    }
+                    // within kReboundMs of the release handled: by its own time, as the bounce's
+                    // release may be in edge_ms_ already (#464)
+                    else if (!(edge_ms_[1][buttonID] - released_ms_[fx] <= kReboundMs && fx_.Rebound(fx)))
                     {
                         const bool shift = ShiftAt(buttonID);
                         // SHIFT + the key again in the same hold: its other mode (#306), the
@@ -3132,6 +3140,7 @@ namespace chompi
         // callback's clock (KeyEdge), for the grace of kShiftGraceMs
         static const int kEdgeKeys = static_cast<int>(Hardware::SwId::SR_LAST);
         volatile uint32_t edge_ms_[2][kEdgeKeys] = {};
+        uint32_t released_ms_[kNumFx] = {}; // each FX key's release handled last, by that clock
         float lim_shown_ = 0.f;  // the limiter on the finalizer's key, 0..1, held from lim_at_
         uint32_t lim_at_ = 0;
         float speed_chunk_ = 0.f;   // transport detents towards the next speed step
