@@ -237,7 +237,6 @@ what FRIZZ does.
   (20 % and more), one of knobs 1-4 its value likewise. Now each click counts once, however it
   wobbles, on the transport knob too. Turning slowly is one step a click, and turning fast
   speeds up as before.
-
 - **The finalizer's Type, and a band's character, take effect as you turn them** (#449):
   turning Type, or a band's character in the Comp module, changed nothing until another
   finalizer knob moved; a preset recalled or a knob turned after it brought it in.
