@@ -420,7 +420,7 @@ namespace chompi
                 DrawLoopsLeds(now);
             else
             {
-                DrawCardLoopLeds();
+                DrawCardLoopLeds(now);
                 DrawFxLeds(now);
             }
 #else
@@ -2098,15 +2098,28 @@ namespace chompi
 
         /** The play page's lower C# and D# (#434), which nothing else lights there: dim in the
          *  colour of the first bank with a file on the Loops page, and on the Cubbi page; dark
-         *  for none. What the card holds, not what plays */
-        void DrawCardLoopLeds()
+         *  for none. What the card holds, not what plays. A loop planned blinks its page's key
+         *  in its bank's colour as its own key there blinks (#444): on the beat, fast while it
+         *  loads */
+        void DrawCardLoopLeds(uint32_t now)
         {
+            bool loaded;
+            const int planned = loops_.Planned(loaded);
+            const uint32_t pos = engine_->FxClockPosition();
+            const bool on = loaded ? pos % kPulsesPerBeat < kPulsesPerBeat / 2 : BlinkOn(now, kLoadingBlinkMs);
             for (bool cubbi : {false, true})
             {
-                const int bank = loops_.FirstUsed(cubbi);
+                int bank = loops_.FirstUsed(cubbi);
+                float level = kFxOffLevel;
+                if (planned != LoopControls::kNone
+                    && (static_cast<size_t>(planned) / loops::kSlots >= loops::kCubbiBank) == cubbi)
+                {
+                    bank = planned / static_cast<int>(loops::kSlots);
+                    level = on ? 1.f : 0.f;
+                }
                 SmtLed(KeyLedOf(cubbi ? Hardware::SwId::KEY_17 : Hardware::SwId::KEY_16),
                        bank == LoopControls::kNone ? white : BankColor(static_cast<size_t>(bank)),
-                       bank == LoopControls::kNone ? 0.f : kFxOffLevel);
+                       bank == LoopControls::kNone ? 0.f : level);
             }
         }
 #endif

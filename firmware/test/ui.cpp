@@ -3671,6 +3671,88 @@ int main()
               "card-loop-hint: a refused file alone in bank D, before F: C# dim in D's teal");
     }});
 
+    // a loop planned blinks the play page's lower C# (the D# for a cubbi) in its bank's colour,
+    // as its key on the Loops page blinks: on the beat, at full (#444); back to the dim glow
+    // once it switched. The hand's plan from the Loops or the Cubbi page, and MIDI's
+    cases.push_back({"card-loop-blink", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a1", SineWav(96000, 2, 220.f)}, {"a2", SineWav(48000, 2, 330.f)},
+                  {"/cubbi_b1.wav", SineWav(72000, 2, 275.f)}});
+        // ms of the key's LED: lit at full in color, dark, else (the glow or another colour);
+        // and whether the other bank key stayed dim in other
+        struct Seen
+        {
+            int lit = 0, dark = 0, other = 0;
+            bool steady = true;
+        };
+        auto watch = [](int led, const float* color, int other_led, const float* other, uint32_t ms) {
+            Seen s;
+            for (uint32_t t = 0; t < ms; t++)
+            {
+                RunMs(1);
+                const Rgb c = SmtLedFull(led);
+                if (Shows(c, color, kLoopLit))
+                    s.lit++;
+                else if (Max(c) == 0)
+                    s.dark++;
+                else
+                    s.other++;
+                s.steady = s.steady && Shows(SmtLedFull(other_led), other, kLoopDim);
+            }
+            return s;
+        };
+        static const float kTapeOrange[3] = {1.f, .6f, .24f}; // the Cubbi page's b
+
+        // the hand: SHIFT + A/02 tapped twice on the Loops page, home by a double tap of SHIFT
+        LoopsPage();
+        Tap(kLoopKeys[0]);
+        UntilLength(96000, 1000);
+        ShiftWith({kLoopKeys[1], kLoopKeys[1]});
+        RunMs(200);
+        DoubleTap();
+        const bool home = !LoopsShown();
+        const Seen a = watch(kBankDownLed, kOrange, kBankUpLed, kTapeOrange, 1200);
+        const int switched = UntilLength(48000, 6000);
+        RunMs(100);
+        const Seen after = watch(kBankDownLed, kOrange, kBankUpLed, kTapeOrange, 600);
+        printf("      home %d; waiting: C# lit %d ms, dark %d, else %d, D# steady %d; switched after %d ms, "
+               "then lit %d dark %d\n", home, a.lit, a.dark, a.other, a.steady, switched, after.lit, after.dark);
+        Check(home && a.lit > 200 && a.dark > 200 && a.other < 20 && a.steady,
+              "card-loop-blink: SHIFT + a white key tapped twice, then home: the lower C# blinks in A's "
+              "orange at full, on the beat, while it waits; the D# glows on");
+        Check(switched >= 0 && after.lit == 0 && after.dark == 0 && after.other == 600,
+              "card-loop-blink: switched at the pass end: the lower C# back to its glow");
+
+        // a cubbi: SHIFT + b1 tapped twice on the Cubbi page, home: the D# blinks, the C# glows
+        CubbiPage();
+        ShiftWith({kLoopKeys[0], kLoopKeys[0]});
+        CubbiPage();
+        const Seen b = watch(kBankUpLed, kTapeOrange, kBankDownLed, kOrange, 500);
+        const int cubbi = UntilLength(72000, 6000);
+        RunMs(100);
+        const bool glow = Shows(SmtLedFull(kBankUpLed), kTapeOrange, kLoopDim);
+        printf("      a cubbi waiting: D# lit %d ms, dark %d, else %d, C# steady %d; switched after %d ms, "
+               "glow %d\n", b.lit, b.dark, b.other, b.steady, cubbi, glow);
+        Check(!LoopsShown() && b.lit > 100 && b.dark > 100 && b.other < 20 && b.steady && cubbi >= 0 && glow,
+              "card-loop-blink: a cubbi planned at a pass end blinks the lower D# in b's orange, the C# "
+              "glowing on; then the D# glows again");
+
+        // MIDI: CC 0 = 1, CC 54 = 2 and program 0: A/01 at the end of the second pass
+        Trs({kCC, 0, 1});
+        Trs({kCC, 54, 2});
+        Trs({kPC, 0});
+        const Seen m = watch(kBankDownLed, kOrange, kBankUpLed, kTapeOrange, 1000);
+        const int midi = UntilLength(96000, 6000);
+        RunMs(100);
+        const bool midi_glow = Shows(SmtLedFull(kBankDownLed), kOrange, kLoopDim);
+        Trs({kCC, 54, 0});
+        printf("      MIDI's plan: C# lit %d ms, dark %d, else %d; switched after %d ms, glow %d\n", m.lit,
+               m.dark, m.other, midi, midi_glow);
+        Check(m.lit > 200 && m.dark > 200 && m.other < 20 && m.steady && midi >= 0 && midi_glow,
+              "card-loop-blink: CC 54 = 2 and a program change: the lower C# blinks while the loop "
+              "waits, then glows again");
+    }});
+
     // SHIFT + a white key, tapped twice: at the end of the second pass after SHIFT's release,
     // gapless, its key blinking on the beat meanwhile
     cases.push_back({"loops-passes", [] {

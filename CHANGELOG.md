@@ -12,7 +12,10 @@ what FRIZZ does.
 - **The play page shows what the card holds** (#434): the lower C# glows dimly in the colour of
   the first bank with a loop of yours, the lower D# in that of the first bank with a TAPE cubbi,
   each dark when there are none. It shows what's on the card, not what's playing, and follows
-  the card as loops come and go, from the Companion too. See [Playing loops](MANUAL.md#playing-loops).
+  the card as loops come and go, from the Companion too. While a loop waits to switch (SHIFT +
+  a white key, or a program change with CC 54), the key of its page blinks on the beat in its
+  bank's colour instead (#444), as the loop's own key does on the Loops page, so you see it
+  coming without going back there. See [Playing loops](MANUAL.md#playing-loops).
 
 - **A frequency shifter** (#306), the phaser's second mode: hold SHIFT, tap white key 7 (it's
   selected, as ever), then tap it again: the key turns ice blue, and every frequency in the sound

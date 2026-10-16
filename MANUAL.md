@@ -133,7 +133,7 @@ can't play (dim red), and VOLUME in the low-battery countdown.
 
 Waiting for something blinks slowly: LOOP while a recording finishes its bar, a picked scene
 slot, the CHOMPI key ready to confirm, a planned loop's key on the Loops or Cubbi page (fast
-while it still loads). On the knobs, white is a parameter's neutral point. On the play page a
+while it still loads), and on the play page the lower C# or D# for it. On the knobs, white is a parameter's neutral point. On the play page a
 dim lower C# or D# means the card holds loops or cubbis, in the colour of the first bank that
 does (see [Playing loops](#playing-loops)).
 The [LED brightness](#led-brightness) sets how bright all of them are.
@@ -387,7 +387,9 @@ Loops from the card play from two pages of their own, the **Loops page** for you
 On the play page the two keys that open them show what the card holds: the lower C# glows
 dimly in the colour of the first bank with a loop of yours, the lower D# in that of the first
 bank with a cubbi, and each stays dark when the card has none. They show what's on the card,
-not what's playing, and follow the card when loops come or go.
+not what's playing, and follow the card when loops come or go. While a loop waits to switch
+(see [Switching loops](#switching-loops)), its page's key blinks in its bank's colour instead,
+on the beat.
 
 ### The Loops page
 
@@ -563,7 +565,9 @@ For both:
   where it is and the loop doesn't switch. A scene recalled meanwhile, or the change stopped
   any other way, takes its loop with it.
 
-A planned switch carries on if you leave the Loops page.
+A planned switch carries on if you leave the Loops page. On the play page the lower C# (the
+lower D# for a cubbi) then blinks in the loop's bank colour, as its key on the Loops page does,
+until it switches, and glows again after.
 
 ### Two loops on the crossfader
 
@@ -2402,7 +2406,8 @@ A loop's program change works from any page, as the white key on the Loops or Cu
 would, and the same rules apply: it keeps time and the tape's speed (see
 [Switching loops](#switching-loops)). **When** it switches, CC 54 says: at once, at the end
 of the N-th pass (1-8), or with the scene change waiting to land (127). It stays until the
-next CC 54, so a DAW sets it once. A program change on a key without a loop, or while LOOP
+next CC 54, so a DAW sets it once. While it waits, the play page's lower C# (D# for a cubbi)
+blinks in its bank's colour. A program change on a key without a loop, or while LOOP
 records, does nothing. CC 81 cancels a planned switch, with its scene change.
 
 A DAW that sends bank 0 and a program change when a project loads lands on the scenes.
