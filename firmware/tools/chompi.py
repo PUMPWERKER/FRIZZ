@@ -34,8 +34,9 @@ has it, while another holds it; what doesn't touch the CHOMPI (measure.py compar
 waits. A tool started by one that holds it (FRIZZ_CHOMPI_HELD set) shares it while that one
 runs. A hold runs its command in a process group of its own and keeps the lock until that has
 ended: SIGTERM, SIGINT and SIGHUP go on to the group, and the lock goes only once nothing in it
-runs, so what a tool does when stopped (a lent card taken back) is still done under it; a
-second signal kills the group. Only a hold killed outright (SIGKILL) frees the lock while
+runs, so what a tool does when stopped (a lent card taken back: a tool that takes the CHOMPI
+exits on SIGTERM and SIGHUP through its finally) is still done under it; a second signal kills
+the group. Only a hold killed outright (SIGKILL) frees the lock while
 what it started runs on, which takes it again at its next reach for the CHOMPI. One that
 talks to the twin, not the CHOMPI (test/remote.cpp), sets it too, and FRIZZ_NO_DEVICE, which
 stops a host check that reaches for a real device (device_guard). To keep the CHOMPI over several
@@ -143,6 +144,7 @@ def claim():
     """Takes the CHOMPI for this process, waiting while another has it; shared with the hold
     that started it (HELD) while that runs"""
     global _lock
+    _exit_on_stop()
     held = os.environ.get(HELD)
     if _lock or held and _holding(held):
         return
@@ -159,6 +161,18 @@ def claim():
     f.flush()
     _lock = f
     os.environ[HELD] = str(os.getpid())  # the tools this one starts share it, and know the hold
+
+
+def _exit_on_stop():
+    """SIGTERM and SIGHUP, where a tool left them as they come (ending it on the spot), exit
+    128+N instead, so its finally runs: a lent card taken back (a hold passes them on to what it
+    runs). A tool's own handler is kept"""
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        try:
+            if signal.getsignal(sig) == signal.SIG_DFL:
+                signal.signal(sig, lambda n, frame: sys.exit(128 + n))
+        except ValueError:
+            pass  # not the main thread: its tool's main thread has done it
 
 
 def hold(cmd):
@@ -217,7 +231,8 @@ def _run_held(cmd):
     except ProcessLookupError:
         pass  # ended already
     code = p.wait()
-    while got:
+    # stopped by a signal, from here or (the terminal's: Ctrl-C at a prompt) straight to it
+    while got or code < 0:
         try:
             os.killpg(p.pid, 0)
         except ProcessLookupError:

@@ -1043,6 +1043,41 @@ case("plain", "touch started; sleep 0.5; exit 5", signals=0)
     if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 
+    // what a hold passes on reaches tools: one that takes the CHOMPI (claim) and left SIGTERM and
+    // SIGHUP as they come exits 128+N on them, its finally run (a lent card taken back), not
+    // ended on the spot; one with a handler of its own keeps it
+    rc = Python(R"(
+import os, signal, subprocess, sys, time
+tool = """
+import signal, sys, time, chompi
+if sys.argv[1] == "own":
+    signal.signal(signal.SIGTERM, lambda *_: (print("its own handler", flush=True), sys.exit(3)))
+chompi.claim()
+try:
+    print("claimed", flush=True)
+    time.sleep(10)
+finally:
+    print("finally ran", flush=True)
+"""
+for kind, sig in (("plain", signal.SIGTERM), ("plain", signal.SIGHUP), ("own", signal.SIGTERM)):
+    p = subprocess.Popen([sys.executable, "-c", tool, kind], stdout=subprocess.PIPE, text=True)
+    try:
+        first = p.stdout.readline().strip()
+        p.send_signal(sig)
+        rest = p.stdout.read().strip().replace("\n", ", ")
+        print("%s, %s: %s, %s, exit %d" % (kind, signal.Signals(sig).name, first, rest, p.wait(5)), flush=True)
+    finally:
+        if p.poll() is None:
+            p.kill()
+)", out);
+    Check(rc == 0 && Has(out, "plain, SIGTERM: claimed, finally ran, exit 143\n")
+              && Has(out, "plain, SIGHUP: claimed, finally ran, exit 129\n")
+              && Has(out, "own, SIGTERM: claimed, its own handler, finally ran, exit 3\n"),
+          "tools: a tool that took the CHOMPI runs its finally on SIGTERM or SIGHUP (a hold's, passed on), "
+          "its own handler kept");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
     // at a prompt, the hold gives the terminal to its command's group, and takes it back after:
     // an interactive one (tools/chompi.py hold bash, README.md) reads what's typed, where in a
     // group without the terminal it would stop (SIGTTIN). Under a pty of its own, as a shell
