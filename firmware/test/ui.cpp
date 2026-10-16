@@ -466,7 +466,7 @@ static const char* const kLoopKeys[15] = {"KEY_1", "KEY_2",  "KEY_3",  "KEY_4", 
                                           "KEY_11", "KEY_12", "KEY_13", "KEY_14", "KEY_15"};
 static int LoopLed(int slot) { return 24 - slot; }
 static const int kBankDownLed = 0, kBankUpLed = 1;
-// a slot's LED in its bank's colour: lit (full scale 252), dim (kFxOffLevel, 36), dark
+// a slot's LED in its bank's colour: lit (full scale 252), dim (FxOffLevel at full brightness, 36), dark
 static const int kLoopLit = 252, kLoopDim = 36;
 /** An LED in colour (0..1) at level (full scale), within a few steps */
 static bool Shows(const Rgb& c, const float* color, int level, int within = 6)
