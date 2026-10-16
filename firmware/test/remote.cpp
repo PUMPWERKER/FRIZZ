@@ -926,6 +926,71 @@ print("in_ram:", remote.in_ram(F()))
     if (rc != 0 || !Has(out, "in_ram:"))
         printf("%s\n", out.c_str());
 
+    // chompi.py hold CMD keeps the lock until what it runs has ended: a SIGTERM (a closed
+    // terminal's SIGHUP, Ctrl-C's SIGINT) goes on to CMD's process group, and the lock goes only
+    // once nothing in it runs, a child that outlives sh too; a second signal kills the group.
+    // Before, the hold died at once and its sh chain ran on at the CHOMPI without the lock
+    // (2026-10-15). Each sh writes its group's id first, which the finally kills whatever
+    // happened
+    rc = Python(R"(
+import fcntl, os, signal, subprocess, sys, time, chompi
+def free():
+    with open(chompi.LOCK, "a+") as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            return False
+def until(what, s=5):
+    end = time.monotonic() + s
+    while not what() and time.monotonic() < end:
+        time.sleep(0.02)
+    return what()
+def case(name, script, signals=1):
+    for f in ("started", "done", "pgid"):
+        if os.path.exists(f):
+            os.remove(f)
+    with open("hold.err", "w") as err:
+        p = subprocess.Popen([sys.executable, chompi.__file__, "hold", "sh", "-c", "echo $$ > pgid; " + script],
+                             stderr=err, process_group=0)
+    try:
+        ok = until(lambda: os.path.exists("started")) and not free()
+        for _ in range(signals):
+            p.send_signal(signal.SIGTERM)
+            time.sleep(0.2)
+        held = True
+        while p.poll() is None:
+            held = held and not free()
+            time.sleep(0.05)
+        done = os.path.exists("done")
+        print("%s: started %s, held while it ran %s, done when it let go %s, exit %d, free after %s"
+              % (name, ok, held, done, p.returncode, free()), flush=True)
+    finally:
+        for group in (open("pgid").read().strip() if os.path.exists("pgid") else "", p.pid):
+            try:
+                os.killpg(int(group), signal.SIGKILL)
+            except (OSError, ValueError):
+                pass
+        p.wait()
+    print(open("hold.err").read(), end="")
+case("trap", "trap 'sleep 1; touch done; sleep 0.3; exit 3' TERM; touch started; while :; do sleep 0.1; done")
+case("grandchild", "(trap '' TERM; touch started; sleep 1.5; touch done; sleep 0.3) & sleep 30")
+case("twice", "trap '' TERM; touch started; sleep 30", signals=2)
+case("plain", "touch started; sleep 0.5; exit 5", signals=0)
+)", out);
+    Check(rc == 0 && Has(out, "trap: started True, held while it ran True, done when it let go True, exit 3, free after True\n")
+              && Has(out, "SIGTERM: passed on to what the hold runs; the CHOMPI stays held until it has ended"),
+          "tools: chompi.py hold passes SIGTERM on to what it runs and keeps the lock until it has ended");
+    Check(Has(out, "grandchild: started True, held while it ran True, done when it let go True, exit 143, free after True\n"),
+          "tools: chompi.py hold keeps the lock while a child sh started runs on after sh");
+    Check(Has(out, "twice: started True, held while it ran True, done when it let go False, exit 137, free after True\n")
+              && Has(out, "killing what the hold runs (SIGKILL)"),
+          "tools: a second signal to chompi.py hold kills what it runs, then lets the lock go");
+    Check(Has(out, "plain: started True, held while it ran True, done when it let go False, exit 5, free after True\n"),
+          "tools: chompi.py hold gives its command's exit code");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
     // which slot runs, no firmware says (the bench answers as FRIZZ does): the tools note the
     // one they started, and go by it. chompi's way to the CHOMPI stubbed: states in turn
     const char* const kSlots = R"(

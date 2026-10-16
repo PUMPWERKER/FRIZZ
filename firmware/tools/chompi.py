@@ -32,13 +32,19 @@ One process at a time has the CHOMPI: the first time a tool reaches for it (stat
 to it, a restart), it takes a lock (LOCK, flock) for the process's life, and waits, saying who
 has it, while another holds it; what doesn't touch the CHOMPI (measure.py compare) never
 waits. A tool started by one that holds it (FRIZZ_CHOMPI_HELD set) shares it while that one
-runs (a hold stopped by SIGTERM frees the lock, and what it started takes it again); one that
+runs. A hold runs its command in a process group of its own and keeps the lock until that has
+ended: SIGTERM, SIGINT and SIGHUP go on to the group, and the lock goes only once nothing in it
+runs, so what a tool does when stopped (a lent card taken back) is still done under it; a
+second signal kills the group. Only a hold killed outright (SIGKILL) frees the lock while
+what it started runs on, which takes it again at its next reach for the CHOMPI. One that
 talks to the twin, not the CHOMPI (test/remote.cpp), sets it too, and FRIZZ_NO_DEVICE, which
 stops a host check that reaches for a real device (device_guard). To keep the CHOMPI over several
 tools, or for playing it by hand:
 
     tools/chompi.py hold                 holds it until Ctrl-C
-    tools/chompi.py hold CMD ARGS...     holds it while CMD runs (sh -c for a sequence)
+    tools/chompi.py hold CMD ARGS...     holds it while CMD runs (sh -c for a sequence), in a
+                                         process group of its own: not an interactive
+                                         one, which can't read the terminal there
 
 Now and then (#88, 2 in ~310 starts) FRIZZ comes up with its USB names garbled, one string
 off (product "Љ", maker "FrizZ"): the tools find it by the Daisy's USB id then, and say so.
@@ -57,6 +63,7 @@ import fcntl
 import glob
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -120,8 +127,8 @@ _lock = None
 
 def _holding(held):
     """Whether HELD (FRIZZ_CHOMPI_HELD: the pid of the process that took the lock) still runs:
-    a hold stopped (SIGTERM) frees the lock while what it started runs on. Not a pid (a check's
-    "1" is init's): taken as held"""
+    a hold killed outright (SIGKILL) frees the lock while what it started runs on. Not a pid (a
+    check's "1" is init's): taken as held"""
     try:
         os.kill(int(held), 0)
     except ValueError:
@@ -159,7 +166,7 @@ def hold(cmd):
     """Holds the CHOMPI while cmd runs, or until Ctrl-C without one"""
     claim()
     if cmd:
-        sys.exit(subprocess.run(cmd).returncode)
+        sys.exit(_run_held(cmd))
     forget()  # what's started by hand, the tools can't know
     say("holding the CHOMPI; Ctrl-C lets it go")
     try:
@@ -168,6 +175,49 @@ def hold(cmd):
     except KeyboardInterrupt:
         pass
 
+
+HOLD_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+
+
+def _run_held(cmd):
+    """Runs CMD in a process group of its own, under the lock, until it has ended: SIGTERM,
+    SIGINT and SIGHUP go on to that group, and once one came, the lock goes only when nothing in
+    the group runs any more (a tool's child, or what sh -c started in the background, may
+    outlive sh); a second signal kills the group (SIGKILL). Its exit code, 128+N for a
+    signal N"""
+    child, got = [], []
+
+    def forward(sig, frame):
+        got.append(sig)
+        if not child:
+            return  # not started yet: passed on below
+        try:
+            if len(got) == 1:
+                say("%s: passed on to what the hold runs; the CHOMPI stays held until it has "
+                    "ended (a second signal kills it)" % signal.Signals(sig).name)
+                os.killpg(child[0].pid, sig)
+            else:
+                say("killing what the hold runs (SIGKILL)")
+                os.killpg(child[0].pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    for sig in HOLD_SIGNALS:
+        signal.signal(sig, forward)
+    p = subprocess.Popen(cmd, process_group=0)
+    child.append(p)
+    if got:
+        os.killpg(p.pid, got[0])
+    code = p.wait()
+    while got:
+        try:
+            os.killpg(p.pid, 0)
+        except ProcessLookupError:
+            break
+        except PermissionError:
+            pass
+        time.sleep(0.2)
+    return 128 - code if code < 0 else code
 
 
 # ---- which slot runs: noted by the tools that start one ----------------------------------
