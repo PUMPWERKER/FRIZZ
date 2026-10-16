@@ -66,11 +66,12 @@ wait 300
 expect led smt 0 fc983c
 expect led smt 1 000000
 expect led smt 24 242400
-# home: a double tap of SHIFT; SHIFT and the bank keys dark again, the loop plays on
+# home: a double tap of SHIFT; SHIFT dark again, the loop plays on, the lower C# dim in A's
+# orange: the card holds loops (#434). The lower D# says whether it holds cubbis, which the
+# device's card may
 tap KEY_26
 wait 100
 tap KEY_26
 wait 300
 expect led pth 0 000000
-expect led smt 0 000000
-expect led smt 1 000000
+expect led smt 0 241408

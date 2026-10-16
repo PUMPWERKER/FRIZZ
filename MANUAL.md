@@ -45,7 +45,7 @@ On the play page (the mode switch down), the controls are:
 | White keys 1-13 | The [punch-in effects](#punch-in-fx), in the order the sound goes through them: [Freezer](#freezer), [Shifter](#shifter), [Folder](#folder), [Crusher](#crusher), [Filter](#filter), [Flanger](#flanger), [Phaser](#phaser) (or its [frequency shifter](#frequency-shifter)), [Resonator](#resonator), [Slicer](#slicer), [Wow & flutter](#wow--flutter), [Tape stop](#tape-stop), [Delay](#delay), [Reverb](#reverb) |
 | White key 14 | The [Chaos key](#chaos-key) |
 | White key 15 | The [Finalizer](#finalizer) on knobs 1-4: input and drive, EQ, compression, width, a limiter |
-| Lower C# and D# | With SHIFT, the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page): loops from the card |
+| Lower C# and D# | With SHIFT, the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page): loops from the card; they glow dimly when the card holds loops (C#) or TAPE's cubbis (D#) |
 | Lower F#, G#, A#, upper C#, D# | The [FX scenes](#fx-scenes): the blank scene, then scenes 1-4 |
 | Upper F#, G#, A# | [Save, copy and delete](#save-copy-and-delete) a scene |
 | Knobs 1-4 | The effect picked last, or the finalizer; a press turns them to the effect's [page 2](#page-2) (on the finalizer, it [mutes a band](#band-mutes)) |
@@ -126,14 +126,19 @@ CHOMPI first doesn't also change the page.
 
 Every effect has its own colour, on its key and its knobs (see [Keys and knobs](#keys-and-knobs)).
 Throughout FRIZZ, 3 quick red blinks mean refused or not stored, and 3 white ones done.
-Besides the effects' own colours, red lit or blinking slowly means something else: LOOP
-recording or waiting to erase, the finalizer's key while the safety limiter works, the input gain near 100% (VOLUME's page
-2), on the settings page the clock factor on double, on the Loops and Cubbi pages a file FRIZZ
-can't play (dim red), and VOLUME in the low-battery countdown.
+Besides the effects' own colours, red lit or blinking means something else: LOOP recording
+or waiting to erase, the finalizer's key while the safety limiter works, on VOLUME's page 2
+the input gain near 100% and the meter where the loop would clip, the delete function, a
+copy's source while you pick where to, a drop's scene key while it waits, the finalizer's
+Width meters out of phase, on the settings page the clock factor on double, on the Loops and
+Cubbi pages a file FRIZZ can't play (dim red), and VOLUME in the low-battery countdown.
 
-Waiting for something blinks slowly: LOOP while a recording finishes its bar, a picked scene
-slot, the CHOMPI key ready to confirm, a planned loop's key on the Loops or Cubbi page (fast
-while it still loads). On the knobs, white is a parameter's neutral point.
+Waiting for something blinks, slowly for LOOP while a recording finishes its bar, a picked
+scene slot and the CHOMPI key ready to confirm, and on the beat for the scene key a morph or
+a drop is on its way to and a planned loop's key on the Loops or Cubbi page (fast while it
+still loads), and on the play page the lower C# or D# for it. On the knobs, white is a
+parameter's neutral point. On the play page a dim lower C# or D# means the card holds loops
+or cubbis, in the colour of the first bank that does (see [Playing loops](#playing-loops)).
 The [LED brightness](#led-brightness) sets how bright all of them are.
 
 <!-- part: Looper and tempo -->
@@ -172,6 +177,8 @@ without printing them into it. LOOP and PLAY run it:
   the loop's own end, so it needs no clock. For half a second after LOOP stopped a recording,
   LOOP doesn't erase, so a double press can't lose the new loop.
 - **Length:** up to 2:45. The loop lives in RAM and is gone at power-off. There's no overdub.
+  The loop can also be one of your loops from the SD card, which then plays here as a recorded
+  one does (see [Playing loops](#playing-loops)).
 - **Level:** the loop never clips: a limiter holds what goes into it just under full scale
   (details in [Technical data](#audio)). If the meter on VOLUME's page 2 shows red on more
   than the loudest hits, turn the input gain down.
@@ -382,11 +389,19 @@ Loops from the card play from two pages of their own, the **Loops page** for you
 **Cubbi page** for TAPE's, where the white keys are the loops. To get loops onto the card, see
 [Loop loader](#loop-loader).
 
+On the play page the two keys that open them show what the card holds: the lower C# glows
+dimly in the colour of the first bank with a loop of yours, the lower D# in that of the first
+bank with a cubbi, and each stays dark when the card has none. They show what's on the card,
+not what's playing, and follow the card when loops come or go. While a loop waits to switch
+(see [Switching loops](#switching-loops)), its page's key blinks in its bank's colour instead,
+on the beat.
+
 ### The Loops page
 
 **SHIFT + the lower C#** opens the Loops page. **SHIFT + the lower C#** again, or **two quick
 taps of SHIFT** (each a short tap with nothing else in between), takes you back to the play
-page. On the play page a double tap does nothing, so it's a safe way home wherever you are.
+page. On the play page a double tap does nothing, so it's a safe way home wherever you are,
+unless CHOMPI blinks to confirm a save, copy or delete: there its first tap confirms it.
 **SHIFT + the lower D#** takes you to the [Cubbi page](#the-cubbi-page). Opening the Loops page
 ends a [save, copy or delete](#save-copy-and-delete) you had started. Flipping the mode switch
 up and down again brings you back to the page you were on. With no loop file on the card, the
@@ -451,7 +466,8 @@ the lower D#** again, or **two quick taps of SHIFT**, takes you back to the play
 **SHIFT + the lower C#** to the Loops page. Everything else works as on the
 [Loops page](#the-loops-page): the lower C# and D# step the banks, a white key switches at
 once, SHIFT + a white key at the end of a pass or with a scene change, the same LEDs. Each
-page remembers its bank, and there's one plan for both: a loop planned on one page is replaced
+page remembers its bank (or opens on the first bank with a file, if that one has none), and
+there's one plan for both: a loop planned on one page is replaced
 by a key on the other. With no cubbi file on the card, the page opens with its white keys dark,
 and the lower C# and D# blink red 3 times.
 
@@ -556,7 +572,9 @@ For both:
   where it is and the loop doesn't switch. A scene recalled meanwhile, or the change stopped
   any other way, takes its loop with it.
 
-A planned switch carries on if you leave the Loops page.
+A planned switch carries on if you leave the Loops page. On the play page the lower C# (the
+lower D# for a cubbi) then blinks in the loop's bank colour, as its key on the Loops page does,
+until it switches, and glows again after.
 
 ### Two loops on the crossfader
 
@@ -1122,6 +1140,10 @@ the inserts in between on every trip.
 - The loop holds a soft clipper, a lowpass (Tone) and a 50 Hz highpass, so it saturates
   rather than runs away, whatever is inside it. It turns the input down as the feedback goes
   up, by half at the most.
+- **Level is inside the loop:** what it rings goes round again at page 2's Level, so Level
+  also sets how long it rings. Turned down, the ringing dies sooner; above 0 dB it can ring on
+  by itself already with little feedback, held by the soft clipper. At the bottom the ringing
+  is gone, but the input is still turned down with the feedback.
 - LEDs: the key is lime; the knobs go lime to light blue.
 
 ## Slicer
@@ -1168,6 +1190,10 @@ tape's dropouts.
 - **Flutter** is two fast wobbles, at 7.3 Hz and 11.7 Hz, like a capstan's and a pinch
   roller's. It brings the effect in over the first quarter of its knob, so it works without
   the wow.
+- **Age on its own:** with Wow and Flutter at 0, Age's first quarter brings in a copy about
+  11 ms late (where the wow last left it, once you've used it), blended with the untouched
+  sound: a hollow, comb-like colour at low Age. From a quarter on you hear only the copy, just
+  as late, with its dropouts.
 - **Tone** darkens what comes off the tape, not the untouched sound.
 - LEDs: the key is red; the knobs go red to purple.
 
@@ -1457,8 +1483,16 @@ all three.
   full scale. It's the only thing FRIZZ does to the level by itself, so it shows: key 15
   turns red over everything while it limits, from 1 dB of limiting on and fully red from 3 dB,
   held 0.3 s so a short peak is seen. Red means turn something down: VOLUME, an effect's
-  Level, the finalizer's Input or Loud. Loud's own limiter keeps it from showing at VOLUME
-  full.
+  Level, the finalizer's Input or EQ.
+  - **Drive and Loud keep it from showing:** each sets the level itself (Drive's level
+    compensation holds its output under where red starts, Loud's limiter its own), so with
+    either up only an input sent [past the effects](#input-aux-the-mic-or-usb) can still turn
+    it red.
+  - **Where it starts:** with Drive and Loud at 0 and VOLUME full, about 2 dB over the
+    finalizer's 0 dB: an AUX signal peaking above about −5 dBFS at the
+    default input gain, or a hot line signal with the Input a few percent up. At VOLUME's 75%
+    from power-on it takes more. A loop on its own stays under it, unless the Input, the EQ or
+    an effect's Level turns it up.
 - **The knob LEDs** are meters while the knobs rest (above, module by module); a knob you turn
   shows its value for a moment, then the meter again: Drive, Type, Loud, the characters and
   Depth from light blue (0%) to orange (100%); the knobs with a centre, Input and the EQ and
@@ -1490,8 +1524,10 @@ keys in the middle are scene keys: lower F#, lower G#, lower A#, upper C# and up
 
 ![The panel with the five scene keys lit, the blank scene and scenes 1 to 4, then save in green, copy in blue and delete in red, and the CHOMPI key that confirms](images/panel-scenes.svg)
 
-On the play page the lower C# and D# do nothing by themselves: with SHIFT they open the
-[Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page).
+On the play page a press of the lower C# or D# alone does nothing: with SHIFT they open the
+[Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page). They glow dimly when the
+card holds loops (the lower C#) or TAPE's cubbis (the lower D#), in the colour of the first
+bank that does.
 
 A saved scene stays as you saved it: changes you make after recalling one are only kept if you
 save again.
@@ -1784,8 +1820,11 @@ the input.
   order; after 2 s it writes a [bug report](#bug-reports), once per hold. CHOMPI lights white
   while you hold it, as on the play page. SHIFT held from the play page, the switch flipped
   up with it held, counts here as for every SHIFT combination, for SHIFT + LOOP's hold too.
-- Otherwise knobs 2-4 (their LEDs dark), CHOMPI (but as SHIFT), PLAY and LOOP do nothing
-  here.
+- **SHIFT + LOOP, held 2 s:** lends the card to a computer on USB as a drive, LOOP blue while
+  it's lent (3 red blinks if it can't); the same again takes it back (see
+  [The card as a USB drive](#the-card-as-a-usb-drive)).
+- Otherwise knobs 2-4 (their LEDs dark), CHOMPI (but as SHIFT), PLAY and LOOP (but SHIFT +
+  LOOP held) do nothing here.
 - A key you're holding when you flip the switch stays where it went down until you let go:
   an effect you hold keeps going, and the key doesn't also change a setting. The same the
   other way round.
@@ -2106,9 +2145,9 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | SHIFT + a blinking scene key | Stop the morph, drop or build-up where it is | [Timed scene changes](#timed-scene-changes) |
 | SHIFT + another scene key, while one runs | Stop it there and start the new one from there | [Timed scene changes](#timed-scene-changes) |
 | Upper F#, G# or A#, the slot (copy: the source, then the destination), then CHOMPI | Save, copy or delete a scene | [Save, copy and delete](#save-copy-and-delete) |
-| The function's key again, or the mode switch up | Out of save, copy or delete, doing nothing | [Save, copy and delete](#save-copy-and-delete) |
-| SHIFT + lower C# | The Loops page | [The Loops page](#the-loops-page) |
-| SHIFT + lower D# | The Cubbi page | [The Cubbi page](#the-cubbi-page) |
+| The function's key again, the mode switch up, or the Loops or Cubbi page | Out of save, copy or delete, doing nothing | [Save, copy and delete](#save-copy-and-delete) |
+| SHIFT + lower C# | The Loops page (the lower C# glows dimly when the card holds loops) | [The Loops page](#the-loops-page) |
+| SHIFT + lower D# | The Cubbi page (the lower D# glows dimly when the card holds cubbis) | [The Cubbi page](#the-cubbi-page) |
 
 ### On the Loops page
 
@@ -2170,7 +2209,8 @@ differs:
 
 - **Low battery:** unplugged with the battery nearly empty (below 3 V), the knob, transport,
   CHOMPI, PLAY and LOOP LEDs flash yellow for 15 s and VOLUME's red, on any page, then the
-  CHOMPI switches itself off. Plugging in power during those 15 s stops it.
+  CHOMPI switches itself off into shipping mode (below): it starts again only once it's
+  plugged into power. Plugging in power during those 15 s stops it.
   On a charger too weak to run it with a low battery, it goes dark until it has charged.
 - **Battery check:** the [settings page](#settings-page) shows the battery's level on VOLUME's
   LED.
@@ -2393,7 +2433,8 @@ A loop's program change works from any page, as the white key on the Loops or Cu
 would, and the same rules apply: it keeps time and the tape's speed (see
 [Switching loops](#switching-loops)). **When** it switches, CC 54 says: at once, at the end
 of the N-th pass (1-8), or with the scene change waiting to land (127). It stays until the
-next CC 54, so a DAW sets it once. A program change on a key without a loop, or while LOOP
+next CC 54, so a DAW sets it once. While it waits, the play page's lower C# (D# for a cubbi)
+blinks in its bank's colour. A program change on a key without a loop, or while LOOP
 records, does nothing. CC 81 cancels a planned switch, with its scene change.
 
 A DAW that sends bank 0 and a program change when a project loads lands on the scenes.
@@ -2541,8 +2582,8 @@ my.json`, and `play SCRIPT --cpu`, which plays a scenario of the virtual CHOMPI 
 and reports the worst load and how many audio blocks ran late (crackles).
 
 The `7D` in that header is MIDI's ID for projects without a manufacturer ID of their own, and
-the multi-firmware launcher uses the same header. FRIZZ keeps it until the launcher moves to an ID of its
-own, and then follows (#103).
+the multi-firmware launcher uses the same header. FRIZZ keeps it as long as the launcher
+does.
 
 The [Companion](#the-companion) talks to FRIZZ over the same SysEx, with a protocol of its own
 for the loops (`docs/LOOP_PROTOCOL.md` in the repository).

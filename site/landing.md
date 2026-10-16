@@ -8,6 +8,9 @@ keys, their knobs and colours, the download) comes from the manual and the firmw
 The format is fixed, and a file that breaks it fails the website's build:
 - the sections below, all of them, in this order; in each, its fields as "- Name: value" lines
   right under the heading, then (where there is one) one paragraph after a blank line;
+- Duties, what FRIZZ does for you, may be left out (it stays between Hero and Keys): no fields
+  or paragraph of its own, 3 to 6 duties (###), each a title of at most 32 characters and one
+  paragraph of at most 220, nothing else; the site numbers the tiles, so no digits in a title;
 - Session: 3 to 6 moves (###), each with "- Controls:" (1 to 4 `control`s) and one paragraph;
 - inline only **bold**, *emphasis* and [links](MANUAL.md#anchor), from the repo's root;
   *emphasis* in the hero's and the session's title marks the word drawn over;
@@ -26,9 +29,41 @@ The format is fixed, and a file that breaks it fails the website's build:
 - Assure: Free and open source. Installs from the SD card without touching the bootloader; you go back to stock firmware the same way.
 
 **FRIZZ** turns your CHOMPI into a stereo looper and effects box for whatever you plug into its
-AUX input: a synth, a drum machine, anything with a line out, the built-in mic or a computer on
-USB. Catch a loop,
+AUX input (a synth, a drum machine, anything with a line out), for its built-in mic, or for a
+computer on USB. Catch a loop,
 hold a white key to throw an effect over it, and let go to snap back.
+
+## Duties
+
+### A looper
+
+You record a stereo loop of up to 2:45, free or in whole bars of a MIDI clock, and play it
+faster, slower, backwards or scrubbed on the [transport knob](MANUAL.md#transport-knob).
+
+### Loops from the card
+
+You bring your own WAVs on the SD card, [8 banks of 15](MANUAL.md#loops-on-the-card), and
+the recordings you made with TAPE, and switch between them at once or at the end of a pass.
+
+### Thirteen punch-in effects
+
+You have 13 effects on the white keys, from the freezer to the reverb, each with four knobs and
+a [second page](MANUAL.md#page-2), plus a chaos key and a finalizer on the outputs.
+
+### Four scenes
+
+You keep every effect's knobs and latches in [four scenes](MANUAL.md#fx-scenes) on the card,
+and recall one at once, drop to it on the bar line or morph there.
+
+### Three inputs
+
+You play in from AUX, the built-in mic or a computer on USB, each with its own gain, through
+the effects or [past them](MANUAL.md#input-aux-the-mic-or-usb), heard or only recorded.
+
+### MIDI and USB
+
+You clock it, play its keys and reach every parameter over MIDI on TRS or USB, and on a computer
+it's a [sound card](MANUAL.md#usb-audio) too: 2 channels each way, 48 kHz, no driver.
 
 ## Keys
 
