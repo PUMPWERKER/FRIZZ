@@ -160,7 +160,7 @@ what FRIZZ does.
   - **Width** (blue): each band's stereo, from mono to twice as wide (the low band to
     1.5 times).
 
-  Hold SHIFT and tap key 15 twice for the next module; the key shows its colour. At the
+  With the finalizer selected, SHIFT + key 15 shows the next module; the key shows its colour. At the
   defaults it leaves the sound untouched. Its knob LEDs are meters while they rest: the input
   level, each band's level, gain reduction or correlation, the limiter's reduction. A press of
   knob 1-3 in EQ, Comp or Width mutes that band, as a DJ mixer's kill. Hold key 15 and press
@@ -170,6 +170,14 @@ what FRIZZ does.
   time. Over MIDI, channel 15 has every parameter at a fixed CC (CC 14-20 Level and EQ, 24-30
   Comp and Width, 21 a preset, 22 on or bypassed, 23 the module, 102-104 the mutes), the global
   channel CC 24-27 Level's knobs and CC 28 Depth. See [Finalizer](MANUAL.md#finalizer).
+
+- **SHIFT + key 15 switches the finalizer's module once it's selected** (#435): in the betas
+  the module switched only with key 15 tapped twice in one SHIFT hold. Now, with the finalizer
+  on the knobs, every SHIFT + key 15 shows the next module, in the same SHIFT hold or a new one.
+  While an effect has the knobs, SHIFT + key 15 still only selects the finalizer, and the
+  double tap in one hold still selects, then switches. Key 15 and SHIFT pressed together, in
+  either order, count as a select and never switch; key 15 held, then SHIFT, stays the bypass.
+  See [Finalizer](MANUAL.md#finalizer).
 
 - **AUX keeps its bass** (#317): the input's DC blocker, TAPE's, cut AUX's lows from about
   76 Hz down (50 Hz 5 dB quieter, 30 Hz 9 dB); it now takes out only DC, from about 8 Hz down,
@@ -217,6 +225,8 @@ what FRIZZ does.
   in its loop swings half as far as before (it was twice Mutable's), so a long tail sounds
   steadier, with less of a chorus on held notes. Its knobs, decay, level and freeze are as they
   were. See [Reverb](MANUAL.md#reverb).
+- The manual's diagrams are drawn in the website's new look: soot and chalk, square, set in a
+  typewriter mono. What they show is as it was.
 
 ### Fixed
 

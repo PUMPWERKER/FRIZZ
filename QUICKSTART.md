@@ -17,6 +17,10 @@ back
 
 **SHIFT** means holding the CHOMPI key. The key lights white while it acts as SHIFT.
 
+The **mode switch** picks the page: down is the play page, where all of this happens; up is
+the [settings page](MANUAL.md#settings-page), for MIDI, the input and the LEDs. If the keys
+don't play, flip it down.
+
 ## 1. Set your levels
 
 | Do this | To set |
@@ -49,7 +53,7 @@ Mono cable (TS) in AUX? See [Mono input](MANUAL.md#mono-input).
 
 **In sync with a clock:** with MIDI clock coming in over TRS or USB, hold PLAY and press LOOP.
 The recording then ends on a whole bar. Without a clock, or with the clock source set to
-internal on the settings page, LOOP blinks red 3 times.
+internal on the [settings page](MANUAL.md#settings-page), LOOP blinks red 3 times.
 
 A loop can be up to 2:45 long and is gone when you switch off.
 
@@ -83,7 +87,8 @@ SHIFT and tap the key twice (it turns ice blue); the same again goes back to the
 - **SHIFT + press a knob:** reset that setting.
 - **Press a knob:** the effect's [page 2](MANUAL.md#page-2): Mix, stereo, band and level, the
   same on every effect but the chaos key; press again for page 1. Knob 4 (level) tames an
-  effect that gets loud, like the folder driven hard.
+  effect that gets loud, like the folder driven hard. The finalizer has no page 2: in its EQ,
+  Comp and Width a press of knob 1, 2 or 3 mutes that band, and another brings it back.
 
 Every effect starts silent or nearly so: one knob brings it in. That's knob 1 on most, knob 2
 (feedback) on the resonator and knob 3 (amount, depth) on the flanger and the phaser. The
@@ -94,9 +99,9 @@ echoes and a room (their level is knob 4 on their page 2, as every effect's).
 **Finalizer:** press white key 15, and knobs 1-4 set the master section on the outputs,
 neutral at first. They show its Level module: the input, a drive and its type (Boost, Tube,
 Fuzz), and Loud, which pushes the sound into a limiter so it gets louder without clipping.
-Hold SHIFT and tap key 15 twice for the next module: EQ (yellow) for the low, mid and high
-bands, Comp (cyan) to compress them (knob 4, Depth, brings it in), Width (blue) for each
-band's stereo; tap again to go on. Its key turns red when the output is so loud the safety
+Hold SHIFT and tap key 15 for the next module: EQ (yellow) for the low, mid and high bands,
+Comp (cyan) to compress them (knob 4, Depth, brings it in), Width (blue) for each band's
+stereo; SHIFT + key 15 again goes on. Its key turns red when the output is so loud the safety
 limiter has to step in. FRIZZ remembers its settings when you switch off. Press an effect key
 to give the knobs back to the effect. See [Finalizer](MANUAL.md#finalizer).
 
