@@ -22,10 +22,16 @@
  *    transients. No makeup: nothing turns anything up by itself.
  *  - Width: each band's side, 0 (mono) at the left, as it is at the centre, up to kMaxWidth
  *    (the low band kMaxLowWidth) at the right.
- *  - Drive: a saturation of the type's (Boost soft, Tube asymmetric, Fuzz hard), 0 to +30dB
- *    into it, run at twice the rate (polyphase IIR halfbands, as hiir's) so its harmonics
- *    don't fold back, then a gentle hi-cut. Level-compensated by a fixed gain per drive and
- *    type: a sine of kDriveRef comes out as loud as it went in, other levels near it.
+ *  - Drive: 0 to +18dB into a saturation of the type's (Saturate), run at twice the rate
+ *    (polyphase IIR halfbands, as hiir's) so its harmonics don't fold back, then a gentle
+ *    hi-cut. A master's warmth, not an amp's: Boost a soft symmetric curve, low odd harmonics
+ *    (the third); Tube an asymmetric one whose second harmonic grows with the drive and
+ *    stays above its third; Fuzz a harder knee, the densest, odd and even. Each type's knee
+ *    sits at its own level (kTypeGain), so that even the top is a lot but not a square wave.
+ *    Level-compensated by a gain per drive and type: a sine of kDriveRef comes out as loud
+ *    as it went in, other levels near it. Changing the type while it drives dips the drive
+ *    out, holds it there for kTypeHoldMs while the new type's DC settles in the blocker after
+ *    it, and fades it back in, so the switch doesn't thump.
  *  - Limiter, Loud: 0 to +18dB into a limiter with a lookahead of kLookahead (1ms), its
  *    ceiling kCeiling (-1dB of the reference, with a margin of .3dB for the peaks between
  *    samples, which its detector estimates at twice the rate), its release automatic: longer the
@@ -108,6 +114,9 @@ public:
         since_update_ = 0;
         meter_ = kNoMeter;
         trim_from_ = band_from_ = drive_from_ = lim_from_ = 0.f;
+        type_ = gain_type_ = comp_type_ = BOOST;
+        type_hold_ = 0;
+        comp_gain_ = -1.f; // worked out on the first block
         bands_run_ = bands_apply_ = drive_run_ = false;
         release_lim_ = 0.f;
         fade_step_ = 1000.f / (kFadeMs * sample_rate);
@@ -214,7 +223,7 @@ private:
     static constexpr float kInputDb = 12.f;
     static constexpr float kEqCutDb = 20.f, kEqBoostDb = 8.f;
     static constexpr float kDepthDb = 30.f;
-    static constexpr float kDriveDb = 30.f;
+    static constexpr float kDriveDb = 18.f;
     static constexpr float kLoudDb = 18.f;
     static constexpr float kMaxWidth = 2.f, kMaxLowWidth = 1.5f;
     static constexpr float kLowSlower = 1.5f;
@@ -223,7 +232,7 @@ private:
     static constexpr float kBandsHoldMs = 500.f;
     static constexpr float kHiCutHz = 10000.f, kDcHz = 10.f;
     static constexpr float kDriveRef = .5f; // the sine the drive's compensation is set for
-    static constexpr float kTubeBias = .4f;
+    static constexpr float kTypeHoldMs = 50.f; // 3 time constants of the DC blocker (kDcHz)
     static constexpr float kRestDb = .01f; // a gain reduction this small is released
     static constexpr float kCorrMs = 150.f; // the correlation meter's time constant
     static const uint32_t kUpdateSamples = 24;
@@ -409,25 +418,45 @@ private:
         depth_ = knobs_[DEPTH].value;
         const float drive = knobs_[DRIVE].value;
         drive_on_ = drive > 0.f;
-        drive_target_ = daisysp::pow10f(drive * kDriveDb * .05f);
-        type_ = static_cast<uint8_t>(fminf(knobs_[TYPE].value, 1.f) * (kFinTypes - 1) + .5f);
-        drive_comp_ = DriveCompensation(drive_target_, type_);
+        drive_db_gain_ = daisysp::pow10f(drive * kDriveDb * .05f);
+        type_want_ = static_cast<uint8_t>(fminf(knobs_[TYPE].value, 1.f) * (kFinTypes - 1) + .5f);
         const float loud = knobs_[LOUD].value;
         loud_on_ = loud > 0.f;
         loud_target_ = daisysp::pow10f(loud * kLoudDb * .05f);
         times_n_ = 0; // the comp's coefficients again (Times)
     }
 
-    /** The saturation of a type, at twice the rate */
+    /** The saturation of a type, at twice the rate. Polynomials clamped where their slope
+     *  reaches 0, so the knee is smooth (its harmonics fall off fast and don't fold back):
+     *  - Boost: x - x^3 / (3 L^2), L 1.5: below the knee the third harmonic alone
+     *  - Tube: the same, L 2.5, plus .2 of its square: the square's second harmonic grows
+     *    with the level as the cubic's third does, so it stays on top as the drive rises
+     *  - Fuzz: x - x^5 / (5 L^4), L 1.25: flatter, then a harder knee, more and higher
+     *    harmonics as it clips, plus .1 of its square for some even ones
+     *  The square's DC goes in the blocker after it. Asymmetric, Tube and Fuzz take a little
+     *  DC with them that follows the level, as a tube stage's bias shifts */
     static __attribute__((always_inline)) inline float Saturate(uint8_t type, float x)
     {
         if (type == BOOST)
-            return daisysp::SoftClip(x);
+        {
+            x = fminf(fmaxf(x, -1.5f), 1.5f);
+            return x - x * x * x * (1.f / 6.75f);
+        }
         if (type == TUBE)
-            return daisysp::SoftClip(x + kTubeBias) - kTubeOffset;
-        return fminf(fmaxf(x, -1.f), 1.f);
+        {
+            x = fminf(fmaxf(x, -2.5f), 2.5f);
+            const float s = x - x * x * x * (1.f / 18.75f);
+            return s + .2f * s * s;
+        }
+        x = fminf(fmaxf(x, -1.25f), 1.25f);
+        const float x2 = x * x;
+        const float s = x - x2 * x2 * x * (1.f / 12.2070312f);
+        return s + .1f * s * s;
     }
-    static constexpr float kTubeOffset = .4f * (27.f + .16f) / (27.f + 9.f * .16f); // SoftClip(kTubeBias)
+    /** Each type's gain before its curve: the reference sine meets Boost's knee just past the
+     *  top (+18.7dB), Tube's past it too (+20.9dB, its second harmonic 9dB above the third at
+     *  the top), Fuzz's at +14dB, so Fuzz drives hardest */
+    static constexpr float kTypeGain[kFinTypes] = {.35f, .45f, .5f};
 
     /** The drive's fixed compensation: what brings a sine of kDriveRef, driven by gain into
      *  type's saturation, back to its level (its RMS, the DC taken off) */
@@ -475,6 +504,9 @@ private:
         if (turned_)
         {
             turned_ = false;
+            // a stepped knob (the type, the characters) lands at once and never slews: its
+            // turn is worked out all the same
+            update_pending_ = true;
             for (size_t p = 0; p < kNumFinParams; p++)
             {
                 update_pending_ |= knobs_[p].Settle(kFxParamCoeff * n);
@@ -564,14 +596,41 @@ private:
         trim_from_ = trim_;
         trim_ = bypass_ ? 1.f : trim_target_;
 
-        // the drive
+        // the drive. A new type while it's heard dips it out first; the type changes at the
+        // bottom, where it then runs unheard for kTypeHoldMs while the blocker takes the new
+        // type's DC, and fades back in
         const bool drive = drive_on_ && !bypass_;
         drive_from_ = drive_mix_;
-        if (drive && drive_mix_ == 0.f && drive_from_ == 0.f)
+        if (drive && !drive_run_)
             for (size_t c = 0; c < 2; c++)
                 drive2x_[c] = Drive2x();
-        drive_mix_ = Toward(drive_mix_, drive ? 1.f : 0.f, step);
-        drive_run_ = drive_from_ > 0.f || drive_mix_ > 0.f;
+        if (type_want_ != type_ && drive_mix_ == 0.f)
+        {
+            type_ = type_want_;
+            if (drive_run_)
+                type_hold_ = static_cast<int32_t>(kTypeHoldMs * .001f * sample_rate_);
+        }
+        else if (type_hold_ > 0)
+            type_hold_ -= static_cast<int32_t>(n);
+        const bool heard = drive && type_want_ == type_ && type_hold_ <= 0;
+        drive_mix_ = Toward(drive_mix_, heard ? 1.f : 0.f, step);
+        drive_run_ = drive_from_ > 0.f || drive_mix_ > 0.f || (drive && type_hold_ > 0);
+        if (!drive_run_)
+            type_hold_ = 0;
+        drive_target_ = drive_db_gain_ * kTypeGain[type_];
+        if (drive_target_ != comp_gain_ || type_ != comp_type_)
+        {
+            // only when the drive or the type changed: 32 sines
+            comp_gain_ = drive_target_;
+            comp_type_ = type_;
+            drive_comp_ = DriveCompensation(drive_target_, type_);
+        }
+        if (type_ != gain_type_)
+        {
+            // unheard: the gain jumps with the type
+            drive_gain_ = drive_target_;
+            gain_type_ = type_;
+        }
 
         // the limiter: on waking its delay fills first, then fades in
         lim_want_ = loud_on_ && !bypass_;
@@ -835,8 +894,8 @@ private:
     bool eq_neutral_, width_neutral_;
     float depth_;
     bool drive_on_, loud_on_;
-    float drive_target_, drive_comp_, loud_target_;
-    uint8_t type_;
+    float drive_db_gain_, loud_target_;
+    uint8_t type_want_;
 
     // the input
     float trim_, trim_from_;
@@ -863,6 +922,11 @@ private:
     bool bands_run_, bands_apply_;
 
     // the drive
+    float drive_target_, drive_comp_;
+    float comp_gain_; // what drive_comp_ was worked out for
+    uint8_t comp_type_;
+    uint8_t type_, gain_type_; // the type it plays, and the one drive_gain_ is for
+    int32_t type_hold_; // a new type's hold at the bottom, samples left
     Drive2x drive2x_[2];
     float hicut_, dc_;
     float drive_gain_;
@@ -892,6 +956,7 @@ private:
 constexpr Finalizer::Character Finalizer::kCharacters[kFinCharacters];
 constexpr float Finalizer::kHoldMs[Finalizer::kBands];
 constexpr float Finalizer::kHalfband[4];
+constexpr float Finalizer::kTypeGain[kFinTypes];
 constexpr float Finalizer::kMid[Finalizer::kMidTaps / 2];
 
 } // namespace chompi
