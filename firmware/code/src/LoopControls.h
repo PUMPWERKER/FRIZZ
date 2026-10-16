@@ -112,6 +112,15 @@ public:
                 return b;
         return kNone;
     }
+    /** The first bank with a file in it of the Loops page (FRIZZ's loops) or the Cubbi page,
+     *  kNone for none: the play page's lower C# and D# (#434) */
+    int FirstUsed(bool cubbi) const
+    {
+        for (size_t b = cubbi ? loops::kCubbiBank : 0; b < (cubbi ? loops::kBanks : loops::kFrizzBanks); b++)
+            if (BankUsed(b))
+                return static_cast<int>(b);
+        return kNone;
+    }
     /** To Neighbour(dir); false at the end */
     bool StepBank(int dir)
     {

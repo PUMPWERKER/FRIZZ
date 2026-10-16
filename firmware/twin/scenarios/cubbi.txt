@@ -71,11 +71,12 @@ wait 60
 up KEY_26
 wait 300
 expect led smt 0 fc983c
-# home: a double tap of SHIFT; the bank keys dark again, b3 plays on
+# home: a double tap of SHIFT, b3 plays on; the bank keys say what the card holds (#434): the
+# lower C# dim in A's orange (a1.wav), the lower D# dim in a's purple (cubbi_a1)
 tap KEY_26
 wait 100
 tap KEY_26
 wait 300
-expect led smt 0 000000
-expect led smt 1 000000
+expect led smt 0 241408
+expect led smt 1 140024
 wait 1000

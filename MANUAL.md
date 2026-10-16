@@ -382,6 +382,11 @@ Loops from the card play from two pages of their own, the **Loops page** for you
 **Cubbi page** for TAPE's, where the white keys are the loops. To get loops onto the card, see
 [Loop loader](#loop-loader).
 
+On the play page the two keys that open them show what the card holds: the lower C# glows
+dimly in the colour of the first bank with a loop of yours, the lower D# in that of the first
+bank with a cubbi, and each stays dark when the card has none. They show what's on the card,
+not what's playing, and follow the card when loops come or go.
+
 ### The Loops page
 
 **SHIFT + the lower C#** opens the Loops page. **SHIFT + the lower C#** again, or **two quick
@@ -1491,7 +1496,9 @@ keys in the middle are scene keys: lower F#, lower G#, lower A#, upper C# and up
 ![The panel with the five scene keys lit, the blank scene and scenes 1 to 4, then save in green, copy in blue and delete in red, and the CHOMPI key that confirms](images/panel-scenes.svg)
 
 On the play page the lower C# and D# do nothing by themselves: with SHIFT they open the
-[Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page).
+[Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page). They glow dimly when the
+card holds loops (the lower C#) or TAPE's cubbis (the lower D#), in the colour of the first
+bank that does.
 
 A saved scene stays as you saved it: changes you make after recalling one are only kept if you
 save again.
@@ -2107,8 +2114,8 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | SHIFT + another scene key, while one runs | Stop it there and start the new one from there | [Timed scene changes](#timed-scene-changes) |
 | Upper F#, G# or A#, the slot (copy: the source, then the destination), then CHOMPI | Save, copy or delete a scene | [Save, copy and delete](#save-copy-and-delete) |
 | The function's key again, or the mode switch up | Out of save, copy or delete, doing nothing | [Save, copy and delete](#save-copy-and-delete) |
-| SHIFT + lower C# | The Loops page | [The Loops page](#the-loops-page) |
-| SHIFT + lower D# | The Cubbi page | [The Cubbi page](#the-cubbi-page) |
+| SHIFT + lower C# | The Loops page (the lower C# glows dimly when the card holds loops) | [The Loops page](#the-loops-page) |
+| SHIFT + lower D# | The Cubbi page (the lower D# glows dimly when the card holds cubbis) | [The Cubbi page](#the-cubbi-page) |
 
 ### On the Loops page
 
