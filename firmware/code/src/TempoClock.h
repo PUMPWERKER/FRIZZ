@@ -19,7 +19,7 @@
  *     comes from the ticks counted over the last 2-4 s (FollowClock), which holds still under
  *     jitter that MidiClock's smoothed period doesn't (at 174 and 300 BPM, between two whole
  *     BPM), and moves only once the count is past the half by kTempoMargin; a jump in the
- *     tempo is followed at once.
+ *     tempo is followed at once, a new lock's once its ticks are counted for 0.1 s.
  *  3. Neither: the last tempo is kept (120 BPM until one is set by a clock, a loop or taps)
  *     and pulses come from an internal phase at that tempo. A tap sets the tempo and puts a
  *     beat on the tap.
@@ -65,6 +65,8 @@ static const float kTempoMargin = .1f;
 static const uint32_t kTempoSpan = 2 * 48000;
 // From a clock: before the count is this long, the smoothed period's tempo stands in for it
 static const uint32_t kTempoMinSpan = 48000;
+// From a clock's new lock: the ticks are counted this long before its tempo is taken
+static const uint32_t kTempoLockSpan = 4800;
 
 inline float ClampBpm(float bpm)
 {
@@ -415,7 +417,10 @@ private:
      *  2-4 s, whose error shrinks with the span (the ticks' jitter doesn't add up, a late
      *  tick pulls a line through hundreds only a little) where the smoothed period's grows
      *  with the tempo (block and USB frame jitter on a short period). A smoothed tempo
-     *  further off than its jitter is a new tempo: followed at once, and counted anew. */
+     *  further off than its jitter is a new tempo: followed at once, and counted anew.
+     *  A new lock's smoothed period starts from one interval, a block or a USB frame off (at
+     *  120 BPM 122 or 119, at 300 up to 20 BPM off, #413): its first second follows the line
+     *  through its ticks instead, once that's kTempoLockSpan long, the last tempo until then */
     void FollowClock(float smoothed)
     {
         const uint32_t ticks = midi_clock_->GetTicks();
@@ -427,9 +432,14 @@ private:
             count_[1].Add(ticks, at);
             count_last_ = ticks;
         }
-        const float counted = at - count_[0].at0 >= kTempoMinSpan
-                                  ? 60.f * sample_rate_ / (kTicksPerBeat * count_[0].Period())
-                                  : smoothed;
+        const uint32_t span = at - count_[0].at0;
+        if (settling_ && counting_ && locks == count_locks_ && span < kTempoMinSpan)
+        {
+            if (span >= kTempoLockSpan)
+                FollowCount(CountedBpm());
+            return;
+        }
+        const float counted = span >= kTempoMinSpan ? CountedBpm() : smoothed;
         if (!counting_ || locks != count_locks_ || fabsf(smoothed - counted) > ClockJitter(counted))
         {
             count_[0].Start(ticks, at);
@@ -437,14 +447,29 @@ private:
             count_locks_ = locks;
             count_last_ = ticks;
             counting_ = true;
-            SetClockTempo(smoothed);
+            settling_ = midi_clock_->SenderLocks() != count_lock_;
+            count_lock_ = midi_clock_->SenderLocks();
+            if (!settling_)
+                SetClockTempo(smoothed);
             return;
         }
+        settling_ = false;
         if (at - count_[1].at0 >= kTempoSpan)
         {
             count_[0] = count_[1];
             count_[1].Start(ticks, at);
         }
+        FollowCount(counted);
+    }
+
+    /** The tempo of the line through the ticks counted (count_[0]) */
+    inline float CountedBpm() const
+    {
+        return 60.f * sample_rate_ / (kTicksPerBeat * count_[0].Period());
+    }
+    /** A counted tempo: the whole BPM moves to it once it's past the half by kTempoMargin */
+    void FollowCount(float counted)
+    {
         if (fabsf(ClampBpm(counted) - static_cast<float>(tempo_)) > .5f + kTempoMargin)
             SetClockTempo(counted);
     }
@@ -585,7 +610,9 @@ private:
 
     // a clock's ticks counted for its tempo (FollowClock): from two starts, the older first
     bool counting_ = false;
+    bool settling_ = false;   // a new lock's first kTempoMinSpan: its line, not the smoothed
     uint32_t count_locks_ = 0;
+    uint32_t count_lock_ = 0; // MidiClock's SenderLocks at the count's start
     uint32_t count_last_ = 0; // the ticks at the last block that had any
     TickLine count_[2];
 

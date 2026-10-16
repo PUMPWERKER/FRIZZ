@@ -199,6 +199,12 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The FX take a MIDI clock's tempo cleanly when it starts** (#413): the first tick
+  interval FRIZZ heard is a block off, so a clock starting at a steady 120 BPM put the delay
+  and the other FX at 122 or 119 for a moment, and at fast tempos many BPM off (at 300 over
+  USB up to 20), creeping back over a second. Now the last tempo holds for the first tenth of
+  a second, until FRIZZ has counted the clock's ticks, and then the FX go straight to its
+  tempo. A clock that changes tempo while running is followed as quickly as before.
 - **The flanger punched in again right after letting it go doesn't click** (#392): a press
   while its key still faded out (a quick double tap, a bouncing key, MIDI) restarted the sweep
   under the fade, a click. Now a press from silence restarts the sweep as before, and one in
