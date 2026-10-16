@@ -753,7 +753,7 @@ def running_slot(node):
     info = ident(node)
     last, this_hold, _ = last_started()
     if info:
-        slots = [s for s in slots_of(info) if s in FRIZZ_SLOTS] if info["kind"] == "frizz" else []
+        slots = slots_of(info) if info["kind"] == "frizz" else []
         return slots[0] if len(slots) == 1 else last if last in slots else FRIZZ_SLOT
     return last if this_hold and last in FRIZZ_SLOTS else FRIZZ_SLOT
 
