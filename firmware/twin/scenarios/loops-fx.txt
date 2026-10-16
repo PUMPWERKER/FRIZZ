@@ -93,10 +93,10 @@ wait 300
 tap KEY_1
 wait 1000
 expect led smt 24 fc983c
-# home: a double tap of SHIFT
+# home: a double tap of SHIFT; the lower C# dim in A's orange, the card's loops (#434)
 tap KEY_26
 wait 100
 tap KEY_26
 wait 300
 expect led pth 0 000000
-expect led smt 0 000000
+expect led smt 0 241408
