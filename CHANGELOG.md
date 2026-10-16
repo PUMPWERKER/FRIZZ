@@ -204,7 +204,8 @@ what FRIZZ does.
   and the other FX at 122 or 119 for a moment, and at fast tempos many BPM off (at 300 over
   USB up to 20), creeping back over a second. Now the last tempo holds until FRIZZ has counted
   a few of the clock's ticks (two at 120 BPM and below, a tenth of a second at 300), and then
-  the FX go straight to its tempo. The beat grid follows the ticks from the first one, as
+  the FX go straight to its tempo, also from a DAW that sends its ticks in pairs (which could
+  start them anywhere up to 300). The beat grid follows the ticks from the first one, as
   before, and a clock that changes tempo while running is followed as quickly as before.
 - **The flanger punched in again right after letting it go doesn't click** (#392): a press
   while its key still faded out (a quick double tap, a bouncing key, MIDI) restarted the sweep
