@@ -61,6 +61,10 @@
 
 // once each and not in a hurry: FRIZZ's code space is tight (SRAM_EXEC), as EventLog's
 #define MIDI_CONTROL_ONCE __attribute__((noinline, optimize("Os")))
+// where the twin brings the audio interrupt in the middle of MainLoop (twin::PreemptAt)
+#ifndef FRIZZ_PREEMPT
+#define FRIZZ_PREEMPT(point)
+#endif
 
 namespace chompi
 {
@@ -565,8 +569,15 @@ public:
     }
 
     /** The white key 0-14 whose knobs the global channel's 14-22 reach: the play page's, as
-     *  the hand selects, and CC 23's at once, so a knob right after it goes to the new one */
-    inline void SetFocus(uint8_t key) { focus_ = key; }
+     *  the hand selects, and CC 23's at once, so a knob right after it goes to the new one.
+     *  Not over a CC 23 MainLoop hasn't taken yet: that one is newer */
+    MIDI_CONTROL_ONCE void SetFocus(uint8_t key)
+    {
+        FRIZZ_PREEMPT("set-focus");
+        daisy::ScopedIrqBlocker irq;
+        if (!focus_changed_)
+            Focus(key);
+    }
 
     /** A SysEx asking for an answer, taken */
     inline bool TakeQuery(Query& q)
@@ -834,7 +845,7 @@ private:
         case kFocusCC:
             if (v < 1 || v > kBlockChannels)
                 return false;
-            focus_ = v - 1;
+            Focus(v - 1);
             focus_changed_ = true;
             return true;
         case kMorphCC:
@@ -905,6 +916,16 @@ private:
         default:
             return false;
         }
+    }
+
+    /** The focus on white key key: a new one's CC 22 counts from its first value, as on its
+     *  own channel (#444) */
+    void Focus(uint8_t key)
+    {
+        if (key == focus_)
+            return;
+        focus_ = key;
+        known_ &= ~(1u << kFocusLatch);
     }
 
     /** A latch from switch source, for white key key, as it crosses 64 */
