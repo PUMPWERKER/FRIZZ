@@ -56,9 +56,10 @@ wait 3440
 # far left: blue (lowpass), the resonance at the top
 expect led pth 1 1616fd
 expect led pth 2 00d1fd
-# off again
+# off again: the key, then SHIFT (a plain tap keeps the latch, #456)
 down KEY_5
 wait 80
+tap KEY_26
 up KEY_5
 wait 1000
 # off: its key dim

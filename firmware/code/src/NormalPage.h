@@ -17,23 +17,23 @@
  *  mode, the looper's combos, tap tempo (TapTempo.h). This page is its Host. Every other key
  *  or knob used tells it (Used, FxKey), so SHIFT + it is a combo rather than a confirm.
  *
- *  FX keys: an FX key held, then SHIFT, toggles the latch, decided on the key's release;
- *  SHIFT, then an FX key, only selects it for the knobs, silently (FxControls.h), and the key
- *  flashes white. Knobs 1-4 edit the FX pressed or selected last. Which came first is judged
- *  with kShiftGraceMs of grace (#115), by when the audio callback saw the keys (KeyEdge), not
- *  when MainLoop gets to their events: SHIFT going down that soon after an FX key's or the
- *  finalizer's press, or let go that soon before it, is SHIFT first, a select
- *  (FxControls::LateSelect); the latch gesture leaves far more time between them. An FX key
- *  back down that soon after its release is a bounce, and takes the release back
- *  (FxControls::Rebound).
+ *  FX keys: SHIFT and an FX key, in either order, toggle its latch, decided on the key's
+ *  release (#456); a plain press plays it while held and selects it for the knobs, and never
+ *  changes the latch (FxControls.h). Knobs 1-4 edit the FX pressed last (or MIDI's focus).
+ *  SHIFT let go at most kShiftGraceMs before an FX key's or the finalizer's press still
+ *  counts as held (ShiftAt, #115), by when the audio callback saw the keys (KeyEdge), not
+ *  when MainLoop gets to their events. An FX key back down within kReboundMs of its release
+ *  is a bounce, and takes the release back (FxControls::Rebound): wider than the grace, as a
+ *  bounce with SHIFT held would otherwise toggle the latch again (#464), and far below the
+ *  quickest second tap by hand.
  *
  *  An effect with a second mode (kFxModes, the phaser's frequency shifter, #306): SHIFT + its
- *  key selects it as any; the key again in the same hold, with no other key between, switches
- *  the mode (tap_fx_), however long after, and each further tap switches again. Only a press
- *  with SHIFT down counts (ShiftAt, its grace too), so the latch gesture (the key, then SHIFT)
- *  never does; letting go of SHIFT or another key starts the count again. Not on the Loops
- *  page, where the white keys are loops. The key lights in the mode's colour (FxSlots.h), at
- *  full for kModeFlashMs after a switch.
+ *  key latches it as any; the key again in the same hold, with no other key between, switches
+ *  the mode (tap_fx_) and puts the latch back as it was before the first, however long after,
+ *  and each further tap switches again. The first tap is SHIFT and the key in either order;
+ *  letting go of SHIFT or another key starts the count again. Not on the Loops page, where
+ *  the white keys are loops. The key lights in the mode's colour (FxSlots.h), at full for
+ *  kModeFlashMs after a switch.
  *
  *  The finalizer's key (kCompKey, #345) selects it for the knobs, and flashes white. SHIFT +
  *  the key with the finalizer selected already shows its next module (#435), so SHIFT + it
@@ -150,9 +150,10 @@ namespace chompi
     // scene slot, the CHOMPI key armed to confirm. Slower than a refusal's 3 blinks (LedSignal)
     static const uint32_t kPendingBlinkMs = 250;
     static const uint32_t kTapFlashMs = 80;      // LOOP flashes on a tempo tap
-    static const uint32_t kSelectFlashMs = 80;   // an FX key flashes on a select
+    static const uint32_t kSelectFlashMs = 80;   // the finalizer's key flashes on a select
     static const uint32_t kModeFlashMs = 250;    // and at full in its new colour on a mode switch
-    static const uint32_t kShiftGraceMs = 15;    // SHIFT this near an FX key's press: first (#115)
+    static const uint32_t kShiftGraceMs = 15;    // SHIFT this near a key's press: with it (#115)
+    static const uint32_t kReboundMs = 20;       // an FX key back down this soon: a bounce (#464)
     static const float kFlashDarkAbove = .5f;    // a flash goes dark on an LED this white (Flash)
     static const float kSemiStepPerTurn = .5f;   // 2 transport detents per semitone
     static const float kSpeedStepPerTurn = .25f; // SHIFT: 4 detents per step of the ladder
@@ -539,16 +540,25 @@ namespace chompi
                 if (buttonID == static_cast<uint16_t>(kFxSlots[fx].key))
                 {
                     if (!rising)
+                    {
                         fx_.KeyPressed(fx, false, Shift());
-                    else if (!(Grace(buttonID, false, buttonID) && fx_.Rebound(fx)))
+                        released_ms_[fx] = edge_ms_[0][buttonID];
+                    }
+                    // within kReboundMs of the release handled: by its own time, as the bounce's
+                    // release may be in edge_ms_ already (#464)
+                    else if (!(edge_ms_[1][buttonID] - released_ms_[fx] <= kReboundMs && fx_.Rebound(fx)))
                     {
                         const bool shift = ShiftAt(buttonID);
-                        // SHIFT + the key again in the same hold: its other mode (#306)
+                        // SHIFT + the key again in the same hold: its other mode (#306), the
+                        // latch as it was before the first
                         const bool mode = shift && tap_fx_ == fx && !LoopsShownNow();
-                        FxKeyDown(shift && !mode);
-                        fx_.KeyPressed(fx, true, shift);
+                        keys_.FxKey();
+                        fx_.KeyPressed(fx, true, shift && !mode);
                         if (mode)
+                        {
+                            fx_.LatchBack(fx);
                             SwitchMode(fx);
+                        }
                         tap_fx_ = shift && (kFxModes >> fx & 1) ? fx : kNumFx;
                     }
                     return true;
@@ -1811,31 +1821,17 @@ namespace chompi
         // PlayKeys' Host
         friend class PlayKeys<NormalPage>;
         inline bool SceneArmed() const { return scene_ctl_.Armed() || fin_presets_.Armed(); }
-        /** SHIFT going down: SHIFT + key after all if an FX key's or the finalizer's press
-         *  came at most kShiftGraceMs before it, a select, which a plain press of an FX key
-         *  takes back (FxControls::LateSelect); otherwise the FX keys held will latch */
+        /** SHIFT going down: SHIFT + key after all if the finalizer's press came at most
+         *  kShiftGraceMs before it, a select; otherwise the FX keys held will latch (an FX
+         *  key's press just before is the latch gesture as well, #456) */
         bool ShiftPressed()
         {
 #if !FRIZZ_BENCH
             if (loops_shown_)
-                return fx_.ShiftPressed(); // its white keys are loops: no select
+                return fx_.ShiftPressed(); // its white keys are loops
 #endif
             const uint16_t shift = static_cast<uint16_t>(Hardware::SwId::KEY_26);
-            bool select = Grace(static_cast<uint16_t>(kCompKey), true, shift);
-            for (size_t fx = 0; fx < kNumFx; fx++)
-            {
-                if (Grace(static_cast<uint16_t>(kFxSlots[fx].key), true, shift))
-                {
-                    // a select whatever LateSelect says: SHIFT and the key in one block come
-                    // SHIFT first (ui.h's Tell, by SwId), so LateSelect finds no press yet; the
-                    // key's, still to come, selects with SHIFT held, and this SHIFT is a combo,
-                    // not a tap. Not a slip: keep it
-                    fx_.LateSelect(fx);
-                    select = true;
-                    if (kFxModes >> fx & 1)
-                        tap_fx_ = fx; // the first of a mode's taps (#306)
-                }
-            }
+            const bool select = Grace(static_cast<uint16_t>(kCompKey), true, shift);
             // key 15 held, then SHIFT: the finalizer bypassed or on again (#345), unless a mode
             // waits for SHIFT's confirm
             if (!select && fin_down_ && fin_presets_.Mode() == SceneMode::NONE && !scene_ctl_.Armed())
@@ -1846,7 +1842,14 @@ namespace chompi
                 return true;
             }
             if (!select)
+            {
+                // an FX key held, then SHIFT: a latch, and for an effect with a second mode
+                // the first of its taps, as SHIFT, then the key (#306)
+                for (size_t fx = 0; fx < kNumFx; fx++)
+                    if ((kFxModes >> fx & 1) && fx_.Held(fx))
+                        tap_fx_ = fx;
                 return fx_.ShiftPressed();
+            }
             fx_.ShiftUsed(); // as SHIFT, then the key, would leave the keys held long before
             select_flash_.Start(System::GetNow(), kSelectFlashMs);
             return true;
@@ -1926,8 +1929,8 @@ namespace chompi
 #endif
         }
 
-        /** An FX or the finalizer's key going down: tells PlayKeys, and flashes the
-         *  key white for a select */
+        /** The finalizer's key going down: tells PlayKeys, and flashes the key white for a
+         *  select */
         void FxKeyDown(bool flash)
         {
             keys_.FxKey();
@@ -2689,8 +2692,8 @@ namespace chompi
                 float rgb[3];
                 for (int c = 0; c < 3; c++)
                     rgb[c] = level * (color[c] + whiten * (1.f - color[c]));
-                // a select (SHIFT + the key): a flash
-                if ((fx == selected && select_flash_.Active(now)) || (mode_flash && fx_.IsOn(fx)))
+                // a mode switch on a key lit: a flash
+                if (mode_flash && fx_.IsOn(fx))
                     Flash(rgb);
                 SetSmtLedFloat(KeyLedOf(kFxSlots[fx].key), rgb[0], rgb[1], rgb[2]);
             }
@@ -3113,7 +3116,7 @@ namespace chompi
         uint32_t beat_ = 0;         // the beat the PLAY LED shows (DrawLooperLeds), in pulses / beat
         uint32_t beat_at_ = 0;      // when it began
         bool downbeat_ = false;     // it's a bar's 1
-        LedSignal select_flash_; // on the selected FX's key
+        LedSignal select_flash_; // on the finalizer's key
         LedSignal mode_flash_;   // on its key after its mode switched (#306)
         size_t mode_flash_fx_ = kFinSelected; // whose: an FX, or the finalizer's module
         size_t tap_fx_ = kNumFx; // SHIFT + this key last in this hold, nothing since: the key
@@ -3137,6 +3140,7 @@ namespace chompi
         // callback's clock (KeyEdge), for the grace of kShiftGraceMs
         static const int kEdgeKeys = static_cast<int>(Hardware::SwId::SR_LAST);
         volatile uint32_t edge_ms_[2][kEdgeKeys] = {};
+        uint32_t released_ms_[kNumFx] = {}; // each FX key's release handled last, by that clock
         float lim_shown_ = 0.f;  // the limiter on the finalizer's key, 0..1, held from lim_at_
         uint32_t lim_at_ = 0;
         float speed_chunk_ = 0.f;   // transport detents towards the next speed step

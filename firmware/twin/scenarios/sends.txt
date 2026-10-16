@@ -56,8 +56,11 @@ wait 1500
 expect led pth 1 00fd84
 expect led pth 2 00fd84
 expect led pth 3 fdfdfd
-# both off: the tails ring out
+# both off, SHIFT held (#456): the tails ring out
+down KEY_26
+wait 60
 tap KEY_12
 wait 100
 tap KEY_13
+up KEY_26
 wait 4000
