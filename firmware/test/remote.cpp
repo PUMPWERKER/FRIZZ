@@ -2848,6 +2848,118 @@ case("--test to 13", "--test", "--slot", "13")
     if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 
+    // release-check.py (release-check.yml, #440) on releases a fake gh serves, GET only (any
+    // other call fails it): what it checks; a release's FRIZZ.bin against CI's build of the tag;
+    // the rolling beta's against the numbered pre-release on its commit, and its notes' md5
+    rc = Python(R"(
+import builds, hashlib, json, os, shutil, subprocess
+check = os.path.join(os.path.dirname(builds.FIRMWARE), ".github", "scripts", "release-check.py")
+os.makedirs("ghbin", exist_ok=True)
+open("ghbin/gh", "w").write("""#!/usr/bin/env python3
+import os, sys
+a = sys.argv[1:]
+if a[:1] != ["api"] or any(x in a for x in ("--method", "-X", "-f", "-F", "--field", "--raw-field", "--input")):
+    print("WRITE " + " ".join(a), file=sys.stderr)
+    sys.exit(3)
+raw = "Accept: application/octet-stream" in a
+path = os.path.join(os.environ["FAKE_GH"], a[-1].replace("/", "__") + (".bin" if raw else ".json"))
+if not os.path.exists(path):
+    print("gh: Not Found (HTTP 404) " + a[-1], file=sys.stderr)
+    sys.exit(1)
+sys.stdout.buffer.write(open(path, "rb").read())
+""")
+os.chmod("ghbin/gh", 0o755)
+md5 = lambda b: hashlib.md5(b).hexdigest()
+R = "repos/o/r/"
+
+def fake(rels, bins, tags):
+    """releases (tag, draft, prerelease, asset id or None, body), assets {id: bytes}, tags
+    {tag: commit or ("tag", annotated tag's commit)}"""
+    shutil.rmtree("fake", ignore_errors=True)
+    os.makedirs("fake")
+    def put(path, data, raw=False):
+        open("fake/" + path.replace("/", "__") + (".bin" if raw else ".json"), "wb").write(
+            data if raw else json.dumps(data).encode())
+    # two pages, as --paginate prints them
+    listing = [dict(id=i, tag_name=t, draft=d, prerelease=p, name=t, body=b,
+                    assets=[dict(id=a, name="FRIZZ.bin")] if a else [dict(id=99, name="other.zip")])
+               for i, (t, d, p, a, b) in enumerate(rels)]
+    open("fake/" + (R + "releases").replace("/", "__") + ".json", "w").write(
+        json.dumps(listing[:2]) + "\n" + json.dumps(listing[2:]))
+    for i, data in bins.items():
+        put(R + "releases/assets/%s" % i, data, raw=True)
+    for t, c in tags.items():
+        if isinstance(c, tuple):
+            put(R + "git/ref/tags/" + t, dict(object=dict(type="tag", sha="t" + c[1])))
+            put(R + "git/tags/t" + c[1], dict(object=dict(type="commit", sha=c[1])))
+        else:
+            put(R + "git/ref/tags/" + t, dict(object=dict(type="commit", sha=c)))
+
+def run(name, *args):
+    env = dict(os.environ, FAKE_GH=os.path.abspath("fake"), GH_REPO="o/r",
+               PATH=os.path.abspath("ghbin") + os.pathsep + os.environ["PATH"])
+    env.pop("GITHUB_OUTPUT", None)
+    env.pop("GITHUB_STEP_SUMMARY", None)
+    r = subprocess.run(["python3", check] + list(args), capture_output=True, text=True, env=env)
+    print("%s: exit %d: %s" % (name, r.returncode, " | ".join((r.stdout + r.stderr).strip().splitlines())))
+
+B3, B4, ST = b"beta 3", b"beta 4", b"stable"
+notes = "FRIZZ.bin md5 `%s`, v1.5.0-beta.4's build" % md5(B4)
+rels = [("v1.0.1", False, False, 1, ""), ("v1.5.0-beta.3", False, True, 3, ""),
+        ("v1.5.0-beta.4", False, True, 4, ""), ("beta", False, True, 9, notes), ("v1.6.0", True, False, None, "")]
+bins = {1: ST, 3: B3, 4: B4, 9: B4}
+tags = {"v1.0.1": "c1", "v1.5.0-beta.3": "c3", "v1.5.0-beta.4": ("tag", "c4"), "beta": "c4"}
+fake(rels, bins, tags)
+run("plan", "plan")
+run("plan beta", "plan", "beta")
+run("plan v1.5.0-beta.3", "plan", "v1.5.0-beta.3")
+run("plan other", "plan", "nightly")
+run("release right", "release", "v1.5.0-beta.4", md5(B4))
+run("release wrong", "release", "v1.5.0-beta.4", md5(b"else"))
+run("release draft", "release", "v1.6.0", md5(b"else"))
+run("release none", "release", "v9.9.9", md5(b"else"))
+run("beta", "beta")
+fake(rels, {**bins, 9: B3}, tags)
+run("beta another build", "beta")
+fake(rels[:3] + [("beta", False, True, 9, "md5 `%s`" % md5(B3))] + rels[4:], bins, tags)
+run("beta notes", "beta")
+fake(rels, bins, dict(tags, beta="c9"))
+run("beta elsewhere", "beta")
+fake(rels[:3] + [("beta", False, True, 9, "v1.5.0-beta.3, md5 %s" % md5(B3))] + rels[4:], {**bins, 9: B3},
+     dict(tags, beta="c3"))
+run("beta behind", "beta")
+fake([("v1.0.1", False, False, None, "")] + rels[1:], bins, tags)
+run("published without", "release", "v1.0.1", md5(ST))
+fake(rels[:3] + [("beta", False, True, None, notes)] + rels[4:], bins, tags)
+run("beta without", "beta")
+)", out);
+    Check(rc == 0 && Has(out, "plan: exit 0: checking: v1.0.1, v1.5.0-beta.4, and beta | tags=[\"v1.0.1\", \"v1.5.0-beta.4\"] | beta=true\n")
+              && Has(out, "plan beta: exit 0: checking: no release's build, and beta | tags=[] | beta=true\n")
+              && Has(out, "plan v1.5.0-beta.3: exit 0: checking: v1.5.0-beta.3, and beta | tags=[\"v1.5.0-beta.3\"]")
+              && Has(out, "plan other: exit 0: nightly isn't a version's tag nor beta: nothing to check") && Has(out, "beta=false\n"),
+          "tools: release-check.py checks a release event's tag and beta; on the schedule the latest stable and "
+          "the newest numbered pre-release, what the site serves (#440)");
+    Check(Has(out, "release right: exit 0: v1.5.0-beta.4's release carries FRIZZ.bin md5")
+              && Has(out, "release wrong: exit 1: **v1.5.0-beta.4's release carries a FRIZZ.bin that isn't the tag's build")
+              && Has(out, "::error::v1.5.0-beta.4's FRIZZ.bin (md5 ")
+              && Has(out, "release draft: exit 0: v1.6.0's draft release has no FRIZZ.bin yet: nothing to check")
+              && Has(out, "release none: exit 0: No release for v9.9.9")
+              && Has(out, "published without: exit 1: **v1.0.1's release is published without a FRIZZ.bin"),
+          "tools: a release's FRIZZ.bin against CI's build of the tag: the same, or it fails loudly; published "
+          "without one fails, a draft without is left alone");
+    Check(Has(out, "beta: exit 0: The rolling beta carries FRIZZ.bin md5 `")
+              && Has(out, "`: v1.5.0-beta.4's build, on its commit c4, the md5 its notes name.\n")
+              && Has(out, "beta another build: exit 1: **The rolling beta's FRIZZ.bin isn't v1.5.0-beta.4's")
+              && Has(out, "beta notes: exit 1: **The rolling beta's notes don't name its build's md5")
+              && Has(out, "beta elsewhere: exit 1: **The rolling beta is on c9, where no numbered pre-release")
+              && Has(out, "beta behind: exit 0: The rolling beta carries v1.5.0-beta.3, but v1.5.0-beta.4 is newer")
+              && Has(out, "beta without: exit 1: **The rolling beta carries no FRIZZ.bin: its fixed link is dead**"),
+          "tools: the rolling beta's FRIZZ.bin the numbered pre-release's on its commit (an annotated tag's too), "
+          "the md5 its notes name; behind the newest a warning");
+    Check(!Has(out, "WRITE") && !Has(out, "Traceback"), "tools: release-check.py only reads (gh api GETs)");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
     // midisuite.py and reaper.py (#171): FRIZZ asked before each case and before putting things
     // back whether it still keeps the card out of it; one that restarted stops the run, nothing
     // put back. SIGTERM isn't taken for a case's FAIL but stops the run as Ctrl-C does; the

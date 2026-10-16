@@ -298,7 +298,12 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   release never waits for it: make it as above, right after pushing the tag (`gh release
   create <tag> --verify-tag …`); should CI's draft be there first, finish that one (`gh release
   edit`) instead of making a second, and once your `FRIZZ.bin` is on it, run the tag's
-  *Release build* again (`gh run rerun <its run>`) so it checks that md5.
+  *Release build* again (`gh run rerun <its run>`) so it checks that md5. After the push,
+  **Release check** (`.github/workflows/release-check.yml`, #440, read-only) checks a v*
+  release's `FRIZZ.bin` again against a fresh build of its tag when it is published or edited,
+  and the rolling `beta`'s against the numbered pre-release on its commit (and the md5 its notes
+  name) when it is edited, and both nightly (the latest stable and newest numbered pre-release):
+  a mismatch fails loudly; it never uploads, publishes or moves anything.
 
 ## The CHOMPI is shared: the lock and the slots
 

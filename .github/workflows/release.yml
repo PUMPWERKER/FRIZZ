@@ -12,6 +12,7 @@
 #   Publishing it stays a person's step: the website only picks up published releases.
 #
 # The rolling `beta` tag doesn't match v* and isn't touched. Nothing here reaches a CHOMPI.
+# What's uploaded after the push, and `beta`'s FRIZZ.bin, release-check.yml checks (#440).
 name: Release build
 
 on:
