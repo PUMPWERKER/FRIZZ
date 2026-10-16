@@ -1058,6 +1058,33 @@ int main()
         }
     }});
 
+    // #464: SHIFT held, a key's release touching again 7 ms on, in either ms phase: the latch
+    // should stay, as at 6 ms; on the edge of kShiftGraceMs one phase takes the bounce for a new
+    // SHIFT + key press and toggles the latch back (#202's boundary, harmless before #456)
+    cases.push_back({"select-grace-bounce", [] {
+        RunMs(kReadyMs);
+        const unsigned filter = 1u << 4;
+        bool kept = true;
+        for (int order = 0; order < 2; order++)
+            for (int pad = 0; pad < 2; pad++)
+            {
+                if (LatchedFx(Ask({0x20})) & filter)
+                    Latch("KEY_5");
+                RunMs(300 + pad);
+                if (order == 0)
+                    Keys({"+KEY_26", "50", "+KEY_5", "100", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5", "100", "-KEY_26"});
+                else
+                    Keys({"+KEY_5", "100", "+KEY_26", "100", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5", "100", "-KEY_26"});
+                RunMs(400);
+                const bool latched = LatchedFx(Ask({0x20})) & filter;
+                printf("      %s, phase %d: %s\n", order ? "the key, then SHIFT" : "SHIFT, then the key", pad,
+                       latched ? "latched" : "unlatched");
+                kept = kept && latched;
+            }
+        Known(kept, "select-grace-bounce: SHIFT held, the key's release touching again 7 ms on: still latched, "
+                    "in either order and ms phase (#464)");
+    }});
+
     // a key pressed sounds at once, the grace window (#115) or not: the filter, turned down,
     // is heard within 10 ms of the key's contact (its debounce takes 8)
     cases.push_back({"select-grace-at-once", [] {
