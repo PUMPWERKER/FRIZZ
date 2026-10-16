@@ -1,5 +1,5 @@
-# The finalizer (#345) with every module working, reached by its gesture (SHIFT + key 15, then
-# key 15 again): Level's input, drive and Loud, EQ's bands, Comp's Depth, Width's bands; then a
+# The finalizer (#345) with every module working, reached by its gesture (selected, SHIFT + key
+# 15, #435): Level's input, drive and Loud, EQ's bands, Comp's Depth, Width's bands; then a
 # band muted and back, the bypass and back. On a loud bass sine, mono
 input sine 110 0.6
 # every knob where the factory has it, whatever the card keeps (#214)
@@ -31,8 +31,6 @@ down KEY_26
 wait 100
 tap KEY_15
 wait 100
-tap KEY_15
-wait 100
 up KEY_26
 wait 200
 turn 4 10
@@ -43,16 +41,12 @@ down KEY_26
 wait 100
 tap KEY_15
 wait 100
-tap KEY_15
-wait 100
 up KEY_26
 wait 200
 turn 3 60
 wait 1500
 # Width: the lows narrower, the rest wider
 down KEY_26
-wait 100
-tap KEY_15
 wait 100
 tap KEY_15
 wait 100

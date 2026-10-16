@@ -529,7 +529,7 @@ private:
     /** A key's LED in its group's colour: full when it's the setting in force, else dim */
     static void KeyLed(Hardware::SwId key, const float* color, bool on)
     {
-        SmtLed(KeyLedOf(key), color, on ? 1.f : kFxOffLevel);
+        SmtLed(KeyLedOf(key), color, on ? 1.f : FxOffLevel());
     }
 
     static const uint8_t kNumChannelKeys = 14; // white keys 1-14; the 15th is 15 and 16
