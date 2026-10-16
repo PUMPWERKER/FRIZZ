@@ -12,7 +12,7 @@
 set -euo pipefail
 BIN=$1
 SUMMARY=${GITHUB_STEP_SUMMARY:-/dev/stdout}
-[[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]] || { echo "::error::$TAG isn't a version's tag"; exit 1; }
+[[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[1-9][0-9]*)?$ ]] || { echo "::error::$TAG isn't a version's tag"; exit 1; }
 [ "$(md5sum "$BIN" | cut -d' ' -f1)" = "$MD5" ] || { echo "::error::$BIN isn't the build job's ($MD5)"; exit 1; }
 say() { echo "$1"; echo "$1" >> "$SUMMARY"; }
 
