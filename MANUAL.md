@@ -2605,7 +2605,11 @@ inserts with a loop about 70%, every effect at once about 85%. On average the fi
 every module working takes about 13% more, its compressors alone (Depth up) about 5%; at its
 defaults nothing. Every effect at
 once with a loop, and every effect's page 2 turned off its defaults (Mix, Band and Level),
-needs more than there is.
+needs more than there is. A DAW can get there for a moment without a loop: automation that
+turns every effect's page 2 off its defaults and then switches the effects on and off in
+quick succession (by CC 22 or any other way, a few milliseconds apart) has them all running
+at once, since an effect let go keeps running while it fades out, for about 70 ms, and can
+crackle for that moment.
 
 ### Timing
 
