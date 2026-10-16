@@ -3,8 +3,11 @@
 
 Each DIR holds NAME.wav (the master out) and NAME.leds (the LEDs at every change) per scenario.
 Prints one line per scenario: bit-identical, or where the sound and the LEDs first part, by how
-much, and which LEDs. Exits 0 when every scenario is bit-identical. LED logs of different lengths,
-or a line without all 35 LEDs (a log cut short), are a difference, said as such.
+much, and which LEDs. LED logs of different lengths, or a line without all 35 LEDs (a log cut
+short), are a difference, said as such. A scenario it can't compare (a run missing or unreadable,
+or compare.py's own fault) gets the line "NAME  couldn't compare: ..." with the traceback, and the
+ones after it are compared all the same. Exits 0 when every scenario is bit-identical, 1 when one
+differs and every one was compared, 2 when one couldn't be (compare.sh's CI step fails on that).
 
 compare.py --selftest: checks compare_leds on made-up logs, the ones cut short too.
 """
@@ -13,6 +16,7 @@ import math
 import os
 import struct
 import sys
+import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -133,21 +137,35 @@ def selftest():
     return failed == 0
 
 
+def compare(da, db, name):
+    """The notes on scenario NAME: none when it's bit-identical"""
+    notes = [compare_audio(samples(os.path.join(da, name + ".wav")),
+                           samples(os.path.join(db, name + ".wav"))),
+             compare_leds(leds(os.path.join(da, name + ".leds")),
+                          leds(os.path.join(db, name + ".leds")))]
+    return [n for n in notes if n]
+
+
 def main():
     if sys.argv[1:] == ["--selftest"]:
         sys.exit(0 if selftest() else 1)
     da, db, names = sys.argv[1], sys.argv[2], sys.argv[3:]
-    same = True
+    same, failed = True, []
     for name in names:
-        notes = [compare_audio(samples(os.path.join(da, name + ".wav")),
-                               samples(os.path.join(db, name + ".wav"))),
-                 compare_leds(leds(os.path.join(da, name + ".leds")),
-                              leds(os.path.join(db, name + ".leds")))]
-        notes = [n for n in notes if n]
+        try:
+            notes = compare(da, db, name)
+        except Exception as e:  # noqa: BLE001: said, and the next scenario compared all the same
+            failed.append(name)
+            print("%-12s couldn't compare: %s: %s" % (name, type(e).__name__, e))
+            print("".join("%-12s %s\n" % ("", l) for l in traceback.format_exc().splitlines()), end="")
+            continue
         same &= not notes
         print("%-12s %s" % (name, "bit-identical" if not notes else notes[0]))
         for n in notes[1:]:
             print("%-12s %s" % ("", n))
+    if failed:
+        print("couldn't compare: %s" % " ".join(failed))
+        sys.exit(2)
     sys.exit(0 if same else 1)
 
 

@@ -8,15 +8,18 @@
 #   ./compare.sh v0.10 HEAD      # what changed for a player since v0.10
 #   SCENARIOS="looper scenes" ./compare.sh main HEAD
 #
-# Each version's twin is built once into build/compare/<commit> and kept. Exits 0 when every
-# scenario is bit-identical; names a scenario the twin crashed in (or couldn't read), and fails.
-# Uses the twin of the working tree on both firmwares.
+# Each version's twin is built once into build/compare/<commit> and kept. Uses the twin of the
+# working tree on both firmwares. Exits 0 when every scenario is bit-identical and 1 when one
+# differs, every scenario compared; anything else is 2, saying what: a twin that didn't build,
+# a scenario the twin crashed in or couldn't read, one compare.py couldn't compare or gave no
+# line for, or this script failing on its way (CI's compare step fails on 2, not on 1)
 set -e -o pipefail
+trap 'echo "compare.sh: line $LINENO failed (exit $?)"; exit 2' ERR
 source "$(dirname "$0")/ref.sh"
 A=${1:-HEAD}
 B=${2:-work}
-TA=$(twin_dir "$A")/frizz-twin || { echo "the twin didn't build on $A"; exit 1; }
-TB=$(twin_dir "$B")/frizz-twin || { echo "the twin didn't build on $B"; exit 1; }
+TA=$(twin_dir "$A")/frizz-twin || { echo "the twin didn't build on $A"; exit 2; }
+TB=$(twin_dir "$B")/frizz-twin || { echo "the twin didn't build on $B"; exit 2; }
 NAMES=${SCENARIOS:-$(cd "$TW/scenarios" && ls *.txt | sed 's/\.txt$//')}
 RUNS=$(mktemp -d)
 trap "rm -rf '$RUNS'" EXIT
@@ -49,5 +52,13 @@ for p in "${PIDS[@]}"; do
 done
 RAN=$(for n in $NAMES; do [[ " $BAD " == *" $n "* ]] || echo "$n"; done)
 echo "$A against $B:"
-[ -z "$RAN" ] || python3 "$TW/compare.py" "$RUNS/a" "$RUNS/b" $RAN
-[ -z "$BAD" ]
+rc=0
+[ -z "$RAN" ] || python3 "$TW/compare.py" "$RUNS/a" "$RUNS/b" $RAN | tee "$RUNS/compared" || rc=$?
+# every scenario compared has its line, whatever compare.py's exit code: one that died before
+# it got there (a traceback outside its scenarios exits 1, as a difference does) isn't one
+for n in $RAN; do
+    grep -q "^$n " "$RUNS/compared" 2> /dev/null || { echo "scenario $n: compare.py gave no verdict (exit $rc)"; BAD="$BAD $n"; }
+done
+[ -z "$BAD" ] || exit 2
+[ $rc -le 1 ] || exit 2
+exit $rc
