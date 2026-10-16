@@ -178,20 +178,6 @@ namespace chompi
         SetSmtLed(index, LedByte(r), LedByte(g), LedByte(b));
     }
 
-    /** Every LED of a chain in one colour: the first's, copied */
-    __attribute__((noinline)) void SetPthLedsFloat(float r, float g, float b)
-    {
-        SetPthLedFloat(0, r, g, b);
-        for (int i = 1; i < kPthLeds; i++)
-            std::copy(led_pth_data[0], led_pth_data[0] + 3, led_pth_data[i]);
-    }
-    __attribute__((noinline)) void SetSmtLedsFloat(float r, float g, float b)
-    {
-        SetSmtLedFloat(0, r, g, b);
-        for (int i = 1; i < kSmtLeds; i++)
-            std::copy(led_smt_data[0], led_smt_data[0] + 3, led_smt_data[i]);
-    }
-
     void EndOfLeds(void *context)
     {
         daisy::TimChannel *pwm = (daisy::TimChannel *)context;

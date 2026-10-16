@@ -1900,6 +1900,7 @@ namespace chompi
             fx_.SetMode(fx, !fx_.Mode(fx));
             mode_flash_.Start(System::GetNow(), kModeFlashMs);
         }
+        /** The Loops or Cubbi page shows: never in the bench build, which has neither */
         inline bool LoopsShownNow() const
         {
 #if !FRIZZ_BENCH
@@ -2395,15 +2396,7 @@ namespace chompi
         /** The scene keys show the finalizer's presets: key 15 held, or a mode for them */
         inline bool FinPresetsShown() const
         {
-            return (fin_down_ || fin_presets_.Mode() != SceneMode::NONE) && !LoopsShownFin();
-        }
-        inline bool LoopsShownFin() const
-        {
-#if !FRIZZ_BENCH
-            return loops_shown_;
-#else
-            return false;
-#endif
+            return (fin_down_ || fin_presets_.Mode() != SceneMode::NONE) && !LoopsShownNow();
         }
 
         /** A scene key while the presets show: scenes 1-4's keys are presets 1-4, the blank
