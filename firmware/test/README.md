@@ -428,7 +428,8 @@ env mod rings more on a loud input and its level turns the return down (off at 0
 slicer's shuffle puts the even steps 2/3 of a 16th late and the rest on time, wow &
 flutter's age dips the level, the tape stop's depth slows it without stopping and its
 darken takes the highs off, the delay's freeze holds its echoes at a steady level (an 8 kHz
-tone too, at 140 BPM, where a 1/4 falls between two samples), its
+tone too, at 140 BPM, where a 1/4 falls between two samples, and with the damping either way,
+which fades out with the freeze, #444), its
 damping darkens or thins the repeats and its ducking turns them down under the input, the
 reverb's freeze holds the room (a 2 kHz tone frozen keeps its pitch within 10 cents and
 swings under 4.5, as #313's tail measure reads it, a minute on too, and doesn't grow), its pre-delay at the top starts it 250 ms later, turned (or recalled) it puts no chirp into

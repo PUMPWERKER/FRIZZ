@@ -14,8 +14,9 @@ namespace chompi
  *  Params: 0 division (9 steps), 1 feedback, 2 random (bipolar, 0.5 = off), 3 ducking (the
  *  echoes duck under what goes in); page 2: 4 freeze (the input shut and the loop's gain up
  *  to exactly 1, so the buffer loops; TEMPO's buffer lock, by degrees; no random events while
- *  frozen), 5 damping (bipolar: left a low cut, right a high cut in the feedback, the
- *  SP-404MK2's L DAMP and H DAMP; the centre off), 7 level, its return's, on the inserts'
+ *  frozen; the damping faded out with it, so the echoes hold as they are), 5 damping
+ *  (bipolar: left a low cut, right a high cut in the feedback, the SP-404MK2's L DAMP and
+ *  H DAMP; the centre off), 7 level, its return's, on the inserts'
  *  Level scale (FxOutput::LevelGain: mute, then -36dB to +12dB, 0dB at 3/4), on page 2's
  *  knob 4 as theirs (#172). Page 2's 6, Band, filters what goes in (FxChain.h). */
 class DelaySend : public FxBase
@@ -78,6 +79,7 @@ public:
                                      + freeze_.value / granularDelay::CentreGain());
             // frozen, on whole samples, so the held echoes keep their highs
             delay_.setWhole(freeze_.value > 0.f);
+            Damp();
         }
         const float in_gain = gate * (1.f - freeze_.value);
 
@@ -128,7 +130,9 @@ public:
                 hi = OnePoleCoeff(20000.f * powf(.05f, 2.f * (val - .5f)), sample_rate_);
             else if (val < .5f)
                 lo = OnePoleCoeff(20.f * powf(50.f, 2.f * (.5f - val)), sample_rate_);
-            delay_.setDamping(hi, lo);
+            damp_hi_ = hi;
+            damp_lo_ = lo;
+            Damp();
             break;
         }
         case DUCKING:
@@ -140,6 +144,15 @@ public:
     }
 
 private:
+    /** The damping, faded out with the freeze (#444 D): frozen, the echoes hold as they are,
+     *  as the reverb's freeze lifts its tone. Where the knob or the freeze moves; a knob turned
+     *  from the main loop while the freeze slews is taken at the freeze's next step */
+    void Damp()
+    {
+        const float f = freeze_.value;
+        delay_.setDamping(damp_hi_ + f * (1.f - damp_hi_), damp_lo_ * (1.f - f));
+    }
+
     float sample_rate_ = 48000.f;
     granularDelay delay_;
     Smoothed level_;
@@ -148,6 +161,7 @@ private:
     Ducker duck_;
     TailWatch tail_;
     uint32_t sleep_samples_ = 0; // the buffer's length: silent that long, it holds nothing
+    float damp_hi_ = 1.f, damp_lo_ = 0.f; // the damping knob's coefficients, off (Damp)
 };
 
 } // namespace chompi

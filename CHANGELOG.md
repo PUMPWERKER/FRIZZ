@@ -209,6 +209,10 @@ what FRIZZ does.
   140 BPM; at 120 BPM it held, by chance). Frozen, the delay now moves to the nearest whole
   sample, too little to hear, and the echoes hold as they are. The delay unfrozen sounds as
   before.
+- **A frozen delay holds its echoes with the damping on too** (#444): with the damping (page 2,
+  knob 2) turned either way, every pass round the frozen loop darkened or thinned the echoes
+  again, so they were gone within a few seconds. Now the damping lifts as the freeze comes in,
+  as the reverb's freeze opens its tone, and comes back as it goes.
 - **The freezer's length turned up while it repeats plays on, on the grid**: turned past what
   it had recorded so far (a 1/4 turned to a bar in its second repeat), or the tempo slowing as
   far, or the roll turned back to off early on, the freezer dropped to the live signal with a

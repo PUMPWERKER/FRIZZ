@@ -2,8 +2,8 @@
 // knob 4 on the folder, crusher and filter: the freezer's gate, the shifter's grain, the
 // folder's, crusher's and filter's stereo and their moved knobs, the flanger's polarity, the
 // resonator's env mod and return level, the slicer's shuffle, wow & flutter's age, the tape
-// stop's depth and darken, the delay's freeze (its highs too, at a delay between two samples),
-// damping and ducking, the reverb's freeze (its
+// stop's depth and darken, the delay's freeze (its highs too, at a delay between two samples,
+// and with damping, which fades out with it), damping and ducking, the reverb's freeze (its
 // level a minute on, and the held room's pitch: no detuning, no wider swing, #249; quiet
 // material held 5 minutes, #419),
 // pre-delay and ducking; and the scene file's layout 3 (FxScenes.h). Exits 0 when everything
@@ -389,6 +389,20 @@ static void TestDelay()
                20.f * log10f(hi_late / hi_early));
         Check(hi_late > hi_early * .89f && hi_late < hi_early * 1.12f,
               "delay: frozen between two samples (140 BPM), an 8kHz tone holds its level within 1dB");
+    }
+    {
+        // frozen, the damping fades out with the freeze, so the echoes hold as they are, as
+        // the reverb's freeze holds its room (#444 D): it used to darken or thin them again on
+        // every pass, at either end gone in a few
+        const float dark_early = DelayTail(1.f, 1.f, 0.f, 96000, 144000, 2000.f);
+        const float dark_late = DelayTail(1.f, 1.f, 0.f, 432000, 480000, 2000.f);
+        const float thin_early = DelayTail(1.f, 0.f, 0.f, 96000, 144000, 220.f);
+        const float thin_late = DelayTail(1.f, 0.f, 0.f, 432000, 480000, 220.f);
+        printf("  delay frozen, damping right, 2 kHz: at 2 s %.4f, at 9 s %.4f; left, 220 Hz: %.4f, %.4f\n",
+               dark_early, dark_late, thin_early, thin_late);
+        Check(dark_early > .01f && dark_late > dark_early * .89f && dark_late < dark_early * 1.12f
+                  && thin_early > .003f && thin_late > thin_early * .89f && thin_late < thin_early * 1.12f,
+              "delay: frozen with damping either way, the echoes hold their level within 1dB (#444 D)");
     }
     const float open = DelayTail(0.f, .5f, 0.f, 48000, 96000, 4000.f);
     const float damped = DelayTail(0.f, 1.f, 0.f, 48000, 96000, 4000.f);
