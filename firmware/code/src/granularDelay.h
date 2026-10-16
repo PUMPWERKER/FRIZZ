@@ -9,7 +9,8 @@
  *     on/off dead zone) is split into setDivision and setRandom; the delay is always on, and
  *     its return level is applied outside (FxDelay.h), so it doesn't shorten tails.
  *   - no buffer mute option and no getColors (the LEDs are drawn in NormalPage).
- *   - no freeze (TEMPO's buffer lock), so no frozen buffer.
+ *   - no freeze (TEMPO's buffer lock), so no frozen buffer; FRIZZ's freeze is the loop's gain
+ *     at 1 (FxDelay.h), read on whole samples (WholeDelay).
  *   - a jump in tempo crossfades to the new delay time instead of sliding to it.
  *   - the tempo is a float (TEMPO's was whole BPM in microseconds per beat), so on a loop
  *     whose tempo isn't whole the echoes don't drift off its beats.
@@ -371,6 +372,7 @@ class granularDelay {
         delay_div_position_ = kStartDiv;
 
         setFeedback(.3f);
+        whole_ = false;
 
         clock_edge_ = false;
         events_ = false;
@@ -434,6 +436,9 @@ class granularDelay {
             if (success) {
                 delay_samples_ = delay_samples_target_;
             }
+        }
+        else if (__builtin_expect(whole_, 0)) {
+            WholeDelay();
         }
         else {
             fonepole(delay_samples_, delay_samples_target_, .001f);
@@ -558,6 +563,10 @@ class granularDelay {
     void setFeedbackAmount(float amt) {
         delay_feedback_amt_ = amt;
     }
+    /** FRIZZ: frozen, the delay reads on whole samples (WholeDelay) */
+    void setWhole(bool whole) {
+        whole_ = whole;
+    }
     /** FRIZZ: the feedback's damping: a lowpass's and a highpass's one-pole coefficients, 1
      *  and 0 off */
     void setDamping(float hi, float lo) {
@@ -601,6 +610,21 @@ class granularDelay {
     delayVoice myVoices[2];
 
     private:
+    /** FRIZZ: frozen (setWhole), the delay slides to the whole sample nearest its time and
+     *  stays there. Read between two samples, linearly, every pass through the feedback is a
+     *  little lowpass again; frozen, the loop's gain is 1 and that compounds: at 140 BPM on 1/4
+     *  (20571.43 samples) an 8kHz tone lost 12dB in 7s (page2.cpp). Unfrozen, a tempo
+     *  slide needs the fractions, and the repeats fade anyway. The last sample's way in 1/64
+     *  steps, half a sample in half a millisecond, a pitch bend of a quarter of a semitone
+     *  that short; 1/64 is exact in a float up to 2 bars at 50 BPM, where the fonepole's step,
+     *  under half a float's spacing within a sample or two of the target, stalls short of it */
+    __attribute__((noinline)) void WholeDelay() {
+        const float whole = rintf(delay_samples_target_);
+        const float d = whole - delay_samples_;
+        const float step = fmaxf(.001f * fabsf(d), 1.f / 64.f);
+        delay_samples_ = fabsf(d) <= step ? whole : delay_samples_ + copysignf(step, d);
+    }
+
     float *buffer_;
     uint32_t write_head_;
     uint32_t buffer_size_;
@@ -609,6 +633,7 @@ class granularDelay {
     uint32_t out_pos_; // in delay_out_l and delay_out_r
     float delay_feedback_amt_;
     float damp_hi_ = 1.f, damp_lo_ = 0.f;
+    bool whole_ = false; // frozen: read on whole samples (WholeDelay)
     float damp_lp_l_ = 0.f, damp_lp_r_ = 0.f, damp_hp_l_ = 0.f, damp_hp_r_ = 0.f;
 
     float tempo_;

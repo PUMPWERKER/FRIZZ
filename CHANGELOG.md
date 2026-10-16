@@ -199,6 +199,12 @@ what FRIZZ does.
 
 ### Fixed
 
+- **A frozen delay keeps its highs** at every tempo: at most tempos the delay's time falls
+  between two samples, and every pass round the frozen loop (page 2, knob 1) took a little off
+  the top, so held echoes went dull within seconds (an 8 kHz tone 12 dB down after 7 s at
+  140 BPM; at 120 BPM it held, by chance). Frozen, the delay now moves to the nearest whole
+  sample, too little to hear, and the echoes hold as they are. The delay unfrozen sounds as
+  before.
 - **The freezer's length turned up while it repeats plays on, on the grid**: turned past what
   it had recorded so far (a 1/4 turned to a bar in its second repeat), or the tempo slowing as
   far, or the roll turned back to off early on, the freezer dropped to the live signal with a

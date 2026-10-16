@@ -73,8 +73,12 @@ public:
         // for the pan every pass goes through
         const bool fb_moved = feedback_.Settle();
         if (freeze_.Settle() || fb_moved)
+        {
             delay_.setFeedbackAmount(feedback_.value * .975f * (1.f - freeze_.value)
                                      + freeze_.value / granularDelay::CentreGain());
+            // frozen, on whole samples, so the held echoes keep their highs
+            delay_.setWhole(freeze_.value > 0.f);
+        }
         const float in_gain = gate * (1.f - freeze_.value);
 
         float dl = 0.f, dr = 0.f;

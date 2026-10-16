@@ -2,7 +2,8 @@
 // knob 4 on the folder, crusher and filter: the freezer's gate, the shifter's grain, the
 // folder's, crusher's and filter's stereo and their moved knobs, the flanger's polarity, the
 // resonator's env mod and return level, the slicer's shuffle, wow & flutter's age, the tape
-// stop's depth and darken, the delay's freeze, damping and ducking, the reverb's freeze (its
+// stop's depth and darken, the delay's freeze (its highs too, at a delay between two samples),
+// damping and ducking, the reverb's freeze (its
 // level a minute on, and the held room's pitch: no detuning, no wider swing, #249; quiet
 // material held 5 minutes, #419),
 // pre-delay and ducking; and the scene file's layout 3 (FxScenes.h). Exits 0 when everything
@@ -342,11 +343,11 @@ static float delay_mem[kDelayFrames * 2];
 
 /** The delay's return: a burst of sine, then silence; its RMS from from to to (samples) */
 static float DelayTail(float freeze, float damping, float ducking, size_t from, size_t to,
-                       float freq = 220.f, bool keep_input = false)
+                       float freq = 220.f, bool keep_input = false, float bpm = 120.f)
 {
     static chompi::DelaySend d;
     d.Init(48000.f, delay_mem, kDelayFrames);
-    d.SetTempo(120.f);
+    d.SetTempo(bpm);
     d.SetParam(chompi::DelaySend::DIVISION, .25f);
     d.SetParam(chompi::DelaySend::FEEDBACK, .5f);
     d.SetParam(chompi::DelaySend::RANDOM, .5f);
@@ -377,6 +378,18 @@ static void TestDelay()
     const float early = DelayTail(1.f, .5f, 0.f, 96000, 144000), late = DelayTail(1.f, .5f, 0.f, 432000, 480000);
     printf("  delay frozen at 2 s %.4f, at 9 s %.4f\n", early, late);
     Check(late > early * .9f && late < early * 1.1f, "delay: frozen, the level holds, neither falling nor growing");
+    {
+        // at 140 BPM a 1/4 is 20571.43 samples: read between two, linearly, every pass took the
+        // highs down again, and frozen (the loop's gain 1) an 8kHz tone lost 12dB in 7s;
+        // frozen, the delay reads on whole samples
+        // over 3 passes each (61714 samples), so both windows hold the same loop
+        const float hi_early = DelayTail(1.f, .5f, 0.f, 96000, 96000 + 61714, 8000.f, false, 140.f);
+        const float hi_late = DelayTail(1.f, .5f, 0.f, 420000, 420000 + 61714, 8000.f, false, 140.f);
+        printf("  delay frozen at 140 BPM, 8 kHz: at 2 s %.4f, at 9 s %.4f (%.1f dB)\n", hi_early, hi_late,
+               20.f * log10f(hi_late / hi_early));
+        Check(hi_late > hi_early * .89f && hi_late < hi_early * 1.12f,
+              "delay: frozen between two samples (140 BPM), an 8kHz tone holds its level within 1dB");
+    }
     const float open = DelayTail(0.f, .5f, 0.f, 48000, 96000, 4000.f);
     const float damped = DelayTail(0.f, 1.f, 0.f, 48000, 96000, 4000.f);
     const float thin = DelayTail(0.f, 0.f, 0.f, 48000, 96000, 60.f);
