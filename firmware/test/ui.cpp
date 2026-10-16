@@ -6769,7 +6769,7 @@ int main()
         auto module = [] {
             RunMs(400);
             const Rgb c = SmtLedFull(kCompKeyLed);
-            return c.r > 40 && c.g > 40 && c.b > 40 ? 0 : c.b < 30 ? 1 : c.r < 30 ? 2 : c.g < 30 ? 3 : -1;
+            return c.r > 40 && c.g > 40 && c.b > 40 ? 0 : c.b < 30 ? 1 : c.g < 30 ? 3 : c.r < 30 ? 2 : -1;
         };
         Press("KEY_26", true);
         RunMs(100);
@@ -7142,7 +7142,11 @@ int main()
         Check(level.r == level.g && level.g == level.b && level.r > 60, "fin-leds: Level: key 15 white, never darker than its floor");
         Check(eq.r > 60 && eq.g > 60 && eq.b < 20, "fin-leds: EQ: yellow");
         Check(comp.r < 20 && comp.g > 60 && comp.b > 60, "fin-leds: Comp: cyan");
-        Check(width.r > 60 && width.g < 20 && width.b > 60, "fin-leds: Width: magenta");
+        Check(width.r < 20 && width.g < 20 && width.b > 60, "fin-leds: Width: blue");
+        // not the chaos key's magenta beside it (#395), whose red shows even while it's off
+        const Rgb chaos = SmtLedFull(11); // KEY_14's LED (chaos-gates)
+        printf("      the chaos key %02x%02x%02x\n", chaos.r, chaos.g, chaos.b);
+        Check(chaos.r > 20 && chaos.r > 2 * width.r + 10, "fin-leds: Width's key 15 apart from the chaos key's magenta");
         // Width's meters: a mono sine, every band's correlation green
         const Rgb corr = PthLedFull(kKnob1Led + 1);
         Check(corr.g > 200 && corr.r < 60, "fin-leds: Width's knob 2: the mid band's correlation, mono: green");

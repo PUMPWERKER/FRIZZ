@@ -87,6 +87,6 @@ inline size_t WhiteKeyOfFx(size_t fx)
 static const uint8_t kCompKeyLed = KeyLedOf(kCompKey);
 static const float* const kCompKnobColors[3] = {med_blue, white, orange};
 // The finalizer's modules' colours (Finalizer::Module): Level, EQ, Comp, Width
-static const float* const kFinColors[4] = {white, yellow, cyan, magenta};
+static const float* const kFinColors[4] = {white, yellow, cyan, blue};
 
 } // namespace chompi
