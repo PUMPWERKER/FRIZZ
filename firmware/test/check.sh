@@ -6,6 +6,7 @@
 # built and run side by side. The last line names the two versions and the verdict (all.sh
 # shows it). Exits 0 when bit-identical, 1 when they differ; anything else is 2: a harness that
 # didn't build or run, or a comparison that didn't get through (CI fails on 2, not on 1).
+source "$(dirname "$0")/hostlock.sh"   # one heavy run at a time (#439)
 source "$(dirname "$0")/lib.sh"
 trap 'echo "check.sh: line $LINENO failed (exit $?)"; exit 2' ERR
 A=${1:-HEAD}

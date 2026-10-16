@@ -135,7 +135,11 @@ cd firmware/test
 ./unit.sh tempo   # one unit check (each NAME.cpp; ui runs the whole firmware on the twin)
 ```
 
-[`test/README.md`](test/README.md) says what each check covers.
+[`test/README.md`](test/README.md) says what each check covers. The heavy runs (`all.sh`,
+`check.sh`, `twin/compare.sh`, `twin/ui-at.sh`, `tools/builds.py`, a twin's build by hand) take
+the host lock themselves (`test/hostlock.sh`): one at a time on the machine, each under a
+memory cap of 4 GB (`FRIZZ_HOST_MEMORY`) where `systemd-run --user` works, a second one waiting
+and saying which holds it; on Actions (`CI`) they don't. `unit.sh` takes none.
 
 To try a change before flashing it, play it on the virtual CHOMPI: the firmware from
 power-on, keys, knobs, MIDI and audio from a script, the master out as a WAV and the LEDs as

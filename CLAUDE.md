@@ -398,16 +398,19 @@ Actions ~4 minutes, stage 1a): `check.sh` (the engine in the working tree agains
 a commit; after it there's nothing to compare, and its line says so: on Actions it runs against
 the PR's base on its own; a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
 `pitch`, `tape`, `block`, `crusher`, `freezer`, `scenes`, `store`, `clicks`, `delay`, `controls`, `keys`, `looper`, `tempo`,
-`comp`, `level`, `sleep`, `inserts`, `resonator`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `finalizer`, `midisuite`, `reaper`, `lockstep`, `splice`, `usbmidi`, `routing`, `measure`, `loopcap`, `companion`, `loops`, `loopxfer`, `sddisk`, `twinlib`, `compare`, `rtalloc`, `usbtransport`, `usbdevice`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
+`comp`, `level`, `sleep`, `inserts`, `resonator`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `finalizer`, `midisuite`, `reaper`, `lockstep`, `splice`, `usbmidi`, `routing`, `measure`, `loopcap`, `companion`, `loops`, `loopxfer`, `sddisk`, `twinlib`, `hostlock`, `compare`, `rtalloc`, `usbtransport`, `usbdevice`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
 `NAME.cpp`; [`firmware/test/README.md`](firmware/test/README.md) says what each covers.
 `check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail. A check
 that needs something only a developer's machine has prints `SKIP: local only (what's
 missing)` and checks what it can without; `all.sh` lists those lines under it (stage 1b).
 
 **Several sessions on one machine:** heavy host runs (`all.sh`, `compare.sh`, `check.sh`,
-`ui-at.sh`, `tools/builds.py`, the twin's and the host checks' builds) go one at a time, under
-`flock ~/.cache/frizz-host.lock systemd-run --user --scope -p MemoryMax=4G -p MemorySwapMax=0 …`:
-parallel ones have run the machine out of memory. A single `./unit.sh NAME` may run alongside.
+`ui-at.sh`, `tools/builds.py`, the twin's builds by hand) go one at a time, each under a memory
+cap: parallel ones have run the machine out of memory. They take the host lock themselves
+(`firmware/test/hostlock.sh`, #439: `flock ~/.cache/frizz-host.lock`, then a `systemd-run --user
+--scope -p MemoryMax=4G -p MemorySwapMax=0`), wait while another run holds it, saying which, and
+what they start runs under theirs; nothing to wrap by hand (a wrapper by hand still works). A
+single `./unit.sh NAME` takes none and may run alongside.
 
 `firmware/twin/` is the **virtual CHOMPI**: the whole firmware compiled unchanged for the host
 on a simulated board, deterministic and 13-20x real time. `./run.sh -o out.wav -l - SCRIPT`

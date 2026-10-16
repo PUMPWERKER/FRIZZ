@@ -18,6 +18,12 @@ FIRMWARE=${TWIN_FIRMWARE:-$REPO/firmware/code/src}
 TREE=$B/tree
 LIBDAISY=$REPO/firmware/code/libs/libDaisy/src
 mkdir -p "$B"
+ARGS=("$@")
+# a build that has something to build takes the host lock first (../test/hostlock.sh, #439),
+# running this again under it; one with nothing to do (run.sh's, serve.py's every load) doesn't
+# wait for it. As a check's twin (lib.sh's twin_for, under unit.sh) it doesn't: a single check
+# may run beside a heavy run
+heavy() { source "$T/hostlock.sh" "${ARGS[@]}"; }
 
 stage()
 {
@@ -52,6 +58,7 @@ if [ "$1" = wasm ]; then
         rm -rf "$TREE.new"
         exit 0
     fi
+    heavy
     rm -rf "$TREE" && mv "$TREE.new" "$TREE"
     mkdir -p "$WEB" "$B/daisysp-wasm"
     if [ ! -f "$B/daisysp-wasm/libdaisysp.a" ]; then
@@ -87,6 +94,7 @@ if [ -f "$B/frizz-twin" ] && [ "$(cat "$B/twin.stamp" 2>/dev/null)" = "$STAMP" ]
     rm -rf "$TREE.new"
     exit 0
 fi
+heavy
 rm -rf "$TREE" && mv "$TREE.new" "$TREE"
 echo "building the twin"
 
