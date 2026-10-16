@@ -418,19 +418,26 @@ static float ReverbRun(float freeze, float pre, float ducking, size_t from, size
     return static_cast<float>(sqrt(sum / static_cast<double>(to - from)));
 }
 
-/** The pitch of a tone around 2kHz in y from s0 to s1, as #313's tail measure: an 8192-point
- *  Hann STFT every 512 samples, each frame's peak between 1.9 and 2.1kHz interpolated on its
- *  log power; the track's median in Hz and its spread (standard deviation) in cents */
-static void TonePitch(const std::vector<float>& y, size_t s0, size_t s1, double* median, double* spread)
+/** The pitch of a tone around hz in y from s0 to s1, as #313's tail measure: an 8192-point
+ *  Hann STFT every 512 samples, each frame's peak within 5% of hz interpolated on its log
+ *  power; the track's median in Hz and its spread (standard deviation) in cents */
+static void TonePitch(const std::vector<float>& y, size_t s0, size_t s1, float hz, double* median,
+                      double* spread)
 {
-    static const size_t kN = 8192, kHop = 512;
-    static const size_t kLo = 325, kHi = 359; // 1904 to 2103Hz, a bin 5.86Hz
+    static const size_t kN = 8192, kHop = 512; // a bin 5.86Hz
+    const size_t kLo = static_cast<size_t>(hz * .95f * kN / kSr);
+    const size_t kHi = static_cast<size_t>(hz * 1.05f * kN / kSr) + 1;
+    static float tables_hz = 0.f;
     static std::vector<double> win, cs, sn;
     if (win.empty())
     {
         win.resize(kN);
         for (size_t i = 0; i < kN; i++)
             win[i] = .5 - .5 * cos(2. * M_PI * static_cast<double>(i) / kN);
+    }
+    if (tables_hz != hz)
+    {
+        tables_hz = hz;
         cs.resize((kHi - kLo + 2) * kN);
         sn.resize(cs.size());
         for (size_t k = kLo - 1; k <= kHi; k++)
@@ -444,7 +451,7 @@ static void TonePitch(const std::vector<float>& y, size_t s0, size_t s1, double*
     std::vector<double> track;
     for (size_t s = s0; s + kN <= s1; s += kHop)
     {
-        double pw[kHi - kLo + 2];
+        std::vector<double> pw(kHi - kLo + 2);
         for (size_t k = kLo - 1; k <= kHi; k++)
         {
             const double* c = &cs[(k - kLo + 1) * kN];
@@ -479,10 +486,10 @@ static void TonePitch(const std::vector<float>& y, size_t s0, size_t s1, double*
     *spread = sqrt(fmax(sum2 / n - (sum / n) * (sum / n), 0.));
 }
 
-/** #249: a 2kHz tone into the reverb, frozen at 0.5s as it ends: the room it holds keeps its
+/** #249: a tone into the reverb, frozen at 0.5s as it ends: the room it holds keeps its
  *  pitch, from 1s on and a minute later, its swing no wider than the tank's modulation makes
- *  it (#313), and it doesn't grow */
-static void TestReverbFreezePitch()
+ *  it (#313), and its level: it doesn't grow, and keeps its highs (#394) */
+static void TestReverbFreezePitch(float hz)
 {
     static chompi::ReverbSend v;
     v.Init(kSr, &reverb);
@@ -495,14 +502,14 @@ static void TestReverbFreezePitch()
     {
         if (i == 24000)
             v.SetParam(chompi::ReverbSend::FREEZE, 1.f);
-        const float in = i >= 4800 && i < 24000 ? Sine(i, 2000.f) : 0.f;
+        const float in = i >= 4800 && i < 24000 ? Sine(i, hz) : 0.f;
         float l = 0.f, r = 0.f;
         v.Process(in, in, &l, &r);
         y[i] = l;
     }
     double early_hz, early_spread, late_hz, late_spread;
-    TonePitch(y, kEarly, kEarly + kSpan, &early_hz, &early_spread);
-    TonePitch(y, kLate, kLate + kSpan, &late_hz, &late_spread);
+    TonePitch(y, kEarly, kEarly + kSpan, hz, &early_hz, &early_spread);
+    TonePitch(y, kLate, kLate + kSpan, hz, &late_hz, &late_spread);
     double early_sum = 0., late_sum = 0.;
     for (size_t i = 0; i < kSpan; i++)
     {
@@ -510,18 +517,20 @@ static void TestReverbFreezePitch()
         late_sum += y[kLate + i] * y[kLate + i];
     }
     const double growth = 10. * log10(late_sum / (early_sum + 1e-30));
-    const double off = 1200. * log2(early_hz / 2000.), drift = 1200. * log2(late_hz / early_hz);
-    printf("  reverb frozen on 2kHz: at 1s %.2fHz (%+.1f cents), spread %.2f cents; a minute on %.2fHz "
+    const double off = 1200. * log2(early_hz / hz), drift = 1200. * log2(late_hz / early_hz);
+    printf("  reverb frozen on %.0fHz: at 1s %.2fHz (%+.1f cents), spread %.2f cents; a minute on %.2fHz "
            "(%+.1f cents), spread %.2f cents; level %+.2fdB\n",
-           early_hz, off, early_spread, late_hz, drift, late_spread, growth);
+           hz, early_hz, off, early_spread, late_hz, drift, late_spread, growth);
     // measured on main: within 4 cents of 2kHz (a detuning by ear is tens of cents), a swing
     // of 3.1 and 3.7 cents (the tank's modulation at twice the depth, before #313: 4.5 and
-    // 5.3); the tone's level falls, ~15dB a minute at 2kHz (the tank's modulated reads,
-    // interpolated, take a little of the highs on each trip; without the modulation -0.5dB,
-    // and before #313 the same), never rises
+    // 5.3). The level fell, ~15dB a minute at 2kHz and the 8kHz tone gone (#394): the tank's
+    // modulated reads, interpolated linearly, took a little of the highs on each trip. Frozen,
+    // they're allpass-interpolated at half the depth: -0.5dB at 2kHz, -0.8 at 8kHz, a spread
+    // of 2-3.5 cents (at full depth 8kHz's spread grew to 6 cents in the minute)
     Check(fabs(off) < 10. && fabs(drift) < 10., "reverb: frozen, the room holds its pitch, at 1s and a minute on");
     Check(early_spread < 4.5 && late_spread < 4.5, "reverb: frozen, the held room's pitch swings no wider than the tank's modulation");
     Check(growth < 1., "reverb: frozen a minute, the held tone doesn't grow");
+    Check(growth > -2., "reverb: frozen a minute, the held tone keeps its highs (#394)");
 }
 
 static void TestReverb()
@@ -725,7 +734,8 @@ int main()
     TestTapeStop();
     TestDelay();
     TestReverb();
-    TestReverbFreezePitch();
+    TestReverbFreezePitch(2000.f);
+    TestReverbFreezePitch(8000.f);
     TestLayout();
     TestKeyOnPage2();
     TestKeyOnBand();
