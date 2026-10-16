@@ -1,0 +1,61 @@
+# Effects moved while they hold something (the audit of 2026-10-16), on a bright tone against a
+# 140 BPM MIDI clock, where the delay's 1/4 falls between two samples: the freezer latched at
+# 1/4, its length set to a bar in its second repeat (it plays on through the recording,
+# then repeats the bar on the grid); the delay frozen with the damping right, then left, and
+# let go (frozen, its echoes hold as they are); the reverb's pre-delay jumped up and down while
+# the tone plays (a crossfade, no chirp). Nothing is saved. (turn: 4 is knob 1)
+input sine 3000 0.3
+clock 140
+# what a player's card may keep otherwise (ui.cpp plays this on one too)
+set freezer 0 1
+set freezer 2 0
+set freezer 3 0
+set delay 0 0.25
+set delay 7 0.75
+set reverb 7 0.75
+at 6000
+# the freezer latched, its length from 1 bar to 1/4; its second repeat, then 1 bar
+down KEY_1
+wait 80
+tap KEY_26
+up KEY_1
+wait 200
+turn 4 -9
+wait 800
+# length 1/4
+expect led pth 1 3779fd
+set freezer 0 1
+wait 4000
+tap KEY_1
+wait 500
+# the delay latched, damping right, frozen a while, damping left, let go
+down KEY_12
+wait 80
+tap KEY_26
+up KEY_12
+set delay 5 1
+wait 1500
+set delay 4 1
+wait 3000
+set delay 5 0
+wait 3000
+set delay 4 0
+wait 1500
+tap KEY_12
+wait 300
+# the reverb latched, its pre-delay jumped up, down and up again while the tone plays
+down KEY_13
+wait 80
+tap KEY_26
+up KEY_13
+wait 1500
+set reverb 5 1
+wait 1000
+set reverb 5 0.1
+wait 1000
+set reverb 5 0.6
+wait 1000
+set reverb 5 0
+wait 1000
+tap KEY_13
+wait 3000
