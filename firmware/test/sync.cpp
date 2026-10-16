@@ -52,24 +52,15 @@ static std::string Name(const char* what, const Sender& s, double bpm)
     return b;
 }
 
-/** The FX grid's pulses: the blocks the position Probe() gives moved in. A pulse comes every
- *  16 ms or more at 300 BPM, so never two in a block (0.5 ms), and the position wraps at the
- *  4-bar cycle or a shorter loop's end, so it's the move that counts, not by how much */
+/** The FX grid's pulses: each one the engine passed on to the FX, as many as a block counted.
+ *  Two can come in one block: a sender that sends its ticks in pairs, at x2 (a pulse a tick),
+ *  brings two in the same 0.5 ms (#424), so counting the blocks the position moved in would
+ *  miss one. Up to 4 a block are counted (BlockPulses), more than any sender here brings */
 struct PulseCounter
 {
-    uint32_t last = 0;
     uint64_t count = 0;
-    void Reset()
-    {
-        last = Probe().position;
-        count = 0;
-    }
-    void Step()
-    {
-        const uint32_t now = Probe().position;
-        count += now != last;
-        last = now;
-    }
+    void Reset() { count = 0; }
+    void Step() { count += Probe().block_pulses; }
 };
 
 /** The loop's wraps, block by block: how far they move from its ideal length */
@@ -197,11 +188,10 @@ static void LockCase(const Sender& s, double bpm, int k, double factor)
     if (factor != 1.)
         base += factor > 1. ? "x2, " : "x1/2, ";
     Check(lo >= want - 1 && hi <= want + 1, (base + "every tempo the FX take within 1 BPM").c_str());
-    // the grid doesn't wait for the tempo: a pulse every 2 ticks from the lock on (where pairs
-    // at x2 bring two pulses in a block, PulseCounter sees one)
+    // the grid doesn't wait for the tempo: a pulse every 2 ticks from the lock on (pairs at x2
+    // bring two in a block, both passed on, #424)
     const long diff = static_cast<long>(pulses.count) - static_cast<long>(ticks / 2);
-    if (!s.pairs || factor <= 1.)
-        Check(diff >= -1 && diff <= 0, (base + "a pulse every 2 ticks from the first").c_str());
+    Check(diff >= -1 && diff <= 0, (base + "a pulse every 2 ticks from the first").c_str());
     Record("tempo-lock-ms", locked < 0. ? 1e9 : locked);
 }
 

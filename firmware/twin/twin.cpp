@@ -717,6 +717,7 @@ TWIN_READ(ReadTempo, o.GetTempo())
 TWIN_READ(ReadFxBpm, o.GetFxBpm())
 TWIN_READ(ReadPosition, o.Position())
 TWIN_READ(ReadLooper, &o.looper)
+TWIN_READ(ReadBlockPulses, o.BlockPulses())
 TWIN_READ(ReadLoopState, static_cast<int>(o.GetState()))
 TWIN_READ(ReadLoopLength, o.GetLength())
 TWIN_READ(ReadLoopBeats, o.GetBeats())
@@ -751,6 +752,7 @@ ClockState Probe()
     c.tempo = ReadTempo(t, 0);
     c.fx_bpm = ReadFxBpm(t, 0);
     c.position = ReadPosition(t, 0);
+    c.block_pulses = ReadBlockPulses(engine, 0);
 #endif
     ReadLoop(ReadLooper(engine, 0), c);
     return c;
