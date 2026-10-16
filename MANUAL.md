@@ -2606,10 +2606,10 @@ every module working takes about 13% more, its compressors alone (Depth up) abou
 defaults nothing. Every effect at
 once with a loop, and every effect's page 2 turned off its defaults (Mix, Band and Level),
 needs more than there is. A DAW can get there for a moment without a loop: automation that
-turns every effect's page 2 up on its channel and then switches the effects on and off in
-quick succession (CC 22, a few milliseconds apart) has them all running at once, since an
-effect let go keeps running while it fades out, for about 70 ms, and can crackle for that
-moment.
+turns every effect's page 2 off its defaults and then switches the effects on and off in
+quick succession (by CC 22 or any other way, a few milliseconds apart) has them all running
+at once, since an effect let go keeps running while it fades out, for about 70 ms, and can
+crackle for that moment.
 
 ### Timing
 

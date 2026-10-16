@@ -1,12 +1,12 @@
 # A DAW's automation burst (#414): midisuite's cc-channels as a script. Every knob of every
-# effect at 100 on its channel (CC 14-21, page 1 and 2, channels 1-14), the finalizer's on 15
-# (parameters 0-6 at CC 14-20, 8-14 at 24-30), then CC 22 latches each effect and lets it go
-# again, one after the other, at the times the suite sends them on the device (~2 ms apart; the
-# delay held a little longer), and the filter latched once more at the end, as the suite does.
-# An effect let go fades out over ~70 ms, so the 13 that make sound run at once with page 2
-# off its defaults, the delay's and the reverb's freeze up (their page 2's knob 1): #21's
-# page-2 extreme for a moment, the one load that may crackle (bench: loop+everything+page2).
-# remote.py play --cpu shows it
+# effect to 20, then 100, one after the other, on its channel (CC 14-21, page 1 and 2, channels
+# 1-14), and the finalizer's on 15 (parameters 0-6 at CC 14-20, 8-14 at 24-30), as the suite
+# turns them; then CC 22 latches each effect and lets it go again, one after the other, at the
+# times the suite sends them on the device (~2 ms apart; the delay held a little longer), and
+# the filter latched once more at the end, as the suite does. An effect let go fades out over
+# ~70 ms, so the 13 that make sound run at once with page 2 off its defaults, the delay's and
+# the reverb's freeze up (their page 2's knob 1): #21's page-2 extreme for a moment, the one
+# load that may crackle (bench: loop+everything+page2). remote.py play --cpu shows it
 # the settings the suite starts each case from (midisuite.py's BASELINE), in RAM on the device
 set settings midi_channel 16
 set settings midi_transport 0
@@ -22,21 +22,510 @@ set settings mic_live 0
 set settings usb_dry 0
 set settings usb_live 1
 at 6000
-midi B0 0E 64 B0 0F 64 B0 10 64 B0 11 64 B0 12 64 B0 13 64 B0 14 64 B0 15 64
-midi B1 0E 64 B1 0F 64 B1 10 64 B1 11 64 B1 12 64 B1 13 64 B1 14 64 B1 15 64
-midi B2 0E 64 B2 0F 64 B2 10 64 B2 11 64 B2 12 64 B2 13 64 B2 14 64 B2 15 64
-midi B3 0E 64 B3 0F 64 B3 10 64 B3 11 64 B3 12 64 B3 13 64 B3 14 64 B3 15 64
-midi B4 0E 64 B4 0F 64 B4 10 64 B4 11 64 B4 12 64 B4 13 64 B4 14 64 B4 15 64
-midi B5 0E 64 B5 0F 64 B5 10 64 B5 11 64 B5 12 64 B5 13 64 B5 14 64 B5 15 64
-midi B6 0E 64 B6 0F 64 B6 10 64 B6 11 64 B6 12 64 B6 13 64 B6 14 64 B6 15 64
-midi B7 0E 64 B7 0F 64 B7 10 64 B7 11 64 B7 12 64 B7 13 64 B7 14 64 B7 15 64
-midi B8 0E 64 B8 0F 64 B8 10 64 B8 11 64 B8 12 64 B8 13 64 B8 14 64 B8 15 64
-midi B9 0E 64 B9 0F 64 B9 10 64 B9 11 64 B9 12 64 B9 13 64 B9 14 64 B9 15 64
-midi BA 0E 64 BA 0F 64 BA 10 64 BA 11 64 BA 12 64 BA 13 64 BA 14 64 BA 15 64
-midi BB 0E 64 BB 0F 64 BB 10 64 BB 11 64 BB 12 64 BB 13 64 BB 14 64 BB 15 64
-midi BC 0E 64 BC 0F 64 BC 10 64 BC 11 64 BC 12 64 BC 13 64 BC 14 64 BC 15 64
-midi BD 0E 64 BD 0F 64 BD 10 64 BD 11 64 BD 12 64 BD 13 64 BD 14 64 BD 15 64
-midi BE 0E 64 BE 0F 64 BE 10 64 BE 11 64 BE 12 64 BE 13 64 BE 14 64 BE 18 64 BE 19 64 BE 1A 64 BE 1B 64 BE 1C 64 BE 1D 64 BE 1E 64
+midi B0 0E 14
+wait 80
+midi B0 0E 64
+wait 80
+midi B0 0F 14
+wait 80
+midi B0 0F 64
+wait 80
+midi B0 10 14
+wait 80
+midi B0 10 64
+wait 80
+midi B0 11 14
+wait 80
+midi B0 11 64
+wait 80
+midi B0 12 14
+wait 80
+midi B0 12 64
+wait 80
+midi B0 13 14
+wait 80
+midi B0 13 64
+wait 80
+midi B0 14 14
+wait 80
+midi B0 14 64
+wait 80
+midi B0 15 14
+wait 80
+midi B0 15 64
+wait 80
+midi B1 0E 14
+wait 80
+midi B1 0E 64
+wait 80
+midi B1 0F 14
+wait 80
+midi B1 0F 64
+wait 80
+midi B1 10 14
+wait 80
+midi B1 10 64
+wait 80
+midi B1 11 14
+wait 80
+midi B1 11 64
+wait 80
+midi B1 12 14
+wait 80
+midi B1 12 64
+wait 80
+midi B1 13 14
+wait 80
+midi B1 13 64
+wait 80
+midi B1 14 14
+wait 80
+midi B1 14 64
+wait 80
+midi B1 15 14
+wait 80
+midi B1 15 64
+wait 80
+midi B2 0E 14
+wait 80
+midi B2 0E 64
+wait 80
+midi B2 0F 14
+wait 80
+midi B2 0F 64
+wait 80
+midi B2 10 14
+wait 80
+midi B2 10 64
+wait 80
+midi B2 11 14
+wait 80
+midi B2 11 64
+wait 80
+midi B2 12 14
+wait 80
+midi B2 12 64
+wait 80
+midi B2 13 14
+wait 80
+midi B2 13 64
+wait 80
+midi B2 14 14
+wait 80
+midi B2 14 64
+wait 80
+midi B2 15 14
+wait 80
+midi B2 15 64
+wait 80
+midi B3 0E 14
+wait 80
+midi B3 0E 64
+wait 80
+midi B3 0F 14
+wait 80
+midi B3 0F 64
+wait 80
+midi B3 10 14
+wait 80
+midi B3 10 64
+wait 80
+midi B3 11 14
+wait 80
+midi B3 11 64
+wait 80
+midi B3 12 14
+wait 80
+midi B3 12 64
+wait 80
+midi B3 13 14
+wait 80
+midi B3 13 64
+wait 80
+midi B3 14 14
+wait 80
+midi B3 14 64
+wait 80
+midi B3 15 14
+wait 80
+midi B3 15 64
+wait 80
+midi B4 0E 14
+wait 80
+midi B4 0E 64
+wait 80
+midi B4 0F 14
+wait 80
+midi B4 0F 64
+wait 80
+midi B4 10 14
+wait 80
+midi B4 10 64
+wait 80
+midi B4 11 14
+wait 80
+midi B4 11 64
+wait 80
+midi B4 12 14
+wait 80
+midi B4 12 64
+wait 80
+midi B4 13 14
+wait 80
+midi B4 13 64
+wait 80
+midi B4 14 14
+wait 80
+midi B4 14 64
+wait 80
+midi B4 15 14
+wait 80
+midi B4 15 64
+wait 80
+midi B5 0E 14
+wait 80
+midi B5 0E 64
+wait 80
+midi B5 0F 14
+wait 80
+midi B5 0F 64
+wait 80
+midi B5 10 14
+wait 80
+midi B5 10 64
+wait 80
+midi B5 11 14
+wait 80
+midi B5 11 64
+wait 80
+midi B5 12 14
+wait 80
+midi B5 12 64
+wait 80
+midi B5 13 14
+wait 80
+midi B5 13 64
+wait 80
+midi B5 14 14
+wait 80
+midi B5 14 64
+wait 80
+midi B5 15 14
+wait 80
+midi B5 15 64
+wait 80
+midi B6 0E 14
+wait 80
+midi B6 0E 64
+wait 80
+midi B6 0F 14
+wait 80
+midi B6 0F 64
+wait 80
+midi B6 10 14
+wait 80
+midi B6 10 64
+wait 80
+midi B6 11 14
+wait 80
+midi B6 11 64
+wait 80
+midi B6 12 14
+wait 80
+midi B6 12 64
+wait 80
+midi B6 13 14
+wait 80
+midi B6 13 64
+wait 80
+midi B6 14 14
+wait 80
+midi B6 14 64
+wait 80
+midi B6 15 14
+wait 80
+midi B6 15 64
+wait 80
+midi B7 0E 14
+wait 80
+midi B7 0E 64
+wait 80
+midi B7 0F 14
+wait 80
+midi B7 0F 64
+wait 80
+midi B7 10 14
+wait 80
+midi B7 10 64
+wait 80
+midi B7 11 14
+wait 80
+midi B7 11 64
+wait 80
+midi B7 12 14
+wait 80
+midi B7 12 64
+wait 80
+midi B7 13 14
+wait 80
+midi B7 13 64
+wait 80
+midi B7 14 14
+wait 80
+midi B7 14 64
+wait 80
+midi B7 15 14
+wait 80
+midi B7 15 64
+wait 80
+midi B8 0E 14
+wait 80
+midi B8 0E 64
+wait 80
+midi B8 0F 14
+wait 80
+midi B8 0F 64
+wait 80
+midi B8 10 14
+wait 80
+midi B8 10 64
+wait 80
+midi B8 11 14
+wait 80
+midi B8 11 64
+wait 80
+midi B8 12 14
+wait 80
+midi B8 12 64
+wait 80
+midi B8 13 14
+wait 80
+midi B8 13 64
+wait 80
+midi B8 14 14
+wait 80
+midi B8 14 64
+wait 80
+midi B8 15 14
+wait 80
+midi B8 15 64
+wait 80
+midi B9 0E 14
+wait 80
+midi B9 0E 64
+wait 80
+midi B9 0F 14
+wait 80
+midi B9 0F 64
+wait 80
+midi B9 10 14
+wait 80
+midi B9 10 64
+wait 80
+midi B9 11 14
+wait 80
+midi B9 11 64
+wait 80
+midi B9 12 14
+wait 80
+midi B9 12 64
+wait 80
+midi B9 13 14
+wait 80
+midi B9 13 64
+wait 80
+midi B9 14 14
+wait 80
+midi B9 14 64
+wait 80
+midi B9 15 14
+wait 80
+midi B9 15 64
+wait 80
+midi BA 0E 14
+wait 80
+midi BA 0E 64
+wait 80
+midi BA 0F 14
+wait 80
+midi BA 0F 64
+wait 80
+midi BA 10 14
+wait 80
+midi BA 10 64
+wait 80
+midi BA 11 14
+wait 80
+midi BA 11 64
+wait 80
+midi BA 12 14
+wait 80
+midi BA 12 64
+wait 80
+midi BA 13 14
+wait 80
+midi BA 13 64
+wait 80
+midi BA 14 14
+wait 80
+midi BA 14 64
+wait 80
+midi BA 15 14
+wait 80
+midi BA 15 64
+wait 80
+midi BB 0E 14
+wait 80
+midi BB 0E 64
+wait 80
+midi BB 0F 14
+wait 80
+midi BB 0F 64
+wait 80
+midi BB 10 14
+wait 80
+midi BB 10 64
+wait 80
+midi BB 11 14
+wait 80
+midi BB 11 64
+wait 80
+midi BB 12 14
+wait 80
+midi BB 12 64
+wait 80
+midi BB 13 14
+wait 80
+midi BB 13 64
+wait 80
+midi BB 14 14
+wait 80
+midi BB 14 64
+wait 80
+midi BB 15 14
+wait 80
+midi BB 15 64
+wait 80
+midi BC 0E 14
+wait 80
+midi BC 0E 64
+wait 80
+midi BC 0F 14
+wait 80
+midi BC 0F 64
+wait 80
+midi BC 10 14
+wait 80
+midi BC 10 64
+wait 80
+midi BC 11 14
+wait 80
+midi BC 11 64
+wait 80
+midi BC 12 14
+wait 80
+midi BC 12 64
+wait 80
+midi BC 13 14
+wait 80
+midi BC 13 64
+wait 80
+midi BC 14 14
+wait 80
+midi BC 14 64
+wait 80
+midi BC 15 14
+wait 80
+midi BC 15 64
+wait 80
+midi BD 0E 14
+wait 80
+midi BD 0E 64
+wait 80
+midi BD 0F 14
+wait 80
+midi BD 0F 64
+wait 80
+midi BD 10 14
+wait 80
+midi BD 10 64
+wait 80
+midi BD 11 14
+wait 80
+midi BD 11 64
+wait 80
+midi BD 12 14
+wait 80
+midi BD 12 64
+wait 80
+midi BD 13 14
+wait 80
+midi BD 13 64
+wait 80
+midi BD 14 14
+wait 80
+midi BD 14 64
+wait 80
+midi BD 15 14
+wait 80
+midi BD 15 64
+wait 80
+midi BE 0E 14
+wait 80
+midi BE 0E 64
+wait 80
+midi BE 0F 14
+wait 80
+midi BE 0F 64
+wait 80
+midi BE 10 14
+wait 80
+midi BE 10 64
+wait 80
+midi BE 11 14
+wait 80
+midi BE 11 64
+wait 80
+midi BE 12 14
+wait 80
+midi BE 12 64
+wait 80
+midi BE 13 14
+wait 80
+midi BE 13 64
+wait 80
+midi BE 14 14
+wait 80
+midi BE 14 64
+wait 80
+midi BE 18 14
+wait 80
+midi BE 18 64
+wait 80
+midi BE 19 14
+wait 80
+midi BE 19 64
+wait 80
+midi BE 1A 14
+wait 80
+midi BE 1A 64
+wait 80
+midi BE 1B 14
+wait 80
+midi BE 1B 64
+wait 80
+midi BE 1C 14
+wait 80
+midi BE 1C 64
+wait 80
+midi BE 1D 14
+wait 80
+midi BE 1D 64
+wait 80
+midi BE 1E 14
+wait 80
+midi BE 1E 64
+wait 80
 wait 1000
 midi B0 16 7F
 wait 2
