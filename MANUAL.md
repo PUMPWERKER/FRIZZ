@@ -1241,7 +1241,7 @@ after you let go.
 
 | Knob | Page 1 | Page 2 |
 |---|---|---|
-| 1 | Division: 1/8, 1/4T, 1/4, 1/2T, 1/4., 1/2, 1/2., 1 bar, 2 bars (default 1/4) | Freeze: the input shut and the echoes held as they are, by degrees; no random events while frozen (default off) |
+| 1 | Division: 1/8, 1/4T, 1/4, 1/2T, 1/4., 1/2, 1/2., 1 bar, 2 bars (default 1/4) | Freeze: the input shut and the echoes held as they are, by degrees, the damping lifted with it; no random events while frozen (default off) |
 | 2 | Feedback (default 40%) | Damping: in the middle none; right, every repeat darker (a high cut); left, every repeat thinner (a low cut) |
 | 3 | Random: left of centre retrigger / reverse / pitch events, right octave-up shimmer with random pan, centre off (default off) | Band: what goes in, right a low cut, left a high cut |
 | 4 | Ducking: the echoes duck under what you play, back up when it stops (default off) | Level: the echoes' level, off at the bottom, then -36 dB to +12 dB (default 0 dB, at 3/4) |
