@@ -11,4 +11,4 @@
 #pragma once
 #include <stdint.h>
 
-static const uint8_t kFrizzVersion[4] = {1, 5, 0, 2};
+static const uint8_t kFrizzVersion[4] = {1, 5, 0, 3};
