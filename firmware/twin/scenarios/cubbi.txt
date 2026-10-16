@@ -71,11 +71,11 @@ wait 60
 up KEY_26
 wait 300
 expect led smt 0 fc983c
-# home: a double tap of SHIFT; the bank keys dark again, b3 plays on
+# home: a double tap of SHIFT, b3 plays on; the lower D# dim in a's purple, the card's cubbis
+# (#434; the lower C# shows FRIZZ's loops, which the device's card holds or not)
 tap KEY_26
 wait 100
 tap KEY_26
 wait 300
-expect led smt 0 000000
-expect led smt 1 000000
+expect led smt 1 140024
 wait 1000

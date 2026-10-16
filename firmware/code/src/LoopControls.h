@@ -112,6 +112,15 @@ public:
                 return b;
         return kNone;
     }
+    /** The first bank with a file in it of the Loops page (FRIZZ's loops) or the Cubbi page,
+     *  kNone for none: the play page's lower C# and D# (#434) */
+    int FirstUsed(bool cubbi) const
+    {
+        for (size_t b = cubbi ? loops::kCubbiBank : 0; b < (cubbi ? loops::kBanks : loops::kFrizzBanks); b++)
+            if (BankUsed(b))
+                return static_cast<int>(b);
+        return kNone;
+    }
     /** To Neighbour(dir); false at the end */
     bool StepBank(int dir)
     {
@@ -262,6 +271,13 @@ public:
     /** This SHIFT hold began with a white key: it counts passes, and its scene keys land with
      *  the loop at their end (SceneControls::Press's passes) */
     inline bool HoldPasses() const { return in_hold_ && plan_ != kNone && kind_ == Kind::PASSES; }
+    /** The loop planned (bank * 15 + slot), kNone for none, and whether it's loaded: its
+     *  key's Led, PLANNED or LOADING, which the play page's lower C# or D# shows (#444) */
+    int Planned(bool& loaded) const
+    {
+        loaded = plan_ != kNone && Ready(plan_) >= 0;
+        return plan_;
+    }
     /** A scene sequence lands with the loop at the passes' end */
     inline bool WithScene() const { return HoldPasses() && with_scene_; }
     /** SHIFT let go: the passes count from here (At); the crossfader's loop to the nearer side
