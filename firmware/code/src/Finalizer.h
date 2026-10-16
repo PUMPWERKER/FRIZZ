@@ -407,6 +407,9 @@ private:
                                                      * (kFinCharacters - 1) + .5f);
         }
         depth_ = knobs_[DEPTH].value;
+        taken_[0] = knobs_[TYPE].value;
+        for (size_t b = 0; b < kBands; b++)
+            taken_[1 + b] = knobs_[CHARACTER_LOW + b].value;
         const float drive = knobs_[DRIVE].value;
         drive_on_ = drive > 0.f;
         drive_target_ = daisysp::pow10f(drive * kDriveDb * .05f);
@@ -475,14 +478,16 @@ private:
         if (turned_)
         {
             turned_ = false;
-            // a stepped knob (the type, the characters) lands at once and never slews: its
-            // turn is worked out all the same
-            update_pending_ = true;
             for (size_t p = 0; p < kNumFinParams; p++)
             {
                 update_pending_ |= knobs_[p].Settle(kFxParamCoeff * n);
                 moving |= knobs_[p].value != knobs_[p].target;
             }
+            // a stepped knob (the type, the characters) lands at once and never slews: worked
+            // out where it isn't what Update took last
+            update_pending_ |= knobs_[TYPE].value != taken_[0];
+            for (size_t b = 0; b < kBands; b++)
+                update_pending_ |= knobs_[CHARACTER_LOW + b].value != taken_[1 + b];
             if (moving)
                 turned_ = true;
         }
@@ -827,6 +832,7 @@ private:
     volatile bool bypass_;
     volatile uint8_t meter_;
     bool update_pending_;
+    float taken_[1 + kBands]; // the stepped knobs as Update took them: the type, the characters
     uint32_t since_update_;
     size_t times_n_; // the block the comp's coefficients are for (Times)
     float fade_step_;
