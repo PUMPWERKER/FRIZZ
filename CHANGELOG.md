@@ -136,7 +136,7 @@ what FRIZZ does.
   - **Comp** (cyan): a compressor on each band, its character picked from six (Light & fast to
     Beat FX, Parallel among them), one Depth for all three. No makeup: level comes back
     through Drive and Loud.
-  - **Width** (magenta): each band's stereo, from mono to twice as wide (the low band to
+  - **Width** (blue): each band's stereo, from mono to twice as wide (the low band to
     1.5 times).
 
   Hold SHIFT and tap key 15 twice for the next module; the key shows its colour. At the
@@ -199,6 +199,14 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The FX take a MIDI clock's tempo cleanly when it starts** (#413): the first tick
+  interval FRIZZ heard is a block off, so a clock starting at a steady 120 BPM put the delay
+  and the other FX at 122 or 119 for a moment, and at fast tempos many BPM off (at 300 over
+  USB up to 20), creeping back over a second. Now the last tempo holds until FRIZZ has counted
+  a few of the clock's ticks (two at 120 BPM and below, a tenth of a second at 300), and then
+  the FX go straight to its tempo, also from a DAW that sends its ticks in pairs (which could
+  start them anywhere up to 300). The beat grid follows the ticks from the first one, as
+  before, and a clock that changes tempo while running is followed as quickly as before.
 - **A frozen reverb keeps its highs, and a quiet frozen room no longer fades to silence**
   (#394, #419): the room held by the reverb's freeze (page 2, knob 1) lost its highs as it went
   round, ~15 dB a minute at 2 kHz, and an 8 kHz tone was gone within the minute, so a bright

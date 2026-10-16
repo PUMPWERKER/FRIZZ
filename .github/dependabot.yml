@@ -1,0 +1,14 @@
+# Dependabot keeps the workflows' actions current: they're pinned to full commit SHAs (a moved
+# tag can't swap in other code), so it proposes each new release as a PR, one a week at most,
+# all actions in one PR. A PR from it is a CI change: its run on Actions is its check.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "CI"
