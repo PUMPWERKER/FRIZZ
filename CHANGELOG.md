@@ -199,13 +199,13 @@ what FRIZZ does.
 
 ### Fixed
 
-- **A slight nudge of a knob no longer jumps far** (#447): a knob's contacts bounce for a
-  moment at each click, and a hand nudging it back and forth at a click wobbles there too.
-  FRIZZ counted each wobble as one more click a few milliseconds after the last, and the
-  faster fast turns (above) took that for a very fast turn: a small nudge of VOLUME could move
-  the level up to 20 %, one of knobs 1-4 its value up to 16 %. Now each click counts once,
-  however it bounces, on the transport knob too. Turning slowly is one step a click, and
-  turning fast speeds up as before.
+- **A slight nudge of a knob no longer jumps far** (#447): when a knob's contacts bounced
+  at a click, or a hand nudged it back and forth there, FRIZZ could count each wobble as one
+  more click a few milliseconds after the last, and the faster fast turns (above) took that
+  for a very fast turn: a small nudge of VOLUME could move the level several steps at once
+  (20 % and more), one of knobs 1-4 its value likewise. Now each click counts once, however it
+  wobbles, on the transport knob too. Turning slowly is one step a click, and turning fast
+  speeds up as before.
 
 - **The FX take a MIDI clock's tempo cleanly when it starts** (#413): the first tick
   interval FRIZZ heard is a block off, so a clock starting at a steady 120 BPM put the delay

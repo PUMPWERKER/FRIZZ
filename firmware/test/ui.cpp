@@ -1233,8 +1233,10 @@ int main()
             EncoderLines(encoder, ab & 2, ab & 1);
             RunMs(ms);
         };
-        // a detent, each edge bouncing `bounces` times bounce_ms before it settles
-        auto detent = [&](int encoder, int dir, int bounces, uint32_t bounce_ms) {
+        // a detent, each edge bouncing `bounces` times bounce_ms before it settles for
+        // settle_ms; or clean (clean), each state held as long as that takes
+        auto detent = [&](int encoder, int dir, int bounces, uint32_t bounce_ms,
+                          uint32_t settle_ms = 6, bool clean = false) {
             const int* seq = dir > 0 ? kCw : kCcw;
             int was = 0x3;
             for (int i = 0; i < 4; i++)
@@ -1242,9 +1244,9 @@ int main()
                 for (int k = 0; k < bounces; k++)
                 {
                     lines(encoder, seq[i], bounce_ms);
-                    lines(encoder, was, bounce_ms);
+                    lines(encoder, clean ? seq[i] : was, bounce_ms);
                 }
-                lines(encoder, seq[i], 6);
+                lines(encoder, seq[i], settle_ms);
                 was = seq[i];
             }
         };
@@ -1292,9 +1294,18 @@ int main()
             const float b2_back = detents([&] { detent(k.encoder, -1, 3, 2); });
             const float half = detents([&] { half_back(k.encoder, 4); });
             const float quarter = detents([&] { quarter_back(k.encoder); });
+            // a fast turn, 10 detents 16 ms each (62 a second, the acceleration's most), down
+            // with each edge bouncing once 1 ms, then up clean (each way inside the range): the
+            // same turn
+            auto fast = [&](int dir, bool clean) {
+                for (int d = 0; d < 10; d++)
+                    detent(k.encoder, dir, 1, 1, 2, clean);
+            };
+            const float fast_bouncing = detents([&] { fast(-1, false); });
+            const float fast_clean = detents([&] { fast(1, true); });
             printf("      %s in detents: clean %+.2f, bouncing 1 ms %+.2f, 2 ms %+.2f, back %+.2f;"
-                   " half a detent and back %+.2f, a quarter %+.2f\n",
-                   k.name, clean, b1, b2, b2_back, half, quarter);
+                   " half a detent and back %+.2f, a quarter %+.2f; 10 fast %+.2f, bouncing %+.2f\n",
+                   k.name, clean, b1, b2, b2_back, half, quarter, fast_clean, fast_bouncing);
             const std::string n = std::string("knob-bounce: ") + k.name;
             Check(fabsf(clean - 1.f) < .03f, (n + ", a clean detent: one").c_str());
             Check(fabsf(b1 - 1.f) < .03f, (n + ", a detent bouncing 1 ms at each edge: one").c_str());
@@ -1302,6 +1313,8 @@ int main()
             Check(fabsf(b2_back + 1.f) < .03f, (n + ", turned back, bouncing 2 ms: one back").c_str());
             Check(half > -.03f && half < 1.03f, (n + ", half a detent shaken and back: at most one").c_str());
             Check(fabsf(quarter) < .03f, (n + ", a quarter detent shaken and back: none").c_str());
+            Check(fast_clean > 10.f && fabsf(fast_bouncing + fast_clean) < .05f,
+                  (n + ", a fast turn bouncing: as fast as a clean one").c_str());
         }
     }});
 
