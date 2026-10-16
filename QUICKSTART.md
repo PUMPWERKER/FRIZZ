@@ -164,6 +164,11 @@ and the CHOMPI key blinks in it when there's something to confirm. White means d
 
 Scenes are stored on the SD card. See the [manual](MANUAL.md#fx-scenes) for the details.
 
+The two dark keys left of the scenes, the lower C# and D#, glow dimly when the SD card holds
+loops: yours on the lower C#, TAPE's recordings on the lower D#. Hold SHIFT and press one to
+open its page, where the white keys play those loops; two quick taps of SHIFT take you back.
+See [Playing loops](MANUAL.md#playing-loops).
+
 ## Where next
 
 - [Manual](MANUAL.md): what every knob does on every effect
