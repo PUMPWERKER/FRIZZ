@@ -1480,8 +1480,9 @@ all three.
   input gain.
 - **Kept:** the knobs are saved to `FRIZZ/frizz_master.txt` on the card 2 s after the last
   turn, a preset as you confirm it, and they come back at power-on. They're not part of a scene. Without a card, or
-  when the card can't be written, the key blinks red 3 times instead, and FRIZZ tries again
-  2 s later, up to 3 times; the settings then last until power-off.
+  when the card can't be written, the key blinks red 3 times instead (VOLUME does on the Loops
+  and Cubbi pages, where key 15 is a loop: for the input gain turned there), and FRIZZ tries
+  again 2 s later, up to 3 times; the settings then last until power-off.
 - LEDs: the key is white, yellow, cyan or blue, by its module; the knobs go light blue to
   orange, and those with a centre (Input, the EQ and Width bands) blue, white on it, orange.
 

@@ -417,7 +417,13 @@ namespace chompi
             DrawLogLeds(now);
 #if !FRIZZ_BENCH
             if (loops_shown_)
+            {
                 DrawLoopsLeds(now);
+                // key 15 is a loop here: a failed write blinks on VOLUME, whose page 2 is
+                // likely what changed (the settings page's and the play page's: key 15)
+                if (master_refused_.Active(now))
+                    PthLed(kVolumeLed, red, master_refused_.BlinkLevel(now));
+            }
             else
             {
                 DrawCardLoopLeds(now);
@@ -3142,7 +3148,7 @@ namespace chompi
         bool master_hurried_ = false;     // a restart pulled the save forward (MasterSettled)
         uint32_t master_tries_ = 0;       // failed writes since
         bool master_saving_ = false;      // a write asked for, its outcome not yet seen
-        LedSignal master_refused_;        // a failed write, on the finalizer's key
+        LedSignal master_refused_;        // a failed write, on the finalizer's key (VOLUME on a sub-page)
 
         FxControls<PassthroughEngine> fx_;
         SceneControls<PassthroughEngine> scene_ctl_;

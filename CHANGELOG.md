@@ -213,6 +213,10 @@ what FRIZZ does.
 
 ### Fixed
 
+- **A failed save shows on the Loops and Cubbi pages** (audit 2026-10-16): the input gain
+  turned there (VOLUME's page 2) is saved to the card like everywhere else, but when the card
+  couldn't be written the red blinks went to key 15, which is a loop on those pages, so nothing
+  showed. Now VOLUME blinks red 3 times there. See [Finalizer LEDs and settings](MANUAL.md#finalizer-leds-and-settings).
 - **CC 23 on the phaser's channel flashes the phaser's key** (audit 2026-10-16): switching
   between the phaser and the frequency shifter over MIDI flashed the key of whatever effect the
   knobs edited (an effect that was off lit up as if on, key 15 jumped to full), and the phaser's

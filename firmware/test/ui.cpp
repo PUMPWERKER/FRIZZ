@@ -1577,6 +1577,30 @@ int main()
         Check(Card("/FRIZZ/frizz_master.txt").empty(), "comp-no-card: and nothing is written");
     }});
 
+    // audit 2026-10-16 U4: on the Loops page key 15 is a loop, so a failed master write blinks
+    // red on VOLUME, whose page 2 (the input gain) works there
+    cases.push_back({"loops-no-card-save", [] {
+        SetCardPresent(false);
+        RunMs(kReadyMs);
+        LoopsPage();
+        RunMs(1000); // its bank keys' red blink, no loops
+        Tap("ENC_6_SW"); // page 2: the input gain
+        RunMs(300);
+        Turn(kVolumeEncoder, -10); // down, towards blue
+        int blinks = 0;
+        bool was = false;
+        for (int t = 0; t < 4000; t++)
+        {
+            RunMs(1);
+            const Rgb c = PthLedFull(kVolumeLed);
+            const bool red = c.r > 150 && c.g < 60 && c.b < 60;
+            blinks += red && !was;
+            was = red;
+        }
+        printf("      VOLUME blinked red %d times\n", blinks);
+        Check(LoopsShown() && blinks == 3, "loops-no-card-save: the input gain not saved, VOLUME blinks red 3 times on the Loops page");
+    }});
+
     // the scene keys' LEDs: a used slot dim, the active one bright, pulsing once it's edited
     cases.push_back({"scene-leds", [] {
         RunMs(kReadyMs);
