@@ -175,6 +175,7 @@ struct ClockState
     int tempo;     // the FX's whole BPM
     float fx_bpm;  // the FX's tempo for their times
     uint32_t position; // the last pulse's, 0..191
+    uint32_t block_pulses; // the last block's, up to 4 (PassthroughEngine::BlockPulses)
     // Looper.h
     int loop_state; // Looper::State: 0 empty, 1 recording, 2 playing, 3 paused
     size_t loop_length;
