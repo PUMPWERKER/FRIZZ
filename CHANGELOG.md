@@ -199,6 +199,10 @@ what FRIZZ does.
 
 ### Fixed
 
+- **Turning the reverb's pre-delay no longer chirps**: a turn of it (page 2, knob 2), a MIDI
+  jump or a scene recall slid its read through the last 250 ms of sound at up to 48 times the
+  speed, forwards or backwards, a sped-up burst into the room. Now it crossfades to the new
+  time in 21 ms, and the room goes on as it was, only later or sooner.
 - **A frozen delay keeps its highs** at every tempo: at most tempos the delay's time falls
   between two samples, and every pass round the frozen loop (page 2, knob 1) took a little off
   the top, so held echoes went dull within seconds (an 8 kHz tone 12 dB down after 7 s at

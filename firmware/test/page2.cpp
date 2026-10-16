@@ -628,6 +628,84 @@ static void TestReverbFreezeQuiet()
     Check(silent, "reverb: a room rung out to silence and frozen stays silent for 5 minutes");
 }
 
+/** An 8th-order highpass at 4kHz (4 RBJ biquads, Q .707): what's above a
+ *  1kHz tone, which it takes ~90dB down */
+struct Highpass
+{
+    double b0, b1, b2, a1, a2;
+    double z[4][2] = {};
+    Highpass()
+    {
+        const double w = 2. * M_PI * 4000. / kSr, c = cos(w), al = sin(w) / (2. * .7071), a0 = 1. + al;
+        b0 = (1. + c) / 2. / a0;
+        b1 = -(1. + c) / a0;
+        b2 = b0;
+        a1 = -2. * c / a0;
+        a2 = (1. - al) / a0;
+    }
+    double Process(double x)
+    {
+        for (auto& s : z)
+        {
+            const double y = b0 * x + s[0];
+            s[0] = b1 * x - a1 * y + s[1];
+            s[1] = b2 * x - a2 * y;
+            x = y;
+        }
+        return x;
+    }
+};
+
+/** A 1kHz tone into the reverb, the pre-delay at `from`, turned to `to` at 1s (or not, from
+ *  == to): the room's energy above 4kHz over the next half second against all of it, in dB */
+static float PreDelayTurn(float from, float to, bool recall)
+{
+    static chompi::ReverbSend v;
+    v.Init(kSr, &reverb);
+    v.SetParam(chompi::ReverbSend::DECAY, .5f);
+    v.SetParam(chompi::ReverbSend::LEVEL, kP2Level);
+    v.SetParam(chompi::ReverbSend::PRE_DELAY, from);
+    v.SetOn(true);
+    Highpass hp;
+    double hi = 0., all = 0.;
+    for (size_t i = 0; i < 72000; i++)
+    {
+        if (i == 48000)
+        {
+            // a scene recall's or a morph's faster slew (FxChain::FastSlew)
+            if (recall)
+                FxSlew::coeff = kFxRecallCoeff;
+            v.SetParam(chompi::ReverbSend::PRE_DELAY, to);
+        }
+        float l = 0.f, r = 0.f;
+        const float in = Sine(i, 1000.f);
+        v.Process(in, in, &l, &r);
+        const double h = hp.Process(l);
+        if (i >= 48000)
+        {
+            hi += h * h;
+            all += static_cast<double>(l) * l;
+        }
+    }
+    FxSlew::coeff = kFxParamCoeff;
+    return static_cast<float>(10. * log10(hi / all + 1e-30));
+}
+
+/** The pre-delay turned (a knob, MIDI, a recall): it used to slide its read head through the
+ *  buffer, up to 12 frames a sample (48 after a recall), a sped-up and reversed burst into
+ *  the room, a chirp; a 1kHz tone came out with highs ~0dB against it. It crossfades to the
+ *  new time instead: no more highs than the room has without the turn */
+static void TestPreDelayTurn()
+{
+    const float still = PreDelayTurn(.5f, .5f, false);
+    const float shorter = PreDelayTurn(.5f, 0.f, false), longer = PreDelayTurn(.5f, 1.f, false);
+    const float recalled = fmaxf(PreDelayTurn(1.f, .1f, true), PreDelayTurn(.1f, 1.f, true));
+    printf("  reverb, 1 kHz, above 4 kHz: %.1f dB still, turned shorter %.1f, longer %.1f, recalled %.1f\n",
+           still, shorter, longer, recalled);
+    Check(fmaxf(shorter, longer) < still + 6.f && recalled < still + 6.f,
+          "reverb: the pre-delay turned, no chirp: no more highs than without the turn");
+}
+
 static void TestReverb()
 {
     const float fades = ReverbRun(0.f, 0.f, 0.f, 200000, 240000);
@@ -829,6 +907,7 @@ int main()
     TestTapeStop();
     TestDelay();
     TestReverb();
+    TestPreDelayTurn();
     TestReverbFreezePitch(2000.f);
     TestReverbFreezePitch(8000.f);
     TestReverbFreezeQuiet();

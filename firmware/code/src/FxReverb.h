@@ -57,6 +57,7 @@ public:
         pre_.Reset(0.f);
         duck_.Init();
         pre_pos_ = pre_filled_ = 0;
+        pre_fade_ = 0;
     }
 
     /** Feeds in_l / in_r into the reverb (while on) and adds its return to *out_l / *out_r */
@@ -79,11 +80,11 @@ public:
         float wl = in_l * in_gain;
         float wr = in_r * in_gain;
         // the pre-delay, only while it's up: writing SDRAM every sample would push the rest
-        // out of the cache. What it hasn't written since it came up reads as silence. It
-        // settles, so turned back to 0 it switches off: the slew alone would stall just above
-        // it, a denormal, for good (#167)
-        pre_.Settle();
-        const float pre = pre_.value;
+        // out of the cache. What it hasn't written since it came up reads as silence. Turned,
+        // it crossfades to the new time (PreFade): sliding there dragged the read head
+        // through the buffer, up to 12 frames a sample (48 after a recall), a sped-up or
+        // reversed burst into the room, a chirp. It lands on the target, so turned back to 0
+        // it switches off
         if (PreDelaying())
         {
             float* const pl = reverb_pre_delay_mem[0];
@@ -92,9 +93,12 @@ public:
             pr[pre_pos_] = wr;
             if (pre_filled_ < kPreDelayFrames)
                 pre_filled_++;
-            const bool held = pre + 2.f < static_cast<float>(pre_filled_);
-            wl = held ? ReadFrac(pl, kPreDelayFrames - 1, pre_pos_, pre) : 0.f;
-            wr = held ? ReadFrac(pr, kPreDelayFrames - 1, pre_pos_, pre) : 0.f;
+            if (pre_.value != pre_.target && !pre_fade_)
+                StartPreFade();
+            wl = PreTap(pl, pre_.value);
+            wr = PreTap(pr, pre_.value);
+            if (pre_fade_)
+                PreFade(&wl, &wr);
             pre_pos_ = (pre_pos_ + 1) & (kPreDelayFrames - 1);
         }
         else
@@ -115,8 +119,8 @@ public:
 
     /** Off and its tail rung out: nothing to add, and its meter isn't needed */
     inline bool Sleeping() const { return tail_.quiet >= kSleepSamples; }
-    /** The pre-delay up, or still on its way down: its buffer written and read */
-    inline bool PreDelaying() const { return pre_.value > 0.f || pre_.target > 0.f; }
+    /** The pre-delay up, or still fading down: its buffer written and read */
+    inline bool PreDelaying() const { return pre_.value > 0.f || pre_.target > 0.f || pre_fade_; }
 
     void SetParam(size_t param, float val) override
     {
@@ -153,6 +157,30 @@ public:
 private:
     // 2s: far longer than the reverb's delay lines, so nothing under -120dB can come back
     static const uint32_t kSleepSamples = 96000;
+    static const uint32_t kPreFadeFrames = 1024; // 21ms, as the delay's events'
+
+    /** The pre-delay's buffer `pre` frames back, silence where it hasn't written yet */
+    float PreTap(const float* buf, float pre) const
+    {
+        return pre + 2.f < static_cast<float>(pre_filled_) ? ReadFrac(buf, kPreDelayFrames - 1, pre_pos_, pre)
+                                                           : 0.f;
+    }
+    /** The knob moved: the read jumps to its time, and the old one fades out (PreFade); a
+     *  turn that goes on takes its newest time once this fade is over */
+    __attribute__((noinline)) void StartPreFade()
+    {
+        pre_from_ = pre_.value;
+        pre_.value = pre_.target;
+        pre_fade_ = kPreFadeFrames;
+    }
+    /** Crossfading from the old time's tap to the new one's, linearly */
+    __attribute__((noinline)) void PreFade(float* wl, float* wr)
+    {
+        const float old = static_cast<float>(pre_fade_--) / static_cast<float>(kPreFadeFrames);
+        *wl += old * (PreTap(reverb_pre_delay_mem[0], pre_from_) - *wl);
+        *wr += old * (PreTap(reverb_pre_delay_mem[1], pre_from_) - *wr);
+    }
+
     float sample_rate_ = 48000.f;
     daisysp::Reverb* reverb_;
     TailWatch tail_;
@@ -161,10 +189,12 @@ private:
     Smoothed tone_;
     Smoothed diffusion_;
     Smoothed freeze_;
-    Smoothed pre_;    // the pre-delay, frames
+    Smoothed pre_;    // the pre-delay, frames: the knob's (target) and the read's (value)
     Ducker duck_;
     size_t pre_pos_ = 0;
     size_t pre_filled_ = 0; // frames written since the pre-delay came up
+    float pre_from_ = 0.f;  // the time PreFade fades out from
+    uint32_t pre_fade_ = 0; // its frames left, 0 none
 };
 
 } // namespace chompi
