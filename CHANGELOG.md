@@ -104,6 +104,19 @@ what FRIZZ does.
 
 ### Changed
 
+- **Dim keys stay apart at a low LED brightness** (#444): turned down on the settings page,
+  the keys that are off got so dim that neighbouring ones ran together (at 25% the freezer's
+  and the shifter's, the crusher's and the filter's looked the same), and the CHOMPI key's
+  glow on the Loops and Cubbi pages showed several banks in one colour. Now an off key dims
+  less than the rest, keeping enough of its colour to tell it apart, and the CHOMPI key's glow
+  keeps the bank colours it has at full brightness. At 25% an off key is now about half as
+  bright as a lit one; at 100% nothing changes. See [LED brightness](MANUAL.md#led-brightness).
+- **The global channel's CC 22 starts afresh on each effect** (#444): CC 22 on the global
+  channel latches the effect in focus as its value crosses 64. That crossing used to be shared
+  by every effect, so after moving the focus (CC 23, or SHIFT + a key) a 127 that the
+  last effect had already seen did nothing to the new one. Now the first value after a focus
+  change counts, as on the effect's own channel: a toggle button on the global channel latches
+  whichever effect has the focus. See [Controllers](MANUAL.md#controllers).
 - **The FX keys are coloured by their stage in the chain** (#395): the keys of a stage share a
   colour, the two of a pair in neighbouring shades, and the next stage in one well apart.
   Freezer purple and shifter indigo, folder scarlet and crusher orange, filter pink, flanger
@@ -226,6 +239,28 @@ what FRIZZ does.
 
 ### Fixed
 
+- **A bug report notes the card lent to a computer** (audit 2026-10-16): when the card was
+  lent as a USB drive and taken back, the report didn't say so, so a session that edited
+  scenes or settings on the computer played back differently with nothing to show why. Now the
+  report marks each lend and take-back and what FRIZZ read from the card again. See
+  [Bug reports](MANUAL.md#bug-reports).
+- **A failed save shows on the Loops and Cubbi pages** (audit 2026-10-16): the input gain
+  turned there (VOLUME's page 2) is saved to the card like everywhere else, but when the card
+  couldn't be written the red blinks went to key 15, which is a loop on those pages, so nothing
+  showed. Now VOLUME blinks red 3 times there. See [Finalizer LEDs and settings](MANUAL.md#finalizer-leds-and-settings).
+- **CC 23 on the phaser's channel flashes the phaser's key** (audit 2026-10-16): switching
+  between the phaser and the frequency shifter over MIDI flashed the key of whatever effect the
+  knobs edited (an effect that was off lit up as if on, key 15 jumped to full), and the phaser's
+  own key only changed colour. Now the phaser's key flashes in its new colour, as SHIFT + key 7
+  twice does.
+- **Two quick CC 23s leave the focus on the second** (audit 2026-10-16): a CC 23 that came
+  just after another (a DAW's automation, a controller script) could be lost, leaving the
+  global channel's CC 14-22 on the first effect until the next focus change. Now the latest
+  one always wins.
+- **MIDI out passes a clock on at double without losing ticks** (audit 2026-10-16): with the
+  clock factor at x2, a computer's clock that stalled and caught up (three or more ticks
+  arriving at once) lost ticks on the way out, and the gear behind FRIZZ stayed a little out of
+  step until its next Start. Now every tick that comes goes out twice, as it should.
 - **The FX take a MIDI clock's tempo cleanly when it starts** (#413): the first tick
   interval FRIZZ heard is a block off, so a clock starting at a steady 120 BPM put the delay
   and the other FX at 122 or 119 for a moment, and at fast tempos many BPM off (at 300 over

@@ -59,8 +59,9 @@ void SetClockStartMs(uint32_t ms);
 
 /** The audio interrupt at the firmware's FRIZZ_PREEMPT(point) each time main() passes it, as
  *  the device's may come anywhere (not under a ScopedIrqBlocker): main() gives up the rest of
- *  its block there and goes on after the next callback. nullptr: nowhere (at first) */
-void PreemptAt(const char* point);
+ *  its block there and goes on after the next callback, or after `blocks` of them (main()
+ *  held up there, as by higher-priority work). nullptr: nowhere (at first) */
+void PreemptAt(const char* point, int blocks = 1);
 
 /** Power on: starts the firmware's main(). The card and any keys held should be set first */
 void Boot();

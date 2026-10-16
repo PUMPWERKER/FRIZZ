@@ -130,11 +130,13 @@ public:
             {
                 // the ticks counted since the last block: at double two per tick that came,
                 // the last one's second sent halfway to the next; more than one came only in
-                // a bunch (USB's frames), and goes on as it came, every tick counted
+                // a bunch (USB's frames), and goes on as it came, every tick counted: at
+                // most kMaxBunch of what came
                 const bool twice = clock_->Factor() == ClockFactor::DOUBLE;
+                const uint32_t most = twice ? 2 * kMaxBunch : kMaxBunch;
                 uint32_t n = ticks - last_ticks_;
-                if (n > kMaxBunch)
-                    n = kMaxBunch;
+                if (n > most)
+                    n = most;
                 for (uint32_t i = twice ? 2 : 1; i < n; i++)
                     SendTick(back);
                 if (n > 0)
@@ -230,7 +232,7 @@ private:
     uint32_t rewinds_ = 0; // the looper's Rewinds() as last seen
     bool usb_waiting_ = false;        // USB didn't take the next message
     uint32_t usb_waiting_since_ = 0;
-    static const uint32_t kMaxBunch = 4; // ticks passed on in one block, at most
+    static const uint32_t kMaxBunch = 4; // ticks that came passed on in one block, at most
     static const uint8_t kTrs = 1, kUsb = 2, kAllPorts = kTrs | kUsb; // ports, as a mask
     /** Bytes a ring keeps for the transport, which ticks don't take: Stop, Song Position and
      *  Continue, Stop, Start (#166) */

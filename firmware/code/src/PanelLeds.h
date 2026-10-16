@@ -17,10 +17,11 @@ static const uint8_t kPlayLed = 7;
 static const uint8_t kLoopLed = 8;
 static const uint8_t kVolumeLed = 9;
 
-// A key's LED when it's off: dimly in its colour. The SMT LEDs have 64 steps
-// (temp_led_stuff.h), and below about 8 of them the colours run together, so off is as dim as
-// the keys go while keeping their colour.
-static const float kFxOffLevel = .15f;
+/** A key's LED when it's off: dimly in its colour, as dim as the keys go while keeping it,
+ *  at the brightness set (temp_led_stuff.h's kLedOffLevel, more when dimmed: #444) */
+inline float FxOffLevel() { return led_off_smt; }
+/** The same on a panel (PTH) LED: the CHOMPI key's glow on a sub-page */
+inline float PthOffLevel() { return led_off_pth; }
 
 /** A colour (r / g / b 0..1, LedColors.h) at a level, on a key's LED or the panel's */
 inline void SmtLed(uint8_t led, const float* color, float level)

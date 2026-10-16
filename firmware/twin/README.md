@@ -31,7 +31,8 @@ the charger's I2C reply arrives at once and each LED chain's DMA finishes once p
 race found on the device can be forced at one place: the firmware marks it
 `FRIZZ_PREEMPT("name")` (nothing on the CHOMPI), and a check's `twin::PreemptAt("name")` brings
 the callback there each time `main()` passes it, unless a `ScopedIrqBlocker` holds it off
-(#302, `ui.cpp`'s `loops-switch-fade`).
+(#302, `ui.cpp`'s `loops-switch-fade`), or several callbacks with `PreemptAt("name", blocks)`
+(`midi-focus-race`: the jack's MIDI reaches MidiControl a block after it came).
 
 ## In the browser
 
@@ -171,7 +172,11 @@ plays the session again and ends where the combo was pressed (with the twin writ
 `bug-1.txt`). On the twin itself the replay is exact: `unit.sh ui` records a session, plays its
 file on a fresh twin, and gets the same LEDs every millisecond and the same file back. From a
 device, what the twin can't know differs: the audio (so the FX keys' and VOLUME's meters),
-the MIDI clock's phase (logged as a tempo once it settles, back-dated to its lock), the battery.
+the MIDI clock's phase (logged as a tempo once it settles, back-dated to its lock), the battery,
+and what a computer changed on the card lent to it: a lend and its take-back are comment lines
+(`# card lent`, `# card taken back; read: settings scene 2`), as the loop transfer's jobs are
+(`# loop transfer`). The replay lends and takes back by the gesture's keys, on the power-on
+files; a take-back by the computer (an eject, the cable) says so and leaves the replay lent.
 The browser plays it too (Replay), in its 16 ms steps. Once it shows the bug, make it a case
 in `test/ui.cpp`.
 
