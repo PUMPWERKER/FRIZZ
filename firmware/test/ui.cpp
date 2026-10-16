@@ -7671,6 +7671,32 @@ int main()
         Check(!LoopsShown() && PhaserShows(false), "fshift-loops-page: SHIFT + KEY_7 twice on the Loops page: no switch");
     }});
 
+    // audit 2026-10-16 U1: CC 23 on the phaser's channel flashes the phaser's key, whatever the
+    // knobs edit: not the selected effect's key (which would light as if on), nor key 15's
+    cases.push_back({"fshift-midi-flash", [] {
+        RunMs(kReadyMs);
+        ShiftWith({"KEY_5"}); // the filter selected
+        RunMs(200);
+        Trs({0xB6, 23, 127});
+        RunMs(50);
+        Rgb filter = SmtLedFull(kFilterKeyLed), phaser = SmtLedFull(kPhaserKeyLed);
+        printf("      the filter selected: its key %02x%02x%02x, the phaser's %02x%02x%02x\n", filter.r,
+               filter.g, filter.b, phaser.r, phaser.g, phaser.b);
+        Check(Max(filter) < 80 && Max(phaser) > 200 && phaser.g > phaser.r,
+              "fshift-midi-flash: the filter selected, CC 23 flashes the phaser's key, ice blue, not the filter's");
+        ShiftWith({"KEY_15"}); // the finalizer selected
+        RunMs(400);
+        const int before = Max(SmtLedFull(kCompKeyLed));
+        Trs({0xB6, 23, 0});
+        RunMs(50);
+        const Rgb comp = SmtLedFull(kCompKeyLed);
+        phaser = SmtLedFull(kPhaserKeyLed);
+        printf("      the finalizer selected: key 15 %d before, %02x%02x%02x after, the phaser's %02x%02x%02x\n",
+               before, comp.r, comp.g, comp.b, phaser.r, phaser.g, phaser.b);
+        Check(Max(comp) < 200 && Max(phaser) > 200 && phaser.g == phaser.r,
+              "fshift-midi-flash: the finalizer selected, CC 23 flashes the phaser's key, blue, not key 15");
+    }});
+
     // MIDI: CC 23 on the phaser's channel, 7, sets the mode (0-63 the phaser, 64-127 the
     // shifter); on another effect's channel it does nothing, on the global one it's the focus.
     // The notes do as the hand: SHIFT's 45 held, KEY_7's 59 twice. MIDI feedback sends the

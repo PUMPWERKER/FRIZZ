@@ -213,6 +213,11 @@ what FRIZZ does.
 
 ### Fixed
 
+- **CC 23 on the phaser's channel flashes the phaser's key** (audit 2026-10-16): switching
+  between the phaser and the frequency shifter over MIDI flashed the key of whatever effect the
+  knobs edited (an effect that was off lit up as if on, key 15 jumped to full), and the phaser's
+  own key only changed colour. Now the phaser's key flashes in its new colour, as SHIFT + key 7
+  twice does.
 - **Two quick CC 23s leave the focus on the second** (audit 2026-10-16): a CC 23 that came
   just after another (a DAW's automation, a controller script) could be lost, leaving the
   global channel's CC 14-22 on the first effect until the next focus change. Now the latest

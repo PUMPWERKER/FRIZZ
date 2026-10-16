@@ -520,6 +520,7 @@ namespace chompi
                     {
                         fx_.NextModule();
                         mode_flash_.Start(System::GetNow(), kModeFlashMs);
+                        mode_flash_fx_ = kFinSelected;
                     }
                     tap_fin_ = shift;
                 }
@@ -1907,6 +1908,7 @@ namespace chompi
         {
             fx_.SetMode(fx, !fx_.Mode(fx));
             mode_flash_.Start(System::GetNow(), kModeFlashMs);
+            mode_flash_fx_ = fx;
         }
         /** The Loops or Cubbi page shows: never in the bench build, which has neither */
         inline bool LoopsShownNow() const
@@ -2663,7 +2665,7 @@ namespace chompi
                 const float* color = fx_.Mode(fx) ? kShifterKeyColor : kFxSlots[fx].key_color;
                 const float meter = FxMeter(fx);
                 // a mode switched: at full in the new colour, or a flash if it's on (#306)
-                const bool mode_flash = fx == selected && mode_flash_.Active(now);
+                const bool mode_flash = fx == mode_flash_fx_ && mode_flash_.Active(now);
                 float level = mode_flash ? 1.f : kFxOffLevel;
                 float whiten = 0.f; // how far towards white
                 // dropped from this step by the chaos key: dim, as if off
@@ -2682,7 +2684,7 @@ namespace chompi
                 for (int c = 0; c < 3; c++)
                     rgb[c] = level * (color[c] + whiten * (1.f - color[c]));
                 // a select (SHIFT + the key): a flash
-                if (fx == selected && (select_flash_.Active(now) || (mode_flash && fx_.IsOn(fx))))
+                if ((fx == selected && select_flash_.Active(now)) || (mode_flash && fx_.IsOn(fx)))
                     Flash(rgb);
                 SetSmtLedFloat(KeyLedOf(kFxSlots[fx].key), rgb[0], rgb[1], rgb[2]);
             }
@@ -2692,7 +2694,7 @@ namespace chompi
             // limiter works, the one thing that sets the level by itself; a select flashes
             const float reduced = -engine_->GetFinReduction() / kFinMeterDb;
             // a module just picked (SHIFT + the key twice): at full in its colour a moment
-            const float level = comp && mode_flash_.Active(now) ? 1.f
+            const float level = mode_flash_fx_ == kFinSelected && mode_flash_.Active(now) ? 1.f
                                 : fx_.Bypassed()               ? kFxOffLevel
                                                : kFinFloor + (1.f - kFinFloor) * fclamp(reduced, 0.f, 1.f);
             const float* fin_color = kFinColors[fx_.Module()];
@@ -3104,6 +3106,7 @@ namespace chompi
         bool downbeat_ = false;     // it's a bar's 1
         LedSignal select_flash_; // on the selected FX's key
         LedSignal mode_flash_;   // on its key after its mode switched (#306)
+        size_t mode_flash_fx_ = kFinSelected; // whose: an FX, or the finalizer's module
         bool tap_fin_ = false;   // SHIFT + key 15 last in this hold: again, its next module
         size_t tap_fx_ = kNumFx; // SHIFT + this key last in this hold, nothing since: the key
                                  // again switches its mode (kFxModes); kNumFx: none
