@@ -8,6 +8,12 @@
 //  - Width at full left is mono: both outputs the same
 //  - the drive's level compensation: a sine at its reference level comes out within 1dB, every
 //    type and amount
+//  - each drive type's harmonics its own, a sine at the reference level through the knob's
+//    range: Boost no second harmonic, Tube's second at least 6dB above its third, Fuzz at
+//    least twice Boost's distortion halfway; none near a square wave (its fifth and seventh
+//    harmonics -14 and -17dB) even at the top
+//  - a type switched under drive doesn't thump: the DC it leaves (a sine's average over its
+//    period) stays below -35dB
 //  - the stepped knobs take on their own: Type turned alone under drive changes the harmonics,
 //    a band's character turned alone changes its gain reduction (they used to wait for another
 //    knob to move)
@@ -286,6 +292,96 @@ static float Harmonic(const std::vector<float>& v, size_t from, size_t n, float 
         im += v[from + i] * sin(a);
     }
     return static_cast<float>(2. * sqrt(re * re + im * im) / n);
+}
+
+/** The drive at knob of type, on a sine of .5 at 375Hz (128 samples a cycle): THD and the
+ *  harmonics 1-7 over a second, once it has settled */
+struct Harmonics
+{
+    float thd, h[8];
+};
+static Harmonics DriveHarmonics(float knob, int type)
+{
+    Setup s({{Finalizer::DRIVE, knob}, {Finalizer::TYPE, type / 2.f}});
+    const size_t n = 48000;
+    std::vector<float> l = Sine(2 * n, 375.f, .5f), r = l;
+    s.Run(l, r);
+    Harmonics h;
+    double d2 = 0.;
+    for (int k = 1; k * 375.f < 20000.f; k++)
+    {
+        const float a = Harmonic(l, n, n, 375.f, k);
+        if (k < 8)
+            h.h[k] = a;
+        if (k > 1)
+            d2 += static_cast<double>(a) * a;
+    }
+    h.thd = static_cast<float>(sqrt(d2)) / h.h[1];
+    return h;
+}
+
+static void TestDriveTypes()
+{
+    const char* names[kFinTypes] = {"Boost", "Tube", "Fuzz"};
+    float thd_half[kFinTypes] = {};
+    for (int t = 0; t < kFinTypes; t++)
+        for (float knob : {.25f, .5f, .75f, 1.f})
+        {
+            const Harmonics h = DriveHarmonics(knob, t);
+            const float h2 = Db(h.h[2] / h.h[1]), h3 = Db(h.h[3] / h.h[1]);
+            const float h5 = Db(h.h[5] / h.h[1]), h7 = Db(h.h[7] / h.h[1]);
+            char what[160];
+            if (knob == .5f)
+                thd_half[t] = h.thd;
+            if (t == Finalizer::BOOST)
+            {
+                snprintf(what, sizeof(what), "drive types: Boost at %.2f, no second harmonic (%.1f dB)", knob, h2);
+                Check(h2 < -80.f, what);
+            }
+            if (t == Finalizer::TUBE)
+            {
+                snprintf(what, sizeof(what), "drive types: Tube at %.2f, the second harmonic %.1f dB, 6 above the third (%.1f)", knob, h2, h3);
+                Check(h2 > h3 + 6.f, what);
+            }
+            snprintf(what, sizeof(what), "drive types: %s at %.2f, %.1f %% THD, the fifth %.1f dB and the seventh %.1f dB, short of a square wave's", names[t], knob, 100.f * h.thd, h5, h7);
+            Check(h5 < -20.f && h7 < -25.f, what);
+        }
+    CheckF(thd_half[Finalizer::FUZZ] > 2.f * thd_half[Finalizer::BOOST], "drive types: halfway, Fuzz %.2f %% THD, twice Boost's %.2f %% or more", 100. * thd_half[Finalizer::FUZZ], 100. * thd_half[Finalizer::BOOST]);
+}
+
+static void TestTypeSwitch()
+{
+    // a sine of 120Hz (400 samples a cycle), averaged over its cycle: what's left is the DC
+    // and its thump
+    float worst = -200.f;
+    for (float knob : {.5f, .75f, 1.f})
+        for (int from = 0; from < kFinTypes; from++)
+            for (int to = 0; to < kFinTypes; to++)
+            {
+                if (to == from)
+                    continue;
+                Setup s({{Finalizer::DRIVE, knob}, {Finalizer::TYPE, from / 2.f}});
+                const size_t n = 96000;
+                std::vector<float> l = Sine(n, 120.f, .5f), r = l;
+                for (size_t i = 0; i + kBlock <= n; i += kBlock)
+                {
+                    if (i == n / 2)
+                        s.f.SetParam(Finalizer::TYPE, to / 2.f);
+                    s.f.Process(&l[i], &r[i], kBlock);
+                }
+                double sum = 0.;
+                float peak = 0.f;
+                for (size_t i = 0; i < n; i++)
+                {
+                    sum += l[i];
+                    if (i >= 400)
+                        sum -= l[i - 400];
+                    if (i >= n / 2 && i < n / 2 + 24000)
+                        peak = fmaxf(peak, fabsf(static_cast<float>(sum / 400.)));
+                }
+                worst = fmaxf(worst, Db(peak));
+            }
+    CheckF(worst < -35.f, "type switch: under drive, the DC a switch leaves at most %.1f dB (below -35)", worst);
 }
 
 static void TestSteppedKnobs()
@@ -615,6 +711,8 @@ int main()
     TestMute();
     TestDrive();
     TestSteppedKnobs();
+    TestDriveTypes();
+    TestTypeSwitch();
     TestLimiter();
     TestMetersFfmpeg();
     return Finish();
