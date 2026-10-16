@@ -13,8 +13,8 @@
  *  there (until #172 ducking was on page 2's knob 4 and the level on page 1's, FxScenes.h's
  *  layout 5), the resonator stereo, Band into its loop and its return's level.
  *  The tape stop has no stereo: its depth is on page 1's knob 4, its own (darken) on page 2's
- *  knob 2 (HasStereo). The compressor's page 2 has Mix, a sidechain highpass and Makeup on the
- *  knobs of Mix, Band and Level.
+ *  knob 2 (HasStereo). The finalizer (key 15) has no page 2: its knobs show one module at a
+ *  time (FxControls.h).
  *
  *  The defaults leave every insert silent or nearly so: the knob that brings it in (shift,
  *  drive, rate and bits, cutoff, amount, feedback, wow and flutter) starts neutral, the

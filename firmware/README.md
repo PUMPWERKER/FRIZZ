@@ -279,9 +279,11 @@ A card set up from the launcher's v1.5 or v1.6 release still has USB storage v1.
 v1.6's `.bin` over `FIRMWARE/15_USB_STORAGE.bin` (or `./flash.py FILE --slot 15 --other-slot
 --name USB_STORAGE`). With an older launcher or storage firmware the tools still work, but say which
 key to press (15 for the card, overdub then CHOMPI to leave it, 10 for FRIZZ). Another firmware
-built on FRIZZ's platform (its USB names say Chompi Club) is sent FRIZZ's restart into the
-launcher first; with an older FRIZZ or a firmware that ignores it, switch the CHOMPI off and on
-when they say so (they wait up to 2 minutes). Mounting needs udisks, as any desktop has.
+built on FRIZZ's platform (its USB names say Chompi Club, or, garbled, the Daisy's USB id
+finds it as it finds FRIZZ) is sent FRIZZ's restart into the launcher at once, not waited for
+as a busy FRIZZ is, and its RESET when it doesn't get there (#371); with an older FRIZZ or a
+firmware that ignores both, switch the CHOMPI off and on when they say so (they wait up to 2
+minutes). Mounting needs udisks, as any desktop has.
 
 **Remote control over USB MIDI.** `./remote.py` talks to a running FRIZZ over its SysEx
 (`code/src/MidiControl.h`): `state`, `leds`, `load [--every S]` (with the blocks that took
@@ -316,28 +318,27 @@ scripts played before it since FRIZZ started have left the effect selected, its 
 page or a loop in RAM, so its `expect led` lines can fail after another one (#123). And it
 starts from the player's card, not a fresh one: a script's `set GROUP INDEX VALUE` goes as
 the developers' `SET` (below), as `./remote.py set` sends it, so the scenarios set what they
-depend on first, the compressor's knobs or a setting, to what a fresh card has (#214); a `set`
+depend on first, the finalizer's knobs or a setting, to what a fresh card has (#214); a `set`
 FRIZZ refuses fails its line.
 `play --fresh` first starts the slot again through the launcher, as `flash.py --run N` does:
 FRIZZ boots from the card, which a start doesn't write, with nothing left from before. Every
 `play` after the first since `flash.py` started the slot wants it (about 10 s each); a failed
 `expect led` without it says so. Not with `--device` or `--no-start`, which can't restart it.
 
-`play` first stops FRIZZ writing the card until it restarts (PERSIST 0), so a script may
-change the settings, the compressor or the scenes: they stay in RAM, and the card keeps what
-key 10's FRIZZ shares. On a slot other than the test slot (12) it starts that slot again at
-the end, from the card, so it saves again. `--save` leaves the card written as FRIZZ writes
-it. A FRIZZ from before PERSIST, or `--save`, gets the old guard: `play` refuses a script that
-would change what FRIZZ keeps on the card, saying which line and which file: the settings
-page (`twin/scenarios/settings.txt`, most bug reports, #58; its upper G# and A# too, as
-each source's effects and live are saved, `mic.txt`, #152, #177), VOLUME turned on its page
-2, the input gain
-(`volume.txt`, #152), and the compressor's knobs (`comp.txt`: its key, then knobs 1-4, or with
-it in focus by CC 23; its CCs themselves never reach the card, #97), and a script's `set` of
-a setting, the compressor or the input gain (most scenarios' first lines, #214) go to
-`/FRIZZ/frizz_master.txt`, with no `.bak`; SAVE / COPY / DELETE confirmed (`scenes.txt`) or a
-scene put over SysEx to `/FRIZZ/frizz_scenes.txt`, whose `.bak` keeps only the one before
-(#78).
+`play` first stops FRIZZ writing the card until it restarts (PERSIST 0), so a script may change
+the settings, the finalizer or the scenes: they stay in RAM, and the card keeps what key 10's
+FRIZZ shares. On a slot other than the test slot (12) it starts that slot again at the end,
+from the card, so it saves again. `--save` leaves the card written as FRIZZ writes it. A FRIZZ
+from before PERSIST, or `--save`, gets the old guard: `play` refuses a script that would change
+what FRIZZ keeps on the card, saying which line and which file: the settings page
+(`twin/scenarios/settings.txt`, most bug reports, #58; its upper G# and A# too, as each
+source's effects and live are saved, `mic.txt`, #152, #177), VOLUME turned on its page 2, the
+input gain (`volume.txt`, #152), and the finalizer's knobs (`comp.txt`, its Level module, and
+`finalizer.txt`, every module: its key, then knobs 1-4, or with it in focus by CC 23; its CCs
+themselves never reach the card, #97), and a script's `set` of a setting, the finalizer or the
+input gain (most scenarios' first lines, #214) go to `/FRIZZ/frizz_master.txt`, with no `.bak`;
+SAVE / COPY / DELETE confirmed (`scenes.txt`) or a scene put over SysEx to
+`/FRIZZ/frizz_scenes.txt`, whose `.bak` keeps only the one before (#78).
 
 The setters FRIZZ saves (`channel`, `transport`, `source`, `out`, `scene put`, and `set` for
 `settings`, `comp` and VOLUME's input gain) keep the card out of it the same way unless
@@ -376,7 +377,8 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | `05` PROBE | `00` | the clock: the source set (0 Auto, 1 TRS, 2 USB, 3 internal), the one counted (0 none, 1 TRS, 2 USB), the factor (0 x1/2, 1 x1, 2 x2), flags (1 a clock counted, 2 a loop sets the effects' tempo, 4 a tempo set, by a clock, a loop or taps, 8 the pulses running backwards, 16 transport followed), its tempo by the factor and as sent (3 each, BPM x 100), the ticks counted (5), how often it locked (3), the effects' tempo (3, x 100) and whole (2), the FX clock's pulse (3), a loop's pulses (3), and how often the jack's MIDI receive ended on an error and started again (3, #361) |
 | | `01` | the looper: its state (0 empty, 1 recording, 2 playing, 3 paused), flags (1 closing, 2 erase waiting, 4 erasing, 8 can record quantized), length and position in frames (4 each), beats (3), semitones + 64, speed and the speed now (2 each, x 1000 + 2000), rewinds by Start (3) |
 | `06` LEVELS | `00` | the effects' meters, as their keys show them, 0-16383 each, by FxId |
-| | `01` | flags (1: the peak meters just started), the VU meter (2), the compressor's reduction (2, dB x 100), the peaks since the last ask (2 each, 8192 full scale, up to twice it): the input as the engine takes it (mic, AUX L, R), the headphones L, R, the line outs L, R |
+| | `01` | flags (1: the peak meters just started), the VU meter (2), the finalizer's gain reduction (2, dB x 100: its deepest, a band's or the limiter's, as key 15 shows it), the peaks since the last ask (2 each, 8192 full scale, up to twice it): the input as the engine takes it (mic, AUX L, R), the headphones L, R, the line outs L, R |
+| | `02` | the finalizer's meters (`NormalPage::DevLevels`, #345), 2 each: the input's peak and the low, mid and high bands' peaks since the last ask (8192 full scale, up to twice it), the bands' gain reductions (dB x 100), their correlations (+1 at 16383, -1 at 0) and the limiter's deepest reduction since the last ask (dB x 100); the bands' meters run while key 15 shows EQ or Width. Refused (status 1) until #408 is fixed |
 | `07` SIGNAL | WAVE FREQ(2) LEVEL(2) | WAVE. 1 sine, 2 saw, 3 noise at FREQ Hz (1-16383) and LEVEL (16383 full scale) in place of the mic and AUX, from where the engine takes them; `00` alone the input again |
 | `08` RESEED | SEED(5) or — | the seed, then the states (5 each) of chaos's, the slicer's, the delay's and wow & flutter's random numbers, each from its power-on seed xor SEED: 0 is power-on's. Without SEED it only reads |
 | `09` BATTERY | — | the level (0 full, on the cable; 1 above 3.3 V; 2 3-3.3 V; 3 below 3 V), the level the check last read, the check's step (0 resting, 1-2 reading at 3.3 V), 1 if the last read failed, the last 8 reads (2 each, the newest lowest) of the cable (VIN_GD), the battery below the threshold, a legacy cable and the input current limited, then the MP2722's status registers 0x11-0x16 (2 each) |
@@ -396,7 +398,8 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | | `02` X | the flags; the card lent (X 1) or taken back (0), as the settings page's SHIFT + LOOP |
 
 The groups of GET and SET: `00`-`1F` an effect's knobs by its FxId (`FxParams.h`: 0-3 page 1,
-4-7 page 2), `20` the compressor's, `21` the latches (index by FxId, 0 or 1), `22` VOLUME's
+4-7 page 2), `20` the finalizer's 16 knobs (`kGroupFin`: module by module, Level, EQ, Comp,
+Width, knobs 1-4 each), `21` the latches (index by FxId, 0 or 1), `22` VOLUME's
 (0 output gain, 1 input gain, 2 mix, 3 headphone feed), `23` the card's settings as
 `masterfile::kLines` lists them (`MasterSettings.h`: mono, MIDI channel, transport, clock
 factor, clock source, MIDI out, LED brightness, the effect channels over TRS, MIDI feedback,
@@ -491,9 +494,13 @@ cd firmware/tools
   device, and every effect recorded the dry line), sends the CCs on the effect's channel
   (e.g. `--cc 21=80`, its Level), plays material into AUX and records the line out; it says
   what was latched and the knobs FRIZZ has, and puts the latches and the effect's knobs back
-  afterwards. `compare` gives two recordings' level and octave bands, for an A/B of two
-  builds. Real music (`material --music`) is the better test here; level and bands don't
-  show an effect's timing (an echo's place), which takes a script of its own.
+  afterwards. It reads the settings first: a card with AUX unmonitored or past the effects
+  (`aux_live 0`, `aux_dry 1`) would record silence or the dry line (#391), so it sets
+  `aux_live 1` and `aux_dry 0` in RAM only (PERSIST 0, the card untouched), says so, and puts
+  them back afterwards; a FRIZZ without PERSIST is refused, saying so. `drift` needs neither:
+  the looper records AUX either way. `compare` gives two recordings' level and octave bands,
+  for an A/B of two builds. Real music (`material --music`) is the better test here; level
+  and bands don't show an effect's timing (an echo's place), which takes a script of its own.
 
 `tools/loopclip.py [--source aux|signal]` asks whether the loop distorts where the live input
 doesn't (#152): a 1 kHz sine at rising levels, into AUX or as FRIZZ's own test signal
@@ -743,6 +750,12 @@ About the browser:
 - **What it can see:** only the home directory, so the files to upload live there.
 - **The MIDI port:** while the page has FRIZZ's port, no other tool reaches FRIZZ.
 - **No prompt:** Web MIDI's permission is granted, or denied, through CDP.
+- **The MIDI shim:** Chromium's ALSA MIDI publishes no hardware port while a card has a hwdep
+  that reports interface 0, OPL2, without being an FM synth (the Scarlett 18i20's "Focusrite
+  Control", #399, #406). It counts that hwdep as a MIDI device, its two counts never meet, and
+  only "Midi Through" is listed. `tools/chromium-midi-shim.c`, built with `cc` into the cache
+  on first use, is `LD_PRELOAD`ed into this browser only and reports such a hwdep as another.
+  `FRIZZ_MIDI_SHIM=0` leaves it out; `companion.py ports` shows what the browser sees.
 
 `test/companion.cpp` checks its WebSocket and CDP client against a stand-in, and what it
 refuses before a browser opens.
@@ -773,20 +786,24 @@ make BENCH=1      # build-bench/FRIZZ-bench.bin; the normal build is untouched
    still working outside its segment (a tail), and whether the loop played. Below, where each
    segment's mean goes: the clock the chip ran at, and the mean split into the callback's
    parts (MIDI, the controls, the UI's events, the input, the looper, the tempo, the FX chain,
-   the compressor, the output and limiters), counted in the core's cycles (`BenchProfile.h`).
+   the finalizer (`comp`), the output and limiters), counted in the core's cycles
+   (`BenchProfile.h`).
    Put `FRIZZ.bin` back on the card to play again. `tools/builds.py cpu` files the
    `cpu.txt` in `card/` as `bin/cpu.txt`, headed by the md5 of the bench build it measured
    (and refuses one from another source).
 
-The segments: nothing on, each effect alone (its knobs moving every 0.25 s), the compressor,
-the inserts together, recording a loop, the loop alone, with the inserts, with the delay, with
-PR #7's scene 4 (shifter +7, folder, crusher, slicer, compressor at 1) and the delay, with the
-reverb, then everything, everything with every feedback at the top (the harness's STRESS), and
-the loop with everything; later ones the chaos key, AUX dry, the mic, the crossfader with two
-loops (the loop beside itself half a pass on, #70) and page 2 off its defaults (`Bench.h`
-lists them all). The sends come last because their tails run on (the delay's for 10
-s). The signal is the bench's own, so runs compare: a little tune in A minor at 120 BPM (Am F
-C G, an arpeggio, bass, kick, hi-hat), made by a few oscillators, so it costs no room for a
+The segments: nothing on, each effect alone (its knobs moving every 0.25 s), the phaser's
+frequency-shifter mode (`freqshift`), the finalizer's Comp at a Depth of 1 (`compressor`, the
+master compressor until #345), the inserts together, recording a loop, the loop alone, with the
+inserts, with the delay, with PR #7's scene 4 (shifter +7, folder, crusher, slicer, the
+finalizer's Comp at a Depth of 1) and the delay, with the reverb, then everything, everything
+with every feedback at the top (the harness's STRESS), and the loop with everything; later ones
+the chaos key, AUX dry, the mic, the crossfader with two loops (the loop beside itself half a
+pass on, #70), the finalizer with every module working on the loop alone and with everything
+(`loop+finalizer`, `loop+everything+fin`, #345) and page 2 off its defaults (`Bench.h` lists
+them all). The sends come last because their tails run on (the delay's for 10 s). The signal is
+the bench's own, so runs compare: a little tune in A minor at 120 BPM (Am F C G, an arpeggio,
+bass, kick, hi-hat), made by a few oscillators, so it costs no room for a
 recording. It's made for the next block after each measurement, so its own cost isn't in the
 numbers (it was in the first runs', 2026-10-08, with a saw, a gated sine and noise).
 
@@ -881,7 +898,7 @@ MasterSettings.h       what's kept on the card outside the scenes (the finalizer
 SceneStore.h           the card: /FRIZZ, the scene file and the master file, written from MainLoop
 FxScenes.h             the FX scenes and their file format
 FxControls.h           the FX keys and knobs: latches, fine / stepped / coarse turns, scene snapshot and recall;
-                       the compressor's knobs too
+                       the finalizer's knobs too
 SceneControls.h        the scene keys: recall, morph, and the save / copy / delete flow
 FxMorph.h              a scene morph: glides the effects to a scene, landing on a bar line
 PlayKeys.h             the CHOMPI, PLAY and LOOP keys: SHIFT, the confirm tap, the looper's combos
@@ -932,7 +949,7 @@ chompi_sram.lds        linker script (the firmware runs from SRAM, placed there 
   the FX scenes and the master settings at boot (after changing into `/FRIZZ`, which it creates
   on a new card) and again, where the computer changed them, when it takes the card back
   (#314); loops when one is loaded (`LoopLoader.h`, the slots scanned at boot, after a lend and
-  on RESCAN). It writes when a scene is saved, copied or deleted, 2 s after the compressor's
+  on RESCAN). It writes when a scene is saved, copied or deleted, 2 s after the finalizer's
   knobs, the mono input or the MIDI settings were last changed (`SceneStore.h`), when the loop
   transfer writes, moves or deletes a slot (`LoopTransfer.h`, through `/FRIZZ/xfer.tmp`), or
   for a bug report (`EventLog.h`).

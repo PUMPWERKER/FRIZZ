@@ -73,11 +73,10 @@ what FRIZZ does.
   without the USB storage firmware; the loop and the effects play on. Eject it on the computer,
   unplug, or hold SHIFT + LOOP again to take it back: FRIZZ finds the loops again, and reads
   `frizz_scenes.txt` and `frizz_master.txt` again if the computer changed them (#291), as at
-  power-on: the settings apply at once (the input gains and the compressor glide there), the
-  scenes come in for their next recall, and what plays stays. If you changed a scene or a
+  power-on: the settings apply at once (the input gains and the finalizer's knobs glide there),
+  the scenes come in for their next recall, and what plays stays. If you changed a scene or a
   setting on FRIZZ while the card was lent, FRIZZ's wins and the computer's file is kept as
-  `frizz_scenes.bak` or `frizz_master.bak` (in v1.5.0-beta.1, FRIZZ kept what it had and its
-  next save wrote over the computer's changes). See
+  `frizz_scenes.bak` or `frizz_master.bak`. See
   [The card as a USB drive](MANUAL.md#the-card-as-a-usb-drive).
 
 - **A crashed FRIZZ restarts by itself** (#105): if FRIZZ crashes, or its sound stops for
@@ -97,22 +96,22 @@ what FRIZZ does.
 
 ### Changed
 
-- **The FX keys are coloured by their stage in the chain**: the keys of a stage share a colour,
-  the two of a pair in neighbouring shades, and the next stage in one well apart. Freezer
-  purple and shifter indigo, folder scarlet and crusher orange, filter pink, flanger light blue
-  and phaser blue, resonator lime, slicer yellow, wow & flutter red and tape stop rose, delay
-  green and reverb teal. The frequency shifter's key is ice blue, the chaos key magenta. New
-  are the shifter (was red), the folder (magenta), the phaser (violet), wow & flutter (teal),
-  the tape stop (amber), the reverb (blue) and the chaos key (rose). See
-  [Keys and knobs](MANUAL.md#keys-and-knobs).
-- **Each effect's knob lights start in its key's colour**: turned down, a knob shows the colour
-  of the key it belongs to, and turning it up goes to a second colour well apart from that, so
-  the knobs say which effect they're on. New start colours for the shifter, folder, crusher,
-  phaser, frequency shifter, resonator, wow & flutter, tape stop, reverb and chaos key; new end
-  colours where the old one was too close to the start: the folder and the tape stop now end in
-  azure, the crusher in violet, the chaos key in light blue. A knob with a centre stays blue,
-  white and orange, the phaser's synced rate green to yellow. Each effect's colours are in its
-  chapter of the manual.
+- **The FX keys are coloured by their stage in the chain** (#395): the keys of a stage share a
+  colour, the two of a pair in neighbouring shades, and the next stage in one well apart.
+  Freezer purple and shifter indigo, folder scarlet and crusher orange, filter pink, flanger
+  light blue and phaser blue, resonator lime, slicer yellow, wow & flutter red and tape stop
+  rose, delay green and reverb teal. The frequency shifter's key is ice blue, the chaos key
+  magenta. New are the shifter (was red), the folder (was magenta), the phaser (was violet), wow
+  & flutter (was teal), the tape stop (was amber), the reverb (was blue) and the chaos key (was
+  rose). See [Keys and knobs](MANUAL.md#keys-and-knobs).
+- **Each effect's knob lights start in its key's colour** (#402): turned down, a knob shows the
+  colour of the key it belongs to, and turning it up goes to a second colour well apart from
+  that, so the knobs say which effect they're on. New start colours for the shifter, folder,
+  crusher, phaser, frequency shifter, resonator, wow & flutter, tape stop, reverb and chaos key;
+  new end colours where the old one was too close to the start: the folder and the tape stop now
+  end in azure, the crusher in violet, the chaos key in light blue. A knob with a centre stays
+  blue, white and orange, the phaser's synced rate green to yellow. Each effect's colours are in
+  its chapter of the manual.
 - **Knobs 1-4 and VOLUME speed up when turned fast** (#375): turned slowly, a knob still moves
   1% a detent, so a precise setting is as easy to hit; turned faster than about 8 detents a
   second, its step grows smoothly, up to 5% a detent from about 40 a second, so a quick sweep
@@ -137,7 +136,8 @@ what FRIZZ does.
   - **Comp** (cyan): a compressor on each band, its character picked from six (Light & fast to
     Beat FX, Parallel among them), one Depth for all three. No makeup: level comes back
     through Drive and Loud.
-  - **Width** (magenta): each band's stereo, from mono to twice as wide.
+  - **Width** (magenta): each band's stereo, from mono to twice as wide (the low band to
+    1.5 times).
 
   Hold SHIFT and tap key 15 twice for the next module; the key shows its colour. At the
   defaults it leaves the sound untouched. Its knob LEDs are meters while they rest: the input
@@ -171,10 +171,10 @@ what FRIZZ does.
   USB (it was 0-63 AUX, 64-127 the mic: a controller sending 127 for the mic now picks USB; send
   64). MIDI feedback sends it as 0 for AUX, **64 for the mic** (it was 127) and 127 for USB. See
   [Controllers](MANUAL.md#controllers).
-- **USB is TinyUSB now** (#196): FRIZZ's USB, its MIDI too, runs on a new USB stack. The MIDI
-  clock out over USB keeps its time while FRIZZ reads the card (it could come up to 8 ms late
-  while a cubbi loaded, #265). FrizZ asks the computer for 100 mA, where it asked for 160. See
-  [MIDI out](MANUAL.md#midi-out).
+- **The MIDI clock out over USB keeps its time while FRIZZ reads the card** (#196, #265): it
+  could come up to 8 ms late while a cubbi loaded. FRIZZ's USB, its MIDI too, runs on a new USB
+  stack (TinyUSB) for it, and asks the computer for 100 mA, what a tablet's port gives, where it
+  asked for 160. See [MIDI out](MANUAL.md#midi-out).
 - **The folder keeps the bass** (white key 3): it cut everything below about 76 Hz, even with
   the drive at off, 5 dB at 50 Hz and 9 dB at 30 Hz, so a latched folder took the weight out of
   kicks and bass. Now 50 Hz comes through within half a dB, and turning Symmetry no longer
@@ -182,21 +182,20 @@ what FRIZZ does.
   pushes up rings out a little longer than before. See [Folder](MANUAL.md#folder).
 - **Effects that are off take less of the CPU:** the filter, the crusher, the shifter, wow &
   flutter and the flanger no longer keep running unheard while off; they start afresh when
-  punched in, without a click: FRIZZ with every effect off takes about 22% of the processing
-  time where it took 31%, more headroom when only a few effects are on. A punched-in
-  crusher's steps fall at other moments than before, and wow & flutter's wow goes on from
-  where it rested.
+  punched in, without a click: FRIZZ with every effect off takes about 21% of the processing
+  time on average where v1.0.1 took 34% (in its busiest block 29% where it took 37%), more
+  headroom when only a few effects are on. A punched-in crusher's steps fall at other moments
+  than before, and wow & flutter's wow goes on from where it rested.
 - **The shifter is brighter** (#305): its taps read between samples more precisely, so the
   shifted sound keeps more of its highs (a 10 kHz tone a fifth up loses 0.3 dB, where it lost
   1.3 dB) and carries less aliasing, most audibly with feedback, where every pass lost highs
   again. The rest of the shifter is as it was.
-- **The reverb's tail is smoother, less metallic:** its first allpass is modulated, as in
-  Mutable's Clouds and Elements, so the same hit rings a little differently each time instead of
-  through the same diffusion. Its knobs, decay, level and freeze are as they were. See
-  [Reverb](MANUAL.md#reverb).
-- **The reverb's tail wobbles less in pitch** (#313), as in Mutable's: the slow modulation in
-  its loop swings half as far as before (it was twice Mutable's), so a long tail sounds
-  steadier, with less of a chorus on held notes. Its knobs are as they were.
+- **The reverb's tail is smoother, less metallic, and wobbles less in pitch** (#307, #313): its
+  first allpass is modulated, as in Mutable's Clouds and Elements, so the same hit rings a
+  little differently each time instead of through the same diffusion; and the slow modulation
+  in its loop swings half as far as before (it was twice Mutable's), so a long tail sounds
+  steadier, with less of a chorus on held notes. Its knobs, decay, level and freeze are as they
+  were. See [Reverb](MANUAL.md#reverb).
 
 ### Fixed
 
@@ -249,8 +248,6 @@ what FRIZZ does.
   the same instant FRIZZ looked could be missed, leaving the card lent until SHIFT + LOOP.
 - **A card error while FRIZZ looks for your loops no longer hides the ones after it:** the
   slots after the error showed empty until the next scan; now FRIZZ reads the folder again.
-- **Switching USB audio waits the 100 ms it should** before FRIZZ leaves the bus, so the
-  answer to a tool's request that switched it still reaches the computer.
 - **A loop switch at once always crossfades** (#302): now and then a switch by a white key or
   a program change cut over hard, with a click, instead of fading the old loop out over 10 ms,
   most often when two switches came within a few ms of each other (a program change right

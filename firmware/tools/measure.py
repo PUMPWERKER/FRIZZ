@@ -16,7 +16,9 @@
         nothing latched, the dry line), CCs on its own MIDI channel (its key's number,
         MANUAL.md "Appendix: MIDI": 14-17 page 1's knobs, 18-21 page 2's; 21 is Level, the sends' too
         since #172, at 0dB at first), material into AUX, the line out recorded to NAME.f32;
-        the latches and the effect's knobs put back afterwards
+        the latches and the effect's knobs put back afterwards. Where the settings have AUX
+        unmonitored or past the effects (aux_live 0, aux_dry 1), it sets them in RAM only
+        (PERSIST 0, the card untouched) for the measurement, says so, and puts them back
     ./measure.py compare A.f32 B.f32
         two recordings' levels and octave bands, B against A, in dB
     ./measure.py material [--music FILE ...] --out FILE.wav
@@ -40,6 +42,7 @@ pw-record), Python 3 with numpy: `python3 -m venv ~/.venvs/frizz && ~/.venvs/fri
 install numpy`, then run this with that python.
 """
 import argparse
+import contextlib
 import os
 import struct
 import subprocess
@@ -144,6 +147,41 @@ def put_back(f, was, name, knobs):
     for n in remote.FX_NAMES:
         if (n in was) != (n in now):
             remote.dev_set(f, "latch", n, int(n in was))
+
+
+# What fx needs of the settings to hear AUX on the line out: AUX monitored (live) and through
+# the effects, not past them (#391: a card with aux_live 0 recorded silence). drift doesn't: the
+# looper records AUX either way, and only the loop is recorded
+AUX_THROUGH = {"aux_live": 1, "aux_dry": 0}
+
+
+@contextlib.contextmanager
+def aux_through(f):
+    """AUX live and through the effects while it runs, set in RAM only (PERSIST 0: the card
+    stays as it was) where the settings have it otherwise, said so, and put back afterwards;
+    exits, sending nothing, where FRIZZ can't keep it out of the card (#391)"""
+    values = remote.dev_get(f, remote.GROUP_SETTINGS)
+    index = {n: remote.SETTING_NAMES.index(n) for n in AUX_THROUGH}
+    if max(index.values()) >= len(values):
+        sys.exit("FRIZZ's settings have no %s: a FRIZZ from before them, AUX can't be checked"
+                 % " / ".join(AUX_THROUGH))
+    was = {n: values[i] for n, i in index.items() if values[i] != AUX_THROUGH[n]}
+    if was:
+        if not f.ram_only():
+            sys.exit("the settings have %s, which the measurement can't play through (AUX "
+                     "silent or past the effects), and this FRIZZ can't set them in RAM only (no "
+                     "PERSIST): set them on its settings page" % ", ".join(
+                         "%s %d" % (n, v) for n, v in was.items()))
+        for n in was:
+            remote.dev_set(f, "settings", n, AUX_THROUGH[n])
+        print("AUX set to play through for the measurement, in RAM only, the card untouched: %s "
+              "(put back after)" % ", ".join("%s %d (was %d)" % (n, AUX_THROUGH[n], v)
+                                            for n, v in was.items()))
+    try:
+        yield
+    finally:
+        for n, v in was.items():
+            remote.dev_set(f, "settings", n, v)
 
 
 # ======== audio ========
@@ -369,6 +407,18 @@ def cmd_fx(a):
     if not material:
         material = a.out + ".material.wav"
         write_wav(material, np.repeat(generated()[:, None], 2, 1))
+    with aux_through(f):
+        y = fx(a, f, name, key, material)
+    rms = np.sqrt(np.mean(y ** 2))
+    print("%s: %.1f s, RMS %.4f" % (a.out + ".f32", len(y) / SR, rms))
+    if rms < 1e-4:
+        sys.exit("nothing on the line in: is the material reaching AUX (%s), the line out %s?"
+                 % (aux_sink(), line_source()))
+
+
+def fx(a, f, name, key, material):
+    """The recording of fx: NAME latched alone (None: nothing), the CCs sent, MATERIAL played
+    into AUX; the latches and the knobs put back afterwards"""
     # latched and set before the material plays, then a few seconds for it to reach AUX and
     # the sends' tails to build up (a beat is 1 s at the card's clock factor x1/2)
     was = latch_only(f, name)
@@ -386,16 +436,11 @@ def cmd_fx(a):
         p = play(material)
         try:
             time.sleep(3)
-            y = record(a.seconds, a.out + ".f32")
+            return record(a.seconds, a.out + ".f32")
         finally:
             p.terminate()
     finally:
         put_back(f, was, name, knobs)
-    rms = np.sqrt(np.mean(y ** 2))
-    print("%s: %.1f s, RMS %.4f" % (a.out + ".f32", len(y) / SR, rms))
-    if rms < 1e-4:
-        sys.exit("nothing on the line in: is the material reaching AUX (%s), the line out %s?"
-                 % (aux_sink(), line_source()))
 
 
 def bands(y):

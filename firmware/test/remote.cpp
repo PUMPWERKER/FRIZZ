@@ -1,6 +1,6 @@
 // remote.cpp: firmware/remote.py against the virtual CHOMPI (twin/twin.h). The twin's USB MIDI
 // sits on a pseudo-terminal in place of the CHOMPI's ALSA node, and remote.py runs as itself
-// (--device), while the twin plays at the wall clock's pace: remote.py's SysEx, its parsing of
+// (--device), on the twin's clock (ptytwin.h's lockstep): remote.py's SysEx, its parsing of
 // the answers and its script player are checked, end to end, against the firmware's.
 #include <fcntl.h>
 #include <signal.h>
@@ -123,10 +123,9 @@ static size_t Count(const std::string& s, const std::string& what)
     return n;
 }
 
-/** remote.py ARGS, the twin running at the wall clock's pace until it's done (30 s at most,
- *  ptytwin.h's Exec), interrupted (SIGINT, Ctrl-C) once it has printed interrupt_at, if given.
- *  Its exit code; out gets what it printed, stdout and stderr; lag how far the twin fell
- *  behind meanwhile */
+/** remote.py ARGS against the twin until it's done (30 s at most, ptytwin.h's Exec),
+ *  interrupted (SIGINT, Ctrl-C) once it has printed interrupt_at, if given. Its exit code; out
+ *  gets what it printed, stdout and stderr */
 static int Remote(const std::vector<std::string>& args, std::string& out,
                   const std::string& interrupt_at = "")
 {
@@ -1225,16 +1224,18 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
               && Has(Card("/FRIZZ/frizz_master.txt"), "clock_source 2\nmidi_out 1\n"),
           "remote: and they go to the card");
 
-    // MIDI out over USB: its clock comes between the answers, and remote.py reads past it
+    // MIDI out over USB: its ticks come in with the answers, and remote.py reads past them: the
+    // ticks of 200 ms queued on the pty ahead of the answers (on the twin's clock remote.py's
+    // start takes none of its time, and a query a few ms, between two ticks)
     Remote({"out", "all", "--save"}, out);
-    RunMs(200);
     TakeMidiOut();
-    rc = Remote({"state"}, out);
+    RunMs(200);
     size_t usb_ticks = 0;
     for (const MidiOutByte& b : TakeMidiOut())
         usb_ticks += b.usb && b.byte == 0xF8;
+    rc = Remote({"state"}, out);
     Check(rc == 0 && Has(out, "looper     empty") && usb_ticks > 0,
-          "remote: with MIDI out over USB, its clock comes in between, and state still reads");
+          "remote: with MIDI out over USB, its ticks queued ahead of the answers, state still reads");
     if (rc != 0)
         printf("%s\n", out.c_str());
     Remote({"out", "off", "--save"}, out);
@@ -1310,6 +1311,8 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
     Check(rc == 0 && Has(out, "AUX L         0.500") && Has(out, "-6.0 dBFS") && Has(out, "mic           0.500")
               && !Has(out, "line L        0.0000") && Has(out, "effects    freezer 0.00"),
           "remote: signal plays a sine at half scale where the input was, levels shows it at -6 dBFS");
+    Check(rc == 0 && Has(out, "finalizer  input ") && Has(out, "; limiter "),
+          "remote: levels shows the finalizer's meters too (LEVELS 2, #408)");
     if (rc != 0 || !Has(out, "-6.0 dBFS"))
         printf("%s\n", out.c_str());
     rc = Remote({"signal", "off"}, out);
@@ -1667,8 +1670,9 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
           "remote: play's toggle 1 / toggle 0 reach the settings page (mono off again), the real switch after");
     if (!Has(out, "page       play"))
         printf("%s\n", out.c_str());
-    // the twin behind the wall clock as remote.py ends (all.sh's load): what it sent last, the
-    // keys let go and SWITCH 0 in play's finally, still reaches it (Exec catches up, #336)
+    // what remote.py sent last, the keys let go and SWITCH 0 in play's finally, still reaches the
+    // twin as it ends (#336): on the twin's clock the bytes it wrote after its last wait; on the
+    // wall clock (FRIZZ_TWIN_CLOCK=0) with the twin 400 ms behind as it ends (all.sh's load)
     Write(script, "booted\ntoggle 1\nwait 100\ndown KEY_26\ntap KEY_23\nup KEY_26\nwait 100\n");
     exec_late = 400;
     Remote({"play", script, "--save", "--force"}, out);
@@ -1850,11 +1854,12 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
         printf("%s\n", out.c_str());
     // play's turn paced (#375): a detent every MS ms is a slow turn, 1% each; a plain turn
     // goes at once, one a block, a fast one. The slow one is judged by the gaps the firmware
-    // measured (ui.h's Gap), the twin's time each TURN came in: on a busy computer (all.sh on
-    // Actions' runner) the pty's reader can stall and take two detents late and together, a
-    // fast turn to the firmware whatever remote.py sent. Paced far from kFxAccelSlowMs, and a
-    // turn that still came in faster is played again, said in a line FLAKY, as Twice() does
-    // (#183): it fails only if it came in fast twice, or slow and the value is off
+    // measured (ui.h's Gap), the twin's time each TURN came in: on the twin's clock exactly MS
+    // apart. On the wall clock (FRIZZ_TWIN_CLOCK=0) on a busy computer the pty's reader can
+    // stall and take two detents late and together, a fast turn to the firmware whatever
+    // remote.py sent: paced far from kFxAccelSlowMs, and a turn that still came in faster is
+    // played again, said in a line FLAKY, as Twice() does (#183): it fails only if it came in
+    // fast twice, or slow and the value is off
     const uint32_t kPaceMs = 400, kSlowMs = 125; // FxControls.h's kFxAccelSlowMs
     std::string turns;
     uint32_t shortest = 0;
@@ -2113,6 +2118,20 @@ chompi = importlib.reload(chompi)
 chompi.ASOUND = "asound"
 print("names:", chompi.platform_node("/dev/snd/midiC3D0"), chompi.platform_node("/dev/snd/midiC4D0"),
       chompi.platform_node(None), chompi.frizz_node("/dev/snd/midiC3D0"), flush=True)
+# garbled names (#88, #371): one string off, the maker the product's name, found by the Daisy's
+# USB id; a Daisy with its own names isn't the CHOMPI's platform
+with open("asound/cards", "a") as cards:
+    cards.write(" 5 [Default        ]: USB-Audio - \u0409\n                      OTHERFW \u0409 at usb-0000:00:14.0-2, full speed\n"
+                " 6 [Default_1      ]: USB-Audio - \u0409\n                      FrizZ \u0409 at usb-0000:00:14.0-2, full speed\n")
+for card in (4, 5, 6):
+    os.makedirs("asound/card%d" % card, exist_ok=True)
+    open("asound/card%d/usbid" % card, "w").write("0483:5740\n")
+for what, card in (("garbled", 5), ("garbled FRIZZ", 6), ("Daisy", 4)):
+    node = "/dev/snd/midiC%dD0" % card
+    print("%s: %s %s %s" % (what, chompi.platform_node(node), chompi.frizz_node(node), chompi.other_firmware(node)), flush=True)
+import shutil
+for card in (4, 5, 6):
+    shutil.rmtree("asound/card%d" % card)
 # IDENT's kinds
 for kind in (0, 1, 2, 9):
     info = chompi.parse_ident(bytes([1, kind]) + bytes(24))
@@ -2141,10 +2160,14 @@ except SystemExit as e:
 )", out);
     Check(rc == 0 && Has(out, "platform: ['restart node', 'reached? launcher', 'wait launcher: None']\n")
               && Has(out, "another firmware on the CHOMPI: asking it to restart into the launcher")
-              && Has(out, "platform, no restart: ['restart node', 'reached? launcher', 'wait launcher: None']\n")
-              && Has(out, "it didn't restart: switch the CHOMPI off and on")
+              && Has(out, "platform, no restart: ['restart node', 'reached? launcher', 'RESET node', 'wait launcher: still no launcher: switch the CHOMPI off and on']\n")
+              && Has(out, "it didn't restart: resetting it from its audio callback (RESET)")
               && Has(out, "stock: ['wait launcher: None']\n") && Has(out, "names: True False False False\n"),
-          "tools: another firmware on FRIZZ's platform, by its USB names, is asked to restart into the launcher first (#368)");
+          "tools: another firmware on FRIZZ's platform, by its USB names, is asked to restart into the launcher first (#368), "
+          "RESET when it doesn't (#371)");
+    Check(Has(out, "garbled: True False True\n") && Has(out, "garbled FRIZZ: True True False\n")
+              && Has(out, "Daisy: False False False\n"),
+          "tools: another firmware with garbled USB names is found by the Daisy's USB id as FRIZZ is, not a Daisy that says so (#371)");
     Check(Has(out, "kind 0: frizz / FRIZZ, crc32") && Has(out, "kind 1: bench / the bench, crc32")
               && Has(out, "kind 2: other 2 / another firmware (IDENT kind 2), crc32")
               && Has(out, "kind 9: other 9 / another firmware (IDENT kind 9), crc32")
@@ -2159,6 +2182,39 @@ except SystemExit as e:
               && Has(out, "exit: the firmware running lends the card to the computer (CHOMPI-SD at /dev/sdx1): not restarted"),
           "tools: a card another firmware lends (its vendor, or MIDI beside the drive) isn't the storage firmware's, and isn't restarted from under (#368)");
     if (rc != 0 || !Has(out, "to_frizz: n"))
+        printf("%s\n", out.c_str());
+
+    // #371: another firmware by its USB names never answers as FRIZZ, so it isn't waited for:
+    // neither BUSY s before its restart (to_launcher) nor SETTLE s before its slot is started
+    // (to_frizz); FRIZZ silent by its names still is. A clock the sleeps move on
+    rc = Python(R"(
+import time, chompi
+clock = [0.]
+time.monotonic = lambda: clock[0]
+time.sleep = lambda s: clock.__setitem__(0, clock[0] + s)
+chompi.BUSY, chompi.SETTLE = 20, 10
+chompi.state = lambda device=None: ("other", "node")
+chompi.reached = lambda wanted, *rest: True
+chompi.wait_for = lambda *a, **kw: "l"
+who = [""]
+chompi.restart = lambda node, hard=False: print("%s: %s at %g s" % (who[0], "RESET" if hard else "restart", clock[0]), flush=True)
+chompi.last_started = lambda: (None, False, "")
+chompi.start = lambda slot, *rest: print("%s: start %d at %g s" % (who[0], slot, clock[0]), flush=True) or "n"
+for name, frizz in (("another", False), ("FRIZZ", True)):
+    chompi.platform_node = lambda node: True
+    chompi.frizz_node = lambda node, frizz=frizz: frizz
+    clock[0] = 0.
+    who[0] = name + " to_launcher"
+    chompi.to_launcher()
+    clock[0] = 0.
+    who[0] = name + " to_frizz"
+    chompi.to_frizz()
+)", out);
+    Check(rc == 0 && Has(out, "another to_launcher: restart at 0 s\n") && Has(out, "another to_frizz: start 10 at 0 s\n"),
+          "tools: another firmware on FRIZZ's platform is restarted at once, not after BUSY or SETTLE s (#371)");
+    Check(Has(out, "FRIZZ to_launcher: RESET at 20 s\n") && Has(out, "FRIZZ to_frizz: start 10 at 10 s\n"),
+          "tools: a FRIZZ silent by its names is still waited for (BUSY, SETTLE)");
+    if (rc != 0 || !Has(out, "restart at 0 s"))
         printf("%s\n", out.c_str());
 
     // after a script played RAM only, a FRIZZ slot other than the test slot is started again

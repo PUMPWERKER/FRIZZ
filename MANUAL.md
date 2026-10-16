@@ -703,7 +703,8 @@ The FX keys are coloured by their place in the signal chain: the keys of a stage
 colour, the two of a pair in neighbouring shades (the freezer purple and the shifter indigo,
 the folder scarlet and the crusher orange, the flanger light blue and the phaser blue, wow &
 flutter red and the tape stop rose, the delay green and the reverb teal), and the next stage
-in a colour well apart. The chaos key, which has no place in the chain, is magenta.
+in a colour well apart. The phaser's second mode, the frequency shifter, turns its key ice
+blue. The chaos key, which has no place in the chain, is magenta.
 
 The FX keys are dimly lit in their effect's colour while off and at full brightness while
 on, where the audio coming out of the effect pushes the colour towards white, from -30 dBFS
@@ -713,7 +714,8 @@ the effect's colours; a knob the effect doesn't use is dark and does nothing. Va
 power-off unless they're saved in a [scene](#fx-scenes).
 
 The knob LEDs use white for one thing only, a neutral point. A knob with a centre (the
-shifter's shift and grain, the filter's cutoff, the delay's random and damping, every Band)
+shifter's shift and grain, the filter's cutoff, the delay's random and damping, every Band,
+the frequency shifter's direction, the finalizer's Input and its EQ and Width bands)
 is white there, blue below and orange above, the same on every effect, so you can see at a
 glance which way a knob is off. Every other knob starts in its key's colour and goes to a
 second one, well apart from it. The phaser's rate shows which half it's in: its own colours while it runs free,
@@ -1451,7 +1453,9 @@ all three.
   Level, the finalizer's Input or Loud. Loud's own limiter keeps it from showing at VOLUME
   full.
 - **The knob LEDs** are meters while the knobs rest (above, module by module); a knob you turn
-  shows its value for a moment, from light blue (0%) to orange (100%), then the meter again.
+  shows its value for a moment, then the meter again: Drive, Type, Loud, the characters and
+  Depth from light blue (0%) to orange (100%); the knobs with a centre, Input and the EQ and
+  Width bands, blue below it, white on it and orange above.
   Knobs 2 and 3 of Level and knob 4 of Comp always show their values. The output's own meter
   stays VOLUME's.
 - **Level:** 0 dB at the input is an AUX signal about 7 dB below full scale, at the default
@@ -1461,7 +1465,7 @@ all three.
   when the card can't be written, the key blinks red 3 times instead, and FRIZZ tries again
   2 s later, up to 3 times; the settings then last until power-off.
 - LEDs: the key is white, yellow, cyan or magenta, by its module; the knobs go light blue to
-  orange.
+  orange, and those with a centre (Input, the EQ and Width bands) blue, white on it, orange.
 
 <!-- part: Scenes and settings -->
 
@@ -1875,7 +1879,8 @@ the headphones' feed, turned left, you still do).
 the mic monitored through the effects, a delay or a reverb rings out their clicks. For clean
 takes use AUX; with the mic, record the loop first, then switch its monitoring off before you
 play the effects over it. FRIZZ treats it as TAPE does: 5× the input gain
-(AUX gets 3×), its DC taken out, and a highpass at about 150 Hz. VOLUME's page 2 sets the
+(AUX gets 3×) and a highpass at about 150 Hz; its DC is taken out as AUX's is, from about
+8 Hz down. VOLUME's page 2 sets the
 input gain of the source heard: each source has its own, saved. A
 switch of the source, of the upper G# or of the upper A# fades over 5 ms, so it doesn't
 click; the source going out fades out of the outputs while the one coming in fades in, so a
@@ -2595,9 +2600,10 @@ working hard, for example) can need more time than there is, which is heard as c
 switching one of them off clears it.
 
 Measured on a build that runs a set of combinations by itself, as a share of the time each
-block has: FRIZZ alone about 30%, one effect at most about 45%, all the inserts with a loop
-about 70%, every effect at once about 85%. The finalizer with every module working takes about
-13% more, its compressors alone (Depth up) about 5%; at its defaults nothing. Every effect at
+block has, in the busiest block: FRIZZ alone about 30%, one effect at most about 45%, all the
+inserts with a loop about 70%, every effect at once about 85%. On average the finalizer with
+every module working takes about 13% more, its compressors alone (Depth up) about 5%; at its
+defaults nothing. Every effect at
 once with a loop, and every effect's page 2 turned off its defaults (Mix, Band and Level),
 needs more than there is.
 

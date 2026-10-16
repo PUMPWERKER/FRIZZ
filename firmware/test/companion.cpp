@@ -3,7 +3,8 @@
 // of each length's encoding, a message in two fragments, a ping answered, the close), its CDP
 // call (events kept while it waits for its answer, an error raised), and what it refuses before
 // anything opens: a slot that isn't one, an upload into TAPE's banks, a file the Flatpak's
-// browser can't see. Python 3 only.
+// browser can't see; and the MIDI shim for the browser (#399) against a stand-in for alsa-lib.
+// Python 3 and cc.
 #include <unistd.h>
 #include <cstdio>
 #include <cstdlib>
@@ -114,6 +115,36 @@ def upload(bank, files):
         print("UPLOAD", e)
     except AttributeError:
         print("UPLOAD reached the browser")
+# the MIDI shim (#399): built from its source, LD_PRELOADed in front of a stand-in for
+# alsa-lib's snd_ctl_hwdep_info, which reports what the device's driver says
+import subprocess
+C.SHIM = os.path.abspath("midishim.so")
+shim = C.midi_shim()
+fake = r"""
+#include <string.h>
+struct hwdep_info { unsigned int device; int card; unsigned char id[64]; unsigned char name[80]; int iface; unsigned char reserved[64]; };
+int snd_ctl_hwdep_info(void* ctl, void* info) {
+    struct hwdep_info* h = info; const char* id = ctl;
+    memset(h, 0, sizeof *h); strcpy((char*)h->id, id); strcpy((char*)h->name, id);
+    h->iface = !strcmp(id, "OPL3 FM") ? 1 : !strcmp(id, "HDA Codec 0") ? 16 : 0;
+    return 0; }
+"""
+open("fake.c", "w").write(fake)
+subprocess.run(["cc", "-shared", "-fPIC", "-o", "libfakeasound.so", "fake.c"], check=True)
+probe = r"""
+import ctypes
+ctypes.CDLL("./libfakeasound.so", mode=ctypes.RTLD_GLOBAL)
+f = ctypes.CDLL(None).snd_ctl_hwdep_info
+f.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+for id in (b"Focusrite Control", b"OPL3 FM", b"HDA Codec 0"):
+    info = ctypes.create_string_buffer(220)
+    f(id, info)
+    print("IFACE", id.decode(), int.from_bytes(info.raw[152:156], "little", signed=True))
+"""
+for pre in (shim, None):
+    env = dict(os.environ, LD_PRELOAD=pre) if pre else dict(os.environ)
+    r = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, env=env)
+    print(("SHIM " if pre else "PLAIN ") + r.stdout.replace("\n", "; ") + r.stderr[-300:])
 upload("cubbi_a", [os.path.expanduser("~/x.wav")])
 upload("h", ["/tmp/x.wav"])
 upload("h", [os.path.expanduser("~/x.wav")])
@@ -144,5 +175,9 @@ int main()
     Check(Has(out, "UPLOAD /tmp/x.wav: the Flatpak's Chromium sees only"),
           "companion: a file outside the home directory refused before the browser is asked");
     Check(Has(out, "UPLOAD reached the browser"), "companion: one in the home directory goes on to the page");
+    Check(Has(out, "SHIM IFACE Focusrite Control 64; IFACE OPL3 FM 1; IFACE HDA Codec 0 16"),
+          "companion: the MIDI shim, built from its source, reports a hwdep that says interface 0 (OPL2) but isn't an OPL as "
+          "another, and leaves a real OPL3 and the others as they are (#399)");
+    Check(Has(out, "PLAIN IFACE Focusrite Control 0"), "companion: without it the stand-in says 0, as the Scarlett's driver does");
     return Finish();
 }

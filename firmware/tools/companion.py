@@ -29,7 +29,9 @@ The browser: the Flatpak Chromium (org.chromium.Chromium, 155 here; Playwright's
 crashed on Web MIDI's send) with --headless=new, a profile of its own under ~/.cache, closed
 after every run. The Flatpak sees only the home directory: the files to upload live there.
 Web MIDI's permission (midi with SysEx) is granted, or refused, to the page's origin through
-CDP, so no prompt. While the page has FRIZZ's MIDI port, nothing else reaches FRIZZ: like the
+CDP, so no prompt. chromium-midi-shim.c is LD_PRELOADed into it (built with cc on first use):
+without it a card whose hwdep says interface 0 (the Scarlett 18i20's) leaves Chromium's Web
+MIDI with no hardware port at all (#399). While the page has FRIZZ's MIDI port, nothing else reaches FRIZZ: like the
 other device tools it takes the CHOMPI's lock (tools/chompi.py), and in a hold it shares it.
 It writes the card only with upload, and only into the slots named, which must be empty
 (the page refuses nothing there; this does): a session's slots, never a player's loops.
@@ -44,6 +46,7 @@ import os
 import random
 import re
 import shutil
+import signal
 import socket
 import struct
 import subprocess
@@ -59,6 +62,26 @@ import chompi  # noqa: E402
 URL = os.environ.get("FRIZZ_COMPANION_URL", "https://frizz.friedrichwagner.eu/beta/companion/")
 BROWSER = os.environ.get("FRIZZ_CHROMIUM", "flatpak run org.chromium.Chromium").split()
 BANKS = list("abcdefgh") + ["cubbi_" + c for c in "abcde"]
+# the shim that keeps Chromium's ALSA MIDI from miscounting a card's hwdep as an OPL synth
+# (#399, chromium-midi-shim.c), built once into the cache; FRIZZ_MIDI_SHIM=0 leaves it out
+SHIM_SRC = os.path.join(HERE, "chromium-midi-shim.c")
+SHIM = os.path.join(os.path.expanduser("~"), ".cache", "frizz-companion", "midishim.so")
+
+
+def midi_shim():
+    """The shim's path, built if it's missing or older than its source; None without a C
+    compiler (Web MIDI then shows no card's port where a card has such a hwdep)"""
+    if os.environ.get("FRIZZ_MIDI_SHIM") == "0":
+        return None
+    if os.path.exists(SHIM) and os.path.getmtime(SHIM) >= os.path.getmtime(SHIM_SRC):
+        return SHIM
+    os.makedirs(os.path.dirname(SHIM), exist_ok=True)
+    r = subprocess.run(["cc", "-shared", "-fPIC", "-O2", "-o", SHIM, SHIM_SRC, "-ldl"],
+                       capture_output=True, text=True)
+    if r.returncode:
+        print("the MIDI shim didn't build (%s): without it" % r.stderr.strip()[:200], file=sys.stderr)
+        return None
+    return SHIM
 CUBBI_BANK = 8  # the page's first cubbi bank (app.js's CUBBI_BANK), as BANKS has it
 
 
@@ -153,9 +176,15 @@ class Browser:
                          "about:blank"]
         if log:  # Chromium's own log, its Web MIDI's (the ALSA ports it takes or drops) in detail
             cmd[-1:-1] = ["--enable-logging=stderr", "--v=0", "--vmodule=*midi*=3,*udev*=1"]
+        env = dict(os.environ)
+        shim = midi_shim()
+        if shim and cmd[:2] == ["flatpak", "run"]:
+            cmd[2:2] = ["--env=LD_PRELOAD=" + shim]  # the sandbox sees the home directory
+        elif shim:
+            env["LD_PRELOAD"] = shim
         self.log = open(log, "w") if log else None
         self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=self.log or subprocess.DEVNULL,
-                                     start_new_session=True)
+                                     start_new_session=True, env=env)
         self.ws = None
         self.seq = 0
         self.events = []
@@ -302,9 +331,9 @@ def connect(br, url, granted=True):
             break
         time.sleep(0.05)
     if st and st["state"] == "connected":
-        # the listing read
-        st = br.wait("(() => { const s = %s; return s.slots && !/Reading|reading/.test(s.empty) ? s : null })()"
-                     % STATE_JS, 120) or st
+        # the listing read: the banks' grid shown (the empty state's note, hidden then, keeps
+        # its last "Reading FRIZZ's banks… 13 of 13")
+        st = br.wait("(() => { const s = %s; return s.grid && s.slots ? s : null })()" % STATE_JS, 120) or st
     elif st:
         for e in br.events:
             if e.get("method") == "Runtime.consoleAPICalled":
@@ -502,6 +531,10 @@ def main():
     p.add_argument("js")
     p.add_argument("--no-connect", action="store_true")
     a = ap.parse_args()
+    # a timeout's or a hold's SIGTERM: the browser closed all the same (run's finally), so it
+    # doesn't keep FRIZZ's MIDI port for the tools after it
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, lambda *_: sys.exit(143))
     if not (a.cmd == "eval" and a.no_connect):
         chompi.claim()
     sys.exit(run(a))

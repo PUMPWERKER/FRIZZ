@@ -6333,7 +6333,21 @@ int main()
         Press("KEY_5", false);
         Check(fx.size() == 31 && DevNum(fx, 3 + 2 * 4, 2) > 100 && DevNum(fx, 3 + 2 * 11, 2) == 0,
               "midi dev: LEVELS 0, the effects' meters: the filter's lit, the reverb's not");
-        Check(Ask({0x3E, 6, 6, 2})[2] == 1, "midi dev: LEVELS 2 refused");
+        // LEVELS 2, the finalizer's meters (#408): the input's peak and the bands', their
+        // reductions, correlations and the limiter's, 11 values; a part 3 refused. The input's
+        // peak is metered while key 15 shows Level, asleep too: the focus there (CC 23 = 15)
+        sine = true;
+        Trs({kCC, 23, 15});
+        RunMs(200);
+        Ask({0x3E, 6, 6, 2});
+        RunMs(200);
+        const std::string fin = Ask({0x3E, 6, 7, 2});
+        printf("      LEVELS 2: %zu bytes, status %d, input peak %.3f, limiter %.2f dB\n", fin.size(),
+               fin.size() > 2 ? fin[2] : -1, fin.size() >= 25 ? DevNum(fin, 3, 2) / 8192. : -1.,
+               fin.size() >= 25 ? DevNum(fin, 23, 2) / 100. : -1.);
+        Check(fin.size() == 25 && fin[2] == 0 && DevNum(fin, 3, 2) > 300,
+              "midi dev: LEVELS 2, the finalizer's 11 meters: its input's peak from AUX's sine");
+        Check(Ask({0x3E, 6, 8, 3})[2] == 1, "midi dev: LEVELS 3 refused");
     }});
 
     cases.push_back({"midi-dev-signal", [] {

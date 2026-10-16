@@ -332,8 +332,8 @@ private:
     {
         LOOP = 1,     // a loop plays (recorded just before the first of these)
         STRESS = 2,   // the harness's STRESS: every feedback at the top
-        SCENE4 = 4,   // PR #7's scene 4: shifter +7, folder, crusher, slicer, compressor at 1
-                      // (since #345 the finalizer's Comp at a Depth of 1)
+        SCENE4 = 4,   // PR #7's scene 4: shifter +7, folder, crusher, slicer, the finalizer's
+                      // Comp at a Depth of 1 (the master compressor at 1 until #345)
         COMP = 8,     // the finalizer's Comp at a Depth of 1 (the master compressor's amount
                       // at 1 until #345); without it, the finalizer neutral and asleep
         RECORD = 16,  // records the loop, 4 s
@@ -342,7 +342,7 @@ private:
         PAGE2 = 32,   // page 2 off its defaults on every effect: its Mix, Band and Level, so
                       // FxOutput.h's crossover and blend run (at their defaults they don't),
                       // and each effect's own knobs (the sends' freeze stays off)
-        DRY = 128,    // AUX dry (#152): the input past the effects and the compressor
+        DRY = 128,    // AUX dry (#152): the input past the effects and the finalizer
         MIC = 256,    // the mic (#152): the tune into it, not on the master
         FADER = 512,  // two loops on the crossfader (#70): the loop beside itself, half a pass
                       // on, mixed at the middle (Looper::BenchFade)
