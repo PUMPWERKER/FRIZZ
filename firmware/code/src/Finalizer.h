@@ -475,6 +475,9 @@ private:
         if (turned_)
         {
             turned_ = false;
+            // a stepped knob (the type, the characters) lands at once and never slews: its
+            // turn is worked out all the same
+            update_pending_ = true;
             for (size_t p = 0; p < kNumFinParams; p++)
             {
                 update_pending_ |= knobs_[p].Settle(kFxParamCoeff * n);

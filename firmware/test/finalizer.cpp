@@ -8,6 +8,9 @@
 //  - Width at full left is mono: both outputs the same
 //  - the drive's level compensation: a sine at its reference level comes out within 1dB, every
 //    type and amount
+//  - the stepped knobs take on their own: Type turned alone under drive changes the harmonics,
+//    a band's character turned alone changes its gain reduction (they used to wait for another
+//    knob to move)
 //  - the limiter: pushed hard by Loud, no peak above its ceiling of -1dB, also between the
 //    samples (a 2x-oversampled check), and its delay exactly 1ms (Latency)
 //  - the meters against ffmpeg's (a reference of its own, LR4 bands from acrossover): each
@@ -270,6 +273,52 @@ static void TestDrive()
             snprintf(what, sizeof(what), "drive: type %d at %.1f, a sine of .5 comes out %.2f dB (within 1)", type, drive, db);
             Check(fabsf(db) < 1.f, what);
         }
+}
+
+/** v's harmonic k of hz, its amplitude, over n samples from from (a whole number of cycles) */
+static float Harmonic(const std::vector<float>& v, size_t from, size_t n, float hz, int k)
+{
+    double re = 0., im = 0.;
+    for (size_t i = 0; i < n; i++)
+    {
+        const double a = 2. * M_PI * hz * k * i / kSr;
+        re += v[from + i] * cos(a);
+        im += v[from + i] * sin(a);
+    }
+    return static_cast<float>(2. * sqrt(re * re + im * im) / n);
+}
+
+static void TestSteppedKnobs()
+{
+    // Type alone, Boost to Tube under drive: Tube's second harmonic appears
+    {
+        Setup s({{Finalizer::DRIVE, .75f}});
+        const size_t n = 48000;
+        std::vector<float> l = Sine(2 * n, 200.f, .5f), r = l;
+        std::vector<float> a(l.begin(), l.begin() + n), ar(a);
+        s.Run(a, ar);
+        s.f.SetParam(Finalizer::TYPE, .5f);
+        std::vector<float> b(l.begin() + n, l.end()), br(b);
+        s.Run(b, br);
+        const float before = Db(Harmonic(a, n / 2, n / 2, 200.f, 2) / Harmonic(a, n / 2, n / 2, 200.f, 1));
+        const float after = Db(Harmonic(b, n / 2, n / 2, 200.f, 2) / Harmonic(b, n / 2, n / 2, 200.f, 1));
+        CheckF(before < -80.f && after > -60.f, "stepped: Type turned alone to Tube, the second harmonic %.1f dB before, %.1f dB after", before, after);
+    }
+    // a band's character alone, light to pumping: its gain reduction moves
+    const float hz[Finalizer::kBands] = {100.f, 1000.f, 8000.f};
+    for (size_t b = 0; b < Finalizer::kBands; b++)
+    {
+        Setup s({{Finalizer::DEPTH, .5f}, {Finalizer::CHARACTER_LOW + static_cast<int>(b), 0.f}});
+        std::vector<float> l = Sine(48000, hz[b], .5f), r = l;
+        s.Run(l, r);
+        const float before = s.f.BandReduction(b);
+        s.f.SetParam(Finalizer::CHARACTER_LOW + b, 1.f);
+        l = Sine(48000, hz[b], .5f);
+        r = l;
+        s.Run(l, r);
+        const float after = s.f.BandReduction(b);
+        CheckF(fabsf(after - before) > 1.f, "stepped: band %g's character turned alone, its reduction %.1f dB, then %.1f dB", b, before, after);
+    }
 }
 
 /** v at twice the rate, a windowed sinc of 64 taps: its largest magnitude */
@@ -565,6 +614,7 @@ int main()
     TestWidth();
     TestMute();
     TestDrive();
+    TestSteppedKnobs();
     TestLimiter();
     TestMetersFfmpeg();
     return Finish();
