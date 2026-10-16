@@ -154,8 +154,9 @@ what FRIZZ does.
   the module switched only with key 15 tapped twice in one SHIFT hold. Now, with the finalizer
   on the knobs, every SHIFT + key 15 shows the next module, in the same SHIFT hold or a new one.
   While an effect has the knobs, SHIFT + key 15 still only selects the finalizer, and the
-  double tap in one hold still selects, then switches. Key 15 and SHIFT pressed together select
-  and never switch; key 15 held, then SHIFT, stays the bypass. See [Finalizer](MANUAL.md#finalizer).
+  double tap in one hold still selects, then switches. Key 15 and SHIFT pressed together, in
+  either order, count as a select and never switch; key 15 held, then SHIFT, stays the bypass.
+  See [Finalizer](MANUAL.md#finalizer).
 
 - **AUX keeps its bass** (#317): the input's DC blocker, TAPE's, cut AUX's lows from about
   76 Hz down (50 Hz 5 dB quieter, 30 Hz 9 dB); it now takes out only DC, from about 8 Hz down,

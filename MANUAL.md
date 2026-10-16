@@ -1324,8 +1324,9 @@ Drive and Loud.
   the next, in the same SHIFT hold or a new one. While an effect has the knobs, SHIFT + key 15
   only selects the finalizer, so you never land in another module unseen; tap key 15 twice in
   one SHIFT hold to select it and go on. Only SHIFT held first counts: key 15 and SHIFT pressed
-  together select, and holding key 15 and then pressing SHIFT never switches (that's the
-  [bypass](#finalizer-presets-and-bypass)). It doesn't work on the Loops and Cubbi pages.
+  together, in either order, count as a select, and holding key 15 and then pressing SHIFT never
+  switches (that's the [bypass](#finalizer-presets-and-bypass)). It doesn't work on the Loops
+  and Cubbi pages.
 
 ### Level module
 
