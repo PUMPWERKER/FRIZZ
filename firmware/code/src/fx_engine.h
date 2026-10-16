@@ -125,6 +125,11 @@ FxAllPassRead(float a, float b, float fraction, float x, float* state, float all
     return x + allpass * (*state - x);
 }
 
+/** FRIZZ (#419): added to a sample and taken off again, rounds it to the nearest step of the
+ *  16-bit lines (1/32768, the ulp of 384 = 1.5 * 2^8, for anything within +-128), so
+ *  Compress's truncation that follows takes nothing off: Context::WriteRound's */
+constexpr float kSnap16 = 384.f;
+
 /**  
        @brief Base Class for building reverbs
 	   @author Electrosmith
@@ -248,6 +253,26 @@ class FxEngine
         inline void WriteAllPass(D& d, float scale)
         {
             WriteAllPass(d, 0, scale);
+        }
+
+        /** FRIZZ (#419): Write at the line's start, rounded to the nearest step while `snap` is
+         *  kSnap16 (the frozen tank's): truncating, each write takes up to a step off, toward 0,
+         *  which a tank that loses nothing else gathers until quiet material is gone. At 0 both
+         *  adds are exact and it is Write, to the bit: no branch, two adds */
+        template <typename D>
+        inline void WriteRound(D& d, float scale, float snap)
+        {
+            STATIC_ASSERT(D::base + D::length <= size, delay_memory_full);
+            buffer_[(write_ptr_ + D::base) & MASK]
+                = DataType<format>::Compress((accumulator_ + snap) - snap);
+            accumulator_ *= scale;
+        }
+
+        template <typename D>
+        inline void WriteAllPassRound(D& d, float scale, float round)
+        {
+            WriteRound(d, scale, round);
+            accumulator_ += previous_read_;
         }
 
         template <typename D>

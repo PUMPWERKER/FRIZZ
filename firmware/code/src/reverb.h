@@ -126,14 +126,19 @@ class Reverb {
     // and the depth halves (#394): their phase errors compound, trip after trip, and at full
     // depth an 8kHz tone's pitch spread 6 cents in a minute, at half 3
     const float depth = 1.f - .5f * freeze_;
+    // Frozen, the tank's writes round to the nearest step (#419): truncating, each took up to a
+    // step off, and quiet held material fell to nothing within minutes. 0 rounds to 0, so a
+    // room frozen silent stays silent (the input's diffusers truncate still: they decay). It
+    // comes on with the freeze's first moment, which moves a write by half a step at most
+    const float snap = freeze_ > 0.f ? kSnap16 : 0.f;
     c.Load(apout);
     c.Interpolate(del2, 6286.0f, LFO_2, 25.0f * depth, krt, ap_2_, freeze_);
     c.Lp(lp_1, klp);
     c.Read(dap1a TAIL, -kap);
-    c.WriteAllPass(dap1a, kap);
+    c.WriteAllPassRound(dap1a, kap, snap);
     c.Read(dap1b TAIL, kap);
-    c.WriteAllPass(dap1b, -kap);
-    c.Write(del1, 2.0f);
+    c.WriteAllPassRound(dap1b, -kap, snap);
+    c.WriteRound(del1, 2.0f, snap);
     c.Write(wet, 0.0f);
 
     *left = wet;
@@ -142,10 +147,10 @@ class Reverb {
     c.Interpolate(del1, 4480.0f, LFO_1, 20.0f * depth, krt, ap_1_, freeze_);
     c.Lp(lp_2, klp);
     c.Read(dap2a TAIL, kap);
-    c.WriteAllPass(dap2a, -kap);
+    c.WriteAllPassRound(dap2a, -kap, snap);
     c.Read(dap2b TAIL, -kap);
-    c.WriteAllPass(dap2b, kap);
-    c.Write(del2, 2.0f);
+    c.WriteAllPassRound(dap2b, kap, snap);
+    c.WriteRound(del2, 2.0f, snap);
     c.Write(wet, 0.0f);
 
     *right = wet;

@@ -3,7 +3,8 @@
 // folder's, crusher's and filter's stereo and their moved knobs, the flanger's polarity, the
 // resonator's env mod and return level, the slicer's shuffle, wow & flutter's age, the tape
 // stop's depth and darken, the delay's freeze, damping and ducking, the reverb's freeze (its
-// level a minute on, and the held room's pitch: no detuning, no wider swing, #249),
+// level a minute on, and the held room's pitch: no detuning, no wider swing, #249; quiet
+// material held 5 minutes, #419),
 // pre-delay and ducking; and the scene file's layout 3 (FxScenes.h). Exits 0 when everything
 // passes. Run by unit.sh page2.
 #include <algorithm>
@@ -526,11 +527,92 @@ static void TestReverbFreezePitch(float hz)
     // 5.3). The level fell, ~15dB a minute at 2kHz and the 8kHz tone gone (#394): the tank's
     // modulated reads, interpolated linearly, took a little of the highs on each trip. Frozen,
     // they're allpass-interpolated at half the depth: -0.5dB at 2kHz, -0.8 at 8kHz, a spread
-    // of 2-3.5 cents (at full depth 8kHz's spread grew to 6 cents in the minute)
+    // of 2-3.5 cents (at full depth 8kHz's spread grew to 6 cents in the minute). With the
+    // tank's writes rounded (#419), 0.0dB at both
     Check(fabs(off) < 10. && fabs(drift) < 10., "reverb: frozen, the room holds its pitch, at 1s and a minute on");
     Check(early_spread < 4.5 && late_spread < 4.5, "reverb: frozen, the held room's pitch swings no wider than the tank's modulation");
     Check(growth < 1., "reverb: frozen a minute, the held tone doesn't grow");
     Check(growth > -2., "reverb: frozen a minute, the held tone keeps its highs (#394)");
+}
+
+/** #419: what the frozen room holds, 5 minutes on: in from 0.1 to 0.5s (`amp` of noise, or a
+ *  500Hz tone of rms `tone`), frozen at `freeze_at`. Its level in dB, a second every 10s (*db,
+ *  31), and the last second's 4th difference, the floor above the tone, in dB (*hf). All
+ *  exactly 0 from the freeze on: *silent */
+static void ReverbHold(float amp, float tone, size_t freeze_at, double* db, double* hf, bool* silent)
+{
+    static chompi::ReverbSend v;
+    v.Init(kSr, &reverb);
+    v.SetParam(chompi::ReverbSend::DECAY, .5f);
+    v.SetParam(chompi::ReverbSend::LEVEL, kP2Level);
+    v.SetOn(true);
+    uint32_t seed = 1;
+    const size_t kWindow = 48000, kEvery = 480000, kEnd = freeze_at + 48000 + 30 * kEvery + kWindow;
+    double sum = 0., diff = 0.;
+    float y[5] = {};
+    *silent = true;
+    for (size_t i = 0; i < kEnd; i++)
+    {
+        if (i == freeze_at)
+            v.SetParam(chompi::ReverbSend::FREEZE, 1.f);
+        float in = 0.f;
+        if (i >= 4800 && i < 24000)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            in = amp * static_cast<float>(static_cast<int32_t>(seed)) * (1.f / 2147483648.f)
+               + tone * 1.41421356f * sinf(2.f * float(M_PI) * 500.f * static_cast<float>(i) / kSr);
+        }
+        float l = 0.f, r = 0.f;
+        v.Process(in, in, &l, &r);
+        if (i >= freeze_at && l != 0.f)
+            *silent = false;
+        if (i < freeze_at + 48000)
+            continue;
+        const size_t at = (i - freeze_at - 48000) % kEvery;
+        if (at >= kWindow)
+            continue;
+        memmove(y + 1, y, 4 * sizeof(float));
+        y[0] = l;
+        sum += static_cast<double>(l) * l;
+        const double d = y[0] - 4. * y[1] + 6. * y[2] - 4. * y[3] + y[4];
+        diff += d * d;
+        if (at == kWindow - 1)
+        {
+            *db++ = 10. * log10(sum / kWindow + 1e-30);
+            *hf = 10. * log10(diff / kWindow + 1e-30);
+            sum = diff = 0.;
+        }
+    }
+}
+
+/** #419: frozen, quiet material holds (the tank's 16-bit writes rounded, not truncated): noise
+ *  at -24dBFS and a tone at -40dBFS keep their level for 5 minutes, the floor of rounding adds
+ *  no more than a loud freeze has always had, and a room gone silent stays silent */
+static void TestReverbFreezeQuiet()
+{
+    double noise[31], tone[31], hf, unused;
+    bool silent;
+    ReverbHold(.063f * sqrtf(3.f), 0.f, 24000, noise, &unused, &silent);
+    ReverbHold(0.f, .0141f, 24000, tone, &hf, &silent);
+    double noise_worst = 0., tone_worst = 0.;
+    for (int k = 0; k < 31; k++)
+    {
+        noise_worst = fmax(noise_worst, fabs(noise[k] - noise[0]));
+        tone_worst = fmax(tone_worst, fabs(tone[k] - tone[0]));
+    }
+    printf("  reverb frozen 5 min: noise %.1fdB, %+.2fdB at 1 min, %+.2fdB at 5 (worst %.2f); "
+           "a tone %.1fdB, %+.2fdB at 5 min (worst %.2f), its floor %.1fdB\n",
+           noise[0], noise[6] - noise[0], noise[30] - noise[0], noise_worst, tone[0],
+           tone[30] - tone[0], tone_worst, hf);
+    // measured on main (truncating): the noise -1.5dB at 30s and gone (exactly 0) at 3.5
+    // minutes, the tone gone within 90s. Rounded: -0.3dB in 5 minutes, both. The rounding's
+    // errors add up in a tank that loses nothing, a floor rising 3dB as the hold doubles (8 to
+    // 20kHz -60dBFS at 5 minutes, -53 at 30); main had it too, under material loud enough not
+    // to fade: a -8dBFS tone's floor there, 5 minutes on, is this check's -39.8dB
+    Check(noise_worst < 1. && tone_worst < 1., "reverb: frozen 5 minutes, quiet noise and a quiet tone hold their level (#419)");
+    Check(hf < -39.8 + 1., "reverb: frozen 5 minutes, the floor under a quiet tone no higher than main's under a loud one");
+    ReverbHold(.063f * sqrtf(3.f), 0.f, 24000 + 6 * 48000, tone, &hf, &silent);
+    Check(silent, "reverb: a room rung out to silence and frozen stays silent for 5 minutes");
 }
 
 static void TestReverb()
@@ -736,6 +818,7 @@ int main()
     TestReverb();
     TestReverbFreezePitch(2000.f);
     TestReverbFreezePitch(8000.f);
+    TestReverbFreezeQuiet();
     TestLayout();
     TestKeyOnPage2();
     TestKeyOnBand();
