@@ -161,8 +161,10 @@ git clone https://github.com/emscripten-core/emsdk.git ~/opt/emsdk
 cd ~/opt/emsdk && ./emsdk install 6.0.11 && ./emsdk activate 6.0.11
 ```
 
-`web/serve.sh` finds it there by itself. Its first build compiles DaisySP for the browser too,
-so it takes longer; after a change, a reload rebuilds in about 20 s.
+`web/serve.sh` finds it there by itself. Its first build compiles DaisySP for the browser too
+(again when DaisySP or em++ change), so it takes longer; after a change, a reload rebuilds in
+about 20 s. With Emscripten there, `all.sh` builds it too and runs it in node (the check
+`webtwin`); without, it says `SKIP: local only (Emscripten in ~/opt/emsdk)`.
 
 **A bug from a player:** SHIFT + VOLUME press held 2 s on the settings page writes `/FRIZZ/bug-N.txt`
 (MANUAL.md, *Bug reports*), a twin script of everything since power-on with the card's files

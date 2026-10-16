@@ -53,32 +53,42 @@ if [ "$1" = wasm ]; then
     WEB=$TW/web/build
     VERSION=$(git -C "$REPO" rev-parse --short HEAD)$(git -C "$REPO" diff --quiet HEAD -- firmware/code firmware/twin || echo "+changes")
     FLAGS="-O3 -std=gnu++14 -funsigned-char -I$TREE/lib -I$TREE/src $INC"
-    STAMP=$( (em++ --version; echo "$FLAGS $VERSION"; find "$TREE.new" -type f | sort | xargs cat) | md5sum | cut -d' ' -f1)
+    # DaisySP for the browser is rebuilt when its sources or em++ change, as lib.sh's for the
+    # host (#441), and the twin with it
+    DSP=$B/daisysp-wasm
+    DSTAMP=$( (em++ --version; find "$DAISYSP" -name '*.cpp' -o -name '*.h' | sort | xargs cat) | md5sum | cut -d' ' -f1)
+    STAMP=$( (em++ --version; echo "$FLAGS $VERSION $DSTAMP"; find "$TREE.new" -type f | sort | xargs cat) | md5sum | cut -d' ' -f1)
     if [ -f "$WEB/frizz-twin.wasm" ] && [ "$(cat "$WEB/twin.stamp" 2>/dev/null)" = "$STAMP" ]; then
         rm -rf "$TREE.new"
         exit 0
     fi
     heavy
     rm -rf "$TREE" && mv "$TREE.new" "$TREE"
-    mkdir -p "$WEB" "$B/daisysp-wasm"
-    if [ ! -f "$B/daisysp-wasm/libdaisysp.a" ]; then
+    mkdir -p "$WEB"
+    # from no objects of before: one a failed compile left isn't taken for its file's
+    if [ ! -f "$DSP/libdaisysp.a" ] || [ "$(cat "$DSP.stamp" 2>/dev/null)" != "$DSTAMP" ]; then
         echo "building DaisySP for the browser"
+        rm -rf "${DSP:?}" "$DSP.stamp"
+        mkdir -p "$DSP"
         # clang's library doesn't bring size_t along as g++'s does
         for f in $(find "$DAISYSP" -name '*.cpp'); do
             em++ -O3 -std=gnu++14 -w -include cstddef -c "$f" $INC \
-                -o "$B/daisysp-wasm/$(basename "$f" .cpp).o" &
+                -o "$DSP/$(basename "$f" .cpp).o" &
         done
         wait
         for f in $(find "$DAISYSP" -name '*.cpp'); do
-            [ -f "$B/daisysp-wasm/$(basename "$f" .cpp).o" ] \
+            [ -f "$DSP/$(basename "$f" .cpp).o" ] \
                 || { echo "DaisySP didn't build for the browser"; exit 1; }
         done
-        emar rcs "$B/daisysp-wasm/libdaisysp.a" "$B"/daisysp-wasm/*.o
+        emar rcs "$DSP/libdaisysp.a" "$DSP"/*.o
+        echo "$DSTAMP" > "$DSP.stamp"
     fi
     echo "building the twin for the browser ($VERSION)"
+    # the twin of before gone first: a build that fails leaves none to be served as this one
+    rm -f "$WEB/frizz-twin.js" "$WEB/frizz-twin.wasm" "$WEB/twin.stamp"
     # main() runs as a fiber, which needs Asyncify
     em++ $FLAGS -w -DTWIN_VERSION="\"$VERSION\"" $(for f in $SRCS; do echo "$TREE/$f"; done) \
-        "$TREE/src/wasm.cpp" "$B/daisysp-wasm/libdaisysp.a" -o "$WEB/frizz-twin.js" \
+        "$TREE/src/wasm.cpp" "$DSP/libdaisysp.a" -o "$WEB/frizz-twin.js" \
         -sASYNCIFY -sASYNCIFY_STACK_SIZE=65536 -sMODULARIZE -sEXPORT_NAME=FrizzTwin \
         -sENVIRONMENT=web,worker,node -sINITIAL_MEMORY=128MB -sALLOW_MEMORY_GROWTH \
         -sEXPORTED_RUNTIME_METHODS=HEAPF32,HEAPU8,UTF8ToString,stringToNewUTF8 \
