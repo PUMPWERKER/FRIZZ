@@ -344,6 +344,9 @@ what FRIZZ does.
   cable (plugging it in while the other end was sending, a bad contact) stopped FRIZZ hearing
   MIDI over TRS (clock, notes, CCs) until it was switched off and on. Now it listens again at
   once.
+- **A glitch on TRS MIDI in no longer costs a clock tick on TRS out** (#442): listening again
+  after one could cut the byte MIDI out was sending at that moment, so the gear behind lost a
+  tick (or got a garbled CC). Now MIDI out goes on untouched.
 - **The shifter and the flanger no longer click when punched in with the feedback up** (#326):
   the feedback's share of what they had stored came in at once under the key's fade, and
   repeated on every trip. Now it fades in with the key.
