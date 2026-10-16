@@ -866,8 +866,9 @@ class Mini:
                 s.add('<circle cx="%s" cy="%s" r="%s" fill="%s"%s%s/>'
                       % (num(cx), num(cy), num(r * sc), fill, op, stroke))
             if c and name == 'transport':
-                s.add('<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="2"/>'
-                      % (num(cx), num(cy), num(15.5 * sc), c))
+                # the wheel's LED ring, just inside its soot ring
+                s.add('<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="1.5"/>'
+                      % (num(cx), num(cy), num(15.5 * sc - 1.5), c))
 
     def X(self, x):
         return self.x0 + x * self.SC
