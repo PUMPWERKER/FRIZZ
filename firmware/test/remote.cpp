@@ -2613,6 +2613,10 @@ case("test", "--test")
 case("file to 12", "other.bin", "--slot", "12")
 case("file to 13", "other.bin", "--slot", "13")
 case("bench", "--bench", "--no-build")
+case("13 without --bench", "--no-build", "--slot", "13")
+case("the bench to 12", "--bench", "--no-build", "--slot", "12")
+case("--test --bench", "--test", "--bench", "--no-build")
+case("--test to 13", "--test", "--slot", "13")
 )", out);
     Check(rc == 0 && Has(out, "tagged beta: None\n") && Has(out, "tagged v9.9.9: v9.9.9\n")
               && Has(out, "tagged, code changed: None\n") && Has(out, "tagged, a file added in code: None\n")
@@ -2658,6 +2662,14 @@ case("bench", "--bench", "--no-build")
                           "'--color 13 FF0000 --device l', 'run 13']\n"),
           "tools: a branch's build goes to the test slot as FRIZZ-TEST, the bench and a file to 13 as FRIZZ-BENCH, "
           "both red (#171)");
+    Check(Has(out, "exit: key 13 is the bench's: --bench sends FRIZZ-bench.bin there (FRIZZ.bin goes to the test slot, --test)\n"
+                   "13 without --bench: []\n")
+              && Has(out, "exit: --bench sends the bench (FRIZZ-bench.bin) to its key, 13: not to key 12\nthe bench to 12: []\n")
+              && Has(out, "exit: --bench or --test: the bench goes to key 13, a branch's build to key 12\n--test --bench: []\n")
+              && Has(out, "exit: key 13 is the bench's: --bench sends FRIZZ-bench.bin there (FRIZZ.bin goes to the test slot, --test)\n"
+                          "--test to 13: []\n"),
+          "tools: flash.py sends the bench only to its key and FRIZZ.bin never there, before restarting the CHOMPI: "
+          "neither goes out under the other's name");
     if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 
