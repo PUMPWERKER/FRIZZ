@@ -221,8 +221,8 @@ public:
 
     /** Call once per block, after the looper, with its position (0-1), actual speed and
      *  whether it's paused, when there's a loop. Returns how many pulses happened during it
-     *  (usually 0 or 1). */
-    uint32_t Process(size_t size, float loop_pos = 0.f, float loop_speed = 1.f,
+     *  (usually 0 or 1). Out of line: inlined into the engine's it's 1 KB more code (#413) */
+    __attribute__((noinline)) uint32_t Process(size_t size, float loop_pos = 0.f, float loop_speed = 1.f,
                      bool loop_paused = false)
     {
         SyncFactor();
@@ -234,16 +234,15 @@ public:
 
         if (has_clock)
         {
-            // 0 between the first and second tick of a new lock: keep the last tempo
+            // 0 between the first and second tick of a new lock: keep the last tempo, and
+            // count its ticks from its first (FollowClock)
             const float bpm = midi_clock_->GetBpm();
             if (bpm > 0.f)
                 FollowClock(bpm); // by the factor already, as the ticks are
             else
             {
-                // a new lock's first tick: the line through its ticks starts there
-                lock_ticks_ = midi_clock_->GetTicks();
-                lock_at_ = midi_clock_->GetLastTickTime();
-                lock_locks_ = midi_clock_->GetLocks();
+                StartCount();
+                settling_ = true;
             }
 
             const uint32_t ticks = midi_clock_->GetTicks();
@@ -430,8 +429,8 @@ private:
      *  further off than its jitter is a new tempo: followed at once, and counted anew.
      *  A new lock's smoothed period starts from one interval, a block or a USB frame off (at
      *  120 BPM 122 or 119, at 300 up to 20 BPM off, #413): its first second follows the line
-     *  through its ticks instead, once that's long enough (kTempoLockSpan), the last tempo
-     *  until then */
+     *  through its ticks from its first (Process) instead, once that's long enough
+     *  (kTempoLockSpan), the last tempo until then */
     void FollowClock(float smoothed)
     {
         const uint32_t ticks = midi_clock_->GetTicks();
@@ -444,34 +443,21 @@ private:
             count_last_ = ticks;
         }
         const uint32_t span = at - count_[0].at0;
-        if (settling_ && counting_ && locks == count_locks_ && span < kTempoMinSpan)
+        if (settling_ && locks == count_locks_ && span < kTempoMinSpan)
         {
             const bool enough = span * static_cast<float>(kMaxBpm) >= kTempoLockSpan * smoothed;
             if (count_[0].n >= 3. && enough)
                 FollowCount(CountedBpm());
             return;
         }
+        settling_ = false;
         const float counted = span >= kTempoMinSpan ? CountedBpm() : smoothed;
         if (!counting_ || locks != count_locks_ || fabsf(smoothed - counted) > ClockJitter(counted))
         {
-            settling_ = midi_clock_->SenderLocks() != count_lock_;
-            count_lock_ = midi_clock_->SenderLocks();
-            if (settling_ && lock_locks_ == locks && lock_ticks_ != ticks)
-            {
-                count_[0].Start(lock_ticks_, lock_at_);
-                count_[0].Add(ticks, at);
-            }
-            else
-                count_[0].Start(ticks, at);
-            count_[1] = count_[0];
-            count_locks_ = locks;
-            count_last_ = ticks;
-            counting_ = true;
-            if (!settling_)
-                SetClockTempo(smoothed);
+            StartCount();
+            SetClockTempo(smoothed);
             return;
         }
-        settling_ = false;
         if (at - count_[1].at0 >= kTempoSpan)
         {
             count_[0] = count_[1];
@@ -480,8 +466,18 @@ private:
         FollowCount(counted);
     }
 
+    /** The ticks counted anew from the last one */
+    __attribute__((noinline)) void StartCount()
+    {
+        count_[0].Start(midi_clock_->GetTicks(), midi_clock_->GetLastTickTime());
+        count_[1] = count_[0];
+        count_locks_ = midi_clock_->GetLocks();
+        count_last_ = count_[0].ticks0;
+        counting_ = true;
+    }
+
     /** The tempo of the line through the ticks counted (count_[0]) */
-    inline float CountedBpm() const
+    __attribute__((noinline)) float CountedBpm() const
     {
         return 60.f * sample_rate_ / (kTicksPerBeat * count_[0].Period());
     }
@@ -628,10 +624,8 @@ private:
 
     // a clock's ticks counted for its tempo (FollowClock): from two starts, the older first
     bool counting_ = false;
-    bool settling_ = false;   // a new lock's first kTempoMinSpan: its line, not the smoothed
+    bool settling_ = false;   // counted from a new lock's first tick, for up to kTempoMinSpan
     uint32_t count_locks_ = 0;
-    uint32_t count_lock_ = 0; // MidiClock's SenderLocks at the count's start
-    uint32_t lock_ticks_ = 0, lock_at_ = 0, lock_locks_ = 0; // a new lock's first tick
     uint32_t count_last_ = 0; // the ticks at the last block that had any
     TickLine count_[2];
 

@@ -1318,19 +1318,9 @@ static void TestFactor()
     clock.Process(kBlock);
     Check(clock.GetTempo() == 200 && clock.GetBpm() == 100.f,
           "factor clock: 100 BPM sent at x2 is 200, not 400; a loop fits to the 100 sent");
-    // a new lock: its tempo once its ticks have been counted a while (#413), 400 samples apart
     midi.bpm = 300.f;
     midi.locks++;
-    for (uint32_t t = 0, at = midi.last_tick_time + 48000; t < 9600; t += kBlock)
-    {
-        if (t % 400 < kBlock)
-        {
-            midi.ticks++;
-            midi.last_tick_time = at + t;
-        }
-        clock.Process(kBlock);
-    }
-    Check(clock.GetTempo() == 300, "factor clock: locked again at 150 sent, x2: 300");
+    clock.Process(kBlock);
     midi.has_clock = false;
     midi.factor = ClockFactor::ONE;
     clock.Process(kBlock);

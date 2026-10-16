@@ -24,7 +24,6 @@ public:
     inline float GetTickPeriod() const { return tick_period; }
     inline float GetBpm() const { return bpm; }
     inline uint32_t GetLocks() const { return locks; }
-    inline uint32_t SenderLocks() const { return locks; }
 
     bool has_clock = false;
     uint32_t ticks = 0;
