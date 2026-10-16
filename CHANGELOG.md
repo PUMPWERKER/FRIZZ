@@ -104,6 +104,12 @@ what FRIZZ does.
 
 ### Changed
 
+- **The global channel's CC 22 starts afresh on each effect** (#444): CC 22 on the global
+  channel latches the effect in focus as its value crosses 64. That crossing used to be shared
+  by every effect, so after moving the focus (CC 23, or SHIFT + a key) a 127 that the
+  last effect had already seen did nothing to the new one. Now the first value after a focus
+  change counts, as on the effect's own channel: a toggle button on the global channel latches
+  whichever effect has the focus. See [Controllers](MANUAL.md#controllers).
 - **The FX keys are coloured by their stage in the chain** (#395): the keys of a stage share a
   colour, the two of a pair in neighbouring shades, and the next stage in one well apart.
   Freezer purple and shifter indigo, folder scarlet and crusher orange, filter pink, flanger
@@ -207,6 +213,10 @@ what FRIZZ does.
 
 ### Fixed
 
+- **Two quick CC 23s leave the focus on the second** (audit 2026-10-16): a CC 23 that came
+  just after another (a DAW's automation, a controller script) could be lost, leaving the
+  global channel's CC 14-22 on the first effect until the next focus change. Now the latest
+  one always wins.
 - **MIDI out passes a clock on at double without losing ticks** (audit 2026-10-16): with the
   clock factor at x2, a computer's clock that stalled and caught up (three or more ticks
   arriving at once) lost ticks on the way out, and the gear behind FRIZZ stayed a little out of

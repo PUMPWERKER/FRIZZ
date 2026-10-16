@@ -2374,7 +2374,9 @@ module's knobs are four CCs in a row:
   take the nearest step.
 - **Switches act as they change** (latches, CC 3, 81, 82, 83): an automation lane that sends the
   same value again does nothing, so a latch you switched by hand stays as you left it until the
-  lane crosses 64 again. Use 0 and 127.
+  lane crosses 64 again. Use 0 and 127. On the global channel, CC 22 starts afresh when the
+  focus moves to another effect (by CC 23 or by hand): its first value counts,
+  as on that effect's own channel.
 - **Automation isn't saved:** nothing that comes in by CC goes to the card. After a restart the
   finalizer is as you left it by hand (its knobs, its presets, or FRIZZ's SysEx), the
   source (CC 84) as the jack picks it, each source's effects and monitoring (CC 116, 117) as the

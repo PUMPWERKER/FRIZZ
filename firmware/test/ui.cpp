@@ -5903,6 +5903,58 @@ int main()
         Check(RunMs(300) < .001f, "midi cc: CC 85 sets the output gain");
     }});
 
+    // #444 C: the global channel's CC 22 acts as it crosses 64, and a new focus starts it
+    // afresh, as on the effect's own channel: its first value counts. A focus by CC 23 or by
+    // the hand; the same focus again keeps the crossing
+    cases.push_back({"midi-focus-latch", [] {
+        RunMs(kReadyMs);
+        auto latched = [] { return LatchedFx(Ask({0x20})); };
+        Trs({kCC, 23, 1, kCC, 22, 127});
+        RunMs(100);
+        Trs({kCC, 23, 2, kCC, 22, 127});
+        RunMs(100);
+        const unsigned by_cc = latched();
+        Check(by_cc != ~0u && (by_cc & 3) == 3, "midi-focus-latch: CC 23 to the shifter, the next 127 latches it as it did the freezer");
+        ShiftWith({"KEY_5"}); // the filter, in focus by hand
+        RunMs(200);
+        Trs({kCC, 22, 127});
+        RunMs(100);
+        const unsigned by_hand = latched();
+        Check(by_hand != ~0u && (by_hand >> 4 & 1), "midi-focus-latch: the filter selected by hand, the next 127 latches it");
+        Latch("KEY_5"); // off by hand
+        Trs({kCC, 23, 5, kCC, 22, 127});
+        RunMs(100);
+        const unsigned again = latched();
+        Check(again != ~0u && !(again >> 4 & 1), "midi-focus-latch: CC 23 to the filter again, no new focus: 127 again doesn't cross");
+    }});
+
+    // audit 2026-10-16 M1: a CC 23 that comes while MainLoop tells MidiControl the focus it
+    // took from the CC 23 before (twin::PreemptAt there) isn't overwritten by it: the newer
+    // focus wins, whatever the gap between the two
+    cases.push_back({"midi-focus-race", [] {
+        RunMs(kReadyMs);
+        PreemptAt("set-focus", 4); // 2 ms: the jack's MIDI reaches MidiControl a block late
+        int lost = 0;
+        for (double gap = 0.; gap <= 3.; gap += .5)
+        {
+            Trs({kCC, 23, 9}); // the slicer, from elsewhere
+            RunMs(50);
+            Trs({kCC, 23, 5}); // the filter
+            RunMs(gap);
+            Trs({kCC, 23, 2}); // the shifter, right after it
+            RunMs(50);
+            const std::string st = Ask({0x20});
+            if (st.size() <= 4 || st[4] != 1)
+            {
+                lost++;
+                printf("      a second CC 23 %.1f ms after the first: the focus %d, not the shifter\n", gap,
+                       st.size() > 4 ? st[4] : -1);
+            }
+        }
+        PreemptAt(nullptr);
+        Check(lost == 0, "midi-focus-race: two CC 23s close together, MainLoop telling the first: the second's focus stays");
+    }});
+
     // the channels (#97): the global one's map wins on it; all channels, the global map only;
     // the effect channels over the jack only if the settings page lets them
     cases.push_back({"midi-channels", [] {

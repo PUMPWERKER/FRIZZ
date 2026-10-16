@@ -31,7 +31,8 @@ the charger's I2C reply arrives at once and each LED chain's DMA finishes once p
 race found on the device can be forced at one place: the firmware marks it
 `FRIZZ_PREEMPT("name")` (nothing on the CHOMPI), and a check's `twin::PreemptAt("name")` brings
 the callback there each time `main()` passes it, unless a `ScopedIrqBlocker` holds it off
-(#302, `ui.cpp`'s `loops-switch-fade`).
+(#302, `ui.cpp`'s `loops-switch-fade`), or several callbacks with `PreemptAt("name", blocks)`
+(`midi-focus-race`: the jack's MIDI reaches MidiControl a block after it came).
 
 ## In the browser
 
