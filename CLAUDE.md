@@ -262,17 +262,17 @@ through with why, and the issue is closed with it; the next one opens.
 A build handed out for testing goes on GitHub as a **pre-release**, never as Latest:
 
 - Each release candidate (or other test round the user asks for) gets a numbered one,
-  `v<next>-beta.N` (next: `v1.5.0-beta.1`, or `v1.0.2-beta.1` for a fix release), tagged on
+  `v<next>-beta.N` (e.g. `v1.5.0-beta.4`, or `v1.0.2-beta.1` for a fix release), tagged on
   the pushed commit, with that commit's build attached. First the commit to tag sets
-  `kFrizzVersion` in `firmware/code/src/Version.h` to the tag's version (`{1, 5, 0, 1}` for
-  `v1.5.0-beta.1`, the last 0 for a release), on a branch merged before tagging: the loop
+  `kFrizzVersion` in `firmware/code/src/Version.h` to the tag's version (`{1, 5, 0, 4}` for
+  `v1.5.0-beta.4`, the last 0 for a release), on a branch merged before tagging: the loop
   transfer's HELLO reports it, and `tools/builds.py` and `flash.py --slot 10/11` refuse a tag's
   build whose constant isn't its tag. After the tag, main's next commit may carry the next
   version's. Then the build: `make` in a clean worktree at the tag
   (`git worktree add ../FrizZ-<tag> <tag>`, GCC 10.3), and its `firmware/code/src/build/FRIZZ.bin` uploaded under that name. The
   notes name its md5 and are taken from `CHANGELOG.md`'s Unreleased section, plus a link to
   the release-test issue (or the PR). The number never moves, so feedback can name the build.
-- The pre-release **`beta`** always carries the newest numbered one (now v1.5.0-beta.1), and
+- The pre-release **`beta`** always carries the newest numbered one (now v1.5.0-beta.4), and
   moves only with a new one, at a fixed link
   (`https://github.com/ZUHcYa/FRIZZ/releases/download/beta/FRIZZ.bin`): `git tag -f beta
   <commit> && git push -f origin beta`, `gh release upload beta <the numbered one's FRIZZ.bin>
@@ -471,7 +471,7 @@ loop and the event log (`SDRAM_NOINIT`) aren't, as they're always written before
 buffers live in internal RAM, 32-byte aligned, written in whole sectors (`EventLog::Flush`).
 
 **Memory**: the firmware runs from SRAM, loaded by CHOMPI's bootloader (`APP_TYPE=BOOT_SRAM`).
-Code has about **7.2 KB** left (`SRAM_EXEC`), the bench build **~7.7 KB** (2026-10-15, after the finalizer, #345: 7 KB, and libdaisy.a `-Os` where no interrupt runs it, #323: −4.5 KB), and data (`SRAM`) ~24.6 KB, the bench build's ~16.7 KB (after the code-room round, #320: FatFs `-Os`, no SPI driver); `docs/CAPACITY.md` lists every
+Code has about **5.2 KB** left (`SRAM_EXEC`), the bench build **~6.0 KB** (2026-10-16, v1.5.0-beta.4; after the finalizer, #345: 7 KB, and libdaisy.a `-Os` where no interrupt runs it, #323: −4.5 KB), and data (`SRAM`) ~24.5 KB, the bench build's ~16.6 KB (after the code-room round, #320: FatFs `-Os`, no SPI driver); `docs/CAPACITY.md` lists every
 region and the ways to make room. Never use `make program-boot`, and never swap in upstream
 libDaisy: the vendored copy is patched (`THIRD_PARTY.md`).
 `__attribute__((optimize("-O0")))` and similar per-function overrides (`ProcessAllControls`)
