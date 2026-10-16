@@ -121,13 +121,14 @@ and commit and push there.
 1. **Every branch, on the host and the virtual CHOMPI:** `firmware/test/all.sh`, new cases for
    what changed, `compare.sh` with every difference explained (below). Since 2026-10-15 (the
    user's decision) in two parts, with CI on GitHub Actions (`.github/workflows/ci.yml`):
-   - **1a, on Actions, at each push:** `all.sh`, `doclinks.py` and `compare.sh` against the
-     PR's base run there, and both builds with ARM's GCC 10.3, their md5 and memory tables in
-     the job summary (the build of the branch's head, the md5 its stage 2 names; CI's and a
-     local build's are byte for byte the same). Before the merge the run on the PR's last
-     push is green, and the PR explains every difference in its `compare.sh` output under
+   - **1a, on Actions, at each push:** `all.sh`, `doclinks.py`, and `check.sh` and
+     `compare.sh` against the PR's base run there, and both builds with ARM's GCC 10.3, their
+     md5 and memory tables in the job summary (the build of the branch's head, the md5 its
+     stage 2 names; CI's and a local build's are byte for byte the same). Before the merge the
+     run on the PR's last push is green, and the PR explains every difference in its
+     `check.sh` and `compare.sh` output under
      *Checked on the twin*, linking the run. A difference doesn't fail the run; a scenario
-     the twin couldn't play does.
+     the twin couldn't play, or a comparison that didn't get through, does.
    - **1b, locally:** what a check can't run on Actions, which `all.sh` lists under it as
      `SKIP: local only (what's missing)`, and the firmware's build for the device (stage 2).
    - **While working**, `./unit.sh NAME` for the checks of the part changed: cheap, no host
@@ -390,10 +391,11 @@ checks need only `g++` and `python3`; the browser twin needs Emscripten in `~/op
 ## Tests: the host checks and the virtual CHOMPI
 
 `firmware/test/all.sh` runs everything, side by side (about a minute; the first run ~80 s; on
-Actions ~4 minutes, stage 1a): `check.sh` (the engine against HEAD;
-a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
+Actions ~4 minutes, stage 1a): `check.sh` (the engine in the working tree against HEAD, before
+a commit; after it there's nothing to compare, and its line says so: on Actions it runs against
+the PR's base on its own; a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
 `pitch`, `tape`, `block`, `crusher`, `freezer`, `scenes`, `store`, `clicks`, `delay`, `controls`, `keys`, `looper`, `tempo`,
-`comp`, `level`, `sleep`, `inserts`, `resonator`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `midisuite`, `reaper`, `lockstep`, `splice`, `usbmidi`, `routing`, `measure`, `loopcap`, `companion`, `loops`, `loopxfer`, `sddisk`, `twinlib`, `compare`, `rtalloc`, `usbtransport`, `usbdevice`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
+`comp`, `level`, `sleep`, `inserts`, `resonator`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `finalizer`, `midisuite`, `reaper`, `lockstep`, `splice`, `usbmidi`, `routing`, `measure`, `loopcap`, `companion`, `loops`, `loopxfer`, `sddisk`, `twinlib`, `compare`, `rtalloc`, `usbtransport`, `usbdevice`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
 `NAME.cpp`; [`firmware/test/README.md`](firmware/test/README.md) says what each covers.
 `check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail. A check
 that needs something only a developer's machine has prints `SKIP: local only (what's
