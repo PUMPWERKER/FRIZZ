@@ -45,7 +45,7 @@ On the play page (the mode switch down), the controls are:
 | White keys 1-13 | The [punch-in effects](#punch-in-fx), in the order the sound goes through them: [Freezer](#freezer), [Shifter](#shifter), [Folder](#folder), [Crusher](#crusher), [Filter](#filter), [Flanger](#flanger), [Phaser](#phaser) (or its [frequency shifter](#frequency-shifter)), [Resonator](#resonator), [Slicer](#slicer), [Wow & flutter](#wow--flutter), [Tape stop](#tape-stop), [Delay](#delay), [Reverb](#reverb) |
 | White key 14 | The [Chaos key](#chaos-key) |
 | White key 15 | The [Finalizer](#finalizer) on knobs 1-4: input and drive, EQ, compression, width, a limiter |
-| Lower C# and D# | With SHIFT, the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page): loops from the card |
+| Lower C# and D# | With SHIFT, the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page): loops from the card; they glow dimly when the card holds loops (C#) or TAPE's cubbis (D#) |
 | Lower F#, G#, A#, upper C#, D# | The [FX scenes](#fx-scenes): the blank scene, then scenes 1-4 |
 | Upper F#, G#, A# | [Save, copy and delete](#save-copy-and-delete) a scene |
 | Knobs 1-4 | The effect picked last, or the finalizer; a press turns them to the effect's [page 2](#page-2) (on the finalizer, it [mutes a band](#band-mutes)) |
@@ -133,7 +133,9 @@ can't play (dim red), and VOLUME in the low-battery countdown.
 
 Waiting for something blinks slowly: LOOP while a recording finishes its bar, a picked scene
 slot, the CHOMPI key ready to confirm, a planned loop's key on the Loops or Cubbi page (fast
-while it still loads). On the knobs, white is a parameter's neutral point.
+while it still loads). On the knobs, white is a parameter's neutral point. On the play page a
+dim lower C# or D# means the card holds loops or cubbis, in the colour of the first bank that
+does (see [Playing loops](#playing-loops)).
 The [LED brightness](#led-brightness) sets how bright all of them are.
 
 <!-- part: Looper and tempo -->
@@ -1495,7 +1497,7 @@ keys in the middle are scene keys: lower F#, lower G#, lower A#, upper C# and up
 
 ![The panel with the five scene keys lit, the blank scene and scenes 1 to 4, then save in green, copy in blue and delete in red, and the CHOMPI key that confirms](images/panel-scenes.svg)
 
-On the play page the lower C# and D# do nothing by themselves: with SHIFT they open the
+On the play page a press of the lower C# or D# alone does nothing: with SHIFT they open the
 [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page). They glow dimly when the
 card holds loops (the lower C#) or TAPE's cubbis (the lower D#), in the colour of the first
 bank that does.
