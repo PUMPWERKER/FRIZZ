@@ -119,7 +119,11 @@ no FX switched on, to check that a segment actually exercises its effect; `STRES
 everything at once with the resonator's loop at its most extreme for the whole run.
 
 It drives the engine through `Init`, `SetFxOn`, `SetFxParam` and `GetFxLevel` with the
-`chompi::FX_*` names, so it builds against FRIZZ from `9da090e` on. It leaves the finalizer
+`chompi::FX_*` names. A ref with a `harness.cpp` of its own runs that one (`run.sh`), one without
+the working tree's: so `check.sh REF HEAD` builds against FRIZZ from `525bd0a` on, the commit
+that added the harness (2026-10-05), every commit on main's first-parent line since then
+built and run (#446, 2026-10-17). Before it (`9da090e` and older) today's harness doesn't build
+on that engine (`FxParams.h` is missing) and `check.sh` exits 2. It leaves the finalizer
 (#345) neutral; before it, it set the master compressor's amount (its threshold since #38) to
 0.3 (`SetCompParam`, or `SetFinalComp` before `MasterComp.h`), so a run across #345 isn't
 bit-identical, nor one across those two changes (#38 took the automatic makeup out, 1.5 dB at
