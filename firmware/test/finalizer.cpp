@@ -237,11 +237,11 @@ static void TestSpace()
     std::vector<float> cl, cr, l, r;
     Setup centre, full;
     SpaceRun(.5f, .5f, .5f, in, cl, cr, &centre);
-    Check(!centre.f.space_run_, "space: Width at the centre, its allpasses asleep");
+    Check(!centre.f.Sp().run, "space: Width at the centre, its allpasses asleep");
     {
         Setup left;
         SpaceRun(.2f, .3f, .4f, in, l, r, &left);
-        Check(!left.f.space_run_, "space: Width left of the centre, its allpasses asleep");
+        Check(!left.f.Sp().run, "space: Width left of the centre, its allpasses asleep");
     }
     {
         // mid's and high's Space only into the side: the mono sum is the centre's, sample by sample
@@ -258,7 +258,7 @@ static void TestSpace()
                10. * log10(err / fold));
     }
     SpaceRun(1.f, 1.f, 1.f, in, l, r, &full);
-    Check(full.f.space_run_, "space: Width at the right, its allpasses running");
+    Check(full.f.Sp().run, "space: Width at the right, its allpasses running");
     double sl = 0., sr = 0., slr = 0., c2 = 0.;
     for (size_t i = from; i < n; i++)
     {
@@ -338,7 +338,7 @@ static void TestSpace()
             orr = in;
             s.Run(ol, orr);
         }
-        CheckF(ol == in && orr == in && s.f.Asleep() && !s.f.space_run_,
+        CheckF(ol == in && orr == in && s.f.Asleep() && !s.f.Sp().run,
                "space: band %g's Width right and back to the centre, exact and asleep again", b);
     }
 }

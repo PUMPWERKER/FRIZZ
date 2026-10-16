@@ -389,10 +389,10 @@ private:
             mute_[b] = false;
             mute_gain_[b] = 1.f;
             band_peak_[b] = 0.f;
-            sp_[b] = 0.f;
+            Sp().sp[b] = 0.f;
         }
-        space_run_ = quad_run_ = false;
-        quad_mix_ = quad_from_ = 0.f;
+        Sp().run = Sp().quad_run = false;
+        Sp().quad_mix = Sp().quad_from = 0.f;
         trim_ = 1.f;
         band_mix_ = drive_mix_ = lim_mix_ = 0.f;
         drive_gain_ = 1.f;
@@ -457,7 +457,7 @@ private:
             width_neutral_ &= w == .5f;
             // Space, as a share of the side before Width scales it: kSpace of the mid at the
             // right, whatever the band's width there
-            space_[b] = w > .5f ? kSpace * (w - .5f) * 2.f / width_[b] : 0.f;
+            Sp().space[b] = w > .5f ? kSpace * (w - .5f) * 2.f / width_[b] : 0.f;
             character_[b] = static_cast<uint8_t>(fminf(knobs_[CHARACTER_LOW + b].value, 1.f)
                                                      * (kFinCharacters - 1) + .5f);
         }
@@ -623,26 +623,26 @@ private:
         bool space = false;
         if (bands_run_)
             for (size_t b = 0; b < kBands; b++)
-                space |= space_[b] > 0.f || sp_[b] > 0.f;
-        if (space && !space_run_)
+                space |= Sp().space[b] > 0.f || Sp().sp[b] > 0.f;
+        if (space && !Sp().run)
             ClearSpace();
-        space_run_ = space;
+        Sp().run = space;
         // and the low band's quarter turn, faded in on the output while its Space is there
-        const bool quad = bands_run_ && (space_[0] > 0.f || sp_[0] > 0.f);
-        if (quad && !quad_run_)
+        const bool quad = bands_run_ && (Sp().space[0] > 0.f || Sp().sp[0] > 0.f);
+        if (quad && !Sp().quad_run)
             ClearQuad();
-        quad_from_ = quad_mix_;
-        quad_mix_ = Toward(quad_mix_, quad ? 1.f : 0.f, step);
-        quad_run_ = quad_from_ > 0.f || quad_mix_ > 0.f;
+        Sp().quad_from = Sp().quad_mix;
+        Sp().quad_mix = Toward(Sp().quad_mix, quad ? 1.f : 0.f, step);
+        Sp().quad_run = Sp().quad_from > 0.f || Sp().quad_mix > 0.f;
         if (!bands_run_)
         {
             for (size_t b = 0; b < kBands; b++)
             {
                 gm_[b] = gs_[b] = 1.f;
-                sp_[b] = 0.f;
+                Sp().sp[b] = 0.f;
             }
-            quad_mix_ = 0.f;
-            quad_run_ = false;
+            Sp().quad_mix = 0.f;
+            Sp().quad_run = false;
         }
 
         // the trim: there at once, gliding over the block
@@ -739,15 +739,15 @@ private:
         float mix = band_from_;
         const float dmix = (band_mix_ - mix) * inv;
         const bool apply = bands_apply_;
-        const bool space = space_run_, quad = quad_run_;
+        const bool space = Sp().run, quad = Sp().quad_run;
         float sp[kBands], dsp[kBands];
         for (size_t b = 0; b < kBands; b++)
         {
-            sp[b] = sp_[b];
-            dsp[b] = (space_[b] - sp[b]) * inv;
+            sp[b] = Sp().sp[b];
+            dsp[b] = (Sp().space[b] - sp[b]) * inv;
         }
-        float qmix = quad_from_;
-        const float dqmix = (quad_mix_ - qmix) * inv;
+        float qmix = Sp().quad_from;
+        const float dqmix = (Sp().quad_mix - qmix) * inv;
         for (size_t i = 0; i < n; i++)
         {
             const float m = .5f * (l[i] + r[i]), s = .5f * (l[i] - r[i]);
@@ -790,16 +790,21 @@ private:
             pk_[b] = pk[b];
             em_[b] = em[b];
             es_[b] = es[b];
-            sp_[b] = space_[b];
+            Sp().sp[b] = Sp().space[b];
         }
     }
 
-    /** Space's allpasses' state: mid's and high's delays, one after the other, and where each
-     *  is; the quarter turn's chains and their coefficients. Outside the object, so the
-     *  engine's members after the finalizer stay in reach of short offsets (inside, the code
-     *  was about 550 bytes larger). There's one finalizer, the engine's */
+    /** Space's state: each band's share (Update) and where it glides from, whether its
+     *  allpasses run; mid's and high's delays, one after the other, and where each is; the
+     *  quarter turn's fade, chains and coefficients. Outside the object, so the engine's
+     *  members after the finalizer stay in reach of short offsets (inside, the code was about
+     *  800 bytes larger). There's one finalizer, the engine's */
     struct SpaceState
     {
+        float space[kBands], sp[kBands];
+        bool run;
+        float quad_mix, quad_from;
+        bool quad_run;
         float buf[kSpaceLen];
         uint16_t pos[kSpaceStages];
         Allpass quad[3 * kQuadStages / 2]; // the output mid's chain, its side's, the low band's
@@ -1036,12 +1041,6 @@ private:
     float mute_step_;
     int32_t bands_hold_;
     bool bands_run_, bands_apply_;
-    // Space: each band's share (Update) and where it glides from, the allpasses' state
-    float space_[kBands], sp_[kBands];
-    bool space_run_;
-    // the low band's quarter turn's fade
-    float quad_mix_, quad_from_;
-    bool quad_run_;
 
     // the drive
     Drive2x drive2x_[2];
