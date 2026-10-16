@@ -17,8 +17,8 @@ what FRIZZ does.
   bank's colour instead (#444), as the loop's own key does on the Loops page, so you see it
   coming without going back there. See [Playing loops](MANUAL.md#playing-loops).
 
-- **A frequency shifter** (#306), the phaser's second mode: hold SHIFT, tap white key 7 (it's
-  selected, as ever), then tap it again: the key turns ice blue, and every frequency in the sound
+- **A frequency shifter** (#306), the phaser's second mode: hold SHIFT and tap white key 7
+  twice: the key turns ice blue, latched or not as it was, and every frequency in the sound
   moves up or down by the same number of Hz, so its harmonics no longer line up. A few Hz with
   feedback and the direction to one side make a barber pole that rises (or falls) forever, tens
   to hundreds of Hz a metallic, bell-like sound. Each further tap in the same SHIFT hold switches back and forth. The same
@@ -103,6 +103,17 @@ what FRIZZ does.
   on the Loops page.
 
 ### Changed
+
+- **SHIFT and an FX key latch in either order** (#456): hold the key and press SHIFT, as
+  before, or hold SHIFT and tap the key; the same again unlatches it. You hear the effect while
+  you hold its key either way, and the latch lands when you let go. Keep SHIFT held and tap
+  several keys to latch them all, also after holding one and pressing SHIFT. **A plain press
+  no longer unlatches:** tapping a latched effect's key plays it and puts it on the knobs, and
+  it stays latched; to turn it off, SHIFT and its key. So SHIFT, then a key, no longer picks an
+  effect for the knobs without hearing it (MIDI's focus, CC 23, still does). On key 7, SHIFT +
+  the key twice switches the phaser and the frequency shifter and leaves the latch as it was.
+  Key 15, the finalizer, works as before. MIDI notes act as your hand. See
+  [Playing an effect](MANUAL.md#playing-an-effect).
 
 - **The FX keys are coloured by their stage in the chain** (#395): the keys of a stage share a
   colour, the two of a pair in neighbouring shades, and the next stage in one well apart.
