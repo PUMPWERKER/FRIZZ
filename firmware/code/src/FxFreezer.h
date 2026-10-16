@@ -137,9 +137,12 @@ public:
 
         for (size_t c = 0; c < 2; c++)
         {
-            // the first pass: still recording the loop, the live signal passes
+            // the first pass: still recording the loop, the live signal passes. Once a
+            // channel repeats (pos_ past 0), it goes on repeating: a length turned up, or a
+            // tempo slowing, past what's recorded plays on through the recording (Repeat)
+            // instead of dropping to the live signal and coming back off the grid
             float wet = *io[c];
-            if (written_ > len_[c] || !recording)
+            if (written_ > len_[c] || !recording || pos_[c])
                 wet = Repeat(c, *io[c]);
 
             // a new capture taking over from a loop still playing: crossfaded
@@ -241,7 +244,8 @@ private:
      *  in the input overdubbed for the feedback */
     float Repeat(size_t c, float in)
     {
-        // can't loop more than has been recorded
+        // can't loop more than has been recorded: turned past it, the repeat plays on through
+        // the recording until the length is reached
         const size_t target = len_[c];
         size_t len = target < written_ ? target : written_;
         if (pos_[c] >= len)
@@ -258,7 +262,7 @@ private:
         // the gate: only the start of each repeat heard, with short ramps at both ends
         if (gate_frac_ < 1.f)
         {
-            const float open = gate_frac_ * static_cast<float>(len);
+            const float open = gate_frac_ * static_cast<float>(len_[c]);
             const float p = static_cast<float>(pos);
             const float g = fminf(fminf(p / kGateRampFrames, 1.f), (open - p) / kGateRampFrames);
             wet *= fclamp(g, 0.f, 1.f);
@@ -299,7 +303,7 @@ private:
     {
         for (size_t c = 0; c < 2; c++)
         {
-            const bool looping = written_ > len_[c] || written_ >= frames_;
+            const bool looping = written_ > len_[c] || written_ >= frames_ || pos_[c];
             old_len_[c] = looping ? (len_[c] < written_ ? len_[c] : written_) : 0;
             old_pos_[c] = pos_[c];
             old_seam_[c] = seam_[c];

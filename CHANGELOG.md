@@ -199,6 +199,12 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The freezer's length turned up while it repeats plays on, on the grid**: turned past what
+  it had recorded so far (a 1/4 turned to a bar in its second repeat), or the tempo slowing as
+  far, or the roll turned back to off early on, the freezer dropped to the live signal with a
+  click, then came back where the old repeat had stopped, off the beat for as long as it ran.
+  Now the repeat plays on through what was recorded until the new length is reached, as the
+  manual says, and then starts again from the capture's start, on the grid.
 - **The FX take a MIDI clock's tempo cleanly when it starts** (#413): the first tick
   interval FRIZZ heard is a block off, so a clock starting at a steady 120 BPM put the delay
   and the other FX at 122 or 119 for a moment, and at fast tempos many BPM off (at 300 over
