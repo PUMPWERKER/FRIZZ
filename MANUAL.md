@@ -1438,21 +1438,36 @@ Module 3, cyan: a compressor on each band, set by its character, all three by on
 
 ### Width module
 
-Module 4, blue: each band's stereo width.
+Module 4, blue: each band's stereo width, which to the right makes even a mono source wide.
 
 | Knob | Function |
 |---|---|
-| 1 | Low width: mono at the left, as it is at the centre, wider to the right, up to 1.5x (default the centre) |
-| 2 | Mid width: mono at the left, as it is at the centre, wider to the right, up to 2x (default the centre) |
-| 3 | High width: mono at the left, as it is at the centre, wider to the right, up to 2x (default the centre) |
+| 1 | Low width: mono at the left, as it is at the centre, wider to the right, up to 1.5x, with Space (default the centre) |
+| 2 | Mid width: mono at the left, as it is at the centre, wider to the right, up to 2x, with Space (default the centre) |
+| 3 | High width: mono at the left, as it is at the centre, wider to the right, up to 2x, with Space (default the centre) |
 | 4 | — |
 
 - **Width** scales the difference between the channels (the side): at the left there's none,
   so the band is mono, which keeps the bass solid on a club system; to the right the side is
   turned up.
+- **Space** comes in to the right of the centre, more the further right: a copy of the band
+  made slightly different goes into the side, so a mono source gets wide too, a synth or a
+  voice recorded in mono, without an echo or a wobble. Mid and high get a diffusion of very
+  short delays (0.8 to 2.6 ms), heard as room. The low band gets a phase shift between 30 and
+  300 Hz, the two channels a quarter turn apart and equally loud, so a kick isn't smeared and
+  doesn't lean to a side.
+  - **In mono it's gone:** Space goes only into the side, so a mono system, which adds the
+    two channels, hears every frequency as loud as before; nothing cancels. With the low
+    band's Space the bass's phase turns a little, as a crossover's does.
+  - **The channels stay level:** each channel alone wavers a little over the frequency, but
+    averaged over a third of an octave, as the ear hears it, the two stay within about 1 dB
+    of each other, and the whole about as loud on the left as on the right.
+  - **A little louder:** at the right the two channels together are about 1 dB louder, the
+    mono sum the same. Nothing turns that back down, as everywhere in the finalizer.
 - Their LEDs show each band's correlation, how alike the two channels are: green mono or
   nearly, yellow a normal width, pink very wide, red out of phase, where the band would
-  cancel itself on a mono system (watch the low band).
+  cancel itself on a mono system (watch the low band). A mono source with a band at the right
+  reads yellow there: Space alone never turns it pink or red.
 
 ### Band mutes
 

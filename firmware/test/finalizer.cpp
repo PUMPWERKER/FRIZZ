@@ -6,6 +6,12 @@
 //  - each band's compressor works on a tone in its band only, by its curve: a steady tone
 //    reduced as the character's ratio and knee say, the other bands untouched
 //  - Width at full left is mono: both outputs the same
+//  - Space, right of Width's centre (#455): a mono source gets wider (the correlation down, the
+//    meter's at .6 at the right), its mono sum stays what it was (mid's and high's sample by
+//    sample, the low band's as loud at every frequency), nothing of the mid's and high's Space
+//    below the low split, each channel's level up by about 1dB at most and the two about as
+//    loud, the low band's too; at or left of the centre its allpasses don't run, and turned
+//    back it sleeps again, exact
 //  - the drive's level compensation: a sine at its reference level comes out within 1dB, every
 //    type and amount
 //  - the stepped knobs take on their own: Type turned alone under drive changes the harmonics,
@@ -25,7 +31,9 @@
 #include <vector>
 #include <unistd.h>
 #include "check.h"
+#define private public // Space's state (space_run_)
 #include "Finalizer.h"
+#undef private
 
 using namespace chompi;
 
@@ -196,6 +204,143 @@ static void TestWidth()
     for (size_t i = n / 2; i < n; i++)
         mono &= l[i] == r[i];
     Check(mono, "width: all three at the left, mono (both outputs the same)");
+}
+
+/** Space (#455): mono pinkish noise through the bands at widths wl, wm, wh (the bands awake,
+ *  Depth a hair up), the last second's L and R */
+static void SpaceRun(float wl, float wm, float wh, const std::vector<float>& in, std::vector<float>& l,
+                     std::vector<float>& r, Setup* keep = nullptr)
+{
+    Setup s({{Finalizer::DEPTH, .001f}, {Finalizer::WIDTH_LOW, wl}, {Finalizer::WIDTH_LOW + 1, wm},
+             {Finalizer::WIDTH_LOW + 2, wh}});
+    l = in;
+    r = in;
+    s.Run(l, r);
+    if (keep)
+        keep->f = s.f;
+}
+
+static void TestSpace()
+{
+    // its own noise, so the checks after it get theirs as before
+    const uint32_t seed_before = seed;
+    const size_t n = 3 * 48000, from = 48000;
+    std::vector<float> in(n);
+    float lp = 0.f;
+    for (size_t i = 0; i < n; i++)
+    {
+        const float w = Noise();
+        lp += .06f * (w - lp);
+        in[i] = .3f * (2.f * lp + .3f * w);
+    }
+    seed = seed_before;
+    std::vector<float> cl, cr, l, r;
+    Setup centre, full;
+    SpaceRun(.5f, .5f, .5f, in, cl, cr, &centre);
+    Check(!centre.f.Sp().run, "space: Width at the centre, its allpasses asleep");
+    {
+        Setup left;
+        SpaceRun(.2f, .3f, .4f, in, l, r, &left);
+        Check(!left.f.Sp().run, "space: Width left of the centre, its allpasses asleep");
+    }
+    {
+        // mid's and high's Space only into the side: the mono sum is the centre's, sample by sample
+        SpaceRun(.5f, 1.f, 1.f, in, l, r);
+        double fold = 0., err = 0.;
+        for (size_t i = from; i < n; i++)
+        {
+            const double m = .5 * (static_cast<double>(cl[i]) + cr[i]);
+            const double d = .5 * (static_cast<double>(l[i]) + r[i]) - m;
+            fold += m * m;
+            err += d * d;
+        }
+        CheckF(10. * log10(err / fold) < -100., "space: mid and high at the right, the mono sum the centre's (the difference %.1f dB, < -100)",
+               10. * log10(err / fold));
+    }
+    SpaceRun(1.f, 1.f, 1.f, in, l, r, &full);
+    Check(full.f.Sp().run, "space: Width at the right, its allpasses running");
+    double sl = 0., sr = 0., slr = 0., c2 = 0.;
+    for (size_t i = from; i < n; i++)
+    {
+        sl += static_cast<double>(l[i]) * l[i];
+        sr += static_cast<double>(r[i]) * r[i];
+        slr += static_cast<double>(l[i]) * r[i];
+        c2 += static_cast<double>(cl[i]) * cl[i];
+    }
+    const double corr = slr / sqrt(sl * sr);
+    CheckF(corr < .7, "space: a mono source with every band at the right is wider (correlation %.3f, < .7)", corr);
+    const double dl = 10. * log10(sl / c2), dr = 10. * log10(sr / c2), dp = 10. * log10((sl + sr) / (2. * c2));
+    // together at most 1 + k^2 (.97dB at k .5), less as the bands overlap at the splits; the
+    // two channels about as loud: nothing leans
+    CheckF(dl < 1.5 && dr < 1.5 && dp > .5 && dp < 1. && fabs(dl - dr) < 1.,
+           "space: each channel up by %.2f and %.2f dB, together %.2f dB (.5 to 1, apart < 1)", dl, dr, dp);
+    // the low band's Space, a quarter turn: both channels as loud, and the mono sum as loud
+    // as the centre's (its phase turned)
+    for (float hz : {40.f, 60.f, 100.f, 150.f})
+    {
+        std::vector<float> x = Sine(48000, hz, .3f), xl, xr, yl, yr;
+        SpaceRun(.5f, .5f, .5f, x, yl, yr);
+        SpaceRun(1.f, .5f, .5f, x, xl, xr);
+        double a = 0., b = 0., f = 0., f0 = 0.;
+        for (size_t i = 24000; i < 48000; i++)
+        {
+            a += static_cast<double>(xl[i]) * xl[i];
+            b += static_cast<double>(xr[i]) * xr[i];
+            f += .25 * (static_cast<double>(xl[i]) + xr[i]) * (static_cast<double>(xl[i]) + xr[i]);
+            f0 += .25 * (static_cast<double>(yl[i]) + yr[i]) * (static_cast<double>(yl[i]) + yr[i]);
+        }
+        CheckF(fabs(10. * log10(a / b)) < 1. && fabs(10. * log10(f / f0)) < .1,
+               "space: the low band at the right, %gHz: the channels %.2f dB apart (< 1), the mono sum %.3f dB (< .1)",
+               hz, 10. * log10(a / b), 10. * log10(f / f0));
+    }
+    for (size_t b = 0; b < Finalizer::kBands; b++)
+        CheckF(fabsf(full.f.BandCorrelation(b) - .6f) < .05f && Finalizer::CorrelationLed(full.f.BandCorrelation(b)) == 1,
+               "space: band %g's correlation meter on a mono source at the right %.3f (.6, yellow)", b,
+               full.f.BandCorrelation(b));
+    {
+        // halfway right: Space at a quarter
+        SpaceRun(.75f, .75f, .75f, in, l, r);
+        double a = 0., b = 0., ab = 0.;
+        for (size_t i = from; i < n; i++)
+        {
+            a += static_cast<double>(l[i]) * l[i];
+            b += static_cast<double>(r[i]) * r[i];
+            ab += static_cast<double>(l[i]) * r[i];
+        }
+        CheckF(ab / sqrt(a * b) < .95 && ab / sqrt(a * b) > corr,
+               "space: halfway right, wider than at the centre, narrower than at the right (correlation %.3f)",
+               ab / sqrt(a * b));
+    }
+    {
+        // mid's and high's Space leaves the low band mono: a mono 80Hz tone
+        std::vector<float> x = Sine(n, 80.f, .3f);
+        SpaceRun(.5f, 1.f, 1.f, x, l, r);
+        double s2 = 0., x2 = 0.;
+        for (size_t i = from; i < n; i++)
+        {
+            const double s = .5 * (static_cast<double>(l[i]) - r[i]);
+            s2 += s * s;
+            x2 += static_cast<double>(x[i]) * x[i];
+        }
+        CheckF(10. * log10(s2 / x2) < -45., "space: mid and high at the right, an 80Hz tone's side %.1f dB (< -45)",
+               10. * log10(s2 / x2));
+    }
+    // each band's Width turned right and back: Space asleep again, the bands too, exact
+    for (size_t b = 0; b < Finalizer::kBands; b++)
+    {
+        Setup s({{Finalizer::WIDTH_LOW + b, .9f}});
+        std::vector<float> ol = in, orr = in;
+        s.Run(ol, orr);
+        s.f.SetParam(Finalizer::WIDTH_LOW + b, .5f);
+        for (int k = 0; k < 3; k++)
+        {
+            ol = in;
+            orr = in;
+            s.Run(ol, orr);
+        }
+        CheckF(ol == in && orr == in && s.f.Asleep() && !s.f.Sp().run,
+               "space: band %g's Width right and back to the centre, exact and asleep again", b);
+    }
 }
 
 static void TestMute()
@@ -612,6 +757,7 @@ int main()
     TestFlat();
     TestBandComp();
     TestWidth();
+    TestSpace();
     TestMute();
     TestDrive();
     TestSteppedKnobs();

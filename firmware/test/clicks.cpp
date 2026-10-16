@@ -531,6 +531,7 @@ static void TestFinalizer()
              f.SetBypass(true);
          }},
         {"a band muted and unmuted (the low band, a 220Hz sine in it)", [](Finalizer& f, bool on) { f.SetMute(0, on); }},
+        {"Space woken and put to sleep (the low band's Width right)", [](Finalizer& f, bool on) { f.SetParam(Finalizer::WIDTH_LOW, on ? 1.f : .5f); }},
     };
     for (const Case& c : cases)
     {
