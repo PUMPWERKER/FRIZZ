@@ -8,9 +8,14 @@
 #            still can't run here it lists as "SKIP: local only" (stage 1b, CLAUDE.md)
 # - docs:    firmware/tools/doclinks.py, the docs the website is built from, on its own so a
 #            docs PR hears back in seconds
-# - compare: firmware/twin/compare.sh against the PR's base, its output in the job summary; a
-#            difference doesn't fail it (the PR explains each one), a scenario the twin
-#            couldn't play does
+# - engine:  firmware/test/check.sh against the PR's base: the engine harness, every output
+#            sample and FX meter (all.sh's check compares the working tree with HEAD, which on a
+#            clean checkout is HEAD with itself)
+# - compare: firmware/twin/compare.sh against the PR's base
+#            Both on GitHub's merge of the PR into its base, so the base's newer commits don't
+#            show as differences; their output in the job summary (.github/scripts/against-base.sh).
+#            A difference doesn't fail them (the PR explains each one); a harness or twin that
+#            didn't build, a scenario it couldn't play or a comparison that crashed does
 # - build:   FRIZZ.bin and FRIZZ-bench.bin with the pinned GCC 10.3 (tools/builds.py), their
 #            md5 and memory tables in the job summary, the builds as artifacts. A PR's build is
 #            its branch's head, not GitHub's merge commit: the md5 its stage 2 names.
@@ -67,6 +72,21 @@ jobs:
       - name: doclinks.py
         run: firmware/tools/doclinks.py
 
+  engine:
+    name: Engine against the base (check.sh)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # the base's engine, from git
+      - name: check.sh
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          .github/scripts/against-base.sh "Engine: $BASE against this PR (check.sh)" firmware/test/check.sh "$BASE" HEAD
+
   compare:
     name: Twin against the base (compare.sh)
     if: github.event_name == 'pull_request'
@@ -80,34 +100,7 @@ jobs:
         env:
           BASE: origin/${{ github.base_ref }}
         run: |
-          rc=0
-          firmware/twin/compare.sh "$BASE" HEAD > compare.out 2>&1 || rc=$?
-          cat compare.out
-          {
-            echo "### Twin: $BASE against this PR"
-            echo
-            if [ $rc = 0 ]; then
-              echo "Every scenario bit-identical."
-            else
-              echo "Differences: each one is explained in the PR (*Checked on the twin*)."
-            fi
-            echo
-            echo '```'
-            cat compare.out
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          # a difference is the PR's to explain; a twin that didn't build or a scenario it
-          # couldn't play is a fault
-          if grep -E "crashed on|didn't run on|the twin didn't build" compare.out; then
-            echo "::error::compare.sh: the twin didn't get through (above)"
-            exit 1
-          fi
-          # compare.sh fails when anything differs; a failure with no comparison printed is
-          # something else
-          if [ $rc != 0 ] && ! grep -q "against HEAD:" compare.out; then
-            echo "::error::compare.sh failed (exit $rc) before comparing"
-            exit 1
-          fi
+          .github/scripts/against-base.sh "Twin: $BASE against this PR (compare.sh)" firmware/twin/compare.sh "$BASE" HEAD
 
   build:
     name: Firmware (builds.py)

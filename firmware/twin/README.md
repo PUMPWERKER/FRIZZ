@@ -110,6 +110,10 @@ checks too: `unit.sh ui` plays every scenario and fails on one that doesn't hold
 that means to alter what a scenario shows updates its `expect` lines with it. Against an older
 version, `compare.sh` prints the `expect` lines that don't hold there (`line N: ...`) and goes on
 comparing: they don't make it fail.
+It exits 0 when every scenario is bit-identical and 1 when one differs; 2 when it couldn't
+compare: a twin that didn't build, a scenario the twin crashed in, or one `compare.py` couldn't
+compare (said on its line, the scenarios after it compared all the same) or gave no line for. CI
+fails on 2, not on a difference (`.github/scripts/against-base.sh`).
 On the device (`remote.py play`) a scenario starts from the player's card, not a fresh one: so
 it first `set`s, to what a fresh card has, every setting and compressor knob its `expect` lines
 depend on (before `at 6000`, so the times stay as they were), and `unit.sh ui` plays each one

@@ -199,6 +199,9 @@ what FRIZZ does.
 
 ### Fixed
 
+- **The finalizer's Type, and a band's character, take effect as you turn them** (#449):
+  turning Type, or a band's character in the Comp module, changed nothing until another
+  finalizer knob moved; a preset recalled or a knob turned after it brought it in.
 - **The FX take a MIDI clock's tempo cleanly when it starts** (#413): the first tick
   interval FRIZZ heard is a block off, so a clock starting at a steady 120 BPM put the delay
   and the other FX at 122 or 119 for a moment, and at fast tempos many BPM off (at 300 over
