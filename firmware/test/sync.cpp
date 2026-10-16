@@ -188,11 +188,10 @@ static void LockCase(const Sender& s, double bpm, int k, double factor)
     if (factor != 1.)
         base += factor > 1. ? "x2, " : "x1/2, ";
     Check(lo >= want - 1 && hi <= want + 1, (base + "every tempo the FX take within 1 BPM").c_str());
-    // the grid doesn't wait for the tempo: a pulse every 2 ticks from the lock on (where pairs
-    // at x2 bring two pulses in a block, PulseCounter sees one)
+    // the grid doesn't wait for the tempo: a pulse every 2 ticks from the lock on (pairs at x2
+    // bring two in a block, both passed on, #424)
     const long diff = static_cast<long>(pulses.count) - static_cast<long>(ticks / 2);
-    if (!s.pairs || factor <= 1.)
-        Check(diff >= -1 && diff <= 0, (base + "a pulse every 2 ticks from the first").c_str());
+    Check(diff >= -1 && diff <= 0, (base + "a pulse every 2 ticks from the first").c_str());
     Record("tempo-lock-ms", locked < 0. ? 1e9 : locked);
 }
 
