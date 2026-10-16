@@ -17,6 +17,10 @@ back
 
 **SHIFT** means holding the CHOMPI key. The key lights white while it acts as SHIFT.
 
+The **mode switch** picks the page: down is the play page, where all of this happens; up is
+the [settings page](MANUAL.md#settings-page), for MIDI, the input and the LEDs. If the keys
+don't play, flip it down.
+
 ## 1. Set your levels
 
 | Do this | To set |
@@ -49,7 +53,7 @@ Mono cable (TS) in AUX? See [Mono input](MANUAL.md#mono-input).
 
 **In sync with a clock:** with MIDI clock coming in over TRS or USB, hold PLAY and press LOOP.
 The recording then ends on a whole bar. Without a clock, or with the clock source set to
-internal on the settings page, LOOP blinks red 3 times.
+internal on the [settings page](MANUAL.md#settings-page), LOOP blinks red 3 times.
 
 A loop can be up to 2:45 long and is gone when you switch off.
 
@@ -83,7 +87,8 @@ SHIFT and tap the key twice (it turns ice blue); the same again goes back to the
 - **SHIFT + press a knob:** reset that setting.
 - **Press a knob:** the effect's [page 2](MANUAL.md#page-2): Mix, stereo, band and level, the
   same on every effect but the chaos key; press again for page 1. Knob 4 (level) tames an
-  effect that gets loud, like the folder driven hard.
+  effect that gets loud, like the folder driven hard. The finalizer has no page 2: in its EQ,
+  Comp and Width a press of knob 1, 2 or 3 mutes that band, and another brings it back.
 
 Every effect starts silent or nearly so: one knob brings it in. That's knob 1 on most, knob 2
 (feedback) on the resonator and knob 3 (amount, depth) on the flanger and the phaser. The
@@ -158,6 +163,11 @@ While you save, copy or delete, the scene keys you can tap light in the function
 and the CHOMPI key blinks in it when there's something to confirm. White means done.
 
 Scenes are stored on the SD card. See the [manual](MANUAL.md#fx-scenes) for the details.
+
+The two dark keys left of the scenes, the lower C# and D#, glow dimly when the SD card holds
+loops: yours on the lower C#, TAPE's recordings on the lower D#. Hold SHIFT and press one to
+open its page, where the white keys play those loops; two quick taps of SHIFT take you back.
+See [Playing loops](MANUAL.md#playing-loops).
 
 ## Where next
 
