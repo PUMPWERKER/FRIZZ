@@ -1,0 +1,27 @@
+# The reverb frozen on a bright loop (#394): a 2 s loop of a 3 kHz tone, the reverb latched on
+# it, frozen by page 2's knob 1 (over SET) for 20 s, then let go and its tail. Frozen, the
+# tank's reads are allpass-interpolated at half the modulation's depth, so the held room keeps
+# its highs; letting go, they're the linear ones again. For the load while frozen, and by ear
+# on the twin's output: no clicks or zipper going in or out of the freeze. Nothing is saved.
+input sine 3000 0.3
+at 2000
+set reverb 0 0.6
+set reverb 1 0.6
+set reverb 2 0.6
+set reverb 3 0
+set reverb 4 0
+set reverb 5 0
+set reverb 6 0.5
+set reverb 7 0.75
+tap KEY_28
+wait 2000
+tap KEY_28
+wait 300
+set latch reverb on
+wait 3000
+set reverb 4 1
+wait 20000
+set reverb 4 0
+wait 4000
+set latch reverb off
+wait 3000
