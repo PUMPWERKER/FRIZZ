@@ -196,6 +196,8 @@ what FRIZZ does.
   in its loop swings half as far as before (it was twice Mutable's), so a long tail sounds
   steadier, with less of a chorus on held notes. Its knobs, decay, level and freeze are as they
   were. See [Reverb](MANUAL.md#reverb).
+- The manual's diagrams are drawn in the website's new look: soot and chalk, square, set in a
+  typewriter mono. What they show is as it was.
 
 ### Fixed
 

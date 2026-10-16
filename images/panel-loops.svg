@@ -1,63 +1,63 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 313" width="480" height="313" role="img" aria-labelledby="title desc">
 <title id="title">The Loops page</title>
 <desc id="desc">The panel on the Loops page, in bank B: the CHOMPI key glows yellow, bank B's colour; the lower C# is orange, leading to bank A, the lower D# green, leading to bank C; white keys 1 to 9 hold loops, dim yellow, key 3 bright, the loop playing. CHOMPI glows in the bank's colour; hold it as SHIFT for the gestures: SHIFT + lower C# opens and closes the page. Lower C#, lower D#: the bank before, after, in its colour. A white key: its loop, at once. SHIFT + the key: at the end of the pass, tapped N times at the end of the N-th.</desc>
-<style>svg{font-size:13px}text{font-family:'Hanken Grotesk', Helvetica, Arial, sans-serif;fill:#e2e2e2;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#999999}.gt{fill:#131314}.b{fill:none;stroke:#e2e2e2;stroke-width:1.5}.ba{fill:none;stroke:#c4708a;stroke-width:2}.la{fill:none;stroke:#c4708a;stroke-width:2.5}.ls{fill:none;stroke:#e2e2e2;stroke-width:1.5}.lc{fill:none;stroke:#999999;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#c4708a}.ds{fill:#e2e2e2}.sw{stroke:#c4708a;stroke-width:2.5;stroke-linecap:round}.g{fill:#c4708a}.wk{fill:#e2e2e2;stroke:#131314;stroke-width:1}.dk{fill:#39393a;stroke:#e2e2e2;stroke-width:1.2}.sk{fill:#c4708a;stroke:#e2e2e2;stroke-width:1.2}.led{fill:none;stroke:#999999;stroke-width:1}</style>
-<defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#c4708a"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e2e2e2"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#999999"/></marker></defs>
-<rect width="480" height="313" fill="#131314"/>
-<rect x="19.2" y="30" width="441.6" height="143.5" rx="8" fill="none" stroke="#5c5c5e" stroke-width="1.5"/>
-<rect x="38.7" y="138.9" width="24.1" height="23.5" rx="3" fill="#fff20d" fill-opacity=".4" stroke="#fff20d" stroke-width="1.5"/>
-<rect x="66.5" y="138.9" width="24.1" height="23.5" rx="3" fill="#fff20d" fill-opacity=".4" stroke="#fff20d" stroke-width="1.5"/>
-<rect x="94.2" y="138.9" width="24.1" height="23.5" rx="3" fill="#fff20d" stroke="#e2e2e2" stroke-width="1.5"/>
-<rect x="122" y="138.9" width="24.1" height="23.5" rx="3" fill="#fff20d" fill-opacity=".4" stroke="#fff20d" stroke-width="1.5"/>
-<rect x="149.7" y="138.9" width="24.1" height="23.5" rx="3" fill="#fff20d" fill-opacity=".4" stroke="#fff20d" stroke-width="1.5"/>
-<rect x="177.5" y="138.9" width="24.1" height="23.5" rx="3" fill="#fff20d" fill-opacity=".4" stroke="#fff20d" stroke-width="1.5"/>
-<rect x="205.3" y="138.9" width="24.1" height="23.5" rx="3" fill="#fff20d" fill-opacity=".4" stroke="#fff20d" stroke-width="1.5"/>
-<rect x="233" y="138.9" width="24.1" height="23.5" rx="3" fill="#fff20d" fill-opacity=".4" stroke="#fff20d" stroke-width="1.5"/>
-<rect x="260.8" y="138.9" width="24.1" height="23.5" rx="3" fill="#fff20d" fill-opacity=".4" stroke="#fff20d" stroke-width="1.5"/>
-<rect x="288.5" y="138.9" width="24.1" height="23.5" rx="3" fill="#3a3a3c"/>
-<rect x="316.3" y="138.9" width="24.1" height="23.5" rx="3" fill="#3a3a3c"/>
-<rect x="344" y="138.9" width="24.1" height="23.5" rx="3" fill="#3a3a3c"/>
-<rect x="371.8" y="138.9" width="24.1" height="23.5" rx="3" fill="#3a3a3c"/>
-<rect x="399.5" y="138.9" width="24.1" height="23.5" rx="3" fill="#3a3a3c"/>
-<rect x="427.3" y="138.9" width="24.1" height="23.5" rx="3" fill="#3a3a3c"/>
-<rect x="52.6" y="112.7" width="24.1" height="20.7" rx="3" fill="#ff993d" stroke="#e2e2e2" stroke-width="1.5"/>
-<rect x="80.4" y="112.7" width="24.1" height="20.7" rx="3" fill="#00ff00" stroke="#e2e2e2" stroke-width="1.5"/>
-<rect x="135.9" y="112.7" width="24.1" height="20.7" rx="3" fill="#232325"/>
-<rect x="163.6" y="112.7" width="24.1" height="20.7" rx="3" fill="#232325"/>
-<rect x="191.4" y="112.7" width="24.1" height="20.7" rx="3" fill="#232325"/>
-<rect x="246.9" y="112.7" width="24.1" height="20.7" rx="3" fill="#232325"/>
-<rect x="274.6" y="112.7" width="24.1" height="20.7" rx="3" fill="#232325"/>
-<rect x="330.1" y="112.7" width="24.1" height="20.7" rx="3" fill="#232325"/>
-<rect x="357.9" y="112.7" width="24.1" height="20.7" rx="3" fill="#232325"/>
-<rect x="385.6" y="112.7" width="24.1" height="20.7" rx="3" fill="#232325"/>
-<rect x="68.9" y="72.9" width="19.3" height="19.3" rx="3" fill="#fff20d" fill-opacity=".4" stroke="#fff20d" stroke-width="1.5"/>
-<rect x="346.5" y="72.9" width="19.3" height="19.3" rx="3" fill="none" stroke="#5c5c5e" stroke-width="1.5"/>
-<rect x="374.2" y="72.9" width="19.3" height="19.3" rx="3" fill="none" stroke="#5c5c5e" stroke-width="1.5"/>
-<rect x="40.6" y="70" width="8" height="18" rx="4" fill="none" stroke="#5c5c5e" stroke-width="1.5"/>
-<circle cx="44.6" cy="83.5" r="2.6" fill="#5c5c5e"/>
-<circle cx="115" cy="79" r="9.7" fill="none" stroke="#5c5c5e" stroke-width="1.5"/>
-<circle cx="161.2" cy="79" r="9.7" fill="none" stroke="#5c5c5e" stroke-width="1.5"/>
-<circle cx="207.5" cy="79" r="9.7" fill="none" stroke="#5c5c5e" stroke-width="1.5"/>
-<circle cx="253.7" cy="79" r="9.7" fill="none" stroke="#5c5c5e" stroke-width="1.5"/>
-<circle cx="309.1" cy="79" r="21.4" fill="none" stroke="#5c5c5e" stroke-width="1.5"/>
-<circle cx="434.1" cy="79" r="9.7" fill="none" stroke="#5c5c5e" stroke-width="1.5"/>
-<circle cx="78.6" cy="60.6" r="9" class="g"/>
-<text x="78.6" y="65.1" class="gt" font-size="12" font-weight="bold">A</text>
-<path d="M64.7,103.7h27.8" stroke="#c4708a" stroke-width="2" stroke-linecap="round"/>
-<circle cx="78.6" cy="103.7" r="9" class="g"/>
-<text x="78.6" y="108.2" class="gt" font-size="12" font-weight="bold">B</text>
-<path d="M50.8,185.5h388.5" stroke="#c4708a" stroke-width="2" stroke-linecap="round"/>
-<circle cx="245.1" cy="185.5" r="9" class="g"/>
-<text x="245.1" y="190" class="gt" font-size="12" font-weight="bold">C</text>
-<circle cx="29" cy="215.5" r="9" class="g"/>
-<text x="29" y="220" class="gt" font-size="12" font-weight="bold">A</text>
-<text x="46" y="219.5" class="t as" font-size="12">CHOMPI glows in the bank's colour; hold it as SHIFT for the</text>
-<text x="46" y="239.5" class="t as" font-size="12">gestures: SHIFT + lower C# opens and closes the page.</text>
-<circle cx="29" cy="255.5" r="9" class="g"/>
-<text x="29" y="260" class="gt" font-size="12" font-weight="bold">B</text>
-<text x="46" y="259.5" class="t as" font-size="12">Lower C#, lower D#: the bank before, after, in its colour.</text>
-<circle cx="29" cy="275.5" r="9" class="g"/>
-<text x="29" y="280" class="gt" font-size="12" font-weight="bold">C</text>
-<text x="46" y="279.5" class="t as" font-size="12">A white key: its loop, at once. SHIFT + the key: at the end</text>
-<text x="46" y="299.5" class="t as" font-size="12">of the pass, tapped N times at the end of the N-th.</text>
+<style>svg{font-size:12px}text{font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace;fill:#EEEBE3;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#A9A49A}.gt{fill:#1B1B19}.b{fill:none;stroke:#A9A49A;stroke-width:1.5}.bx{fill:none;stroke:#A9A49A;stroke-width:2}.ba{fill:#26261F;stroke:#EEEBE3;stroke-width:2}.la{fill:none;stroke:#EEEBE3;stroke-width:2}.ls{fill:none;stroke:#A9A49A;stroke-width:2}.lc{fill:none;stroke:#77736B;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#EEEBE3}.ds{fill:#A9A49A}.sw{stroke:#EEEBE3;stroke-width:2}.g{fill:#EEEBE3}.j{fill:#A9A49A}.wk{fill:#EEEBE3;stroke:#1B1B19;stroke-width:1.5}.dk{fill:#26261F;stroke:#A9A49A;stroke-width:1.5}.sk{fill:#A9A49A;stroke:#1B1B19;stroke-width:1.5}.led{fill:none;stroke:#A9A49A;stroke-width:1.5}</style>
+<defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#EEEBE3"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#A9A49A"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#77736B"/></marker></defs>
+<rect width="480" height="313" fill="#1B1B19"/>
+<rect x="19.2" y="30" width="441.6" height="143.5" fill="none" stroke="#77736B" stroke-width="1.5"/>
+<rect x="38.7" y="138.9" width="24.1" height="23.5" fill="#fff20d" fill-opacity=".4" stroke="#1B1B19" stroke-width="1.5"/>
+<rect x="66.5" y="138.9" width="24.1" height="23.5" fill="#fff20d" fill-opacity=".4" stroke="#1B1B19" stroke-width="1.5"/>
+<rect x="94.2" y="138.9" width="24.1" height="23.5" fill="#fff20d" stroke="#1B1B19" stroke-width="1.5"/>
+<rect x="122" y="138.9" width="24.1" height="23.5" fill="#fff20d" fill-opacity=".4" stroke="#1B1B19" stroke-width="1.5"/>
+<rect x="149.7" y="138.9" width="24.1" height="23.5" fill="#fff20d" fill-opacity=".4" stroke="#1B1B19" stroke-width="1.5"/>
+<rect x="177.5" y="138.9" width="24.1" height="23.5" fill="#fff20d" fill-opacity=".4" stroke="#1B1B19" stroke-width="1.5"/>
+<rect x="205.3" y="138.9" width="24.1" height="23.5" fill="#fff20d" fill-opacity=".4" stroke="#1B1B19" stroke-width="1.5"/>
+<rect x="233" y="138.9" width="24.1" height="23.5" fill="#fff20d" fill-opacity=".4" stroke="#1B1B19" stroke-width="1.5"/>
+<rect x="260.8" y="138.9" width="24.1" height="23.5" fill="#fff20d" fill-opacity=".4" stroke="#1B1B19" stroke-width="1.5"/>
+<rect x="288.5" y="138.9" width="24.1" height="23.5" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="316.3" y="138.9" width="24.1" height="23.5" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="344" y="138.9" width="24.1" height="23.5" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="371.8" y="138.9" width="24.1" height="23.5" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="399.5" y="138.9" width="24.1" height="23.5" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="427.3" y="138.9" width="24.1" height="23.5" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="52.6" y="112.7" width="24.1" height="20.7" fill="#ff993d" stroke="#1B1B19" stroke-width="1.5"/>
+<rect x="80.4" y="112.7" width="24.1" height="20.7" fill="#00ff00" stroke="#1B1B19" stroke-width="1.5"/>
+<rect x="135.9" y="112.7" width="24.1" height="20.7" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="163.6" y="112.7" width="24.1" height="20.7" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="191.4" y="112.7" width="24.1" height="20.7" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="246.9" y="112.7" width="24.1" height="20.7" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="274.6" y="112.7" width="24.1" height="20.7" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="330.1" y="112.7" width="24.1" height="20.7" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="357.9" y="112.7" width="24.1" height="20.7" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="385.6" y="112.7" width="24.1" height="20.7" fill="#26261F" stroke="#77736B" stroke-width="1.5"/>
+<rect x="68.9" y="72.9" width="19.3" height="19.3" fill="#fff20d" fill-opacity=".4" stroke="#1B1B19" stroke-width="1.5"/>
+<rect x="346.5" y="72.9" width="19.3" height="19.3" fill="none" stroke="#77736B" stroke-width="1.5"/>
+<rect x="374.2" y="72.9" width="19.3" height="19.3" fill="none" stroke="#77736B" stroke-width="1.5"/>
+<rect x="40.6" y="70" width="8" height="18" fill="none" stroke="#77736B" stroke-width="1.5"/>
+<circle cx="44.6" cy="83.5" r="2.6" fill="#77736B"/>
+<circle cx="115" cy="79" r="9.7" fill="none" stroke="#77736B" stroke-width="1.5"/>
+<circle cx="161.2" cy="79" r="9.7" fill="none" stroke="#77736B" stroke-width="1.5"/>
+<circle cx="207.5" cy="79" r="9.7" fill="none" stroke="#77736B" stroke-width="1.5"/>
+<circle cx="253.7" cy="79" r="9.7" fill="none" stroke="#77736B" stroke-width="1.5"/>
+<circle cx="309.1" cy="79" r="21.4" fill="none" stroke="#77736B" stroke-width="1.5"/>
+<circle cx="434.1" cy="79" r="9.7" fill="none" stroke="#77736B" stroke-width="1.5"/>
+<rect x="69.6" y="51.6" width="18" height="18" class="g"/>
+<text x="78.6" y="65.1" class="gt" font-size="11" font-weight="600">A</text>
+<path d="M64.7,103.7h27.8" stroke="#EEEBE3" stroke-width="2"/>
+<rect x="69.6" y="94.7" width="18" height="18" class="g"/>
+<text x="78.6" y="108.2" class="gt" font-size="11" font-weight="600">B</text>
+<path d="M50.8,185.5h388.5" stroke="#EEEBE3" stroke-width="2"/>
+<rect x="236.1" y="176.5" width="18" height="18" class="g"/>
+<text x="245.1" y="190" class="gt" font-size="11" font-weight="600">C</text>
+<rect x="20" y="206.5" width="18" height="18" class="g"/>
+<text x="29" y="220" class="gt" font-size="11" font-weight="600">A</text>
+<text x="46" y="219.5" class="t as" font-size="11">CHOMPI glows in the bank's colour; hold it as SHIFT for the</text>
+<text x="46" y="239.5" class="t as" font-size="11">gestures: SHIFT + lower C# opens and closes the page.</text>
+<rect x="20" y="246.5" width="18" height="18" class="g"/>
+<text x="29" y="260" class="gt" font-size="11" font-weight="600">B</text>
+<text x="46" y="259.5" class="t as" font-size="11">Lower C#, lower D#: the bank before, after, in its colour.</text>
+<rect x="20" y="266.5" width="18" height="18" class="g"/>
+<text x="29" y="280" class="gt" font-size="11" font-weight="600">C</text>
+<text x="46" y="279.5" class="t as" font-size="11">A white key: its loop, at once. SHIFT + the key: at the end</text>
+<text x="46" y="299.5" class="t as" font-size="11">of the pass, tapped N times at the end of the N-th.</text>
 </svg>

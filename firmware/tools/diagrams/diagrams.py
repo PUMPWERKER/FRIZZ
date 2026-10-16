@@ -17,8 +17,13 @@ Run it from anywhere, standard library only; it writes the same bytes every time
     firmware/tools/diagrams/diagrams.py
     firmware/tools/diagrams/diagrams.py --check   # writes nothing; exit 1 if a picture is stale
 
-The colours are frizz-web's (design/system/tokens.json): the website is dark, so each picture
-has its own dark ground and reads the same on the site and on GitHub.
+The look is the website's, frizz-web's PUMPWERKER system (design/system/tokens.json): soot,
+chalk and the greys, square, flat, 2 px lines, 1.5 px for controls and LED rings, no coloured
+text. Each picture has its own soot ground, so it reads the same on the site and on GitHub,
+light or dark. The LED colours are the firmware's, each in a soot ring. The text is IBM Plex
+Mono, named with fallbacks rather than drawn as paths: an <img> loads no webfonts, every
+monospace font sets 0.6 em a character, so the layout holds with any of them, and the files
+stay small and their text real.
 """
 import contextlib
 import io
@@ -32,12 +37,16 @@ from xml.sax.saxutils import escape
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 OUT = os.path.join(ROOT, 'images')
 
-BG = '#131314'      # surface
-FG = '#e2e2e2'      # secondary-fixed: lines and text
-ACC = '#c4708a'     # rose-fuzz: the usual way through, the switches
-MUTED = '#999999'   # steel-muted: notes, control lines
-KEY = '#39393a'     # surface-bright: a dark key's fill
-FONT = "'Hanken Grotesk', Helvetica, Arial, sans-serif"
+BG = '#1B1B19'      # soot: the ground
+RAISED = '#26261F'  # soot-raised: a surface on it, the usual way's boxes, a dark key
+FG = '#EEEBE3'      # chalk: names, the usual way, the badges
+ACC = FG            # the usual way through, the switches: chalk, as the names
+LINE = '#A9A49A'    # ash: the other ways, the other boxes
+MUTED = LINE        # ash: notes, as glosses on soot
+DIMMED = '#77736B'  # ash-dark: control lines, what a figure doesn't use
+KEY = RAISED        # a dark key's fill
+FONT = "'IBM Plex Mono', ui-monospace, Menlo, monospace"
+BOLD = '600'        # Plex Mono's semibold, the system's values
 W = 720
 
 
@@ -46,18 +55,16 @@ def num(v):
     return ('%.1f' % v).rstrip('0').rstrip('.')
 
 
+def px(size):
+    """The size a text is set at: one px under the size the pictures were laid out with, as
+    monospace sets wider than the Arial they were drawn for"""
+    return size - 1
+
+
 def width(s, size, bold=False):
-    """About how wide Arial sets s: for checking that a label fits its box"""
-    narrow = 'iljtfrI.,:;|!()[]\' '
-    w = 0.0
-    for c in s:
-        if c in narrow:
-            w += .3
-        elif c.isupper() or c in 'mw#&×↔–':
-            w += .7
-        else:
-            w += .55
-    return w * size * (1.07 if bold else 1)
+    """How wide a monospace font sets s at size (px() of it), 0.6 em a character in any of them:
+    for checking that a label fits its box"""
+    return len(s) * .6 * px(size)
 
 
 class Svg:
@@ -68,7 +75,7 @@ class Svg:
         self.desc = desc
         self.items = []
         self.style = ''  # a figure's own classes, after the shared ones
-        self.defs = []   # its own gradients
+        self.defs = []   # its own definitions
 
     def add(self, s):
         self.items.append(s)
@@ -79,9 +86,9 @@ class Svg:
             cls += ' ' + {'start': 'as', 'end': 'ae'}[anchor]
         attrs = 'x="%s" y="%s" class="%s"' % (num(x), num(y), cls)
         if size != 13:
-            attrs += ' font-size="%d"' % size
+            attrs += ' font-size="%d"' % px(size)
         if bold:
-            attrs += ' font-weight="bold"'
+            attrs += ' font-weight="%s"' % BOLD
         if rotate is not None:
             attrs += ' transform="rotate(%s %s %s)"' % (num(rotate), num(x), num(y))
         else:
@@ -95,7 +102,7 @@ class Svg:
         """A box with lines of text, centred: (text, 'h' a name | 'm' a note); a plain string
         is a name"""
         self.add('<rect x="%s" y="%s" width="%s" height="%s" class="%s"/>'
-                 % (num(x), num(y), num(w), num(h), 'ba' if accent else 'b'))
+                 % (num(x), num(y), num(w), num(h), 'ba' if accent else 'bx'))
         lines = [(l, 'h') if isinstance(l, str) else l for l in lines]
         step = 16
         top = y + h / 2 - step * (len(lines) - 1) / 2 + 4.5
@@ -123,7 +130,7 @@ class Svg:
         self.add('<circle cx="%s" cy="%s" r="5" class="b"/>' % (num(x), num(y)))
 
     def badge(self, x, y, letter):
-        self.add('<circle cx="%s" cy="%s" r="9" class="g"/>' % (num(x), num(y)))
+        self.add('<rect x="%s" y="%s" width="18" height="18" class="g"/>' % (num(x - 9), num(y - 9)))
         self.text(x, y + 4.5, letter, 12, cls='gt', bold=True)
 
     def switch(self, x, y, letter, kind='s'):
@@ -162,26 +169,27 @@ class Svg:
             '<marker id="m%s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" '
             'markerHeight="9" markerUnits="userSpaceOnUse" orient="auto">'
             '<path d="M0,0L10,5L0,10z" fill="%s"/></marker>' % (k, c)
-            for k, c in (('a', ACC), ('s', FG), ('c', MUTED)))
+            for k, c in (('a', ACC), ('s', LINE), ('c', DIMMED)))
         style = (
-            # 13 px on the picture, inherited: a text's own font-size wins over it, where a
+            # px(13) on the picture, inherited: a text's own font-size wins over it, where a
             # text{} rule's would win over the attribute
-            'svg{font-size:13px}text{font-family:%s;fill:%s;text-anchor:middle}'
+            'svg{font-size:12px}text{font-family:%s;fill:%s;text-anchor:middle}'
             '.as{text-anchor:start}.ae{text-anchor:end}.m{fill:%s}.gt{fill:%s}'
             '.b{fill:none;stroke:%s;stroke-width:1.5}'
-            '.ba{fill:none;stroke:%s;stroke-width:2}'
-            '.la{fill:none;stroke:%s;stroke-width:2.5}'
-            '.ls{fill:none;stroke:%s;stroke-width:1.5}'
+            '.bx{fill:none;stroke:%s;stroke-width:2}'
+            '.ba{fill:%s;stroke:%s;stroke-width:2}'
+            '.la{fill:none;stroke:%s;stroke-width:2}'
+            '.ls{fill:none;stroke:%s;stroke-width:2}'
             '.lc{fill:none;stroke:%s;stroke-width:1.5;stroke-dasharray:5 4}'
             '.da{fill:%s}.ds{fill:%s}'
-            '.sw{stroke:%s;stroke-width:2.5;stroke-linecap:round}'
-            '.g{fill:%s}'
-            '.wk{fill:%s;stroke:%s;stroke-width:1}'
-            '.dk{fill:%s;stroke:%s;stroke-width:1.2}'
-            '.sk{fill:%s;stroke:%s;stroke-width:1.2}'
-            '.led{fill:none;stroke:%s;stroke-width:1}'
-            % (FONT, FG, MUTED, BG, FG, ACC, ACC, FG, MUTED, ACC, FG, ACC, ACC,
-               FG, BG, KEY, FG, ACC, FG, MUTED))
+            '.sw{stroke:%s;stroke-width:2}'
+            '.g{fill:%s}.j{fill:%s}'
+            '.wk{fill:%s;stroke:%s;stroke-width:1.5}'
+            '.dk{fill:%s;stroke:%s;stroke-width:1.5}'
+            '.sk{fill:%s;stroke:%s;stroke-width:1.5}'
+            '.led{fill:none;stroke:%s;stroke-width:1.5}'
+            % (FONT, FG, MUTED, BG, LINE, LINE, RAISED, ACC, ACC, LINE, DIMMED, ACC, LINE, ACC,
+               FG, LINE, FG, BG, KEY, LINE, LINE, BG, LINE))
         out = [
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" width="%d" height="%d" '
             'role="img" aria-labelledby="title desc">' % (self.w, self.h, self.w, self.h),
@@ -210,9 +218,9 @@ def signal_flow():
     s.dot(150, 70, 'a')
     s.text(225, 62, 'input', 12, cls='m')
     s.line([(150, 70), (150, 150), (175, 150)])
-    s.box(175, 126, 100, 48, ['LOOPER', ('records the input', 'm')])
-    s.line([(275, 150), (347, 150), (347, 98)])
-    s.text(310, 143, 'loop', 12, cls='m')
+    s.box(175, 126, 120, 48, ['LOOPER', ('records the input', 'm')])
+    s.line([(295, 150), (347, 150), (347, 98)])
+    s.text(321, 143, 'loop', 12, cls='m')
     s.box(295, 42, 105, 56, ['MIX', ('input ↔ loop', 'm'), ('SHIFT + VOLUME', 'm')])
     s.line([(400, 70), (420, 70)], 'a')
     s.box(420, 42, 120, 56, ['EFFECTS', ('white keys 1–14', 'm')], accent=True)
@@ -221,7 +229,7 @@ def signal_flow():
     s.line([(670, 70), (679, 70)], 'a')
     s.sum(688, 70)
     s.line([(385, 98), (385, 205), (688, 205), (688, 79)])
-    s.text(537, 223, 'the input\'s share, past the effects and the finalizer', 12, cls='m')
+    s.text(525, 223, 'the input\'s share, past the effects and the finalizer', 12, cls='m')
     # on to row 2
     s.line([(697, 70), (708, 70), (708, 240), (75, 240), (75, 268)], 'a')
     # the master before VOLUME to the computer
@@ -313,7 +321,7 @@ def input_diagram():
     s.text(120, 412 + D, 'meter: VOLUME page 2', 12, cls='m')
     s.box(200, 398 + D, 100, 44, ['LOOPER', ('records it', 'm')])
     s.line([(300, 420 + D), (330, 420 + D)])
-    s.text(315, 413 + D, 'loop', 12, cls='m')
+    s.text(315, 413 + D, 'loop', 11, cls='m')
     s.line([(40, 490 + D), (470, 490 + D)])
     s.text(250, 483 + D, 'the source alone, whatever B and C say', 12, cls='m')
     s.text(478, 494.5 + D, 'to the phones feed (VOLUME p. 3)', 13, anchor='start')
@@ -357,8 +365,8 @@ def fx_chain():
         s.box(x, 14, w, 56 if len(lines) == 3 else 46, lines)
         s.line([(x + w / 2, 70 if len(lines) == 3 else 60), (x + w / 2, 84)], 'c', arrow=False)
     s.line([(40, 84), (690, 84)], 'c', arrow=False)
-    s.text(612, 36, 'to every effect,', 12, anchor='start', cls='m')
-    s.text(612, 52, 'in both rows', 12, anchor='start', cls='m')
+    s.text(608, 36, 'to every effect,', 12, anchor='start', cls='m')
+    s.text(608, 52, 'in both rows', 12, anchor='start', cls='m')
     # row 1
     y = 130
     s.line([(14, y), (50, y)], 'a')
@@ -382,7 +390,7 @@ def fx_chain():
     s.box(380, 178, 140, 44, ['RESONATOR  8', ('Band in, Level out', 'm')])
     s.line([(380, 200), (146, 200), (146, y + 9)])
     s.text(263, 216, 'its ringing, back in', 12, cls='m')
-    s.text(600, 216, 'the loop from the phaser', 12, cls='m')
+    s.text(606, 216, 'the loop from the phaser', 12, cls='m')
     # row 2
     y = 290
     s.box(50, y - 30, 74, 60, ['SLICER', ('9', 'm')], accent=True)
@@ -401,11 +409,11 @@ def fx_chain():
         s.line([(x + 120, 370), (sx, 370), (sx, y + 9)])
         s.sum(sx, y)
     s.text(414, 283, 'sends', 12, cls='m')
-    s.text(568, 283, 'echoes into the reverb', 12, cls='m')
+    s.text(574, 283, 'echoes into the reverb', 11, cls='m')
     # row 3: the finalizer, the input past the effects, VOLUME, the outputs
     s.line([(661, y), (708, y), (708, 440), (24, 440), (24, 480), (40, 480)], 'a')
     y = 480
-    s.box(40, y - 24, 120, 48, ['FINALIZER', ('15, neutral at first', 'm')], accent=True)
+    s.box(40, y - 24, 120, 48, ['FINALIZER  15', ('neutral at first', 'm')], accent=True)
     s.line([(160, y), (176, y)], 'a')
     s.sum(185, y)
     s.line([(185, 535), (185, y + 9)])
@@ -455,7 +463,7 @@ def fx_chain():
 
 # ---------- 4. clock and MIDI ----------
 def clock_midi():
-    s = Svg(640, 'FRIZZ clock and MIDI',
+    s = Svg(690, 'FRIZZ clock and MIDI',
             'Where the tempo comes from and where MIDI goes. MIDI comes in over TRS and USB. The '
             'clock source (A) picks whose clock counts, the clock factor (B) follows it at half or '
             'double. That clock quantizes recordings in the looper. Start, Stop, Continue and Song '
@@ -466,9 +474,9 @@ def clock_midi():
             'transport and, with feedback (E), the panel\'s changes as CCs, over TRS or TRS and USB.')
     # in
     s.jack(28, 140)
-    s.text(20, 122, 'TRS MIDI IN', 13, anchor='start', bold=True)
+    s.text(14, 122, 'TRS MIDI IN', 13, anchor='start', bold=True)
     s.jack(28, 190)
-    s.text(20, 172, 'USB MIDI', 13, anchor='start', bold=True)
+    s.text(14, 172, 'USB MIDI', 13, anchor='start', bold=True)
     s.line([(33, 140), (110, 140)])
     s.line([(33, 190), (80, 190), (80, 170), (110, 170)])
     s.box(110, 120, 150, 70, ['MIDI IN', ('clock source', 'm'), ('clock factor', 'm')])
@@ -478,7 +486,7 @@ def clock_midi():
     s.line([(170, 120), (170, 68), (215, 68)], arrow=False)
     s.switch(215, 68, 'C')
     s.line([(245, 68), (300, 68)])
-    s.text(272, 60, 'transport', 12, cls='m')
+    s.text(272, 60, 'transport', 11, cls='m')
     s.box(300, 40, 120, 56, ['LOOPER', ('quantized: whole', 'm'), ('bars of the clock', 'm')])
     # the clock
     s.line([(260, 155), (470, 155)], 'a')
@@ -490,11 +498,11 @@ def clock_midi():
     s.line([(420, 207), (470, 207)])
     s.add('<rect x="470" y="80" width="140" height="160" class="ba"/>')
     s.text(540, 99, 'TEMPO CLOCK', 13, bold=True)
-    s.text(478, 124.5, '1  the loop', 12, anchor='start')
-    s.text(478, 159.5, '2  MIDI clock', 12, anchor='start')
-    s.text(478, 203, '3  tapped, or the', 12, anchor='start')
-    s.text(493, 218, 'last (120 at first)', 12, anchor='start', cls='m')
-    s.text(540, 182, 'the first that applies', 12, cls='m')
+    s.text(478, 124.5, '1  the loop', 11, anchor='start')
+    s.text(478, 159.5, '2  MIDI clock', 11, anchor='start')
+    s.text(478, 203, '3  tapped, or the', 11, anchor='start')
+    s.text(493, 218, 'last (120 at first)', 11, anchor='start', cls='m')
+    s.text(540, 182, 'the first that applies', 11, cls='m')
     s.text(552, 260, '× factor, 50–300 BPM', 12, anchor='start', cls='m')
     # what follows it
     s.line([(540, 240), (540, 248)], 'a', arrow=False)
@@ -535,12 +543,10 @@ def clock_midi():
         ('A', 'lower A#: the clock source, Auto, TRS, USB or internal'),
         ('B', 'lower G#: the clock factor, as sent, double or half'),
         ('C', 'lower F#: transport following'),
-    ])
-    s.legend(400, 556, [
         ('D', 'upper C#: MIDI out, off, TRS, TRS and USB'),
         ('E', 'upper D#: MIDI feedback'),
     ])
-    s.text(432, 600, 'All on the settings page.', 12, anchor='start', cls='m')
+    s.text(28, 674, 'All on the settings page.', 12, anchor='start', cls='m')
     return s
 
 
@@ -594,13 +600,13 @@ def panel():
             'them the mode switch, the CHOMPI key (SHIFT), knobs 1-4, the transport wheel, PLAY, '
             'LOOP and VOLUME. Jacks: MIDI in and out on the left, AUX in and the headphones on '
             'the right, USB-C, the microSD card and the line out at the back.')
-    s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="10" class="b"/>'
+    s.add('<rect x="%s" y="%s" width="%s" height="%s" class="b"/>'
           % (num(X(0)), num(Y(depth)), num(320 * sc), num(depth * sc)))
     # white keys, their effects below the panel
     for n in range(1, 16):
         kx, ky = at['w%d' % n]
         w, h = 17.5 * sc, 17 * sc
-        s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="3" class="wk"/>'
+        s.add('<rect x="%s" y="%s" width="%s" height="%s" class="wk"/>'
               % (num(X(kx) - w / 2), num(Y(ky) - h / 2), num(w), num(h)))
         s.text(X(kx), Y(ky) + 5, str(n), 12, cls='gt', bold=True)
         lx, ly = X(kx) - 3, Y(0) + 14
@@ -610,17 +616,17 @@ def panel():
         kx, ky = at[name]
         w, h = 17.5 * sc, 15 * sc
         cls = 'sk' if 2 <= i <= 6 else 'dk'
-        s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="3" class="%s"/>'
+        s.add('<rect x="%s" y="%s" width="%s" height="%s" class="%s"/>'
               % (num(X(kx) - w / 2), num(Y(ky) - h / 2), num(w), num(h), cls))
         if DARK[i]:
-            s.text(X(kx), Y(ky) - h / 2 - 6, DARK[i], 12)
+            s.text(X(kx), Y(ky) - h / 2 - 6, DARK[i], 11)
     # the keys behind: CHOMPI (SHIFT), PLAY, LOOP; PLAY's and LOOP's names above them, as
     # the dark keys' names take the line below
     for name, label, above in (('SHIFT', 'CHOMPI = SHIFT', False), ('PLAY', 'PLAY', True),
                                ('LOOP', 'LOOP', True)):
         kx, ky = at[name]
         w = 14 * sc
-        s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="3" class="ba"/>'
+        s.add('<rect x="%s" y="%s" width="%s" height="%s" class="ba"/>'
               % (num(X(kx) - w / 2), num(Y(ky) - w / 2), num(w), num(w)))
         s.text(X(kx), Y(ky) - w / 2 - 6 if above else Y(ky) + w / 2 + 15, label, 12,
                bold=True)
@@ -629,7 +635,7 @@ def panel():
         x, y = X(at[name][0]), Y(at[name][1])
         if name == 'transport':
             s.add('<circle cx="%s" cy="%s" r="%s" class="ba"/>' % (num(x), num(y), num(15.5 * sc)))
-            s.text(x, y + 4.5, 'transport', 12, bold=True)
+            s.text(x, y + 4, 'transport', 10, bold=True)
             continue
         s.add('<circle cx="%s" cy="%s" r="%s" class="b"/>' % (num(x), num(y), num(7 * sc)))
         s.text(x, y + 4.5, name[1] if name[0] == 'k' else '', 12, bold=True)
@@ -640,26 +646,26 @@ def panel():
         s.add('<circle cx="%s" cy="%s" r="3" class="led"/>' % (num(X(l['x'])), num(Y(l['y']))))
     # the mode switch
     x, y = X(at['mode'][0]), Y(at['mode'][1])
-    s.add('<rect x="%s" y="%s" width="10" height="24" rx="5" class="b"/>' % (num(x - 5), num(y - 12)))
+    s.add('<rect x="%s" y="%s" width="10" height="24" class="b"/>' % (num(x - 5), num(y - 12)))
     s.add('<circle cx="%s" cy="%s" r="3.5" class="g"/>' % (num(x), num(y + 6)))
     s.text(x, y - 18, 'mode', 12, cls='m')
     # jacks: the sides and the back of the lower board, in the top board's coordinates: the
     # lower board's y + 99.29, which puts SW5 under its hole (y 68.46) and the side jacks
     # where the side panels' holes are; the back's x from the enclosure's back panel
     for y, name in ((60.2, 'MIDI OUT'), (38.7, 'MIDI IN')):
-        s.add('<rect x="%s" y="%s" width="6" height="14" class="g"/>' % (num(X(0) - 6), num(Y(y) - 7)))
+        s.add('<rect x="%s" y="%s" width="6" height="14" class="j"/>' % (num(X(0) - 6), num(Y(y) - 7)))
         s.text(X(0) - 12, Y(y) + 4.5, name, 12, anchor='end', bold=True)
     for y, name in ((60.2, 'AUX IN'), (38.7, 'PHONES')):
-        s.add('<rect x="%s" y="%s" width="6" height="14" class="g"/>' % (num(X(320)), num(Y(y) - 7)))
+        s.add('<rect x="%s" y="%s" width="6" height="14" class="j"/>' % (num(X(320)), num(Y(y) - 7)))
         s.text(X(320) + 12, Y(y) + 4.5, name, 12, anchor='start', bold=True)
     for x, name in ((22.4, 'USB-C'), (250.4, 'microSD'), (296.8, 'LINE OUT')):
-        s.add('<rect x="%s" y="%s" width="14" height="6" class="g"/>' % (num(X(x) - 7), num(Y(depth) - 6)))
+        s.add('<rect x="%s" y="%s" width="14" height="6" class="j"/>' % (num(X(x) - 7), num(Y(depth) - 6)))
         s.text(X(x), Y(depth) - 14, name, 12, bold=name.isupper() or name == 'USB-C')
     s.text(X(0) - 12, Y(depth) + 4, 'back', 12, anchor='end', cls='m')
     s.text(X(0) - 12, Y(0) + 2, 'front', 12, anchor='end', cls='m')
     for i, line in enumerate((
             'The play page (mode switch down; up is the settings page). Dark keys: the blank',
-            'scene, scenes 1–4 (rose), save, copy, delete; the lower C# and D# do nothing here.',
+            'scene, scenes 1–4 (grey), save, copy, delete; the lower C# and D# do nothing here.',
             'A schematic to scale, from the board files: not the panel\'s artwork.')):
         s.text(20, 352 + i * 18, line, 12, anchor='start', cls='m')
     return s
@@ -684,7 +690,7 @@ def quickstart_flow():
     s.box(290, 116, 170, 80, ['LOOPER', ('records here, before', 'm'), ('the effects: nothing is', 'm'),
                               ('printed into the loop', 'm')])
     s.text(142, 150, 'if monitored', 12, anchor='end')
-    s.text(142, 166, 'the mic: off at first', 12, anchor='end', cls='m')
+    s.text(142, 166, 'the mic: off at first', 11, anchor='end', cls='m')
     s.box(50, 212, 200, 60, ['MIX', ('input ↔ loop', 'm'), ('SHIFT + VOLUME', 'm')])
     s.line([(375, 196), (375, 242), (250, 242)])
     s.text(312, 235, 'loop', 12, cls='m')
@@ -705,9 +711,10 @@ def quickstart_flow():
 
 # ---------- 7. the chapters' figures: what they read ----------
 SRC = os.path.join(ROOT, 'firmware', 'code', 'src')
-DIM = '#3a3a3c'       # a white key the figure doesn't use
-DIM_DARK = '#232325'  # a dark key it doesn't use
-DIM_LINE = '#5c5c5e'  # the outline of a knob it doesn't use, the panel's edge
+DIM = RAISED       # a white key the figure doesn't use, in a DIM_LINE outline
+DIM_DARK = RAISED  # a dark key it doesn't use, the same
+DIM_LINE = DIMMED  # the outline of a control it doesn't use, the panel's edge
+RING = ' stroke="%s" stroke-width="1.5"' % BG  # an LED colour's soot ring
 
 
 def source(name):
@@ -762,9 +769,9 @@ def knob_names(chapter):
 
 
 def ink(colour):
-    """The text colour that reads on a fill: the ground's on a light one, white on a dark one"""
+    """The text colour that reads on a fill: soot on a light one, chalk on a dark one"""
     r, g, b = (int(colour[i:i + 2], 16) / 255 for i in (1, 3, 5))
-    return BG if .2126 * r + .7152 * g + .0722 * b > .4 else '#ffffff'
+    return BG if .2126 * r + .7152 * g + .0722 * b > .4 else FG
 
 
 def slug(name):
@@ -794,17 +801,17 @@ def locator(n):
                ', '.join(knobs)), w=LW)
     for name_ in DARK_NAMES:
         kx = X(at[name_][0])
-        s.add('<rect x="%s" y="10" width="%s" height="9" rx="2" fill="%s"/>'
-              % (num(kx - 17.5 * sc / 2), num(17.5 * sc), DIM_DARK))
+        s.add('<rect x="%s" y="10" width="%s" height="9" fill="%s" stroke="%s" stroke-width="1.5"/>'
+              % (num(kx - 17.5 * sc / 2), num(17.5 * sc), DIM_DARK, DIM_LINE))
     for k in range(1, 16):
         kx = X(at['w%d' % k][0])
         on = k == n
-        s.add('<rect x="%s" y="24" width="%s" height="%s" rx="3" fill="%s"%s/>'
+        s.add('<rect x="%s" y="24" width="%s" height="%s" fill="%s"%s/>'
               % (num(kx - 17.5 * sc / 2), num(17.5 * sc), num(17 * sc), colour if on else DIM,
-                 ' stroke="%s" stroke-width="1.5"' % FG if on else ''))
+                 RING if on else ' stroke="%s" stroke-width="1.5"' % DIM_LINE))
         s.add('<text x="%s" y="%s" font-size="%d"%s style="fill:%s">%d</text>'
-              % (num(kx), num(24 + 17 * sc / 2 + 4.5 if on else 24 + 17 * sc / 2 + 4), 13 if on else 11,
-                 ' font-weight="bold"' if on else '', ink(colour) if on else MUTED, k))
+              % (num(kx), num(24 + 17 * sc / 2 + 4.5 if on else 24 + 17 * sc / 2 + 4), px(13 if on else 11),
+                 ' font-weight="%s"' % BOLD if on else '', ink(colour) if on else MUTED, k))
     # the key's name under it, kept within the picture; the knobs' colours on the other side
     kx = X(at['w%d' % n][0])
     label = chapter
@@ -812,19 +819,19 @@ def locator(n):
     lx = min(max(kx, 8 + lw / 2), LW - 8 - lw / 2)
     s.text(lx, 74, label, 13, bold=True)
     s.add('<path d="M%s,%sv6" stroke="%s" stroke-width="1.5"/>' % (num(kx), num(24 + 17 * sc + 3), FG))
-    gid = 'k%d' % n
-    s.defs.append('<linearGradient id="%s"><stop offset="0" stop-color="%s"/>'
-                  '<stop offset="1" stop-color="%s"/></linearGradient>' % (gid, k0, k1))
+    # the knobs' LEDs, from the colour at 0 to the one at 1
     bx = 24 if kx > LW / 2 else LW - 24 - 150
     s.text(bx, 74, 'knob LEDs', 12, anchor='start', cls='m')
-    s.add('<rect x="%s" y="65" width="80" height="10" rx="5" fill="url(#%s)"/>' % (num(bx + 70), gid))
+    for x, c in ((bx + 84, k0), (bx + 136, k1)):
+        s.add('<circle cx="%s" cy="70" r="6" fill="%s"%s/>' % (num(x), c, RING))
+    s.line([(bx + 94, 70), (bx + 126, 70)], 's')
     return s
 
 
 # ---------- 9. the panel in a chapter: what that chapter plays, lit ----------
 class Mini:
     """The panel at the chapters' width, every control dim but the ones a chapter is about, each
-    lit in its colour; rose badges mark them for the legend under it, as the other diagrams'
+    lit in its colour; chalk badges mark them for the legend under it, as the other diagrams'
     letters do"""
     SC = 1.38
 
@@ -834,32 +841,30 @@ class Mini:
         self.at, _ = board()
         self.x0 = (s.w - 320 * self.SC) / 2
         sc = self.SC
-        s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="8" fill="none" stroke="%s" '
+        s.add('<rect x="%s" y="%s" width="%s" height="%s" fill="none" stroke="%s" '
               'stroke-width="1.5"/>' % (num(self.X(0)), num(top), num(320 * sc), num(DEPTH * sc), DIM_LINE))
         for name, (x, y) in sorted(self.at.items(), key=lambda kv: (kv[1][1], kv[1][0])):
             c = lit.get(name)
             dim = isinstance(c, tuple)
             c = c[0] if dim else c
             fill = c if c else (DIM if name[0] == 'w' else DIM_DARK if name in DARK_NAMES else 'none')
-            stroke = (' stroke="%s" stroke-width="1.5"' % (FG if not dim else c) if c
-                      else '' if fill != 'none' else ' stroke="%s" stroke-width="1.5"' % DIM_LINE)
+            stroke = RING if c else ' stroke="%s" stroke-width="1.5"' % DIM_LINE
             op = ' fill-opacity=".4"' if dim or (c and name == 'transport') else ''
             cx, cy = self.X(x), self.Y(y)
             if name[0] == 'w' or name in DARK_NAMES or name in ('SHIFT', 'PLAY', 'LOOP'):
                 w, h = ((17.5, 17) if name[0] == 'w' else (17.5, 15) if name in DARK_NAMES
                         else (14, 14))
-                s.add('<rect x="%s" y="%s" width="%s" height="%s" rx="3" fill="%s"%s%s/>'
+                s.add('<rect x="%s" y="%s" width="%s" height="%s" fill="%s"%s%s/>'
                       % (num(cx - w * sc / 2), num(cy - h * sc / 2), num(w * sc), num(h * sc), fill, op, stroke))
             elif name == 'mode':
-                s.add('<rect x="%s" y="%s" width="8" height="18" rx="4" fill="none" stroke="%s" '
+                s.add('<rect x="%s" y="%s" width="8" height="18" fill="none" stroke="%s" '
                       'stroke-width="1.5"/>' % (num(cx - 4), num(cy - 9), c or DIM_LINE))
                 s.add('<circle cx="%s" cy="%s" r="2.6" fill="%s"/>'
                       % (num(cx), num(cy + (4.5 if mode == 'down' else -4.5)), c or DIM_LINE))
             else:
                 r = 15.5 if name == 'transport' else 7
                 s.add('<circle cx="%s" cy="%s" r="%s" fill="%s"%s%s/>'
-                      % (num(cx), num(cy), num(r * sc), fill, op,
-                         stroke if fill != 'none' or c else stroke))
+                      % (num(cx), num(cy), num(r * sc), fill, op, stroke))
             if c and name == 'transport':
                 s.add('<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="2"/>'
                       % (num(cx), num(cy), num(15.5 * sc), c))
@@ -885,7 +890,7 @@ class Mini:
     def bracket(self, first, last, letter, y):
         """A badge for a group of controls: a line from first to last at y, the badge on it"""
         x1, x2 = self.pos(first)[0], self.pos(last)[0]
-        self.s.add('<path d="M%s,%sh%s" stroke="%s" stroke-width="2" stroke-linecap="round"/>'
+        self.s.add('<path d="M%s,%sh%s" stroke="%s" stroke-width="2"/>'
                    % (num(x1), num(y), num(x2 - x1), ACC))
         self.s.badge((x1 + x2) / 2, y, letter)
 
@@ -969,8 +974,8 @@ def fig_scenes():
     m = Mini(s, 30, lit)
     for i, n in enumerate(DARK_NAMES[3:7]):
         x, y = m.pos(n)
-        s.add('<text x="%s" y="%s" font-size="11" font-weight="bold" style="fill:%s">%d</text>'
-              % (num(x), num(y + 4), BG, i + 1))
+        s.add('<text x="%s" y="%s" font-size="%d" font-weight="%s" style="fill:%s">%d</text>'
+              % (num(x), num(y + 4), px(11), BOLD, BG, i + 1))
     m.bracket('lower F#', 'upper D#', 'A', m.Y(36.56 + 7.5) - 9)
     m.bracket('upper F#', 'upper A#', '1', m.Y(36.56 + 7.5) - 9)
     m.badge('SHIFT', '3', 0, -22)
@@ -1071,7 +1076,7 @@ def caps(s, x, y, parts):
         else:
             kind, name = p[0], p[2:]
             w = width(name, 12, True) + 18
-            attrs = {'w': 'rx="3" class="wk"', 'd': 'rx="3" class="dk"', 'k': 'rx="3" class="ba"',
+            attrs = {'w': 'class="wk"', 'd': 'class="dk"', 'k': 'class="ba"',
                      'o': 'rx="13" class="b"'}[kind]
             s.add('<rect x="%s" y="%s" width="%s" height="26" %s/>' % (num(x), num(y - 13), num(w), attrs))
             s.text(x + w / 2, y + 4.5, name, 12, cls='gt' if kind == 'w' else 't', bold=True)
