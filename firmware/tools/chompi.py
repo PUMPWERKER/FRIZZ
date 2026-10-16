@@ -42,9 +42,8 @@ stops a host check that reaches for a real device (device_guard). To keep the CH
 tools, or for playing it by hand:
 
     tools/chompi.py hold                 holds it until Ctrl-C
-    tools/chompi.py hold CMD ARGS...     holds it while CMD runs (sh -c for a sequence), in a
-                                         process group of its own: not an interactive
-                                         one, which can't read the terminal there
+    tools/chompi.py hold CMD ARGS...     holds it while CMD runs (sh -c for a sequence, or
+                                         bash to type commands: the terminal is CMD's)
 
 Now and then (#88, 2 in ~310 starts) FRIZZ comes up with its USB names garbled, one string
 off (product "Љ", maker "FrizZ"): the tools find it by the Daisy's USB id then, and say so.
@@ -204,10 +203,19 @@ def _run_held(cmd):
 
     for sig in HOLD_SIGNALS:
         signal.signal(sig, forward)
+    tty = _foreground_tty()
     p = subprocess.Popen(cmd, process_group=0)
     child.append(p)
-    if got:
-        os.killpg(p.pid, got[0])
+    try:
+        if tty is not None:
+            # the terminal's to the group (an interactive one, a shell: hold bash), which its
+            # Ctrl-C then reaches itself; started again if it stopped reading it before
+            _give_tty(tty, p.pid)
+            os.killpg(p.pid, signal.SIGCONT)
+        if got:
+            os.killpg(p.pid, got[0])
+    except ProcessLookupError:
+        pass  # ended already
     code = p.wait()
     while got:
         try:
@@ -217,7 +225,30 @@ def _run_held(cmd):
         except PermissionError:
             pass
         time.sleep(0.2)
+    if tty is not None:
+        _give_tty(tty, os.getpgrp())
     return 128 - code if code < 0 else code
+
+
+def _foreground_tty():
+    """stdin's terminal if this process's group has it (a hold run at a prompt), else None"""
+    try:
+        fd = sys.stdin.fileno()
+        return fd if os.isatty(fd) and os.tcgetpgrp(fd) == os.getpgrp() else None
+    except (OSError, ValueError):
+        return None
+
+
+def _give_tty(fd, group):
+    """Makes GROUP the terminal's foreground, from a group that may no longer be (SIGTTOU held
+    off)"""
+    old = signal.signal(signal.SIGTTOU, signal.SIG_IGN)
+    try:
+        os.tcsetpgrp(fd, group)
+    except OSError:
+        pass
+    finally:
+        signal.signal(signal.SIGTTOU, old)
 
 
 # ---- which slot runs: noted by the tools that start one ----------------------------------

@@ -1043,6 +1043,51 @@ case("plain", "touch started; sleep 0.5; exit 5", signals=0)
     if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 
+    // at a prompt, the hold gives the terminal to its command's group, and takes it back after:
+    // an interactive one (tools/chompi.py hold bash, README.md) reads what's typed, where in a
+    // group without the terminal it would stop (SIGTTIN). Under a pty of its own, as a shell
+    // runs it: sh, the hold, a command that says whether it has the terminal and reads a line
+    rc = Python(R"PY(
+import os, pty, select, signal, sys, time, chompi
+held = ("import os, sys; print('group', os.getpgrp(), 'has the terminal', os.tcgetpgrp(0) == os.getpgrp(), flush=True); "
+        "print('read', sys.stdin.readline().strip(), flush=True)")
+after = "import os; print('terminal back', os.tcgetpgrp(0) == os.getpgrp(), flush=True)"
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp("sh", ["sh", "-c", '"$0" "$1" hold "$0" -c "$2"; "$0" -c "$3"', sys.executable, chompi.__file__, held, after])
+out, typed, end = b"", False, time.monotonic() + 6
+while time.monotonic() < end:
+    if not select.select([fd], [], [], 0.1)[0]:
+        continue
+    try:
+        data = os.read(fd, 4096)
+    except OSError:
+        break
+    if not data:
+        break
+    out += data
+    if not typed and b"has the terminal" in out:
+        os.write(fd, b"typed\n")
+        typed = True
+text = out.decode(errors="replace").replace("\r", "")
+for line in text.splitlines():
+    if line.startswith("group "):
+        try:
+            os.killpg(int(line.split()[1]), signal.SIGKILL)
+        except (OSError, ValueError):
+            pass
+try:
+    os.killpg(pid, signal.SIGKILL)
+except OSError:
+    pass
+os.waitpid(pid, 0)
+print("has the terminal True" in text, "read typed" in text, "terminal back True" in text)
+)PY", out);
+    Check(rc == 0 && Has(out, "True True True\n"),
+          "tools: chompi.py hold gives its command the terminal (hold bash), and takes it back after");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
     // builds.py hands make only PATH, HOME, TMPDIR and the locale: the Makefiles take what they
     // don't set from the environment, so GCC_PATH would build with another compiler than the
     // GCC 10.3 checked on the PATH, USB_SAFETY or ITCM into another directory than the build
