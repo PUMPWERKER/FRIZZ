@@ -125,15 +125,10 @@ FxAllPassRead(float a, float b, float fraction, float x, float* state, float all
     return x + allpass * (*state - x);
 }
 
-/** FRIZZ (#419): Compress, rounded instead of truncated, by `round` (0..0.5 of a step) away
- *  from 0: truncating takes up to a step off each write, toward 0, which a frozen tank, unity
- *  gain, gathers until quiet material falls to nothing. Out of line and after the effects'
- *  code, as FxAllPassRead, for the frozen tank's writes only */
-__attribute__((noinline)) FRIZZ_AFTER_RUN_LAST inline uint16_t FxCompressRound(float value, float round)
-{
-    const float x = value * 32768.0f;
-    return static_cast<uint16_t>(Clip16(static_cast<int32_t>(x + (x < 0.f ? -round : round))));
-}
+/** FRIZZ (#419): added to a sample and taken off again, rounds it to the nearest step of the
+ *  16-bit lines (1/32768, the ulp of 384 = 1.5 * 2^8, for anything within +-128), so
+ *  Compress's truncation that follows takes nothing off: Context::WriteRound's */
+constexpr float kSnap16 = 384.f;
 
 /**  
        @brief Base Class for building reverbs
@@ -260,16 +255,16 @@ class FxEngine
             WriteAllPass(d, 0, scale);
         }
 
-        /** FRIZZ (#419): Write at the line's start, rounded by `round` (FxCompressRound) while
-         *  that's above 0, the frozen tank's; at 0 Write's truncation, as before */
+        /** FRIZZ (#419): Write at the line's start, rounded to the nearest step while `snap` is
+         *  kSnap16 (the frozen tank's): truncating, each write takes up to a step off, toward 0,
+         *  which a tank that loses nothing else gathers until quiet material is gone. At 0 both
+         *  adds are exact and it is Write, to the bit: no branch, two adds */
         template <typename D>
-        inline void WriteRound(D& d, float scale, float round)
+        inline void WriteRound(D& d, float scale, float snap)
         {
             STATIC_ASSERT(D::base + D::length <= size, delay_memory_full);
-            // frozen is the rare case: unfrozen falls through, as Write
             buffer_[(write_ptr_ + D::base) & MASK]
-                = __builtin_expect(round > 0.f, 0) ? FxCompressRound(accumulator_, round)
-                                                   : DataType<format>::Compress(accumulator_);
+                = DataType<format>::Compress((accumulator_ + snap) - snap);
             accumulator_ *= scale;
         }
 
