@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 273" width="480" height="273" role="img" aria-labelledby="title desc">
 <title id="title">FX scenes</title>
 <desc id="desc">The panel with the scene keys lit: the five dark keys in the middle, the blank scene and scenes 1 to 4; the last three dark keys, save in green, copy in blue, delete in red; and the CHOMPI key. A scene key: recall it. The first is the blank scene, then 1–4. Save, copy or delete (green, blue, red): tap one, then the slot (for copy, the source, then the destination), then CHOMPI to confirm. White: done.</desc>
-<style>svg{font-size:12px}text{font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace;fill:#EEEBE3;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#A9A49A}.gt{fill:#1B1B19}.b{fill:none;stroke:#A9A49A;stroke-width:1.5}.bx{fill:none;stroke:#A9A49A;stroke-width:2}.ba{fill:#26261F;stroke:#EEEBE3;stroke-width:2}.la{fill:none;stroke:#EEEBE3;stroke-width:2}.ls{fill:none;stroke:#A9A49A;stroke-width:2}.lc{fill:none;stroke:#77736B;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#EEEBE3}.ds{fill:#A9A49A}.sw{stroke:#EEEBE3;stroke-width:2}.g{fill:#EEEBE3}.j{fill:#A9A49A}.wk{fill:#EEEBE3;stroke:#1B1B19;stroke-width:1.5}.dk{fill:#26261F;stroke:#A9A49A;stroke-width:1.5}.sk{fill:#A9A49A;stroke:#1B1B19;stroke-width:1.5}.led{fill:none;stroke:#A9A49A;stroke-width:1.5}</style>
+<style>svg{font-size:12px}text{font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace;fill:#EEEBE3;text-anchor:middle}.m,.sn{font-family:'IBM Plex Sans', system-ui, sans-serif}.m.mo{font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#A9A49A}.gt{fill:#1B1B19}.b{fill:none;stroke:#A9A49A;stroke-width:1.5}.bx{fill:none;stroke:#A9A49A;stroke-width:2}.ba{fill:#26261F;stroke:#EEEBE3;stroke-width:2}.la{fill:none;stroke:#EEEBE3;stroke-width:2}.ls{fill:none;stroke:#A9A49A;stroke-width:2}.lc{fill:none;stroke:#77736B;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#EEEBE3}.ds{fill:#A9A49A}.sw{stroke:#EEEBE3;stroke-width:2}.g{fill:#EEEBE3}.j{fill:#A9A49A}.wk{fill:#EEEBE3;stroke:#1B1B19;stroke-width:1.5}.dk{fill:#26261F;stroke:#A9A49A;stroke-width:1.5}.sk{fill:#A9A49A;stroke:#1B1B19;stroke-width:1.5}.led{fill:none;stroke:#A9A49A;stroke-width:1.5}</style>
 <defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#EEEBE3"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#A9A49A"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#77736B"/></marker></defs>
 <rect width="480" height="273" fill="#1B1B19"/>
 <rect x="19.2" y="30" width="441.6" height="143.5" fill="none" stroke="#77736B" stroke-width="1.5"/>
@@ -41,10 +41,10 @@
 <circle cx="253.7" cy="79" r="9.7" fill="none" stroke="#77736B" stroke-width="1.5"/>
 <circle cx="309.1" cy="79" r="21.4" fill="none" stroke="#77736B" stroke-width="1.5"/>
 <circle cx="434.1" cy="79" r="9.7" fill="none" stroke="#77736B" stroke-width="1.5"/>
-<text x="175.7" y="127.1" font-size="10" font-weight="600" style="fill:#1B1B19">1</text>
-<text x="203.4" y="127.1" font-size="10" font-weight="600" style="fill:#1B1B19">2</text>
-<text x="258.9" y="127.1" font-size="10" font-weight="600" style="fill:#1B1B19">3</text>
-<text x="286.7" y="127.1" font-size="10" font-weight="600" style="fill:#1B1B19">4</text>
+<text x="175.7" y="127.1" font-size="11" font-weight="600" style="fill:#1B1B19">1</text>
+<text x="203.4" y="127.1" font-size="11" font-weight="600" style="fill:#1B1B19">2</text>
+<text x="258.9" y="127.1" font-size="11" font-weight="600" style="fill:#1B1B19">3</text>
+<text x="286.7" y="127.1" font-size="11" font-weight="600" style="fill:#1B1B19">4</text>
 <path d="M147.9,103.7h138.8" stroke="#EEEBE3" stroke-width="2"/>
 <rect x="208.3" y="94.7" width="18" height="18" class="g"/>
 <text x="217.3" y="108.2" class="gt" font-size="11" font-weight="600">A</text>
@@ -55,14 +55,14 @@
 <text x="78.6" y="65.1" class="gt" font-size="11" font-weight="600">3</text>
 <rect x="20" y="186.5" width="18" height="18" class="g"/>
 <text x="29" y="200" class="gt" font-size="11" font-weight="600">A</text>
-<text x="46" y="199.5" class="t as" font-size="11">A scene key: recall it. The first is the blank scene, then 1–4.</text>
+<text x="46" y="199.5" class="t sn as">A scene key: recall it. The first is the blank scene, then 1–4.</text>
 <rect x="20" y="206.5" width="18" height="18" class="g"/>
 <text x="29" y="220" class="gt" font-size="11" font-weight="600">1</text>
-<text x="46" y="219.5" class="t as" font-size="11">Save, copy or delete (green, blue, red): tap one,</text>
+<text x="46" y="219.5" class="t sn as">Save, copy or delete (green, blue, red): tap one,</text>
 <rect x="20" y="226.5" width="18" height="18" class="g"/>
 <text x="29" y="240" class="gt" font-size="11" font-weight="600">2</text>
-<text x="46" y="239.5" class="t as" font-size="11">then the slot (for copy, the source, then the destination),</text>
+<text x="46" y="239.5" class="t sn as">then the slot (for copy, the source, then the destination),</text>
 <rect x="20" y="246.5" width="18" height="18" class="g"/>
 <text x="29" y="260" class="gt" font-size="11" font-weight="600">3</text>
-<text x="46" y="259.5" class="t as" font-size="11">then CHOMPI to confirm. White: done.</text>
+<text x="46" y="259.5" class="t sn as">then CHOMPI to confirm. White: done.</text>
 </svg>

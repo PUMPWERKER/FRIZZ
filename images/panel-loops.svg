@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 313" width="480" height="313" role="img" aria-labelledby="title desc">
 <title id="title">The Loops page</title>
 <desc id="desc">The panel on the Loops page, in bank B: the CHOMPI key glows yellow, bank B's colour; the lower C# is orange, leading to bank A, the lower D# green, leading to bank C; white keys 1 to 9 hold loops, dim yellow, key 3 bright, the loop playing. CHOMPI glows in the bank's colour; hold it as SHIFT for the gestures: SHIFT + lower C# opens and closes the page. Lower C#, lower D#: the bank before, after, in its colour. A white key: its loop, at once. SHIFT + the key: at the end of the pass, tapped N times at the end of the N-th.</desc>
-<style>svg{font-size:12px}text{font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace;fill:#EEEBE3;text-anchor:middle}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#A9A49A}.gt{fill:#1B1B19}.b{fill:none;stroke:#A9A49A;stroke-width:1.5}.bx{fill:none;stroke:#A9A49A;stroke-width:2}.ba{fill:#26261F;stroke:#EEEBE3;stroke-width:2}.la{fill:none;stroke:#EEEBE3;stroke-width:2}.ls{fill:none;stroke:#A9A49A;stroke-width:2}.lc{fill:none;stroke:#77736B;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#EEEBE3}.ds{fill:#A9A49A}.sw{stroke:#EEEBE3;stroke-width:2}.g{fill:#EEEBE3}.j{fill:#A9A49A}.wk{fill:#EEEBE3;stroke:#1B1B19;stroke-width:1.5}.dk{fill:#26261F;stroke:#A9A49A;stroke-width:1.5}.sk{fill:#A9A49A;stroke:#1B1B19;stroke-width:1.5}.led{fill:none;stroke:#A9A49A;stroke-width:1.5}</style>
+<style>svg{font-size:12px}text{font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace;fill:#EEEBE3;text-anchor:middle}.m,.sn{font-family:'IBM Plex Sans', system-ui, sans-serif}.m.mo{font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace}.as{text-anchor:start}.ae{text-anchor:end}.m{fill:#A9A49A}.gt{fill:#1B1B19}.b{fill:none;stroke:#A9A49A;stroke-width:1.5}.bx{fill:none;stroke:#A9A49A;stroke-width:2}.ba{fill:#26261F;stroke:#EEEBE3;stroke-width:2}.la{fill:none;stroke:#EEEBE3;stroke-width:2}.ls{fill:none;stroke:#A9A49A;stroke-width:2}.lc{fill:none;stroke:#77736B;stroke-width:1.5;stroke-dasharray:5 4}.da{fill:#EEEBE3}.ds{fill:#A9A49A}.sw{stroke:#EEEBE3;stroke-width:2}.g{fill:#EEEBE3}.j{fill:#A9A49A}.wk{fill:#EEEBE3;stroke:#1B1B19;stroke-width:1.5}.dk{fill:#26261F;stroke:#A9A49A;stroke-width:1.5}.sk{fill:#A9A49A;stroke:#1B1B19;stroke-width:1.5}.led{fill:none;stroke:#A9A49A;stroke-width:1.5}</style>
 <defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#EEEBE3"/></marker><marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#A9A49A"/></marker><marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#77736B"/></marker></defs>
 <rect width="480" height="313" fill="#1B1B19"/>
 <rect x="19.2" y="30" width="441.6" height="143.5" fill="none" stroke="#77736B" stroke-width="1.5"/>
@@ -51,13 +51,13 @@
 <text x="245.1" y="190" class="gt" font-size="11" font-weight="600">C</text>
 <rect x="20" y="206.5" width="18" height="18" class="g"/>
 <text x="29" y="220" class="gt" font-size="11" font-weight="600">A</text>
-<text x="46" y="219.5" class="t as" font-size="11">CHOMPI glows in the bank's colour; hold it as SHIFT for the</text>
-<text x="46" y="239.5" class="t as" font-size="11">gestures: SHIFT + lower C# opens and closes the page.</text>
+<text x="46" y="219.5" class="t sn as">CHOMPI glows in the bank's colour; hold it as SHIFT for the</text>
+<text x="46" y="239.5" class="t sn as">gestures: SHIFT + lower C# opens and closes the page.</text>
 <rect x="20" y="246.5" width="18" height="18" class="g"/>
 <text x="29" y="260" class="gt" font-size="11" font-weight="600">B</text>
-<text x="46" y="259.5" class="t as" font-size="11">Lower C#, lower D#: the bank before, after, in its colour.</text>
+<text x="46" y="259.5" class="t sn as">Lower C#, lower D#: the bank before, after, in its colour.</text>
 <rect x="20" y="266.5" width="18" height="18" class="g"/>
 <text x="29" y="280" class="gt" font-size="11" font-weight="600">C</text>
-<text x="46" y="279.5" class="t as" font-size="11">A white key: its loop, at once. SHIFT + the key: at the end</text>
-<text x="46" y="299.5" class="t as" font-size="11">of the pass, tapped N times at the end of the N-th.</text>
+<text x="46" y="279.5" class="t sn as">A white key: its loop, at once. SHIFT + the key: at the end</text>
+<text x="46" y="299.5" class="t sn as">of the pass, tapped N times at the end of the N-th.</text>
 </svg>

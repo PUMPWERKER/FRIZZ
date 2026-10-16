@@ -45,8 +45,9 @@ LINE = '#A9A49A'    # ash: the other ways, the other boxes
 MUTED = LINE        # ash: notes, as glosses on soot
 DIMMED = '#77736B'  # ash-dark: control lines, what a figure doesn't use
 KEY = RAISED        # a dark key's fill
-FONT = "'IBM Plex Mono', ui-monospace, Menlo, monospace"
-BOLD = '600'        # Plex Mono's semibold, the system's values
+FONT = "'IBM Plex Mono', ui-monospace, Menlo, monospace"  # names, values, keys
+SANS = "'IBM Plex Sans', system-ui, sans-serif"            # notes and running text
+BOLD = '600'        # Plex's semibold, the system's values
 W = 720
 
 
@@ -55,16 +56,28 @@ def num(v):
     return ('%.1f' % v).rstrip('0').rstrip('.')
 
 
-def px(size):
-    """The size a text is set at: one px under the size the pictures were laid out with, as
-    monospace sets wider than the Arial they were drawn for"""
-    return size - 1
+def px(size, sans=False):
+    """The size a text is set at, from the size the pictures were laid out with (for Arial):
+    sans as laid out, at least 12 px; mono one px under it, as it sets wider, at least 11 px, so
+    nothing gets too small on a phone, where the site shows a picture at down to 3/4"""
+    return max(12, size) if sans else max(11, size - 1)
 
 
-def width(s, size, bold=False):
-    """How wide a monospace font sets s at size (px() of it), 0.6 em a character in any of them:
-    for checking that a label fits its box"""
-    return len(s) * .6 * px(size)
+def width(s, size, bold=False, sans=False):
+    """About how wide s is set at px(size): monospace at 0.6 em a character in any font,
+    Plex Sans by its letters' widths; for checking that a label fits its box"""
+    if not sans:
+        return len(s) * .6 * px(size)
+    narrow = 'iljtfrI.,:;|!()[]\' '
+    w = 0.0
+    for c in s:
+        if c in narrow:
+            w += .3
+        elif c.isupper() or c in 'mw#&×↔–':
+            w += .7
+        else:
+            w += .55
+    return w * px(size, True) * 1.1 * (1.05 if bold else 1)
 
 
 class Svg:
@@ -80,19 +93,26 @@ class Svg:
     def add(self, s):
         self.items.append(s)
 
-    def text(self, x, y, s, size=13, anchor='middle', cls='t', bold=False, rotate=None):
+    def text(self, x, y, s, size=13, anchor='middle', cls='t', bold=False, rotate=None, sans=None):
+        """sans: Plex Sans, for notes (cls 'm', the default) and running text; else Plex Mono"""
+        if sans is None:
+            sans = cls == 'm'
+        if sans and cls != 'm':
+            cls += ' sn'
+        elif not sans and cls == 'm':
+            cls += ' mo'
         # the anchor as a class: the style sheet's text-anchor would win over an attribute
         if anchor != 'middle':
             cls += ' ' + {'start': 'as', 'end': 'ae'}[anchor]
         attrs = 'x="%s" y="%s" class="%s"' % (num(x), num(y), cls)
-        if size != 13:
-            attrs += ' font-size="%d"' % px(size)
+        if px(size, sans) != 12:
+            attrs += ' font-size="%d"' % px(size, sans)
         if bold:
             attrs += ' font-weight="%s"' % BOLD
         if rotate is not None:
             attrs += ' transform="rotate(%s %s %s)"' % (num(rotate), num(x), num(y))
         else:
-            w = width(s, size, bold)
+            w = width(s, size, bold, sans)
             left = x - {'start': 0, 'middle': .5, 'end': 1}[anchor] * w
             if left < 0 or left + w > self.w:
                 print('  past the edge: %r' % s)
@@ -100,7 +120,8 @@ class Svg:
 
     def box(self, x, y, w, h, lines, accent=False, check=True):
         """A box with lines of text, centred: (text, 'h' a name | 'm' a note); a plain string
-        is a name"""
+        is a name. A note that only names keys or a number (SHIFT + VOLUME, 12) is set in mono,
+        as the keys are, the other notes in sans"""
         self.add('<rect x="%s" y="%s" width="%s" height="%s" class="%s"/>'
                  % (num(x), num(y), num(w), num(h), 'ba' if accent else 'bx'))
         lines = [(l, 'h') if isinstance(l, str) else l for l in lines]
@@ -108,10 +129,11 @@ class Svg:
         top = y + h / 2 - step * (len(lines) - 1) / 2 + 4.5
         for i, (s, kind) in enumerate(lines):
             size = 13 if kind == 'h' else 12
-            if check and width(s, size, kind == 'h') > w - 6:
+            sans = kind == 'm' and not re.fullmatch(r'[A-Z0-9#+ ]+', s)
+            if check and width(s, size, kind == 'h', sans) > w - 6:
                 print('  tight: %r in %d px' % (s, w))
             self.text(x + w / 2, top + i * step, s, size, cls='t' if kind == 'h' else 'm',
-                      bold=kind == 'h')
+                      bold=kind == 'h', sans=sans)
 
     def line(self, pts, kind='s', arrow=True):
         """kind: 'a' the usual way, 's' audio, 'c' control (dashed)"""
@@ -160,8 +182,8 @@ class Svg:
                 self.line([(x - 4, yy - 4), (x + 22, yy - 4)], mark, arrow=False)
             elif mark:
                 self.badge(x + 9, yy - 4, mark)
-            self.text(x + 32, yy, s, 12, anchor='start', cls='t')
-            if width(s, 12) + x + 32 > self.w - 8:
+            self.text(x + 32, yy, s, 12, anchor='start', cls='t', sans=True)
+            if width(s, 12, sans=True) + x + 32 > self.w - 8:
                 print('  legend too wide: %r' % s)
 
     def render(self):
@@ -174,6 +196,7 @@ class Svg:
             # px(13) on the picture, inherited: a text's own font-size wins over it, where a
             # text{} rule's would win over the attribute
             'svg{font-size:12px}text{font-family:%s;fill:%s;text-anchor:middle}'
+            '.m,.sn{font-family:%s}.m.mo{font-family:%s}'
             '.as{text-anchor:start}.ae{text-anchor:end}.m{fill:%s}.gt{fill:%s}'
             '.b{fill:none;stroke:%s;stroke-width:1.5}'
             '.bx{fill:none;stroke:%s;stroke-width:2}'
@@ -188,7 +211,7 @@ class Svg:
             '.dk{fill:%s;stroke:%s;stroke-width:1.5}'
             '.sk{fill:%s;stroke:%s;stroke-width:1.5}'
             '.led{fill:none;stroke:%s;stroke-width:1.5}'
-            % (FONT, FG, MUTED, BG, LINE, LINE, RAISED, ACC, ACC, LINE, DIMMED, ACC, LINE, ACC,
+            % (FONT, FG, SANS, FONT, MUTED, BG, LINE, LINE, RAISED, ACC, ACC, LINE, DIMMED, ACC, LINE, ACC,
                FG, LINE, FG, BG, KEY, LINE, LINE, BG, LINE))
         out = [
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" width="%d" height="%d" '
@@ -324,14 +347,14 @@ def input_diagram():
     s.text(315, 413 + D, 'loop', 11, cls='m')
     s.line([(40, 490 + D), (470, 490 + D)])
     s.text(250, 483 + D, 'the source alone, whatever B and C say', 12, cls='m')
-    s.text(478, 494.5 + D, 'to the phones feed (VOLUME p. 3)', 13, anchor='start')
+    s.text(478, 494.5 + D, 'to the phones feed (VOLUME p. 3)', 13, anchor='start', sans=True)
     s.box(330, 285 + D, 140, 157, ['MIX', ('SHIFT + VOLUME', 'm'), ('', 'm'), ('the input\'s share', 'm'),
                                    ('against the loop\'s,', 'm'), ('on both inputs', 'm')], check=False)
     s.line([(470, 315 + D), (505, 315 + D)], 'a')
     s.text(512, 319.5 + D, 'to the effects', 13, anchor='start', bold=True)
     s.text(512, 336 + D, 'and the finalizer', 12, anchor='start', cls='m')
     s.line([(470, 385 + D), (505, 385 + D)])
-    s.text(512, 389.5 + D, 'past the effects:', 13, anchor='start')
+    s.text(512, 389.5 + D, 'past the effects:', 13, anchor='start', sans=True)
     s.text(512, 406 + D, 'joins after the finalizer', 12, anchor='start', cls='m')
     s.legend(28, 540 + D, [
         ('A', 'upper F#: the source, AUX, the mic or USB. The AUX jack picks AUX or the mic'),
@@ -486,7 +509,7 @@ def clock_midi():
     s.line([(170, 120), (170, 68), (215, 68)], arrow=False)
     s.switch(215, 68, 'C')
     s.line([(245, 68), (300, 68)])
-    s.text(272, 60, 'transport', 11, cls='m')
+    s.text(272, 84, 'transport', 12, cls='m')
     s.box(300, 40, 120, 56, ['LOOPER', ('quantized: whole', 'm'), ('bars of the clock', 'm')])
     # the clock
     s.line([(260, 155), (470, 155)], 'a')
@@ -498,9 +521,9 @@ def clock_midi():
     s.line([(420, 207), (470, 207)])
     s.add('<rect x="470" y="80" width="140" height="160" class="ba"/>')
     s.text(540, 99, 'TEMPO CLOCK', 13, bold=True)
-    s.text(478, 124.5, '1  the loop', 11, anchor='start')
-    s.text(478, 159.5, '2  MIDI clock', 11, anchor='start')
-    s.text(478, 203, '3  tapped, or the', 11, anchor='start')
+    s.text(478, 124.5, '1  the loop', 11, anchor='start', sans=True)
+    s.text(478, 159.5, '2  MIDI clock', 11, anchor='start', sans=True)
+    s.text(478, 203, '3  tapped, or the', 11, anchor='start', sans=True)
     s.text(493, 218, 'last (120 at first)', 11, anchor='start', cls='m')
     s.text(540, 182, 'the first that applies', 11, cls='m')
     s.text(552, 260, '× factor, 50–300 BPM', 12, anchor='start', cls='m')
@@ -635,11 +658,13 @@ def panel():
         x, y = X(at[name][0]), Y(at[name][1])
         if name == 'transport':
             s.add('<circle cx="%s" cy="%s" r="%s" class="ba"/>' % (num(x), num(y), num(15.5 * sc)))
-            s.text(x, y + 4, 'transport', 10, bold=True)
+            # two lines: it doesn't fit across the wheel at 11 px
+            s.text(x, y - 2, 'trans-', 12, bold=True)
+            s.text(x, y + 11, 'port', 12, bold=True)
             continue
         s.add('<circle cx="%s" cy="%s" r="%s" class="b"/>' % (num(x), num(y), num(7 * sc)))
         s.text(x, y + 4.5, name[1] if name[0] == 'k' else '', 12, bold=True)
-    s.text(X(119.7), Y(68.46) - 7 * sc - 6, 'knobs 1–4', 12, cls='m')
+    s.text(X(119.7), Y(68.46) - 7 * sc - 6, 'knobs 1–4', 12, cls='m', sans=False)
     s.text(X(300.65), Y(68.46) - 7 * sc - 6, 'VOLUME', 12, bold=True)
     # the LEDs above the knobs and the transport
     for l in layout['pth']:
@@ -648,7 +673,7 @@ def panel():
     x, y = X(at['mode'][0]), Y(at['mode'][1])
     s.add('<rect x="%s" y="%s" width="10" height="24" class="b"/>' % (num(x - 5), num(y - 12)))
     s.add('<circle cx="%s" cy="%s" r="3.5" class="g"/>' % (num(x), num(y + 6)))
-    s.text(x, y - 18, 'mode', 12, cls='m')
+    s.text(x, y - 18, 'mode', 12, cls='m', sans=False)
     # jacks: the sides and the back of the lower board, in the top board's coordinates: the
     # lower board's y + 99.29, which puts SW5 under its hole (y 68.46) and the side jacks
     # where the side panels' holes are; the back's x from the enclosure's back panel
@@ -661,8 +686,8 @@ def panel():
     for x, name in ((22.4, 'USB-C'), (250.4, 'microSD'), (296.8, 'LINE OUT')):
         s.add('<rect x="%s" y="%s" width="14" height="6" class="j"/>' % (num(X(x) - 7), num(Y(depth) - 6)))
         s.text(X(x), Y(depth) - 14, name, 12, bold=name.isupper() or name == 'USB-C')
-    s.text(X(0) - 12, Y(depth) + 4, 'back', 12, anchor='end', cls='m')
-    s.text(X(0) - 12, Y(0) + 2, 'front', 12, anchor='end', cls='m')
+    s.text(X(0) - 12, Y(depth) + 4, 'back', 12, anchor='end', cls='m', sans=False)
+    s.text(X(0) - 12, Y(0) + 2, 'front', 12, anchor='end', cls='m', sans=False)
     for i, line in enumerate((
             'The play page (mode switch down; up is the settings page). Dark keys: the blank',
             'scene, scenes 1–4 (grey), save, copy, delete; the lower C# and D# do nothing here.',
@@ -689,7 +714,7 @@ def quickstart_flow():
     s.text(262, 92, 'the input', 12, cls='m')
     s.box(290, 116, 170, 80, ['LOOPER', ('records here, before', 'm'), ('the effects: nothing is', 'm'),
                               ('printed into the loop', 'm')])
-    s.text(142, 150, 'if monitored', 12, anchor='end')
+    s.text(142, 150, 'if monitored', 12, anchor='end', sans=True)
     s.text(142, 166, 'the mic: off at first', 11, anchor='end', cls='m')
     s.box(50, 212, 200, 60, ['MIX', ('input ↔ loop', 'm'), ('SHIFT + VOLUME', 'm')])
     s.line([(375, 196), (375, 242), (250, 242)])
@@ -910,8 +935,8 @@ def legend_rows(s, y, rows, x=20):
         yy = y + i * 20
         if mark:
             s.badge(x + 9, yy - 4, mark)
-        s.text(x + 26, yy, text, 12, anchor='start')
-        if width(text, 12) + x + 26 > s.w - 6:
+        s.text(x + 26, yy, text, 12, anchor='start', sans=True)
+        if width(text, 12, sans=True) + x + 26 > s.w - 6:
             print('  legend too wide: %r' % text)
     return y + len(rows) * 20
 
@@ -1072,8 +1097,8 @@ def caps(s, x, y, parts):
                 s.line([(x + 3, y), (x + 21, y)], 's')
             x += 24
         elif p.startswith('('):
-            s.text(x + 1, y + 4.5, p[1:-1], 12, anchor='start', cls='m')
-            x += width(p[1:-1], 12) + 8
+            s.text(x + 4, y + 4.5, p[1:-1], 12, anchor='start', cls='m')
+            x += width(p[1:-1], 12, sans=True) + 12
         else:
             kind, name = p[0], p[2:]
             w = width(name, 12, True) + 18
