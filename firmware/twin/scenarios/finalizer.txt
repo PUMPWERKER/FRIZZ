@@ -2,6 +2,12 @@
 # 15, #435): Level's input, drive and Loud, EQ's bands, Comp's Depth, Width's bands; then a
 # band muted and back, the bypass and back. On a loud bass sine, mono
 input sine 110 0.6
+# the input as a fresh card has it, so the sine reaches the finalizer: the device's card holds
+# the player's own (#214)
+set settings aux_dry 0
+set settings aux_live 1
+set settings mic_dry 0
+set settings mic_live 0
 # every knob where the factory has it, whatever the card keeps (#214)
 set fin 0 0.5
 set fin 1 0
