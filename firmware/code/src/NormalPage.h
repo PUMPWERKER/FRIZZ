@@ -69,7 +69,9 @@
  *  Opening one ends a scene mode, so a tap of SHIFT confirms nothing there; opening one
  *  without a loop blinks both bank keys red. SHIFT's LED shows the sub-page, dim in its
  *  colour (the bank's here), and nothing else may use it: white held, the confirm blink, the
- *  boot ripple. A later sub-page brings its own.
+ *  boot ripple. A later sub-page brings its own. On the play page the lower C# and D# say what
+ *  the card holds (#434, DrawCardLoopLeds): dim in the colour of the first bank with a file on
+ *  either page, dark for none, whatever plays.
  *
  *  MIDI (MidiControl.h): notes and FRIZZ's SysEx keys and detents come as the hand's do (ui.h);
  *  the rest, Remote() takes from MainLoop: a controller sets a parameter, a latch, a gain, the
@@ -190,10 +192,11 @@ namespace chompi
 
     // FX scenes (#67): the slots on KEY_18-22, the lower F#, G#, A# and the upper C#, D#, the
     // blank one first; SAVE / COPY / DELETE on the upper F#, G#, A#, save first, delete on the
-    // outside in red (TAPE's and TEMPO's preset keys go the other way). The lower C# and D# are
-    // free on this page. One language for all three: the mode's colour shows what will happen
-    // (the slots it can act on, the pick, the CHOMPI key that confirms), white that it's done,
-    // red that it was refused or isn't on the card. Their LEDs: KeyLedOf (PanelKeys.h)
+    // outside in red (TAPE's and TEMPO's preset keys go the other way). The lower C# and D#
+    // only show the card's loops on this page (DrawCardLoopLeds). One language for all three:
+    // the mode's colour shows what will happen (the slots it can act on, the pick, the CHOMPI
+    // key that confirms), white that it's done, red that it was refused or isn't on the card.
+    // Their LEDs: KeyLedOf (PanelKeys.h)
     static constexpr Hardware::SwId kSceneKeys[kNumSlots] = {
         Hardware::SwId::KEY_18, Hardware::SwId::KEY_19, Hardware::SwId::KEY_20,
         Hardware::SwId::KEY_21, Hardware::SwId::KEY_22,
@@ -420,8 +423,13 @@ namespace chompi
             if (loops_shown_)
                 DrawLoopsLeds(now);
             else
-#endif
+            {
+                DrawCardLoopLeds(now);
                 DrawFxLeds(now);
+            }
+#else
+            DrawFxLeds(now);
+#endif
             DrawSceneLeds(now);
 
             // CHOMPI key: blinking in the mode's colour while a tap would confirm a scene
@@ -2084,6 +2092,33 @@ namespace chompi
                 else
                     SmtLed(KeyLedOf(key), to == LoopControls::kNone ? color : BankColor(static_cast<size_t>(to)),
                            to == LoopControls::kNone ? 0.f : 1.f);
+            }
+        }
+
+        /** The play page's lower C# and D# (#434), which nothing else lights there: dim in the
+         *  colour of the first bank with a file on the Loops page, and on the Cubbi page; dark
+         *  for none. What the card holds, not what plays. A loop planned blinks its page's key
+         *  in its bank's colour as its own key there blinks (#444): on the beat, fast while it
+         *  loads */
+        void DrawCardLoopLeds(uint32_t now)
+        {
+            bool loaded;
+            const int planned = loops_.Planned(loaded);
+            const uint32_t pos = engine_->FxClockPosition();
+            const bool on = loaded ? pos % kPulsesPerBeat < kPulsesPerBeat / 2 : BlinkOn(now, kLoadingBlinkMs);
+            for (bool cubbi : {false, true})
+            {
+                int bank = loops_.FirstUsed(cubbi);
+                float level = kFxOffLevel;
+                if (planned != LoopControls::kNone
+                    && (static_cast<size_t>(planned) / loops::kSlots >= loops::kCubbiBank) == cubbi)
+                {
+                    bank = planned / static_cast<int>(loops::kSlots);
+                    level = on ? 1.f : 0.f;
+                }
+                SmtLed(KeyLedOf(cubbi ? Hardware::SwId::KEY_17 : Hardware::SwId::KEY_16),
+                       bank == LoopControls::kNone ? white : BankColor(static_cast<size_t>(bank)),
+                       bank == LoopControls::kNone ? 0.f : level);
             }
         }
 #endif
