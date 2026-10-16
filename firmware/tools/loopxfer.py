@@ -33,6 +33,8 @@ import sys
 import time
 import zlib
 
+import builds  # kFrizzVersion, which HELLO says, read when it's asked
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIRMWARE = os.path.dirname(HERE)
 VECTORS = os.path.join(FIRMWARE, "test", "loopxfer", "vectors.json")
@@ -909,7 +911,7 @@ class Transfer:
         e = self.env
         ld = self.loader
         if op == HELLO:
-            d += [MAJOR, MINOR] + list(FRIZZ_VERSION) + put7(MAX_FRAMES, 4) + put7(MAX_FILE, 4) + \
+            d += [MAJOR, MINOR] + list(builds.frizz_version()) + put7(MAX_FRAMES, 4) + put7(MAX_FILE, 4) + \
                 [MAX_CHUNK, WINDOW] + put7(MAX_REQUEST, 2) + [NAME_MAX, FRIZZ_BANKS, CUBBI_BANKS, SLOTS]
             return OK
         if op == STATUS:
@@ -1239,17 +1241,6 @@ class Transfer:
         return [CHUNK, 0, st, tid] + put7(nxt, 4) + [drops]
 
 
-def frizz_version():
-    """kFrizzVersion from code/src/Version.h"""
-    import re
-    with open(os.path.join(FIRMWARE, "code", "src", "Version.h")) as f:
-        m = re.search(r"kFrizzVersion\[4\] = \{(\d+), (\d+), (\d+), (\d+)\}", f.read())
-    return [int(x) for x in m.groups()]
-
-
-FRIZZ_VERSION = frizz_version()
-
-
 class Bench:
     """FRIZZ-bench.bin: HELLO answered, NOT_HERE to the rest (LoopTransfer.h's BenchAnswer)"""
 
@@ -1269,7 +1260,7 @@ class Bench:
             op, seq, args = self.intake.pending
             self.intake.pending = None
             if op == HELLO and not args:
-                out.append(sysex(REPLY, [op, seq, OK, MAJOR, MINOR] + list(FRIZZ_VERSION) + put7(MAX_FRAMES, 4)
+                out.append(sysex(REPLY, [op, seq, OK, MAJOR, MINOR] + list(builds.frizz_version()) + put7(MAX_FRAMES, 4)
                                  + put7(MAX_FILE, 4) + [MAX_CHUNK, WINDOW] + put7(MAX_REQUEST, 2)
                                  + [NAME_MAX, FRIZZ_BANKS, CUBBI_BANKS, SLOTS]))
             else:

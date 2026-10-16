@@ -324,7 +324,10 @@ by itself, and `remote.py bench --wait` follows it over USB and fetches its `cpu
 (a branch that hasn't merged `main` since) gets `sleep 150 && ./card.py --then none get`
 instead. Each `play` (several go in the `{ }`, the `--test` build's)
 ends in `;`, not `&&`: a failed `expect led` (exit 1) is judged from its output, and stops
-neither the next scenario nor `--run 10`. Every `play` after the first gets `--fresh` (the
+neither the next scenario nor `--run 10`. Stop a hold with SIGTERM (a second forces it), never
+SIGKILL: it passes the signal to the whole chain, whose `; ./flash.py --run 10` then doesn't
+run, so run `tools/chompi.py hold ./flash.py --run 10` afterwards. Ctrl-Z at a prompt with
+`hold sh -c` hangs the terminal; `hold bash` is fine. Every `play` after the first gets `--fresh` (the
 second line shows how; play the branch's own scenarios there), which starts the slot again
 first (~10 s, the card untouched): a scenario starts from power-on, as on the twin, and
 without it the RAM the ones before left can fail its `expect led` (#123). `play` keeps the
