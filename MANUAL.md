@@ -356,6 +356,9 @@ FRIZZ's 8 banks of 15 with each loop's name, and TAPE's cubbis. Then:
 
 - **Browsers:** Chrome, Edge and the other Chromium-based ones, and Firefox, which asks you once
   to allow a small add-on for the site. Safari has no MIDI for web pages.
+- **On Linux, Chrome and Edge find no FRIZZ** while some audio interfaces are plugged in (Focusrite
+  Scarlett, Clarett and Vocaster, RME HDSP): a fault in them hides every MIDI device then.
+  Use Firefox, or unplug the interface while you use the page.
 - **Speed:** uploads go over MIDI, about two minutes for the longest loop (16 bars at 50 BPM,
   stereo) and more on a slower computer; a mono loop takes half. For many loops at once,
   lending the card [as a USB drive](#the-card-as-a-usb-drive) is several times faster (a card

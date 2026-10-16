@@ -63,7 +63,9 @@ pressing one starts it. FRIZZ works as one of them, next to TAPE, TEMPO and WAVE
 2. **Put FRIZZ on a key with the [setup page](https://ugrossek.github.io/CHOMPI/setup/).**
    With the picker showing, connect the CHOMPI to a computer over USB and open the page in
    Chrome or Edge. Pick FRIZZ for a free key; the page fetches the latest release and writes
-   it to the card.
+   it to the card. On Linux, if the page finds no CHOMPI while an audio interface such as a
+   Focusrite Scarlett is plugged in, unplug the interface while you use the page (a fault in
+   Chrome and Edge), or put FRIZZ on by hand (below).
 
    **Or by hand:** copy `FRIZZ.bin` into the card's `FIRMWARE` folder, named after the key you
    want it on, for example `FIRMWARE/04_FRIZZ.bin` for white key 4.
