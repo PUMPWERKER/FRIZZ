@@ -6,7 +6,9 @@
 # the next banks (b orange, c TAPE's teal); SHIFT + the lower C# the Loops page and SHIFT +
 # D# back, at c; a double tap of SHIFT goes home. Nothing is saved. On the device its expect
 # lines need TAPE's factory cubbis a1, b1, b3 and c1 on the card (what the CHOMPI ships with): a
-# cubbi recorded over one of them moves its times, and a missing one darkens its key.
+# cubbi recorded over one of them moves its times, and a missing one darkens its key. Back home
+# the lower C# glows in bank A's orange (#434), so it needs a loop in /FRIZZ's bank A too (a1.wav,
+# tools/loopfiles.py).
 card wav /TAPE/cubbi_a1.wav 12 2 220
 card wav /TAPE/cubbi_b1.wav 3.8773333 2 275
 card wav /TAPE/cubbi_b3.wav 4.4235208 2 330

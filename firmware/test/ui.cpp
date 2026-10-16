@@ -3658,6 +3658,17 @@ int main()
               "card-loop-hint: the only loop deleted over the loop transfer while it plays: C# dark");
         Check(written && Shows(f_down, kBlue, kLoopDim),
               "card-loop-hint: a loop written to bank F over the loop transfer: C# dim in F's blue");
+
+        // a file FRIZZ refuses (44.1 kHz) in bank D counts, as on the Loops page, which opens there
+        static const float kTeal[3] = {0.f, 1.f, .55f}; // bank D (kBankColors)
+        std::string w44 = SineWav(4800, 2, 220.f);
+        const uint32_t rate = 44100;
+        memcpy(&w44[24], &rate, 4);
+        PutLoops({{"d2", w44}});
+        const Rgb d_down = SmtLedFull(kBankDownLed);
+        printf("      a refused file in D: C# %s\n", Hex(d_down).c_str());
+        Check(Shows(d_down, kTeal, kLoopDim),
+              "card-loop-hint: a refused file alone in bank D, before F: C# dim in D's teal");
     }});
 
     // SHIFT + a white key, tapped twice: at the end of the second pass after SHIFT's release,
