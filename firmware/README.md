@@ -839,12 +839,12 @@ judge, for the release test (feel, sound by ear, real MIDI gear).
 [`CLAUDE.md`](../CLAUDE.md) has the full workflow, including the release test and test builds.
 
 **CI** on GitHub Actions runs this on every pull request and push to `main`
-(`.github/workflows/ci.yml`): `test/all.sh` (with numpy), `tools/doclinks.py`, `twin/compare.sh`
-against the PR's base (in the job summary: differences are for the PR to explain, a scenario
-the twin couldn't play fails it), and `tools/builds.py` with ARM's GCC 10.3
+(`.github/workflows/ci.yml`): `test/all.sh` (with numpy), `tools/doclinks.py`, `test/check.sh`
+and `twin/compare.sh` against the PR's base (in the job summary: differences are for the PR to
+explain, a scenario the twin couldn't play or a comparison that didn't get through fails it), and `tools/builds.py` with ARM's GCC 10.3
 (`.github/scripts/gcc-arm.sh`, checked against ARM's checksums), both builds' md5 and memory
 tables in the job summary and the builds as artifacts for 14 days. A green run on the PR's last
-push stands for running `all.sh` and `compare.sh` yourself; what a check couldn't run there it
+push stands for running `all.sh`, `check.sh` and `compare.sh` yourself; what a check couldn't run there it
 lists as `SKIP: local only (…)`, for your machine. On a pushed `v*` tag, `release.yml` builds
 it again and checks the release's `FRIZZ.bin` against its md5, attaches one to a draft without
 (a published release without one fails it: nothing goes live without a person), or drafts the
