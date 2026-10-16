@@ -1,7 +1,8 @@
 # Capacity: what's free on the CHOMPI, and how to make room
 
-What a new feature can still use, measured on 2026-10-15 after the code-room round (#320, on
-`main` 0170d38: the loop loader, USB on TinyUSB, the loop transfer; the history below). `make`
+What a new feature can still use, measured on 2026-10-16 at v1.5.0-beta.4 (`main` 9837961:
+the finalizer, the frequency shifter and 1.5's fixes since the code-room round, #320; the
+history below). `make`
 prints the memory table after every build; the numbers below come from it and from
 `build/FRIZZ.map`.
 
@@ -9,9 +10,9 @@ prints the memory table after every build; the numbers below come from it and fr
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 271,180 B (97 %) | **~7.2 KB** (7,348 B; the bench build 270,620 B, ~7.7 KB) | all the code, and the initial values of `.data` |
-| `SRAM` (AXI SRAM) | 240 KB | 220,648 B (90 %) | ~24.5 KB (the bench build 228,768 B, ~16.6 KB) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
-| `DTCMRAM` | 128 KB | 72,804 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 273,188 B (98 %) | **~5.2 KB** (5,340 B; the bench build 272,356 B, ~6.0 KB) | all the code, and the initial values of `.data` |
+| `SRAM` (AXI SRAM) | 240 KB | 220,700 B (90 %) | ~24.5 KB (the bench build 228,804 B, ~16.6 KB) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
+| `DTCMRAM` | 128 KB | 72,816 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
 | `ITCMRAM` | 64 KB | 0 (~40 KB with `make ITCM=1`) | 64 KB | the per-sample code with `make ITCM=1` (`FRIZZ_HOT`, `FrizzHot.h`, #51), copied there at boot; off by default |
