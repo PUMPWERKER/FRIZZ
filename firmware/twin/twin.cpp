@@ -122,14 +122,20 @@ bool InMain() { return in_main; }
 // the audio interrupt in the middle of main() (PreemptAt): main() gives up its block there
 int irq_blocked = 0;
 static const char* preempt_at = nullptr;
-void PreemptAt(const char* point) { preempt_at = point; }
+static int preempt_blocks = 1;
+void PreemptAt(const char* point, int blocks)
+{
+    preempt_at = point;
+    preempt_blocks = blocks;
+}
 void Preempt(const char* point)
 {
     if (in_main && !irq_blocked && preempt_at && !strcmp(preempt_at, point))
-    {
-        main_ns = window_end;
-        Yield();
-    }
+        for (int b = 0; b < preempt_blocks; b++)
+        {
+            main_ns = window_end;
+            Yield();
+        }
 }
 
 uint64_t NowNs()
