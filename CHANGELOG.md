@@ -250,6 +250,9 @@ what FRIZZ does.
   click, then came back where the old repeat had stopped, off the beat for as long as it ran.
   Now the repeat plays on through what was recorded until the new length is reached, as the
   manual says, and then starts again from the capture's start, on the grid.
+- **The finalizer's Type, and a band's character, take effect as you turn them** (#449):
+  turning Type, or a band's character in the Comp module, changed nothing until another
+  finalizer knob moved; a preset recalled or a knob turned after it brought it in.
 - **A bug report notes the card lent to a computer** (audit 2026-10-16): when the card was
   lent as a USB drive and taken back, the report didn't say so, so a session that edited
   scenes or settings on the computer played back differently with nothing to show why. Now the
