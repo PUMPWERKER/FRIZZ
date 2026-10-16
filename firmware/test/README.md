@@ -288,7 +288,10 @@ came in from the 16th, sample for sample past each seam's crossfade, a 16th each
 its shortest stage halves the loop after 1 repeat, after 2 more, and stops at 1/64 bar; at its
 longest it holds 8 repeats first. Released, the live signal is back bit for bit once it has
 faded out. (The gate fades in to 1 - 7e-6, not 1, #45, so a repeat carries the live input 100 dB
-down: the check feeds silence once a capture is recorded.)
+down: the check feeds silence once a capture is recorded.) Outgrown: the length turned past
+what's recorded while it repeats (a 1/4 to a bar), the tempo halved, or the roll turned off
+early, the repeat plays on through the recording without a step, then starts again from the
+capture's start, on the grid.
 
 ## Master section check
 
@@ -416,10 +419,12 @@ and on make them differ, the flanger's negative polarity sounds different, the r
 env mod rings more on a loud input and its level turns the return down (off at 0), the
 slicer's shuffle puts the even steps 2/3 of a 16th late and the rest on time, wow &
 flutter's age dips the level, the tape stop's depth slows it without stopping and its
-darken takes the highs off, the delay's freeze holds its echoes at a steady level, its
+darken takes the highs off, the delay's freeze holds its echoes at a steady level (an 8 kHz
+tone too, at 140 BPM, where a 1/4 falls between two samples), its
 damping darkens or thins the repeats and its ducking turns them down under the input, the
 reverb's freeze holds the room (a 2 kHz tone frozen keeps its pitch within 10 cents and
-swings under 4.5, as #313's tail measure reads it, a minute on too, and doesn't grow), its pre-delay at the top starts it 250 ms later and its
+swings under 4.5, as #313's tail measure reads it, a minute on too, and doesn't grow), its pre-delay at the top starts it 250 ms later, turned (or recalled) it puts no chirp into
+the room (no more above 4 kHz, from a 1 kHz tone, than without the turn), and its
 ducking turns it down. Then the scene file: v0.11's symmetry, XOR and LFO division stay on
 page 1's knob 4 with stereo off, the tape stop's depth is a full stop, a send's page 2 from
 the first test builds goes back to its defaults (not frozen), and layout 4 round-trips
