@@ -1050,14 +1050,15 @@ case("plain", "touch started; sleep 0.5; exit 5", signals=0)
 import os, signal, subprocess, sys, time
 tool = """
 import signal, sys, time, chompi
+own = []
 if sys.argv[1] == "own":
-    signal.signal(signal.SIGTERM, lambda *_: (print("its own handler", flush=True), sys.exit(3)))
+    signal.signal(signal.SIGTERM, lambda *_: (own.append(1), sys.exit(3)))
 chompi.claim()
 try:
     print("claimed", flush=True)
     time.sleep(10)
 finally:
-    print("finally ran", flush=True)
+    print("its own handler, " * len(own) + "finally ran", flush=True)
 """
 for kind, sig in (("plain", signal.SIGTERM), ("plain", signal.SIGHUP), ("own", signal.SIGTERM)):
     p = subprocess.Popen([sys.executable, "-c", tool, kind], stdout=subprocess.PIPE, text=True)

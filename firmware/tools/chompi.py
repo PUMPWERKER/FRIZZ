@@ -200,17 +200,25 @@ def _run_held(cmd):
     signal N"""
     child, got = [], []
 
+    def tell(what):
+        # straight to the file: a handler mustn't go through sys.stderr's buffer, which the
+        # code it interrupted may be inside of (a reentrant call)
+        try:
+            os.write(2, (what + "\n").encode())
+        except OSError:
+            pass
+
     def forward(sig, frame):
         got.append(sig)
         if not child:
             return  # not started yet: passed on below
         try:
             if len(got) == 1:
-                say("%s: passed on to what the hold runs; the CHOMPI stays held until it has "
-                    "ended (a second signal kills it)" % signal.Signals(sig).name)
+                tell("%s: passed on to what the hold runs; the CHOMPI stays held until it has "
+                     "ended (a second signal kills it)" % signal.Signals(sig).name)
                 os.killpg(child[0].pid, sig)
             else:
-                say("killing what the hold runs (SIGKILL)")
+                tell("killing what the hold runs (SIGKILL)")
                 os.killpg(child[0].pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
