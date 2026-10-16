@@ -26,8 +26,8 @@ The format is fixed, and a file that breaks it fails the website's build:
 - Assure: Free and open source. Installs from the SD card without touching the bootloader; you go back to stock firmware the same way.
 
 **FRIZZ** turns your CHOMPI into a stereo looper and effects box for whatever you plug into its
-AUX input (a synth, a drum machine, anything with a line out), its built-in mic or a computer
-on USB. Catch a loop,
+AUX input (a synth, a drum machine, anything with a line out), for its built-in mic, or for a
+computer on USB. Catch a loop,
 hold a white key to throw an effect over it, and let go to snap back.
 
 ## Keys

@@ -1182,7 +1182,7 @@ tape's dropouts.
 - **Age on its own:** with Wow and Flutter at 0, Age's first quarter brings in a copy about
   11 ms late (where the wow last left it, once you've used it), blended with the untouched
   sound: a hollow, comb-like colour at low Age. From a quarter on you hear only the copy, just
-  11 ms late, with its dropouts.
+  as late, with its dropouts.
 - **Tone** darkens what comes off the tape, not the untouched sound.
 - LEDs: the key is red; the knobs go red to purple.
 
@@ -1478,7 +1478,7 @@ all three.
     either up only an input sent [past the effects](#input-aux-the-mic-or-usb) can still turn
     it red.
   - **Where it starts:** with Drive and Loud at 0 and VOLUME full, about 2 dB over the
-    finalizer's 0 dB (see Level, below): an AUX signal peaking above about −5 dBFS at the
+    finalizer's 0 dB: an AUX signal peaking above about −5 dBFS at the
     default input gain, or a hot line signal with the Input a few percent up. At VOLUME's 75%
     from power-on it takes more. A loop on its own stays under it, unless the Input, the EQ or
     an effect's Level turns it up.
