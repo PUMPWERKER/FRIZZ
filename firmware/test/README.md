@@ -235,7 +235,8 @@ the default 1/4, right after Init as after a division change. Then its random ev
 0 retriggers, reverses and pitch-ups and -downs, each about as often, on half the edges at 0 and
 a quarter at 0.25, in the centre; towards 1 only octave-up shimmers, on half the edges at 1,
 panned at random to both sides; and at 2 bars and 50 BPM, where a reverse wouldn't fit the
-buffer, a retrigger instead.
+buffer, a retrigger instead. Frozen, at 140 BPM where a 1/4 falls between two samples, it
+reads on the whole sample nearest its time, and let go goes back to its exact time.
 
 ## Crusher check
 

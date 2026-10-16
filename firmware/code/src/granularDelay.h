@@ -372,7 +372,7 @@ class granularDelay {
         delay_div_position_ = kStartDiv;
 
         setFeedback(.3f);
-        whole_ = false;
+        whole_ = WHOLE_OFF;
 
         clock_edge_ = false;
         events_ = false;
@@ -437,7 +437,7 @@ class granularDelay {
                 delay_samples_ = delay_samples_target_;
             }
         }
-        else if (__builtin_expect(whole_, 0)) {
+        else if (__builtin_expect(whole_ != WHOLE_OFF, 0)) {
             WholeDelay();
         }
         else {
@@ -563,9 +563,10 @@ class granularDelay {
     void setFeedbackAmount(float amt) {
         delay_feedback_amt_ = amt;
     }
-    /** FRIZZ: frozen, the delay reads on whole samples (WholeDelay) */
+    /** FRIZZ: frozen, the delay reads on whole samples (WholeDelay); let go, it goes back to
+     *  its exact time */
     void setWhole(bool whole) {
-        whole_ = whole;
+        whole_ = whole ? WHOLE_ON : whole_ == WHOLE_OFF ? WHOLE_OFF : WHOLE_BACK;
     }
     /** FRIZZ: the feedback's damping: a lowpass's and a highpass's one-pole coefficients, 1
      *  and 0 off */
@@ -617,12 +618,20 @@ class granularDelay {
      *  slide needs the fractions, and the repeats fade anyway. The last sample's way in 1/64
      *  steps, half a sample in half a millisecond, a pitch bend of a quarter of a semitone
      *  that short; 1/64 is exact in a float up to 2 bars at 50 BPM, where the fonepole's step,
-     *  under half a float's spacing within a sample or two of the target, stalls short of it */
+     *  under half a float's spacing within a sample or two of the target, stalls short of it.
+     *  Let go, the same way back to the exact time, where the fonepole takes over again */
     __attribute__((noinline)) void WholeDelay() {
-        const float whole = rintf(delay_samples_target_);
-        const float d = whole - delay_samples_;
+        const float to = whole_ == WHOLE_ON ? rintf(delay_samples_target_) : delay_samples_target_;
+        const float d = to - delay_samples_;
         const float step = fmaxf(.001f * fabsf(d), 1.f / 64.f);
-        delay_samples_ = fabsf(d) <= step ? whole : delay_samples_ + copysignf(step, d);
+        if (fabsf(d) > step) {
+            delay_samples_ += copysignf(step, d);
+            return;
+        }
+        delay_samples_ = to;
+        if (whole_ == WHOLE_BACK) {
+            whole_ = WHOLE_OFF;
+        }
     }
 
     float *buffer_;
@@ -633,7 +642,8 @@ class granularDelay {
     uint32_t out_pos_; // in delay_out_l and delay_out_r
     float delay_feedback_amt_;
     float damp_hi_ = 1.f, damp_lo_ = 0.f;
-    bool whole_ = false; // frozen: read on whole samples (WholeDelay)
+    // frozen: read on whole samples (WholeDelay), or on the way back to the exact time
+    enum Whole : uint8_t { WHOLE_OFF, WHOLE_ON, WHOLE_BACK } whole_ = WHOLE_OFF;
     float damp_lp_l_ = 0.f, damp_lp_r_ = 0.f, damp_hp_l_ = 0.f, damp_hp_r_ = 0.f;
 
     float tempo_;
