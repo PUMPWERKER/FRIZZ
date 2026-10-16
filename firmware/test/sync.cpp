@@ -50,24 +50,15 @@ static std::string Name(const char* what, const Sender& s, double bpm)
     return b;
 }
 
-/** The FX grid's pulses: the blocks the position Probe() gives moved in. A pulse comes every
- *  16 ms or more at 300 BPM, so never two in a block (0.5 ms), and the position wraps at the
- *  4-bar cycle or a shorter loop's end, so it's the move that counts, not by how much */
+/** The FX grid's pulses: each one the engine passed on to the FX, as many as a block counted.
+ *  Two can come in one block: a sender that sends its ticks in pairs, at x2 (a pulse a tick),
+ *  brings two in the same 0.5 ms (#424), so counting the blocks the position moved in would
+ *  miss one. Up to 4 a block are counted (BlockPulses), more than any sender here brings */
 struct PulseCounter
 {
-    uint32_t last = 0;
     uint64_t count = 0;
-    void Reset()
-    {
-        last = Probe().position;
-        count = 0;
-    }
-    void Step()
-    {
-        const uint32_t now = Probe().position;
-        count += now != last;
-        last = now;
-    }
+    void Reset() { count = 0; }
+    void Step() { count += Probe().block_pulses; }
 };
 
 /** The loop's wraps, block by block: how far they move from its ideal length */
