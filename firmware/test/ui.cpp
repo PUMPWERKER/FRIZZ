@@ -2636,7 +2636,13 @@ int main()
         RunMs(2000);
         Check(Probe().tempo == 240, "settings-kept: the clock factor x2 from the card: 120 BPM followed at 240");
         const int filter = Max(SmtLed(kFilterKeyLed));
-        Check(filter >= 3 && filter <= 5, "settings-kept: the LEDs at half from the card (an off FX key's 9 at 4)");
+        SetToggle(true);
+        RunMs(300);
+        const int knob = Max(PthLed(kKnob1Led)); // white, as bright as the LEDs are
+        SetToggle(false);
+        RunMs(300);
+        Check(knob == 11 && filter == 8,
+              "settings-kept: the LEDs at half from the card (knob 1's white 23 at 11, an off FX key at 8, #444)");
         const std::string state = Ask({0x20});
         Check(state.size() > 6 && (state[6] & 32), "settings-kept: mono from the card");
         const std::string settings = Ask({0x24});
