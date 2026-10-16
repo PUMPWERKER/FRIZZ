@@ -2511,6 +2511,21 @@ tag[0] = "v1.5.0"
 case("10 not its release", "--no-build", "--slot", "10")
 print("versions:", builds.tag_version("v1.5.0"), builds.tag_version("v1.5.0-beta.12"), builds.tag_version("v1.0"),
       builds.version_name((1, 5, 0, 1)))
+print("beta 0:", builds.tag_version("v1.5.0-beta.0"), builds.tag_version("v1.5.0-beta.01"))
+tag[0] = "v1.5.0-beta.0"
+builds.frizz_version = lambda: (1, 5, 0, 0)
+case("11 beta.0", "--no-build", "--slot", "11")
+# release.sh (release.yml's last step) takes the same tags: a gh on the PATH that only says so
+os.makedirs("bin", exist_ok=True)
+open("bin/gh", "w").write("#!/bin/sh\necho gh called >&2\nexit 1\n")
+os.chmod("bin/gh", 0o755)
+release = os.path.join(os.path.dirname(builds.FIRMWARE), ".github", "scripts", "release.sh")
+for t in ("v1.5.0-beta.0", "v1.5.0-beta.01", "v1.5.0-beta.1", "v1.5.0"):
+    r = subprocess.run(["bash", release, "/dev/null"], capture_output=True, text=True,
+                       env=dict(os.environ, TAG=t, MD5="d41d8cd98f00b204e9800998ecf8427e", GH_REPO="x/y",
+                                PATH=os.path.abspath("bin") + os.pathsep + os.environ["PATH"]))
+    print("release.sh %s: %s" % (t, "refused" if "isn't a version's tag" in r.stdout + r.stderr
+                                 else "gh called" if "gh called" in r.stderr else "?"))
 tag[0] = None
 case("test", "--test")
 case("file to 12", "other.bin", "--slot", "12")
@@ -2546,6 +2561,11 @@ case("bench", "--bench", "--no-build")
               && Has(out, "10 not its release: []\n")
               && Has(out, "versions: (1, 5, 0, 0) (1, 5, 0, 12) None v1.5.0-beta.1\n"),
           "tools: 10 and 11 take a tag's build only where kFrizzVersion is the tag's (the loop transfer's HELLO)");
+    Check(Has(out, "beta 0: None None\n")
+              && Has(out, "exit: v1.5.0-beta.0 isn't a version's tag (vX.Y.Z, vX.Y.Z-beta.N, N from 1)\n11 beta.0: []\n")
+              && Has(out, "release.sh v1.5.0-beta.0: refused\nrelease.sh v1.5.0-beta.01: refused\n"
+                          "release.sh v1.5.0-beta.1: gh called\nrelease.sh v1.5.0: gh called\n"),
+          "tools: a beta's number starts at 1: -beta.0 isn't taken for the release, in builds.py and release.sh");
     Check(Has(out, "test: ['build', 'launcher', 'tag.bin --slot 12 --name FRIZZ-TEST --device l --stay', "
                    "'--color 12 FF0000 --device l', 'run 12']\n")
               && Has(out, "file to 12: ['launcher', 'other.bin --slot 12 --name FRIZZ-TEST --device l --stay', "

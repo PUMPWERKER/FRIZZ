@@ -90,8 +90,9 @@ def frizz_version():
 
 
 def tag_version(tag):
-    """v1.5.0 -> (1, 5, 0, 0), v1.5.0-beta.2 -> (1, 5, 0, 2); None for another form"""
-    m = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?", tag)
+    """v1.5.0 -> (1, 5, 0, 0), v1.5.0-beta.2 -> (1, 5, 0, 2); None for another form, -beta.0
+    and -beta.01 too: a beta's number starts at 1, as 0 is the release's"""
+    m = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)(?:-beta\.([1-9]\d*))?", tag)
     return m and (int(m[1]), int(m[2]), int(m[3]), int(m[4] or 0))
 
 
@@ -111,7 +112,7 @@ def check_version(tag):
     is (the loop transfer's HELLO)"""
     want, have = tag_version(tag), frizz_version()
     if want is None:
-        sys.exit("%s isn't a version's tag (vX.Y.Z, vX.Y.Z-beta.N)" % tag)
+        sys.exit("%s isn't a version's tag (vX.Y.Z, vX.Y.Z-beta.N, N from 1)" % tag)
     if want != have:
         sys.exit("code/src/Version.h's kFrizzVersion is %s, the tag %s: the commit the tag is on sets "
                  "it to %s (docs/LOOP_PROTOCOL.md 7.1)" % (version_name(have), tag, ", ".join(map(str, want))))
