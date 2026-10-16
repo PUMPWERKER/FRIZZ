@@ -184,11 +184,24 @@ public:
     }
 
     /** The loop the looper switched to since the last ask, for MIDI feedback (#259), kNone
-     *  if none or MIDI planned it */
+     *  if none, MIDI planned it, or it was told when planned (TakeTold) */
     int TakeSwitched()
     {
         const int id = switched_;
         switched_ = kNone;
+        return id;
+    }
+    /** For MIDI feedback (#400): the hand's plan at the pass end since the last ask, told as
+     *  SHIFT let go counts its passes (passes: CC 54's), else kNone; cancelled: one told
+     *  before went since without switching (CC 81). One told and gone between two asks is
+     *  neither */
+    int TakeTold(uint8_t& passes, bool& cancelled)
+    {
+        const int id = told_;
+        told_ = kNone;
+        passes = static_cast<uint8_t>(passes_);
+        cancelled = untold_;
+        untold_ = false;
         return id;
     }
 
@@ -255,10 +268,13 @@ public:
      *  of fader (0-1): from the middle on it takes over, else it goes */
     void ShiftUp(float fader)
     {
-        if (in_hold_ && kind_ == Kind::PASSES)
+        if (in_hold_ && kind_ == Kind::PASSES && plan_ != kNone)
         {
             at_ = engine_->looper.Wraps() + passes_;
             landings_ = engine_->FxLandings();
+            // told now, as MIDI would plan it, not again as it switches
+            told_ = plan_;
+            fed_ = true;
         }
         if (in_hold_ && kind_ == Kind::FADER)
         {
@@ -279,6 +295,15 @@ public:
     void Cancel()
     {
         Unpost();
+        // one told goes without switching: CC 81 after it, or neither if it wasn't asked yet
+        if (fed_ && plan_ != kNone)
+        {
+            if (told_ == plan_)
+                told_ = kNone;
+            else
+                untold_ = true;
+        }
+        fed_ = false;
         plan_ = kNone;
     }
 
@@ -459,7 +484,7 @@ public:
         // start anyway (by time, the tape's direction and fraction kept)
         looper.Switch(buf.data, buf.frames, buf.beats, at, kind_ != Kind::LANDING && plan_ != playing_);
         posted_ = plan_;
-        posted_midi_ = midi_;
+        posted_midi_ = midi_ || fed_;
     }
 
 private:
@@ -606,7 +631,10 @@ private:
     uint32_t at_ = 0;        // and the looper's Wraps() it switches at
     uint32_t landings_ = 0;  // the morph's landings when its sequence was released (WithScene)
     int posted_ = kNone;     // switch handed to the looper, for this loop
-    bool midi_ = false, posted_midi_ = false; // the plan MIDI's, and the switch posted
+    bool midi_ = false, posted_midi_ = false; // the plan MIDI's, and the switch posted (or told)
+    bool fed_ = false;       // the plan told for MIDI feedback (TakeTold)
+    bool untold_ = false;    // one told went without switching
+    int told_ = kNone;       // told, not asked yet
     int8_t carried_ = kNone; // playing_, moved there in this pass (Moved; FRIZZ's slots only)
     int switched_ = kNone;   // switched to by the hand's plan, for MIDI feedback (TakeSwitched)
     int playing_ = kNone;    // the slot whose file the looper plays
