@@ -2853,6 +2853,8 @@ int main()
         Trs({kCC, 28, 127}); // the finalizer's Depth all the way (#345)
         RunMs(2000);
         Check(Max(SmtLedFull(kCompKeyLed)) > 150, "select-flash: the finalizer's key lights up as it reduces");
+        // another effect on the knobs, so SHIFT + 15 selects rather than switches the module (#435)
+        Keys({"+KEY_26", "60", "+KEY_5", "60", "-KEY_5", "60", "-KEY_26", "100"});
         Press("KEY_26", true);
         RunMs(50);
         Press("KEY_15", true);
@@ -6918,10 +6920,10 @@ int main()
         Check(back.r < 30 && back.g > 60 && back.b > 60, "fin-key-again: from an FX, it shows the module it showed");
     }});
 
-    // the finalizer's modules (#345): SHIFT + key 15 selects, key 15 again in the same hold the
-    // next module, each further tap the next, round to Level; SHIFT let go, or another key
-    // between, starts over; key 15 held, then SHIFT (the bypass) never switches; the key in the
-    // module's colour, at full a moment as it switches
+    // the finalizer's modules (#345): from another effect, SHIFT + key 15 selects, key 15 again
+    // in the same hold the next module, each further tap the next, round to Level; another
+    // effect selected between only selects; key 15 held, then SHIFT (the bypass) never
+    // switches; the key in the module's colour, at full a moment as it switches
     cases.push_back({"fin-cycle", [] {
         RunMs(kReadyMs);
         auto module = [] {
@@ -6951,21 +6953,8 @@ int main()
         Check(selected == 0 && second == 1 && third == 2 && fourth == 3 && round == 0,
               "fin-cycle: SHIFT + key 15, then again: EQ, Comp, Width, round to Level");
         Check(Max(flash) > 240, "fin-cycle: the key at full in the new module's colour");
-        // SHIFT let go between: the next SHIFT + 15 only selects
+        // another effect selected between: key 15 after it only selects
         Press("KEY_26", true);
-        RunMs(100);
-        Tap("KEY_15");
-        Press("KEY_26", false);
-        RunMs(100);
-        Press("KEY_26", true);
-        RunMs(100);
-        Tap("KEY_15");
-        Press("KEY_26", false);
-        Check(module() == 0, "fin-cycle: SHIFT let go between: no switch");
-        // another key between: starts over
-        Press("KEY_26", true);
-        RunMs(100);
-        Tap("KEY_15");
         RunMs(100);
         Tap("KEY_5"); // the filter, selected
         RunMs(100);
@@ -6975,9 +6964,11 @@ int main()
         // key 15 held, then SHIFT twice: the bypass, never a switch
         Keys({"+KEY_15", "100", "+KEY_26", "60", "-KEY_26", "100", "+KEY_26", "60", "-KEY_26", "100", "-KEY_15", "300"});
         Check(module() == 0, "fin-cycle: key 15 held, then SHIFT: no switch");
-        // the knobs follow: Comp's knob 4 is Depth
+        // the knobs follow: from the filter, SHIFT + 15 three times is Comp, whose knob 4 is Depth
         Press("KEY_26", true);
         RunMs(100);
+        Tap("KEY_5");
+        RunMs(60);
         Tap("KEY_15");
         RunMs(60);
         Tap("KEY_15");
@@ -7001,6 +6992,71 @@ int main()
         DoubleTap();
         RunMs(300);
         Check(module() == 2, "fin-cycle: on the Loops page, no switch");
+    }});
+
+    // SHIFT + key 15 with the finalizer selected already: its next module, in any hold (#435);
+    // with another effect selected it only selects. Only SHIFT first counts: key 15, then SHIFT
+    // within the grace, a select, also in one audio block (where SHIFT's event comes first);
+    // key 15 held, then SHIFT, the bypass. The double tap in one hold from another effect
+    // selects, then switches; the Loops page does nothing
+    cases.push_back({"fin-tap", [] {
+        RunMs(kReadyMs);
+        auto module = [] {
+            RunMs(400);
+            const Rgb c = SmtLedFull(kCompKeyLed);
+            return c.r > 40 && c.g > 40 && c.b > 40 ? 0 : c.b < 30 ? 1 : c.g < 30 ? 3 : c.r < 30 ? 2 : -1;
+        };
+        auto shift15 = [] { Keys({"+KEY_26", "100", "+KEY_15", "60", "-KEY_15", "60", "-KEY_26", "100"}); };
+        Tap("KEY_15"); // the finalizer on the knobs, Level
+        RunMs(100);
+        shift15();
+        const int one = module();
+        shift15();
+        const int two = module();
+        printf("      selected, SHIFT + 15: %d, SHIFT let go, again: %d\n", one, two);
+        Check(one == 1, "fin-tap: the finalizer selected, SHIFT + key 15: EQ");
+        Check(two == 2, "fin-tap: SHIFT let go, SHIFT + key 15 again: Comp");
+        // another effect selected: SHIFT + 15 only selects, the next one switches
+        Keys({"+KEY_26", "100", "+KEY_5", "60", "-KEY_5", "60", "-KEY_26", "100"}); // the filter
+        shift15();
+        const int selects = module();
+        shift15();
+        const int then = module();
+        printf("      from the filter, SHIFT + 15: %d, again: %d\n", selects, then);
+        Check(selects == 2, "fin-tap: another effect selected, SHIFT + key 15 only selects");
+        Check(then == 3, "fin-tap: and the next SHIFT + key 15 switches: Width");
+        // key 15 first, SHIFT within the grace: a select, no switch; in one block too
+        Keys({"+KEY_15", "5", "+KEY_26", "60", "-KEY_15", "60", "-KEY_26", "100"});
+        const int grace = module();
+        Keys({"+KEY_15", "+KEY_26", "60", "-KEY_15", "60", "-KEY_26", "100"});
+        const int block = module();
+        printf("      15, SHIFT 5 ms later: %d; both in one block: %d\n", grace, block);
+        Check(grace == 3, "fin-tap: key 15, then SHIFT within the grace: no switch");
+        Check(block == 3, "fin-tap: key 15 and SHIFT in one block: no switch");
+        // key 15 held, then SHIFT: the bypass, no switch (twice: on again)
+        Keys({"+KEY_15", "100", "+KEY_26", "60", "-KEY_26", "100", "-KEY_15", "300"});
+        const int bypass = module();
+        Keys({"+KEY_15", "100", "+KEY_26", "60", "-KEY_26", "100", "-KEY_15", "300"});
+        Check(bypass == 3 && module() == 3, "fin-tap: key 15 held, then SHIFT: the bypass, no switch");
+        // the double tap in one hold from another effect: selects, then the next module
+        Press("KEY_26", true);
+        RunMs(100);
+        Tap("KEY_5");
+        RunMs(100);
+        Tap("KEY_15");
+        const int first = module();
+        Tap("KEY_15");
+        const int second = module();
+        Press("KEY_26", false);
+        RunMs(100);
+        Check(first == 3 && second == 0, "fin-tap: from the filter, SHIFT + 15 twice in one hold: select, then round to Level");
+        // the Loops page: nothing
+        LoopsPage();
+        shift15();
+        shift15();
+        DoubleTap();
+        RunMs(300);
+        Check(module() == 0, "fin-tap: on the Loops page, no switch");
     }});
 
     // the finalizer's bypass (#345): key 15 held, then SHIFT, an exact pass-through and back,
