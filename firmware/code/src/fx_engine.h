@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <stdint.h>
+#include "FrizzHot.h"
 #ifdef __cplusplus
 
 #define JOIN(lhs, rhs) JOIN_1(lhs, rhs)
@@ -112,6 +113,17 @@ struct DataType<FORMAT_16_BIT>
             Clip16(static_cast<int32_t>(value * 32768.0f)));
     }
 };
+
+/** FRIZZ (#394): FxEngine's Interpolate's allpass, out of line and after the effects' code
+ *  (FrizzHot.h), so the unfrozen read stays as small as before: the read a + (b - a) * fraction
+ *  as x, the allpass's last output in *state; x blended by allpass (0..1) into its new one */
+__attribute__((noinline)) FRIZZ_AFTER_RUN_LAST inline float
+FxAllPassRead(float a, float b, float fraction, float x, float* state, float allpass)
+{
+    const float eta = (1.f - fraction) / (1.f + fraction);
+    *state          = b + eta * (a - *state);
+    return x + allpass * (*state - x);
+}
 
 /**  
        @brief Base Class for building reverbs
@@ -287,6 +299,45 @@ class FxEngine
             float b = DataType<format>::Decompress(
                 buffer_[(write_ptr_ + offset_integral + D::base + 1) & MASK]);
             float x        = a + (b - a) * offset_fractional;
+            previous_read_ = x;
+            accumulator_ += x * scale;
+        }
+
+        /** FRIZZ (#394): Interpolate, blended by `allpass` (0..1) into a first-order allpass
+         *  (Thiran) read, its last output in `state`. The linear read takes a little of the
+         *  highs each time (-0.05dB at 2kHz, averaged over the fraction), which in a held tank
+         *  adds up to ~15dB a minute; the allpass keeps every frequency. Its fraction d is the
+         *  linear read's, 0..1, on the same two samples (Thiran's usual 0.5..1.5 jumps at its
+         *  switch, which a held tank gathers into a noise floor): at d 1 it reads b alone, and
+         *  the next sample's d 0 reads a alone, so moving on a sample is seamless. At 0 the
+         *  linear read alone, as before, with `state` following it, so the allpass starts from
+         *  where the read is */
+        template <typename D>
+        inline void Interpolate(D&       d,
+                                float    offset,
+                                LFOIndex index,
+                                float    amplitude,
+                                float    scale,
+                                float&   state,
+                                float    allpass)
+        {
+            STATIC_ASSERT(D::base + D::length <= size, delay_memory_full);
+            offset += amplitude * lfo_value_[index];
+
+            int32_t offset_integral = static_cast<int32_t>(offset);
+            float   offset_fractional
+                = offset - static_cast<float>(offset_integral);
+
+            float a = DataType<format>::Decompress(
+                buffer_[(write_ptr_ + offset_integral + D::base) & MASK]);
+            float b = DataType<format>::Decompress(
+                buffer_[(write_ptr_ + offset_integral + D::base + 1) & MASK]);
+            float x = a + (b - a) * offset_fractional;
+            // frozen is the rare case: unfrozen falls through, as Interpolate
+            if(__builtin_expect(allpass > 0.f, 0))
+                x = FxAllPassRead(a, b, offset_fractional, x, &state, allpass);
+            else
+                state = x;
             previous_read_ = x;
             accumulator_ += x * scale;
         }

@@ -1250,6 +1250,8 @@ White key 13. From a room to a long wash; the tail rings on after you let go.
 - Its first diffusion moves a little all the time, as in Mutable Instruments' Clouds and
   Elements, so the same hit rings a little differently each time: a smooth tail rather than a
   metallic one.
+- **Freeze** holds the room as it is, highs and all, for minutes. While frozen, the room moves
+  half as much, so a held tone stays clear rather than drifting.
 - LEDs: the key is teal; the knobs go teal to purple. On page 2, knob 4's LED shows
   the room coming back (see [Page 2](#page-2)).
 
