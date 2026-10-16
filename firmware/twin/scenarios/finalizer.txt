@@ -74,8 +74,9 @@ tap KEY_26
 wait 100
 up KEY_15
 wait 2500
-# Width's meters, a mono sine: every band's correlation green
+# Width's meters, a mono sine: the low band's correlation green (narrowed), mid's and high's
+# yellow, as their Width right of the centre adds Space (#455)
 expect led pth 1 00fd00
-expect led pth 2 00fd00
-expect led pth 3 00fd00
+expect led pth 2 fdf20b
+expect led pth 3 fdf20b
 expect on

@@ -7,9 +7,11 @@
 //    reduced as the character's ratio and knee say, the other bands untouched
 //  - Width at full left is mono: both outputs the same
 //  - Space, right of Width's centre (#455): a mono source gets wider (the correlation down, the
-//    meter's at .6 at the right), its mono sum stays what it was, nothing of the mid's and
-//    high's Space below the low split, each channel's level up by about 1dB at most; at or left
-//    of the centre its allpasses don't run, and turned back it sleeps again, exact
+//    meter's at .6 at the right), its mono sum stays what it was (mid's and high's sample by
+//    sample, the low band's as loud at every frequency), nothing of the mid's and high's Space
+//    below the low split, each channel's level up by about 1dB at most and the two about as
+//    loud, the low band's too; at or left of the centre its allpasses don't run, and turned
+//    back it sleeps again, exact
 //  - the drive's level compensation: a sine at its reference level comes out within 1dB, every
 //    type and amount
 //  - the limiter: pushed hard by Loud, no peak above its ceiling of -1dB, also between the
@@ -238,28 +240,56 @@ static void TestSpace()
         SpaceRun(.2f, .3f, .4f, in, l, r, &left);
         Check(!left.f.space_run_, "space: Width left of the centre, its allpasses asleep");
     }
+    {
+        // mid's and high's Space only into the side: the mono sum is the centre's, sample by sample
+        SpaceRun(.5f, 1.f, 1.f, in, l, r);
+        double fold = 0., err = 0.;
+        for (size_t i = from; i < n; i++)
+        {
+            const double m = .5 * (static_cast<double>(cl[i]) + cr[i]);
+            const double d = .5 * (static_cast<double>(l[i]) + r[i]) - m;
+            fold += m * m;
+            err += d * d;
+        }
+        CheckF(10. * log10(err / fold) < -100., "space: mid and high at the right, the mono sum the centre's (the difference %.1f dB, < -100)",
+               10. * log10(err / fold));
+    }
     SpaceRun(1.f, 1.f, 1.f, in, l, r, &full);
     Check(full.f.space_run_, "space: Width at the right, its allpasses running");
-    double sl = 0., sr = 0., slr = 0., c2 = 0., fold = 0., err = 0.;
+    double sl = 0., sr = 0., slr = 0., c2 = 0.;
     for (size_t i = from; i < n; i++)
     {
         sl += static_cast<double>(l[i]) * l[i];
         sr += static_cast<double>(r[i]) * r[i];
         slr += static_cast<double>(l[i]) * r[i];
         c2 += static_cast<double>(cl[i]) * cl[i];
-        const double m = .5 * (static_cast<double>(cl[i]) + cr[i]);
-        const double d = .5 * (static_cast<double>(l[i]) + r[i]) - m;
-        fold += m * m;
-        err += d * d;
     }
     const double corr = slr / sqrt(sl * sr);
     CheckF(corr < .7, "space: a mono source with every band at the right is wider (correlation %.3f, < .7)", corr);
-    CheckF(10. * log10(err / fold) < -100., "space: its mono sum is the centre's (the difference %.1f dB, < -100)",
-           10. * log10(err / fold));
     const double dl = 10. * log10(sl / c2), dr = 10. * log10(sr / c2), dp = 10. * log10((sl + sr) / (2. * c2));
-    // together at most 1 + k^2 (.97dB at k .5), less as the bands overlap at the splits
-    CheckF(dl < 1.5 && dr < 1.5 && dp > .5 && dp < 1.,
-           "space: each channel up by %.2f and %.2f dB, together %.2f dB (.5 to 1)", dl, dr, dp);
+    // together at most 1 + k^2 (.97dB at k .5), less as the bands overlap at the splits; the
+    // two channels about as loud: nothing leans
+    CheckF(dl < 1.5 && dr < 1.5 && dp > .5 && dp < 1. && fabs(dl - dr) < 1.,
+           "space: each channel up by %.2f and %.2f dB, together %.2f dB (.5 to 1, apart < 1)", dl, dr, dp);
+    // the low band's Space, a quarter turn: both channels as loud, and the mono sum as loud
+    // as the centre's (its phase turned)
+    for (float hz : {40.f, 60.f, 100.f, 150.f})
+    {
+        std::vector<float> x = Sine(48000, hz, .3f), xl, xr, yl, yr;
+        SpaceRun(.5f, .5f, .5f, x, yl, yr);
+        SpaceRun(1.f, .5f, .5f, x, xl, xr);
+        double a = 0., b = 0., f = 0., f0 = 0.;
+        for (size_t i = 24000; i < 48000; i++)
+        {
+            a += static_cast<double>(xl[i]) * xl[i];
+            b += static_cast<double>(xr[i]) * xr[i];
+            f += .25 * (static_cast<double>(xl[i]) + xr[i]) * (static_cast<double>(xl[i]) + xr[i]);
+            f0 += .25 * (static_cast<double>(yl[i]) + yr[i]) * (static_cast<double>(yl[i]) + yr[i]);
+        }
+        CheckF(fabs(10. * log10(a / b)) < 1. && fabs(10. * log10(f / f0)) < .1,
+               "space: the low band at the right, %gHz: the channels %.2f dB apart (< 1), the mono sum %.3f dB (< .1)",
+               hz, 10. * log10(a / b), 10. * log10(f / f0));
+    }
     for (size_t b = 0; b < Finalizer::kBands; b++)
         CheckF(fabsf(full.f.BandCorrelation(b) - .6f) < .05f && Finalizer::CorrelationLed(full.f.BandCorrelation(b)) == 1,
                "space: band %g's correlation meter on a mono source at the right %.3f (.6, yellow)", b,

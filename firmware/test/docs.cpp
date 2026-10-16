@@ -1182,9 +1182,9 @@ static void CheckFinalizer()
         std::regex_search(text, m, std::regex("short delays \\(([\\d.]+) to ([\\d.]+) ms\\)"));
         CheckF(!m.empty() && fabs(atof(m[1].str().c_str()) - shortest) < .05 && fabs(atof(m[2].str().c_str()) - longest) < .2,
                "Finalizer: Space's delays %.2f to %.2f ms (Finalizer.h)", shortest, longest);
-        std::regex_search(text, m, std::regex("phase shift around (\\d+) Hz"));
-        CheckF(!m.empty() && atof(m[1].str().c_str()) == Finalizer::kSpaceLowHz,
-               "Finalizer: the low band's Space around %g Hz", Finalizer::kSpaceLowHz);
+        std::regex_search(text, m, std::regex("phase shift between (\\d+) and\\s+(\\d+) Hz"));
+        CheckF(!m.empty() && atof(m[1].str().c_str()) == Finalizer::kQuadFrom && atof(m[2].str().c_str()) == Finalizer::kQuadTo,
+               "Finalizer: the low band's Space a quarter turn from %g to %g Hz", Finalizer::kQuadFrom, Finalizer::kQuadTo);
     }
 
     // its LEDs: the key in the module's colour, the knobs light blue to orange

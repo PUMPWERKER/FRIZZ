@@ -183,8 +183,9 @@ what FRIZZ does.
   difference between the channels already there, so a mono synth or voice stayed mono however
   far right. Now, right of the centre, each band also gets Space, more the further right: a
   slightly different copy of the band in the side, a diffusion of very short delays for mid
-  and high, a phase shift around 80 Hz for the low band, so the kick isn't smeared. Summed to
-  mono the sound stays exactly as it was. At the centre and to the left nothing changed; a
+  and high, a phase shift between the channels for the low band, so the kick isn't smeared
+  and doesn't lean to a side. Summed to mono every frequency stays as loud as it was, and the
+  left and right channels stay level. At the centre and to the left nothing changed; a
   preset with a band right of the centre now sounds wider. After the widener in Endorphin.es'
   Golden Master. See [Width module](MANUAL.md#width-module).
 

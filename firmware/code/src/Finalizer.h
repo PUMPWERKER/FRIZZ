@@ -23,12 +23,17 @@
  *  - Width: each band's side, 0 (mono) at the left, as it is at the centre, up to kMaxWidth
  *    (the low band kMaxLowWidth) at the right. Right of the centre Space comes in too (#455):
  *    the band's mid through allpasses into its side, up to kSpace of the mid at the right, so
- *    a mono source gets wider. Only into the side: L + R stays the mid, mono-compatible, and
- *    each channel alone ripples between 1 - k and 1 + k over the frequency. Mid's and high's a
- *    chain of short Schroeder allpasses (kSpaceDelays, as the Golden Master's 0.1-2.5ms),
- *    fine enough a ripple to be heard as room, not a comb; the low band's a first-order
- *    allpass about kSpaceLowHz, a quarter turn there, as delays that short would turn the bass
- *    hardly at all and pan it instead, and longer ones smear the kick.
+ *    a mono source gets wider. Only into the side, so L + R keeps the mid's level at every
+ *    frequency, mono-compatible. Mid's and high's a chain of short Schroeder allpasses
+ *    (kSpaceDelays, as the Golden Master's 0.1-2.5ms): each channel alone ripples between
+ *    1 - k and 1 + k over the frequency, too finely to be heard as more than room (a third of
+ *    an octave each, within about 1dB of the two's mean). The low band has too few cycles for
+ *    that: delays short enough not to smear the kick hardly turn the bass and would pan it.
+ *    Its Space is a quarter turn instead, both channels as loud: a pair of first-order
+ *    allpass chains 90 degrees apart from kQuadFrom to kQuadTo (kQuadHz), the first on the whole output
+ *    (Quad, faded in and out over kFadeMs as the low band's Space comes and goes), the second
+ *    on the low band's mid into the side. L + R then keeps the mid's level, its phase turned
+ *    in the bass.
  *  - Drive: a saturation of the type's (Boost soft, Tube asymmetric, Fuzz hard), 0 to +30dB
  *    into it, run at twice the rate (polyphase IIR halfbands, as hiir's) so its harmonics
  *    don't fold back, then a gentle hi-cut. Level-compensated by a fixed gain per drive and
@@ -111,10 +116,13 @@ public:
         Svf::Coeffs(split_[1], kSplitHigh, sample_rate);
         hicut_ = OnePoleCoeff(kHiCutHz, sample_rate);
         dc_ = OnePoleCoeff(kDcHz, sample_rate);
-        // the low band's Space: a first-order allpass, a quarter turn at kSpaceLowHz (tan by
-        // its series, x small)
-        const float x = PI_F * kSpaceLowHz / sample_rate, t = x * (1.f + x * x * (1.f / 3.f));
-        space_low_a_ = (t - 1.f) / (t + 1.f);
+        // the low band's Space: its quarter turn's first-order allpasses (tan by its series,
+        // x small)
+        for (size_t i = 0; i < kQuadStages; i++)
+        {
+            const float x = PI_F * kQuadHz[i] / sample_rate, t = x * (1.f + x * x * (1.f / 3.f));
+            quad_a_[i] = (t - 1.f) / (t + 1.f);
+        }
         turned_ = update_pending_ = bypass_ = false;
         since_update_ = 0;
         meter_ = kNoMeter;
@@ -229,15 +237,20 @@ private:
     static constexpr float kLoudDb = 18.f;
     static constexpr float kMaxWidth = 2.f, kMaxLowWidth = 1.5f;
     // Space (#455), right of Width's centre: a band's decorrelated mid in its side, up to kSpace
-    // of it at the right (each channel then within +3.5/-6dB, the correlation of a mono source
-    // .6); mid's and high's Schroeder allpasses, their delays in samples and their gain, mid's
-    // the first kSpaceMid; the low band's first-order allpass's quarter turn
+    // of it at the right (the correlation of a mono source .6); mid's and high's Schroeder
+    // allpasses, their delays in samples and their gain, mid's the first kSpaceMid (picked, the
+    // low band's quarter turn with them, for the channels' levels a third of an octave each:
+    // each within 1.1dB of the two's mean at every frequency from 30Hz to 16kHz, worst at the
+    // low split); the low band's quarter turn, the corners of the output's chain, then the low
+    // band's (90 degrees apart within 3 from kQuadFrom to kQuadTo)
     static constexpr float kSpace = .5f;
-    static const size_t kSpaceStages = 7, kSpaceMid = 4;
-    static constexpr uint16_t kSpaceDelays[kSpaceStages] = {89, 61, 37, 23, 31, 19, 11};
-    static const size_t kSpaceLen = 89 + 61 + 37 + 23 + 31 + 19 + 11;
+    static const size_t kSpaceStages = 8, kSpaceMid = 5;
+    static constexpr uint16_t kSpaceDelays[kSpaceStages] = {127, 113, 109, 83, 73, 43, 41, 37};
+    static const size_t kSpaceLen = 127 + 113 + 109 + 83 + 73 + 43 + 41 + 37;
     static constexpr float kSpaceG = .5f;
-    static constexpr float kSpaceLowHz = 80.f;
+    static const size_t kQuadStages = 4;
+    static constexpr float kQuadHz[kQuadStages] = {16.f, 152.f, 61.f, 591.f};
+    static constexpr float kQuadFrom = 30.f, kQuadTo = 300.f;
     static constexpr float kLowSlower = 1.5f;
     static constexpr float kFadeMs = 10.f;
     static constexpr float kMuteMs = 5.f;
@@ -378,7 +391,8 @@ private:
             band_peak_[b] = 0.f;
             sp_[b] = 0.f;
         }
-        space_run_ = false;
+        space_run_ = quad_run_ = false;
+        quad_mix_ = quad_from_ = 0.f;
         trim_ = 1.f;
         band_mix_ = drive_mix_ = lim_mix_ = 0.f;
         drive_gain_ = 1.f;
@@ -399,7 +413,11 @@ private:
             d[i] = 0.f;
         for (size_t s = 0; s < kSpaceStages; s++)
             space_pos_[s] = 0;
-        space_low_ = Allpass();
+    }
+    FIN_ONCE void ClearQuad()
+    {
+        for (size_t i = 0; i < 3 * kQuadStages / 2; i++)
+            quad_[i] = Allpass();
     }
 
     FIN_ONCE void ClearLimiter()
@@ -601,12 +619,23 @@ private:
         if (space && !space_run_)
             ClearSpace();
         space_run_ = space;
+        // and the low band's quarter turn, faded in on the output while its Space is there
+        const bool quad = bands_run_ && (space_[0] > 0.f || sp_[0] > 0.f);
+        if (quad && !quad_run_)
+            ClearQuad();
+        quad_from_ = quad_mix_;
+        quad_mix_ = Toward(quad_mix_, quad ? 1.f : 0.f, step);
+        quad_run_ = quad_from_ > 0.f || quad_mix_ > 0.f;
         if (!bands_run_)
+        {
             for (size_t b = 0; b < kBands; b++)
             {
                 gm_[b] = gs_[b] = 1.f;
                 sp_[b] = 0.f;
             }
+            quad_mix_ = 0.f;
+            quad_run_ = false;
+        }
 
         // the trim: there at once, gliding over the block
         trim_from_ = trim_;
@@ -702,21 +731,28 @@ private:
         float mix = band_from_;
         const float dmix = (band_mix_ - mix) * inv;
         const bool apply = bands_apply_;
-        const bool space = space_run_;
+        const bool space = space_run_, quad = quad_run_;
         float sp[kBands], dsp[kBands];
         for (size_t b = 0; b < kBands; b++)
         {
             sp[b] = sp_[b];
             dsp[b] = (space_[b] - sp[b]) * inv;
         }
+        float qmix = quad_from_;
+        const float dqmix = (quad_mix_ - qmix) * inv;
         for (size_t i = 0; i < n; i++)
         {
             const float m = .5f * (l[i] + r[i]), s = .5f * (l[i] - r[i]);
             float mb[kBands], sb[kBands];
             splits_[0].Process(split_, m, mb[0], mb[1], mb[2]);
             splits_[1].Process(split_, s, sb[0], sb[1], sb[2]);
+            float low = 0.f; // the low band's Space, before its quarter turn
             if (space)
-                Space(mb, sb, sp, dsp);
+            {
+                low = Space(mb, sb, sp, dsp);
+                pk[0] = fmaxf(pk[0], fabsf(mb[0]) + fabsf(sb[0]) + fabsf(low));
+                es[0] += low * low;
+            }
             float ym = 0.f, ys = 0.f;
             for (size_t b = 0; b < kBands; b++)
             {
@@ -730,6 +766,8 @@ private:
             }
             if (apply)
             {
+                if (quad)
+                    Quad(ym, ys, gs[0] * low, qmix, dqmix);
                 mix += dmix;
                 ym = m + mix * (ym - m);
                 ys = s + mix * (ys - s);
@@ -768,12 +806,12 @@ private:
         return old - kSpaceG * v;
     }
 
-    /** Space, a sample: each band's mid through its allpasses into its side, by sp */
-    __attribute__((always_inline)) inline void Space(const float* mb, float* sb, float* sp, const float* dsp)
+    /** Space, a sample: mid's and high's mid through their allpasses into their side, by sp;
+     *  the low band's share of its mid back, for Quad */
+    __attribute__((always_inline)) inline float Space(const float* mb, float* sb, float* sp, const float* dsp)
     {
         for (size_t b = 0; b < kBands; b++)
             sp[b] += dsp[b];
-        sb[0] += sp[0] * space_low_.Process(space_low_a_, mb[0]);
         float* d = SpaceBuffer();
         float x = mb[1];
         for (size_t s = 0; s < kSpaceMid; s++)
@@ -789,6 +827,23 @@ private:
             d += kSpaceDelays[s];
         }
         sb[2] += sp[2] * x;
+        return sp[0] * mb[0];
+    }
+
+    /** The low band's Space, a sample: the output's mid and side through the first chain (faded
+     *  in by qmix), the low band's share of its mid (low) through the second into the side */
+    __attribute__((always_inline)) inline void Quad(float& ym, float& ys, float low, float& qmix, float dqmix)
+    {
+        float am = ym, as = ys, al = low;
+        for (size_t i = 0; i < kQuadStages / 2; i++)
+        {
+            am = quad_[i].Process(quad_a_[i], am);
+            as = quad_[kQuadStages / 2 + i].Process(quad_a_[i], as);
+            al = quad_[kQuadStages + i].Process(quad_a_[kQuadStages / 2 + i], al);
+        }
+        qmix += dqmix;
+        ym += qmix * (am - ym);
+        ys += qmix * (as - ys) + al;
     }
 
     __attribute__((always_inline)) inline float Drive1(Drive2x& d, float x, float gain, float comp)
@@ -966,8 +1021,11 @@ private:
     float space_[kBands], sp_[kBands];
     bool space_run_;
     uint16_t space_pos_[kSpaceStages];
-    Allpass space_low_;
-    float space_low_a_;
+    // the low band's quarter turn: the output mid's chain, its side's, the low band's
+    Allpass quad_[3 * kQuadStages / 2];
+    float quad_a_[kQuadStages];
+    float quad_mix_, quad_from_;
+    bool quad_run_;
 
     // the drive
     Drive2x drive2x_[2];
@@ -1001,5 +1059,6 @@ constexpr float Finalizer::kHoldMs[Finalizer::kBands];
 constexpr float Finalizer::kHalfband[4];
 constexpr float Finalizer::kMid[Finalizer::kMidTaps / 2];
 constexpr uint16_t Finalizer::kSpaceDelays[Finalizer::kSpaceStages];
+constexpr float Finalizer::kQuadHz[Finalizer::kQuadStages];
 
 } // namespace chompi

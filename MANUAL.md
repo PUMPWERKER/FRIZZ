@@ -1444,13 +1444,15 @@ Module 4, blue: each band's stereo width, which to the right makes even a mono s
 - **Space** comes in to the right of the centre, more the further right: a copy of the band
   made slightly different goes into the side, so a mono source gets wide too, a synth or a
   voice recorded in mono, without an echo or a wobble. Mid and high get a diffusion of very
-  short delays (0.2 to 2 ms), heard as room; the low band only a phase shift around 80 Hz, so
-  a kick isn't smeared, though its lowest notes may lean a little to one side (about 3 dB
-  between 50 and 100 Hz at the right).
+  short delays (0.8 to 2.6 ms), heard as room. The low band gets a phase shift between 30 and
+  300 Hz, the two channels a quarter turn apart and equally loud, so a kick isn't smeared and
+  doesn't lean to a side.
   - **In mono it's gone:** Space goes only into the side, so a mono system, which adds the
-    two channels, hears the band exactly as it was, nothing cancels. One channel alone, a
-    single speaker on the left output, wavers in level over the frequency, by up to +3.5 dB
-    and -6 dB at the right.
+    two channels, hears every frequency as loud as before; nothing cancels. With the low
+    band's Space the bass's phase turns a little, as a crossover's does.
+  - **The channels stay level:** each channel alone wavers a little over the frequency, but
+    averaged over a third of an octave, as the ear hears it, the two stay within about 1 dB
+    of each other, and the whole about as loud on the left as on the right.
   - **A little louder:** at the right the two channels together are about 1 dB louder, the
     mono sum the same. Nothing turns that back down, as everywhere in the finalizer.
 - Their LEDs show each band's correlation, how alike the two channels are: green mono or
