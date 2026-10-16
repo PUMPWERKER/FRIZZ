@@ -466,7 +466,7 @@ static const char* const kLoopKeys[15] = {"KEY_1", "KEY_2",  "KEY_3",  "KEY_4", 
                                           "KEY_11", "KEY_12", "KEY_13", "KEY_14", "KEY_15"};
 static int LoopLed(int slot) { return 24 - slot; }
 static const int kBankDownLed = 0, kBankUpLed = 1;
-// a slot's LED in its bank's colour: lit (full scale 252), dim (kFxOffLevel, 36), dark
+// a slot's LED in its bank's colour: lit (full scale 252), dim (FxOffLevel at full brightness, 36), dark
 static const int kLoopLit = 252, kLoopDim = 36;
 /** An LED in colour (0..1) at level (full scale), within a few steps */
 static bool Shows(const Rgb& c, const float* color, int level, int within = 6)
@@ -1577,6 +1577,30 @@ int main()
         Check(Card("/FRIZZ/frizz_master.txt").empty(), "comp-no-card: and nothing is written");
     }});
 
+    // audit 2026-10-16 U4: on the Loops page key 15 is a loop, so a failed master write blinks
+    // red on VOLUME, whose page 2 (the input gain) works there
+    cases.push_back({"loops-no-card-save", [] {
+        SetCardPresent(false);
+        RunMs(kReadyMs);
+        LoopsPage();
+        RunMs(1000); // its bank keys' red blink, no loops
+        Tap("ENC_6_SW"); // page 2: the input gain
+        RunMs(300);
+        Turn(kVolumeEncoder, -10); // down, towards blue
+        int blinks = 0;
+        bool was = false;
+        for (int t = 0; t < 4000; t++)
+        {
+            RunMs(1);
+            const Rgb c = PthLedFull(kVolumeLed);
+            const bool red = c.r > 150 && c.g < 60 && c.b < 60;
+            blinks += red && !was;
+            was = red;
+        }
+        printf("      VOLUME blinked red %d times\n", blinks);
+        Check(LoopsShown() && blinks == 3, "loops-no-card-save: the input gain not saved, VOLUME blinks red 3 times on the Loops page");
+    }});
+
     // the scene keys' LEDs: a used slot dim, the active one bright, pulsing once it's edited
     cases.push_back({"scene-leds", [] {
         RunMs(kReadyMs);
@@ -2426,6 +2450,49 @@ int main()
         return Card("/FRIZZ/frizz_master.txt").find("\nled_brightness " + std::to_string(percent) + "\n")
                != std::string::npos;
     };
+    // #444 B: dimmed, an FX key that's off keeps at least 8 of the SMT's steps in its strongest
+    // channel, so neighbouring keys' colours stay apart (freezer and shifter, crusher and
+    // filter ran together at 25 %); the CHOMPI key's glow on the Loops page at least 3 of the
+    // PTH's, so the banks stay apart (A and B were one colour at 50 % and below)
+    cases.push_back({"dim-apart", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a1", SineWav(48000, 2, 220.f)}, {"b1", SineWav(48000, 2, 330.f)}, {"h1", SineWav(48000, 2, 440.f)}});
+        SetToggle(true);
+        RunMs(300);
+        TurnBrightness(-15); // 25 %
+        RunMs(300);
+        SetToggle(false);
+        RunMs(300);
+        std::vector<Rgb> keys;
+        bool steps = true;
+        for (int w = 0; w < 14; w++) // white keys 1-14, the FX, all off
+        {
+            keys.push_back(SmtLed(24 - w));
+            steps &= Max(keys.back()) >= 8;
+        }
+        int same = 0;
+        for (size_t a = 0; a < keys.size(); a++)
+            for (size_t b = a + 1; b < keys.size(); b++)
+                if (keys[a].r == keys[b].r && keys[a].g == keys[b].g && keys[a].b == keys[b].b)
+                {
+                    printf("      white keys %zu and %zu alike: %d %d %d\n", a + 1, b + 1, keys[a].r, keys[a].g, keys[a].b);
+                    same++;
+                }
+        Check(steps && same == 0, "dim-apart: at 25 % the 14 FX keys off, 8 steps or more and each its own colour");
+        LoopsPage(); // bank A
+        const Rgb bank_a = PthLed(kChompiKeyLed);
+        Tap("KEY_17"); // bank B
+        RunMs(300);
+        const Rgb bank_b = PthLed(kChompiKeyLed);
+        Tap("KEY_17"); // bank H
+        RunMs(300);
+        const Rgb bank_h = PthLed(kChompiKeyLed);
+        printf("      the CHOMPI key on bank A %d %d %d, B %d %d %d, H %d %d %d\n", bank_a.r, bank_a.g, bank_a.b,
+               bank_b.r, bank_b.g, bank_b.b, bank_h.r, bank_h.g, bank_h.b);
+        Check(Max(bank_a) >= 3 && Max(bank_b) >= 3 && bank_a.g < bank_b.g && bank_a.b < bank_h.b,
+              "dim-apart: at 25 % the CHOMPI key's glow tells bank A (orange) from B (yellow) and H (pink)");
+    }});
+
     cases.push_back({"settings-brightness", [] {
         RunMs(kReadyMs);
         RunMs(300);
@@ -2448,8 +2515,9 @@ int main()
         SetToggle(false);
         RunMs(300);
         const Rgb half = SmtLed(kFilterKeyLed);
-        Check(abs(Max(half) - Max(filter) / 2) <= 1 && half.r > 0 && half.g > 0 && half.b > 0,
-              "settings-brightness: an FX key that's off at half, its colour kept");
+        // dimmed, off keeps 8 steps in its strongest channel, more than half of full's 9 (#444)
+        Check(Max(half) == 8 && half.r > 0 && half.g > 0 && half.b > 0,
+              "settings-brightness: an FX key that's off at half, 8 steps, its colour kept");
         Check(Max(PthLed(kVolumeLed)) > 0 && Max(PthLed(kVolumeLed)) < Max(vu),
               "settings-brightness: the panel's dimmer too, still lit");
         SetToggle(true);
@@ -2568,7 +2636,13 @@ int main()
         RunMs(2000);
         Check(Probe().tempo == 240, "settings-kept: the clock factor x2 from the card: 120 BPM followed at 240");
         const int filter = Max(SmtLed(kFilterKeyLed));
-        Check(filter >= 3 && filter <= 5, "settings-kept: the LEDs at half from the card (an off FX key's 9 at 4)");
+        SetToggle(true);
+        RunMs(300);
+        const int knob = Max(PthLed(kKnob1Led)); // white, as bright as the LEDs are
+        SetToggle(false);
+        RunMs(300);
+        Check(knob == 11 && filter == 8,
+              "settings-kept: the LEDs at half from the card (knob 1's white 23 at 11, an off FX key at 8, #444)");
         const std::string state = Ask({0x20});
         Check(state.size() > 6 && (state[6] & 32), "settings-kept: mono from the card");
         const std::string settings = Ask({0x24});
@@ -5905,6 +5979,58 @@ int main()
         Check(RunMs(300) < .001f, "midi cc: CC 85 sets the output gain");
     }});
 
+    // #444 C: the global channel's CC 22 acts as it crosses 64, and a new focus starts it
+    // afresh, as on the effect's own channel: its first value counts. A focus by CC 23 or by
+    // the hand; the same focus again keeps the crossing
+    cases.push_back({"midi-focus-latch", [] {
+        RunMs(kReadyMs);
+        auto latched = [] { return LatchedFx(Ask({0x20})); };
+        Trs({kCC, 23, 1, kCC, 22, 127});
+        RunMs(100);
+        Trs({kCC, 23, 2, kCC, 22, 127});
+        RunMs(100);
+        const unsigned by_cc = latched();
+        Check(by_cc != ~0u && (by_cc & 3) == 3, "midi-focus-latch: CC 23 to the shifter, the next 127 latches it as it did the freezer");
+        ShiftWith({"KEY_5"}); // the filter, in focus by hand
+        RunMs(200);
+        Trs({kCC, 22, 127});
+        RunMs(100);
+        const unsigned by_hand = latched();
+        Check(by_hand != ~0u && (by_hand >> 4 & 1), "midi-focus-latch: the filter selected by hand, the next 127 latches it");
+        Latch("KEY_5"); // off by hand
+        Trs({kCC, 23, 5, kCC, 22, 127});
+        RunMs(100);
+        const unsigned again = latched();
+        Check(again != ~0u && !(again >> 4 & 1), "midi-focus-latch: CC 23 to the filter again, no new focus: 127 again doesn't cross");
+    }});
+
+    // audit 2026-10-16 M1: a CC 23 that comes while MainLoop tells MidiControl the focus it
+    // took from the CC 23 before (twin::PreemptAt there) isn't overwritten by it: the newer
+    // focus wins, whatever the gap between the two
+    cases.push_back({"midi-focus-race", [] {
+        RunMs(kReadyMs);
+        PreemptAt("set-focus", 4); // 2 ms: the jack's MIDI reaches MidiControl a block late
+        int lost = 0;
+        for (double gap = 0.; gap <= 3.; gap += .5)
+        {
+            Trs({kCC, 23, 9}); // the slicer, from elsewhere
+            RunMs(50);
+            Trs({kCC, 23, 5}); // the filter
+            RunMs(gap);
+            Trs({kCC, 23, 2}); // the shifter, right after it
+            RunMs(50);
+            const std::string st = Ask({0x20});
+            if (st.size() <= 4 || st[4] != 1)
+            {
+                lost++;
+                printf("      a second CC 23 %.1f ms after the first: the focus %d, not the shifter\n", gap,
+                       st.size() > 4 ? st[4] : -1);
+            }
+        }
+        PreemptAt(nullptr);
+        Check(lost == 0, "midi-focus-race: two CC 23s close together, MainLoop telling the first: the second's focus stays");
+    }});
+
     // the channels (#97): the global one's map wins on it; all channels, the global map only;
     // the effect channels over the jack only if the settings page lets them
     cases.push_back({"midi-channels", [] {
@@ -7675,6 +7801,32 @@ int main()
         Check(!LoopsShown() && PhaserShows(false), "fshift-loops-page: SHIFT + KEY_7 twice on the Loops page: no switch");
     }});
 
+    // audit 2026-10-16 U1: CC 23 on the phaser's channel flashes the phaser's key, whatever the
+    // knobs edit: not the selected effect's key (which would light as if on), nor key 15's
+    cases.push_back({"fshift-midi-flash", [] {
+        RunMs(kReadyMs);
+        ShiftWith({"KEY_5"}); // the filter selected
+        RunMs(200);
+        Trs({0xB6, 23, 127});
+        RunMs(50);
+        Rgb filter = SmtLedFull(kFilterKeyLed), phaser = SmtLedFull(kPhaserKeyLed);
+        printf("      the filter selected: its key %02x%02x%02x, the phaser's %02x%02x%02x\n", filter.r,
+               filter.g, filter.b, phaser.r, phaser.g, phaser.b);
+        Check(Max(filter) < 80 && Max(phaser) > 200 && phaser.g > phaser.r,
+              "fshift-midi-flash: the filter selected, CC 23 flashes the phaser's key, ice blue, not the filter's");
+        ShiftWith({"KEY_15"}); // the finalizer selected
+        RunMs(400);
+        const int before = Max(SmtLedFull(kCompKeyLed));
+        Trs({0xB6, 23, 0});
+        RunMs(50);
+        const Rgb comp = SmtLedFull(kCompKeyLed);
+        phaser = SmtLedFull(kPhaserKeyLed);
+        printf("      the finalizer selected: key 15 %d before, %02x%02x%02x after, the phaser's %02x%02x%02x\n",
+               before, comp.r, comp.g, comp.b, phaser.r, phaser.g, phaser.b);
+        Check(Max(comp) < 200 && Max(phaser) > 200 && phaser.g == phaser.r,
+              "fshift-midi-flash: the finalizer selected, CC 23 flashes the phaser's key, blue, not key 15");
+    }});
+
     // MIDI: CC 23 on the phaser's channel, 7, sets the mode (0-63 the phaser, 64-127 the
     // shifter); on another effect's channel it does nothing, on the global one it's the focus.
     // The notes do as the hand: SHIFT's 45 held, KEY_7's 59 twice. MIDI feedback sends the
@@ -9391,6 +9543,51 @@ int main()
         Check(back && saved, "card-lend: the gesture again takes it back, LOOP dark, and the save comes");
         Check(again && ejected, "card-lend: ejected on the computer: taken back");
         Check(unplugged, "card-lend: the computer gone: taken back");
+    }});
+
+    // audit 2026-10-16 E1: a bug report says where the card was lent and taken back, how,
+    // and what was read from it again, as comment lines: the replay has the power-on files,
+    // and a take-back by the computer isn't in it
+    cases.push_back({"card-lend-log", [] {
+        RunMs(kReadyMs);
+        Tap("KEY_15");
+        Turn(4, -10); // the finalizer's input: frizz_master.txt written
+        RunMs(3000);
+        SetToggle(true);
+        RunMs(300);
+        lend_gesture();
+        std::string master = Card("/FRIZZ/frizz_master.txt");
+        const bool had = !master.empty();
+        CardFiles()["/FRIZZ/frizz_master.txt"] = master + "\n"; // the computer saved it again
+        EjectCard();
+        RunMs(300);
+        const bool ejected = !CardLent();
+        RunMs(3000);
+        lend_gesture();
+        lend_gesture(); // back by the gesture, nothing changed
+        RunMs(1000);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(2100);
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(3000);
+        const std::string log = Card("/FRIZZ/bug-1.txt");
+        auto count = [&](const std::string& s) {
+            int n = 0;
+            for (size_t at = log.find(s); at != std::string::npos; at = log.find(s, at + 1))
+                n++;
+            return n;
+        };
+        printf("      lent %d times, taken back by the computer %d, by the gesture %d\n", count("\n# card lent\n"),
+               count("\n# card taken back, the computer let go (the replay keeps it lent); read: settings\n"),
+               count("\n# card taken back; read: nothing\n"));
+        Check(had && ejected && count("\n# card lent\n") == 2
+                  && count("\n# card taken back, the computer let go (the replay keeps it lent); read: settings\n") == 1
+                  && count("\n# card taken back; read: nothing\n") == 1,
+              "card-lend-log: the bug report has the card lent twice, taken back by the computer (the settings read "
+              "again) and by the gesture");
     }});
 
     // refused, LOOP blinking red 3 times: without a computer, while LOOP records, while a bug

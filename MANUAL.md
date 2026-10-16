@@ -1506,8 +1506,9 @@ all three.
   input gain.
 - **Kept:** the knobs are saved to `FRIZZ/frizz_master.txt` on the card 2 s after the last
   turn, a preset as you confirm it, and they come back at power-on. They're not part of a scene. Without a card, or
-  when the card can't be written, the key blinks red 3 times instead, and FRIZZ tries again
-  2 s later, up to 3 times; the settings then last until power-off.
+  when the card can't be written, the key blinks red 3 times instead (VOLUME does on the Loops
+  and Cubbi pages, where key 15 is a loop: for the input gain turned there), and FRIZZ tries
+  again 2 s later, up to 3 times; the settings then last until power-off.
 - LEDs: the key is white, yellow, cyan or blue, by its module; the knobs go light blue to
   orange, and those with a centre (Input, the EQ and Width bands) blue, white on it, orange.
 
@@ -1847,7 +1848,9 @@ Knob 1 on the settings page sets how bright every LED is, for a dark stage: turn
 detent, from 25% to 100%; SHIFT + turn goes to the next of 25, 50, 75 and 100%; SHIFT +
 press is back to 100%. Its own LED is white and dims with all the others, so it shows where
 you are. The dim colours keep their hue, and nothing lit at 100% goes dark; below 25% they
-would. Saved 2 s after the last turn.
+would. Keys that are off dim less than the rest, so neighbouring keys' colours (keys 1 and 2,
+4 and 5) and the CHOMPI key's bank colour on the Loops and Cubbi pages stay apart: at 25% an
+off key is about half as bright as a lit one. Saved 2 s after the last turn.
 
 ## Input: AUX, the mic or USB
 
@@ -2244,7 +2247,8 @@ did, key for key.
 - It starts afresh at every start of FRIZZ: after a [restart by itself](#power-and-battery),
   it holds only what came after, so describe what happened before it.
 - It doesn't hold the audio you played in, so a problem that depends on the sound itself
-  needs a description too, nor scenes sent over MIDI. Dense MIDI automation fills it
+  needs a description too, nor scenes sent over MIDI, nor what a computer changed on the card
+  while it was lent (it notes when the card was lent and taken back). Dense MIDI automation fills it
   faster: each controller message is an event. It holds about 260,000 events, hours of playing; a session longer
   than that is cut off at the end.
 - It doesn't send anything anywhere and costs nothing while you play.
@@ -2404,7 +2408,9 @@ module's knobs are four CCs in a row:
   take the nearest step.
 - **Switches act as they change** (latches, CC 3, 81, 82, 83): an automation lane that sends the
   same value again does nothing, so a latch you switched by hand stays as you left it until the
-  lane crosses 64 again. Use 0 and 127.
+  lane crosses 64 again. Use 0 and 127. On the global channel, CC 22 starts afresh when the
+  focus moves to another effect (by CC 23 or by hand): its first value counts,
+  as on that effect's own channel.
 - **Automation isn't saved:** nothing that comes in by CC goes to the card. After a restart the
   finalizer is as you left it by hand (its knobs, its presets, or FRIZZ's SysEx), the
   source (CC 84) as the jack picks it, each source's effects and monitoring (CC 116, 117) as the
