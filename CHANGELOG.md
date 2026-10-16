@@ -201,9 +201,9 @@ what FRIZZ does.
 
 - **A frozen reverb keeps its highs** (#394): the room held by the reverb's freeze (page 2,
   knob 1) lost its highs as it went round, ~15 dB a minute at 2 kHz, and an 8 kHz tone was gone
-  within the minute, so a bright sound turned dull. Now it stays as bright as it was frozen,
-  within a dB a minute. While frozen, the room shimmers a little less (its movement is half as
-  deep); unfrozen, it sounds exactly as before. See [Reverb](MANUAL.md#reverb).
+  within the minute, so a bright sound turned dull. Now its highs last as long as the rest of
+  the room, and a bright sound stays bright. While frozen, the room shimmers a little less (its
+  movement is half as deep); unfrozen, it sounds exactly as before. See [Reverb](MANUAL.md#reverb).
 - **The flanger punched in again right after letting it go doesn't click** (#392): a press
   while its key still faded out (a quick double tap, a bouncing key, MIDI) restarted the sweep
   under the fade, a click. Now a press from silence restarts the sweep as before, and one in
