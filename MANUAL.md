@@ -1345,11 +1345,14 @@ Drive and Loud.
   turn an effect: 1% per detent (more turned fast), SHIFT + turn coarse, SHIFT + press resets. Pressing an FX key
   gives the knobs back to that effect. There's no page 2: a plain knob press does nothing in
   Level, and [mutes a band](#band-mutes) in the other modules.
-- **The modules:** hold SHIFT, tap key 15 (it's selected, as ever), then tap it again: the knobs
-  show the next module, 1 to 4 and round, the key in its colour. Every further tap in the same
-  hold goes on to the next. Letting go of SHIFT, or pressing any other key, starts over: the
-  next SHIFT + key 15 only selects. Holding key 15 and then pressing SHIFT never switches (that's
-  the [bypass](#finalizer-presets-and-bypass)). It doesn't work on the Loops and Cubbi pages.
+- **The modules:** with the finalizer selected, hold SHIFT and tap key 15: the knobs show the
+  next module, 1 to 4 and round, the key in its colour. Every further SHIFT + key 15 goes on to
+  the next, in the same SHIFT hold or a new one. While an effect has the knobs, SHIFT + key 15
+  only selects the finalizer, so you never land in another module unseen; tap key 15 twice in
+  one SHIFT hold to select it and go on. Only SHIFT held first counts: key 15 and SHIFT pressed
+  together, in either order, count as a select, and holding key 15 and then pressing SHIFT never
+  switches (that's the [bypass](#finalizer-presets-and-bypass)). It doesn't work on the Loops
+  and Cubbi pages.
 
 ### Level module
 
@@ -2126,7 +2129,7 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | SHIFT + key 7, then key 7 again | The phaser's other mode: the frequency shifter, and back | [Frequency shifter](#frequency-shifter) |
 | An FX key on a latched effect | Unlatch it; on until you let go | [Playing an effect](#playing-an-effect) |
 | White key 15 | The finalizer on the knobs | [Finalizer](#finalizer) |
-| SHIFT + key 15, then key 15 again | The finalizer's next module: Level, EQ, Comp, Width | [Finalizer](#finalizer) |
+| SHIFT + key 15, the finalizer selected | The finalizer's next module: Level, EQ, Comp, Width | [Finalizer](#finalizer) |
 | Hold key 15, then SHIFT | The finalizer bypassed, or on again | [Finalizer presets and bypass](#finalizer-presets-and-bypass) |
 | Hold key 15 + a key of scenes 1-4 | Recall a finalizer preset | [Finalizer presets and bypass](#finalizer-presets-and-bypass) |
 | Hold key 15 + upper F#, G# or A# | Save, copy or delete a finalizer preset | [Finalizer presets and bypass](#finalizer-presets-and-bypass) |

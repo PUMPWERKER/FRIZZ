@@ -731,7 +731,7 @@ public:
         return changed;
     }
     /** The module the knobs show on the finalizer's key, 0-3 (Finalizer::Module): the next,
-     *  1 to 4 and round (SHIFT + its key twice), or one outright (MIDI) */
+     *  1 to 4 and round (SHIFT + its key, once it is selected), or one outright (MIDI) */
     inline size_t Module() const { return module_; }
     void SetModule(size_t m)
     {

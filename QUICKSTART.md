@@ -99,9 +99,9 @@ echoes and a room (their level is knob 4 on their page 2, as every effect's).
 **Finalizer:** press white key 15, and knobs 1-4 set the master section on the outputs,
 neutral at first. They show its Level module: the input, a drive and its type (Boost, Tube,
 Fuzz), and Loud, which pushes the sound into a limiter so it gets louder without clipping.
-Hold SHIFT and tap key 15 twice for the next module: EQ (yellow) for the low, mid and high
-bands, Comp (cyan) to compress them (knob 4, Depth, brings it in), Width (blue) for each
-band's stereo; tap again to go on. Its key turns red when the output is so loud the safety
+Hold SHIFT and tap key 15 for the next module: EQ (yellow) for the low, mid and high bands,
+Comp (cyan) to compress them (knob 4, Depth, brings it in), Width (blue) for each band's
+stereo; SHIFT + key 15 again goes on. Its key turns red when the output is so loud the safety
 limiter has to step in. FRIZZ remembers its settings when you switch off. Press an effect key
 to give the knobs back to the effect. See [Finalizer](MANUAL.md#finalizer).
 

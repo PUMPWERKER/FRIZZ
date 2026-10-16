@@ -35,12 +35,16 @@
  *  page, where the white keys are loops. The key lights in the mode's colour (FxSlots.h), at
  *  full for kModeFlashMs after a switch.
  *
- *  The finalizer's key (kCompKey, #345) selects it for the knobs, and flashes white. Its knobs
- *  go to the card (SceneStore's master file) kMasterSaveDelayMs after the last turn, so a
- *  sweep is one write. The key lights in the colour of the module the knobs show (kFinColors),
- *  never darker than kFinFloor, its gain reduction a pulse over that, and red over everything
- *  while the safety limiter works. Its knob LEDs are the module's meters while they rest
- *  (FinMeterLed), a knob's value for kFinValueMs after it's turned.
+ *  The finalizer's key (kCompKey, #345) selects it for the knobs, and flashes white. SHIFT +
+ *  the key with the finalizer selected already shows its next module (#435), so SHIFT + it
+ *  twice in one hold selects, then switches. Only SHIFT held first counts: SHIFT down within
+ *  kShiftGraceMs of the press, either side, stays a select, and key 15 held, then SHIFT, its
+ *  bypass. Not on the Loops page. Its knobs go to the card (SceneStore's master file)
+ *  kMasterSaveDelayMs after the last turn, so a sweep is one write. The key lights in the
+ *  colour of the module the knobs show (kFinColors), never darker than kFinFloor, its gain
+ *  reduction a pulse over that, and red over everything while the safety limiter works. Its
+ *  knob LEDs are the module's meters while they rest (FinMeterLed), a knob's value for
+ *  kFinValueMs after it's turned.
  *
  *
  *  Scenes: a recall sends only the parameters that change, within one audio block and at the
@@ -452,10 +456,6 @@ namespace chompi
             if (rising ? tap_fx_ >= kNumFx || buttonID != static_cast<uint16_t>(kFxSlots[tap_fx_].key)
                        : buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_26))
                 tap_fx_ = kNumFx;
-            // and the finalizer's module taps (tap_fin_) the same way
-            if (rising ? buttonID != static_cast<uint16_t>(kCompKey)
-                       : buttonID == static_cast<uint16_t>(Hardware::SwId::KEY_26))
-                tap_fin_ = false;
 #if !FRIZZ_BENCH
             // anything but SHIFT between its taps: no double tap
             if (buttonID % kLoopsKeyBase != static_cast<uint16_t>(Hardware::SwId::KEY_26))
@@ -510,10 +510,12 @@ namespace chompi
                 fin_down_ = rising;
                 if (rising)
                 {
-                    // SHIFT + the key again in the same hold: the next module (#345), as an
-                    // effect's second mode (#306)
+                    // SHIFT + the key with the finalizer selected already: the next module
+                    // (#435). Only SHIFT first: SHIFT down within the grace of the press is
+                    // a select (ShiftPressed), and in one block its event comes first
                     const bool shift = ShiftAt(buttonID);
-                    const bool next = shift && tap_fin_ && !LoopsShownNow();
+                    const bool next = shift && fx_.Selected() == kFinSelected && !LoopsShownNow()
+                                      && !Grace(static_cast<uint16_t>(Hardware::SwId::KEY_26), true, buttonID);
                     FxKeyDown(!next);
                     fx_.FinKeyPressed(shift);
                     if (next)
@@ -521,7 +523,6 @@ namespace chompi
                         fx_.NextModule();
                         mode_flash_.Start(System::GetNow(), kModeFlashMs);
                     }
-                    tap_fin_ = shift;
                 }
                 return true;
             }
@@ -1813,8 +1814,6 @@ namespace chompi
 #endif
             const uint16_t shift = static_cast<uint16_t>(Hardware::SwId::KEY_26);
             bool select = Grace(static_cast<uint16_t>(kCompKey), true, shift);
-            if (select)
-                tap_fin_ = true; // the first of the finalizer's module taps
             for (size_t fx = 0; fx < kNumFx; fx++)
             {
                 if (Grace(static_cast<uint16_t>(kFxSlots[fx].key), true, shift))
@@ -3111,7 +3110,6 @@ namespace chompi
         bool downbeat_ = false;     // it's a bar's 1
         LedSignal select_flash_; // on the selected FX's key
         LedSignal mode_flash_;   // on its key after its mode switched (#306)
-        bool tap_fin_ = false;   // SHIFT + key 15 last in this hold: again, its next module
         size_t tap_fx_ = kNumFx; // SHIFT + this key last in this hold, nothing since: the key
                                  // again switches its mode (kFxModes); kNumFx: none
         LedSignal mute_flash_[kFinBands]; // a finalizer knob as its band (un)mutes (#347)
