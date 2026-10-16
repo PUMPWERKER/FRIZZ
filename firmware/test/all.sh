@@ -1,6 +1,7 @@
 #!/bin/bash
-# all.sh: runs every host check on the working tree: the engine against HEAD (check.sh), then
-# each unit check (every NAME.cpp but the harness), and doclinks: the docs the website is built
+# all.sh: runs every host check on the working tree: the engine against HEAD (check.sh: the
+# working tree's uncommitted changes, so after a commit nothing, which its line says; CI runs it
+# against the PR's base too), then each unit check (every NAME.cpp but the harness), and doclinks: the docs the website is built
 # from (../tools/doclinks.py --all: its checks and its selftest). Prints one line per check and exits 0 when
 # all pass, with the faults the checks know of (Known() in check.h) listed under theirs, and
 # what a check couldn't run on this machine (its lines "SKIP: local only (what's missing)": stage
