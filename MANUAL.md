@@ -239,8 +239,9 @@ can double or halve their tempo. In detail, the first that applies:
    in your DAW moves neither the loop nor the effects.
 2. **MIDI clock**, when there's no loop, from the input the [clock source](#clock-source)
    picks (none when it's internal). The effects get it in whole BPM, measured over the last
-   few seconds, so it holds still however unsteady the clock: a jump in tempo is followed at
-   once, a change of a BPM or so within about 2 seconds.
+   few seconds, so it holds still however unsteady the clock: a clock that starts is taken
+   once a few of its ticks are counted (within a quarter of a second, the beat from its first
+   tick), a jump in tempo is followed at once, a change of a BPM or so within about 2 seconds.
 3. **The last tempo**: tapped, from the last loop or from the clock. 120 BPM at power-on.
 
 While the loop is paused, the beat runs on by itself at the loop's tempo, so the effects keep

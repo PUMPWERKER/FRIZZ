@@ -445,17 +445,25 @@ private:
         const uint32_t span = at - count_[0].at0;
         if (settling_ && locks == count_locks_ && span < kTempoMinSpan)
         {
+            // an odd number of ticks: a pair's (one held back, sent with the next) shift then
+            // cancels out of the line, where an even number tilts it (4 ticks: 20 BPM off)
             const bool enough = span * static_cast<float>(kMaxBpm) >= kTempoLockSpan * smoothed;
-            if (count_[0].n >= 3. && enough)
+            const uint32_t n = static_cast<uint32_t>(count_[0].n);
+            if (n >= 3 && n % 2 == 1 && enough)
                 FollowCount(CountedBpm());
             return;
         }
+        const bool settled = settling_ && locks == count_locks_; // a new lock's first second ended
         settling_ = false;
         const float counted = span >= kTempoMinSpan ? CountedBpm() : smoothed;
         if (!counting_ || locks != count_locks_ || fabsf(smoothed - counted) > ClockJitter(counted))
         {
             StartCount();
-            SetClockTempo(smoothed);
+            // the smoothed tempo not on the new lock's line yet (pairs of ticks keep it off for a
+            // while): its line again, the tempo kept; else a new tempo, followed at once
+            settling_ = settled;
+            if (!settled)
+                SetClockTempo(smoothed);
             return;
         }
         if (at - count_[1].at0 >= kTempoSpan)
