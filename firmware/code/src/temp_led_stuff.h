@@ -137,7 +137,23 @@ namespace chompi
     /** The brightness the settings page sets (SettingsPage.h), in percent: 100 is full, as
      *  FRIZZ always was, down to 25 (#176) */
     static uint8_t led_percent = 100;
-    inline void SetLedPercent(uint8_t percent) { led_percent = percent; }
+
+    /** How dim a key that's off goes, of full: dimly in its colour (PanelLeds.h's
+     *  FxOffLevel). Below about 8 of the SMT LEDs' 64 steps (LedDim) the colours run together,
+     *  so dimmed the level rises to keep 8 in a colour's strongest channel; at full .15 holds
+     *  more. A PTH LED (23 steps) keeps the steps it has at full, so the CHOMPI key's bank
+     *  colours stay as far apart as there (#444) */
+    static const float kLedOffLevel = .15f;
+    static const uint32_t kSmtOffSteps = 8;
+    static float led_off_smt = kLedOffLevel, led_off_pth = kLedOffLevel;
+    inline void SetLedPercent(uint8_t percent)
+    {
+        led_percent = percent;
+        // the byte that keeps the steps, and half a byte for LedByte's rounding down
+        const uint32_t bytes = (kSmtOffSteps * 4u * 100u + percent - 1u) / percent;
+        led_off_smt = fmaxf(kLedOffLevel, (static_cast<float>(bytes) + .5f) / 255.f);
+        led_off_pth = percent >= 100 ? kLedOffLevel : fminf(1.f, kLedOffLevel * 100.f / percent);
+    }
 
     /** A colour byte to the chain's: v / div at full, less when dimmed, rounded in one step so
      *  a dim colour keeps its hue, and a channel lit at full stays lit */

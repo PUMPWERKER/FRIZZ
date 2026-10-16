@@ -104,6 +104,13 @@ what FRIZZ does.
 
 ### Changed
 
+- **Dim keys stay apart at a low LED brightness** (#444): turned down on the settings page,
+  the keys that are off got so dim that neighbouring ones ran together (at 25% the freezer's
+  and the shifter's, the crusher's and the filter's looked the same), and the CHOMPI key's
+  glow on the Loops and Cubbi pages showed several banks in one colour. Now an off key dims
+  less than the rest, keeping enough of its colour to tell it apart, and the CHOMPI key's glow
+  keeps the bank colours it has at full brightness. At 25% an off key is now about half as
+  bright as a lit one; at 100% nothing changes. See [LED brightness](MANUAL.md#led-brightness).
 - **The global channel's CC 22 starts afresh on each effect** (#444): CC 22 on the global
   channel latches the effect in focus as its value crosses 64. That crossing used to be shared
   by every effect, so after moving the focus (CC 23, or SHIFT + a key) a 127 that the

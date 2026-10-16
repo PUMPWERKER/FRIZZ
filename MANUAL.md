@@ -1819,7 +1819,9 @@ Knob 1 on the settings page sets how bright every LED is, for a dark stage: turn
 detent, from 25% to 100%; SHIFT + turn goes to the next of 25, 50, 75 and 100%; SHIFT +
 press is back to 100%. Its own LED is white and dims with all the others, so it shows where
 you are. The dim colours keep their hue, and nothing lit at 100% goes dark; below 25% they
-would. Saved 2 s after the last turn.
+would. Keys that are off dim less than the rest, so neighbouring keys' colours (keys 1 and 2,
+4 and 5) and the CHOMPI key's bank colour on the Loops and Cubbi pages stay apart: at 25% an
+off key is about half as bright as a lit one. Saved 2 s after the last turn.
 
 ## Input: AUX, the mic or USB
 

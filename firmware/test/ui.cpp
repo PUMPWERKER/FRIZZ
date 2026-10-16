@@ -2450,6 +2450,49 @@ int main()
         return Card("/FRIZZ/frizz_master.txt").find("\nled_brightness " + std::to_string(percent) + "\n")
                != std::string::npos;
     };
+    // #444 B: dimmed, an FX key that's off keeps at least 8 of the SMT's steps in its strongest
+    // channel, so neighbouring keys' colours stay apart (freezer and shifter, crusher and
+    // filter ran together at 25 %); the CHOMPI key's glow on the Loops page at least 3 of the
+    // PTH's, so the banks stay apart (A and B were one colour at 50 % and below)
+    cases.push_back({"dim-apart", [] {
+        RunMs(kReadyMs);
+        PutLoops({{"a1", SineWav(48000, 2, 220.f)}, {"b1", SineWav(48000, 2, 330.f)}, {"h1", SineWav(48000, 2, 440.f)}});
+        SetToggle(true);
+        RunMs(300);
+        TurnBrightness(-15); // 25 %
+        RunMs(300);
+        SetToggle(false);
+        RunMs(300);
+        std::vector<Rgb> keys;
+        bool steps = true;
+        for (int w = 0; w < 14; w++) // white keys 1-14, the FX, all off
+        {
+            keys.push_back(SmtLed(24 - w));
+            steps &= Max(keys.back()) >= 8;
+        }
+        int same = 0;
+        for (size_t a = 0; a < keys.size(); a++)
+            for (size_t b = a + 1; b < keys.size(); b++)
+                if (keys[a].r == keys[b].r && keys[a].g == keys[b].g && keys[a].b == keys[b].b)
+                {
+                    printf("      white keys %zu and %zu alike: %d %d %d\n", a + 1, b + 1, keys[a].r, keys[a].g, keys[a].b);
+                    same++;
+                }
+        Check(steps && same == 0, "dim-apart: at 25 % the 14 FX keys off, 8 steps or more and each its own colour");
+        LoopsPage(); // bank A
+        const Rgb bank_a = PthLed(kChompiKeyLed);
+        Tap("KEY_17"); // bank B
+        RunMs(300);
+        const Rgb bank_b = PthLed(kChompiKeyLed);
+        Tap("KEY_17"); // bank H
+        RunMs(300);
+        const Rgb bank_h = PthLed(kChompiKeyLed);
+        printf("      the CHOMPI key on bank A %d %d %d, B %d %d %d, H %d %d %d\n", bank_a.r, bank_a.g, bank_a.b,
+               bank_b.r, bank_b.g, bank_b.b, bank_h.r, bank_h.g, bank_h.b);
+        Check(Max(bank_a) >= 3 && Max(bank_b) >= 3 && bank_a.g < bank_b.g && bank_a.b < bank_h.b,
+              "dim-apart: at 25 % the CHOMPI key's glow tells bank A (orange) from B (yellow) and H (pink)");
+    }});
+
     cases.push_back({"settings-brightness", [] {
         RunMs(kReadyMs);
         RunMs(300);
@@ -2472,8 +2515,9 @@ int main()
         SetToggle(false);
         RunMs(300);
         const Rgb half = SmtLed(kFilterKeyLed);
-        Check(abs(Max(half) - Max(filter) / 2) <= 1 && half.r > 0 && half.g > 0 && half.b > 0,
-              "settings-brightness: an FX key that's off at half, its colour kept");
+        // dimmed, off keeps 8 steps in its strongest channel, more than half of full's 9 (#444)
+        Check(Max(half) == 8 && half.r > 0 && half.g > 0 && half.b > 0,
+              "settings-brightness: an FX key that's off at half, 8 steps, its colour kept");
         Check(Max(PthLed(kVolumeLed)) > 0 && Max(PthLed(kVolumeLed)) < Max(vu),
               "settings-brightness: the panel's dimmer too, still lit");
         SetToggle(true);
