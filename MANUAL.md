@@ -1396,7 +1396,7 @@ Module 3, cyan: a compressor on each band, set by its character, all three by on
 
 ### Width module
 
-Module 4, magenta: each band's stereo width.
+Module 4, blue: each band's stereo width.
 
 | Knob | Function |
 |---|---|
@@ -1446,7 +1446,7 @@ all three.
 ### Finalizer LEDs and settings
 
 - **Its key** is in the colour of the module the knobs show: Level white, EQ yellow, Comp
-  cyan, Width magenta. It's never darker than a glow that lets the colour be seen, and it
+  cyan, Width blue. It's never darker than a glow that lets the colour be seen, and it
   pulses brighter with the deepest gain reduction (a band's or the limiter's), at full from
   12 dB; it flashes when pressed, white, or dark while it's already bright. Dim while bypassed.
 - **Safety limiter:** after VOLUME, every output has a fixed limiter that keeps it within
@@ -1467,7 +1467,7 @@ all three.
   turn, a preset as you confirm it, and they come back at power-on. They're not part of a scene. Without a card, or
   when the card can't be written, the key blinks red 3 times instead, and FRIZZ tries again
   2 s later, up to 3 times; the settings then last until power-off.
-- LEDs: the key is white, yellow, cyan or magenta, by its module; the knobs go light blue to
+- LEDs: the key is white, yellow, cyan or blue, by its module; the knobs go light blue to
   orange, and those with a centre (Input, the EQ and Width bands) blue, white on it, orange.
 
 <!-- part: Scenes and settings -->
