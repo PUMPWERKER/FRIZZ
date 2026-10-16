@@ -318,7 +318,8 @@ int main()
 
     // a clock starting, at a point of a block (a quarter of one apart): every tempo the FX take
     // from it is within 1 BPM. Its first interval comes a block off, at 120 BPM 122 or 119, at
-    // 300 over USB up to 20 BPM off, and the FX took that and crept back over 0.3-1 s (#413)
+    // 300 over USB up to 20 BPM off, and the FX took that and crept back over 0.3-1 s (#413).
+    // Its pulses come from its ticks meanwhile, whatever the tempo
     for (const Sender* s : {&kSequencer, &kDaw})
         for (double bpm : {120., 300.})
             for (int k = 0; k < 4; k++)
@@ -332,7 +333,11 @@ int main()
                     const int want = static_cast<int>(Gen(*s).Bpm(t0) + .5);
                     int lo = want, hi = want;
                     double locked = -1.;
+                    const uint32_t ticks0 = Probe().ticks;
+                    PulseCounter pulses;
+                    pulses.Reset();
                     each_block = [&] {
+                        pulses.Step();
                         const int tempo = Probe().tempo;
                         if (tempo == before && locked < 0.)
                             return; // not taken yet
@@ -343,12 +348,18 @@ int main()
                     };
                     RunMs(3000);
                     each_block = nullptr;
+                    const uint32_t ticks = Probe().ticks - ticks0;
                     if (locked < 0. && before == want)
                         locked = 0.; // the tempo it had already
-                    Report("%-9s %3.0f BPM, a block's %d/4 in: FX at %d..%d, taken after %.0f ms",
-                           s->name, bpm, k, lo, hi, locked);
+                    Report("%-9s %3.0f BPM, a block's %d/4 in: FX at %d..%d, taken after %.0f ms; "
+                           "%llu pulses for %u ticks",
+                           s->name, bpm, k, lo, hi, locked, (unsigned long long)pulses.count, ticks);
                     Check(lo >= want - 1 && hi <= want + 1,
                           (Name("tempo-lock", *s, bpm) + "every tempo the FX take within 1 BPM").c_str());
+                    // the grid doesn't wait for the tempo: a pulse every 2 ticks from the lock on
+                    const long diff = static_cast<long>(pulses.count) - static_cast<long>(ticks / 2);
+                    Check(diff >= -1 && diff <= 0,
+                          (Name("tempo-lock", *s, bpm) + "a pulse every 2 ticks from the first").c_str());
                     Record("tempo-lock-ms", locked < 0. ? 1e9 : locked);
                 }});
 
