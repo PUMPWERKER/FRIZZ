@@ -167,12 +167,13 @@ namespace chompi
         Hardware::SwId::ENC_2_SW,
         Hardware::SwId::ENC_3_SW,
     };
-    // FX key LEDs: off, every FX key dimly in its colour (kFxOffLevel, PanelLeds.h)
+    // FX key LEDs: off, every FX key dimly in its colour (FxOffLevel, PanelLeds.h)
     static const float kFxMeterFloorDb = -30.f; // the meters' range, up to 0 dBFS
     static const float kFxWhiteMax = .8f;     // on: how far the loudest audio pushes to white
     static const float kFinMeterDb = 12.f;    // the finalizer's key at full, dB reduced, and a
                                               // reduction's knob LED (FinKnobLed)
     static const float kFinFloor = .35f;      // the finalizer's key at least, so its colour reads
+    static const float kFinAboveOff = (kFinFloor - kLedOffLevel) / (1.f - kLedOffLevel); // dimmed
     static const float kFinMutedLevel = .05f; // a muted band's knob LED: a step of the chain, below kVuDim's glow
     static const uint32_t kFinValueMs = 1500; // a finalizer knob turned shows its value this long
     static const uint32_t kFinMuteFlashMs = 120; // and flashes this long as its band (un)mutes
@@ -421,7 +422,13 @@ namespace chompi
             DrawLogLeds(now);
 #if !FRIZZ_BENCH
             if (loops_shown_)
+            {
                 DrawLoopsLeds(now);
+                // key 15 is a loop here: a failed write blinks on VOLUME, whose page 2 is
+                // likely what changed (the settings page's and the play page's: key 15)
+                if (master_refused_.Active(now))
+                    PthLed(kVolumeLed, red, master_refused_.BlinkLevel(now));
+            }
             else
             {
                 DrawCardLoopLeds(now);
@@ -439,7 +446,7 @@ namespace chompi
                 PthLed(kChompiKeyLed, SceneModeColor(), BlinkOn(now, kPendingBlinkMs) ? 1.f : 0.f);
 #if !FRIZZ_BENCH
             else if (loops_shown_ && !Shift())
-                PthLed(kChompiKeyLed, BankColor(loops_.Bank()), kFxOffLevel);
+                PthLed(kChompiKeyLed, BankColor(loops_.Bank()), PthOffLevel());
 #endif
             else
                 PthLed(kChompiKeyLed, white, Shift() ? 1.f : 0.f);
@@ -522,6 +529,7 @@ namespace chompi
                     {
                         fx_.NextModule();
                         mode_flash_.Start(System::GetNow(), kModeFlashMs);
+                        mode_flash_fx_ = kFinSelected;
                     }
                 }
                 return true;
@@ -1906,7 +1914,9 @@ namespace chompi
         {
             fx_.SetMode(fx, !fx_.Mode(fx));
             mode_flash_.Start(System::GetNow(), kModeFlashMs);
+            mode_flash_fx_ = fx;
         }
+        /** The Loops or Cubbi page shows: never in the bench build, which has neither */
         inline bool LoopsShownNow() const
         {
 #if !FRIZZ_BENCH
@@ -2065,10 +2075,10 @@ namespace chompi
                         break;
                     case LoopControls::Led::BAD:
                         c = red;
-                        level = kFxOffLevel;
+                        level = FxOffLevel();
                         break;
                     case LoopControls::Led::FILLED:
-                        level = kFxOffLevel;
+                        level = FxOffLevel();
                         break;
                     case LoopControls::Led::PLAYING:
                         level = 1.f;
@@ -2109,7 +2119,7 @@ namespace chompi
             for (bool cubbi : {false, true})
             {
                 int bank = loops_.FirstUsed(cubbi);
-                float level = kFxOffLevel;
+                float level = FxOffLevel();
                 if (planned != LoopControls::kNone
                     && (static_cast<size_t>(planned) / loops::kSlots >= loops::kCubbiBank) == cubbi)
                 {
@@ -2429,15 +2439,7 @@ namespace chompi
         /** The scene keys show the finalizer's presets: key 15 held, or a mode for them */
         inline bool FinPresetsShown() const
         {
-            return (fin_down_ || fin_presets_.Mode() != SceneMode::NONE) && !LoopsShownFin();
-        }
-        inline bool LoopsShownFin() const
-        {
-#if !FRIZZ_BENCH
-            return loops_shown_;
-#else
-            return false;
-#endif
+            return (fin_down_ || fin_presets_.Mode() != SceneMode::NONE) && !LoopsShownNow();
         }
 
         /** A scene key while the presets show: scenes 1-4's keys are presets 1-4, the blank
@@ -2508,7 +2510,7 @@ namespace chompi
             const float* mode_color = white;
             for (const SceneModeKey& key : kSceneModeKeys)
             {
-                SmtLed(KeyLedOf(key.key), key.color, mode == key.mode ? 1.f : kFxOffLevel);
+                SmtLed(KeyLedOf(key.key), key.color, mode == key.mode ? 1.f : FxOffLevel());
                 if (mode == key.mode)
                     mode_color = key.color;
             }
@@ -2540,12 +2542,12 @@ namespace chompi
                     else if (p == fin_presets_.Selected())
                         level = blink_on ? 1.f : 0.f;
                     else if (fin_presets_.Valid(static_cast<size_t>(p)))
-                        level = kFxOffLevel;
+                        level = FxOffLevel();
                 }
                 else if (p == fin_preset_ && fin_presets_.Used(static_cast<size_t>(p)))
                     level = 1.f;
                 else if (fin_presets_.Used(static_cast<size_t>(p)))
-                    level = kFxOffLevel;
+                    level = FxOffLevel();
                 SmtLed(KeyLedOf(kSceneKeys[slot]), color, level);
             }
         }
@@ -2561,7 +2563,7 @@ namespace chompi
             const float* mode_color = SceneModeColor();
             for (const SceneModeKey& key : kSceneModeKeys)
                 SmtLed(KeyLedOf(key.key), key.color,
-                       LoopsShown() ? 0.f : mode == key.mode ? 1.f : kFxOffLevel);
+                       LoopsShown() ? 0.f : mode == key.mode ? 1.f : FxOffLevel());
 
             const bool blink_on = BlinkOn(now, kPendingBlinkMs);
             for (size_t slot = 0; slot < kNumSlots; slot++)
@@ -2591,7 +2593,7 @@ namespace chompi
                     else if (s == scene_ctl_.Selected())
                         level = blink_on ? 1.f : 0.f;
                     else if (scene_ctl_.Valid(slot))
-                        level = kFxOffLevel;
+                        level = FxOffLevel();
                 }
                 else if (scene_ctl_.Fading()
                          && (s == scene_ctl_.Morphing() || s == scene_ctl_.FadeFrom()))
@@ -2601,7 +2603,7 @@ namespace chompi
                     float mix = s == scene_ctl_.Morphing() ? t : 0.f;
                     if (s == scene_ctl_.FadeFrom())
                         mix = fmaxf(mix, 1.f - t);
-                    level = kFxOffLevel + (1.f - kFxOffLevel) * mix;
+                    level = FxOffLevel() + (1.f - FxOffLevel()) * mix;
                 }
                 else if (s == scene_ctl_.Morphing() || s == scene_ctl_.DropSlot())
                 {
@@ -2619,7 +2621,7 @@ namespace chompi
                     level = scene_ctl_.Edited() ? .6f + .4f * cosf(phase * TWOPI_F) : 1.f;
                 }
                 else if (scenes_->scenes[slot].used)
-                    level = kFxOffLevel;
+                    level = FxOffLevel();
                 SmtLed(KeyLedOf(kSceneKeys[slot]), color, level);
             }
         }
@@ -2669,8 +2671,8 @@ namespace chompi
                 const float* color = fx_.Mode(fx) ? kShifterKeyColor : kFxSlots[fx].key_color;
                 const float meter = FxMeter(fx);
                 // a mode switched: at full in the new colour, or a flash if it's on (#306)
-                const bool mode_flash = fx == selected && mode_flash_.Active(now);
-                float level = mode_flash ? 1.f : kFxOffLevel;
+                const bool mode_flash = fx == mode_flash_fx_ && mode_flash_.Active(now);
+                float level = mode_flash ? 1.f : FxOffLevel();
                 float whiten = 0.f; // how far towards white
                 // dropped from this step by the chaos key: dim, as if off
                 if (fx_.IsOn(fx) && !(engine_->FxDropped() >> fx & 1))
@@ -2682,13 +2684,13 @@ namespace chompi
                 else if (kFxSlots[fx].kind == FxKind::SEND)
                 {
                     // a send's tail ringing out, from full down to off, in even steps to the eye
-                    level = kFxOffLevel * powf(1.f / kFxOffLevel, meter);
+                    level = FxOffLevel() * powf(1.f / FxOffLevel(), meter);
                 }
                 float rgb[3];
                 for (int c = 0; c < 3; c++)
                     rgb[c] = level * (color[c] + whiten * (1.f - color[c]));
                 // a select (SHIFT + the key): a flash
-                if (fx == selected && (select_flash_.Active(now) || (mode_flash && fx_.IsOn(fx))))
+                if ((fx == selected && select_flash_.Active(now)) || (mode_flash && fx_.IsOn(fx)))
                     Flash(rgb);
                 SetSmtLedFloat(KeyLedOf(kFxSlots[fx].key), rgb[0], rgb[1], rgb[2]);
             }
@@ -2697,10 +2699,13 @@ namespace chompi
             // kFinFloor up to full, dim while it's bypassed; turning red while the safety
             // limiter works, the one thing that sets the level by itself; a select flashes
             const float reduced = -engine_->GetFinReduction() / kFinMeterDb;
+            // above the bypassed key's level as at full brightness, where it's kFinFloor
+            const float fin_floor = FxOffLevel() > kLedOffLevel ? FxOffLevel() + (1.f - FxOffLevel()) * kFinAboveOff
+                                                                : kFinFloor;
             // a module just picked (SHIFT + the key twice): at full in its colour a moment
-            const float level = comp && mode_flash_.Active(now) ? 1.f
-                                : fx_.Bypassed()               ? kFxOffLevel
-                                               : kFinFloor + (1.f - kFinFloor) * fclamp(reduced, 0.f, 1.f);
+            const float level = mode_flash_fx_ == kFinSelected && mode_flash_.Active(now) ? 1.f
+                                : fx_.Bypassed()               ? FxOffLevel()
+                                               : fin_floor + (1.f - fin_floor) * fclamp(reduced, 0.f, 1.f);
             const float* fin_color = kFinColors[fx_.Module()];
             const float lim_db = -20.f * log10f(fmaxf(engine_->TakeLimiterGain(), 1e-6f));
             const float lim = fclamp((lim_db - kLimStartDb) / (kLimFullDb - kLimStartDb), 0.f, 1.f);
@@ -3110,6 +3115,7 @@ namespace chompi
         bool downbeat_ = false;     // it's a bar's 1
         LedSignal select_flash_; // on the selected FX's key
         LedSignal mode_flash_;   // on its key after its mode switched (#306)
+        size_t mode_flash_fx_ = kFinSelected; // whose: an FX, or the finalizer's module
         size_t tap_fx_ = kNumFx; // SHIFT + this key last in this hold, nothing since: the key
                                  // again switches its mode (kFxModes); kNumFx: none
         LedSignal mute_flash_[kFinBands]; // a finalizer knob as its band (un)mutes (#347)
@@ -3144,7 +3150,7 @@ namespace chompi
         bool master_hurried_ = false;     // a restart pulled the save forward (MasterSettled)
         uint32_t master_tries_ = 0;       // failed writes since
         bool master_saving_ = false;      // a write asked for, its outcome not yet seen
-        LedSignal master_refused_;        // a failed write, on the finalizer's key
+        LedSignal master_refused_;        // a failed write, on the finalizer's key (VOLUME on a sub-page)
 
         FxControls<PassthroughEngine> fx_;
         SceneControls<PassthroughEngine> scene_ctl_;

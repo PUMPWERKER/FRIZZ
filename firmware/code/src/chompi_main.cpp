@@ -462,7 +462,9 @@ __attribute__((optimize("Os"))) static bool CardLendProcess(uint32_t now)
         card.lent = false;
         // mounted afresh; what the computer changed of the scenes and the settings is read
         // again, unless the device changed its own meanwhile (SceneStore::Reread)
-        ui.Reread(scene_store.Reread(ui.MasterWaiting()));
+        const uint8_t taken = scene_store.Reread(ui.MasterWaiting());
+        ui.Reread(taken);
+        event_log.Card(gone ? EventLog::kCardGone : EventLog::kCardAsked, taken);
 #if !FRIZZ_BENCH
         loop_loader.Request(LoopLoader::SCANNING); // the computer may have changed them
 #endif
@@ -486,6 +488,7 @@ __attribute__((optimize("Os"))) static bool CardLendProcess(uint32_t now)
             f_mount(nullptr, fsi.GetSDPath(), 0);
             card.lent = true;
             usb::CardMode(true);
+            event_log.Card(EventLog::kCardLent, 0);
         }
     }
     return card.lent;

@@ -334,15 +334,36 @@ def led_dim(v, div, percent):
     return 1 if d == 0 and v >= div else d
 
 
+# a key that's off, dimly in its colour (temp_led_stuff.h's kLedOffLevel): dimmed, the
+# firmware raises its level so it keeps its colour (#444)
+LED_OFF_LEVEL = .15
+
+
+def led_off_level(chain, percent):
+    """The off level at PERCENT, as SetLedPercent sets it: an SMT LED keeps 8 steps, a PTH
+    LED the steps it has at full"""
+    if chain == "pth":
+        return LED_OFF_LEVEL if percent >= 100 else min(1., LED_OFF_LEVEL * 100 / percent)
+    return max(LED_OFF_LEVEL, (-(-8 * 4 * 100 // percent) + .5) / 255)
+
+
 def led_levels(want, chain, rgb, levels=LED_PERCENTS):
     """The brightnesses (percent, of LEVELS) at which the device's chain bytes RGB show the
     colour WANT ("RRGGBB" at full scale, as the twin's LED log and expect led have it): any
-    colour byte that the log shows as WANT's, dimmed as LedDim does"""
+    colour byte that the log shows as WANT's, dimmed as LedDim does; or, for a key that's off,
+    at the higher level the firmware gives it there (led_off_level, a byte either side)"""
     div = 11 if chain == "pth" else 4
     want = [int(want[i:i + 2], 16) for i in (0, 2, 4)]
-    return [q for q in levels
-            if all(got in {led_dim(v, div, q) for v in range(256) if min(255, v // div * div) == w}
-                   for w, got in zip(want, rgb))]
+
+    def shown(q, k):
+        return [{led_dim(min(255, round(v * k) + e), div, q) for v in range(256)
+                 if min(255, v // div * div) == w for e in ((-1, 0, 1) if k != 1 else (0,))}
+                for w in want]
+
+    def fits(q):
+        k = led_off_level(chain, q) / LED_OFF_LEVEL
+        return any(all(got in s for got, s in zip(rgb, shown(q, f))) for f in {1, k})
+    return [q for q in levels if fits(q)]
 
 
 def led_full(want, chain, percent):
