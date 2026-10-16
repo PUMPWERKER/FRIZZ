@@ -31,46 +31,19 @@ void ChompiEncoder::Init(dsy_gpio_pin a, dsy_gpio_pin b, dsy_gpio_pin click)
     // Set initial states, etc.
     inc_ = 0;
     a_ = b_ = 0xff;
+    armed_ = false; // until both lines read high (Count)
 }
 
 // Bitwise shifts in new reading of pins so that pin needs to consistently
 // read one way or the other for a few samples before being treated as a state change
-// this rejects noise/switch bouncing.
-void ChompiEncoder::Debounce()
+// this rejects noise/switch bouncing. A line's fall takes `mask`'s samples, high then low:
+// 0x03 (one low) on the chip's pins, 0x07 (two low) on the shift register.
+// A detent's count comes at the edge its direction lowers second (A after B for +1); the next
+// only once both lines have been high again, at rest or past the detent's other half. So an
+// edge that bounces, or a hand nudging the knob back and forth at it, counts once, not once a
+// bounce: the extra counts, milliseconds apart, were fast turns to the acceleration (#447)
+void ChompiEncoder::Update(bool a_state, bool b_state, uint8_t mask)
 {
-    // update no faster than 1kHz
-    uint32_t now = daisy::System::GetNow();
-    updated_     = false;
-
-    if(now - last_update_ >= 1)
-    {
-        last_update_ = now;
-        updated_     = true;
-
-        // Shift Button states to debounce
-        a_ = (a_ << 1) | dsy_gpio_read(&hw_a_);
-        b_ = (b_ << 1) | dsy_gpio_read(&hw_b_);
-
-        // infer increment direction
-        inc_ = 0; // reset inc_ first
-        if((a_ & 0x03) == 0x02 && (b_ & 0x03) == 0x00)
-        {
-            inc_ = 1;
-        }
-        else if((b_ & 0x03) == 0x02 && (a_ & 0x03) == 0x00)
-        {
-            inc_ = -1;
-        }
-    }
-
-    // Debounce built-in switch
-    if (click_)
-        sw_.Debounce();
-}
-
-void ChompiEncoder::Debounce(bool a_state, bool b_state)
-{
-    
     // update no faster than 1kHz
     uint32_t now = daisy::System::GetNow();
     updated_     = false;
@@ -84,17 +57,28 @@ void ChompiEncoder::Debounce(bool a_state, bool b_state)
         a_ = (a_ << 1) | a_state;
         b_ = (b_ << 1) | b_state;
 
-        // infer increment direction
-        inc_ = 0; // reset inc_ first
-        if((a_ & 0x07) == 0x04 && (b_ & 0x03) == 0x00)
-        {
-            inc_ = 1;
-        }
-        else if((b_ & 0x07) == 0x04 && (a_ & 0x03) == 0x00)
-        {
-            inc_ = -1;
-        }
+        // infer increment direction, once a detent; up and down never both: each needs the
+        // other's line low on both samples
+        const uint8_t fell = (mask + 1) >> 1;
+        const bool    up   = (a_ & mask) == fell && (b_ & 0x03) == 0x00;
+        const bool    down = (b_ & mask) == fell && (a_ & 0x03) == 0x00;
+        inc_   = armed_ ? up - down : 0;
+        armed_ = (a_ & b_ & 1) || (armed_ && !inc_);
     }
+}
+
+void ChompiEncoder::Debounce()
+{
+    Update(dsy_gpio_read(&hw_a_), dsy_gpio_read(&hw_b_), 0x03);
+
+    // Debounce built-in switch
+    if (click_)
+        sw_.Debounce();
+}
+
+void ChompiEncoder::Debounce(bool a_state, bool b_state)
+{
+    Update(a_state, b_state, 0x07);
     // the switch isn't debounced here: on the shift register, its state comes from there
 }
 

@@ -691,6 +691,14 @@ void Turn(int encoder, int detents, int ms)
     }
 }
 
+bool EncoderLines(int encoder, bool a, bool b)
+{
+    if (encoder < 1 || encoder > 6 || quad[encoder - 1].step != 0 || quad[encoder - 1].pending != 0)
+        return false;
+    SetEncoderLines(encoder - 1, a, b);
+    return true;
+}
+
 void SetToggle(bool raw_level)
 {
     keys_sr.inputs[static_cast<int>(chompi::Hardware::SwId::SW_TOG)] = raw_level;
