@@ -24,7 +24,10 @@ wait 1000
 expect led smt 3 fcfcfc
 turn 2 -15
 wait 300
+down KEY_26
+wait 60
 tap KEY_6
+up KEY_26
 wait 500
 tap KEY_19
 wait 1000

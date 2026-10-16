@@ -31,7 +31,10 @@ wait 1500
 # on 1/4, let go, latched again: the new capture repeats a quarter of the length
 turn 2 6
 wait 300
+down KEY_26
+wait 60
 tap KEY_1
+up KEY_26
 wait 600
 down KEY_1
 wait 80
@@ -40,8 +43,11 @@ up KEY_1
 wait 2000
 # the roll on 1/4
 expect led pth 3 426efd
-# off again
+# off again: SHIFT, then the key (#456)
 turn 2 -6
 wait 300
+down KEY_26
+wait 60
 tap KEY_1
+up KEY_26
 wait 1000
