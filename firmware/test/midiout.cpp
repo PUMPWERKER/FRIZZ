@@ -701,6 +701,33 @@ int main()
         Check(abs(Count(s.trs, 0xF8) - 2 * in) <= 2, "factor-pairs: at double, twice the ticks of a host sending pairs");
     }});
 
+    // at double, a host stalled and catching up, 4 ticks in one block: 8 go out, not the 4
+    // that a block passes on at most of what came (audit 2026-10-16, M2)
+    cases.push_back({"factor-bunch", [] {
+        RunMs(kReadyMs);
+        SetOut(1);
+        StartUsb(Clock(120.));
+        RunMs(1000);
+        Factor(1); // x2
+        RunMs(1000);
+        bool all = true;
+        for (int round = 0; round < 3; round++)
+        {
+            usb.Stop();
+            RunMs(3 * kTick120); // the last one's halfway tick long gone
+            TakeSent();
+            for (int i = 0; i < 4; i++)
+                UsbMidi(0xF8);
+            RunMs(.75 * kTick120); // the bunch's halfway one too
+            const int out = Count(TakeSent().trs, 0xF8);
+            Report("double, 4 ticks in one block: %d out", out);
+            all = all && out == 8;
+            StartUsb(Clock(120.));
+            RunMs(500);
+        }
+        Check(all, "factor-bunch: at double, a bunch of 4 goes out as 8");
+    }});
+
     // a Start that came while FRIZZ was starting up isn't sent out late, once it's up, nor
     // the ticks of a clock running then in one bunch
     cases.push_back({"boot-start", [] {
