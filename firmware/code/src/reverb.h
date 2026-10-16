@@ -122,10 +122,12 @@ class Reverb {
     // Main reverb loop. del2 and del1 read 6261 + 50 and 4460 + 40 times Mutable's LFOs,
     // which run 0..1, so they end on each line's last sample; FRIZZ's run -1..1, so the same
     // span is the middle plus or minus half (#313: it was twice as deep, centred lower).
-    // Frozen, they're allpass-interpolated at half the depth, so the held room keeps its highs
-    // (#394, fx_engine.h)
+    // Frozen, they're allpass-interpolated (fx_engine.h), so the held room keeps its highs,
+    // and the depth halves (#394): their phase errors compound, trip after trip, and at full
+    // depth an 8kHz tone's pitch spread 6 cents in a minute, at half 3
+    const float depth = 1.f - .5f * freeze_;
     c.Load(apout);
-    c.Interpolate(del2, 6286.0f, LFO_2, 25.0f, krt, ap_2_, freeze_);
+    c.Interpolate(del2, 6286.0f, LFO_2, 25.0f * depth, krt, ap_2_, freeze_);
     c.Lp(lp_1, klp);
     c.Read(dap1a TAIL, -kap);
     c.WriteAllPass(dap1a, kap);
@@ -137,7 +139,7 @@ class Reverb {
     *left = wet;
 
     c.Load(apout);
-    c.Interpolate(del1, 4480.0f, LFO_1, 20.0f, krt, ap_1_, freeze_);
+    c.Interpolate(del1, 4480.0f, LFO_1, 20.0f * depth, krt, ap_1_, freeze_);
     c.Lp(lp_2, klp);
     c.Read(dap2a TAIL, kap);
     c.WriteAllPass(dap2a, -kap);
