@@ -40,12 +40,15 @@ class ChompiEncoder
     inline bool FallingEdge() const { return sw_.FallingEdge(); }
 
   private:
+    void Count(bool up, bool down);
+
     uint32_t last_update_;
     bool     updated_;
     daisy::Switch   sw_;
     bool     click_ = false; // the switch has a pin: without one, it's never read
     dsy_gpio hw_a_, hw_b_;
     uint8_t  a_, b_;
+    bool     armed_ = false; // A and B were both high since the last count (Debounce)
     int32_t  inc_;
 };
 } // namespace chompi

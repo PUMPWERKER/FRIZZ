@@ -31,6 +31,23 @@ void ChompiEncoder::Init(dsy_gpio_pin a, dsy_gpio_pin b, dsy_gpio_pin click)
     // Set initial states, etc.
     inc_ = 0;
     a_ = b_ = 0xff;
+    armed_ = false; // until both lines read high (Count)
+}
+
+// A detent's count comes at the edge its direction lowers second (A after B for +1); the next
+// only once both lines have been high again, at rest or past the detent's other half. So an
+// edge that bounces, or a hand nudging the knob back and forth at it, counts once, not once a
+// bounce: the extra counts, milliseconds apart, were fast turns to the acceleration (#447)
+void ChompiEncoder::Count(bool up, bool down)
+{
+    inc_ = 0;
+    if (armed_ && (up || down))
+    {
+        inc_   = up ? 1 : -1;
+        armed_ = false;
+    }
+    else if (a_ & b_ & 1)
+        armed_ = true;
 }
 
 // Bitwise shifts in new reading of pins so that pin needs to consistently
@@ -51,16 +68,9 @@ void ChompiEncoder::Debounce()
         a_ = (a_ << 1) | dsy_gpio_read(&hw_a_);
         b_ = (b_ << 1) | dsy_gpio_read(&hw_b_);
 
-        // infer increment direction
-        inc_ = 0; // reset inc_ first
-        if((a_ & 0x03) == 0x02 && (b_ & 0x03) == 0x00)
-        {
-            inc_ = 1;
-        }
-        else if((b_ & 0x03) == 0x02 && (a_ & 0x03) == 0x00)
-        {
-            inc_ = -1;
-        }
+        // infer increment direction, once a detent (Count)
+        Count((a_ & 0x03) == 0x02 && (b_ & 0x03) == 0x00,
+              (b_ & 0x03) == 0x02 && (a_ & 0x03) == 0x00);
     }
 
     // Debounce built-in switch
@@ -84,16 +94,9 @@ void ChompiEncoder::Debounce(bool a_state, bool b_state)
         a_ = (a_ << 1) | a_state;
         b_ = (b_ << 1) | b_state;
 
-        // infer increment direction
-        inc_ = 0; // reset inc_ first
-        if((a_ & 0x07) == 0x04 && (b_ & 0x03) == 0x00)
-        {
-            inc_ = 1;
-        }
-        else if((b_ & 0x07) == 0x04 && (a_ & 0x03) == 0x00)
-        {
-            inc_ = -1;
-        }
+        // infer increment direction, once a detent (Count)
+        Count((a_ & 0x07) == 0x04 && (b_ & 0x03) == 0x00,
+              (b_ & 0x07) == 0x04 && (a_ & 0x03) == 0x00);
     }
     // the switch isn't debounced here: on the shift register, its state comes from there
 }
