@@ -199,6 +199,10 @@ what FRIZZ does.
 
 ### Fixed
 
+- **MIDI out passes a clock on at double without losing ticks** (audit 2026-10-16): with the
+  clock factor at x2, a computer's clock that stalled and caught up (three or more ticks
+  arriving at once) lost ticks on the way out, and the gear behind FRIZZ stayed a little out of
+  step until its next Start. Now every tick that comes goes out twice, as it should.
 - **The FX take a MIDI clock's tempo cleanly when it starts** (#413): the first tick
   interval FRIZZ heard is a block off, so a clock starting at a steady 120 BPM put the delay
   and the other FX at 122 or 119 for a moment, and at fast tempos many BPM off (at 300 over
