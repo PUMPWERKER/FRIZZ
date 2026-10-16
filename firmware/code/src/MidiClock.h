@@ -141,6 +141,9 @@ public:
         if (source_ != Source::NONE && now - last_tick_ > kClockTimeoutSamples)
             source_ = Source::NONE;
 
+#if FRIZZ_BENCH && defined(__arm__)
+        TestRestart();
+#endif
         // UART disables itself on errors such as overrun; Listen() restarts it (#361)
         if (!uart_midi.GetMutableTransport().RxActive())
             trs_restarts_++;
@@ -173,6 +176,23 @@ public:
 
     /** How often the jack's receive ended on an error and was started again (#361) */
     inline uint32_t TrsRestarts() const { return trs_restarts_; }
+
+#if FRIZZ_BENCH && defined(__arm__)
+    /** TEST's kUartRestart (NormalPage.h): count times, 4 ms apart, the jack's receive ended
+     *  as an error ends it while MIDI out is sending, so the restart's effect on the sending
+     *  shows: two marker bytes (0xFD, undefined real-time: receivers ignore it) to the jack,
+     *  then, how 0, the reception stopped (Listen starts it at once, DmaListenStart: #361's
+     *  usual path); how 1, the DMA's request off until the bytes coming in overrun (they must
+     *  come), so HAL's error callback ends it (DmaTransferFinished), the markers kept up
+     *  meanwhile, back on after 4 ms if none came. Neither may cut a marker (#442). Then: the
+     *  markers sent so far */
+    void TestRestarts(uint8_t how, uint32_t count)
+    {
+        test_how_ = how;
+        test_left_ = count;
+    }
+    inline uint32_t TestMarkers() const { return test_markers_; }
+#endif
 
     /** Sample count of the most recent tick counted */
     inline uint32_t GetLastTickTime() const { return counted_at_; }
@@ -432,6 +452,46 @@ private:
     Source transport_from_ = Source::NONE;
     Listener listener_ = nullptr;
     void* listener_context_ = nullptr;
+#if FRIZZ_BENCH && defined(__arm__)
+    static const uint8_t kMarker = 0xFD;
+    void TestRestart()
+    {
+        auto& rx = uart_midi.GetMutableTransport();
+        if (test_dmar_off_)
+        {
+            // the markers kept up until the overrun ended the reception, or 4 ms
+            const bool ended = !rx.RxActive();
+            if (!ended && ++test_block_ < 8)
+            {
+                while (TrsPut(kMarker))
+                    test_markers_++;
+                return;
+            }
+            if (!ended)
+                USART1->CR3 |= USART_CR3_DMAR;
+            test_dmar_off_ = false;
+            test_block_ = 0;
+        }
+        if (!test_left_ || ++test_block_ < 8 || !rx.RxActive())
+            return;
+        test_block_ = 0;
+        test_left_--;
+        while (TrsPut(kMarker))
+            test_markers_++;
+        if (test_how_ == 0)
+            rx.GetUartHandle().DmaListenStop();
+        else
+        {
+            USART1->CR3 &= ~USART_CR3_DMAR;
+            test_dmar_off_ = true;
+        }
+    }
+    volatile uint8_t test_how_ = 0;
+    volatile uint32_t test_left_ = 0;
+    uint32_t test_markers_ = 0;
+    uint8_t test_block_ = 0;
+    bool test_dmar_off_ = false;
+#endif
 };
 
 } // namespace chompi
