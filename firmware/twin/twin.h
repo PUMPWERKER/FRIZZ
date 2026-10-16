@@ -85,6 +85,11 @@ const char* const* KeyNames();
  *  speed up from 125 ms down, #375), from 125 the slow one */
 void Turn(int encoder, int detents, int ms = 8);
 
+/** Encoder 1..6's A and B lines as they are from the next block on (true high, both high at
+ *  rest), for a turn played edge by edge: a contact's bounce, a nudge that turns back. False,
+ *  and nothing set, while a Turn() of it plays */
+bool EncoderLines(int encoder, bool a, bool b);
+
 /** The mode switch, as the 4021 reads it (SW_TOG's raw level) */
 void SetToggle(bool raw_level);
 

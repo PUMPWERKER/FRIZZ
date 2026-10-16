@@ -1211,6 +1211,113 @@ int main()
         Check(fabsf(out_gain() - (gain + .02f + 4 * .06f)) < 1e-3f, "knob-accel: VOLUME turned fast, at most 6%");
     }});
 
+    // a knob's contacts bounce, and a hand nudges it without turning a detent (#447): each
+    // detent counts once, as slowly turned, whatever its edges do; a nudge that turns back
+    // counts at most the detent it reached. VOLUME (on the chip's pins) and knob 1 (on the
+    // shift register), each edge bouncing 1 or 2 ms, both ways
+    cases.push_back({"knob-bounce", [] {
+        RunMs(kReadyMs);
+        Tap("KEY_5"); // the filter on the knobs
+        RunMs(200);
+        auto cutoff = [] {
+            const std::string p = Ask({0x21, 4});
+            return p.size() == 17 ? KnobOf(p[1], p[2]) : -1.f;
+        };
+        auto out_gain = [] {
+            const std::string st = Ask({0x20});
+            return st.size() > 16 ? KnobOf(st[15], st[16]) : -1.f;
+        };
+        // (A, B) through a detent from rest (1, 1): +1 lowers B first, as the twin's Turn
+        static const int kCw[4] = {0x2, 0x0, 0x1, 0x3}, kCcw[4] = {0x1, 0x0, 0x2, 0x3};
+        auto lines = [](int encoder, int ab, uint32_t ms) {
+            EncoderLines(encoder, ab & 2, ab & 1);
+            RunMs(ms);
+        };
+        // a detent, each edge bouncing `bounces` times bounce_ms before it settles for
+        // settle_ms; or clean (clean), each state held as long as that takes
+        auto detent = [&](int encoder, int dir, int bounces, uint32_t bounce_ms,
+                          uint32_t settle_ms = 6, bool clean = false) {
+            const int* seq = dir > 0 ? kCw : kCcw;
+            int was = 0x3;
+            for (int i = 0; i < 4; i++)
+            {
+                for (int k = 0; k < bounces; k++)
+                {
+                    lines(encoder, seq[i], bounce_ms);
+                    lines(encoder, clean ? seq[i] : was, bounce_ms);
+                }
+                lines(encoder, seq[i], settle_ms);
+                was = seq[i];
+            }
+        };
+        // half a detent and back (B down, A shaken at its edge `shakes` times 3 ms, back up),
+        // or a quarter (B shaken at its edge, back up): no detent turned through
+        auto half_back = [&](int encoder, int shakes) {
+            lines(encoder, 0x2, 6);
+            for (int k = 0; k < shakes; k++)
+            {
+                lines(encoder, 0x0, 3);
+                lines(encoder, 0x2, 3);
+            }
+            lines(encoder, 0x3, 6);
+        };
+        auto quarter_back = [&](int encoder) {
+            for (int k = 0; k < 4; k++)
+            {
+                lines(encoder, 0x2, 1);
+                lines(encoder, 0x3, 1);
+            }
+            lines(encoder, 0x2, 6);
+            lines(encoder, 0x3, 6);
+        };
+        struct Knob
+        {
+            const char* name;
+            int encoder;
+            float step; // a slow detent's
+        };
+        const Knob knobs[] = {{"VOLUME", kVolumeEncoder, .02f}, {"knob 1", kKnob1Encoder, .01f}};
+        for (const Knob& k : knobs)
+        {
+            auto value = [&] { return k.encoder == kVolumeEncoder ? out_gain() : cutoff(); };
+            // what one gesture turns, in slow detents, as the value moved; 300 ms after the one
+            // before, so it starts as a slow turn
+            auto detents = [&](const std::function<void()>& gesture) {
+                const float before = value();
+                gesture();
+                RunMs(300);
+                return (value() - before) / k.step;
+            };
+            const float clean = detents([&] { detent(k.encoder, 1, 0, 1); });
+            const float b1 = detents([&] { detent(k.encoder, 1, 3, 1); });
+            const float b2 = detents([&] { detent(k.encoder, 1, 3, 2); });
+            const float b2_back = detents([&] { detent(k.encoder, -1, 3, 2); });
+            const float half = detents([&] { half_back(k.encoder, 4); });
+            const float quarter = detents([&] { quarter_back(k.encoder); });
+            // a fast turn, 10 detents 16 ms each (62 a second, the acceleration's most), down
+            // with each edge bouncing once 1 ms, then up clean (each way inside the range): the
+            // same turn
+            auto fast = [&](int dir, bool clean) {
+                for (int d = 0; d < 10; d++)
+                    detent(k.encoder, dir, 1, 1, 2, clean);
+            };
+            const float fast_bouncing = detents([&] { fast(-1, false); });
+            const float fast_clean = detents([&] { fast(1, true); });
+            printf("      %s in detents: clean %+.2f, bouncing 1 ms %+.2f, 2 ms %+.2f, back %+.2f;"
+                   " half a detent and back %+.2f, a quarter %+.2f; 10 fast %+.2f, bouncing %+.2f\n",
+                   k.name, clean, b1, b2, b2_back, half, quarter, fast_clean, fast_bouncing);
+            const std::string n = std::string("knob-bounce: ") + k.name;
+            Check(fabsf(clean - 1.f) < .03f, (n + ", a clean detent: one").c_str());
+            Check(fabsf(b1 - 1.f) < .03f, (n + ", a detent bouncing 1 ms at each edge: one").c_str());
+            Check(fabsf(b2 - 1.f) < .03f, (n + ", a detent bouncing 2 ms at each edge: one").c_str());
+            Check(fabsf(b2_back + 1.f) < .03f, (n + ", turned back, bouncing 2 ms: one back").c_str());
+            Check(half > -.03f && half < 1.03f, (n + ", half a detent shaken and back: at most one").c_str());
+            Check(fabsf(quarter) < .03f, (n + ", a quarter detent shaken and back: none").c_str());
+            Check(fast_clean > 10.f && fabsf(fast_bouncing + fast_clean) < .05f,
+                  (n + ", a fast turn bouncing: as fast as a clean one").c_str());
+        }
+    }});
+
     // FX page 2 (#35): a plain knob press turns all four knobs over, and back. Another FX or
     // the finalizer goes back to page 1. The LEDs there: knob-page-blink, fx-vu
     cases.push_back({"fx-page2", [] {
