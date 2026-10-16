@@ -136,7 +136,7 @@ what FRIZZ does.
   - **Comp** (cyan): a compressor on each band, its character picked from six (Light & fast to
     Beat FX, Parallel among them), one Depth for all three. No makeup: level comes back
     through Drive and Loud.
-  - **Width** (magenta): each band's stereo, from mono to twice as wide (the low band to
+  - **Width** (blue): each band's stereo, from mono to twice as wide (the low band to
     1.5 times).
 
   Hold SHIFT and tap key 15 twice for the next module; the key shows its colour. At the
