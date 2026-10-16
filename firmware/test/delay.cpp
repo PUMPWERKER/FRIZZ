@@ -11,6 +11,8 @@
 //    only, each echo that much late and no more; fed back, every repeat came later (#167)
 //  - the damping turned on by a jump, after a while off: it starts from the signal as it is,
 //    not from the sample it was left on, which stepped the feedback, a click (#167)
+//  - frozen (setWhole), the delay reads on the whole sample nearest its time; let go, it goes
+//    back to its exact time, where the fonepole alone would stall on the whole sample
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -239,6 +241,35 @@ static void TestDampingJump(bool lowpass)
                                        : "delay: the damping's highpass on by a jump, no step");
 }
 
+/** At 140 BPM a 1/4 is 20571.43 samples: frozen, the read moves to 20571 in 1/64 steps and
+ *  stays; let go, back to 20571.43, as before the freeze */
+static void TestWhole()
+{
+    static granularDelay d;
+    d.Init(buffer, kFrames);
+    d.SetTempo(140.f);
+    auto run = [&](int n) {
+        for (int i = 0; i < n; i++)
+        {
+            float l = 0.f, r = 0.f;
+            d.write(0.f, 0.f);
+            d.read(&l, &r);
+        }
+    };
+    run(4000);
+    const float exact = d.myVoices[0].delay_samples_;
+    d.setWhole(true);
+    run(200);
+    const float whole = d.myVoices[0].delay_samples_;
+    d.setWhole(false);
+    run(200);
+    const float back = d.myVoices[0].delay_samples_;
+    printf("      140 BPM, 1/4: %.4f, frozen %.4f, let go %.4f\n", exact, whole, back);
+    Check(exact == d.BarSamples() * delayDivs[kStartDiv] && whole == rintf(exact),
+          "whole: frozen, the delay reads on the whole sample nearest its time");
+    Check(back == exact, "whole: let go, back to its exact time");
+}
+
 int main()
 {
     TestEchoesOnBeat();
@@ -247,5 +278,6 @@ int main()
     TestPitchUp(true);
     TestPitchUp(false);
     TestEvents();
+    TestWhole();
     return Finish();
 }

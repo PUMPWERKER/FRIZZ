@@ -2,7 +2,8 @@
 // knob 4 on the folder, crusher and filter: the freezer's gate, the shifter's grain, the
 // folder's, crusher's and filter's stereo and their moved knobs, the flanger's polarity, the
 // resonator's env mod and return level, the slicer's shuffle, wow & flutter's age, the tape
-// stop's depth and darken, the delay's freeze, damping and ducking, the reverb's freeze (its
+// stop's depth and darken, the delay's freeze (its highs too, at a delay between two samples,
+// and with damping, which fades out with it), damping and ducking, the reverb's freeze (its
 // level a minute on, and the held room's pitch: no detuning, no wider swing, #249; quiet
 // material held 5 minutes, #419),
 // pre-delay and ducking; and the scene file's layout 3 (FxScenes.h). Exits 0 when everything
@@ -342,11 +343,11 @@ static float delay_mem[kDelayFrames * 2];
 
 /** The delay's return: a burst of sine, then silence; its RMS from from to to (samples) */
 static float DelayTail(float freeze, float damping, float ducking, size_t from, size_t to,
-                       float freq = 220.f, bool keep_input = false)
+                       float freq = 220.f, bool keep_input = false, float bpm = 120.f)
 {
     static chompi::DelaySend d;
     d.Init(48000.f, delay_mem, kDelayFrames);
-    d.SetTempo(120.f);
+    d.SetTempo(bpm);
     d.SetParam(chompi::DelaySend::DIVISION, .25f);
     d.SetParam(chompi::DelaySend::FEEDBACK, .5f);
     d.SetParam(chompi::DelaySend::RANDOM, .5f);
@@ -377,6 +378,32 @@ static void TestDelay()
     const float early = DelayTail(1.f, .5f, 0.f, 96000, 144000), late = DelayTail(1.f, .5f, 0.f, 432000, 480000);
     printf("  delay frozen at 2 s %.4f, at 9 s %.4f\n", early, late);
     Check(late > early * .9f && late < early * 1.1f, "delay: frozen, the level holds, neither falling nor growing");
+    {
+        // at 140 BPM a 1/4 is 20571.43 samples: read between two, linearly, every pass took the
+        // highs down again, and frozen (the loop's gain 1) an 8kHz tone lost 12dB in 7s;
+        // frozen, the delay reads on whole samples
+        // over 3 passes each (61714 samples), so both windows hold the same loop
+        const float hi_early = DelayTail(1.f, .5f, 0.f, 96000, 96000 + 61714, 8000.f, false, 140.f);
+        const float hi_late = DelayTail(1.f, .5f, 0.f, 420000, 420000 + 61714, 8000.f, false, 140.f);
+        printf("  delay frozen at 140 BPM, 8 kHz: at 2 s %.4f, at 9 s %.4f (%.1f dB)\n", hi_early, hi_late,
+               20.f * log10f(hi_late / hi_early));
+        Check(hi_late > hi_early * .89f && hi_late < hi_early * 1.12f,
+              "delay: frozen between two samples (140 BPM), an 8kHz tone holds its level within 1dB");
+    }
+    {
+        // frozen, the damping fades out with the freeze, so the echoes hold as they are, as
+        // the reverb's freeze holds its room (#444 D): it used to darken or thin them again on
+        // every pass, at either end gone in a few
+        const float dark_early = DelayTail(1.f, 1.f, 0.f, 96000, 144000, 2000.f);
+        const float dark_late = DelayTail(1.f, 1.f, 0.f, 432000, 480000, 2000.f);
+        const float thin_early = DelayTail(1.f, 0.f, 0.f, 96000, 144000, 220.f);
+        const float thin_late = DelayTail(1.f, 0.f, 0.f, 432000, 480000, 220.f);
+        printf("  delay frozen, damping right, 2 kHz: at 2 s %.4f, at 9 s %.4f; left, 220 Hz: %.4f, %.4f\n",
+               dark_early, dark_late, thin_early, thin_late);
+        Check(dark_early > .01f && dark_late > dark_early * .89f && dark_late < dark_early * 1.12f
+                  && thin_early > .003f && thin_late > thin_early * .89f && thin_late < thin_early * 1.12f,
+              "delay: frozen with damping either way, the echoes hold their level within 1dB (#444 D)");
+    }
     const float open = DelayTail(0.f, .5f, 0.f, 48000, 96000, 4000.f);
     const float damped = DelayTail(0.f, 1.f, 0.f, 48000, 96000, 4000.f);
     const float thin = DelayTail(0.f, 0.f, 0.f, 48000, 96000, 60.f);
@@ -615,6 +642,84 @@ static void TestReverbFreezeQuiet()
     Check(silent, "reverb: a room rung out to silence and frozen stays silent for 5 minutes");
 }
 
+/** An 8th-order highpass at 4kHz (4 RBJ biquads, Q .707): what's above a
+ *  1kHz tone, which it takes ~90dB down */
+struct Highpass
+{
+    double b0, b1, b2, a1, a2;
+    double z[4][2] = {};
+    Highpass()
+    {
+        const double w = 2. * M_PI * 4000. / kSr, c = cos(w), al = sin(w) / (2. * .7071), a0 = 1. + al;
+        b0 = (1. + c) / 2. / a0;
+        b1 = -(1. + c) / a0;
+        b2 = b0;
+        a1 = -2. * c / a0;
+        a2 = (1. - al) / a0;
+    }
+    double Process(double x)
+    {
+        for (auto& s : z)
+        {
+            const double y = b0 * x + s[0];
+            s[0] = b1 * x - a1 * y + s[1];
+            s[1] = b2 * x - a2 * y;
+            x = y;
+        }
+        return x;
+    }
+};
+
+/** A 1kHz tone into the reverb, the pre-delay at `from`, turned to `to` at 1s (or not, from
+ *  == to): the room's energy above 4kHz over the next half second against all of it, in dB */
+static float PreDelayTurn(float from, float to, bool recall)
+{
+    static chompi::ReverbSend v;
+    v.Init(kSr, &reverb);
+    v.SetParam(chompi::ReverbSend::DECAY, .5f);
+    v.SetParam(chompi::ReverbSend::LEVEL, kP2Level);
+    v.SetParam(chompi::ReverbSend::PRE_DELAY, from);
+    v.SetOn(true);
+    Highpass hp;
+    double hi = 0., all = 0.;
+    for (size_t i = 0; i < 72000; i++)
+    {
+        if (i == 48000)
+        {
+            // a scene recall's or a morph's faster slew (FxChain::FastSlew)
+            if (recall)
+                FxSlew::coeff = kFxRecallCoeff;
+            v.SetParam(chompi::ReverbSend::PRE_DELAY, to);
+        }
+        float l = 0.f, r = 0.f;
+        const float in = Sine(i, 1000.f);
+        v.Process(in, in, &l, &r);
+        const double h = hp.Process(l);
+        if (i >= 48000)
+        {
+            hi += h * h;
+            all += static_cast<double>(l) * l;
+        }
+    }
+    FxSlew::coeff = kFxParamCoeff;
+    return static_cast<float>(10. * log10(hi / all + 1e-30));
+}
+
+/** The pre-delay turned (a knob, MIDI, a recall): it used to slide its read head through the
+ *  buffer, up to 12 frames a sample (48 after a recall), a sped-up and reversed burst into
+ *  the room, a chirp; a 1kHz tone came out with highs ~0dB against it. It crossfades to the
+ *  new time instead: no more highs than the room has without the turn */
+static void TestPreDelayTurn()
+{
+    const float still = PreDelayTurn(.5f, .5f, false);
+    const float shorter = PreDelayTurn(.5f, 0.f, false), longer = PreDelayTurn(.5f, 1.f, false);
+    const float recalled = fmaxf(PreDelayTurn(1.f, .1f, true), PreDelayTurn(.1f, 1.f, true));
+    printf("  reverb, 1 kHz, above 4 kHz: %.1f dB still, turned shorter %.1f, longer %.1f, recalled %.1f\n",
+           still, shorter, longer, recalled);
+    Check(fmaxf(shorter, longer) < still + 6.f && recalled < still + 6.f,
+          "reverb: the pre-delay turned, no chirp: no more highs than without the turn");
+}
+
 static void TestReverb()
 {
     const float fades = ReverbRun(0.f, 0.f, 0.f, 200000, 240000);
@@ -816,6 +921,7 @@ int main()
     TestTapeStop();
     TestDelay();
     TestReverb();
+    TestPreDelayTurn();
     TestReverbFreezePitch(2000.f);
     TestReverbFreezePitch(8000.f);
     TestReverbFreezeQuiet();

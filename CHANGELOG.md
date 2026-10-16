@@ -230,6 +230,26 @@ what FRIZZ does.
 
 ### Fixed
 
+- **Turning the reverb's pre-delay no longer chirps**: a turn of it (page 2, knob 2), a MIDI
+  jump or a scene recall slid its read through the last 250 ms of sound at up to 48 times the
+  speed, forwards or backwards, a sped-up burst into the room. Now it crossfades to the new
+  time in 21 ms, and the room goes on as it was, only later or sooner.
+- **A frozen delay keeps its highs** at every tempo: at most tempos the delay's time falls
+  between two samples, and every pass round the frozen loop (page 2, knob 1) took a little off
+  the top, so held echoes went dull within seconds (an 8 kHz tone 12 dB down after 7 s at
+  140 BPM; at 120 BPM it held, by chance). Frozen, the delay now moves to the nearest whole
+  sample, too little to hear, and the echoes hold as they are. The delay unfrozen sounds as
+  before.
+- **A frozen delay holds its echoes with the damping on too** (#444): with the damping (page 2,
+  knob 2) turned either way, every pass round the frozen loop darkened or thinned the echoes
+  again, so they were gone within a few seconds. Now the damping lifts as the freeze comes in,
+  as the reverb's freeze opens its tone, and comes back as it goes.
+- **The freezer's length turned up while it repeats plays on, on the grid**: turned past what
+  it had recorded so far (a 1/4 turned to a bar in its second repeat), or the tempo slowing as
+  far, or the roll turned back to off early on, the freezer dropped to the live signal with a
+  click, then came back where the old repeat had stopped, off the beat for as long as it ran.
+  Now the repeat plays on through what was recorded until the new length is reached, as the
+  manual says, and then starts again from the capture's start, on the grid.
 - **A slight nudge of a knob no longer jumps far** (#447): when a knob's contacts bounced
   at a click, or a hand nudged it back and forth there, FRIZZ could count each wobble as one
   more click a few milliseconds after the last, and the faster fast turns (above) took that
