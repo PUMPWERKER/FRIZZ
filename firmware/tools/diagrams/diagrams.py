@@ -576,7 +576,8 @@ def clock_midi():
 # ---------- 5. the panel ----------
 EFFECTS = ['Freezer', 'Shifter', 'Folder', 'Crusher', 'Filter', 'Flanger', 'Phaser', 'Resonator',
            'Slicer', 'Wow & flutter', 'Tape stop', 'Delay', 'Reverb', 'Chaos', 'Finalizer']
-# the dark keys on the play page, left to right (KEY16-25); '' does nothing there
+# the dark keys on the play page, left to right (KEY16-25); '' does nothing there (the lower C#
+# and D# only glow when the card holds loops, #434)
 DARK = ['', '', 'blank', '1', '2', '3', '4', 'save', 'copy', 'delete']
 # the dark keys as MANUAL.md names them, left to right
 DARK_NAMES = ['lower C#', 'lower D#', 'lower F#', 'lower G#', 'lower A#', 'upper C#', 'upper D#',
@@ -690,7 +691,7 @@ def panel():
     s.text(X(0) - 12, Y(0) + 2, 'front', 12, anchor='end', cls='m', sans=False)
     for i, line in enumerate((
             'The play page (mode switch down; up is the settings page). Dark keys: the blank',
-            'scene, scenes 1–4 (grey), save, copy, delete; the lower C# and D# do nothing here.',
+            'scene, scenes 1–4 (grey), save, copy, delete; the lower C# and D# show the card\'s loops.',
             'A schematic to scale, from the board files: not the panel\'s artwork.')):
         s.text(20, 352 + i * 18, line, 12, anchor='start', cls='m')
     return s

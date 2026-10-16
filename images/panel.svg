@@ -119,6 +119,6 @@
 <text x="60" y="50" class="m mo ae" font-size="11">back</text>
 <text x="60" y="235.2" class="m mo ae" font-size="11">front</text>
 <text x="20" y="352" class="m as">The play page (mode switch down; up is the settings page). Dark keys: the blank</text>
-<text x="20" y="370" class="m as">scene, scenes 1–4 (grey), save, copy, delete; the lower C# and D# do nothing here.</text>
+<text x="20" y="370" class="m as">scene, scenes 1–4 (grey), save, copy, delete; the lower C# and D# show the card's loops.</text>
 <text x="20" y="388" class="m as">A schematic to scale, from the board files: not the panel's artwork.</text>
 </svg>
