@@ -217,6 +217,12 @@ keys and the bench's; another key (1-15: a stock firmware, the storage firmware'
 it first reaches for the CHOMPI, and waits while another has it, saying who; what doesn't
 touch it (`measure.py compare`) never waits. `tools/chompi.py hold CMD` keeps it over a whole
 sequence of tools, `tools/chompi.py hold` until Ctrl-C (for playing it by hand).
+The hold keeps the lock until everything it started has ended. To stop one, send the hold
+SIGTERM: it passes the signal on to the whole chain, the running tool cleans up (a lent card is
+taken back), and a second SIGTERM forces it. Never use SIGKILL, which leaves the chain running
+without the lock. A stopped chain doesn't get to its last `; ./flash.py --run 10`, so run
+`tools/chompi.py hold ./flash.py --run 10` yourself afterwards. Known: Ctrl-Z at a prompt with
+`hold sh -c …` hangs the terminal; `hold bash` is fine.
 
 **Which build runs** FRIZZ says itself (the developers' SysEx's IDENT, below): the CRC-32 and
 length of the image it runs, which `tools/builds.py` prints next to the md5, and whether it's
