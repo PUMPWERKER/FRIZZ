@@ -1073,6 +1073,32 @@ for args, env in calls:
     if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 
+    // loopxfer.py's model answers HELLO with builds.py's kFrizzVersion, read when asked: a
+    // Version.h it can't read fails that HELLO, saying so, not every import of loopxfer (remote.py)
+    rc = Python(R"(
+import os, builds
+real = builds.SRC
+os.makedirs("src", exist_ok=True)
+open("src/Version.h", "w").write("constexpr uint8_t kFrizzVersion[] = {1, 5, 0, 4};\n")
+builds.SRC = os.path.abspath("src")
+import loopxfer
+print("imported, Version.h reshaped", flush=True)
+c = loopxfer.Client(loopxfer.ModelLink(loopxfer.Frizz(loopxfer.Card())))
+try:
+    c.hello()
+except SystemExit as e:
+    print("hello:", e, flush=True)
+builds.SRC = real
+print("hello's version is kFrizzVersion:", c.hello()["version"] == builds.frizz_version(), flush=True)
+builds.frizz_version = lambda: (9, 8, 7, 6)
+print("hello's version:", c.hello()["version"], flush=True)
+)", out);
+    Check(rc == 0 && Has(out, "imported, Version.h reshaped\nhello: code/src/Version.h has no kFrizzVersion\n")
+              && Has(out, "hello's version is kFrizzVersion: True\nhello's version: (9, 8, 7, 6)\n"),
+          "tools: loopxfer.py's HELLO says builds.py's kFrizzVersion, read when asked, not at import");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
     // which slot runs, no firmware says (the bench answers as FRIZZ does): the tools note the
     // one they started, and go by it. chompi's way to the CHOMPI stubbed: states in turn
     const char* const kSlots = R"(
