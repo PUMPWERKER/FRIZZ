@@ -1171,6 +1171,21 @@ static void CheckFinalizer()
     std::regex_search(text, m, std::regex("split at (\\d+) Hz and (\\d+) kHz"));
     CheckF(!m.empty() && atof(m[1].str().c_str()) == Finalizer::kSplitLow && atof(m[2].str().c_str()) * 1000. == Finalizer::kSplitHigh,
            "Finalizer: the bands split at %g Hz and %g Hz", Finalizer::kSplitLow, Finalizer::kSplitHigh);
+    // Space (#455): mid's and high's delays, the shortest and longest, and the low band's turn
+    {
+        float shortest = 1e9f, longest = 0.f;
+        for (size_t s = 0; s < Finalizer::kSpaceStages; s++)
+        {
+            shortest = fminf(shortest, Finalizer::kSpaceDelays[s] * 1000.f / 48000.f);
+            longest = fmaxf(longest, Finalizer::kSpaceDelays[s] * 1000.f / 48000.f);
+        }
+        std::regex_search(text, m, std::regex("short delays \\(([\\d.]+) to ([\\d.]+) ms\\)"));
+        CheckF(!m.empty() && fabs(atof(m[1].str().c_str()) - shortest) < .05 && fabs(atof(m[2].str().c_str()) - longest) < .2,
+               "Finalizer: Space's delays %.2f to %.2f ms (Finalizer.h)", shortest, longest);
+        std::regex_search(text, m, std::regex("phase shift around (\\d+) Hz"));
+        CheckF(!m.empty() && atof(m[1].str().c_str()) == Finalizer::kSpaceLowHz,
+               "Finalizer: the low band's Space around %g Hz", Finalizer::kSpaceLowHz);
+    }
 
     // its LEDs: the key in the module's colour, the knobs light blue to orange
     std::string leds = Strip(Bullet(Under(lines, "### Finalizer LEDs and settings"), "LEDs:"), kParens);

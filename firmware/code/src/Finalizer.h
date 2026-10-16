@@ -21,7 +21,14 @@
  *    Parallel mixes the heavily compressed band half and half with the dry, keeping its
  *    transients. No makeup: nothing turns anything up by itself.
  *  - Width: each band's side, 0 (mono) at the left, as it is at the centre, up to kMaxWidth
- *    (the low band kMaxLowWidth) at the right.
+ *    (the low band kMaxLowWidth) at the right. Right of the centre Space comes in too (#455):
+ *    the band's mid through allpasses into its side, up to kSpace of the mid at the right, so
+ *    a mono source gets wider. Only into the side: L + R stays the mid, mono-compatible, and
+ *    each channel alone ripples between 1 - k and 1 + k over the frequency. Mid's and high's a
+ *    chain of short Schroeder allpasses (kSpaceDelays, as the Golden Master's 0.1-2.5ms),
+ *    fine enough a ripple to be heard as room, not a comb; the low band's a first-order
+ *    allpass about kSpaceLowHz, a quarter turn there, as delays that short would turn the bass
+ *    hardly at all and pan it instead, and longer ones smear the kick.
  *  - Drive: a saturation of the type's (Boost soft, Tube asymmetric, Fuzz hard), 0 to +30dB
  *    into it, run at twice the rate (polyphase IIR halfbands, as hiir's) so its harmonics
  *    don't fold back, then a gentle hi-cut. Level-compensated by a fixed gain per drive and
@@ -104,6 +111,10 @@ public:
         Svf::Coeffs(split_[1], kSplitHigh, sample_rate);
         hicut_ = OnePoleCoeff(kHiCutHz, sample_rate);
         dc_ = OnePoleCoeff(kDcHz, sample_rate);
+        // the low band's Space: a first-order allpass, a quarter turn at kSpaceLowHz (tan by
+        // its series, x small)
+        const float x = PI_F * kSpaceLowHz / sample_rate, t = x * (1.f + x * x * (1.f / 3.f));
+        space_low_a_ = (t - 1.f) / (t + 1.f);
         turned_ = update_pending_ = bypass_ = false;
         since_update_ = 0;
         meter_ = kNoMeter;
@@ -217,6 +228,16 @@ private:
     static constexpr float kDriveDb = 30.f;
     static constexpr float kLoudDb = 18.f;
     static constexpr float kMaxWidth = 2.f, kMaxLowWidth = 1.5f;
+    // Space (#455), right of Width's centre: a band's decorrelated mid in its side, up to kSpace
+    // of it at the right (each channel then within +3.5/-6dB, the correlation of a mono source
+    // .6); mid's and high's Schroeder allpasses, their delays in samples and their gain, mid's
+    // the first kSpaceMid; the low band's first-order allpass's quarter turn
+    static constexpr float kSpace = .5f;
+    static const size_t kSpaceStages = 7, kSpaceMid = 4;
+    static constexpr uint16_t kSpaceDelays[kSpaceStages] = {89, 61, 37, 23, 31, 19, 11};
+    static const size_t kSpaceLen = 89 + 61 + 37 + 23 + 31 + 19 + 11;
+    static constexpr float kSpaceG = .5f;
+    static constexpr float kSpaceLowHz = 80.f;
     static constexpr float kLowSlower = 1.5f;
     static constexpr float kFadeMs = 10.f;
     static constexpr float kMuteMs = 5.f;
@@ -355,7 +376,9 @@ private:
             mute_[b] = false;
             mute_gain_[b] = 1.f;
             band_peak_[b] = 0.f;
+            sp_[b] = 0.f;
         }
+        space_run_ = false;
         trim_ = 1.f;
         band_mix_ = drive_mix_ = lim_mix_ = 0.f;
         drive_gain_ = 1.f;
@@ -366,6 +389,17 @@ private:
         lim_min_ = 1.f;
         in_peak_ = 0.f;
         ClearLimiter();
+    }
+
+    /** Space's allpasses at rest, as it wakes, so no tail from before comes back */
+    FIN_ONCE void ClearSpace()
+    {
+        float* d = SpaceBuffer();
+        for (size_t i = 0; i < kSpaceLen; i++)
+            d[i] = 0.f;
+        for (size_t s = 0; s < kSpaceStages; s++)
+            space_pos_[s] = 0;
+        space_low_ = Allpass();
     }
 
     FIN_ONCE void ClearLimiter()
@@ -403,6 +437,9 @@ private:
             const float max = b == 0 ? kMaxLowWidth : kMaxWidth;
             width_[b] = w <= .5f ? 2.f * w : 1.f + (w - .5f) * 2.f * (max - 1.f);
             width_neutral_ &= w == .5f;
+            // Space, as a share of the side before Width scales it: kSpace of the mid at the
+            // right, whatever the band's width there
+            space_[b] = w > .5f ? kSpace * (w - .5f) * 2.f / width_[b] : 0.f;
             character_[b] = static_cast<uint8_t>(fminf(knobs_[CHARACTER_LOW + b].value, 1.f)
                                                      * (kFinCharacters - 1) + .5f);
         }
@@ -556,9 +593,20 @@ private:
             bands_hold_ -= static_cast<int32_t>(n);
         bands_apply_ = band_from_ > 0.f || band_mix_ > 0.f;
         bands_run_ = bands_apply_ || bands_hold_ > 0 || meter_ == EQ || meter_ == WIDTH;
+        // Space: its allpasses run while a band is right of Width's centre, or gliding back
+        bool space = false;
+        if (bands_run_)
+            for (size_t b = 0; b < kBands; b++)
+                space |= space_[b] > 0.f || sp_[b] > 0.f;
+        if (space && !space_run_)
+            ClearSpace();
+        space_run_ = space;
         if (!bands_run_)
             for (size_t b = 0; b < kBands; b++)
+            {
                 gm_[b] = gs_[b] = 1.f;
+                sp_[b] = 0.f;
+            }
 
         // the trim: there at once, gliding over the block
         trim_from_ = trim_;
@@ -654,12 +702,21 @@ private:
         float mix = band_from_;
         const float dmix = (band_mix_ - mix) * inv;
         const bool apply = bands_apply_;
+        const bool space = space_run_;
+        float sp[kBands], dsp[kBands];
+        for (size_t b = 0; b < kBands; b++)
+        {
+            sp[b] = sp_[b];
+            dsp[b] = (space_[b] - sp[b]) * inv;
+        }
         for (size_t i = 0; i < n; i++)
         {
             const float m = .5f * (l[i] + r[i]), s = .5f * (l[i] - r[i]);
             float mb[kBands], sb[kBands];
             splits_[0].Process(split_, m, mb[0], mb[1], mb[2]);
             splits_[1].Process(split_, s, sb[0], sb[1], sb[2]);
+            if (space)
+                Space(mb, sb, sp, dsp);
             float ym = 0.f, ys = 0.f;
             for (size_t b = 0; b < kBands; b++)
             {
@@ -687,7 +744,51 @@ private:
             pk_[b] = pk[b];
             em_[b] = em[b];
             es_[b] = es[b];
+            sp_[b] = space_[b];
         }
+    }
+
+    /** Mid's and high's allpasses' delays, one after the other: outside the object, so the
+     *  engine's members after the finalizer stay in reach of short offsets (the code was about
+     *  550 bytes larger with it inside). There's one finalizer, the engine's */
+    static __attribute__((always_inline)) inline float* SpaceBuffer()
+    {
+        static float buf[kSpaceLen];
+        return buf;
+    }
+
+    /** One of mid's or high's Schroeder allpasses, s: y = v[n - d] - g v, v = x + g v[n - d] */
+    __attribute__((always_inline)) inline float Schroeder(size_t s, float* d, float x)
+    {
+        const uint32_t p = space_pos_[s];
+        const float old = d[p];
+        const float v = x + kSpaceG * old;
+        d[p] = v;
+        space_pos_[s] = static_cast<uint16_t>(p + 1 == kSpaceDelays[s] ? 0 : p + 1);
+        return old - kSpaceG * v;
+    }
+
+    /** Space, a sample: each band's mid through its allpasses into its side, by sp */
+    __attribute__((always_inline)) inline void Space(const float* mb, float* sb, float* sp, const float* dsp)
+    {
+        for (size_t b = 0; b < kBands; b++)
+            sp[b] += dsp[b];
+        sb[0] += sp[0] * space_low_.Process(space_low_a_, mb[0]);
+        float* d = SpaceBuffer();
+        float x = mb[1];
+        for (size_t s = 0; s < kSpaceMid; s++)
+        {
+            x = Schroeder(s, d, x);
+            d += kSpaceDelays[s];
+        }
+        sb[1] += sp[1] * x;
+        x = mb[2];
+        for (size_t s = kSpaceMid; s < kSpaceStages; s++)
+        {
+            x = Schroeder(s, d, x);
+            d += kSpaceDelays[s];
+        }
+        sb[2] += sp[2] * x;
     }
 
     __attribute__((always_inline)) inline float Drive1(Drive2x& d, float x, float gain, float comp)
@@ -861,6 +962,12 @@ private:
     float mute_step_;
     int32_t bands_hold_;
     bool bands_run_, bands_apply_;
+    // Space: each band's share (Update) and where it glides from, the allpasses' state
+    float space_[kBands], sp_[kBands];
+    bool space_run_;
+    uint16_t space_pos_[kSpaceStages];
+    Allpass space_low_;
+    float space_low_a_;
 
     // the drive
     Drive2x drive2x_[2];
@@ -893,5 +1000,6 @@ constexpr Finalizer::Character Finalizer::kCharacters[kFinCharacters];
 constexpr float Finalizer::kHoldMs[Finalizer::kBands];
 constexpr float Finalizer::kHalfband[4];
 constexpr float Finalizer::kMid[Finalizer::kMidTaps / 2];
+constexpr uint16_t Finalizer::kSpaceDelays[Finalizer::kSpaceStages];
 
 } // namespace chompi

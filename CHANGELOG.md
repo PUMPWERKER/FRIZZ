@@ -145,7 +145,7 @@ what FRIZZ does.
     Beat FX, Parallel among them), one Depth for all three. No makeup: level comes back
     through Drive and Loud.
   - **Width** (blue): each band's stereo, from mono to twice as wide (the low band to
-    1.5 times).
+    1.5 times), and to the right Space, which makes a mono source wide too.
 
   With the finalizer selected, SHIFT + key 15 shows the next module; the key shows its colour. At the
   defaults it leaves the sound untouched. Its knob LEDs are meters while they rest: the input
@@ -165,6 +165,15 @@ what FRIZZ does.
   double tap in one hold still selects, then switches. Key 15 and SHIFT pressed together, in
   either order, count as a select and never switch; key 15 held, then SHIFT, stays the bypass.
   See [Finalizer](MANUAL.md#finalizer).
+
+- **The finalizer's Width widens a mono source** (#455): in the betas Width only turned up the
+  difference between the channels already there, so a mono synth or voice stayed mono however
+  far right. Now, right of the centre, each band also gets Space, more the further right: a
+  slightly different copy of the band in the side, a diffusion of very short delays for mid
+  and high, a phase shift around 80 Hz for the low band, so the kick isn't smeared. Summed to
+  mono the sound stays exactly as it was. At the centre and to the left nothing changed; a
+  preset with a band right of the centre now sounds wider. After the widener in Endorphin.es'
+  Golden Master. See [Width module](MANUAL.md#width-module).
 
 - **AUX keeps its bass** (#317): the input's DC blocker, TAPE's, cut AUX's lows from about
   76 Hz down (50 Hz 5 dB quieter, 30 Hz 9 dB); it now takes out only DC, from about 8 Hz down,
