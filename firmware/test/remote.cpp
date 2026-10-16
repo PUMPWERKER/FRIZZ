@@ -537,6 +537,56 @@ os.remove("image.bin")
     if (rc != 0 || !Has(out, "--other-slot: ok ['launcher', 'sent 12']"))
         printf("%s\n", out.c_str());
 
+    // what's on a key only the launcher lists, so flash.py refuses for that after restarting
+    // FRIZZ into it: the FRIZZ that ran is started again, not left at the picker. Which one,
+    // to_launcher() finds before the restart (came_from): by IDENT and the builds sent, or else
+    // the slot started in this hold; 10 for the bench (never started again unasked) or one it
+    // can't tell; nothing when the CHOMPI was at the launcher already
+    rc = Python(R"(
+import os, sys, chompi, flash, midi_send
+log = []
+states = []
+chompi.state = lambda device=None: states.pop(0) if states else ("launcher", "l")
+chompi.restart = lambda node, hard=False: log.append("restart")
+chompi.reached = lambda *rest: True
+chompi.wait_for = lambda wanted, *rest, **kw: "l"
+chompi.start = lambda slot, *rest: log.append("start %d" % slot)
+chompi.slot_file = lambda device, slot: "12_FRIZZ.bin"
+midi_send.main = lambda: log.append("sent")
+open("image.bin", "wb").write(b"x")
+flash.builds.built = lambda bench: "image.bin"
+idents = {"frizz": {"kind": "frizz", "crc": 1, "length": 1}, "bench": {"kind": "bench", "crc": 1, "length": 1}}
+def case(name, now, info=None, sent=(), last=None):
+    log.clear()
+    states[:] = [now]
+    chompi.ident = lambda node: idents.get(info)
+    chompi.slots_of = lambda i: list(sent)
+    chompi.last_started = lambda: (last, last is not None, "a tool")
+    sys.argv = ["flash.py", "--test", "--no-build"]
+    try:
+        flash.main()
+    except SystemExit as e:
+        print("exit:", e)
+    print("%s: %s, came from %s" % (name, log, chompi.came_from), flush=True)
+case("the beta, by IDENT", ("frizz", "n"), "frizz", sent=(11,))
+case("one sent to two keys, the one started", ("frizz", "n"), "frizz", sent=(10, 12), last=12)
+case("a build not sent", ("frizz", "n"), "frizz", last=11)
+case("the bench", ("frizz", "n"), "bench", sent=(13,), last=13)
+case("no IDENT, started in this hold", ("frizz", "n"), last=11)
+case("at the launcher", ("launcher", "l"))
+os.remove("image.bin")
+)", out);
+    Check(rc == 0 && Has(out, "refused, nothing sent: starting FRIZZ on slot 11, not leaving the CHOMPI at the launcher\nexit: key 12 holds 12_FRIZZ.bin, the user's")
+              && Has(out, "the beta, by IDENT: ['restart', 'start 11'], came from 11\n")
+              && Has(out, "one sent to two keys, the one started: ['restart', 'start 12'], came from 12\n")
+              && Has(out, "a build not sent: ['restart', 'start 10'], came from 10\n")
+              && Has(out, "the bench: ['restart', 'start 10'], came from 10\n")
+              && Has(out, "no IDENT, started in this hold: ['restart', 'start 11'], came from 11\n")
+              && Has(out, "at the launcher: [], came from None\n"),
+          "tools: flash.py refused at the launcher starts the FRIZZ that ran again, the bench never");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
     // nothing restarts FRIZZ while it lends the card to the computer: the drive would go from
     // under it (#196). Its drive seen, or FRIZZ's own word (USB's flags) before the drive shows;
     // sent as before when neither
@@ -960,7 +1010,9 @@ def case(name, script, signals=1):
             time.sleep(0.2)
         held = True
         while p.poll() is None:
-            held = held and not free()
+            if free():  # a hold exiting closes the lock a moment before it can be waited for
+                time.sleep(0.2)
+                held = held and p.poll() is not None
             time.sleep(0.05)
         done = os.path.exists("done")
         print("%s: started %s, held while it ran %s, done when it let go %s, exit %d, free after %s"

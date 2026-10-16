@@ -41,7 +41,10 @@ One that came up with its USB names garbled (#88) is started again, not sent aga
 FRIZZ_SLOT, BETA_SLOT, BENCH_SLOT and TEST_SLOT set other slots (FRIZZ_SLOT and BETA_SLOT add
 keys to guard as the user's: 10 and 11 stay guarded whatever they say); a key that holds another
 firmware than FRIZZ is refused but with --other-slot (launcher 1.5 and later list their keys; an
-older one can't, and isn't asked). Every slot is checked before anything is built or the CHOMPI restarted. It waits while another tool has the CHOMPI (tools/chompi.py, the lock).
+older one can't, and isn't asked). Every slot is checked before anything is built or the CHOMPI
+restarted, but for what's on its key, which only the launcher can list: refused for that, it
+starts the FRIZZ that ran again. It waits while another tool has the CHOMPI (tools/chompi.py,
+the lock).
 
 The launcher 1.6 colours each key: the colour chosen for the file on it (its COLOR, kept on the
 card in /FIRMWARE/key_colors.txt with the file's name), or one made from that name. flash.py
@@ -123,6 +126,16 @@ def check_slot(slot, args):
                  % (slot, ", ".join(str(s) for s in sorted(set(ours)))))
 
 
+def refuse(args, why):
+    """Exits with WHY, sending nothing, once the FRIZZ the launcher was reached from
+    (chompi.came_from) runs again: refused at the launcher, the CHOMPI isn't left at its picker"""
+    if chompi.came_from is not None:
+        print("refused, nothing sent: starting FRIZZ on slot %d, not leaving the CHOMPI at the "
+              "launcher" % chompi.came_from)
+        chompi.start(chompi.came_from, args.wait, args.device)
+    sys.exit(why)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("image", nargs="?", help="a .bin to send instead of building one")
@@ -197,15 +210,17 @@ def main():
 
     device = chompi.to_launcher(args.wait, args.device)
     if not args.other_slot and not tag:
+        # what's on the key only the launcher can say, so these refusals come after the restart:
+        # the FRIZZ that ran is started again (chompi.came_from)
         # FRIZZ's keys: never replace another firmware on them unasked
         there = chompi.slot_file(device, slot)
         if there and not there.upper().split("_", 1)[-1].startswith("FRIZZ"):
-            sys.exit("key %d holds %s, not FRIZZ: give --other-slot to replace it anyway, "
-                     "or set BENCH_SLOT / TEST_SLOT" % (slot, there))
+            refuse(args, "key %d holds %s, not FRIZZ: give --other-slot to replace it "
+                   "anyway, or set BENCH_SLOT / TEST_SLOT" % (slot, there))
         # nor the user's release or beta (keys moved since a tool sent: 2026-10-15, #171)
         if there and there.upper().split("_", 1)[-1].rsplit(".", 1)[0] in USER_NAMES:
-            sys.exit("key %d holds %s, the user's: a test or a bench build never replaces it"
-                     % (slot, there))
+            refuse(args, "key %d holds %s, the user's: a test or a bench build never "
+                   "replaces it" % (slot, there))
     chompi.device_guard(device)
     sys.argv = ["midi_send.py", image, "--slot", str(slot), "--name", name, "--device", device]
     color = args.color if args.color is not None else (

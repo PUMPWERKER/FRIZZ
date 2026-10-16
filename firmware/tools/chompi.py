@@ -694,8 +694,29 @@ def reached(wanted, timeout, device=None):
     return False
 
 
+# the slot of the FRIZZ to_launcher() last restarted into the launcher (running_slot()), None
+# when it found the CHOMPI elsewhere: what a tool that then sends nothing (flash.py refusing a
+# key only the launcher can list) starts again
+came_from = None
+
+
+def running_slot(node):
+    """The slot the FRIZZ at NODE runs from: by IDENT and the builds flash.py sent, or else the
+    slot noted as started in this hold; FRIZZ_SLOT when neither tells, and for the bench, which
+    answers as FRIZZ does but is never started again unasked (it measures ~100 s)"""
+    info = ident(node)
+    last, this_hold, _ = last_started()
+    if info:
+        slots = [s for s in slots_of(info) if s in FRIZZ_SLOTS] if info["kind"] == "frizz" else []
+        return slots[0] if len(slots) == 1 else last if last in slots else FRIZZ_SLOT
+    return last if this_hold and last in FRIZZ_SLOTS else FRIZZ_SLOT
+
+
 def to_launcher(timeout=120, device=None):
-    """The launcher's raw MIDI node, from wherever the CHOMPI is"""
+    """The launcher's raw MIDI node, from wherever the CHOMPI is; came_from says which FRIZZ it
+    restarted"""
+    global came_from
+    came_from = None
     now, where = state(device)
     # a FRIZZ that doesn't answer for a while looks like another firmware: the bench, its
     # audio callback over 100 % in a segment, leaves MainLoop no time (BUSY s at most)
@@ -707,6 +728,7 @@ def to_launcher(timeout=120, device=None):
     if now == "launcher":
         return where
     if now == "frizz":
+        came_from = running_slot(where)
         say("restarting FRIZZ into the launcher ...")
         restart(where)
         hint = "no launcher yet: switch the CHOMPI off and on"
