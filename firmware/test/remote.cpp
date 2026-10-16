@@ -991,6 +991,36 @@ case("plain", "touch started; sleep 0.5; exit 5", signals=0)
     if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 
+    // builds.py hands make only PATH, HOME, TMPDIR and the locale: the Makefiles take what they
+    // don't set from the environment, so GCC_PATH would build with another compiler than the
+    // GCC 10.3 checked on the PATH, USB_SAFETY or ITCM into another directory than the build
+    // flash.py sends, BENCH, DEBUG, C_DEFS or MAKEFLAGS other bytes. make stubbed: its calls
+    // and the environment each got
+    rc = Python(R"(
+import os, subprocess, builds
+os.environ.update(GCC_PATH="/nowhere", USB_SAFETY="1", ITCM="1", BENCH="1", DEBUG="1", C_DEFS="-DX",
+                  LDFLAGS="-s", MAKEFLAGS="-e", CPATH="/nowhere", LANG="C.UTF-8", LC_ALL="C", TMPDIR="/tmp")
+calls = []
+def run(args, env=None, **kw):
+    calls.append((args, env))
+    return subprocess.CompletedProcess(args, 0, "arm-none-eabi-gcc 10.3.1 20210824 (release)\n"
+                                       if args[-1] == "--version" else "", "")
+builds.subprocess.run = run
+builds.build(False)
+builds.stale(builds.image(False))
+given = ("GCC_PATH", "USB_SAFETY", "ITCM", "BENCH", "DEBUG", "C_DEFS", "LDFLAGS", "MAKEFLAGS", "CPATH",
+         "PATH", "HOME", "TMPDIR", "LANG", "LC_ALL")
+for args, env in calls:
+    env = os.environ if env is None else env
+    print("%s: %s" % (" ".join(args), " ".join(k for k in given if k in env)))
+)", out);
+    Check(rc == 0 && Has(out, "arm-none-eabi-gcc --version: PATH HOME TMPDIR LANG LC_ALL\n")
+              && Has(out, "make -j8: PATH HOME TMPDIR LANG LC_ALL\n") && Has(out, "make -q: PATH HOME TMPDIR LANG LC_ALL\n"),
+          "tools: builds.py's make gets no GCC_PATH, USB_SAFETY, ITCM, BENCH, DEBUG, C_DEFS, MAKEFLAGS from the "
+          "environment: the GCC 10.3 checked builds the commit's build, where flash.py takes it");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
     // which slot runs, no firmware says (the bench answers as FRIZZ does): the tools note the
     // one they started, and go by it. chompi's way to the CHOMPI stubbed: states in turn
     const char* const kSlots = R"(

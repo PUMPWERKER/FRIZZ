@@ -67,7 +67,7 @@ def stale(path):
     if path not in (image(False), image(True)):
         return False
     args = ["make", "-q"] + (["BENCH=1"] if path == image(True) else [])
-    return subprocess.run(args, cwd=SRC, capture_output=True).returncode != 0
+    return subprocess.run(args, cwd=SRC, env=make_env(), capture_output=True).returncode != 0
 
 
 def source_checksum():
@@ -118,9 +118,23 @@ def check_version(tag):
                  "it to %s (docs/LOOP_PROTOCOL.md 7.1)" % (version_name(have), tag, ", ".join(map(str, want))))
 
 
+# what make is given of the environment, nothing else: the Makefiles take any variable they don't
+# set themselves from it, which would build other bytes, or elsewhere, than the commit's build
+# (GCC_PATH another compiler than the one checked, BENCH, ITCM, USB_SAFETY another build or
+# build directory, DEBUG, C_DEFS, LDFLAGS other flags, MAKEFLAGS make itself)
+MAKE_ENV = ("PATH", "HOME", "TMPDIR", "LANG", "LANGUAGE")
+
+
+def make_env():
+    """the environment make runs in: MAKE_ENV's and the locale's (LC_*) only"""
+    return {k: v for k, v in os.environ.items() if k in MAKE_ENV or k.startswith("LC_")}
+
+
 def toolchain_env():
-    """the environment for make, with GCC 10.3 first on the PATH; exits if it isn't there"""
-    env = dict(os.environ)
+    """the environment for make (make_env()), with GCC 10.3 first on the PATH; exits if it isn't
+    there"""
+    env = make_env()
+    env.setdefault("PATH", os.defpath)
     if os.path.isdir(TOOLCHAIN):
         env["PATH"] = TOOLCHAIN + os.pathsep + env["PATH"]
     try:
