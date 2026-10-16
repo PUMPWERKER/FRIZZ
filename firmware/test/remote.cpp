@@ -132,7 +132,9 @@ static int Remote(const std::vector<std::string>& args, std::string& out,
     std::string cmd = "exec python3 " + Quoted(remote_py) + " --device " + Quoted(usb.path);
     for (const std::string& a : args)
         cmd += " " + Quoted(a);
-    return Exec(cmd, out, 30, {}, interrupt_at, interrupt_at.empty() ? 0 : SIGINT);
+    // the ledger of the loops it put (#438) in the temp folder, never the CHOMPI's
+    return Exec(cmd, out, 30, {{"FRIZZ_LOOP_LEDGER", tmp_dir + "/loops.json"}}, interrupt_at,
+                interrupt_at.empty() ? 0 : SIGINT);
 }
 
 static void Write(const std::string& path, const std::string& text)
@@ -1694,14 +1696,80 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
               "remote: loops cp copies TAPE's cubbi into h4 on the card, the cubbi as it was");
         if (rc != 0)
             printf("%s\n", out.c_str());
-        for (const char* s : {"2", "3", "4"})
+        // only the loops the tools put there (#438): a player's isn't changed, by any way
+        // that would lose it, without --users-loop; the ones put, moved and copied are
+        const std::string players = LoopWav(5000, 48000, 2);
+        CardFiles()["/FRIZZ/a2.wav"] = players;
+        Remote({"loops", "rescan"}, out);
+        std::string refused;
+        for (const std::vector<std::string>& op :
+             std::vector<std::vector<std::string>>{{"rm", "a", "2"},
+                                                   {"swap", "h", "2", "a", "2"},
+                                                   {"swap", "a", "2", "h", "5"},
+                                                   {"mv", "a", "2", "h", "5"},
+                                                   {"mv", "h", "2", "a", "2", "--replace"},
+                                                   {"put", other, "a", "2", "--replace"},
+                                                   {"cp", "cubbi_c", "3", "a", "2", "--replace"}})
+        {
+            std::vector<std::string> args = {"loops"};
+            args.insert(args.end(), op.begin(), op.end());
+            rc = Remote(args, out);
+            if (rc != 1 || !Has(out, "a2 holds a loop the tools didn't put there (" + std::to_string(players.size())
+                                         + " B): a player's"))
+                refused += " " + op[0] + "(" + std::to_string(rc) + "): " + out;
+        }
+        Check(refused.empty() && Card("/FRIZZ/a2.wav") == players && Card("/FRIZZ/h2.wav") == named
+                  && !CardFiles().count("/FRIZZ/h5.wav"),
+              "remote: loops rm, swap, mv and --replace refuse a loop the tools didn't put there: a player's (#438)");
+        if (!refused.empty())
+            printf("     %s\n", refused.c_str());
+        rc = Remote({"loops", "mv", "h", "3", "h", "5"}, out);
+        const int mv5 = rc;
+        rc = Remote({"loops", "put", wav, "h", "5", "--replace"}, out);
+        Check(mv5 == 0 && rc == 0 && Card("/FRIZZ/h5.wav") == named && !CardFiles().count("/FRIZZ/h3.wav"),
+              "remote: and change the ones the tools put there, moved along: put --replace over one moved");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        CardFiles()["/FRIZZ/h5.wav"] = players; // as if a player changed it since
+        Remote({"loops", "rescan"}, out);
+        rc = Remote({"loops", "rm", "h", "5"}, out);
+        Check(rc == 1 && Has(out, "h5 holds a loop the tools didn't put there, or one changed since")
+                  && Card("/FRIZZ/h5.wav") == players,
+              "remote: a slot the tools filled whose file changed since is refused too");
+        rc = Remote({"loops", "rm", "h", "5", "--users-loop"}, out);
+        const int users = rc;
+        rc = Remote({"loops", "rm", "a", "2", "--users-loop"}, out);
+        Check(users == 0 && rc == 0 && !CardFiles().count("/FRIZZ/h5.wav") && !CardFiles().count("/FRIZZ/a2.wav"),
+              "remote: --users-loop lets them (sessions never give it)");
+        for (const char* s : {"2", "4"})
             Remote({"loops", "rm", "h", s}, out);
+        const std::string ledger = Read(tmp_dir + "/loops.json");
         rc = Remote({"loops", "rescan"}, out);
         Check(rc == 0 && CardFiles() == before, "remote: loops rm and rescan: the card as it was, nothing else touched");
+        Check(ledger == "{}", "remote: the ledger empty again once they're gone");
+        if (ledger != "{}")
+            printf("%s\n", ledger.c_str());
         CardFiles().erase("/TAPE/cubbi_c3.wav");
         unlink(wav.c_str());
         unlink(other.c_str());
     }
+    // the ledger's file: beside chompi's lock, the CHOMPI's; a host check's (FRIZZ_NO_DEVICE)
+    // only where it names one (#438)
+    rc = Python(R"(
+import os, remote
+os.environ.pop("FRIZZ_LOOP_LEDGER", None)
+print("ledger:", os.path.relpath(remote.Ledger(None).path))
+del os.environ["FRIZZ_CHOMPI_LOCK"]
+try:
+    remote.Ledger(None)
+except SystemExit as e:
+    print("exit:", e)
+)", out);
+    Check(rc == 0 && Has(out, "ledger: frizz-chompi.loops\n")
+              && Has(out, "exit: loops: a host check names a ledger of its own (FRIZZ_LOOP_LEDGER), not the CHOMPI's"),
+          "tools: the loops' ledger beside chompi's lock, never the CHOMPI's from a host check (#438)");
+    if (rc != 0 || !Has(out, "exit: loops"))
+        printf("%s\n", out.c_str());
     // the crash record (#105): none on the twin; one as the fault handler writes it, read back
     // and cleared; a watchdog's, as the next start records it
     rc = Remote({"crash"}, out);

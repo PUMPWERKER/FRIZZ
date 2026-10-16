@@ -75,15 +75,23 @@ BANK a-h for FRIZZ's slots, cubbi_a-cubbi_e for TAPE's, SLOT 1-15:
 
     ./remote.py loops ls              every slot with a file: what it is, its frames, beats, size
                                       and name; the free space, where the cubbis are
-    ./remote.py loops put WAV BANK SLOT [--replace] [--cpu]
+    ./remote.py loops put WAV BANK SLOT [--replace] [--cpu] [--users-loop]
                                       WAV, as it is, into a FRIZZ slot: its rate, the acks'
                                       round trip; --cpu the audio callback's load meanwhile
-    ./remote.py loops mv BANK SLOT BANK SLOT [--replace]
-    ./remote.py loops swap BANK SLOT BANK SLOT
-    ./remote.py loops rm BANK SLOT
-    ./remote.py loops cp CUBBI SLOT BANK SLOT [--replace]
+    ./remote.py loops mv BANK SLOT BANK SLOT [--replace] [--users-loop]
+    ./remote.py loops swap BANK SLOT BANK SLOT [--users-loop]
+    ./remote.py loops rm BANK SLOT [--users-loop]
+    ./remote.py loops cp CUBBI SLOT BANK SLOT [--replace] [--users-loop]
                                       a cubbi copied into a FRIZZ slot on the card
     ./remote.py loops rescan          FRIZZ reads the card again, as at the end of a batch
+
+They change the card at once (PERSIST 0 doesn't cover them), so they change only the loops the
+tools put there themselves (#438): put and cp note each slot they fill (its size, frames,
+beats, name and the data's CRC-32) in a ledger beside chompi's lock (frizz-chompi.loops,
+FRIZZ_LOOP_LEDGER another file), mv and swap move the notes along, rm drops them. rm, mv, swap,
+and put, mv or cp with --replace refuse a slot with a file the ledger doesn't have, or one that
+isn't what it noted (a player's loop, or one changed since), before sending anything;
+--users-loop, which sessions never give (as --save), lets them. An empty slot is anyone's.
 
 `play` presses the keys and turns the knobs of a script over FRIZZ's SysEx, at the script's
 times (a `turn ENC N MS` a detent every MS ms in the background, as the twin plays it, since
@@ -156,6 +164,7 @@ import os
 import sys
 import threading
 import time
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "tools"))
@@ -1020,6 +1029,88 @@ def xfer_run(what, call):
         sys.exit("%s: %s" % (what, e))
 
 
+class Ledger:
+    """The slots the tools filled on the card (#438), in a file beside chompi's lock
+    (frizz-chompi.loops; FRIZZ_LOOP_LEDGER another, which a host check names): {slot name:
+    {size, frames, beats, name, crc32, what}}. The loop transfer tells no CRC of a slot's file
+    (LOOP_PROTOCOL.md 3.3), so a slot is taken for the one noted by what SLOT and NAME tell:
+    its size, frames, beats and name; the CRC-32 noted is that of the data put there (None for a
+    cubbi's copy)."""
+
+    def __init__(self, c, users_loop=False):
+        self.c, self.users_loop = c, users_loop
+        self.path = os.environ.get("FRIZZ_LOOP_LEDGER")
+        if not self.path:
+            if os.environ.get("FRIZZ_NO_DEVICE") and not os.environ.get("FRIZZ_CHOMPI_LOCK"):
+                sys.exit("loops: a host check names a ledger of its own (FRIZZ_LOOP_LEDGER), not the CHOMPI's")
+            self.path = os.path.join(os.path.dirname(chompi.LOCK), "frizz-chompi.loops")
+        try:
+            with open(self.path) as src:
+                self.notes = json.load(src)
+        except (OSError, ValueError):
+            self.notes = {}
+
+    def slot(self, at):
+        """What FRIZZ tells of slot AT (bank, slot): None for an empty one"""
+        st = xfer_run("ls", self.c.status)
+        if st["flags"] & 16:
+            xfer_run("ls", self.c.wait_scan)
+        i = xfer_run("ls", lambda: self.c.ask(loopxfer.SLOT, list(at))).data
+        if not i[2]:
+            return None
+        n = xfer_run("ls", lambda: self.c.ask(loopxfer.NAME, list(at))).data
+        return dict(size=loopxfer.get7(i[9:13]), frames=loopxfer.get7(i[3:7]), beats=loopxfer.get7(i[7:9]),
+                    name=loopxfer.unpack(n[3:], n[2]).decode("utf-8", "replace"))
+
+    def guard(self, what, at):
+        """Exits unless slot AT is empty or holds the file the ledger noted there (--users-loop:
+        any)"""
+        if self.users_loop:
+            return
+        now = self.slot(at)
+        if now is None:
+            return
+        name = "%s%d" % (BANKS[at[0]], at[1] + 1)
+        noted = self.notes.get(name)
+        if noted is None or any(noted.get(k) != now[k] for k in now):
+            sys.exit("loops %s: %s holds a loop the tools didn't put there%s (%d B%s): a player's, "
+                     "never changed by a session; --users-loop if it's yours to change" % (
+                         what, name, "" if noted is None else ", or one changed since", now["size"],
+                         ", \"%s\"" % now["name"] if now["name"] else ""))
+
+    def save(self):
+        tmp = self.path + ".tmp"
+        try:
+            with open(tmp, "w") as out:
+                json.dump(self.notes, out, indent=1, sort_keys=True)
+            os.replace(tmp, self.path)
+        except OSError as e:
+            print("loops: the ledger %s not written: %s" % (self.path, e), file=sys.stderr)
+
+    def filled(self, at, crc, what):
+        name = "%s%d" % (BANKS[at[0]], at[1] + 1)
+        now = self.slot(at)
+        if now is None:
+            self.notes.pop(name, None)
+        else:
+            self.notes[name] = dict(now, crc32=None if crc is None else "%08x" % crc,
+                                    what="%s at %s" % (what, time.strftime("%Y-%m-%d %H:%M:%S")))
+        self.save()
+
+    def drop(self, at):
+        self.notes.pop("%s%d" % (BANKS[at[0]], at[1] + 1), None)
+        self.save()
+
+    def moved(self, a, b, swap):
+        na, nb = ("%s%d" % (BANKS[x[0]], x[1] + 1) for x in (a, b))
+        ea, eb = self.notes.pop(na, None), self.notes.pop(nb, None)
+        if ea is not None:
+            self.notes[nb] = ea
+        if swap and eb is not None:
+            self.notes[na] = eb
+        self.save()
+
+
 def loops_ls(f):
     c = xfer(f)
     st = xfer_run("ls", c.status)
@@ -1043,10 +1134,13 @@ def loops_ls(f):
         "/TAPE" if st["tape"] else "the card's root"))
 
 
-def loops_put(f, path, bank, slot, replace, cpu):
+def loops_put(f, path, bank, slot, replace, cpu, users_loop=False):
     with open(path, "rb") as w:
         data = w.read()
     c = xfer(f)
+    ledger = Ledger(c, users_loop)
+    if replace:
+        ledger.guard("put --replace", (bank, slot))
     loads = []
     if cpu:
         load(f)  # the meter from here
@@ -1075,26 +1169,40 @@ def loops_put(f, path, bank, slot, replace, cpu):
               os.path.basename(path), BANKS[bank], slot + 1, len(data), secs, len(data) / 1024 / secs,
               c.stats["chunks"], c.stats["rewinds"], acks[len(acks) // 2] if acks else 0,
               acks[len(acks) * 9 // 10] if acks else 0))
+    ledger.filled((bank, slot), zlib.crc32(data), "put %s" % os.path.basename(path))
     if cpu and loads:
         print("  the audio callback meanwhile: max %.1f %%, mean %.1f %% (%d reads)" % (
             max(m for m, _ in loads), sum(m for _, m in loads) / len(loads), len(loads)))
 
 
-def loops_op(f, action, args, replace):
+def loops_op(f, action, args, replace, users_loop=False):
     c = xfer(f)
     if action == "rescan":
         xfer_run("rescan", c.rescan)
         return
     if action == "rm" and len(args) == 2:
-        xfer_run("rm", lambda: c.delete(*xfer_slot(*args)))
+        a = xfer_slot(*args)
+        ledger = Ledger(c, users_loop)
+        ledger.guard(action, a)
+        xfer_run("rm", lambda: c.delete(*a))
+        ledger.drop(a)
         return
     if action in ("mv", "swap") and len(args) == 4:
         a, b = xfer_slot(*args[:2]), xfer_slot(*args[2:])
+        ledger = Ledger(c, users_loop)
+        ledger.guard(action, a)
+        if action == "swap" or replace:
+            ledger.guard(action, b)
         xfer_run(action, lambda: c.rename(*a, *b, replace) if action == "mv" else c.swap(*a, *b))
+        ledger.moved(a, b, action == "swap")
         return
     if action == "cp" and len(args) == 4:
         a, b = xfer_slot(*args[:2], frizz=False), xfer_slot(*args[2:])
+        ledger = Ledger(c, users_loop)
+        if replace:
+            ledger.guard(action, b)
         xfer_run("cp", lambda: c.copy(*a, *b, replace))
+        ledger.filled(b, None, "cp %s%d" % (BANKS[a[0]], a[1] + 1))
         return
     sys.exit("loops %s: %s" % (action, {"rm": "BANK SLOT", "mv": "BANK SLOT BANK SLOT", "swap": "BANK SLOT BANK SLOT",
                                         "cp": "CUBBI SLOT BANK SLOT"}[action]))
@@ -1610,6 +1718,9 @@ def main():
     p.add_argument("action", nargs="?", choices=["load", "write", "ls", "put", "mv", "swap", "rm", "cp", "rescan"])
     p.add_argument("args", nargs="*")
     p.add_argument("--replace", action="store_true", help="put, mv, cp: a file in the slot is replaced")
+    p.add_argument("--users-loop", action="store_true",
+                   help="rm, mv, swap, --replace: change a loop the tools didn't put there (a player's: sessions "
+                        "never give it)")
     p.add_argument("--cpu", action="store_true", help="put: the audio callback's load meanwhile")
     p.add_argument("--scan", action="store_true", help="scan the card again first")
     p.add_argument("--fault", choices=sorted(set(LOOP_FAULTS) | set(WRITE_FAULTS)),
@@ -1740,9 +1851,9 @@ def command(a):
     elif a.cmd == "loops" and a.action == "put":
         if len(a.args) != 3:
             sys.exit("loops put WAV BANK SLOT")
-        loops_put(f, a.args[0], *xfer_slot(*a.args[1:]), a.replace, a.cpu)
+        loops_put(f, a.args[0], *xfer_slot(*a.args[1:]), a.replace, a.cpu, a.users_loop)
     elif a.cmd == "loops" and a.action:
-        loops_op(f, a.action, a.args, a.replace)
+        loops_op(f, a.action, a.args, a.replace, a.users_loop)
     elif a.cmd == "loops":
         loops_show(f, a.scan)
     elif a.cmd == "play":

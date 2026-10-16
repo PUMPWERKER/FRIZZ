@@ -337,7 +337,9 @@ compressor's knobs (`comp.txt`), the scenes (`scenes.txt`, #78) and the input (`
 FRIZZ without PERSIST (key 10's from before it) is still refused, as before. The card holds
 the user's own settings and loops, which a session never changes. PERSIST 0 doesn't cover the
 loop transfer: `remote.py loops put`, `mv`, `swap`, `rm` and `cp` write the card at once, so on
-the device a session moves only loops it put there itself, in slots the user's loops aren't in; `expect led` lines are judged at the
+the device a session moves only loops it put there itself, in slots the user's loops aren't in
+(`remote.py` keeps a ledger of the slots the tools filled and refuses `rm`, `mv`, `swap` and
+`--replace` on any other loop unless `--users-loop`, which a session never gives, #438); `expect led` lines are judged at the
 card's LED brightness, and on the device `settings.txt` fails the battery's line (VOLUME white
 on USB, green on the twin). The user takes
 the CHOMPI for playing with `tools/chompi.py hold` (until Ctrl-C),
