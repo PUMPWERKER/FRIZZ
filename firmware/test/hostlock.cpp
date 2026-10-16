@@ -88,7 +88,7 @@ int main()
 
     // held by another run: it waits, naming it, and runs once that ended
     double t0 = Now();
-    rc = Run("(" + env + "bash '" + hostlock + "' sleep 2 > /dev/null 2>&1 &) ; sleep 0.5; " + env + "timeout 10 '" + heavy + "' second",
+    rc = Run("(" + env + "bash '" + hostlock + "' sleep 2 > /dev/null 2>&1 &) ; until grep -q ': sleep 2$' \'" + lock + "\'; do sleep 0.05; done; " + env + "timeout 10 '" + heavy + "' second",
              out);
     double waited = Now() - t0;
     printf("      waited %.1f s: %s", waited, out.c_str());
@@ -100,7 +100,7 @@ int main()
     rc = Run(env + "timeout 10 flock '" + lock + "' '" + heavy + "' hand", out);
     Check(rc == 0 && Has(out, "hand: locked=above"), "hostlock: a caller holding it by hand (flock FILE CMD) isn't waited for");
     t0 = Now();
-    rc = Run("(flock '" + lock + "' sleep 2 > /dev/null 2>&1 &) ; sleep 0.5; " + env + "timeout 10 '" + heavy + "' beside", out);
+    rc = Run("(flock '" + lock + "' sleep 2 > /dev/null 2>&1 &) ; until ! flock -n \'" + lock + "\' true; do sleep 0.05; done; " + env + "timeout 10 '" + heavy + "' beside", out);
     waited = Now() - t0;
     Check(rc == 0 && Has(out, "the host lock is held (pid ") && Has(out, ": flock " + lock + " sleep 2 ): waiting")
               && Has(out, "beside: locked=") && waited > 1.5,
@@ -109,7 +109,7 @@ int main()
         printf("%s\n", out.c_str());
 
     // CI and FRIZZ_HOST_LOCKED: nothing taken, even with the lock held
-    rc = Run("(flock '" + lock + "' sleep 2 > /dev/null 2>&1 &) ; sleep 0.3; " + env + "CI=true timeout 1 '" + heavy + "' ci; " + env
+    rc = Run("(flock '" + lock + "' sleep 2 > /dev/null 2>&1 &) ; until ! flock -n \'" + lock + "\' true; do sleep 0.05; done; " + env + "CI=true timeout 1 '" + heavy + "' ci; " + env
                  + "FRIZZ_HOST_LOCKED=7 timeout 1 '" + heavy + "' set",
              out);
     Check(rc == 0 && Has(out, "ci: locked= ") && Has(out, "set: locked=7 "), "hostlock: CI and FRIZZ_HOST_LOCKED take nothing");
@@ -157,12 +157,15 @@ int main()
           "hostlock: build.sh takes it before it builds, the browser's twin and the host's");
     const char* tb = getenv("TWIN_BUILD");
     const std::string twin = tb && *tb ? tb : firmware + "/twin/build";
-    t0 = Now();
-    rc = Run("(" + env + "bash '" + hostlock + "' sleep 3 > /dev/null 2>&1 &) ; sleep 0.3; " + env + "TWIN_BUILD='" + twin
-                 + "' timeout 10 flock '" + twin + "/build.lock' '" + firmware + "/twin/build.sh'",
+    // the lock held all the while (killed after): a build.sh that waited for it would say so,
+    // and its timeout end it, however slow the machine (all.sh's load)
+    const std::string holder = tmp + "/holder.pid";
+    rc = Run("(" + env + "bash '" + hostlock + "' sleep 60 > /dev/null 2>&1 & echo $! > '" + holder + "') ; until ! flock -n \'" + lock + "\' true; do sleep 0.05; done; "
+                 + env + "TWIN_BUILD='" + twin + "' timeout 30 flock '" + twin + "/build.lock' '" + firmware
+                 + "/twin/build.sh'",
              out);
-    waited = Now() - t0;
-    Check(rc == 0 && !Has(out, "waiting") && waited < 2.5, "hostlock: build.sh with nothing to build doesn't wait for it (run.sh, serve.py)");
+    Run("kill $(cat '" + holder + "')", out);
+    Check(rc == 0 && !Has(out, "waiting"), "hostlock: build.sh with nothing to build doesn't wait for it (run.sh, serve.py)");
     if (rc != 0 || Has(out, "waiting"))
         printf("%s\n", out.c_str());
     Run("flock '" + lock + "' true", out);
