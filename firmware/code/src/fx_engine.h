@@ -323,7 +323,8 @@ class FxEngine
             float b = DataType<format>::Decompress(
                 buffer_[(write_ptr_ + offset_integral + D::base + 1) & MASK]);
             float x = a + (b - a) * offset_fractional;
-            if(allpass > 0.f)
+            // frozen is the rare case: unfrozen falls through, as Interpolate
+            if(__builtin_expect(allpass > 0.f, 0))
             {
                 const float eta
                     = (1.f - offset_fractional) / (1.f + offset_fractional);
