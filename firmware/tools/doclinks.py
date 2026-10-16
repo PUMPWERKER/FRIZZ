@@ -36,10 +36,13 @@ Checked:
   Hardware::SwId::KEY_<n>`, PanelKeys.h's kWhiteKeys KEY_1 to KEY_15 in order (KEY_<n> is the
   n-th white key), and a slot or kCompKey for every key the `| Effect |` row names. Read only.
 - site/landing.md, the landing page's text, against frizz-web's schema: one H1, the sections
-  Meta, Hero, Keys, Session, Get started, Credits in this order, each one's `- Name: value`
-  fields (all of them, none other, none twice, each within its length), one paragraph where it
-  has one, 3 to 6 moves (### under Session) with 1 to 4 `Controls`, no HTML, images or other
-  lists, `code` only in Controls, links only to the docs (anchors resolving), images/ or https.
+  Meta, Hero, Keys, Session, Get started, Credits in this order (and Duties, if there is one,
+  between Hero and Keys), each one's `- Name: value` fields (all of them, none other, none
+  twice, each within its length), one paragraph where it has one, 3 to 6 moves (### under
+  Session) with 1 to 4 `Controls`, 3 to 6 duties (### under Duties, a title of at most 32
+  characters, no fields, one paragraph of at most 220), no HTML, images or other lists, `code`
+  only in Controls, links only to the docs (anchors resolving), images/ or https. Stricter than
+  the site: no digits in a duty's title (the site numbers the tiles itself).
 - site/features.json (docs/LOOP_PROTOCOL.md 2.2), what the release's firmware can do: one JSON
   object, its keys camelCase feature names, its values integers 0 and up; loopTransfer the loop
   transfer's protocol major in the firmware (LoopTransfer.h's kLoopsProtocol), there as long as
@@ -451,13 +454,20 @@ def plain(s):
 LANDING_SECTIONS = [
     ('Meta', {'Title': 70, 'Description': 170}, None),
     ('Hero', {'Eyebrow': 40, 'Title': 32, 'Assure': 180}, 360),
+    ('Duties', {}, None),
     ('Keys', {'Title': 40}, 360),
     ('Session', {'Eyebrow': 40, 'Title': 48}, None),
     ('Get started', {'Eyebrow': 40, 'Title': 48, 'Install': 160, 'Quick start': 160,
                      'Manual link': 60}, 300),
     ('Credits', {}, 420),
 ]
-MOVE = ({'Controls': None}, 320)  # a ### of Session: its title at most 40, 3 to 6 of them
+LANDING_OPTIONAL = {'Duties'}  # may be left out (a tag from before it)
+# the ### of a section: (what one is called, its fields, its paragraph's and its title's most
+# characters); 3 to 6 of them
+LANDING_SUBS = {
+    'Session': ('move', {'Controls': None}, 320, 40),
+    'Duties': ('duty', {}, 220, 32),
+}
 EMPHASIS_ONCE = {('Hero', 'Title'), ('Session', 'Title')}
 
 
@@ -481,7 +491,8 @@ def landing(root, anchors, errors):
         if h and len(h.group(1)) in (2, 3):
             blocks.append([len(h.group(1)), h.group(2), n, []])
         elif h:
-            err(n, f'a {h.group(1)} heading: only ## sections and the moves (### under Session)')
+            err(n, f'a {h.group(1)} heading: only ## sections, the moves (### under Session) '
+                   'and the duties (### under Duties)')
         elif blocks:
             blocks[-1][3].append((n, t))
         elif t.strip():
@@ -490,13 +501,13 @@ def landing(root, anchors, errors):
         errors.append(f'{path}: {h1} H1 headings, expected exactly 1')
 
     names = [b[1] for b in blocks if b[0] == 2]
-    want = [s[0] for s in LANDING_SECTIONS]
+    want = [s[0] for s in LANDING_SECTIONS if s[0] not in LANDING_OPTIONAL or s[0] in names]
     if names != want:
         errors.append(f'{path}: the sections are {names}, expected exactly {want} in this order')
     spec = {s[0]: (s[1], s[2]) for s in LANDING_SECTIONS}
     links = 0
     section = None
-    moves = 0
+    subs = {s: 0 for s in LANDING_SUBS if s in names}
     for level, title, n0, body in blocks:
         if level == 2:
             section = title
@@ -506,17 +517,19 @@ def landing(root, anchors, errors):
             fields, para = spec[title]
             where = title
         else:
-            if section != 'Session':
-                err(n0, f'### "{title}": only Session has ### (its moves)')
+            if section not in LANDING_SUBS:
+                err(n0, f'### "{title}": only Session (its moves) and Duties (its duties) have ###')
                 continue
-            moves += 1
-            if len(plain(title)) > 40:
-                err(n0, f'the move "{title}" is {len(plain(title))} characters, at most 40')
+            kind, fields, para, most = LANDING_SUBS[section]
+            subs[section] += 1
+            if len(plain(title)) > most:
+                err(n0, f'the {kind} "{title}" is {len(plain(title))} characters, at most {most}')
             if '`' in title:
-                err(n0, f'`code` in the move "{title}": only in Controls')
+                err(n0, f'`code` in the {kind} "{title}": only in Controls')
+            if kind == 'duty' and re.search(r'\d', title):
+                err(n0, f'a number in the duty "{title}": the site numbers the tiles, spell it out')
             links += inline(path, n0, title, anchors, root, errors)
-            fields, para = MOVE
-            where = f'Session, move "{title}"'
+            where = f'{section}, {kind} "{title}"'
         # the field list: right under the heading, then a blank line, then the paragraph
         i = 0
         while i < len(body) and not body[i][1].strip():
@@ -583,8 +596,10 @@ def landing(root, anchors, errors):
             if '`' in p:
                 err(n, f'`code` in {where}: only in Controls')
             links += inline(path, n, p, anchors, root, errors)
-    if not 3 <= moves <= 6:
-        errors.append(f'{path}: {moves} moves (### under Session), expected 3 to 6')
+    for s, count in subs.items():
+        kinds = {'move': 'moves', 'duty': 'duties'}[LANDING_SUBS[s][0]]
+        if not 3 <= count <= 6:
+            errors.append(f'{path}: {count} {kinds} (### under {s}), expected 3 to 6')
     return links
 
 
@@ -675,6 +690,22 @@ The hint.
 
 Builds on [the release](https://example.com/).
 """
+# LANDING_FIXTURE has no Duties (it may be left out); the Duties cases put these in first
+DUTIES_FIXTURE = """## Duties
+
+### Duty one
+
+Does *one* thing, see the [looper](MANUAL.md#looper).
+
+### Duty two
+
+Does **two**.
+
+### Duty three
+
+Does three.
+
+"""
 
 
 def selftest(root, quiet=False):
@@ -713,6 +744,14 @@ def selftest(root, quiet=False):
             m = starts[-1]
             return t[:m.start()] + new(m.group(0)) + t[m.end():]
         return edit('MANUAL.md', fn)
+
+    def duties(pattern, new):
+        """site/landing.md with DUTIES_FIXTURE before Keys, then the first match of pattern
+        replaced (pattern None: nothing broken)"""
+        def fn(t):
+            t = t.replace('## Keys\n', DUTIES_FIXTURE + '## Keys\n', 1)
+            return t if pattern is None else re.sub(pattern, new, t, count=1, flags=re.M)
+        return edit(LANDING, fn)
 
     M, Q, I, S = 'MANUAL.md', 'QUICKSTART.md', 'INSTALL.md', LANDING
     LED, FX, PK = (f'{SRC}/{f}' for f in ('LedColors.h', 'FxSlots.h', 'PanelKeys.h'))
@@ -797,6 +836,25 @@ def selftest(root, quiet=False):
          'a link goes to MANUAL.md'),
         ('two emphases in a title', sub(S, r'^- Title: Loop it, then \*mangle\* it$', '- Title: *Loop* it, *mangle*'),
          'one *emphasis*'),
+        # site/landing.md's Duties (DUTIES_FIXTURE)
+        ('Duties as it should be', duties(None, None), None),
+        ('Duties after Keys', edit(S, lambda t: t.replace('## Session\n', DUTIES_FIXTURE + '## Session\n', 1)),
+         'the sections are'),
+        ('2 duties', duties(r'^### Duty three\n\nDoes three\.\n\n', ''), '2 duties'),
+        ('7 duties', duties(r'^(### Duty three\n\nDoes three\.\n\n)', r'\1' + ''.join(
+            f'### Duty {w}\n\nDoes more.\n\n' for w in ('four', 'five', 'six', 'seven'))), '7 duties'),
+        ('Duties without a duty', duties(r'^### Duty one\n(?:.*\n)*?(?=## Keys)', ''), '0 duties'),
+        ('a duty title too long', duties(r'^### Duty one$', '### ' + 'x' * 33), 'at most 32'),
+        ('a number in a duty title', duties(r'^### Duty one$', '### 13 effects'), 'a number in the duty'),
+        ('a duty paragraph too long', duties(r'^Does three\.$', 'x' * 221), 'at most 220'),
+        ('a duty without its paragraph', duties(r'^Does three\.\n', ''), 'exactly one paragraph'),
+        ('a duty of 2 paragraphs', duties(r'^(Does three\.\n)', r'\1\nAnd more.\n'), 'exactly one paragraph'),
+        ('a field under a duty', duties(r'^(### Duty one\n)', r'\1\n- Controls: `LOOP`\n'), 'unknown field "Controls"'),
+        ('a field on Duties', duties(r'^(## Duties\n)', r'\1\n- Title: Duties\n'), 'unknown field "Title"'),
+        ('a paragraph on Duties', duties(r'^(## Duties\n)', r'\1\nWhat he does.\n'), 'no paragraph of its own'),
+        ('code in a duty', duties(r'^Does three\.$', 'Press `LOOP`.'), 'only in Controls'),
+        ('HTML in a duty title', duties(r'^### Duty one$', '### Duty <br>'), 'raw HTML'),
+        ('a ### under Keys', sub(S, r'^(The hint\.\n)', r'\1\n### A key\n\nA word.\n'), 'only Session'),
         # site/features.json
         ('features.json not JSON', sub(FEATURES, r'\}\s*$', ',}'), 'not JSON'),
         ('features.json a list', edit(FEATURES, lambda t: '[' + t + ']'), 'not one JSON object'),
@@ -835,13 +893,14 @@ def selftest(root, quiet=False):
                 print(f'FAIL  {name}: the case no longer applies ({e}): update it in doclinks.py')
                 continue
             errors = check(dir)[0]
-        hit = [e for e in errors if expect in e]
+        hit = [e for e in errors if expect in e] if expect else (['no errors'] if not errors else [])
         if hit:
             if not quiet:
                 print(f'ok    {name}: {hit[0]}')
         else:
             failed += 1
-            print(f'FAIL  {name}: expected an error with "{expect}", got: {errors or "none"}')
+            print(f'FAIL  {name}: expected ' + (f'an error with "{expect}"' if expect else 'no error')
+                  + f', got: {errors or "none"}')
     if not quiet or failed:
         print(f'{"FAIL selftest: " if failed else ""}{len(cases) - failed} of {len(cases)} breaks reported')
     return 1 if failed else 0
