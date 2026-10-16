@@ -9439,6 +9439,51 @@ int main()
         Check(unplugged, "card-lend: the computer gone: taken back");
     }});
 
+    // audit 2026-10-16 E1: a bug report says where the card was lent and taken back, how,
+    // and what was read from it again, as comment lines: the replay has the power-on files,
+    // and a take-back by the computer isn't in it
+    cases.push_back({"card-lend-log", [] {
+        RunMs(kReadyMs);
+        Tap("KEY_15");
+        Turn(4, -10); // the finalizer's input: frizz_master.txt written
+        RunMs(3000);
+        SetToggle(true);
+        RunMs(300);
+        lend_gesture();
+        std::string master = Card("/FRIZZ/frizz_master.txt");
+        const bool had = !master.empty();
+        CardFiles()["/FRIZZ/frizz_master.txt"] = master + "\n"; // the computer saved it again
+        EjectCard();
+        RunMs(300);
+        const bool ejected = !CardLent();
+        RunMs(3000);
+        lend_gesture();
+        lend_gesture(); // back by the gesture, nothing changed
+        RunMs(1000);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(2100);
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(3000);
+        const std::string log = Card("/FRIZZ/bug-1.txt");
+        auto count = [&](const std::string& s) {
+            int n = 0;
+            for (size_t at = log.find(s); at != std::string::npos; at = log.find(s, at + 1))
+                n++;
+            return n;
+        };
+        printf("      lent %d times, taken back by the computer %d, by the gesture %d\n", count("\n# card lent\n"),
+               count("\n# card taken back, the computer let go (the replay keeps it lent); read: settings\n"),
+               count("\n# card taken back; read: nothing\n"));
+        Check(had && ejected && count("\n# card lent\n") == 2
+                  && count("\n# card taken back, the computer let go (the replay keeps it lent); read: settings\n") == 1
+                  && count("\n# card taken back; read: nothing\n") == 1,
+              "card-lend-log: the bug report has the card lent twice, taken back by the computer (the settings read "
+              "again) and by the gesture");
+    }});
+
     // refused, LOOP blinking red 3 times: without a computer, while LOOP records, while a bug
     // report is written
     cases.push_back({"card-lend-refused", [] {

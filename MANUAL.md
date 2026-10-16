@@ -2215,7 +2215,8 @@ did, key for key.
 - It starts afresh at every start of FRIZZ: after a [restart by itself](#power-and-battery),
   it holds only what came after, so describe what happened before it.
 - It doesn't hold the audio you played in, so a problem that depends on the sound itself
-  needs a description too, nor scenes sent over MIDI. Dense MIDI automation fills it
+  needs a description too, nor scenes sent over MIDI, nor what a computer changed on the card
+  while it was lent (it notes when the card was lent and taken back). Dense MIDI automation fills it
   faster: each controller message is an event. It holds about 260,000 events, hours of playing; a session longer
   than that is cut off at the end.
 - It doesn't send anything anywhere and costs nothing while you play.
