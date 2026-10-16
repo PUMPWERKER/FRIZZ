@@ -1,4 +1,5 @@
-# Effects latched together, coarse turns (SHIFT + turn), resets (SHIFT + press), a select
+# Effects latched together, coarse turns (SHIFT + turn), resets (SHIFT + press), SHIFT, then a
+# key latching too (#456), then all three off with SHIFT held
 input sine 330 0.3
 at 6000
 down KEY_5
@@ -38,11 +39,20 @@ wait 500
 expect led pth 0 000000
 expect on
 down KEY_26
+wait 60
 tap KEY_13
+wait 60
 up KEY_26
 wait 300
 turn 3 25
 wait 1000
+down KEY_26
+wait 60
 tap KEY_5
+wait 60
 tap KEY_6
+wait 60
+tap KEY_13
+wait 60
+up KEY_26
 wait 2000

@@ -952,7 +952,7 @@ def fig_punch_in():
     c = key_colours()
     rows = [('A', 'Hold a white key: its effect is on while you hold it.'),
             ('B', 'Hold the key, then SHIFT: latched on, or off again.'),
-            ('', 'SHIFT first, then the key: selected for the knobs, unheard.'),
+            ('', 'SHIFT first, then the key: the same, either order latches.'),
             ('C', 'Turn: the effect\'s sound. SHIFT + turn: in big steps.'),
             ('', 'Press: its page 2 and back. SHIFT + press: the default.')]
     s = chapter_svg(170 + 20 * len(rows) + 28, 'Playing an effect',
@@ -1135,7 +1135,7 @@ def describe(rows):
 
 KEYS_PLAY = [
     (['(hold)', 'w:FX key', '>', 'k:SHIFT'], 'Latch the effect on, or off again.'),
-    (['k:SHIFT', '>', 'w:FX key'], 'Select it for the knobs, without hearing it.'),
+    (['k:SHIFT', '>', 'w:FX key'], 'Latch it too: the order doesn\'t matter.'),
     (['k:SHIFT', '+', 'k:LOOP', '(3 taps or more)'], 'Tap the tempo.'),
     (['(hold)', 'k:PLAY', '+', 'k:LOOP'], 'Record in time with the clock; with a loop, erase at its end.'),
     (['k:SHIFT', '+', 'o:VOLUME', '(turn)'], 'The input/loop mix.'),
@@ -1145,7 +1145,7 @@ KEYS_PLAY = [
 ]
 KEYS_START = [
     (['(hold)', 'w:FX key', '>', 'k:SHIFT'], 'Latch the effect on, or off again.'),
-    (['k:SHIFT', '>', 'w:FX key'], 'Pick it for the knobs, without hearing it.'),
+    (['k:SHIFT', '>', 'w:FX key'], 'Latch it too: the order doesn\'t matter.'),
     (['k:SHIFT', '+', 'o:knob', '(turn)'], 'Jump in big steps: notes, octaves, intervals.'),
     (['o:knob', '(press)'], 'Its page 2: Mix, stereo, band and level; again, back.'),
 ]

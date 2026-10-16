@@ -867,35 +867,112 @@ int main()
         Check(RunMs(300) < dry * .5f, "latch: hold the filter, then SHIFT: it stays on");
         Tap("KEY_5");
         RunMs(300);
-        Check(fabsf(RunMs(300) - dry) < dry * .05f, "latch: a tap turns it off");
-    }});
-
-    cases.push_back({"select", [] {
-        RunMs(kReadyMs);
-        const float dry = RunMs(300);
-        Tap("KEY_5"); // the filter on the knobs
-        RunMs(200);
-        Rgb filter_knobs[4];
-        for (int k = 0; k < 4; k++)
-            filter_knobs[k] = PthLedFull(kKnob1Led + k);
+        Check(RunMs(300) < dry * .5f, "latch: a plain tap keeps it on (#456)");
         Press("KEY_26", true);
         RunMs(100);
-        Tap("KEY_2"); // SHIFT, then the shifter: picked without hearing it
+        Tap("KEY_5");
         Press("KEY_26", false);
-        RunMs(200);
-        bool changed = false;
-        for (int k = 0; k < 4; k++)
-            changed |= !Same(PthLedFull(kKnob1Led + k), filter_knobs[k]);
-        Check(changed, "select: SHIFT + a key puts its effect on the knobs");
-        Check(fabsf(RunMs(300) - dry) < dry * .05f, "select: without switching it on");
-        Check(Max(SmtLedFull(kShifterKeyLed)) < 80, "select: its key stays dim");
+        RunMs(300);
+        Check(fabsf(RunMs(300) - dry) < dry * .05f, "latch: SHIFT, then the key, turns it off");
     }});
 
-    // SHIFT and an FX key nearly together (#115): within kShiftGraceMs (15 ms) of the key's
-    // press, SHIFT going down or let go counts as SHIFT first, a select, and a key's release
-    // bouncing back is taken back; the latch gesture, key then SHIFT, has more time between.
-    // Each from the filter latched (or not), the shifter on the knobs; the debounce sees a
-    // press 8 ms after contact, a release 7 ms after
+    // SHIFT and an FX key latch in either order (#456): SHIFT first, the effect heard while
+    // the key is held and latched on its release; SHIFT, then a second key in the same hold
+    // latches that one too, as does a key held, then SHIFT, then another; SHIFT used for a
+    // coarse turn meanwhile doesn't latch
+    cases.push_back({"latch-either", [] {
+        RunMs(kReadyMs);
+        const float dry = RunMs(300);
+        const unsigned filter = 1u << 4, shifter = 1u << 1, crusher = 1u << 3;
+        Tap("KEY_5"); // the filter on the knobs, turned down
+        RunMs(100);
+        Turn(kKnob1Encoder, -40);
+        RunMs(500);
+        Tap("KEY_2"); // the shifter on the knobs
+        RunMs(200);
+        Rgb shifter_knobs[4];
+        for (int k = 0; k < 4; k++)
+            shifter_knobs[k] = PthLedFull(kKnob1Led + k);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("KEY_5", true);
+        RunMs(20);
+        Check(RunMs(100) < dry * .5f, "latch-either: SHIFT, then the filter's key: heard while held");
+        bool changed = false;
+        for (int k = 0; k < 4; k++)
+            changed |= !Same(PthLedFull(kKnob1Led + k), shifter_knobs[k]);
+        Check(changed, "latch-either: ... and on the knobs");
+        Check(LatchedFx(Ask({0x20})) == 0, "latch-either: ... not latched while held");
+        Press("KEY_5", false);
+        RunMs(100);
+        Press("KEY_26", false);
+        RunMs(300);
+        Check(LatchedFx(Ask({0x20})) == filter && RunMs(300) < dry * .5f,
+              "latch-either: SHIFT, then the key: latched on its release, stays on");
+        Check(Max(SmtLedFull(kFilterKeyLed)) > 80, "latch-either: its key lit");
+        Keys({"+KEY_26", "100", "+KEY_5", "100", "-KEY_26", "100", "-KEY_5", "300"});
+        Check(LatchedFx(Ask({0x20})) == 0 && fabsf(RunMs(300) - dry) < dry * .05f,
+              "latch-either: SHIFT, the key, SHIFT let go first: unlatched on the key's release");
+        // SHIFT, then two keys in the same hold: both latch
+        Keys({"+KEY_26", "100", "+KEY_5", "60", "-KEY_5", "100", "+KEY_2", "60", "-KEY_2", "100",
+              "-KEY_26", "300"});
+        Check(LatchedFx(Ask({0x20})) == (filter | shifter), "latch-either: SHIFT, two keys tapped: both latched");
+        // a key held, SHIFT, another key: both toggle
+        Keys({"+KEY_5", "100", "+KEY_26", "100", "+KEY_4", "60", "-KEY_4", "100", "-KEY_5", "100",
+              "-KEY_26", "300"});
+        Check(LatchedFx(Ask({0x20})) == (shifter | crusher),
+              "latch-either: a key held, SHIFT, another key: the first unlatched, the other latched");
+        // SHIFT + a key, a coarse turn in the hold: no latch
+        Keys({"+KEY_26", "100", "+KEY_5", "100"});
+        Turn(kKnob1Encoder, 1);
+        Keys({"100", "-KEY_5", "100", "-KEY_26", "300"});
+        Check(LatchedFx(Ask({0x20})) == (shifter | crusher),
+              "latch-either: SHIFT + key, a coarse turn in the hold: not latched");
+    }});
+
+    // MIDI's notes act as the hand (#456): SHIFT's note 45 and the filter's latch in either
+    // order, the filter's alone plays it and keeps the latch
+    cases.push_back({"latch-either-midi", [] {
+        RunMs(kReadyMs);
+        const unsigned filter = 1u << 4;
+        auto note = [](int n, bool on) {
+            Trs({on ? kNoteOn : kNoteOff, n, on ? 100 : 0});
+            RunMs(60);
+        };
+        note(kChompiNote, true);
+        note(kFilterNote, true);
+        note(kFilterNote, false);
+        note(kChompiNote, false);
+        RunMs(300);
+        Check(LatchedFx(Ask({0x20})) == filter, "latch-either-midi: SHIFT's note, then the filter's: latched");
+        note(kFilterNote, true);
+        note(kFilterNote, false);
+        RunMs(300);
+        Check(LatchedFx(Ask({0x20})) == filter, "latch-either-midi: the filter's note alone: still latched");
+        note(kFilterNote, true);
+        note(kChompiNote, true);
+        note(kFilterNote, false);
+        note(kChompiNote, false);
+        RunMs(300);
+        Check(LatchedFx(Ask({0x20})) == 0, "latch-either-midi: the filter's note, then SHIFT's: unlatched");
+        note(kChompiNote, true);
+        note(kFilterNote, true);
+        note(kFilterNote, false);
+        note(kChompiNote, false);
+        RunMs(300);
+        note(kChompiNote, true);
+        note(kFilterNote, true);
+        note(kFilterNote, false);
+        note(kChompiNote, false);
+        RunMs(300);
+        Check(LatchedFx(Ask({0x20})) == 0, "latch-either-midi: SHIFT's note, then the filter's, twice: latched, unlatched");
+    }});
+
+    // SHIFT and an FX key nearly together (#115, #456): SHIFT going down any time in the
+    // key's hold, or let go within kShiftGraceMs (15 ms) before its press, is SHIFT + key, the
+    // latch toggled; a key's release bouncing back is taken back. A plain press leaves the
+    // latch. Each from the filter latched (or not), the shifter on the knobs; the debounce
+    // sees a press 8 ms after contact, a release 7 ms after
     cases.push_back({"select-grace", [] {
         RunMs(kReadyMs);
         const unsigned filter = 1u << 4;
@@ -905,49 +982,47 @@ int main()
             bool latched_before, latched_after;
             std::vector<const char*> keys;
             // run in both phases of MainLoop's 2 ms tick: a release bouncing back 6 ms on is
-            // taken back in each. 7 ms on, the bounce's press comes kShiftGraceMs after the
-            // release itself, taken back or not by the ms phase, and either is right (#202,
-            // not planned): not checked
+            // taken back in each (select-grace-bounce runs 5-12 ms and 20 ms, #464)
             bool both_phases = false;
         };
         const std::vector<Seq> seqs = {
-            {"SHIFT let go 1 ms after the key's contact", true, true,
+            {"SHIFT let go 1 ms after the key's contact", true, false,
              {"+KEY_26", "50", "+KEY_5", "1", "-KEY_26", "150", "-KEY_5"}},
-            {"SHIFT let go in the key's ms", true, true,
+            {"SHIFT let go in the key's ms", true, false,
              {"+KEY_26", "50", "+KEY_5", "-KEY_26", "150", "-KEY_5"}},
-            {"SHIFT let go 40 ms before the key: a plain press", true, false,
+            {"SHIFT let go 40 ms before the key: a plain press", true, true,
              {"+KEY_26", "50", "-KEY_26", "40", "+KEY_5", "150", "-KEY_5"}},
-            {"key and SHIFT in the same ms", true, true,
+            {"key and SHIFT in the same ms", true, false,
              {"+KEY_5", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
-            {"key, SHIFT 1 ms later", true, true,
+            {"key, SHIFT 1 ms later", true, false,
              {"+KEY_5", "1", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
-            {"key, SHIFT 5 ms later", true, true,
+            {"key, SHIFT 5 ms later", true, false,
              {"+KEY_5", "5", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
-            {"key, SHIFT 12 ms later", true, true,
+            {"key, SHIFT 12 ms later", true, false,
              {"+KEY_5", "12", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
-            {"key, SHIFT 5 ms later, unlatched", false, false,
+            {"key, SHIFT 5 ms later, unlatched", false, true,
              {"+KEY_5", "5", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
             {"key, SHIFT 25 ms later: the latch gesture unlatches", true, false,
              {"+KEY_5", "25", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
             {"key, SHIFT 25 ms later: the latch gesture latches", false, true,
              {"+KEY_5", "25", "+KEY_26", "100", "-KEY_5", "100", "-KEY_26"}},
-            {"SHIFT bouncing 4 ms, the key at its 2nd", true, true,
+            {"SHIFT bouncing 4 ms, the key at its 2nd", true, false,
              {"+KEY_26", "1", "-KEY_26", "1", "+KEY_26", "+KEY_5", "1", "-KEY_26", "1", "+KEY_26",
               "100", "-KEY_26", "100", "-KEY_5"}},
-            {"the key bouncing 4 ms, SHIFT let go at its 2nd", true, true,
+            {"the key bouncing 4 ms, SHIFT let go at its 2nd", true, false,
              {"+KEY_26", "50", "+KEY_5", "1", "-KEY_5", "1", "-KEY_26", "+KEY_5", "1", "-KEY_5",
               "1", "+KEY_5", "150", "-KEY_5"}},
-            {"select, SHIFT up, the key's release touching again 6 ms on", true, true,
+            {"SHIFT + key, SHIFT up, the key's release touching again 6 ms on", true, false,
              {"+KEY_26", "50", "+KEY_5", "100", "-KEY_26", "100", "-KEY_5", "6", "+KEY_5", "1",
               "-KEY_5"}, true},
-            {"select, the key's release touching again 7 ms on, SHIFT held", true, true,
-             {"+KEY_26", "50", "+KEY_5", "100", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5", "100",
-              "-KEY_26"}},
+            {"SHIFT + key, the key's release touching again 6 ms on, SHIFT held", true, false,
+             {"+KEY_26", "50", "+KEY_5", "100", "-KEY_5", "6", "+KEY_5", "1", "-KEY_5", "100",
+              "-KEY_26"}, true},
             {"the latch gesture, its release touching again 6 ms on", false, true,
              {"+KEY_5", "100", "+KEY_26", "100", "-KEY_26", "100", "-KEY_5", "6", "+KEY_5", "1",
               "-KEY_5"}, true},
-            {"a plain tap", true, false, {"+KEY_5", "60", "-KEY_5"}},
-            {"a plain tap, its release touching again 7 ms on", true, false,
+            {"a plain tap", true, true, {"+KEY_5", "60", "-KEY_5"}},
+            {"a plain tap, its release touching again 7 ms on", true, true,
              {"+KEY_5", "60", "-KEY_5", "7", "+KEY_5", "1", "-KEY_5"}},
             // the compressor's key, then SHIFT: SHIFT + its key, a select, so the filter
             // held meanwhile doesn't latch
@@ -981,6 +1056,55 @@ int main()
         }
     }});
 
+    // #464: SHIFT held, a key's release touching again 5-12 ms or 20 ms on, in either order
+    // and ms phase: a bounce, taken back (kReboundMs), the latch as the release left it. On
+    // the edge of kShiftGraceMs (7 ms) one phase took it for a new SHIFT + key press and
+    // toggled the latch back. Two taps of the key 60 ms apart, the quickest a hand does, both
+    // count: latched, then unlatched
+    cases.push_back({"select-grace-bounce", [] {
+        RunMs(kReadyMs);
+        const unsigned filter = 1u << 4;
+        auto filter_latched = [&] { return (LatchedFx(Ask({0x20})) & filter) != 0; };
+        std::string lost;
+        const int gaps[] = {5, 6, 7, 8, 9, 10, 11, 12, 20};
+        for (int order = 0; order < 2; order++)
+            for (int gap : gaps)
+                for (int pad = 0; pad < 2; pad++)
+                {
+                    if (filter_latched())
+                        Latch("KEY_5");
+                    RunMs(300 + pad);
+                    const std::string g = std::to_string(gap);
+                    if (order == 0)
+                        Keys({"+KEY_26", "50", "+KEY_5", "100", "-KEY_5", g.c_str(), "+KEY_5", "1", "-KEY_5", "100",
+                              "-KEY_26"});
+                    else
+                        Keys({"+KEY_5", "100", "+KEY_26", "100", "-KEY_5", g.c_str(), "+KEY_5", "1", "-KEY_5", "100",
+                              "-KEY_26"});
+                    RunMs(400);
+                    if (!filter_latched())
+                        lost += std::string(" ") + (order ? "key-first " : "SHIFT-first ") + g + " ms phase "
+                                + std::to_string(pad) + ";";
+                }
+        printf("      unlatched by a bounce:%s\n", lost.empty() ? " none" : lost.c_str());
+        Check(lost.empty(), "select-grace-bounce: SHIFT held, the key's release touching again 5-12 or 20 ms on: "
+                            "still latched, in either order and ms phase (#464)");
+        if (filter_latched())
+            Latch("KEY_5");
+        RunMs(300);
+        bool both = true;
+        for (int pad = 0; pad < 2; pad++)
+        {
+            RunMs(1 + pad);
+            Keys({"+KEY_26", "50", "+KEY_5", "60", "-KEY_5", "60", "+KEY_5"});
+            RunMs(30);
+            const bool on_between = filter_latched();
+            Keys({"60", "-KEY_5", "100", "-KEY_26", "400"});
+            both = both && on_between && !filter_latched();
+        }
+        Check(both, "select-grace-bounce: SHIFT + two taps of the key 60 ms apart: both count, latched, then unlatched");
+    }});
+
     // a key pressed sounds at once, the grace window (#115) or not: the filter, turned down,
     // is heard within 10 ms of the key's contact (its debounce takes 8)
     cases.push_back({"select-grace-at-once", [] {
@@ -1005,14 +1129,12 @@ int main()
         Keys({"+KEY_15", "3", "+KEY_26", "100", "-KEY_15", "100", "-KEY_26", "500"});
         Check(Card("/FRIZZ/frizz_scenes.txt") == scenes,
               "select-grace-at-once: the compressor's key, SHIFT 3 ms later: a select, no save confirmed");
-        // and a select flashes the key, also one SHIFT made late
-        Keys({"+KEY_2", "3", "+KEY_26"});
-        const std::vector<int> seen = Watch(false, kShifterKeyLed, 120);
-        RunMs(200);
+        // an FX key, SHIFT 3 ms later: the latch, the key lit while held and after
+        Keys({"+KEY_2", "3", "+KEY_26", "200"});
         const int held = Max(SmtLedFull(kShifterKeyLed));
         Keys({"-KEY_2", "-KEY_26", "300"});
-        Check(*std::max_element(seen.begin(), seen.end()) > 240 && held < 80,
-              "select-grace-at-once: the shifter's key, SHIFT 3 ms later: it flashes white, then stays dim, off");
+        Check(held > 80 && Max(SmtLedFull(kShifterKeyLed)) > 80 && (LatchedFx(Ask({0x20})) >> 1 & 1),
+              "select-grace-at-once: the shifter's key, SHIFT 3 ms later: lit, latched");
         // a MIDI note retriggered at once on a latched effect: plain presses, as ever
         Latch("KEY_5");
         Trs({kNoteOn, kFilterNote, 100});
@@ -1021,8 +1143,8 @@ int main()
         RunMs(100);
         Trs({kNoteOff, kFilterNote, 0});
         RunMs(300);
-        Check((LatchedFx(Ask({0x20})) >> 4 & 1) == 0,
-              "select-grace-at-once: a MIDI note retriggered at once on a latched filter: unlatched on its last note off");
+        Check((LatchedFx(Ask({0x20})) >> 4 & 1) == 1,
+              "select-grace-at-once: a MIDI note retriggered at once on a latched filter: still latched");
     }});
 
     // page 2's shared knobs (FxOutput.h, #40, #38): nothing sets a level by itself any more.
@@ -1908,12 +2030,11 @@ int main()
         int open_held = 0;
         for (int w = 0; w < 32; w++)
             open_held += RunMs(62) > dry * .5f;
-        Press("KEY_5", false); // a plain press: it unlatches
+        Press("KEY_5", false); // a plain press: still latched (#456)
         RunMs(100);
         Check(open_held == 0, "chaos-gates: a latched key held stays on, out of chaos's hands");
 
         // unlatched chaos: the filter stays in
-        Latch("KEY_5");
         Latch("KEY_14");
         RunMs(300);
         int open_off = 0;
@@ -6098,7 +6219,7 @@ int main()
         RunMs(100);
         const unsigned by_cc = latched();
         Check(by_cc != ~0u && (by_cc & 3) == 3, "midi-focus-latch: CC 23 to the shifter, the next 127 latches it as it did the freezer");
-        ShiftWith({"KEY_5"}); // the filter, in focus by hand
+        Tap("KEY_5"); // the filter, in focus by hand (a plain press: no latch, #456)
         RunMs(200);
         Trs({kCC, 22, 127});
         RunMs(100);
@@ -6289,6 +6410,14 @@ int main()
         const std::vector<std::array<int, 3>> latch = TrsCcs();
         Check(HasCc(latch, 0xB4, 22, 0) && HasCc(latch, 0xBF, 106, 0),
               "midi-feedback: a latch by hand: CC 22 on its channel and CC 106");
+        ShiftWith({"KEY_5"}); // SHIFT, then the key: on again (#456)
+        RunMs(100);
+        const std::vector<std::array<int, 3>> shift_first = TrsCcs();
+        Check(HasCc(shift_first, 0xB4, 22, 127) && HasCc(shift_first, 0xBF, 106, 127),
+              "midi-feedback: a latch by SHIFT, then the key: the same CCs");
+        Latch("KEY_5");
+        RunMs(100);
+        TrsCcs();
         Turn(kVolumeEncoder, -5);
         RunMs(100);
         Check(LastCc(TrsCcs(), 0xBF, 85) >= 0, "midi-feedback: VOLUME by hand: CC 85");
@@ -7077,7 +7206,7 @@ int main()
         Check(abs(bpm10 - 1200) <= 10, "midi cc more: CC 82 taps the tempo: 4 at 500 ms, 120 BPM");
 
         // CC 120: every key MIDI holds let go, by note and by FRIZZ's SysEx
-        Tap("KEY_5"); // the filter off, as the morph left it
+        Trs({kCC, kFilterLatchCC, 0}); // the filter off: the morph left it latched
         RunMs(300);
         const int off = Max(SmtLedFull(kFilterKeyLed));
         Trs({kNoteOn, kFilterNote, 100});
@@ -7805,52 +7934,64 @@ int main()
 
     // ======== #306: the frequency shifter, the phaser's second mode ========
 
-    // SHIFT + KEY_7 selects the phaser; KEY_7 again in the same hold switches it to the
-    // frequency shifter, however long after, and each further tap back and forth: the key ice blue
-    // (FxSlots.h), at full for a moment after each switch, the knob LEDs the mode's (knob 4
-    // white in the middle of its direction); letting go of SHIFT, a new hold's SHIFT + KEY_7
-    // only selects
+    // SHIFT + KEY_7 latches the phaser, as any effect (#456); KEY_7 again in the same hold
+    // switches it to the frequency shifter, however long after, and each further tap back and
+    // forth, the latch back as it was before the first tap: the key ice blue (FxSlots.h), at
+    // full for a moment after each switch, the knob LEDs the mode's (knob 4 white in the
+    // middle of its direction); letting go of SHIFT, a new hold's SHIFT + KEY_7 latches, the
+    // mode stays; SHIFT + KEY_7 twice on the latched shifter switches it, still latched
     cases.push_back({"fshift-gesture", [] {
         RunMs(kReadyMs);
+        const unsigned phaser_bit = 1u << 12;
         Press("KEY_26", true);
         RunMs(60);
         Tap("KEY_7");
         RunMs(300);
-        const bool phaser = PhaserShows(false), knob4 = !White(PthLedFull(4));
-        const Rgb selected = SmtLedFull(kPhaserKeyLed);
+        const bool phaser = PhaserShows(false, true) && LatchedFx(Ask({0x20})) == phaser_bit;
+        const bool knob4 = !White(PthLedFull(4));
+        const Rgb latched = SmtLedFull(kPhaserKeyLed);
         Tap("KEY_7");
         RunMs(40);
         const Rgb flash = SmtLedFull(kPhaserKeyLed);
         RunMs(400);
-        const bool shifter = PhaserShows(true);
-        printf("      selected %s, switched %s (at full %s), knob 4 %s\n", Hex(selected).c_str(),
+        const bool shifter = PhaserShows(true) && LatchedFx(Ask({0x20})) == 0;
+        printf("      latched %s, switched %s (at full %s), knob 4 %s\n", Hex(latched).c_str(),
                Hex(SmtLedFull(kPhaserKeyLed)).c_str(), Hex(flash).c_str(), Hex(PthLedFull(4)).c_str());
-        Check(phaser && knob4, "fshift-gesture: SHIFT + KEY_7 selects the phaser, its key dim blue");
+        Check(phaser && knob4, "fshift-gesture: SHIFT + KEY_7 latches the phaser, its key lit blue");
         Check(shifter && Shows(flash, kIceBlue, 252, 12) && White(PthLedFull(4)),
-              "fshift-gesture: KEY_7 again in the hold: the frequency shifter, its key ice blue, at full for a moment; "
-              "knob 4 white, both sidebands");
+              "fshift-gesture: KEY_7 again in the hold: the frequency shifter, unlatched as before, its key "
+              "ice blue, at full for a moment; knob 4 white, both sidebands");
         Tap("KEY_7");
         RunMs(400);
         const bool back = PhaserShows(false);
         RunMs(3000);
         Tap("KEY_7");
         RunMs(400);
-        Check(back && PhaserShows(true), "fshift-gesture: each further tap switches again, however long after");
+        Check(back && PhaserShows(true) && LatchedFx(Ask({0x20})) == 0,
+              "fshift-gesture: each further tap switches again, however long after, the latch as it was");
         Press("KEY_26", false);
         RunMs(300);
         ShiftWith({"KEY_7"});
         RunMs(400);
-        Check(PhaserShows(true), "fshift-gesture: a new hold's SHIFT + KEY_7 only selects, the mode stays");
-        const std::string st = Ask({0x20});
-        Check(st.size() > 11 && LatchedFx(st) == 0 && (static_cast<uint8_t>(st[10]) << 7 | static_cast<uint8_t>(st[11])) == 0,
-              "fshift-gesture: and the phaser stays off, unlatched");
+        Check(PhaserShows(true, true) && LatchedFx(Ask({0x20})) == phaser_bit,
+              "fshift-gesture: a new hold's SHIFT + KEY_7 latches it, the mode stays");
+        ShiftWith({"KEY_7", "KEY_7"});
+        RunMs(400);
+        Check(PhaserShows(false, true) && LatchedFx(Ask({0x20})) == phaser_bit,
+              "fshift-gesture: SHIFT + KEY_7 twice on the latched shifter: the phaser, still latched");
+        ShiftWith({"KEY_7"});
+        RunMs(400);
+        Check(PhaserShows(false) && LatchedFx(Ask({0x20})) == 0,
+              "fshift-gesture: SHIFT + KEY_7 again: unlatched, off");
     }});
 
-    // what starts the count again, or never counts: SHIFT let go, another key between, the latch
-    // gesture (KEY_7 held, then SHIFT); SHIFT just after the key's press (the grace) is SHIFT
-    // first, a select, which counts
+    // what starts the count again: SHIFT let go, another key between; the latch gesture in
+    // either order is the first tap, KEY_7 held, then SHIFT too, and SHIFT just after the
+    // key's press. Each from the phaser unlatched
     cases.push_back({"fshift-resets", [] {
         RunMs(kReadyMs);
+        const unsigned phaser_bit = 1u << 12;
+        auto phaser_latched = [&] { return (LatchedFx(Ask({0x20})) & phaser_bit) != 0; };
         Press("KEY_26", true);
         RunMs(60);
         Tap("KEY_7");
@@ -7859,17 +8000,15 @@ int main()
         RunMs(100);
         ShiftWith({"KEY_7"});
         RunMs(300);
-        Check(PhaserShows(false), "fshift-resets: SHIFT let go between the taps: no switch");
+        Check(PhaserShows(false) && !phaser_latched(),
+              "fshift-resets: SHIFT let go between the taps: latched, unlatched, no switch");
         ShiftWith({"KEY_7", "KEY_5", "KEY_7"});
         RunMs(300);
-        Check(PhaserShows(false), "fshift-resets: another FX key between: no switch");
+        Check(PhaserShows(false) && !phaser_latched(), "fshift-resets: another FX key between: no switch");
         ShiftWith({"KEY_7", "KEY_15", "KEY_7"});
         RunMs(300);
-        Check(PhaserShows(false), "fshift-resets: the compressor's key between: no switch");
-        ShiftWith({"KEY_7", kSceneKeys[0], "KEY_7"});
-        RunMs(300);
-        Check(PhaserShows(false), "fshift-resets: a scene key between: no switch");
-        // the latch: KEY_7 held, SHIFT down, KEY_7 let go; KEY_7 again with SHIFT down is a select
+        Check(PhaserShows(false) && !phaser_latched(), "fshift-resets: the compressor's key between: no switch");
+        // KEY_7 held, SHIFT down, KEY_7 let go (latched); KEY_7 again with SHIFT down switches
         Press("KEY_7", true);
         RunMs(100);
         Press("KEY_26", true);
@@ -7879,11 +8018,10 @@ int main()
         Tap("KEY_7");
         RunMs(100);
         Press("KEY_26", false);
-        RunMs(300);
-        const std::string st = Ask({0x20});
-        Check(PhaserShows(false, true) && LatchedFx(st) == 1u << 12,
-              "fshift-resets: the latch gesture never counts: the phaser latched, still the phaser");
-        // SHIFT 8 ms after the key's press: SHIFT first after all, the first tap
+        RunMs(400);
+        Check(PhaserShows(true) && !phaser_latched(),
+              "fshift-resets: KEY_7 held, then SHIFT, is the first tap too: the second switches, unlatched as before");
+        // SHIFT 8 ms after the key's press: the first tap as well
         Press("KEY_7", true);
         RunMs(8);
         Press("KEY_26", true);
@@ -7894,7 +8032,11 @@ int main()
         RunMs(60);
         Press("KEY_26", false);
         RunMs(400);
-        Check(PhaserShows(true, true), "fshift-resets: SHIFT within the grace after the key: the first tap, the second switches");
+        Check(PhaserShows(false) && !phaser_latched(),
+              "fshift-resets: SHIFT 8 ms after the key: the first tap, the second switches back");
+        ShiftWith({"KEY_7", kSceneKeys[0], "KEY_7"});
+        RunMs(300);
+        Check(PhaserShows(false, true), "fshift-resets: a scene key between: no switch");
     }});
 
     // on the Loops page the white keys are loops: SHIFT + KEY_7 twice switches nothing
@@ -7912,7 +8054,7 @@ int main()
     // knobs edit: not the selected effect's key (which would light as if on), nor key 15's
     cases.push_back({"fshift-midi-flash", [] {
         RunMs(kReadyMs);
-        ShiftWith({"KEY_5"}); // the filter selected
+        Tap("KEY_5"); // the filter selected, off again
         RunMs(200);
         Trs({0xB6, 23, 127});
         RunMs(50);
@@ -8128,10 +8270,9 @@ int main()
         RunMs(800);
         const Rgb down = PthLedFull(kKnob1Led + 3);
         Turn(3, 40);
-        Press("KEY_2", true); // off again
-        RunMs(80);
-        Press("KEY_2", false);
-        RunMs(800);
+        RunMs(300); // the turn done before SHIFT, or it's a coarse one
+        Latch("KEY_2"); // off again
+        RunMs(600);
         const Rgb off = PthLedFull(kKnob1Led + 3);
         printf("      shifter's VU: on %02x%02x%02x, Level down %02x%02x%02x, off %02x%02x%02x\n",
                on.r, on.g, on.b, down.r, down.g, down.b, off.r, off.g, off.b);
@@ -8266,7 +8407,7 @@ int main()
         // the knob is the state: still on 1/4, the next capture repeats a quarter from the start
         Turn(2, 6);
         run(200);
-        Tap("KEY_1"); // unlatched
+        Latch("KEY_1"); // unlatched
         run(1000);
         Latch("KEY_1");
         run(2500);
