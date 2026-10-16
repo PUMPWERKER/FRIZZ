@@ -120,11 +120,10 @@ public:
     }
 
     /** An FX key going down or up. Down selects it for the knobs. The effect is on for as long
-     *  as the key is held; the latch is decided on the release, which is inaudible: SHIFT
-     *  going down during the hold toggles it (ShiftPressed), a plain press clears it. With
-     *  SHIFT already down, the press only selects it: it stays off, its latch stays, and the
-     *  release does nothing, also once SHIFT is let go first. A release without its press
-     *  (held through boot) does nothing */
+     *  as the key is held; the latch is decided on the release, which is inaudible: SHIFT and
+     *  the key in either order toggle it, SHIFT already down at the press or going down
+     *  during the hold (ShiftPressed), also once SHIFT is let go first; a plain press leaves
+     *  it as it is (#456). A release without its press (held through boot) does nothing */
     void KeyPressed(size_t fx, bool down, bool shift)
     {
         if (down)
@@ -137,12 +136,7 @@ public:
                 page_ = 0;
             }
             selected_ = fx;
-            if (shift)
-            {
-                ShiftUsed(); // a select: no latch for the keys held
-                return;
-            }
-            on_release_[fx] = OnRelease::CLEAR;
+            on_release_[fx] = shift ? OnRelease::TOGGLE : OnRelease::PLAIN;
             rebound_ &= static_cast<uint16_t>(~Bit(fx));
         }
         else
@@ -155,11 +149,7 @@ public:
             was_on_release_[fx] = on_release_[fx];
             if (!held_[fx])
                 return;
-            bool latched = latched_[fx];
-            if (on_release_[fx] == OnRelease::CLEAR)
-                latched = false;
-            else if (on_release_[fx] == OnRelease::TOGGLE)
-                latched = !latched;
+            const bool latched = latched_[fx] != (on_release_[fx] == OnRelease::TOGGLE);
             if (latched != latched_[fx])
             {
                 edited_ = true;
@@ -170,19 +160,6 @@ public:
         }
         held_[fx] = down;
         SendOn(fx);
-    }
-
-    /** SHIFT went down just after fx's plain press (NormalPage's grace window, #115): the
-     *  press was SHIFT + key after all, a select. The effect goes off again unless latched, its
-     *  latch stays, and the release does nothing. False if the press wasn't a plain one */
-    bool LateSelect(size_t fx)
-    {
-        if (!held_[fx] || on_release_[fx] != OnRelease::CLEAR)
-            return false;
-        held_[fx] = false;
-        on_release_[fx] = OnRelease::KEEP;
-        SendOn(fx);
-        return true;
     }
 
     /** fx's key back down just after its release (a bounce, NormalPage's grace window): the
@@ -200,8 +177,23 @@ public:
         return true;
     }
 
+    /** fx's key down again for its other mode (NormalPage, #306): the latch back to what it
+     *  was before the key's last release, so SHIFT + the key twice switches the mode and
+     *  leaves the latch as it was. The press itself is a plain one */
+    void LatchBack(size_t fx)
+    {
+        const bool was = (was_latched_ >> fx) & 1;
+        if (was != latched_[fx])
+        {
+            edited_ = true;
+            TouchedInMorph(fx);
+        }
+        latched_[fx] = was;
+        SendOn(fx);
+    }
+
     /** The finalizer's key going down: selects it for the knobs, as an FX key does. With
-     *  SHIFT, a select as an FX key's would be */
+     *  SHIFT, a select, and SHIFT used: the FX keys held don't latch */
     void FinKeyPressed(bool shift)
     {
         Select(kFinSelected);
@@ -223,8 +215,8 @@ public:
 
     /** SHIFT going down: every FX key held will toggle its latch on release. True if one
      *  will, so SHIFT is a latch combo. A second SHIFT press in the same hold is still that
-     *  latch (it toggles once), so its release doesn't confirm a scene either. A key held
-     *  from a select (KEEP) has no latch to toggle */
+     *  latch (it toggles once), so its release doesn't confirm a scene either. A key whose
+     *  latch a scene or MIDI set meanwhile (KEEP) has none to toggle */
     bool ShiftPressed()
     {
         bool latch = false;
@@ -240,14 +232,14 @@ public:
     }
 
     /** SHIFT was used for something else while FX keys were held (a coarse turn, tap tempo, a
-     *  scene, a select...), or the CHOMPI key turned out to be a confirm: the latches go back
-     *  to what the presses alone would do */
+     *  scene, the finalizer's select...), or the CHOMPI key turned out to be a confirm: the
+     *  latches stay as they are. Another FX key with SHIFT is its own latch, not a use */
     void ShiftUsed()
     {
         for (size_t fx = 0; fx < kNumFx; fx++)
         {
             if (held_[fx] && on_release_[fx] == OnRelease::TOGGLE)
-                on_release_[fx] = OnRelease::CLEAR;
+                on_release_[fx] = OnRelease::PLAIN;
         }
     }
 
@@ -776,6 +768,7 @@ public:
         return pool;
     }
     inline bool IsOn(size_t fx) const { return held_[fx] || latched_[fx]; }
+    inline bool Held(size_t fx) const { return held_[fx]; }
     /** The FX the knobs edit: the last one pressed, or kFinSelected */
     inline size_t Selected() const { return selected_; }
     /** Knobs or latches changed since the last Snapshot or Recall */
@@ -885,9 +878,9 @@ private:
     /** What a held key's release does to its latch */
     enum class OnRelease : uint8_t
     {
-        KEEP,   // nothing: a scene decided it meanwhile
-        CLEAR,  // a plain press
-        TOGGLE, // SHIFT went down during the hold; undone by ShiftUsed
+        KEEP,   // nothing: a scene or MIDI decided it meanwhile
+        PLAIN,  // nothing: a plain press, which SHIFT may still make a latch
+        TOGGLE, // SHIFT with the key, either order; undone by ShiftUsed
     };
 
     Engine* engine_ = nullptr;

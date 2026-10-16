@@ -34,11 +34,7 @@ up KEY_26
 wait 1500
 # Comp
 expect led smt 10 005858
-down KEY_26
-wait 100
 tap KEY_5
-wait 100
-up KEY_26
 wait 300
 down KEY_26
 wait 100

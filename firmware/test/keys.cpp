@@ -106,7 +106,7 @@ static void TestChompi()
     k.Chompi(true);
     k.FxKey();
     k.Chompi(false);
-    Check(h.confirms == 1, "armed, held + an FX key (a select): no confirm");
+    Check(h.confirms == 1, "armed, held + an FX key (a latch): no confirm");
 
     h.fx_held = true;
     k.Chompi(true);
