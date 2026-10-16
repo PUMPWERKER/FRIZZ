@@ -4,9 +4,8 @@
  *
  *  CHOMPI held is SHIFT. In a scene mode with a slot picked (SceneArmed), a tap of it
  *  confirms: on its release, and only if nothing else was pressed or turned while it was
- *  held, so holding it still works as SHIFT there. An FX key held, then SHIFT, latches it, and
- *  SHIFT, then an FX key, selects it (FxControls.h): both are SHIFT combos, so the release
- *  doesn't confirm. SHIFT + anything else is that combo, and a latch the SHIFT press had
+ *  held, so holding it still works as SHIFT there. SHIFT and an FX key, in either order,
+ *  latch it (FxControls.h): a SHIFT combo, so the release doesn't confirm. SHIFT + anything else is that combo, and a latch the SHIFT press had
  *  queued for a held FX key is dropped (ShiftUsed).
  *
  *  LOOP acts on press, so recording starts, stops and erases exactly then. The gestures that
@@ -73,7 +72,8 @@ public:
         host_->ShiftUsed();
     }
 
-    /** An FX key going down: with CHOMPI held, a select, so CHOMPI won't confirm */
+    /** An FX or the finalizer's key going down: with CHOMPI held, a latch or a select, so
+     *  CHOMPI won't confirm */
     void FxKey()
     {
         if (chompi_down_)

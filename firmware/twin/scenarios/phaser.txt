@@ -61,9 +61,10 @@ turn 1 -100
 wait 1500
 tap ENC_4_SW
 wait 300
-# off again: its key dim
+# off again, the key, then SHIFT: its key dim
 down KEY_7
 wait 80
+tap KEY_26
 up KEY_7
 wait 1000
 expect led smt 18 000024
