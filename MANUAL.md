@@ -45,7 +45,7 @@ On the play page (the mode switch down), the controls are:
 | White keys 1-13 | The [punch-in effects](#punch-in-fx), in the order the sound goes through them: [Freezer](#freezer), [Shifter](#shifter), [Folder](#folder), [Crusher](#crusher), [Filter](#filter), [Flanger](#flanger), [Phaser](#phaser) (or its [frequency shifter](#frequency-shifter)), [Resonator](#resonator), [Slicer](#slicer), [Wow & flutter](#wow--flutter), [Tape stop](#tape-stop), [Delay](#delay), [Reverb](#reverb) |
 | White key 14 | The [Chaos key](#chaos-key) |
 | White key 15 | The [Finalizer](#finalizer) on knobs 1-4: input and drive, EQ, compression, width, a limiter |
-| Lower C# and D# | With SHIFT, the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page): loops from the card |
+| Lower C# and D# | With SHIFT, the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page): loops from the card; they glow dimly when the card holds loops (C#) or TAPE's cubbis (D#) |
 | Lower F#, G#, A#, upper C#, D# | The [FX scenes](#fx-scenes): the blank scene, then scenes 1-4 |
 | Upper F#, G#, A# | [Save, copy and delete](#save-copy-and-delete) a scene |
 | Knobs 1-4 | The effect picked last, or the finalizer; a press turns them to the effect's [page 2](#page-2) (on the finalizer, it [mutes a band](#band-mutes)) |
@@ -133,7 +133,9 @@ can't play (dim red), and VOLUME in the low-battery countdown.
 
 Waiting for something blinks slowly: LOOP while a recording finishes its bar, a picked scene
 slot, the CHOMPI key ready to confirm, a planned loop's key on the Loops or Cubbi page (fast
-while it still loads). On the knobs, white is a parameter's neutral point.
+while it still loads), and on the play page the lower C# or D# for it. On the knobs, white is a parameter's neutral point. On the play page a
+dim lower C# or D# means the card holds loops or cubbis, in the colour of the first bank that
+does (see [Playing loops](#playing-loops)).
 The [LED brightness](#led-brightness) sets how bright all of them are.
 
 <!-- part: Looper and tempo -->
@@ -382,6 +384,13 @@ Loops from the card play from two pages of their own, the **Loops page** for you
 **Cubbi page** for TAPE's, where the white keys are the loops. To get loops onto the card, see
 [Loop loader](#loop-loader).
 
+On the play page the two keys that open them show what the card holds: the lower C# glows
+dimly in the colour of the first bank with a loop of yours, the lower D# in that of the first
+bank with a cubbi, and each stays dark when the card has none. They show what's on the card,
+not what's playing, and follow the card when loops come or go. While a loop waits to switch
+(see [Switching loops](#switching-loops)), its page's key blinks in its bank's colour instead,
+on the beat.
+
 ### The Loops page
 
 **SHIFT + the lower C#** opens the Loops page. **SHIFT + the lower C#** again, or **two quick
@@ -556,7 +565,9 @@ For both:
   where it is and the loop doesn't switch. A scene recalled meanwhile, or the change stopped
   any other way, takes its loop with it.
 
-A planned switch carries on if you leave the Loops page.
+A planned switch carries on if you leave the Loops page. On the play page the lower C# (the
+lower D# for a cubbi) then blinks in the loop's bank colour, as its key on the Loops page does,
+until it switches, and glows again after.
 
 ### Two loops on the crossfader
 
@@ -1490,8 +1501,10 @@ keys in the middle are scene keys: lower F#, lower G#, lower A#, upper C# and up
 
 ![The panel with the five scene keys lit, the blank scene and scenes 1 to 4, then save in green, copy in blue and delete in red, and the CHOMPI key that confirms](images/panel-scenes.svg)
 
-On the play page the lower C# and D# do nothing by themselves: with SHIFT they open the
-[Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page).
+On the play page a press of the lower C# or D# alone does nothing: with SHIFT they open the
+[Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page). They glow dimly when the
+card holds loops (the lower C#) or TAPE's cubbis (the lower D#), in the colour of the first
+bank that does.
 
 A saved scene stays as you saved it: changes you make after recalling one are only kept if you
 save again.
@@ -2107,8 +2120,8 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | SHIFT + another scene key, while one runs | Stop it there and start the new one from there | [Timed scene changes](#timed-scene-changes) |
 | Upper F#, G# or A#, the slot (copy: the source, then the destination), then CHOMPI | Save, copy or delete a scene | [Save, copy and delete](#save-copy-and-delete) |
 | The function's key again, or the mode switch up | Out of save, copy or delete, doing nothing | [Save, copy and delete](#save-copy-and-delete) |
-| SHIFT + lower C# | The Loops page | [The Loops page](#the-loops-page) |
-| SHIFT + lower D# | The Cubbi page | [The Cubbi page](#the-cubbi-page) |
+| SHIFT + lower C# | The Loops page (the lower C# glows dimly when the card holds loops) | [The Loops page](#the-loops-page) |
+| SHIFT + lower D# | The Cubbi page (the lower D# glows dimly when the card holds cubbis) | [The Cubbi page](#the-cubbi-page) |
 
 ### On the Loops page
 
@@ -2393,7 +2406,8 @@ A loop's program change works from any page, as the white key on the Loops or Cu
 would, and the same rules apply: it keeps time and the tape's speed (see
 [Switching loops](#switching-loops)). **When** it switches, CC 54 says: at once, at the end
 of the N-th pass (1-8), or with the scene change waiting to land (127). It stays until the
-next CC 54, so a DAW sets it once. A program change on a key without a loop, or while LOOP
+next CC 54, so a DAW sets it once. While it waits, the play page's lower C# (D# for a cubbi)
+blinks in its bank's colour. A program change on a key without a loop, or while LOOP
 records, does nothing. CC 81 cancels a planned switch, with its scene change.
 
 A DAW that sends bank 0 and a program change when a project loads lands on the scenes.
