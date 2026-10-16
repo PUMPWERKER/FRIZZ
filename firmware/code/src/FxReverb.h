@@ -22,7 +22,7 @@ __attribute__((weak)) float reverb_pre_delay_mem[2][kPreDelayFrames] DSY_SDRAM_B
 
 /** TEMPO's reverb (reverb.h, the Rings/Clouds Griesinger topology) as a send.
  *  Params: 0 decay, 1 diffusion, 2 tone (damping), 3 ducking (the room ducks under what goes
- *  in); page 2: 4 freeze (Rings' freeze, by degrees: the input shut, the decay and the tone
+ *  in); page 2: 4 freeze (Elements' freeze, by degrees: the input shut, the decay and the tone
  *  up to 1, so the room holds), 5 pre-delay (0 to 250ms before the room, the SP-404MK2's PRE
  *  DELAY), 7 level, its return's, on the inserts' Level scale (FxOutput::LevelGain), on page
  *  2's knob 4 as theirs (#172). Page 2's 6, Band, filters what goes in (FxChain.h). The
@@ -72,6 +72,7 @@ public:
         const float decay = decay_.Process(), tone = tone_.Process();
         reverb_->SetTime(decay + freeze * (1.f - decay));
         reverb_->SetLowpass(tone + freeze * (1.f - tone));
+        reverb_->SetFreeze(freeze);
         reverb_->SetDiffusion(diffusion_.Process());
 
         const float in_gain = gate * (1.f - freeze);

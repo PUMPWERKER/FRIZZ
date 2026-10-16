@@ -53,6 +53,9 @@ class Reverb {
     reverb_time_ = 0.5f;
     lp_decay_1_ = 0.f;
     lp_decay_2_ = 0.f;
+    freeze_ = 0.f;
+    ap_1_ = 0.f;
+    ap_2_ = 0.f;
   }
   
   FRIZZ_HOT void Process(float* left, float* right) {
@@ -83,7 +86,7 @@ class Reverb {
     E::Context c;
 
     const float kap = diffusion_;
-    // (FRIZZ: without Rings' freeze, which held the loop and shut the input)
+    // (FRIZZ: without Elements' freeze, which held the loop and shut the input: FxReverb.h's)
     const float krt = fclamp(reverb_time_, 0.f, 1.f);
     const float klp = fclamp(lp_, 0.f, 1.f);
     const float gain = input_gain_;
@@ -118,9 +121,11 @@ class Reverb {
 
     // Main reverb loop. del2 and del1 read 6261 + 50 and 4460 + 40 times Mutable's LFOs,
     // which run 0..1, so they end on each line's last sample; FRIZZ's run -1..1, so the same
-    // span is the middle plus or minus half (#313: it was twice as deep, centred lower)
+    // span is the middle plus or minus half (#313: it was twice as deep, centred lower).
+    // Frozen, they're allpass-interpolated at half the depth, so the held room keeps its highs
+    // (#394, fx_engine.h)
     c.Load(apout);
-    c.Interpolate(del2, 6286.0f, LFO_2, 25.0f, krt);
+    c.Interpolate(del2, 6286.0f, LFO_2, 25.0f, krt, ap_2_, freeze_);
     c.Lp(lp_1, klp);
     c.Read(dap1a TAIL, -kap);
     c.WriteAllPass(dap1a, kap);
@@ -132,7 +137,7 @@ class Reverb {
     *left = wet;
 
     c.Load(apout);
-    c.Interpolate(del1, 4480.0f, LFO_1, 20.0f, krt);
+    c.Interpolate(del1, 4480.0f, LFO_1, 20.0f, krt, ap_1_, freeze_);
     c.Lp(lp_2, klp);
     c.Read(dap2a TAIL, kap);
     c.WriteAllPass(dap2a, -kap);
@@ -162,6 +167,12 @@ class Reverb {
   inline void SetLowpass(float lp) {
     lp_ = lp;
   }
+
+  // FRIZZ (#394): how frozen the room is, 0..1, for the tank's reads. Under 1e-4 it's 0: the
+  // freeze's slew, back to 0, would stall on a denormal above it and leave the allpass on
+  inline void SetFreeze(float freeze) {
+    freeze_ = freeze < 1e-4f ? 0.f : freeze;
+  }
   
  private:
   typedef FxEngine<32768, FORMAT_16_BIT> E;
@@ -174,6 +185,10 @@ class Reverb {
   
   float lp_decay_1_;
   float lp_decay_2_;
+
+  float freeze_;
+  float ap_1_; // the tank's allpass reads' last outputs, del1's and del2's
+  float ap_2_;
   
   uint16_t  buffer_[32768];
 };

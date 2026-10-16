@@ -291,6 +291,53 @@ class FxEngine
             accumulator_ += x * scale;
         }
 
+        /** FRIZZ (#394): Interpolate, blended by `allpass` (0..1) into a first-order allpass
+         *  (Thiran) read, its last output in `state`, and the modulation's depth down to half
+         *  with it. The linear read takes a little of the highs each time (-0.05dB at 2kHz,
+         *  averaged over the fraction), which in a held tank adds up to ~15dB a minute; the
+         *  allpass keeps every frequency. Its fraction d is the linear read's, 0..1, on the same
+         *  two samples (Thiran's usual 0.5..1.5 jumps at its switch, which a held tank gathers
+         *  into a noise floor): at d 1 it reads b alone, and the next sample's d 0 reads a
+         *  alone, so moving on a sample is seamless. The depth halves as the tank's reads
+         *  compound its phase errors: at full depth an 8kHz tone's pitch spreads 6 cents in a
+         *  minute, at half 3. At 0 the linear read alone, as before, with `state` following it,
+         *  so the allpass starts from where the read is */
+        template <typename D>
+        inline void Interpolate(D&       d,
+                                float    offset,
+                                LFOIndex index,
+                                float    amplitude,
+                                float    scale,
+                                float&   state,
+                                float    allpass)
+        {
+            STATIC_ASSERT(D::base + D::length <= size, delay_memory_full);
+            offset += amplitude * (1.f - .5f * allpass) * lfo_value_[index];
+
+            int32_t offset_integral = static_cast<int32_t>(offset);
+            float   offset_fractional
+                = offset - static_cast<float>(offset_integral);
+
+            float a = DataType<format>::Decompress(
+                buffer_[(write_ptr_ + offset_integral + D::base) & MASK]);
+            float b = DataType<format>::Decompress(
+                buffer_[(write_ptr_ + offset_integral + D::base + 1) & MASK]);
+            float x = a + (b - a) * offset_fractional;
+            if(allpass > 0.f)
+            {
+                const float eta
+                    = (1.f - offset_fractional) / (1.f + offset_fractional);
+                state = b + eta * (a - state);
+                x += allpass * (state - x);
+            }
+            else
+            {
+                state = x;
+            }
+            previous_read_ = x;
+            accumulator_ += x * scale;
+        }
+
       private:
         /** cos(2 pi phase) for a phase of 0..1, within 0.001: a parabola with one correction
          *  step, for the reverb's slow LFOs, where cosf twice a sample was a noticeable cost */
