@@ -98,7 +98,11 @@ public:
             wl = PreTap(pl, pre_.value);
             wr = PreTap(pr, pre_.value);
             if (pre_fade_)
-                PreFade(&wl, &wr);
+            {
+                wl = PreFade(pl, wl);
+                wr = PreFade(pr, wr);
+                pre_fade_--;
+            }
             pre_pos_ = (pre_pos_ + 1) & (kPreDelayFrames - 1);
         }
         else
@@ -173,12 +177,11 @@ private:
         pre_.value = pre_.target;
         pre_fade_ = kPreFadeFrames;
     }
-    /** Crossfading from the old time's tap to the new one's, linearly */
-    __attribute__((noinline)) void PreFade(float* wl, float* wr)
+    /** A channel's crossfade from the old time's tap to w, the new one's, linearly */
+    __attribute__((noinline)) float PreFade(const float* buf, float w) const
     {
-        const float old = static_cast<float>(pre_fade_--) / static_cast<float>(kPreFadeFrames);
-        *wl += old * (PreTap(reverb_pre_delay_mem[0], pre_from_) - *wl);
-        *wr += old * (PreTap(reverb_pre_delay_mem[1], pre_from_) - *wr);
+        const float old = static_cast<float>(pre_fade_) / static_cast<float>(kPreFadeFrames);
+        return w + old * (PreTap(buf, pre_from_) - w);
     }
 
     float sample_rate_ = 48000.f;

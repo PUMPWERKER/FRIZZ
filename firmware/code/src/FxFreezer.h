@@ -297,14 +297,14 @@ private:
 
     /** A new capture starting while the old loop plays: the old one goes on for the
      *  crossfade, read as it was. The new capture records over its start, which by then the
-     *  seam crossfade reads less and less of. A channel still in its first pass was passing
-     *  the live signal, as the new capture's first pass does: nothing to fade from */
+     *  seam crossfade reads less and less of. A channel still in its first pass (its read
+     *  position still at 0, Process) was passing the live signal, as the new capture's first
+     *  pass does: nothing to fade from */
     void Handover()
     {
         for (size_t c = 0; c < 2; c++)
         {
-            const bool looping = written_ > len_[c] || written_ >= frames_ || pos_[c];
-            old_len_[c] = looping ? (len_[c] < written_ ? len_[c] : written_) : 0;
+            old_len_[c] = pos_[c] ? (len_[c] < written_ ? len_[c] : written_) : 0;
             old_pos_[c] = pos_[c];
             old_seam_[c] = seam_[c];
         }
