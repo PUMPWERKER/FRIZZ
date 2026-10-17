@@ -9,6 +9,13 @@ what FRIZZ does.
 
 ### Added
 
+- **MIDI out passes Song Position on** (#443): without a loop, a DAW's Song Position from the
+  clock's input goes out with its Start, Continue and Stop, in the order it came, never back
+  to where it came from. Move the DAW's playhead while it's stopped and press play: the gear
+  behind FRIZZ goes on where the DAW does, not where it stopped. At the clock factor's double
+  or half the position is doubled or halved with the clock. With a loop, FRIZZ still sends its
+  own, where the loop goes on. See [MIDI out](MANUAL.md#midi-out).
+
 - **The play page shows what the card holds** (#434): the lower C# glows dimly in the colour of
   the first bank with a loop of yours, the lower D# in that of the first bank with a TAPE cubbi,
   each dark when there are none. It shows what's on the card, not what's playing, and follows

@@ -707,7 +707,7 @@ private:
             // the transport from the clock source's input only, from both in Auto and internal
             if (!transport_ || !FromSource(clock_->GetSource(), usb))
                 return;
-            const uint8_t t = e.type == SystemCommon ? 0xF2 : TransportByte(e);
+            const uint8_t t = TransportByte(e);
             if (!t)
                 return;
             const uint16_t spp = t == 0xF2 ? static_cast<uint16_t>(e.data[0] | e.data[1] << 7) : 0;
