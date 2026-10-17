@@ -733,6 +733,45 @@ def daw_tempo(r, d):
                                                        count(log, STOP, t1)), "1 Start or Continue, a Stop")
 
 
+@case("daw-spp", "7: no loop, MIDI out on TRS: REAPER stopped, its playhead moved to bar 5, then back "
+      "to bar 1, played: its Song Position goes out of TRS before the Continue or Start, so the gear "
+      "behind starts where REAPER does; at x2 and x1/2 in the 16ths of the ticks that go out (#469)",
+      needs=("out",))
+def daw_spp(r, d):
+    r.setting(clock_source=SOURCES["usb"], midi_out=OUTS["trs"])
+    d.tempo(120)
+    log = r.trs.log
+    try:
+        for factor, name in ((100, "x1"), (200, "x2"), (50, "x1/2")):
+            r.setting(clock_factor=factor)
+            d.locate(0)
+            d.play()
+            r.wait_tempo(120 * factor / 100., 1, 6)
+            time.sleep(1.)
+            for beat, bar in ((16, 5), (0, 1)):
+                d.stop_transport()
+                time.sleep(.4)
+                t0 = time.perf_counter()
+                d.locate(beat)
+                time.sleep(.4)
+                d.play()
+                time.sleep(1.5)
+                msgs = [(t, m) for t, m in log if t >= t0 and m[0] in (SPP, START, CONTINUE, STOP)]
+                go = next((i for i, (_, m) in enumerate(msgs) if m[0] in (START, CONTINUE)), None)
+                spps = [m[1] | m[2] << 7 for _, m in msgs[:go] if m[0] == SPP]
+                want = beat * 4 * factor // 100
+                r.check("%s, stopped, the playhead to bar %d, played: out of TRS" % (name, bar),
+                        go is not None and spps and spps[-1] == want,
+                        " ".join("SPP %d" % (m[1] | m[2] << 7) if m[0] == SPP else
+                                 {START: "Start", CONTINUE: "Continue", STOP: "Stop"}[m[0]]
+                                 for _, m in msgs[:(go or 0) + 1]) or "nothing",
+                        "Song Position %d, then Continue or Start" % want)
+                time.sleep(.5)
+            d.stop_transport()
+    finally:
+        r.setting(clock_factor=100)
+
+
 def pos_after(r, t, beats, beat=.5):
     """FRIZZ's loop position (0-1) beats after t"""
     sleep_until(t + beats * beat)
