@@ -1,8 +1,8 @@
 // midiout.cpp: MIDI out (MidiOut.h, #60) on the virtual CHOMPI: the clock, Start, Stop,
 // Continue and Song Position that go out of the MIDI jack and over USB, timed as the UART
 // sends them. Off at first; passing an incoming clock on, by the clock factor, never back
-// where it comes from; generating it from a loop or the last tempo; a loop's Start, Stop and
-// Continue; nothing stale from the boot screen. Each case on a fresh device. Run by unit.sh
+// where it comes from, its transport and Song Position too; generating it from a loop or the
+// last tempo; a loop's Start, Stop and Continue; nothing stale from the boot screen. Each case on a fresh device. Run by unit.sh
 // midiout.
 #include "timing.h"
 #include "twin.h"
@@ -36,6 +36,20 @@ static int Count(const std::vector<MidiOutByte>& v, uint8_t byte)
     for (const MidiOutByte& b : v)
         n += b.byte == byte;
     return n;
+}
+
+/** What went out but the ticks, in hex: "F2 2C 02 FB" */
+static std::string Transport(const std::vector<MidiOutByte>& v)
+{
+    std::string seq;
+    for (const MidiOutByte& b : v)
+        if (b.byte != 0xF8)
+        {
+            char h[4];
+            snprintf(h, sizeof(h), "%02X", b.byte);
+            seq += (seq.empty() ? "" : " ") + std::string(h);
+        }
+    return seq;
 }
 
 /** The gaps between the ticks: their mean, and the largest distance from it */
@@ -162,6 +176,10 @@ int main()
         StartUsb(Clock(120.));
         RunMs(2000);
         UsbMidi(0xFA);
+        RunMs(500);
+        for (uint8_t b : {0xFC, 0xF2, 0x2C, 0x02, 0xFB}) // a DAW moved, plays on (#443)
+            UsbMidi(b);
+        RunMs(500);
         RecordLoop(2000);
         RunMs(1000);
         Tap("KEY_27");
@@ -263,6 +281,107 @@ int main()
         const Sent s = TakeSent();
         Check(Count(s.trs, 0xFA) == 1 && Count(s.trs, 0xFC) == 1,
               "transport: a DAW's Start and Stop are passed on");
+    }});
+
+    // Song Position from the clock's input goes out too, without a loop (#443): a DAW moved
+    // while stopped, SPP and Continue in one block, goes out as it came, the SPP first; after
+    // a Stop of the same block, the SPP after it; alone too; never back to the input
+    for (bool in_usb : {true, false})
+        cases.push_back({in_usb ? "spp-usb" : "spp-trs", [in_usb] {
+            const auto in = [in_usb](std::initializer_list<uint8_t> bytes) {
+                for (uint8_t b : bytes)
+                    in_usb ? UsbMidi(b) : Midi(b);
+            };
+            const char* name = in_usb ? "spp-usb" : "spp-trs";
+            RunMs(kReadyMs);
+            SetOut(2);
+            if (in_usb)
+                StartUsb(Clock(120.));
+            else
+                StartTrs(Clock(120.));
+            RunMs(1000);
+            in({0xFA});
+            RunMs(500);
+            TakeSent();
+            const std::vector<std::pair<std::vector<uint8_t>, std::string>> steps = {
+                {{0xFC, 0xF2, 0x00, 0x00}, "FC F2 00 00"}, // Stop, back to its start
+                {{0xF2, 0x2C, 0x02}, "F2 2C 02"},          // moved while stopped: 16th 300
+                {{0xF2, 0x2C, 0x02, 0xFB}, "F2 2C 02 FB"}, // and plays on from there
+            };
+            for (const auto& step : steps)
+            {
+                for (uint8_t b : step.first)
+                    in_usb ? UsbMidi(b) : Midi(b);
+                RunMs(300);
+                const Sent s = TakeSent();
+                const std::string there = Transport(in_usb ? s.trs : s.usb);
+                const std::vector<MidiOutByte>& back = in_usb ? s.usb : s.trs;
+                Report("%s: in %s, out %s \"%s\", %d bytes back", name, step.second.c_str(),
+                       in_usb ? "of the jack" : "over USB", there.c_str(), (int)back.size());
+                Check(there == step.second,
+                      (std::string(name) + ": " + step.second + " passed on as it came").c_str());
+                Check(back.empty(), (std::string(name) + ": and nothing back to its input").c_str());
+            }
+        }});
+
+    // by the clock factor, the Song Position in the 16ths of the ticks that go out: at double
+    // twice the DAW's, at half half of it, an odd one rounded down (#443)
+    cases.push_back({"spp-factor", [] {
+        RunMs(kReadyMs);
+        SetOut(1);
+        StartUsb(Clock(120.));
+        RunMs(1000);
+        for (const auto& f : std::vector<std::pair<int, std::string>>{{1, "F2 5A 04 FB"}, {1, "F2 16 01 FB"}})
+        {
+            Factor(f.first); // x2, then x1/2
+            UsbMidi(0xFC);
+            RunMs(300);
+            TakeSent();
+            for (uint8_t b : {0xF2, 0x2D, 0x02, 0xFB}) // 16th 301
+                UsbMidi(b);
+            RunMs(300);
+            const std::string out = Transport(TakeSent().trs);
+            Report("spp-factor: 16th 301 in, out \"%s\"", out.c_str());
+            Check(out == f.second, f.second == "F2 5A 04 FB" ? "spp-factor: at double, 602 goes out"
+                                                              : "spp-factor: at half, 150 goes out");
+        }
+    }});
+
+    // with a loop, the transport is the loop's: following a DAW (transport following on),
+    // paused, its Song Position moves the loop, and its Continue plays it on; the gear gets
+    // FRIZZ's own Song Position, where the loop goes on, then Continue, not the DAW's (#443)
+    cases.push_back({"spp-loop", [] {
+        RunMs(kReadyMs);
+        SetOut(1);
+        for (uint8_t b : {0xF0, 0x7D, 0x43, 0x48, 0x13, 0x01, 0x01, 0xF7}) // transport following on
+            UsbMidi(b);
+        StartUsb(Clock(120.));
+        RunMs(1000);
+        Press("KEY_27", true); // PLAY held, LOOP: quantized
+        RunMs(80);
+        Tap("KEY_28");
+        RunMs(20);
+        Press("KEY_27", false);
+        RunUntil([] { return Probe().loop_state == 1; }, 3000);
+        RunMs(1000);
+        Tap("KEY_28"); // the bar ends it: one bar, 16 16ths
+        RunUntil([] { return Probe().loop_state == 2; }, 3000);
+        RunMs(1000);
+        UsbMidi(0xFC);
+        RunMs(500);
+        TakeSent();
+        for (uint8_t b : {0xF2, 0x2D, 0x02, 0xFB}) // 16th 301: the loop's 13th
+            UsbMidi(b);
+        RunMs(500);
+        const Sent s = TakeSent();
+        size_t spp = 0;
+        while (spp < s.trs.size() && s.trs[spp].byte != 0xF2)
+            spp++;
+        const int at = spp + 2 < s.trs.size() ? s.trs[spp + 1].byte | s.trs[spp + 2].byte << 7 : -1;
+        Report("spp-loop: out \"%s\", Song Position %d", Transport(s.trs).c_str(), at);
+        Check(Count(s.trs, 0xF2) == 1 && Count(s.trs, 0xFB) == 1,
+              "spp-loop: one Song Position and one Continue go out, FRIZZ's");
+        Check(at >= 13 && at <= 14, "spp-loop: where the loop goes on (its 13th 16th, or the next), not the DAW's 301");
     }});
 
     // a loop leads: Start with its first tick, its tempo, Stop on a pause, and on PLAY the
@@ -734,10 +853,12 @@ int main()
         StartUsb(Clock(120.));
         RunMs(500); // the boot screen
         SetOut(1);
-        UsbMidi(0xFA);
+        for (uint8_t b : {0xF2, 0x2C, 0x02, 0xFA})
+            UsbMidi(b);
         RunMs(kReadyMs - 520);
         const Sent s = TakeSent();
-        Check(Count(s.trs, 0xFA) == 0, "boot-start: a Start from the boot screen doesn't go out after it");
+        Check(Count(s.trs, 0xFA) == 0 && Count(s.trs, 0xF2) == 0,
+              "boot-start: a Start or Song Position from the boot screen doesn't go out after it");
         double closest = 1e9;
         for (size_t i = 1; i < s.trs.size(); i++)
             if (s.trs[i].byte == 0xF8 && s.trs[i - 1].byte == 0xF8)

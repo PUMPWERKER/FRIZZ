@@ -9,6 +9,13 @@ what FRIZZ does.
 
 ### Added
 
+- **MIDI out passes Song Position on** (#443): without a loop, a DAW's Song Position from the
+  clock's input goes out with its Start, Continue and Stop, in the order it came, never back
+  to where it came from. Move the DAW's playhead while it's stopped and press play: the gear
+  behind FRIZZ goes on where the DAW does, not where it stopped. At the clock factor's double
+  or half the position is doubled or halved with the clock. With a loop, FRIZZ still sends its
+  own, where the loop goes on. See [MIDI out](MANUAL.md#midi-out).
+
 - **The play page shows what the card holds** (#434): the lower C# glows dimly in the colour of
   the first bank with a loop of yours, the lower D# in that of the first bank with a TAPE cubbi,
   each dark when there are none. It shows what's on the card, not what's playing, and follows
@@ -28,7 +35,7 @@ what FRIZZ does.
   switches it at its landing, and CC 23 on the phaser's channel (7) sets it over MIDI. After
   Mutable Instruments' Warps. See [Frequency shifter](MANUAL.md#frequency-shifter).
 
-- **The Companion** (#278): a web page, [frizz.friedrichwagner.eu/companion](https://frizz.friedrichwagner.eu/companion/),
+- **The Companion** (#278): a web page, [pumpwerker.de/frizz/companion](https://pumpwerker.de/frizz/companion/),
   that manages your loop banks over the USB cable while FRIZZ plays, in Chrome, Edge and other
   Chromium-based browsers and in Firefox. It lists what's on the card, FRIZZ's banks with each
   loop's name and TAPE's cubbis, uploads audio files into FRIZZ's slots (converted to 16-bit
