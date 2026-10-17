@@ -111,6 +111,13 @@ what FRIZZ does.
 
 ### Changed
 
+- **The scene keys show the slots by colour** (#475): an empty slot glows dimly white (it was
+  dark), so you see where a save can go; a saved one dimly violet (it was white), the blank
+  scene too; the scene you recalled or saved last bright violet, pulsing once you've changed
+  something, as before. Holding key 15, the finalizer's presets show the same way. The three
+  stay apart at the lowest LED brightness. Nothing is written to the card for it. See
+  [FX scenes](MANUAL.md#fx-scenes).
+
 - **SHIFT and an FX key latch in either order** (#456): hold the key and press SHIFT, as
   before, or hold SHIFT and tap the key; the same again unlatches it. You hear the effect while
   you hold its key either way, and the latch lands when you let go. Keep SHIFT held and tap

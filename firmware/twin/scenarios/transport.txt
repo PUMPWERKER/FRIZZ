@@ -38,7 +38,7 @@ wait 80
 up KEY_26
 wait 10000
 # landed: the blank scene active, the filter and crusher off; still standing
-expect led smt 2 fcfcfc
+expect led smt 2 6400fc
 expect led smt 20 240c14
 expect led smt 21 241408
 expect led pth 5 fd0000

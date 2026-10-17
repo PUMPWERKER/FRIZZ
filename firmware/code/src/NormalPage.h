@@ -2513,8 +2513,9 @@ namespace chompi
         }
 
         /** The finalizer's presets on scenes 1-4's keys (FinPresetsShown): in a mode as the
-         *  scenes' are, its colour on the mode keys; else the stored ones dim, the recalled one
-         *  white; a write's flash, a refusal's red */
+         *  scenes' are, its colour on the mode keys; else as the scenes' slots, an empty one dim
+         *  white, a stored one dim violet, the recalled one bright violet (#475); a write's
+         *  flash, a refusal's red */
         void DrawFinPresetLeds(uint32_t now)
         {
             const SceneMode mode = fin_presets_.Mode();
@@ -2555,10 +2556,12 @@ namespace chompi
                     else if (fin_presets_.Valid(static_cast<size_t>(p)))
                         level = FxOffLevel();
                 }
-                else if (p == fin_preset_ && fin_presets_.Used(static_cast<size_t>(p)))
-                    level = 1.f;
-                else if (fin_presets_.Used(static_cast<size_t>(p)))
-                    level = FxOffLevel();
+                else if (static_cast<size_t>(p) < kFinPresets)
+                {
+                    const bool used = fin_presets_.Used(static_cast<size_t>(p));
+                    color = used ? violet : white;
+                    level = used && p == fin_preset_ ? 1.f : FxOffLevel();
+                }
                 SmtLed(KeyLedOf(kSceneKeys[slot]), color, level);
             }
         }
@@ -2609,11 +2612,13 @@ namespace chompi
                 else if (scene_ctl_.Fading()
                          && (s == scene_ctl_.Morphing() || s == scene_ctl_.FadeFrom()))
                 {
-                    // the crossfader: where it started and where it goes, in their mix
+                    // the crossfader: where it started and where it goes, in their mix, from
+                    // stored's dim violet to the active one's bright
                     const float t = scene_ctl_.FaderPos();
                     float mix = s == scene_ctl_.Morphing() ? t : 0.f;
                     if (s == scene_ctl_.FadeFrom())
                         mix = fmaxf(mix, 1.f - t);
+                    color = violet;
                     level = FxOffLevel() + (1.f - FxOffLevel()) * mix;
                 }
                 else if (s == scene_ctl_.Morphing() || s == scene_ctl_.DropSlot())
@@ -2627,12 +2632,19 @@ namespace chompi
                 }
                 else if (s == scene_ctl_.Active())
                 {
-                    // edited: a slow pulse between the saved and the active brightness
+                    // bright violet; edited: a slow pulse between the saved and the active
+                    // brightness
                     const float phase = static_cast<float>(now % kScenePulseMs) / kScenePulseMs;
+                    color = violet;
                     level = scene_ctl_.Edited() ? .6f + .4f * cosf(phase * TWOPI_F) : 1.f;
                 }
-                else if (scenes_->scenes[slot].used)
+                else
+                {
+                    // a stored slot dim violet (the blank one always is), an empty one dim
+                    // white, where a save can go (#475)
+                    color = scenes_->scenes[slot].used ? violet : white;
                     level = FxOffLevel();
+                }
                 SmtLed(KeyLedOf(kSceneKeys[slot]), color, level);
             }
         }
