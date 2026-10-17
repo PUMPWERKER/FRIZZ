@@ -28,7 +28,7 @@ what FRIZZ does.
   switches it at its landing, and CC 23 on the phaser's channel (7) sets it over MIDI. After
   Mutable Instruments' Warps. See [Frequency shifter](MANUAL.md#frequency-shifter).
 
-- **The Companion** (#278): a web page, [frizz.friedrichwagner.eu/companion](https://frizz.friedrichwagner.eu/companion/),
+- **The Companion** (#278): a web page, [pumpwerker.de/frizz/companion](https://pumpwerker.de/frizz/companion/),
   that manages your loop banks over the USB cable while FRIZZ plays, in Chrome, Edge and other
   Chromium-based browsers and in Firefox. It lists what's on the card, FRIZZ's banks with each
   loop's name and TAPE's cubbis, uploads audio files into FRIZZ's slots (converted to 16-bit

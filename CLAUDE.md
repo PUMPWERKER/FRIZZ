@@ -41,7 +41,7 @@ scope searches to `firmware/`.
 
 ## Docs that feed the website
 
-https://frizz.friedrichwagner.eu is built from `MANUAL.md`, `QUICKSTART.md`, `INSTALL.md`,
+https://pumpwerker.de/frizz/ is built from `MANUAL.md`, `QUICKSTART.md`, `INSTALL.md`,
 `images/`, `site/landing.md`, `site/features.json` (what the Companion page offers:
 `loopTransfer`, the loop transfer's protocol major, [`docs/LOOP_PROTOCOL.md`](docs/LOOP_PROTOCOL.md)
 2.2) and the key colours in `LedColors.h`/`FxSlots.h` (repo
@@ -107,7 +107,7 @@ these files is checked against this before it merges:
    when there is one, so it is live within about 20 minutes; nothing to trigger. New means a
    published GitHub release (not a draft) with its `.bin` attached; a bare tag isn't picked up.
    The rolling `beta` pre-release is ignored: the newest numbered pre-release after the latest
-   stable one becomes `/beta/`. `curl https://frizz.friedrichwagner.eu/build.json` shows which
+   stable one becomes `/beta/`. `curl https://pumpwerker.de/build.json` shows which
    tags the site has (`{"stable": …, "prerelease": …}`): check it after cutting a release.
 
 ## Git workflow: branches first, checked by the sessions, merged by the user

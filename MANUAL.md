@@ -346,7 +346,7 @@ comes back from the computer.
 
 ### The Companion
 
-The **FRIZZ Companion**, [frizz.friedrichwagner.eu/companion](https://frizz.friedrichwagner.eu/companion/),
+The **FRIZZ Companion**, [pumpwerker.de/frizz/companion](https://pumpwerker.de/frizz/companion/),
 is a web page that manages your loop banks over the USB cable while FRIZZ plays. Plug the
 CHOMPI into the computer, open the page and let it use MIDI: it shows what's on the card,
 FRIZZ's 8 banks of 15 with each loop's name, and TAPE's cubbis. Then:

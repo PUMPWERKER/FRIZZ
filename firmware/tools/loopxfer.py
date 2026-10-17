@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """loopxfer.py: the loop transfer's reference (docs/LOOP_PROTOCOL.md, section 8.1): FRIZZ's loop
-banks over USB MIDI, as the Companion page (frizz.friedrichwagner.eu/companion/) speaks it.
+banks over USB MIDI, as the Companion page (pumpwerker.de/frizz/companion/) speaks it.
 
     tools/loopxfer.py vectors [--out FILE]   writes test/loopxfer/vectors.json, the contract's
                                              test: scripted sessions, the bytes each side sends
