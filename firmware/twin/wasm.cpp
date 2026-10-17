@@ -39,6 +39,7 @@ EMSCRIPTEN_KEEPALIVE void twin_battery(float volts, int plugged, int full)
     SetBattery(volts, plugged, full);
 }
 EMSCRIPTEN_KEEPALIVE int twin_powered() { return Powered(); }
+EMSCRIPTEN_KEEPALIVE void twin_eject_card() { EjectCard(); }
 EMSCRIPTEN_KEEPALIVE int twin_main_loop_running() { return MainLoopRunning(); }
 
 /** The LEDs at full scale: the 10 panel LEDs, then the 25 key LEDs, R G B each */

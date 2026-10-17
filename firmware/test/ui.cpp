@@ -9839,8 +9839,8 @@ int main()
     }});
 
     // audit 2026-10-16 E1: a bug report says where the card was lent and taken back, how,
-    // and what was read from it again, as comment lines: the replay has the power-on files,
-    // and a take-back by the computer isn't in it
+    // and what was read from it again, as comment lines; a take-back by the computer as the
+    // replay's eject (#461)
     cases.push_back({"card-lend-log", [] {
         RunMs(kReadyMs);
         Tap("KEY_15");
@@ -9874,13 +9874,73 @@ int main()
             return n;
         };
         printf("      lent %d times, taken back by the computer %d, by the gesture %d\n", count("\n# card lent\n"),
-               count("\n# card taken back, the computer let go (the replay keeps it lent); read: settings\n"),
+               count("\nusbaudio eject\n# card taken back, the computer let go; read: settings\n"),
                count("\n# card taken back; read: nothing\n"));
         Check(had && ejected && count("\n# card lent\n") == 2
-                  && count("\n# card taken back, the computer let go (the replay keeps it lent); read: settings\n") == 1
+                  && count("\nusbaudio eject\n# card taken back, the computer let go; read: settings\n") == 1
                   && count("\n# card taken back; read: nothing\n") == 1,
               "card-lend-log: the bug report has the card lent twice, taken back by the computer (the settings read "
               "again) and by the gesture");
+    }});
+
+    // #461: what a take-back read, the replay reads too: the report gives the files the
+    // computer left to the replay's card at the lend, and lets go where the computer let go.
+    // Lent twice: the computer sets the clock factor (taken back by its eject), then deletes a
+    // scene (taken back by the gesture)
+    // the clock factor as the developers' GET has it (masterfile::kLines' 3), -1 without an answer
+    static auto clock_factor = [] {
+        const std::string s = Ask({0x3E, 2, 1, 0x23});
+        return s.size() > 12 ? static_cast<uint8_t>(s[11]) << 7 | static_cast<uint8_t>(s[12]) : -1;
+    };
+    cases.push_back({"lend-bug-log", [] {
+        RunMs(kReadyMs);
+        RunMs(3000);
+        Latch("KEY_5");
+        Save(1);
+        const std::string one = Card("/FRIZZ/frizz_scenes.txt");
+        Latch("KEY_6");
+        Save(2);
+        RunMs(1000);
+        SetToggle(true);
+        RunMs(300);
+        lend_gesture();
+        CardFiles()["/FRIZZ/frizz_master.txt"] = "FRIZZ master 1\nclock_factor 200\n";
+        EjectCard();
+        RunMs(300);
+        const bool ejected = !CardLent();
+        RunMs(3000);
+        lend_gesture();
+        CardFiles()["/FRIZZ/frizz_scenes.txt"] = one; // scene 2 deleted on the computer
+        lend_gesture();
+        RunMs(1000);
+        Press("KEY_26", true);
+        RunMs(100);
+        Press("ENC_6_SW", true);
+        RunMs(2100);
+        Press("ENC_6_SW", false);
+        Press("KEY_26", false);
+        RunMs(3000);
+        const std::string log = Card("/FRIZZ/bug-1.txt");
+        const size_t lent = log.find("\n# card lent\ncard file /FRIZZ/frizz_master.txt\n|"),
+                     again = log.find("\n# card lent\ncard file /FRIZZ/frizz_scenes.txt\n|");
+        // asked only now: the report doesn't log the developers' SysEx
+        Check(ejected && clock_factor() == 200, "lend-bug-log: the clock factor the computer set, taken back by its eject");
+        Check(!one.empty() && lent != std::string::npos && again != std::string::npos && lent < again
+                  && log.find("\nusbaudio eject\n", lent) < again,
+              "lend-bug-log: each lend gives the replay the files its take-back read, the computer's eject as one");
+        KeepCard();
+    }});
+    cases.push_back({"bug-replay-lend", [] {
+        TakeCard();
+        const std::string log = Card("/FRIZZ/bug-1.txt");
+        const std::string scenes = Card("/FRIZZ/frizz_scenes.txt");
+        CardFiles().clear();
+        std::istringstream script(log + "\nwait 3000\n");
+        const int failed = PlayScript(script, nullptr, nullptr);
+        Check(failed == 0 && !log.empty() && !CardLent() && clock_factor() == 200,
+              "lend-bug-log: replayed, the card is back and the clock factor the computer set counts");
+        Check(Card("/FRIZZ/frizz_scenes.txt") == scenes,
+              "lend-bug-log: replayed, scene 2 the computer deleted is gone, as on the device");
     }});
 
     // refused, LOOP blinking red 3 times: without a computer, while LOOP records, while a bug
@@ -11209,6 +11269,7 @@ int main()
     Chain({"card-1", "card-2", "card-3", "bug-log", "bug-full", "bug-replay"});
     Chain({"midi-transport", "midi-kept"});
     Chain({"mic-bug-log", "bug-replay-mic"});
+    Chain({"lend-bug-log", "bug-replay-lend"});
     // a replay, a scenario and a script- case boot by their script
     RunAllCases([](const Case& c) {
         return c.name.compare(0, 10, "bug-replay") != 0 && c.name.compare(0, 9, "scenario:") != 0

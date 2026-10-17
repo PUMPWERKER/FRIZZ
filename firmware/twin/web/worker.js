@@ -67,6 +67,13 @@ function Apply(cmd, args, fromScript)
         clockBpm = +args[0];
         clockNext = m._twin_now_ms();
         break;
+    case 'card': // a script's file, its text after the path
+        if (args[0] === 'file') m._twin_card_put(str(args[1]), str(args[2].text));
+        return;
+    case 'usbaudio': // the computer ejects the card lent to it
+        if (args[0] !== 'eject') return;
+        m._twin_eject_card();
+        break;
     case 'battery':
         m._twin_battery(+args[0], args.includes('plugged') ? 1 : 0, args.includes('full') ? 1 : 0);
         break;
@@ -88,7 +95,8 @@ function Apply(cmd, args, fromScript)
 }
 
 /** A script (the command line twin's format): its timed commands, from power-on, and the
- *  files its `card file` blocks put on the card */
+ *  files its `card file` blocks put on the card; a block after `booted` (a bug report's lend,
+ *  EventLog.h) goes there at its time, as a command */
 function ParseScript(text)
 {
     const out = [], card = {};
@@ -97,14 +105,19 @@ function ParseScript(text)
     {
         if (file !== null && raw.startsWith('|'))
         {
-            card[file] += raw.slice(1) + '\n';
+            file.text += raw.slice(1) + '\n';
             continue;
         }
         file = null;
         const words = raw.replace(/#.*/, '').trim().split(/\s+/).filter(Boolean);
         if (words.length === 0) continue;
         const [cmd, ...args] = words;
-        if (cmd === 'card' && args[0] === 'file') card[file = args[1]] = '';
+        if (cmd === 'card' && args[0] === 'file')
+        {
+            file = { text: '' };
+            if (booted) out.push({ t, cmd, args: [args[0], args[1], file], booted });
+            else card[args[1]] = file;
+        }
         else if (cmd === 'booted') { booted = true; t = 0; }
         else if (cmd === 'wait') t += +args[0];
         else if (cmd === 'at') t = Math.max(t, +args[0]);
@@ -116,6 +129,7 @@ function ParseScript(text)
         }
         else out.push({ t, cmd, args, booted });
     }
+    for (const path in card) card[path] = card[path].text;
     return { items: out, card };
 }
 

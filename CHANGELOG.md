@@ -298,7 +298,8 @@ what FRIZZ does.
 - **A bug report notes the card lent to a computer** (audit 2026-10-16): when the card was
   lent as a USB drive and taken back, the report didn't say so, so a session that edited
   scenes or settings on the computer played back differently with nothing to show why. Now the
-  report marks each lend and take-back and what FRIZZ read from the card again. See
+  report marks each lend and take-back, and carries the scenes and settings FRIZZ read from the
+  card again (#461), so a problem that came after plays back too. See
   [Bug reports](MANUAL.md#bug-reports).
 - **A failed save shows on the Loops and Cubbi pages** (audit 2026-10-16): the input gain
   turned there (VOLUME's page 2) is saved to the card like everywhere else, but when the card
