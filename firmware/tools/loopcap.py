@@ -15,7 +15,7 @@ in, and the capture read back to the sample.
                                        moments; then the scenes' program changes
     tools/loopcap.py feedback --planned OUT
                                        #401: the same with switches planned with SHIFT + a key
-                                       tapped 1-3 times, and one cancelled (--secs 40)
+                                       tapped 1-3 times, and one cancelled (--secs 30)
     tools/loopcap.py fader OUT         #268: the crossfader with two loops (SHIFT + the blank
                                        scene's key, the transport turned, a white key): the two
                                        loops' power at each step, another white key during the
@@ -558,8 +558,9 @@ def cmd_pc(a):
 
 # feedback --planned (#401): switches planned with SHIFT + a key tapped 1-3 times (that many
 # pass ends of the loop playing: h13 2 s, h14 4 s, h15 2.4 s), one cancelled in a new SHIFT hold
-PLANNED = (("KEY_13", 0, False, 2.3), ("KEY_14", 1, False, 4.5), ("KEY_15", 2, False, 9.5),
-           ("KEY_13", 1, True, 4.0), ("KEY_14", 3, False, 9.0))
+# early in h14's first pass, well before its end; then 1, 2 and 3 taps
+PLANNED = (("KEY_14", 0, False, 0.6), ("KEY_13", 1, True, 1.3), ("KEY_15", 1, False, 3.1),
+           ("KEY_13", 2, False, 4.5), ("KEY_14", 3, False, 10.0))
 
 
 def cmd_feedback(a):
@@ -625,6 +626,8 @@ def cmd_feedback(a):
                 if m[0] < 0xF0:
                     msgs.append((tt, list(m)))
         print("FRIZZ sent: " + "; ".join("%.3f %s" % (tt, " ".join("%02X" % b for b in m)) for tt, m in msgs))
+        cc = lambda n: [(round(tt, 3), m[2]) for tt, m in msgs if m[0] & 0xF0 == 0xB0 and m[1] == n]
+        print("its CC 54 (when a switch lands): %s; CC 81 (a cancel): %s" % (cc(54), cc(81)))
         run.wait()
     finally:
         run.end()
@@ -769,7 +772,7 @@ def main():
         p.add_argument("--secs", type=int, default=secs, help="the capture's length")
         if name == "feedback":
             p.add_argument("--planned", action="store_true",
-                           help="#401: every switch planned with SHIFT (1-3 taps), one cancelled (--secs 40)")
+                           help="#401: every switch planned with SHIFT (1-3 taps), one cancelled (--secs 30)")
         if name == "pc":
             p.add_argument("--cubbi", action="store_true", help="then CC 0 = 9, the cubbis' bank: PC 0, 1")
     a = ap.parse_args()

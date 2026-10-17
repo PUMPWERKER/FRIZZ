@@ -596,8 +596,12 @@ def tempo_start(r, port):
             to = bpm + (10 if bpm < 300 else -10)
             c.bpm = float(to)
             took, got = r.wait_tempo(to, .5, 3)
-            r.tcheck("... then %d BPM: followed" % to, took is not None and took <= .6 * r.loose,
-                     "%.2f s" % took if took is not None else "not in 3 s (%.1f)" % got, "at once (0.6 s)")
+            # as fast-usb's 0.6 s at 174 BPM, and as long as its ticks are apart below (the
+            # smoothed period takes a number of them): 0.68 s from 120 before #417 too
+            limit = .6 * max(1., 174. / bpm)
+            r.tcheck("... then %d BPM: followed" % to, took is not None and took <= limit * r.loose,
+                     "%.2f s" % took if took is not None else "not in 3 s (%.1f)" % got,
+                     "at once (%.2f s, 0.6 s at 174 BPM and the ticks' time)" % limit)
 
 
 @case("tempo-start-usb", "7: no loop, the delay latched: a DAW's clock over USB starting at 120 and 300 BPM: "
