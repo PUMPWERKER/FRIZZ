@@ -6,7 +6,7 @@
 //    has a text in the cells of the knobs it uses (FxParams::knobs) and "—" in the others, and
 //    no Page 2 column without a page 2
 //  - the finalizer's (#345): "White key N.", a | Knob | Function | table per module with the
-//    knobs it uses (kFinalizerKnobs), its types and characters by their number and default,
+//    knobs it uses (kFinalizerKnobs), its characters by their number and default,
 //    its ranges and coarse steps as Finalizer.h has them, the key's colours by module
 //  - stepped parameters: their cell lists their steps (1/16, 1/8T ... in bars, the slicer's
 //    patterns bit for bit, "-12 to +12 semitones", "two steps") as the code's tables have
@@ -1116,12 +1116,7 @@ static void CheckFinalizer()
         }
     }
 
-    // the stepped ones: the types and the characters, by their number and their default
-    const Strings types = StepNames(cell[Finalizer::TYPE]);
-    std::regex_search(cell[Finalizer::TYPE], m, std::regex("\\(default (\\w+)\\)"));
-    CheckF(types.size() == kFinTypes && !m.empty()
-               && m[1] == types[StepIndex(kFinalizerKnobs[0].defaults[Finalizer::TYPE], kFinTypes)],
-           "Finalizer: Type's %d types, its default the default's step", static_cast<int>(kFinTypes));
+    // the stepped ones, the characters, by their number and their default
     const Strings characters = StepNames(cell[Finalizer::CHARACTER_LOW]);
     std::regex_search(cell[Finalizer::CHARACTER_LOW], m, std::regex("\\(default ([^)]+)\\)"));
     const size_t def = StepIndex(kFinalizerKnobs[2].defaults[0], kFinCharacters);
@@ -1147,8 +1142,6 @@ static void CheckFinalizer()
     };
     coarse(Finalizer::INPUT, 2. * Finalizer::kInputDb, "Input");
     coarse(Finalizer::LOUD, Finalizer::kLoudDb, "Loud");
-    CheckF(Range(cell[Finalizer::DRIVE], "([\\d.]+) to \\+([\\d.]+) dB", &lo, &hi) && hi == Finalizer::kDriveDb,
-           "Finalizer: Drive to +%g dB", Finalizer::kDriveDb);
     CheckF(Range(cell[Finalizer::LOUD], "([\\d.]+) to \\+([\\d.]+) dB", &lo, &hi) && hi == Finalizer::kLoudDb,
            "Finalizer: Loud to +%g dB", Finalizer::kLoudDb);
     Group eq("Finalizer: EQ's bands, -20 dB to +8 dB (Finalizer.h)");

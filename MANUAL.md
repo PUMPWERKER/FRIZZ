@@ -44,7 +44,7 @@ On the play page (the mode switch down), the controls are:
 |---|---|
 | White keys 1-13 | The [punch-in effects](#punch-in-fx), in the order the sound goes through them: [Freezer](#freezer), [Shifter](#shifter), [Folder](#folder), [Crusher](#crusher), [Filter](#filter), [Flanger](#flanger), [Phaser](#phaser) (or its [frequency shifter](#frequency-shifter)), [Resonator](#resonator), [Slicer](#slicer), [Wow & flutter](#wow--flutter), [Tape stop](#tape-stop), [Delay](#delay), [Reverb](#reverb) |
 | White key 14 | The [Chaos key](#chaos-key) |
-| White key 15 | The [Finalizer](#finalizer) on knobs 1-4: input and drive, EQ, compression, width, a limiter |
+| White key 15 | The [Finalizer](#finalizer) on knobs 1-4: input, EQ, compression, width, a limiter |
 | Lower C# and D# | With SHIFT, the [Loops page](#the-loops-page) and the [Cubbi page](#the-cubbi-page): loops from the card; they glow dimly when the card holds loops (C#) or TAPE's cubbis (D#) |
 | Lower F#, G#, A#, upper C#, D# | The [FX scenes](#fx-scenes): the blank scene, then scenes 1-4 |
 | Upper F#, G#, A# | [Save, copy and delete](#save-copy-and-delete) a scene |
@@ -1335,20 +1335,20 @@ latch, part of scenes and morphs. It has no page 2: a knob press does nothing.
 - LEDs: the key is magenta; the knobs go magenta to light blue.
 
 ## Finalizer
-<!-- summary: A master section on key 15: input and drive, a 3-band EQ, compression and width, and a limiter that makes it loud. -->
+<!-- summary: A master section on key 15: input, a 3-band EQ, compression and width, and a limiter that makes it loud. -->
 
 White key 15. A master section on the outputs, after the effects and before VOLUME, so turning
 VOLUME doesn't change how hard it works (after Endorphin.es' Golden Master and OTO's BOUM). Its
 four modules always run in this order:
 
-Input → EQ → Comp → Width → Drive → Limiter → VOLUME → the safety limiter
+Input → EQ → Comp → Width → Limiter → VOLUME → the safety limiter
 
 EQ, Comp and Width share three bands, split at 300 Hz and 3 kHz. Every module is neutral at its
 defaults, and then the finalizer leaves the sound untouched and costs next to nothing. Nothing in
 it turns anything up by itself: the compressors have no makeup, and level comes back through
-Drive and Loud.
+Loud.
 
-![The white keys from above, the finalizer lit on key 15; its knobs 1 to 4 are input, drive, type, Loud](images/key-finalizer.svg)
+![The white keys from above, the finalizer lit on key 15; its knobs 1 and 4 are input and Loud](images/key-finalizer.svg)
 
 - **Selecting it:** the key selects the finalizer for knobs 1-4, which then turn it the way they
   turn an effect: 1% per detent (more turned fast), SHIFT + turn coarse, SHIFT + press resets. Pressing an FX key
@@ -1365,24 +1365,19 @@ Drive and Loud.
 
 ### Level module
 
-Module 1, white: what goes in, its drive, and how loud it comes out.
+Module 1, white: what goes in, and how loud it comes out.
 
 | Knob | Function |
 |---|---|
 | 1 | Input: a clean trim, -12 dB to +12 dB, 3 dB a coarse step (default 0 dB, the centre) |
-| 2 | Drive: 0 to +30 dB into a saturation, 0 off (default off) |
-| 3 | Type: Boost, Tube, Fuzz (default Boost) |
+| 2 | — |
+| 3 | — |
 | 4 | Loud: 0 to +18 dB into the limiter, 3 dB a coarse step, 0 off (default off) |
 
 - **Input (knob 1)** sets the level everything after it works with: more drives the
-  compressors and the saturation harder. Its LED is a level meter, as VOLUME's input meter.
-  Pink means hotter than the finalizer is set for (Loud's ceiling, the drive's level
-  compensation): a source that peaks near AUX's full scale wants Input turned down a few dB
+  compressors and Loud's limiter harder. Its LED is a level meter, as VOLUME's input meter.
+  Pink means hotter than the finalizer is set for (Loud's ceiling): a source that peaks near AUX's full scale wants Input turned down a few dB
   first, until its peaks no longer reach pink.
-- **Drive (knob 2) and Type (knob 3):** Boost is a soft clip, Tube an asymmetric one that adds
-  mostly the second harmonic, Fuzz a hard clip. It runs at twice the sample rate, so its
-  harmonics don't fold back, with a gentle hi-cut after it. Drive is level-compensated: turning
-  it up changes the character, not the level, for a signal at a normal level.
 - **Loud (knob 4)** turns the signal up into a limiter with a ceiling of -1 dB, so the loud
   parts stay where they are and the rest comes up. It looks 1 ms ahead, so it's down before a
   peak arrives, and its release adapts: short for a short peak, longer the longer it limits.
@@ -1432,7 +1427,7 @@ Module 3, cyan: a compressor on each band, set by its character, all three by on
   - **Keep loud:** slow and even, it holds the band's level steady.
   - **Beat FX:** fast and hard, it pumps: an effect, not a correction.
 - Each band's detector hears both channels, so the image doesn't shift. There's no makeup
-  gain: compression only turns down. Bring the level back with Drive or Loud.
+  gain: compression only turns down. Bring the level back with Loud.
 - Their LEDs show each band's gain reduction, brighter the deeper it compresses, and knob 4
   its Depth.
 
@@ -1511,20 +1506,18 @@ all three.
   turns red over everything while it limits, from 1 dB of limiting on and fully red from 3 dB,
   held 0.3 s so a short peak is seen. Red means turn something down: VOLUME, an effect's
   Level, the finalizer's Input or EQ.
-  - **Drive and Loud keep it from showing:** each sets the level itself (Drive's level
-    compensation holds its output under where red starts, Loud's limiter its own), so with
-    either up only an input sent [past the effects](#input-aux-the-mic-or-usb) can still turn
-    it red.
-  - **Where it starts:** with Drive and Loud at 0 and VOLUME full, about 2 dB over the
+  - **Loud keeps it from showing:** its limiter sets the level itself, so with Loud up only an
+    input sent [past the effects](#input-aux-the-mic-or-usb) can still turn it red.
+  - **Where it starts:** with Loud at 0 and VOLUME full, about 2 dB over the
     finalizer's 0 dB: an AUX signal peaking above about −5 dBFS at the
     default input gain, or a hot line signal with the Input a few percent up. At VOLUME's 75%
     from power-on it takes more. A loop on its own stays under it, unless the Input, the EQ or
     an effect's Level turns it up.
 - **The knob LEDs** are meters while the knobs rest (above, module by module); a knob you turn
-  shows its value for a moment, then the meter again: Drive, Type, Loud, the characters and
-  Depth from light blue (0%) to orange (100%); the knobs with a centre, Input and the EQ and
-  Width bands, blue below it, white on it and orange above.
-  Knobs 2 and 3 of Level and knob 4 of Comp always show their values. The output's own meter
+  shows its value for a moment, then the meter again: Loud, the characters and Depth from
+  light blue (0%) to orange (100%); the knobs with a centre, Input and the EQ and Width bands,
+  blue below it, white on it and orange above. Knob 4 of Comp always shows its value; Level's
+  knobs 2 and 3 and EQ's and Width's knob 4 do nothing and stay dark. The output's own meter
   stays VOLUME's.
 - **Level:** 0 dB at the input is an AUX signal about 7 dB below full scale, at the default
   input gain.
@@ -2391,7 +2384,7 @@ save, copy and delete 66, 68 and 70. Below them:
 |---|---|
 | 14-22 | The effect in focus, as on its own channel |
 | 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the finalizer: CC 14-17 reach the module its knobs show, CC 18-22 nothing). It's the effect the knobs edit, as a press of its key picks it, but without switching it on, and it follows when you pick one by hand |
-| 24-27 | The finalizer's Level module: input, drive, type, Loud, as channel 15's 14-17 |
+| 24-27 | The finalizer's Level module, as channel 15's 14-17: 24 input, 27 Loud; 25 and 26 do nothing |
 | 28 | The finalizer's Depth, as channel 15's 27 |
 | 84 | [The input's source](#input-aux-the-mic-or-usb) in thirds: 0-42 AUX, 43-85 the mic, 86-127 USB, as the settings page's upper F# picks it |
 | 85 | Output gain |
@@ -2417,7 +2410,7 @@ module's knobs are four CCs in a row:
 
 | CC | Function |
 |---|---|
-| 14, 15, 16, 17 | [Level](#level-module): input, drive, type, Loud |
+| 14, 15, 16, 17 | [Level](#level-module): 14 input, 17 Loud; 15 and 16 do nothing |
 | 18, 19, 20 | [EQ](#eq-module): low, mid, high |
 | 21 | Recall [preset](#finalizer-presets-and-bypass) 1-4 (0 none), as the value changes |
 | 22 | On or bypassed: 64 and above on, below bypassed, acting as the value crosses 64 |
@@ -2657,10 +2650,9 @@ The numbers behind FRIZZ, for planning a setup. The timings were measured on a C
 - The tempo: 50-300 BPM, 120 at power-on.
 - Every output has a fixed safety limiter after VOLUME (see [Finalizer LEDs and
   settings](#finalizer-leds-and-settings)).
-- The finalizer: its bands split at 300 Hz and 3 kHz, Linkwitz-Riley 4th order; its drive at
-  twice the sample rate; its limiter 1 ms ahead, a ceiling of -1 dB, with its peaks between
-  samples estimated at twice the rate. While Loud is up, the outputs and MIDI clock out are
-  1 ms later.
+- The finalizer: its bands split at 300 Hz and 3 kHz, Linkwitz-Riley 4th order; its limiter
+  1 ms ahead, a ceiling of -1 dB, with its peaks between samples estimated at twice the rate.
+  While Loud is up, the outputs and MIDI clock out are 1 ms later.
 - USB audio (see [USB audio](#usb-audio)): USB Audio Class 1 at full speed, 48 kHz, 24 bit, 2
   channels each way, asynchronous: the computer follows FRIZZ's clock, about 2 ms of buffer
   each way in FRIZZ. To the computer, the master before VOLUME and the safety limiter, at the

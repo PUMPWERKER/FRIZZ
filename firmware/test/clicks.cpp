@@ -12,8 +12,8 @@
 //  - the crusher and the filter punched in after they've gone to sleep (FxGate::Asleep), at
 //    their harshest: no step and no peak in the first 100ms beyond what they make settled
 //  - the finalizer (#345) switching what changes its phase or latency: the bands (an EQ
-//    turned off its centre and back), the drive on and off, Loud's 1 ms delay in and out, its
-//    bypass, a band muted and unmuted: each fades, no step beyond the sine's own (a cut
+//    turned off its centre and back), Loud's 1 ms delay in and out, its bypass, a band muted
+//    and unmuted: each fades, no step beyond the sine's own (a cut
 //    straight to the 1 ms later signal would step by up to .6)
 //  - every insert and the resonator punched in from asleep through the chain, in the
 //    device's runs of 24 samples (FxChain::Insert), on a 220Hz and a 50Hz sine: the same;
@@ -518,12 +518,10 @@ static void TestFinalizer()
     };
     const Case cases[] = {
         {"the bands woken and put to sleep (EQ low)", [](Finalizer& f, bool on) { f.SetParam(Finalizer::EQ_LOW, on ? .55f : .5f); }},
-        {"the drive on and off", [](Finalizer& f, bool on) { f.SetParam(Finalizer::DRIVE, on ? .05f : 0.f); }},
         {"Loud's 1 ms delay in and out", [](Finalizer& f, bool on) { f.SetParam(Finalizer::LOUD, on ? .01f : 0.f); }},
         {"the bypass, everything on", [](Finalizer& f, bool on) {
              if (on)
              {
-                 f.SetParam(Finalizer::DRIVE, .05f);
                  f.SetParam(Finalizer::LOUD, .01f);
                  f.SetParam(Finalizer::WIDTH_LOW + 1, .6f);
                  return;

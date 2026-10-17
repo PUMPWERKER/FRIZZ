@@ -325,7 +325,9 @@ key 15 red (and without Loud the same input does). Last, the settings file
 (`MasterSettings.h`): the finalizer's knobs and its presets round-trip, only stored presets
 are written, foreign, unknown or partial files are read sensibly, a file from before (the
 master compressor's `compressor2` and `compressor` lines) loads with every other setting and
-the finalizer neutral, and isn't written with them again; the mono line round-trips, the line
+the finalizer neutral, and isn't written with them again; a 1.5 beta's, its drive up, loads
+with the drive dropped and every other knob where it was, and is written again in the same
+format with 0 there; the mono line round-trips, the line
 of the removed randomizer is skipped, and the longest file with four presets fits. It doesn't
 touch the card or the play page.
 
@@ -341,8 +343,9 @@ flat (within 0.1 dB, 30 Hz to 18 kHz); each band's compressor reduces a tone in 
 curve (12 dB at 18 dB over a 3:1 threshold, within 0.5 dB, the high band 1.5 dB as its peak is
 sampled 6 times a cycle) and leaves the other bands alone; Width at full left is mono; a muted
 band adds nothing (the other two and it alone add up to all three, within -80 dB), all three
-muted are silence, 25 Hz with the low band muted 80 dB down; the drive's compensation keeps a
-sine at its reference level within 1 dB for every type and amount; the limiter, Loud full,
+muted are silence, 25 Hz with the low band muted 80 dB down; Level's knobs 2 and 3 (the
+drive's in the 1.5 betas) turned leave every sample as it is, every other module working or
+none; the limiter, Loud full,
 keeps a 2x-oversampled peak under -1 dB on a program rolling off from 9 kHz, its delay is
 exactly 48 samples, and Loud at 0 has none. Then its meters against ffmpeg's, a reference of
 its own (`acrossover` for LR4 bands): each band's correlation against `aphasemeter` (within 0.1

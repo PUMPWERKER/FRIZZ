@@ -553,11 +553,11 @@ static void TestFinalizer()
     const float filter = fx.Param(FX_FILTER, 0);
     fx.FinKeyPressed(false);
     Check(fx.Selected() == kFinSelected, "finalizer key: the knobs edit it");
-    fx.KnobTurned(1, 10.f, false);
-    Check(Near(fx.FinParam(Finalizer::DRIVE), .1f) && Near(e.fin[Finalizer::DRIVE], .1f)
+    fx.KnobTurned(3, 10.f, false);
+    Check(Near(fx.FinParam(Finalizer::LOUD), .1f) && Near(e.fin[Finalizer::LOUD], .1f)
               && fx.Param(FX_FILTER, 0) == filter,
-          "finalizer: a fine turn moves Level's drive, not the FX's");
-    Check(fx.TakeFinChanged() == 1u << Finalizer::DRIVE && !fx.TakeFinChanged(),
+          "finalizer: a fine turn moves Level's Loud, not the FX's");
+    Check(fx.TakeFinChanged() == 1u << Finalizer::LOUD && !fx.TakeFinChanged(),
           "finalizer: a turn is a change, once, of its knob");
     fx.SetFin(Finalizer::DEPTH, .9f, false);
     Check(Near(fx.FinParam(Finalizer::DEPTH), .9f) && Near(e.fin[Finalizer::DEPTH], .9f) && !fx.TakeFinChanged(),
@@ -570,8 +570,8 @@ static void TestFinalizer()
     fx.SetModule(2);
     Check(fx.Module() == 2 && fx.KnobUsed(0) && fx.KnobUsed(3), "finalizer: Comp's four knobs");
     fx.KnobTurned(3, 50.f, false);
-    Check(Near(fx.FinParam(Finalizer::DEPTH), .5f) && Near(fx.FinParam(Finalizer::DRIVE), .1f),
-          "finalizer: Comp's knob 4 its Depth, Level's drive as it was");
+    Check(Near(fx.FinParam(Finalizer::DEPTH), .5f) && Near(fx.FinParam(Finalizer::LOUD), .1f),
+          "finalizer: Comp's knob 4 its Depth, Level's Loud as it was");
     // a stepped character: a step every few detents, coarse a step a detent
     fx.KnobTurned(0, 3.f, false);
     Check(Near(fx.FinParam(Finalizer::CHARACTER_LOW), .6f), "finalizer: a character a step on");
@@ -591,6 +591,16 @@ static void TestFinalizer()
     Check(fx.Module() == 3, "finalizer: the next module, Width");
     fx.NextModule();
     Check(fx.Module() == 0, "finalizer: and round to Level");
+    // Level's knobs 2 and 3 (the drive's in the 1.5 betas): dark, and nothing turns them,
+    // neither the knobs nor the card, MIDI or SysEx (SetFin)
+    fx.TakeFinChanged();
+    fx.KnobTurned(1, 30.f, false);
+    fx.KnobTurned(2, 30.f, true);
+    fx.SetFin(1, .5f);
+    fx.SetFin(2, 1.f, false);
+    Check(fx.KnobUsed(0) && !fx.KnobUsed(1) && !fx.KnobUsed(2) && fx.KnobUsed(3) && fx.FinParam(1) == 0.f
+              && fx.FinParam(2) == 0.f && e.fin[1] == 0.f && e.fin[2] == 0.f && !fx.TakeFinChanged(),
+          "finalizer: Level's knobs 2 and 3 dark, turned or set they do nothing");
 
     // coarse Input in 3dB, SHIFT + press resets
     fx.KnobTurned(0, 1.f, true);
@@ -631,7 +641,7 @@ static void TestFinalizer()
     fx.KeyPressed(FX_FILTER, false, false);
     fx.KnobTurned(0, 1.f, false);
     Check(fx.Selected() == FX_FILTER && Near(fx.Param(FX_FILTER, 0), filter + .01f) &&
-              Near(fx.FinParam(Finalizer::DRIVE), .1f),
+              fx.FinParam(Finalizer::LOUD) == 1.f,
           "an FX key: the knobs edit it again");
 
     // a scene recall leaves it as it is
@@ -639,12 +649,12 @@ static void TestFinalizer()
     fx.Snapshot(scene);
     scene.params[FX_FILTER][0] = .9f;
     fx.Recall(scene);
-    Check(Near(fx.FinParam(Finalizer::DRIVE), .1f) && Near(e.fin[Finalizer::DRIVE], .1f),
+    Check(fx.FinParam(Finalizer::LOUD) == 1.f && e.fin[Finalizer::LOUD] == 1.f,
           "a recall leaves the finalizer alone");
 
     // set from the card
-    fx.SetFin(Finalizer::DRIVE, 1.5f);
-    Check(fx.FinParam(Finalizer::DRIVE) == 1.f && e.fin[Finalizer::DRIVE] == 1.f, "SetFin: clamped and sent");
+    fx.SetFin(Finalizer::EQ_LOW, 1.5f);
+    Check(fx.FinParam(Finalizer::EQ_LOW) == 1.f && e.fin[Finalizer::EQ_LOW] == 1.f, "SetFin: clamped and sent");
     fx.SetFin(7, .5f);
     Check(fx.FinParam(7) == 0.f, "SetFin: a parameter it doesn't use stays");
 }

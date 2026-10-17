@@ -3,8 +3,6 @@
 # from the chaos key's magenta next to it (off, dim). Nothing is saved
 # every knob where the factory has it, whatever the card keeps (#214)
 set fin 0 0.5
-set fin 1 0
-set fin 2 0
 set fin 3 0
 set fin 4 0.5
 set fin 5 0.5

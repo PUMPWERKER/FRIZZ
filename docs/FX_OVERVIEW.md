@@ -47,7 +47,7 @@ drive the VU LEDs.
 - **FRIZZ** (`FxChain.h`): AUX input → input/loop mix with the looper → freezer → shifter →
   folder → crusher → filter → flanger → phaser → slicer → wow & flutter → tape stop → delay → reverb
   (fed the delay's echoes too) → the finalizer (`Finalizer.h`, #345, on its own key: input, a
-  3-band EQ, compression and width on the bands, drive, a lookahead limiter; the master
+  3-band EQ, compression and width on the bands, a lookahead limiter; the master
   compressor's place until 1.5) → output gain → safety limiter
   (`limiter.h` at its lowest setting), the only thing that sets a level by itself. Every
   insert, the tape stop too, sits inside page 2's Mix, Band and Level (`FxOutput.h`); the

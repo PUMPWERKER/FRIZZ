@@ -1,5 +1,5 @@
 # The finalizer (#345) with every module working, reached by its gesture (selected, SHIFT + key
-# 15, #435): Level's input, drive and Loud, EQ's bands, Comp's Depth, Width's bands; then a
+# 15, #435): Level's input and Loud, EQ's bands, Comp's Depth, Width's bands; then a
 # band muted and back, the bypass and back. On a loud bass sine, mono
 input sine 110 0.6
 # the input as a fresh card has it, so the sine reaches the finalizer: the device's card holds
@@ -10,8 +10,6 @@ set settings mic_dry 0
 set settings mic_live 0
 # every knob where the factory has it, whatever the card keeps (#214)
 set fin 0 0.5
-set fin 1 0
-set fin 2 0
 set fin 3 0
 set fin 4 0.5
 set fin 5 0.5
@@ -26,10 +24,8 @@ set fin 14 0.5
 at 6000
 tap KEY_15
 wait 200
-# Level: input up, drive, Tube, Loud
+# Level: input up, Loud
 turn 4 10
-turn 1 40
-turn 2 3
 turn 3 30
 wait 1500
 # EQ: the lows up, the highs down
