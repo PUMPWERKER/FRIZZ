@@ -1,4 +1,4 @@
-// usbtransport.cpp: FRIZZ's USB MIDI transport (code/src/UsbMidiTransport.h, TinyUSB's
+// usbtransport.cpp: FRIZZ's USB MIDI transport (platform/daisy/UsbMidiTransport.h, TinyUSB's
 // MIDI class behind libDaisy's MidiHandler) against a host in memory (usbtransport/tusb.h).
 // MidiHandler::Listen() must start the receive (RxActive false until StartRx: lost-tty's port
 // said true from the start and was deaf to USB MIDI, so the PoC's first build on the device
@@ -7,8 +7,8 @@
 // does a host that doesn't read for kStalePasses, keeping a message TinyUSB has begun. The
 // virtual CHOMPI can't show it: its USB is its own (twin/host/hid/usb_midi.h). Run by unit.sh
 // usbtransport.
-// unit includes: usbtransport ../code/libs/libDaisy/src ../code/libs/libDaisy/src/sys
-#include "../code/libs/libDaisy/src/hid/midi_parser.cpp"
+// unit includes: usbtransport ../platform/daisy/libs/libDaisy/src ../platform/daisy/libs/libDaisy/src/sys
+#include "../platform/daisy/libs/libDaisy/src/hid/midi_parser.cpp"
 #include "hid/midi.h"
 #include "UsbMidiTransport.h"
 #include "check.h"

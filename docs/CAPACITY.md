@@ -4,7 +4,10 @@ What a new feature can still use, measured on 2026-10-17 (`main` 864a584 without
 finalizer's drive: the finalizer, the frequency shifter and 1.5's fixes since the code-room
 round, #320; the history below). `make`
 prints the memory table after every build; the numbers below come from it and from
-`build/FRIZZ.map`.
+`build/FRIZZ.map`. The files named here are FRIZZ's (`firmware/code/src/`) or the PUMPWERKER
+platform's (`firmware/platform/`, #477: `chompi_sram.lds`, `UsbDevice.cpp`, `MidiClock.h`,
+`Crash.h`, `encoder.cpp`, the libraries in `daisy/libs/`); the platform's code and data count in
+FRIZZ's build like FRIZZ's own.
 
 ## Memory
 
@@ -304,7 +307,7 @@ b5c658c, #286).
    index. Not the engine: it's read every sample and AXI SRAM is the fastest after the TCMs.
    D2 is reachable by DMA but is cached, so nothing a DMA writes may go there. To check
    first: libDaisy enables the D2 SRAM clocks only with `DATA_IN_D2_SRAM`
-   (`libs/libDaisy/src/sys/system_stm32h7xx.c:203`); `RAM_D2`'s DMA buffers already work at
+   (`platform/daisy/libs/libDaisy/src/sys/system_stm32h7xx.c:203`); `RAM_D2`'s DMA buffers already work at
    0x30000000, but SRAM2/3 (0x30020000 up) may need `__HAL_RCC_D2SRAM2_CLK_ENABLE()` and
    `__HAL_RCC_D2SRAM3_CLK_ENABLE()` at boot. A zeroing loop is needed too: startup code
    clears only `.bss`.
@@ -320,7 +323,7 @@ b5c658c, #286).
    and `main()` are left (`main()` at `-Os` saves 24 B: its inlined `Init`s come out of line);
    measure with the map. The per-sample path stays `-O3`.
 4. **Shrink the MIDI queues.** libDaisy's `MidiHandler` keeps `FIFO<MidiEvent, 256>`
-   (`libs/libDaisy/src/hid/midi.h:261`), each event with a 128-byte SysEx buffer: 37 KB per
+   (`platform/daisy/libs/libDaisy/src/hid/midi.h:261`), each event with a 128-byte SysEx buffer: 37 KB per
    transport. FRIZZ drains them every block, so 32 events would do: -64 KB of data. It's a
    change to vendored libDaisy: rebuild `libdaisy.a` with GCC 10.3 and list it in
    `THIRD_PARTY.md`.

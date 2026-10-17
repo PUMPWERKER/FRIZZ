@@ -11,7 +11,10 @@ the two have diverged, so treat WAVE as reference, not as a shared core.
 
 ```
 code/src/                 the firmware
-code/libs/                vendored libDaisy and DaisySP (patched, MIT; never swap in upstream)
+platform/                 the PUMPWERKER platform, a copy of one commit of github.com/PUMPWERKER/platform
+                          (PIN names it; never edited here, below): core/, daisy/ and boards/chompi/,
+                          with libDaisy and DaisySP (patched, MIT; never swap in upstream) and
+                          TinyUSB in daisy/libs/
 bin/                      cpu.txt (the CPU bench's numbers for this source, below), the v6.2
                           bootloader binary and its install script; the bootloader's source
                           is in reference/firmware/chompi-wave/code/Chompi_Bootloader/
@@ -24,6 +27,31 @@ tools/                    what those share (chompi.py, the launcher's midi_send.
                           builds.py (both builds and their md5), and measure.py: timing and
                           sound measured on the device
 ```
+
+### The platform
+
+What every PUMPWERKER firmware for the CHOMPI hardware needs, whatever it plays (the USB
+device, the card, MIDI's receive, the panel's keys, knobs and LEDs, the crash record, the
+linker script, the libraries), is a repository of its own,
+[PUMPWERKER/platform](https://github.com/PUMPWERKER/platform) (#477), in three layers:
+`core/` (independent of the device), `daisy/` (any Daisy Seed device) and `boards/chompi/` (the
+CHOMPI's hardware). FRIZZ keeps a copy of one of its commits in `platform/`, real files, laid
+out as there, and that commit in `platform/PIN`. So a FRIZZ commit builds from FRIZZ alone, and
+`git worktree add`, the release builds, `check.sh`, `compare.sh` and CI's base comparison need
+nothing else.
+
+- **Never edit `platform/` here.** A change goes to PUMPWERKER/platform as a pull request; once
+  it's merged, `tools/platform-sync.py COMMIT` copies that commit in (from a clone next to this
+  checkout, `../platform`, else fetched from GitHub), writes `PIN` and stages both, in a FRIZZ
+  branch of its own.
+- **The host check `platform`** runs `tools/platform-sync.py --check`: the copy is `PIN`'s
+  commit, file by file (offline, without a clone that has it: `SKIP: local only`). It also
+  checks that a source file's name is in one folder only, of `code/src`, the platform's layers
+  and `twin/`: the Makefile names the objects by it, and the host checks and the twin copy
+  them all into one folder (`test/sources.sh`).
+- The Makefile takes the platform's layers on its include path after `code/src` and builds its
+  `.c`/`.cpp` files with FRIZZ's; the bench's source checksum covers both (`BENCH_SOURCE`,
+  `tools/builds.py`).
 
 Design notes live in [`../docs/`](../docs/): the looper spec (`LOOPER.md`) and an overview of
 the effects across the CHOMPI firmwares (`FX_OVERVIEW.md`).
@@ -110,9 +138,9 @@ Read the memory table at the end. FRIZZ runs from SRAM, so a build that compiles
 fail to link if it doesn't fit. Warnings are normal; only lines that say `error` mean the build
 failed.
 
-The prebuilt `libdaisy.a` and `libdaisysp.a` are committed under `code/libs/*/build/`, so you
-don't normally rebuild them. If you change a library, run `make` in `code/libs/libDaisy` or
-`code/libs/DaisySP` with the same compiler.
+The prebuilt `libdaisy.a` and `libdaisysp.a` are committed under `platform/daisy/libs/*/build/`,
+so you don't normally rebuild them. A change to a library is the platform's (PUMPWERKER/platform,
+its `THIRD_PARTY.md` says how its objects are rebuilt), and comes in by `tools/platform-sync.py`.
 
 ## 3. Test on the host
 
@@ -879,21 +907,26 @@ If a CHOMPI stops responding and nothing else works, reinstall CHOMPI's v6.2 boo
 an ST-Link), then reinstall FRIZZ from the card. The web tool at https://flash.daisy.audio can
 erase a stuck Seed, but the generic Daisy bootloader it offers is not CHOMPI's.
 
-## Where things are in `code/src`
+## Where things are
+
+FRIZZ's own files are in `code/src`; the platform's (marked *platform:* with their layer) in
+`platform/`.
+
 
 ```
 chompi_main.cpp        entry point: audio callback, main loop, boot sequence, AUX's jack picking the input,
                        the card lent as a USB drive
 passthroughEngine.h    the engine: the input (AUX, the built-in mic or USB) and its gain, the looper, input/loop mix ("dry/wet" in the code), punch-in FX,
                        finalizer, output gain, headphone cue, safety limiter, the master to USB
-UsbDevice.h / .cpp     FRIZZ's USB-C port on TinyUSB (../libs/tinyusb): the sound card (UAC1), MIDI,
-                       the card as a drive; TinyUSB's task on TIM7 (#196; test/usbdevice.cpp)
-usb_descriptors.c/.h   the USB descriptors, with and without the sound card; tusb_config.h TinyUSB's settings
-UsbMidiTransport.h     libDaisy's MIDI transport on TinyUSB (test/usbtransport.cpp)
-CardLend.h             the card lent to the computer: what the settings page shows and asks
+UsbDevice.h / .cpp     platform: daisy/. The USB-C port on TinyUSB (daisy/libs/tinyusb): the sound card
+                       (UAC1), MIDI, the card as a drive; TinyUSB's task on TIM7 (#196; test/usbdevice.cpp)
+usb_descriptors.c/.h   platform: daisy/. The USB descriptors, with and without the sound card;
+                       tusb_config.h TinyUSB's settings
+UsbMidiTransport.h     platform: daisy/. libDaisy's MIDI transport on TinyUSB (test/usbtransport.cpp)
+CardLend.h             platform: core/. The card lent to the computer: what the settings page shows and asks
 LoopLoader.h           loops from the card (#70): the slots' scan (a WAV's header and name), a load
                        straight into SDRAM by the SDMMC's DMA
-SdCard.h, SdDisk.h     the card under FatFs: the SDMMC's settings libDaisy has no field for, runs of
+SdCard.h, SdDisk.h     platform: daisy/, core/. The card under FatFs: the SDMMC's settings libDaisy has no field for, runs of
                        sectors read past FatFs for the loop loader, FatFs's own reads and writes
 LoopControls.h         the Loops page's and the Cubbi page's loops: the plan, the loads, the switch
 LoopTransfer.h         the loop transfer over USB MIDI (#278, ../../docs/LOOP_PROTOCOL.md), the
@@ -923,11 +956,11 @@ LedColors.h            the LED colours
 DJFilter.h             the DJ filter: WAVE's knob on stmlib's state-variable filter (#304)
 granularDelay.h        TEMPO's tempo-synced delay, without its freeze
 reverb.h, fx_engine.h  TEMPO's reverb
-TempoClock.h           the tempo and the shared 12 PPQN pulse position for the clocked effects: from the
+TempoClock.h           platform: daisy/. The tempo and the shared 12 PPQN pulse position for the clocked effects: from the
                        loop, MIDI clock, taps or free running
-TapTempo.h             tap tempo
+TapTempo.h             platform: core/. Tap tempo
 Looper.h               the looper: recording, quantized end, playback, speed, scrub
-MidiClock.h            MIDI clock input over TRS and USB; hands the rest to MidiControl.h
+MidiClock.h            platform: daisy/. MIDI clock input over TRS and USB; hands the rest to MidiControl.h
 MidiControl.h          MIDI control: notes as keys, CCs, program changes, FRIZZ's SysEx (keys,
                        knobs, queries answered over USB for remote.py, the developers' 0x3E)
 MidiOut.h              MIDI out: the clock and the loop's Start, Stop, Continue, Song Position,
@@ -936,22 +969,26 @@ NormalPage.h           the play page: routes the controls (VOLUME, PLAY/LOOP, tr
 SettingsPage.h         the settings page (the mode switch up): MIDI channel and transport, the
                        clock factor, the LED brightness (knob 1), the input (its source, effects
                        and live, each source's own; mono), the battery on VOLUME
-LedSignal.h            the play page's short LED signals: 3 red or white blinks, a flash
+LedSignal.h            platform: core/. The play page's short LED signals: 3 red or white blinks, a flash
 ui.h                   page plumbing: events, page switching
 EventLog.h             the bug report: every key, knob and MIDI event since power-on, written as
                        a twin script to /FRIZZ/bug-N.txt on SHIFT + VOLUME held (settings page)
-Crash.h                the crash record in the backup SRAM and the watchdog fed by the audio
+Crash.h                platform: daisy/. The crash record in the backup SRAM and the watchdog fed by the audio
                        callback (#105; the fault handler is in chompi_main.cpp)
 Bench.h, BenchProfile.h
                        the CPU bench (only in FRIZZ-bench.bin, `make BENCH=1`) and its cycle marks
 limiter.h, EnvFollower.h
                        the safety limiter and the VU meter
-MicFilter.h            the built-in mic's highpass, TAPE's (without its notches)
-hardware.h             the CHOMPI hardware: encoders, keys, switches, LEDs, battery
-encoder.h / .cpp       encoder driver
-temp_led_stuff.h       LED driver (ui_utils.h: LED flush/clear helpers)
-BootPage.h             boot animation: the ripple from SHIFT
-chompi_sram.lds        linker script (the firmware runs from SRAM, placed there by the bootloader)
+MicFilter.h            platform: boards/chompi/. The built-in mic's highpass, TAPE's (without its notches)
+hardware.h             platform: boards/chompi/. The CHOMPI hardware: encoders, keys, switches, LEDs, battery
+encoder.h / .cpp       platform: boards/chompi/. Encoder driver
+temp_led_stuff.h       platform: boards/chompi/. LED driver (ui_utils.h: LED flush/clear helpers)
+PanelLeds.h, PanelKeys.h
+                       platform: boards/chompi/. The panel's LEDs and keys by their place, how dim an
+                       off key is
+BootPage.h             platform: boards/chompi/. Boot animation: the ripple from SHIFT
+chompi_sram.lds        platform: boards/chompi/. Linker script (the firmware runs from SRAM, placed
+                       there by the bootloader)
 ```
 
 ## Rules the code follows
@@ -999,4 +1036,4 @@ chompi_sram.lds        linker script (the firmware runs from SRAM, placed there 
 
 MIT, see [`LICENSE`](../LICENSE). The effects ported from Bastl Instruments' Kastle 2 FX Wizard
 carry their own MIT license in `code/src/LICENSE-kastle2`. [`THIRD_PARTY.md`](../THIRD_PARTY.md)
-lists everything FRIZZ builds on.
+lists everything FRIZZ builds on, and `platform/THIRD_PARTY.md` the platform's libraries.

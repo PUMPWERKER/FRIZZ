@@ -22,23 +22,23 @@ in the source files, must be preserved in any redistribution.
 
 | Component | Copyright | License | Where |
 |---|---|---|---|
-| **libDaisy** | © Electrosmith | MIT | `code/libs/libDaisy/` in each firmware folder, and `reference/firmware/chompi-bootloader-v6.4-beta/libs/libDaisy/` — each with its `LICENSE` |
-| **DaisySP** | © Electrosmith, Corp. | MIT | `code/libs/DaisySP/` in each firmware folder, with its `LICENSE` |
+| **libDaisy** | © Electrosmith | MIT | `code/libs/libDaisy/` in each stock firmware's folder, FRIZZ's in `firmware/platform/daisy/libs/libDaisy/` (the PUMPWERKER platform's copy), and `reference/firmware/chompi-bootloader-v6.4-beta/libs/libDaisy/` — each with its `LICENSE` |
+| **DaisySP** | © Electrosmith, Corp. | MIT | `code/libs/DaisySP/` in each stock firmware's folder, FRIZZ's in `firmware/platform/daisy/libs/DaisySP/`, with its `LICENSE` |
 | **coreJSON** | FreeRTOS / Amazon | MIT | `code/libs/coreJSON/` in each firmware folder, with its `LICENSE` |
 | **Daisy Bootloader** | © Electrosmith | MIT | `reference/firmware/chompi-bootloader-v6.4-beta/shared/`, and the v6.2 bootloader in each stock firmware's `code/Chompi_Bootloader/` under `reference/firmware/` |
 | **CMSIS** | © ARM Limited | Apache-2.0 | `cube_dfu/Drivers/CMSIS/` (with its `LICENSE.txt`) in `reference/firmware/chompi-bootloader-v6.4-beta/` and in each stock firmware's `code/Chompi_Bootloader/` under `reference/firmware/` |
 | **Kastle 2 FX Wizard** (freezer, slicer, flanger, shifter, resonator comb, crusher XOR and dive) | © 2024 Marek Mach, Vaclav Mach (Bastl Instruments) | MIT | ported to `firmware/code/src/` (`FxFreezer.h`, `FxSlicer.h`, `FxFlanger.h`, `FxShifter.h`, `FxResonator.h`, and the crusher's in `FxCrusher.h`), with the license in `LICENSE-kastle2` next to them |
 | **CHOMPI launcher's `midi-send.py`** | © 2026 CHOMPI Club; by ugrossek (chomplex music theory), from [sfaber02/CHOMPI-MULTI-FIRMWARE](https://github.com/sfaber02/CHOMPI-MULTI-FIRMWARE) (launcher v1.6) | MIT | `firmware/tools/midi_send.py`, unchanged but for a note of where it's from and a guard when it's run by hand (the CHOMPI's lock, and keys 10, 13, 15, their colours too, and the launcher left to `flash.py`); `firmware/flash.py` and `firmware/tools/chompi.py` use it |
-| **TinyUSB** 0.21.0 | © Ha Thach (tinyusb.org) | MIT | `firmware/code/libs/tinyusb/` (`src/` with the DWC2 driver as its only port, with its `LICENSE`): upstream's tag 0.21.0 byte for byte but for FRIZZ's two patches, each a file in `patches/` and marked `FRIZZ` in the source (`VERSION` lists them). FRIZZ's USB, `firmware/code/src/UsbDevice.cpp` (#196) |
-| **lost-tty/CHOMPI ("MIXTAPE")**, USB audio and MIDI for TAPE | © 2026 CHOMPI Club; by nils (lost-tty), from [lost-tty/CHOMPI](https://github.com/lost-tty/CHOMPI) (commits a56545b, ab95f98) | MIT | the shape of FRIZZ's USB glue, each file saying what it takes in its head: `firmware/code/src/UsbDevice.cpp` (the PHY's bring-up, CRS, TinyUSB's task on TIM7, the audio FIFOs' glue, the drive's callbacks), `UsbMidiTransport.h` (libDaisy's MIDI transport on TinyUSB), `usb_descriptors.c` and `tusb_config.h` (how the functions sit together), `CardLend.h` (the card as a drive), and the `dcd_dwc2.c` fix in TinyUSB's `patches/0002` |
+| **TinyUSB** 0.21.0 | © Ha Thach (tinyusb.org) | MIT | `firmware/platform/daisy/libs/tinyusb/` (`src/` with the DWC2 driver as its only port, with its `LICENSE`): upstream's tag 0.21.0 byte for byte but for FRIZZ's two patches, each a file in `patches/` and marked `FRIZZ` in the source (`VERSION` lists them). FRIZZ's USB, `firmware/platform/daisy/UsbDevice.cpp` (#196) |
+| **lost-tty/CHOMPI ("MIXTAPE")**, USB audio and MIDI for TAPE | © 2026 CHOMPI Club; by nils (lost-tty), from [lost-tty/CHOMPI](https://github.com/lost-tty/CHOMPI) (commits a56545b, ab95f98) | MIT | the shape of FRIZZ's USB glue, each file saying what it takes in its head, all in the platform's copy (`firmware/platform/`): `daisy/UsbDevice.cpp` (the PHY's bring-up, CRS, TinyUSB's task on TIM7, the audio FIFOs' glue, the drive's callbacks), `daisy/UsbMidiTransport.h` (libDaisy's MIDI transport on TinyUSB), `daisy/usb_descriptors.c` and `daisy/tusb_config.h` (how the functions sit together), `core/CardLend.h` (the card as a drive), and the `dcd_dwc2.c` fix in TinyUSB's `patches/0002` |
 | **stmlib**'s state-variable filter (`Svf`, `dsp/filter.h`) | © 2014 Emilie Gillet | MIT | `firmware/code/src/DJFilter.h` (the filter's per-sample code), with the license in its head |
 | **STM32 HAL, USB Device/Host middleware, FatFs** | © STMicroelectronics | ST Ultimate Liberty / BSD-3-Clause, per file headers | the same `cube_dfu/` folders |
 
 ## libDaisy is Electrosmith's CHOMPI adaptation
 
 libDaisy is vendored as Electrosmith's CHOMPI adaptation of v5.4.0, and
-each firmware depends on its own copy — don't replace a `code/libs/libDaisy/` with a stock
-version. Against the upstream v5.4.0 release, the copies differ in board and boot support.
+each firmware depends on its own copy — don't replace a `code/libs/libDaisy/` (FRIZZ's:
+`firmware/platform/daisy/libs/libDaisy/`) with a stock version. Against the upstream v5.4.0 release, the copies differ in board and boot support.
 The changes a downstream user most needs to know about:
 
 In all three:
@@ -62,7 +62,7 @@ In TEMPO and WAVE:
   compilation: the firmware builds against pristine upstream, but its MIDI output timing won't
   match the released firmware. Keep the vendored file.
 
-FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with eleven changes:
+FRIZZ's copy (`firmware/platform/daisy/libs/libDaisy/`, the PUMPWERKER platform's since #477) is WAVE's with eleven changes:
 - `src/usbd/usbd_desc.c` names the USB product "FrizZ".
 - `src/hid/midi_parser.cpp` follows MIDI 1.0 where WAVE's didn't:
   - A real-time byte (a clock tick, 0xF8-0xFF) inside a SysEx or another message is passed on,
@@ -87,7 +87,7 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with eleven changes:
   host's. ST's USB host stack (`usbh_*`, `usb_host`, `stm32h7xx_hal_hcd`) isn't linked any
   more: 6.4 KB of code and 0.7 KB of data (#196).
 - `src/sys/system.cpp` has no OTG_HS interrupt handlers at all: FRIZZ's USB-C port runs on
-  TinyUSB, whose handler is FRIZZ's own (`firmware/code/src/UsbDevice.cpp`), so ST's device
+  TinyUSB, whose handler is FRIZZ's own (`firmware/platform/daisy/UsbDevice.cpp`), so ST's device
   stack isn't linked either; libDaisy's own USB on that port (`UsbHandle`, `MidiUsbHandler`)
   doesn't work in this copy (#196). The usbd changes below stay in the source and the archive,
   unused by FRIZZ.bin.
@@ -176,7 +176,7 @@ disassemble as the archive's). A changed `libdaisy.a` (or `libdaisysp.a`) links 
 the next `make` (#161).
 
 FRIZZ doesn't use `src/util/sd_diskio.c`'s `SD_read` and `SD_write` (they stay in the archive,
-unchanged): its own, `firmware/code/src/SdDisk.h`, take their place in FatFs's driver table
+unchanged): its own, `firmware/platform/core/SdDisk.h`, take their place in FatFs's driver table
 after `FatFSInterface::Init` (`SdDiskLink`, #213), the rest of the driver (`SD_initialize`,
 `SD_status`, `SD_ioctl`) being sd_diskio.c's. They make the same transfers, but end a wait on
 an SD error after 1 s and recover the card, where sd_diskio.c waited 30 s. `firmware/test/sddisk.cpp`
@@ -195,7 +195,8 @@ Portions of the FX engine in TAPE, TEMPO, WAVE and FRIZZ derive from Émilie Gil
 - `fx_engine.h` — ported from `pichenettes/eurorack` (`plaits/dsp/fx/fx_engine.h`), original
   code by Émilie Gillet, 2014.
 - `limiter.h` — extracted from `pichenettes/stmlib`.
-- `encoder.h` — encoder decoding influenced by the Mutable Instruments encoder classes.
+- `encoder.h` — encoder decoding influenced by the Mutable Instruments encoder classes (FRIZZ's
+  in `firmware/platform/boards/chompi/`).
 - `FxPhaser.h` (FRIZZ) — the phaser's second mode, the frequency shifter, after Warps' easter
   egg (`pichenettes/eurorack`, `warps/dsp/quadrature_transform.h` and `warps/dsp/modulator.cc`,
   © 2014 Émilie Gillet, MIT): its chains of first-order allpasses (`AllPassFilter`) as a pair

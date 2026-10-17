@@ -40,6 +40,9 @@ import zlib
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIRMWARE = os.path.dirname(HERE)
 SRC = os.path.join(FIRMWARE, "code", "src")
+# the PUMPWERKER platform's copy (tools/platform-sync.py): its layers' own files, as the Makefile's
+PLATFORM = os.path.join(FIRMWARE, "platform")
+PLATFORM_LAYERS = [os.path.join(PLATFORM, d) for d in ("core", "daisy", os.path.join("boards", "chompi"))]
 TOOLCHAIN = os.path.expanduser("~/opt/gcc-arm-none-eabi-10.3-2021.10/bin")
 CPU_TXT = os.path.join(FIRMWARE, "bin", "cpu.txt")
 
@@ -73,12 +76,18 @@ def stale(path):
     return subprocess.run(args, cwd=SRC, env=make_env(), capture_output=True).returncode != 0
 
 
+def source_files():
+    """the bench's source: every *.h, *.c and *.cpp in code/src and in the platform's layers
+    (PLATFORM_LAYERS, not their libraries), each name in one folder only"""
+    return [p for d in [SRC] + PLATFORM_LAYERS for ext in ("*.h", "*.c", "*.cpp")
+            for p in glob.glob(os.path.join(d, ext))]
+
+
 def source_checksum():
-    """the Makefile's BENCH_SOURCE: cksum of every *.h, *.c and *.cpp in code/src, sorted by
-    name as make's $(sort) sorts (byte by byte)"""
-    names = sorted(os.path.basename(p) for ext in ("*.h", "*.c", "*.cpp")
-                   for p in glob.glob(os.path.join(SRC, ext)))
-    data = b"".join(open(os.path.join(SRC, n), "rb").read() for n in names)
+    """the Makefile's BENCH_SOURCE: cksum of source_files(), sorted by name as make's $(sort)
+    sorts (byte by byte), as if they were in one folder (as before the platform moved out, #477)"""
+    paths = sorted(source_files(), key=os.path.basename)
+    data = b"".join(open(p, "rb").read() for p in paths)
     out = subprocess.run(["cksum"], input=data, capture_output=True, check=True).stdout
     return out.split()[0].decode()
 

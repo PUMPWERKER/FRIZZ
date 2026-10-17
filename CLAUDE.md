@@ -10,7 +10,7 @@ DFM (STM32H750). It is built on top of CHOMPI's archival open-source release (`u
 which will not receive updates.
 
 **[`firmware/README.md`](firmware/README.md) is the developer guide**: toolchain, build, host
-checks, the virtual CHOMPI, flashing over USB, the CPU bench, where things are in `code/src`
+checks, the virtual CHOMPI, flashing over USB, the CPU bench, where things are in `code/src` and `platform/`
 and the rules the code follows. Read it before changing firmware; this file keeps only the
 workflow and what bites. Free memory and how to make room: [`docs/CAPACITY.md`](docs/CAPACITY.md).
 The stock firmwares, bootloader and hardware files under `reference/`:
@@ -21,7 +21,7 @@ The stock firmwares, bootloader and hardware files under `reference/`:
 | Path | What | Audience |
 |---|---|---|
 | `README.md`, `INSTALL.md`, `QUICKSTART.md`, `MANUAL.md`, `CHANGELOG.md` | what FRIZZ is, install, quick start, full controls, what changed since the last release | users |
-| `firmware/` | FRIZZ source (`code/`, `bin/`, `test/`, `twin/`, `flash.py`, `card.py`, `remote.py`, `tools/`) | developers |
+| `firmware/` | FRIZZ source (`code/`, `platform/`, `bin/`, `test/`, `twin/`, `flash.py`, `card.py`, `remote.py`, `tools/`) | developers |
 | `docs/` | design notes: `LOOPER.md`, `FX_OVERVIEW.md`, `CAPACITY.md`, `STOCK_FIRMWARES.md`, `LOOP_PROTOCOL.md` | developers |
 | `reference/` | the original CHOMPI release, unchanged except for links | reference only |
 | `images/` | the manual's diagrams (SVG, drawn by `firmware/tools/diagrams/`) | users |
@@ -34,10 +34,15 @@ there). The panel artwork and CHOMPI logos are deliberately absent for copyright
 the CHOMPI name/marks are excluded from the MIT license (`TRADEMARKS.md`). Don't reintroduce
 branding into derived hardware files.
 
-Hand-written source is `firmware/code/src/` (~60 files). Everything under `libs/`,
-`cube_dfu/`, `Drivers/`, `Middlewares/` and any `build/` directory is vendored or generated:
-exclude it from greps. `reference/` holds three more independent copies of a similar tree, so
-scope searches to `firmware/`.
+Hand-written source is FRIZZ's own in `firmware/code/src/` (~60 files) and the PUMPWERKER
+platform's in `firmware/platform/` (`core/`, `daisy/`, `boards/chompi/`, #477). `platform/` is a
+copy of a commit of PUMPWERKER/platform (`platform/PIN`): never edit it here; a change goes there
+as a PR first and comes in by `firmware/tools/platform-sync.py COMMIT` (the host check
+`platform` fails on a copy that isn't `PIN`'s commit; `firmware/README.md`, *The platform*).
+Everything under `libs/` (the platform's `daisy/libs/`), `cube_dfu/`, `Drivers/`,
+`Middlewares/` and any `build/` directory is vendored or generated: exclude it from greps.
+`reference/` holds three more independent copies of a similar tree, so scope searches to
+`firmware/`.
 
 ## Docs that feed the website
 
@@ -405,7 +410,7 @@ Actions ~4 minutes, stage 1a): `check.sh` (the engine in the working tree agains
 a commit; after it there's nothing to compare, and its line says so: on Actions it runs against
 the PR's base on its own; a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
 `pitch`, `tape`, `block`, `crusher`, `freezer`, `scenes`, `store`, `clicks`, `delay`, `controls`, `keys`, `looper`, `tempo`,
-`comp`, `level`, `sleep`, `inserts`, `resonator`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `finalizer`, `midisuite`, `reaper`, `lockstep`, `splice`, `usbmidi`, `routing`, `measure`, `loopcap`, `companion`, `loops`, `loopxfer`, `sddisk`, `twinlib`, `webtwin`, `hostlock`, `compare`, `rtalloc`, `usbtransport`, `usbdevice`, `uartlisten`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
+`comp`, `level`, `sleep`, `inserts`, `resonator`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `finalizer`, `midisuite`, `reaper`, `lockstep`, `splice`, `usbmidi`, `routing`, `measure`, `loopcap`, `companion`, `loops`, `loopxfer`, `sddisk`, `twinlib`, `webtwin`, `hostlock`, `compare`, `rtalloc`, `usbtransport`, `usbdevice`, `uartlisten`, `platform`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
 `NAME.cpp`; [`firmware/test/README.md`](firmware/test/README.md) says what each covers.
 `check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail. A check
 that needs something only a developer's machine has prints `SKIP: local only (what's

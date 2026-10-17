@@ -11,8 +11,8 @@
 //   - The faults for a test on the device (LOOPS: remote.py loops load/write --fault).
 // Exits 0 when everything passes. Run by unit.sh sddisk.
 //
-// unit includes: host/sddisk ../code/libs/libDaisy/Middlewares/Third_Party/FatFs/src
-// unit sources: ../code/libs/libDaisy/Middlewares/Third_Party/FatFs/src/ff.c ../code/libs/libDaisy/Middlewares/Third_Party/FatFs/src/diskio.c ../code/libs/libDaisy/Middlewares/Third_Party/FatFs/src/ff_gen_drv.c ../code/libs/libDaisy/Middlewares/Third_Party/FatFs/src/option/ccsbcs.c ../code/libs/libDaisy/src/util/sd_diskio.c
+// unit includes: host/sddisk ../platform/daisy/libs/libDaisy/Middlewares/Third_Party/FatFs/src
+// unit sources: ../platform/daisy/libs/libDaisy/Middlewares/Third_Party/FatFs/src/ff.c ../platform/daisy/libs/libDaisy/Middlewares/Third_Party/FatFs/src/diskio.c ../platform/daisy/libs/libDaisy/Middlewares/Third_Party/FatFs/src/ff_gen_drv.c ../platform/daisy/libs/libDaisy/Middlewares/Third_Party/FatFs/src/option/ccsbcs.c ../platform/daisy/libs/libDaisy/src/util/sd_diskio.c
 
 #include <array>
 #include <cstdio>

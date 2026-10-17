@@ -1,6 +1,6 @@
 // tusb.h for usbdevice.cpp: TinyUSB as UsbDevice.cpp and UsbMidiTransport.h use it, a computer's
 // side in memory: the bus, the audio FIFOs, the drive's answers. The constants are TinyUSB's
-// (code/libs/tinyusb/src: usbd.h, msc.h, msc_device.h, audio.h)
+// (platform/daisy/libs/tinyusb/src: usbd.h, msc.h, msc_device.h, audio.h)
 #pragma once
 #include <cstddef>
 #include <cstdint>

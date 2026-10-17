@@ -203,8 +203,9 @@ in `test/ui.cpp`.
   tempo clock is private in the engine; `twin.cpp` reaches it without a getter in the firmware,
   and reads each value only if the firmware has it (0 otherwise), so `Probe()` doesn't keep an
   older firmware from building (`compare.sh`, `ui-at.sh`).
-- `build.sh`: copies the firmware, the libDaisy files it uses and `host/` into `build/tree` and
-  builds there, so every include resolves to either the real file or its stand-in. `build.sh
+- `build.sh`: copies the firmware (FRIZZ's `code/src` and the platform's layers, `../platform/`,
+  into one folder: `../test/sources.sh`), the libDaisy files it uses and `host/` into
+  `build/tree` and builds there, so every include resolves to either the real file or its stand-in. `build.sh
   wasm` builds the browser's `web/build/frizz-twin.{js,wasm}` the same way.
 - `wasm.cpp`: `twin.h` as C functions for the browser.
 - `web/`: the page (`index.html`, `app.js`), the worker running the twin (`worker.js`), the audio

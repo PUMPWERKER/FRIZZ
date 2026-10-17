@@ -4,7 +4,7 @@
 // receive error leaves the USART on, as turning UE off stops the transmitter too and cut the
 // byte MIDI out was sending (#442), and clears the receive errors itself, as UE off did. The
 // chip itself: midisuite.py's trs-restart-tx (the bench build). Run by unit.sh uartlisten.
-// unit includes: ../code/libs/libDaisy/src
+// unit includes: ../platform/daisy/libs/libDaisy/src
 #include <cstdint>
 #include <vector>
 #include "check.h"

@@ -1,4 +1,4 @@
-// usbmidi.cpp: libDaisy's USB MIDI out (code/libs/libDaisy/src/hid/usb_midi.cpp, compiled here
+// usbmidi.cpp: libDaisy's USB MIDI out (platform/daisy/libs/libDaisy/src/hid/usb_midi.cpp, compiled here
 // as it is) against what a host makes of it. libDaisy packs each message into USB MIDI packets
 // of 4 bytes, a code index number (CIN) first; the host's driver (ALSA's snd-usb-audio, and the
 // USB MIDI 1.0 spec) takes as many bytes from each as its CIN says. Every message FRIZZ sends
@@ -8,9 +8,9 @@
 // source (THIRD_PARTY.md). And what comes in: a host's packets through usb_midi.cpp and libDaisy's
 // MIDI parser (midi_parser.cpp, also as it is), as the events FRIZZ reads (MidiClock.h), the
 // jack's bytes through the parser alone. Run by unit.sh usbmidi.
-// unit includes: usbmidi ../code/libs/libDaisy/src ../code/libs/libDaisy/src/sys
-#include "../code/libs/libDaisy/src/hid/usb_midi.cpp"
-#include "../code/libs/libDaisy/src/hid/midi_parser.cpp"
+// unit includes: usbmidi ../platform/daisy/libs/libDaisy/src ../platform/daisy/libs/libDaisy/src/sys
+#include "../platform/daisy/libs/libDaisy/src/hid/usb_midi.cpp"
+#include "../platform/daisy/libs/libDaisy/src/hid/midi_parser.cpp"
 #include "check.h"
 #include <string>
 #include <vector>
