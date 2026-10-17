@@ -4,7 +4,8 @@
  *  SHIFT + VOLUME press are held 2 s on the settings page (SettingsPage.h; MANUAL.md, "Bug
  *  reports"). The file is a script for the virtual CHOMPI (firmware/twin/README.md): the
  *  card's FRIZZ files as they were at power-on, then the controls at the times they were
- *  used, so the twin plays the session again from power-on.
+ *  used, and at each lend to a computer the files its take-back read again (#461), so the twin
+ *  plays the session again from power-on.
  *
  *  The audio callback adds the events (ui.h's GenerateEvents) to an append-only list in SDRAM
  *  (only the CPU touches it; the text going to and from the card stays in internal RAM, as
@@ -57,13 +58,23 @@ static const size_t kEventLogSize = 1u << 18;
 static const size_t kEventLogText = 4096; // written a chunk this size at a time
 static const size_t kSector = 512;        // the card's, and FatFs's
 
-/** Its list, and the card's FRIZZ files as they were at power-on (only a bug report reads
- *  them), in SDRAM (chompi_main.cpp) */
+/** The card's FRIZZ files as a bug report gives them to the replay, each empty when it has none */
+struct EventLogFiles
+{
+    char scenes[kSceneFileMax];
+    char master[kMasterFileMax];
+};
+// the take-backs whose files a bug report keeps for its replay (#461); later ones it only notes
+static const size_t kTakeBacks = 8;
+
+/** Its list, the card's FRIZZ files as they were at power-on, and as the first take-backs read
+ *  them again (only a bug report reads them), in SDRAM (chompi_main.cpp) */
 struct EventLogMem
 {
     LoggedEvent events[kEventLogSize];
-    char scenes[kSceneFileMax];
-    char master[kMasterFileMax];
+    EventLogFiles start, back[kTakeBacks];
+    uint32_t backs; // the take-backs since Start
+    uint32_t lends; // the lends a report being written has written
 };
 
 // Hardware::SwId's names, as the twin's scripts take them
@@ -108,7 +119,8 @@ public:
     {
         mem_ = mem;
         // until Start, no card files (its memory isn't cleared at boot)
-        mem_->scenes[0] = mem_->master[0] = '\0';
+        mem_->start.scenes[0] = mem_->start.master[0] = '\0';
+        mem_->backs = 0;
         fs_ = fs;
         path_ = path;
     }
@@ -118,8 +130,7 @@ public:
     void Start(uint32_t now, bool toggle, bool jack)
     {
         jack_at_start_ = jack;
-        Snapshot(kSceneFile, mem_->scenes, kSceneFileMax);
-        Snapshot(kMasterFile, mem_->master, kMasterFileMax);
+        Snapshot(mem_->start, 0xFF);
         toggle_ = toggle_at_start_ = toggle;
         start_ = now;
         started_ = true;
@@ -156,8 +167,17 @@ public:
     /** From the audio callback: a cable plugged into AUX (true) or pulled, once debounced */
     EVENT_LOG_ONCE void Jack(bool plugged) { Add(JACK, 0, plugged); }
     /** From MainLoop: the card lent to the computer, or taken back and what of it was read
-     *  again (CARD) */
-    EVENT_LOG_ONCE void Card(CardWhat what, uint8_t taken) { AddFromMain(CARD, what, taken); }
+     *  again (CARD). A take-back's files that were read are kept whole, as the computer left
+     *  them: the report gives them to the replay at the lend (WriteEvents) */
+    EVENT_LOG_ONCE void Card(CardWhat what, uint8_t taken)
+    {
+        AddFromMain(CARD, what, taken);
+        if (what == kCardLent)
+            return;
+        if (mem_->backs < kTakeBacks)
+            Snapshot(mem_->back[mem_->backs], taken);
+        mem_->backs++;
+    }
     /** From MainLoop: the loop transfer's job began or ended (XFER) */
     EVENT_LOG_ONCE void Xfer(uint8_t what, uint16_t value) { AddFromMain(XFER, what, static_cast<int16_t>(value)); }
 
@@ -309,6 +329,17 @@ private:
         memcpy(to, text_, len);
         to[len] = '\0';
     }
+    /** The files SceneStore::Reread's bits name into to (kRereadMaster the settings, a slot's
+     *  bit the whole scene file), the others empty. Not while a report is written: none is
+     *  while the card's lent, and Start comes before */
+    EVENT_LOG_ONCE void Snapshot(EventLogFiles& to, uint8_t what)
+    {
+        to.scenes[0] = to.master[0] = '\0';
+        if (what & 0x7E)
+            Snapshot(kSceneFile, to.scenes, kSceneFileMax);
+        if (what & SceneStore::kRereadMaster)
+            Snapshot(kMasterFile, to.master, kMasterFileMax);
+    }
 
     // the text being put together in text_
     EVENT_LOG_ONCE void Put(const char* s)
@@ -389,6 +420,11 @@ private:
             text_[pos_++] = '\n';
         return Flush();
     }
+    // the replay puts them where FRIZZ keeps them, /FRIZZ
+    EVENT_LOG_ONCE bool PutFiles(const EventLogFiles& files)
+    {
+        return PutFile(kSceneFile, files.scenes) && PutFile(kMasterFile, files.master);
+    }
 
     /** Opens the next free bug-N.txt (in /FRIZZ, as the scenes) and writes the head of the script */
     EVENT_LOG_ONCE bool Begin()
@@ -419,13 +455,12 @@ private:
             "# held, the card's FRIZZ files as they were at power-on. The virtual CHOMPI plays\n"
             "# it again: firmware/twin/run.sh -o out.wav -l leds.txt bug-N.txt\n"
             "# The audio in isn't in it: the replay plays a tone into AUX (the input line).\n"
-            "# Nor are scenes sent over MIDI, nor what a computer changed on the card lent\n"
-            "# to it: the replay has the card's from power-on.\n");
+            "# Nor are scenes sent over MIDI, nor the loops a computer changed on the card\n"
+            "# lent to it: its scenes and settings the replay has at the lend.\n");
         if (full_)
             Put("# The log was full: it ends early, and the replay too.\n");
-        // the replay puts them where FRIZZ keeps them, /FRIZZ
-        if (!Flush() || !PutFile("/FRIZZ/frizz_scenes.txt", mem_->scenes)
-            || !PutFile("/FRIZZ/frizz_master.txt", mem_->master))
+        mem_->lends = 0;
+        if (!Flush() || !PutFiles(mem_->start))
         {
             f_close(&file_); // open: a failed write mustn't leave it so
             return false;
@@ -475,13 +510,20 @@ private:
                 Put(e.value ? "jack in" : "jack out");
                 break;
             case CARD:
-                // the replay lends and takes back by the gesture's keys, on the power-on files
+                // the replay lends and takes back by the gesture's keys; the files the
+                // take-back read go to its card at the lend, as the computer changed them then
                 if (e.id == kCardLent)
                 {
-                    Put("# card lent");
+                    Put("# card lent\n");
+                    if (mem_->lends >= kTakeBacks)
+                        Put("# what the computer changed isn't in it: too many lends");
+                    else if (!PutFiles(mem_->back[mem_->lends]))
+                        return false;
+                    mem_->lends++;
                     break;
                 }
-                Put(e.id == kCardGone ? "# card taken back, the computer let go (the replay keeps it lent); read:"
+                // let go by the computer: the replay's computer lets go
+                Put(e.id == kCardGone ? "usbaudio eject\n# card taken back, the computer let go; read:"
                                       : "# card taken back; read:");
                 if (!e.value)
                     Put(" nothing");
