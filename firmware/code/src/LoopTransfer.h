@@ -1,6 +1,6 @@
 /** @file LoopTransfer.h
  *  @brief FRIZZ's loop banks over USB MIDI (#278): the protocol the Companion page speaks
- *  (frizz.friedrichwagner.eu/companion/), SysEx 0x38 over USB only. docs/LOOP_PROTOCOL.md is
+ *  (pumpwerker.de/frizz/companion/), SysEx 0x38 over USB only. docs/LOOP_PROTOCOL.md is
  *  the contract; its sections are named here as "(3.7)". tools/loopxfer.py is its reference,
  *  and test/loopxfer.cpp replays that one's vectors against this code byte for byte.
  *

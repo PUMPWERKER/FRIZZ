@@ -1,12 +1,9 @@
 # The finalizer (#345), its Level module: selected, its knobs turned on a loud input, the
-# input trim, the drive and its type, Loud into the limiter; then its Comp's Depth by the
-# global channel's CC 28
+# input trim, Loud into the limiter; then its Comp's Depth by the global channel's CC 28
 input sine 110 0.8
 # its knobs where the factory has them, whatever the card keeps: the device's card holds the
 # player's own (#214); the turns below start from there
 set fin 0 0.5
-set fin 1 0
-set fin 2 0
 set fin 3 0
 set fin 4 0.5
 set fin 5 0.5
@@ -23,17 +20,18 @@ tap KEY_15
 wait 200
 turn 4 20 130
 wait 3440
-turn 1 50 130
-wait 7100
-turn 2 3
-wait 1000
+# (the drive's turns were here until it went before 1.5: their time kept)
+wait 8100
 turn 3 40 130
 wait 6380
 turn 4 -20 130
-wait 3440
+wait 2700
+# the input back on its centre, its value for a moment after the turn: white
+expect led pth 1 fdfdfd
+wait 740
 usb BF 1C 50
 wait 2000
-# drive and type as they were turned (their values: no meters there)
-expect led pth 2 79b09a
-expect led pth 3 79b09a
+# knobs 2 and 3 do nothing in Level: dark, as EQ's knob 4
+expect led pth 2 000000
+expect led pth 3 000000
 expect on

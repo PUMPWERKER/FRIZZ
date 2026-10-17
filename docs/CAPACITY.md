@@ -1,8 +1,8 @@
 # Capacity: what's free on the CHOMPI, and how to make room
 
-What a new feature can still use, measured on 2026-10-16 at v1.5.0-beta.4 (`main` 9837961:
-the finalizer, the frequency shifter and 1.5's fixes since the code-room round, #320; the
-history below). `make`
+What a new feature can still use, measured on 2026-10-17 (`main` 864a584 without the
+finalizer's drive: the finalizer, the frequency shifter and 1.5's fixes since the code-room
+round, #320; the history below). `make`
 prints the memory table after every build; the numbers below come from it and from
 `build/FRIZZ.map`.
 
@@ -10,8 +10,8 @@ prints the memory table after every build; the numbers below come from it and fr
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 273,188 B (98 %) | **~5.2 KB** (5,340 B; the bench build 272,356 B, ~6.0 KB) | all the code, and the initial values of `.data` |
-| `SRAM` (AXI SRAM) | 240 KB | 220,700 B (90 %) | ~24.5 KB (the bench build 228,804 B, ~16.6 KB) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 274,692 B (99 %) | **~3.7 KB** (3,836 B; the bench build 274,272 B, ~4.2 KB) | all the code, and the initial values of `.data` |
+| `SRAM` (AXI SRAM) | 240 KB | 223,220 B (91 %) | ~22 KB (the bench build 231,324 B, ~14.1 KB) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,816 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
 | `RAM_D2CACHE` | 256 KB | 0 | **256 KB** | nothing (the `.d2_bss` section points there) |
@@ -59,6 +59,12 @@ pulled itself: no `tanf` (its series instead: newlib's argument reduction is 4 K
 master file's code at `-Os`. Its data: the limiter's delay and running minimum, the bands'
 filters, the presets (256 B), the master file's limit (`kMasterFileMax` 1,536 B in SDRAM's
 event log).
+
+**The finalizer's drive gone again (2026-10-17)**, before 1.5 (it was only in the betas): its
+saturation at twice the rate (the halfbands, the three curves, the compensation worked out
+with `sinf`, the hi-cut) freed 1,352 B of code (the bench build 1,392 B) and 192 B of data,
+on `main` 864a584 (276,044 → 274,692 B). Less than its share of the finalizer's 7 KB
+suggested: most of that was the bands, the limiter and the play page's part.
 
 **The code-room round (#320, 2026-10-15).** `main` had ~1.5 KB of code left in `FRIZZ.bin`
 (277,012 B, 0170d38) and ~2.1 KB in the bench build (276,408 B). Eight changes, none to what the audio

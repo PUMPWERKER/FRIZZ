@@ -10,7 +10,7 @@
  *
  *    FRIZZ master 1
  *    finalizer 500000 0 0 0 500000 500000 500000 400000 400000 400000 0 500000 500000 500000
- *    finalizer_preset2 500000 300000 500000 0 500000 500000 500000 400000 400000 400000 0 500000 500000 500000
+ *    finalizer_preset2 500000 0 0 300000 500000 500000 500000 400000 400000 400000 0 500000 500000 500000
  *    mono 0
  *    midi_channel 16
  *    midi_transport 0
@@ -47,9 +47,11 @@
  *  (UsbDevice.h; off, MIDI and the card drive alone). A number the setting doesn't take keeps the
  *  default; a word where the number belongs makes the file unreadable (SceneStore.h keeps it
  *  as frizz_master.bak), rather than a garbled gain silencing an input. finalizer has the
- *  finalizer's knobs, the ones it uses in their order (kFinFileParams: Level's four, EQ's
- *  three, Comp's four, Width's three), and finalizer_preset1-4 each preset that's stored, the
- *  same way. The master compressor it replaced in 1.5 (#345) had "compressor2" (and before
+ *  finalizer's knobs in their order (kFinFileParams: Level's four, EQ's three, Comp's four,
+ *  Width's three), and finalizer_preset1-4 each preset that's stored, the same way. Level's
+ *  knobs 2 and 3 have nothing since the drive went again before 1.5 (it was only in its
+ *  betas): their places stay, written 0, a beta's values there read and dropped, so the
+ *  other knobs keep theirs and a beta reads the file with its drive off. The master compressor it replaced in 1.5 (#345) had "compressor2" (and before
  *  that "compressor"): a file from before loads with the finalizer neutral, its old line
  *  skipped, and the next write leaves it out.
  *  Reading, unknown lines are skipped and a setting the file leaves out keeps its default, so
@@ -188,7 +190,8 @@ inline uint8_t Value(const MasterSettings& settings, const Line& line)
     return reinterpret_cast<const uint8_t*>(&settings)[line.offset];
 }
 
-// The finalizer's line and its presets': the parameters it uses, in their order
+// The finalizer's line and its presets': its parameters, in their order (Level's knobs 2 and 3
+// unused, but in their places)
 static const uint8_t kFinFileParams[] = {0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14};
 static const size_t kFinFileValues = sizeof(kFinFileParams);
 static const char kFinLine[] = "finalizer";
@@ -206,7 +209,12 @@ __attribute__((noinline, optimize("Os"))) inline void ReadFin(const char*& p, fl
         v[i] = fin[kFinFileParams[i]];
     scenefile::ReadValues(p, v, kFinFileValues);
     for (size_t i = 0; i < kFinFileValues; i++)
-        fin[kFinFileParams[i]] = v[i];
+    {
+        // one the finalizer doesn't use (a beta's drive) stays at its default
+        const size_t f = kFinFileParams[i];
+        const FxParams& m = kFinalizerKnobs[f / kNumFxKnobs];
+        fin[f] = m.knobs >> (f % kNumFxKnobs) & 1 ? v[i] : m.defaults[f % kNumFxKnobs];
+    }
 }
 } // namespace masterfile
 

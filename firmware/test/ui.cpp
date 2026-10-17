@@ -6314,10 +6314,10 @@ int main()
         Check(comp.size() == 33 && comp[1] > 90 && Card("/FRIZZ/frizz_master.txt") == before,
               "midi-not-kept: CC 24 sets the finalizer's input, and nothing's written");
         Tap("KEY_15");
-        TurnSlow(1, 10); // its drive, by hand
+        TurnSlow(3, 10); // its Loud, by hand
         RunMs(2500);
         const std::string master = Card("/FRIZZ/frizz_master.txt");
-        Check(master.find("\nfinalizer 500000 100000 ") != std::string::npos,
+        Check(master.find("\nfinalizer 500000 0 0 100000 ") != std::string::npos,
               "midi-not-kept: a knob turned by hand writes the card, with the input as the hand left it");
     }});
 
@@ -7138,12 +7138,12 @@ int main()
         Check(at14(state(), 15) == 4096 && at14(state(), 15) != out_gain && RunMs(300) < dry * .8f,
               "midi cc more: CC 85 sets the master out: down");
 
-        Trs({kCC, 25, 0, kCC, 26, 64, kCC, 27, 127, kCC, 28, 127});
+        Trs({kCC, 25, 64, kCC, 26, 127, kCC, 27, 127, kCC, 28, 127});
         RunMs(50);
         const std::string comp = Ask({0x21, 14});
-        Check(comp.size() == 33 && at14(comp, 3) == 0 && at14(comp, 5) == 8192 && at14(comp, 7) == 16383
+        Check(comp.size() == 33 && at14(comp, 3) == 0 && at14(comp, 5) == 0 && at14(comp, 7) == 16383
                   && at14(comp, 23) == 16383,
-              "midi cc more: CCs 25-27 are the finalizer's Level knobs 2-4, CC 28 its Depth");
+              "midi cc more: CC 27 is the finalizer's Loud, CC 28 its Depth; CCs 25 and 26 (Level's knobs 2 and 3) do nothing");
         Trs({kCC, 27, 0, kCC, 28, 0});
 
         const int in_gain = at14(state(), 17);
@@ -7456,12 +7456,12 @@ int main()
     // refused; CC 21 on channel 15 recalls too
     cases.push_back({"fin-presets", [] {
         RunMs(kReadyMs);
-        auto drive = [] {
+        auto loud = [] {
             const std::string p = Ask({0x21, 14});
-            return p.size() == 33 ? KnobOf(p[3], p[4]) : -1.f;
+            return p.size() == 33 ? KnobOf(p[7], p[8]) : -1.f;
         };
         Tap("KEY_15");
-        TurnSlow(1, 30); // drive .3
+        TurnSlow(3, 30); // Loud .3
         RunMs(300);
         Keys({"+KEY_15", "100", "+KEY_23", "60", "-KEY_23", "100", "-KEY_15", "200"}); // SAVE
         Tap(kSceneKeys[2]); // preset 2
@@ -7469,11 +7469,11 @@ int main()
         Tap("KEY_26"); // confirm
         RunMs(3000);
         const std::string master = Card("/FRIZZ/frizz_master.txt");
-        Check(master.find("\nfinalizer_preset2 500000 300000 ") != std::string::npos,
+        Check(master.find("\nfinalizer_preset2 500000 0 0 300000 ") != std::string::npos,
               "fin-presets: key 15 + SAVE, then (15 let go) preset 2 and SHIFT: stored on the card");
-        Turn(1, -30);
+        Turn(3, -30);
         RunMs(500);
-        // a band muted, then the preset recalled: the drive back, every band on again
+        // a band muted, then the preset recalled: Loud back, every band on again
         amp = .3f;
         freq = 1000.f;
         const float tone = RunMs(300);
@@ -7482,10 +7482,10 @@ int main()
         const float muted = RunMs(300);
         Keys({"+KEY_15", "100", "+KEY_20", "60", "-KEY_20", "100", "-KEY_15", "500"});
         const float recalled = RunMs(300);
-        printf("      1kHz %.4f, mid muted %.4f, recalled %.4f; drive %.3f\n", tone, muted, recalled, drive());
+        printf("      1kHz %.4f, mid muted %.4f, recalled %.4f; Loud %.3f\n", tone, muted, recalled, loud());
         Check(muted < tone * .05f, "fin-presets: CC 103 on channel 15 mutes the mid band");
-        Check(fabsf(drive() - .3f) < .005f && recalled > tone * .5f,
-              "fin-presets: key 15 + scene 2's key recalls preset 2: the drive back, the mid band unmuted");
+        Check(fabsf(loud() - .3f) < .005f && recalled > tone * .5f,
+              "fin-presets: key 15 + scene 2's key recalls preset 2: Loud back, the mid band unmuted");
         freq = 220.f;
         // an empty one: its key blinks red, nothing changes
         Press("KEY_15", true);
@@ -7493,13 +7493,13 @@ int main()
         const int blinks = RedBlinks(kSceneKeys[3], kSlot1Led + 2);
         Press("KEY_15", false);
         RunMs(300);
-        Check(blinks == 3 && fabsf(drive() - .3f) < .005f, "fin-presets: preset 3, empty: refused, 3 red blinks");
+        Check(blinks == 3 && fabsf(loud() - .3f) < .005f, "fin-presets: preset 3, empty: refused, 3 red blinks");
         // COPY 2 to 4, with key 15 held throughout and SHIFT confirming: never the bypass
         const float before = RunMs(300);
         Keys({"+KEY_15", "100", "+KEY_24", "60", "-KEY_24", "100", "+KEY_20", "60", "-KEY_20", "100", "+KEY_22",
               "60", "-KEY_22", "100", "+KEY_26", "60", "-KEY_26", "100", "-KEY_15", "3000"});
         const std::string copied = Card("/FRIZZ/frizz_master.txt");
-        Check(copied.find("\nfinalizer_preset4 500000 300000 ") != std::string::npos
+        Check(copied.find("\nfinalizer_preset4 500000 0 0 300000 ") != std::string::npos
                   && fabsf(RunMs(300) - before) < before * .01f,
               "fin-presets: key 15 held, COPY 2 to 4, SHIFT: copied, and not bypassed");
         // DELETE 2
@@ -7512,12 +7512,12 @@ int main()
         Save(1);
         Check(Card("/FRIZZ/frizz_scenes.txt").find("scene 1") != std::string::npos,
               "fin-presets: without key 15 the scene keys save scenes again");
-        // CC 21 on channel 15: preset 4 (the drive turned away first)
-        Turn(1, -30);
+        // CC 21 on channel 15: preset 4 (Loud turned away first)
+        Turn(3, -30);
         RunMs(300);
         Trs({0xBE, 21, 4});
         RunMs(500);
-        Check(fabsf(drive() - .3f) < .005f, "fin-presets: CC 21 at 4 on channel 15 recalls preset 4");
+        Check(fabsf(loud() - .3f) < .005f, "fin-presets: CC 21 at 4 on channel 15 recalls preset 4");
     }});
 
     // the presets' mode, armed, ends where a scene mode does: the settings page shown, the
@@ -7575,12 +7575,56 @@ int main()
         Check(louder > dry * 1.5f, "fin-old-file: the file's other settings read: channel 5 is the global one");
         Trs({0xB4, 24, 64});
         Tap("KEY_15");
-        TurnSlow(1, 10);
+        TurnSlow(3, 10);
         RunMs(2500);
         const std::string now = Card("/FRIZZ/frizz_master.txt");
-        Check(now.find("\nfinalizer 500000 100000 ") != std::string::npos && now.find("compressor") == std::string::npos
+        Check(now.find("\nfinalizer 500000 0 0 100000 ") != std::string::npos && now.find("compressor") == std::string::npos
                   && now.find("\nmidi_channel 5\n") != std::string::npos,
               "fin-old-file: a turn writes the finalizer's line, not the old ones, the channel as it was");
+    }});
+
+    // a card from a 1.5 beta, the finalizer's drive and type up on Level's knobs 2 and 3, a
+    // preset's too: it loads with those two dropped (0) and every other knob where it was;
+    // they stay dark and do nothing, turned or by CC; the next write puts 0 there
+    cases.push_back({"fin-beta-drive", [] {
+        CardFiles()["/FRIZZ/frizz_master.txt"] =
+            "FRIZZ master 1\nfinalizer 625000 750000 500000 200000 600000 500000 500000 400000 400000 "
+            "400000 300000 500000 500000 500000\nfinalizer_preset1 500000 1000000 1000000 0 500000 "
+            "500000 500000 400000 400000 400000 0 500000 500000 500000\nmidi_channel 5\n";
+        amp = .3f;
+        RunMs(kReadyMs);
+        const std::string p = Ask({0x21, 14});
+        static const float kWant[16] = {.625f, 0.f, 0.f, .2f, .6f, .5f, .5f, 0.f, .4f, .4f, .4f, .3f, .5f, .5f, .5f, 0.f};
+        bool kept = p.size() == 33;
+        for (int i = 0; kept && i < 16; i++)
+            kept = fabsf(KnobOf(p[1 + 2 * i], p[2 + 2 * i]) - kWant[i]) < .001f;
+        Check(kept, "fin-beta-drive: a beta's file loads, the drive and type dropped, every other knob where it was");
+        Tap("KEY_15");
+        RunMs(2000);
+        const float before = RunMs(300);
+        TurnSlow(1, 30);
+        Turn(2, 3);
+        Trs({0xB4, 25, 127, 0xB4, 26, 127, 0xBE, 15, 127, 0xBE, 16, 127});
+        RunMs(1500);
+        const float after = RunMs(300);
+        const Rgb k2 = PthLedFull(2), k3 = PthLedFull(3);
+        const std::string q = Ask({0x21, 14});
+        printf("      before %.6f, knobs 2 and 3 turned %.6f\n", before, after);
+        Check(fabsf(after - before) < before * 1e-4f && q.size() == 33 && KnobOf(q[3], q[4]) == 0.f
+                  && KnobOf(q[5], q[6]) == 0.f,
+              "fin-beta-drive: Level's knobs 2 and 3, turned or by CC, change nothing");
+        Check(Max(k2) == 0 && Max(k3) == 0, "fin-beta-drive: their LEDs dark");
+        // recalling the beta's preset: its drive dropped too
+        Keys({"+KEY_15", "100", "+KEY_19", "60", "-KEY_19", "100", "-KEY_15", "500"});
+        const std::string r = Ask({0x21, 14});
+        Check(r.size() == 33 && KnobOf(r[3], r[4]) == 0.f && KnobOf(r[5], r[6]) == 0.f && KnobOf(r[1], r[2]) == .5f,
+              "fin-beta-drive: its preset recalled, the drive dropped there too");
+        TurnSlow(3, 10);
+        RunMs(2500);
+        const std::string now = Card("/FRIZZ/frizz_master.txt");
+        Check(now.find("\nfinalizer 500000 0 0 100000 ") != std::string::npos
+                  && now.find("\nfinalizer_preset1 500000 0 0 0 ") != std::string::npos,
+              "fin-beta-drive: written again with 0 on Level's knobs 2 and 3, the preset's too");
     }});
 
     // the finalizer's band mutes (#347): a plain press of knob 1-3 in EQ, Comp or Width mutes
@@ -7642,23 +7686,24 @@ int main()
             if (c > 20 && c < 24)
                 continue;
             const int p = c < 21 ? c - 14 : c - 16;
-            const float want = KnobOf7(10 + 3 * c);
-            const bool stepped = p == 2 || (p >= 8 && p <= 10);
-            const int steps = p == 2 ? 3 : 6;
-            const float on_step = roundf(want * (steps - 1)) / (steps - 1);
+            // Level's knobs 2 and 3 have nothing: they stay 0
+            const float want = p == 1 || p == 2 ? 0.f : KnobOf7(10 + 3 * c);
+            const bool stepped = p >= 8 && p <= 10;
+            const float on_step = roundf(want * 5.f) / 5.f;
             if (!(v.size() == 16 && fabsf(v[p] - (stepped ? on_step : want)) < .01f))
                 bad += " CC " + std::to_string(c) + ": " + std::to_string(v.size() == 16 ? v[p] : -1.f);
         }
         if (!bad.empty())
             printf("      %s\n", bad.c_str());
-        Check(bad.empty(), "fin-midi: channel 15's CC 14-20 and 24-30 set parameters 0-6 and 8-14");
-        Check(v.size() == 16 && v[7] == 0.f && v[15] == 0.f, "fin-midi: the unused ones stay");
-        // the global channel: CC 24-27 Level's knobs, CC 28 Depth
-        Trs({kCC, 24, 64, kCC, 25, 0, kCC, 27, 127, kCC, 28, 0});
+        Check(bad.empty(), "fin-midi: channel 15's CC 14, 17-20 and 24-30 set parameters 0, 3-6 and 8-14, CC 15 and 16 nothing");
+        Check(v.size() == 16 && v[1] == 0.f && v[2] == 0.f && v[7] == 0.f && v[15] == 0.f,
+              "fin-midi: the unused ones stay, Level's knobs 2 and 3 too");
+        // the global channel: CC 24 and 27 Level's input and Loud (25 and 26 nothing), CC 28 Depth
+        Trs({kCC, 24, 64, kCC, 25, 100, kCC, 26, 100, kCC, 27, 127, kCC, 28, 0});
         RunMs(100);
         v = params();
-        Check(v.size() == 16 && v[0] == .5f && v[1] == 0.f && v[3] == 1.f && v[11] == 0.f,
-              "fin-midi: the global CC 24, 25, 27 Level's input, drive and Loud, CC 28 Depth");
+        Check(v.size() == 16 && v[0] == .5f && v[1] == 0.f && v[2] == 0.f && v[3] == 1.f && v[11] == 0.f,
+              "fin-midi: the global CC 24 and 27 Level's input and Loud, CC 25 and 26 nothing, CC 28 Depth");
         // the focus on the finalizer, CC 23 on its channel picks Comp, CC 17 then its Depth
         Trs({kCC, 23, 15, 0xBE, 23, 64, kCC, 17, 127});
         RunMs(100);
@@ -11170,7 +11215,7 @@ int main()
                                             "|clock_source 1\n|midi_out 0\n|led_brightness 100\n"
                                             "|midi_block_trs 0\n|midi_feedback 0\n|aux_dry 1\n|gain_aux 40\n"
                                             "|gain_mic 40\n|mic_dry 1\n|aux_live 0\n|mic_live 1\n";
-    // comp.txt without its sets: the turns start from the card's knobs, its four LEDs another
+    // comp.txt without its sets: the turns start from the card's knobs, the input's LED another
     // colour, as on the device before (#214)
     cases.push_back({"script-comp-turns", [] {
         std::ifstream comp(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/') + 1)
@@ -11183,8 +11228,8 @@ int main()
             else
                 text += line + "\n";
         std::istringstream script(text);
-        Check(sets == 14 && PlayScript(script, nullptr, nullptr) == 2,
-              "script-comp-turns: comp.txt without its sets of the finalizer's 14 knobs, on a player's card: its two LEDs fail (#214)");
+        Check(sets == 12 && PlayScript(script, nullptr, nullptr) == 1,
+              "script-comp-turns: comp.txt without its sets of the finalizer's 12 knobs, on a player's card: the input's LED fails (#214)");
     }});
 
     // every scenario of ../twin/scenarios played from power-on, its expect lines holding

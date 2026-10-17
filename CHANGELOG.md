@@ -168,14 +168,14 @@ what FRIZZ does.
   every other setting as it was), and the old compressor's line is no longer written. This is
   the one change of the controls in 1.5, decided for it. The modules, in the order the sound
   goes through them:
-  - **Level** (white): Input, a clean trim of ±12 dB; Drive into a saturation, Boost, Tube or
-    Fuzz, at twice the sample rate and level-compensated; Loud, up to +18 dB into a limiter
-    with a ceiling of -1 dB that looks 1 ms ahead, for loudness without clipping.
+  - **Level** (white): Input, a clean trim of ±12 dB, on knob 1; Loud, up to +18 dB into a
+    limiter with a ceiling of -1 dB that looks 1 ms ahead, for loudness without clipping, on
+    knob 4.
   - **EQ** (yellow): the low, mid and high band's levels, -20 to +8 dB, split at 300 Hz and
     3 kHz.
   - **Comp** (cyan): a compressor on each band, its character picked from six (Light & fast to
     Beat FX, Parallel among them), one Depth for all three. No makeup: level comes back
-    through Drive and Loud.
+    through Loud.
   - **Width** (blue): each band's stereo, from mono to twice as wide (the low band to
     1.5 times), and to the right Space, which makes a mono source wide too.
 
@@ -188,7 +188,14 @@ what FRIZZ does.
   While Loud is up, the outputs and MIDI clock out are 1 ms later, so gear behind stays in
   time. Over MIDI, channel 15 has every parameter at a fixed CC (CC 14-20 Level and EQ, 24-30
   Comp and Width, 21 a preset, 22 on or bypassed, 23 the module, 102-104 the mutes), the global
-  channel CC 24-27 Level's knobs and CC 28 Depth. See [Finalizer](MANUAL.md#finalizer).
+  channel CC 24 and 27 Level's Input and Loud and CC 28 Depth. See [Finalizer](MANUAL.md#finalizer).
+
+- **The finalizer's Drive and Type are gone again:** the 1.5 betas had a drive into a
+  saturation (Boost, Tube or Fuzz) on the Level module's knobs 2 and 3. Its types never
+  sounded apart enough to keep, so those two knobs now do nothing and stay dark, as the EQ's
+  knob 4, and their CCs too. A card from a beta loads with the drive off and every other
+  finalizer knob, its presets' too, as it was: it sounds as with the drive at 0, clean, its
+  peaks no longer clipped. See [Level module](MANUAL.md#level-module).
 
 - **SHIFT + key 15 switches the finalizer's module once it's selected** (#435): in the betas
   the module switched only with key 15 tapped twice in one SHIFT hold. Now, with the finalizer
@@ -286,9 +293,8 @@ what FRIZZ does.
   (20 % and more), one of knobs 1-4 its value likewise. Now each click counts once, however it
   wobbles, on the transport knob too. Turning slowly is one step a click, and turning fast
   speeds up as before.
-- **The finalizer's Type, and a band's character, take effect as you turn them** (#449):
-  turning Type, or a band's character in the Comp module, changed nothing until another
-  finalizer knob moved; a preset recalled or a knob turned after it brought it in.
+- **A band's character in the finalizer takes effect as you turn it** (#449): turning a
+  band's character in the Comp module changed nothing until another finalizer knob moved; a preset recalled or a knob turned after it brought it in.
 - **A bug report notes the card lent to a computer** (audit 2026-10-16): when the card was
   lent as a USB drive and taken back, the report didn't say so, so a session that edited
   scenes or settings on the computer played back differently with nothing to show why. Now the

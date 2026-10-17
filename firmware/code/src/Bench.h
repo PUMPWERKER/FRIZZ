@@ -348,12 +348,12 @@ private:
                       // on, mixed at the middle (Looper::BenchFade)
         MODES = 1024, // the effects with a second mode in it (kFxModes): the phaser's
                       // frequency shifter (#306)
-        FIN = 2048,   // the finalizer with every module working (#345, kFinBench): its bands,
-                      // drive and limiter
+        FIN = 2048,   // the finalizer with every module working (#345, kFinBench): its bands
+                      // and limiter
     };
-    // FIN's finalizer: input +3dB, Tube drive at .5, Loud +9dB; the EQ low up, mid down, high
-    // up; Comp at its default characters, Depth .7; the low band narrower, mid and high wider
-    static constexpr float kFinBench[kNumFinParams] = {.625f, .5f, .5f, .5f, .6f, .45f, .55f, 0.f,
+    // FIN's finalizer: input +3dB, Loud +9dB; the EQ low up, mid down, high up; Comp at its
+    // default characters, Depth .7; the low band narrower, mid and high wider
+    static constexpr float kFinBench[kNumFinParams] = {.625f, 0.f, 0.f, .5f, .6f, .45f, .55f, 0.f,
                                                        .4f, .4f, .4f, .7f, .3f, .6f, .7f, 0.f};
     struct Segment
     {

@@ -5,7 +5,7 @@
  *  of four knobs (FxControls.h, kFinalizerKnobs in FxParams.h), kept on the card
  *  (MasterSettings.h), not in the scenes. After Endorphin.es' Golden Master and OTO's BOUM.
  *
- *  The chain, in a fixed order: Input -> EQ -> Comp -> Width -> Drive -> Limiter. The middle
+ *  The chain, in a fixed order: Input -> EQ -> Comp -> Width -> Limiter. The middle
  *  three share a split into three bands at kSplitLow and kSplitHigh, Linkwitz-Riley 4th order
  *  (two state-variable filters in a row each way), the low band through the high split's
  *  allpass, so the bands sum back to an allpass, flat. The split works on mid and side
@@ -34,10 +34,6 @@
  *    (Quad, faded in and out over kFadeMs as the low band's Space comes and goes), the second
  *    on the low band's mid into the side. L + R then keeps the mid's level, its phase turned
  *    in the bass.
- *  - Drive: a saturation of the type's (Boost soft, Tube asymmetric, Fuzz hard), 0 to +30dB
- *    into it, run at twice the rate (polyphase IIR halfbands, as hiir's) so its harmonics
- *    don't fold back, then a gentle hi-cut. Level-compensated by a fixed gain per drive and
- *    type: a sine of kDriveRef comes out as loud as it went in, other levels near it.
  *  - Limiter, Loud: 0 to +18dB into a limiter with a lookahead of kLookahead (1ms), its
  *    ceiling kCeiling (-1dB of the reference, with a margin of .3dB for the peaks between
  *    samples, which its detector estimates at twice the rate), its release automatic: longer the
@@ -48,9 +44,8 @@
  *
  *  Neutral, a module sleeps: every knob on its default leaves the samples untouched, an exact
  *  bypass costing a test a block. What changes the phase or the latency fades in and out over
- *  kFadeMs, the bands, the drive and the limiter's delay alike, so nothing clicks: the bands
- *  are an allpass, the drive's halfbands delay a little, and while Loud is up the output is
- *  kLookahead later (Latency, which MIDI clock out follows, MidiOut.h). The limiter's delay
+ *  kFadeMs, the bands and the limiter's delay alike, so nothing clicks: the bands are an
+ *  allpass, and while Loud is up the output is kLookahead later (Latency, which MIDI clock out follows, MidiOut.h). The limiter's delay
  *  fills before it fades in. The bands run on, the output untouched, for kBandsHoldMs after
  *  fading out, and while a meter needs them (SetMeter), so a knob nudged off and back doesn't
  *  restart them. Bypassed (SetBypass), every module fades out the same way. A band muted
@@ -80,9 +75,7 @@ public:
     // parameter m * kNumFxKnobs + k: module m's knob k (kFinalizerKnobs)
     enum Param : uint8_t
     {
-        INPUT = 0,
-        DRIVE = 1,
-        TYPE = 2,
+        INPUT = 0, // Level's knobs 2 and 3 (1, 2) have nothing (kFinalizerKnobs)
         LOUD = 3,
         EQ_LOW = 4, // 4-6: low, mid, high
         CHARACTER_LOW = 8, // 8-10
@@ -97,12 +90,6 @@ public:
         WIDTH = 3,
         kNoMeter = 4,
     };
-    enum Type : uint8_t
-    {
-        BOOST = 0,
-        TUBE = 1,
-        FUZZ = 2,
-    };
     static const size_t kBands = 3;
     static const uint32_t kLookahead = 48; // 1ms
     static constexpr float kCeiling = .8610f; // -1dB, less .3dB for the peaks between samples
@@ -114,8 +101,6 @@ public:
             knobs_[p].Reset(kFinalizerKnobs[p / kNumFxKnobs].defaults[p % kNumFxKnobs]);
         Svf::Coeffs(split_[0], kSplitLow, sample_rate);
         Svf::Coeffs(split_[1], kSplitHigh, sample_rate);
-        hicut_ = OnePoleCoeff(kHiCutHz, sample_rate);
-        dc_ = OnePoleCoeff(kDcHz, sample_rate);
         // the low band's Space: its quarter turn's first-order allpasses (tan by its series,
         // x small)
         for (size_t i = 0; i < kQuadStages; i++)
@@ -126,8 +111,8 @@ public:
         turned_ = update_pending_ = bypass_ = false;
         since_update_ = 0;
         meter_ = kNoMeter;
-        trim_from_ = band_from_ = drive_from_ = lim_from_ = 0.f;
-        bands_run_ = bands_apply_ = drive_run_ = false;
+        trim_from_ = band_from_ = lim_from_ = 0.f;
+        bands_run_ = bands_apply_ = false;
         release_lim_ = 0.f;
         fade_step_ = 1000.f / (kFadeMs * sample_rate);
         mute_step_ = 1000.f / (kMuteMs * sample_rate);
@@ -136,13 +121,13 @@ public:
         awake_ = true;
     }
 
-    /** From the UI, 0..1: parameter p (Param). A stepped one (the type, the characters) at once */
+    /** From the UI, 0..1: parameter p (Param). A stepped one (the characters) at once */
     inline void SetParam(size_t p, float val)
     {
         if (p >= kNumFinParams)
             return;
         knobs_[p].target = val;
-        if (p == TYPE || (p >= CHARACTER_LOW && p < DEPTH))
+        if (p >= CHARACTER_LOW && p < DEPTH)
             knobs_[p].value = val;
         turned_ = true;
         awake_ = true;
@@ -233,7 +218,6 @@ private:
     static constexpr float kInputDb = 12.f;
     static constexpr float kEqCutDb = 20.f, kEqBoostDb = 8.f;
     static constexpr float kDepthDb = 30.f;
-    static constexpr float kDriveDb = 30.f;
     static constexpr float kLoudDb = 18.f;
     static constexpr float kMaxWidth = 2.f, kMaxLowWidth = 1.5f;
     // Space (#455), right of Width's centre: a band's decorrelated mid in its side, up to kSpace
@@ -255,9 +239,6 @@ private:
     static constexpr float kFadeMs = 10.f;
     static constexpr float kMuteMs = 5.f;
     static constexpr float kBandsHoldMs = 500.f;
-    static constexpr float kHiCutHz = 10000.f, kDcHz = 10.f;
-    static constexpr float kDriveRef = .5f; // the sine the drive's compensation is set for
-    static constexpr float kTubeBias = .4f;
     static constexpr float kRestDb = .01f; // a gain reduction this small is released
     static constexpr float kCorrMs = 150.f; // the correlation meter's time constant
     static const uint32_t kUpdateSamples = 24;
@@ -339,7 +320,7 @@ private:
         }
     };
 
-    /** A first-order allpass of the halfbands (hiir's), at the low rate: y = a (x - y1) + x1 */
+    /** A first-order allpass, Space's quarter turn's: y = a (x - y1) + x1 */
     struct Allpass
     {
         float x1, y1;
@@ -351,10 +332,6 @@ private:
             return y;
         }
     };
-    // the halfbands' coefficients (hiir's PolyphaseIir2Designer, 4 coefficients, a transition
-    // of .083: flat to 16kHz, 65dB down from 32kHz at twice the rate); even ones on the first
-    // path, odd ones on the second
-    static constexpr float kHalfband[4] = {.089922015f, .311525233f, .578049670f, .851016616f};
     // Between's taps, from the middle out
     static const uint32_t kMidTaps = 16, kHist = 16;
     static constexpr float kMid[kMidTaps / 2] = {.63203657f, -.19875598f, .10587670f, -.06283757f,
@@ -362,21 +339,12 @@ private:
     // the gain down before its peak: the two boxes span 2 kBox - 1 samples, and Between's
     // peak comes kMidTaps / 2 samples late
     static_assert(2 * kBox - 1 + kMidTaps / 2 <= kLookahead + 1, "the gain down before its peak (Limit)");
-    struct Drive2x
-    {
-        Allpass up[4], down[4];
-        float odd; // the last pair's second sample, for the downsampler's second path
-        float dc, lp;
-    };
 
     /** Everything the samples go through, at rest */
     FIN_ONCE void Clear()
     {
         for (size_t c = 0; c < 2; c++)
-        {
             splits_[c] = Split();
-            drive2x_[c] = Drive2x();
-        }
         for (size_t b = 0; b < kBands; b++)
         {
             gr_db_[b] = 0.f;
@@ -394,8 +362,7 @@ private:
         Sp().run = Sp().quad_run = false;
         Sp().quad_mix = Sp().quad_from = 0.f;
         trim_ = 1.f;
-        band_mix_ = drive_mix_ = lim_mix_ = 0.f;
-        drive_gain_ = 1.f;
+        band_mix_ = lim_mix_ = 0.f;
         loud_gain_ = 1.f;
         bands_hold_ = 0;
         lim_run_ = lim_want_ = false;
@@ -462,46 +429,12 @@ private:
                                                      * (kFinCharacters - 1) + .5f);
         }
         depth_ = knobs_[DEPTH].value;
-        taken_[0] = knobs_[TYPE].value;
         for (size_t b = 0; b < kBands; b++)
-            taken_[1 + b] = knobs_[CHARACTER_LOW + b].value;
-        const float drive = knobs_[DRIVE].value;
-        drive_on_ = drive > 0.f;
-        drive_target_ = daisysp::pow10f(drive * kDriveDb * .05f);
-        type_ = static_cast<uint8_t>(fminf(knobs_[TYPE].value, 1.f) * (kFinTypes - 1) + .5f);
-        drive_comp_ = DriveCompensation(drive_target_, type_);
+            taken_[b] = knobs_[CHARACTER_LOW + b].value;
         const float loud = knobs_[LOUD].value;
         loud_on_ = loud > 0.f;
         loud_target_ = daisysp::pow10f(loud * kLoudDb * .05f);
         times_n_ = 0; // the comp's coefficients again (Times)
-    }
-
-    /** The saturation of a type, at twice the rate */
-    static __attribute__((always_inline)) inline float Saturate(uint8_t type, float x)
-    {
-        if (type == BOOST)
-            return daisysp::SoftClip(x);
-        if (type == TUBE)
-            return daisysp::SoftClip(x + kTubeBias) - kTubeOffset;
-        return fminf(fmaxf(x, -1.f), 1.f);
-    }
-    static constexpr float kTubeOffset = .4f * (27.f + .16f) / (27.f + 9.f * .16f); // SoftClip(kTubeBias)
-
-    /** The drive's fixed compensation: what brings a sine of kDriveRef, driven by gain into
-     *  type's saturation, back to its level (its RMS, the DC taken off) */
-    FIN_ONCE static float DriveCompensation(float gain, uint8_t type)
-    {
-        static const int kPoints = 32;
-        float sum = 0.f, sq = 0.f;
-        for (int i = 0; i < kPoints; i++)
-        {
-            const float y = Saturate(type, gain * kDriveRef * sinf(TWOPI_F * (i + .5f) / kPoints));
-            sum += y;
-            sq += y * y;
-        }
-        const float mean = sum / kPoints;
-        const float rms = sqrtf(fmaxf(sq / kPoints - mean * mean, 1e-12f));
-        return kDriveRef * .70710678f / rms;
     }
 
     /** The comp's attack and release per block of n, a band's time scaled by its slowness */
@@ -538,11 +471,10 @@ private:
                 update_pending_ |= knobs_[p].Settle(kFxParamCoeff * n);
                 moving |= knobs_[p].value != knobs_[p].target;
             }
-            // a stepped knob (the type, the characters) lands at once and never slews: worked
-            // out where it isn't what Update took last
-            update_pending_ |= knobs_[TYPE].value != taken_[0];
+            // a stepped knob (the characters) lands at once and never slews: worked out where
+            // it isn't what Update took last
             for (size_t b = 0; b < kBands; b++)
-                update_pending_ |= knobs_[CHARACTER_LOW + b].value != taken_[1 + b];
+                update_pending_ |= knobs_[CHARACTER_LOW + b].value != taken_[b];
             if (moving)
                 turned_ = true;
         }
@@ -649,15 +581,6 @@ private:
         trim_from_ = trim_;
         trim_ = bypass_ ? 1.f : trim_target_;
 
-        // the drive
-        const bool drive = drive_on_ && !bypass_;
-        drive_from_ = drive_mix_;
-        if (drive && drive_mix_ == 0.f && drive_from_ == 0.f)
-            for (size_t c = 0; c < 2; c++)
-                drive2x_[c] = Drive2x();
-        drive_mix_ = Toward(drive_mix_, drive ? 1.f : 0.f, step);
-        drive_run_ = drive_from_ > 0.f || drive_mix_ > 0.f;
-
         // the limiter: on waking its delay fills first, then fades in
         lim_want_ = loud_on_ && !bypass_;
         if (lim_want_ && !lim_run_)
@@ -678,7 +601,7 @@ private:
         release_lim_ = 1000.f / (rel_ms * sample_rate_);
 
         awake_ = turned_ || update_pending_ || trim_ != 1.f || trim_from_ != 1.f || bands_run_
-                 || drive_run_ || lim_run_;
+                 || lim_run_;
     }
 
     /** Everything awake, a block: out of line, linked after FxChain::Run (FrizzHot.h), at -O2,
@@ -692,8 +615,6 @@ private:
             InputPeak(l, r, n);
         if (bands_run_)
             Bands(l, r, n);
-        if (drive_run_)
-            Drive(l, r, n);
         if (lim_run_)
             Limit(l, r, n);
     }
@@ -869,45 +790,6 @@ private:
         ys += qmix * (as - ys) + al;
     }
 
-    __attribute__((always_inline)) inline float Drive1(Drive2x& d, float x, float gain, float comp)
-    {
-        x *= gain;
-        // up: each path's output one sample of the pair
-        const float u0 = d.up[2].Process(kHalfband[2], d.up[0].Process(kHalfband[0], x));
-        const float u1 = d.up[3].Process(kHalfband[3], d.up[1].Process(kHalfband[1], x));
-        const float v0 = Saturate(type_, u0), v1 = Saturate(type_, u1);
-        // down: the first path takes the pair's first, the second the last pair's second
-        const float a = d.down[2].Process(kHalfband[2], d.down[0].Process(kHalfband[0], v0));
-        const float b = d.down[3].Process(kHalfband[3], d.down[1].Process(kHalfband[1], d.odd));
-        d.odd = v1;
-        float y = .5f * (a + b) * comp;
-        d.dc += dc_ * (y - d.dc);
-        y -= d.dc;
-        d.lp += hicut_ * (y - d.lp);
-        return d.lp;
-    }
-
-    __attribute__((always_inline)) inline void Drive(float* l, float* r, size_t n)
-    {
-        const float inv = 1.f / n;
-        const float dg = (drive_target_ - drive_gain_) * inv;
-        const float dmix = (drive_mix_ - drive_from_) * inv;
-        const float comp = drive_comp_;
-        // a channel at a time: the drive's code once
-        for (size_t c = 0; c < 2; c++)
-        {
-            float* x = c ? r : l;
-            float g = drive_gain_, mix = drive_from_;
-            for (size_t i = 0; i < n; i++)
-            {
-                g += dg;
-                mix += dmix;
-                x[i] += mix * (Drive1(drive2x_[c], x[i], g, comp) - x[i]);
-            }
-        }
-        drive_gain_ = drive_target_;
-    }
-
     /** A channel's last kMidTaps samples, x the newest: the one between the middle two at
      *  twice the rate, a half-sample interpolator (least squares, flat within -0.21/+0.07dB
      *  to .42 of the rate, 20kHz) */
@@ -1003,7 +885,7 @@ private:
     volatile bool bypass_;
     volatile uint8_t meter_;
     bool update_pending_;
-    float taken_[1 + kBands]; // the stepped knobs as Update took them: the type, the characters
+    float taken_[kBands]; // the stepped knobs as Update took them: the characters
     uint32_t since_update_;
     size_t times_n_; // the block the comp's coefficients are for (Times)
     float fade_step_;
@@ -1014,9 +896,8 @@ private:
     uint8_t character_[kBands];
     bool eq_neutral_, width_neutral_;
     float depth_;
-    bool drive_on_, loud_on_;
-    float drive_target_, drive_comp_, loud_target_;
-    uint8_t type_;
+    bool loud_on_;
+    float loud_target_;
 
     // the input
     float trim_, trim_from_;
@@ -1042,13 +923,6 @@ private:
     int32_t bands_hold_;
     bool bands_run_, bands_apply_;
 
-    // the drive
-    Drive2x drive2x_[2];
-    float hicut_, dc_;
-    float drive_gain_;
-    float drive_mix_, drive_from_;
-    bool drive_run_;
-
     // the limiter
     float loud_gain_;
     float delay_[2][kLookahead];
@@ -1071,7 +945,6 @@ private:
 
 constexpr Finalizer::Character Finalizer::kCharacters[kFinCharacters];
 constexpr float Finalizer::kHoldMs[Finalizer::kBands];
-constexpr float Finalizer::kHalfband[4];
 constexpr float Finalizer::kMid[Finalizer::kMidTaps / 2];
 constexpr uint16_t Finalizer::kSpaceDelays[Finalizer::kSpaceStages];
 constexpr float Finalizer::kQuadHz[Finalizer::kQuadStages];

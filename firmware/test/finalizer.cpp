@@ -12,11 +12,10 @@
 //    below the low split, each channel's level up by about 1dB at most and the two about as
 //    loud, the low band's too; at or left of the centre its allpasses don't run, and turned
 //    back it sleeps again, exact
-//  - the drive's level compensation: a sine at its reference level comes out within 1dB, every
-//    type and amount
-//  - the stepped knobs take on their own: Type turned alone under drive changes the harmonics,
-//    a band's character turned alone changes its gain reduction (they used to wait for another
-//    knob to move)
+//  - Level's knobs 2 and 3 (the drive's and its type's in the 1.5 betas) do nothing: turned,
+//    the output stays sample for sample what it is, every other module working or none
+//  - the stepped knobs take on their own: a band's character turned alone changes its gain
+//    reduction (it used to wait for another knob to move)
 //  - the limiter: pushed hard by Loud, no peak above its ceiling of -1dB, also between the
 //    samples (a 2x-oversampled check), and its delay exactly 1ms (Latency)
 //  - the meters against ffmpeg's (a reference of its own, LR4 bands from acrossover): each
@@ -403,52 +402,51 @@ static void TestMute()
     Check(bl == in && b.f.Asleep(), "mute: unmuted, asleep again and exact");
 }
 
-static void TestDrive()
+static void TestUnusedLevelKnobs()
 {
-    for (int type = 0; type < kFinTypes; type++)
-        for (float drive : {.1f, .5f, 1.f})
-        {
-            Setup s({{Finalizer::DRIVE, drive}, {Finalizer::TYPE, type / 2.f}});
-            const size_t n = 48000;
-            std::vector<float> l = Sine(n, 200.f, .5f), r = l;
-            const std::vector<float> in = l;
-            s.Run(l, r);
-            const float db = Db(Rms(l, n / 2, n)) - Db(Rms(in, n / 2, n));
-            char what[128];
-            snprintf(what, sizeof(what), "drive: type %d at %.1f, a sine of .5 comes out %.2f dB (within 1)", type, drive, db);
-            Check(fabsf(db) < 1.f, what);
-        }
-}
-
-/** v's harmonic k of hz, its amplitude, over n samples from from (a whole number of cycles) */
-static float Harmonic(const std::vector<float>& v, size_t from, size_t n, float hz, int k)
-{
-    double re = 0., im = 0.;
+    // every module working (the bench's FIN), and none: Level's knobs 2 and 3 set before, and
+    // turned while it runs, leave every sample as it is
+    const std::initializer_list<std::pair<int, float>> working = {
+        {Finalizer::INPUT, .625f}, {Finalizer::LOUD, .5f}, {Finalizer::EQ_LOW, .6f},
+        {Finalizer::EQ_LOW + 1, .45f}, {Finalizer::EQ_LOW + 2, .55f}, {Finalizer::DEPTH, .7f},
+        {Finalizer::WIDTH_LOW, .3f}, {Finalizer::WIDTH_LOW + 1, .6f}, {Finalizer::WIDTH_LOW + 2, .7f}};
+    const size_t n = 48000;
+    std::vector<float> l(n), r(n);
     for (size_t i = 0; i < n; i++)
     {
-        const double a = 2. * M_PI * hz * k * i / kSr;
-        re += v[from + i] * cos(a);
-        im += v[from + i] * sin(a);
+        l[i] = Noise() + .5f * sinf(2.f * static_cast<float>(M_PI) * 110.f * i / kSr);
+        r[i] = Noise();
     }
-    return static_cast<float>(2. * sqrt(re * re + im * im) / n);
+    for (bool work : {false, true})
+    {
+        // one after the other: Space's state is the one finalizer's (Sp)
+        std::vector<float> al = l, ar = r, bl = l, br = r;
+        {
+            Setup a(work ? working : std::initializer_list<std::pair<int, float>>{});
+            a.Run(al, ar);
+        }
+        Setup b(work ? working : std::initializer_list<std::pair<int, float>>{});
+        b.f.SetParam(1, .75f);
+        b.f.SetParam(2, .5f);
+        // turned again halfway, in the middle of a block
+        std::vector<float> bl1(bl.begin(), bl.begin() + n / 2), br1(br.begin(), br.begin() + n / 2);
+        std::vector<float> bl2(bl.begin() + n / 2, bl.end()), br2(br.begin() + n / 2, br.end());
+        b.Run(bl1, br1);
+        b.f.SetParam(1, 1.f);
+        b.f.SetParam(2, 1.f);
+        b.Run(bl2, br2);
+        bl1.insert(bl1.end(), bl2.begin(), bl2.end());
+        br1.insert(br1.end(), br2.begin(), br2.end());
+        CheckF(al == bl1 && ar == br1,
+               "unused: Level's knobs 2 and 3 turned change nothing, sample for sample (other modules working: %g)",
+               work);
+        if (!work)
+            Check(al == l && ar == r && b.f.Asleep(), "unused: with nothing else turned, an exact bypass, asleep again");
+    }
 }
 
 static void TestSteppedKnobs()
 {
-    // Type alone, Boost to Tube under drive: Tube's second harmonic appears
-    {
-        Setup s({{Finalizer::DRIVE, .75f}});
-        const size_t n = 48000;
-        std::vector<float> l = Sine(2 * n, 200.f, .5f), r = l;
-        std::vector<float> a(l.begin(), l.begin() + n), ar(a);
-        s.Run(a, ar);
-        s.f.SetParam(Finalizer::TYPE, .5f);
-        std::vector<float> b(l.begin() + n, l.end()), br(b);
-        s.Run(b, br);
-        const float before = Db(Harmonic(a, n / 2, n / 2, 200.f, 2) / Harmonic(a, n / 2, n / 2, 200.f, 1));
-        const float after = Db(Harmonic(b, n / 2, n / 2, 200.f, 2) / Harmonic(b, n / 2, n / 2, 200.f, 1));
-        CheckF(before < -80.f && after > -60.f, "stepped: Type turned alone to Tube, the second harmonic %.1f dB before, %.1f dB after", before, after);
-    }
     // a band's character alone, light to pumping: its gain reduction moves
     const float hz[Finalizer::kBands] = {100.f, 1000.f, 8000.f};
     for (size_t b = 0; b < Finalizer::kBands; b++)
@@ -759,7 +757,7 @@ int main()
     TestWidth();
     TestSpace();
     TestMute();
-    TestDrive();
+    TestUnusedLevelKnobs();
     TestSteppedKnobs();
     TestLimiter();
     TestMetersFfmpeg();

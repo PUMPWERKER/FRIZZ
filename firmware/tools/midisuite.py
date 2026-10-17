@@ -68,8 +68,9 @@ READY = 6.5  # s from power-on to the play page taking keys: the boot and the ra
 # white key k's effect (MANUAL.md "Channels"), as remote.py's FX_NAMES name them
 WHITE_FX = [None, "freezer", "shifter", "folder", "crusher", "filter", "flanger", "phaser",
             "resonator", "slicer", "warble", "tapestop", "delay", "reverb", "chaos"]
-# the knobs an effect has nothing on (MANUAL.md "Page 2"): (effect, knob 0-7), dark, doing nothing
-EMPTY = {("flanger", 4), ("resonator", 4)} | {("chaos", i) for i in range(4, 8)}
+# the knobs an effect has nothing on (MANUAL.md "Page 2"): (effect, knob 0-7), dark, doing nothing;
+# and the finalizer's Level knobs 2 and 3 (MANUAL.md "Level module": the drive's in the 1.5 betas)
+EMPTY = {("flanger", 4), ("resonator", 4)} | {("chaos", i) for i in range(4, 8)} | {("fin", 1), ("fin", 2)}
 # the settings each case starts from: the global channel 16, the effect channels over TRS on,
 # AUX live through the effects and the mic through them, not live (#177), nothing else
 BASELINE = dict(midi_channel=16, midi_transport=0, clock_factor=100, clock_source=0, midi_out=0,

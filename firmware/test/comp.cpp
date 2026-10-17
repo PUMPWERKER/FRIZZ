@@ -4,7 +4,8 @@
 // everything up, and the finalizer's limiter keeping it from working (no red on key 15) with
 // Loud and VOLUME full on a hot input; and the master settings' file format
 // (MasterSettings.h): the finalizer's knobs and presets round-trip, a file from before (the
-// master compressor's) loads with the finalizer neutral and the rest intact. Exits 0 when
+// master compressor's) loads with the finalizer neutral and the rest intact, one from a 1.5
+// beta with its drive up loads with the drive dropped and every other knob where it was. Exits 0 when
 // everything passes. Run by unit.sh comp.
 #include <cmath>
 #include <cstdio>
@@ -141,7 +142,7 @@ static float Hot(size_t n)
 static void TestCeiling()
 {
     // everything up: input, volume, the finalizer's input and EQ boosts (no Loud, whose
-    // limiter would hold the level back, nor drive, which keeps it as it was)
+    // limiter would hold the level back)
     float lim;
     const float peak = Engine({{Finalizer::INPUT, 1.f}, {Finalizer::EQ_LOW, 1.f}, {Finalizer::EQ_LOW + 2, 1.f}},
                               Square, lim);
@@ -165,7 +166,7 @@ static void TestFile()
     MasterSettings a, b;
     a.Reset();
     a.fin[0] = .3f;
-    a.fin[2] = 1.f;
+    a.fin[3] = 1.f;
     a.fin[5] = .123457f;
     a.fin[11] = .4f;
     a.fin[14] = .625f;
@@ -179,7 +180,7 @@ static void TestFile()
     Check(!strstr(buf, "finalizer_preset"), "file: no preset stored, none written");
 
     // presets: the ones stored, and only those
-    a.fin_presets[1][1] = .75f;
+    a.fin_presets[1][4] = .75f;
     a.fin_presets[1][12] = 0.f;
     a.fin_presets[3][3] = 1.f;
     a.fin_presets_used = 0x0a;
@@ -198,9 +199,31 @@ static void TestFile()
     Check(!ParseMaster("FRIZZ scenes 1\n", b) && b.fin[0] == kFinalizerKnobs[0].defaults[0],
           "file: another file isn't read, the defaults stay");
     Check(!ParseMaster("FRIZZ master 10\n", b), "file: another version isn't read");
-    Check(ParseMaster("FRIZZ master 1\r\nvolume 3\r\nfinalizer 300000 2000000\r\n", b) &&
-              b.fin[0] == .3f && b.fin[1] == 1.f && b.fin[2] == kFinalizerKnobs[0].defaults[2],
+    Check(ParseMaster("FRIZZ master 1\r\nvolume 3\r\nfinalizer 300000 0 0 2000000\r\n", b) &&
+              b.fin[0] == .3f && b.fin[3] == 1.f && b.fin[4] == kFinalizerKnobs[1].defaults[0],
           "file: unknown lines skipped, values clamped, missing ones on their defaults");
+
+    // a 1.5 beta's file, its drive up on Level's knobs 2 and 3, the finalizer's line and a
+    // preset's: those two dropped (their defaults, off), every other knob where it was, and
+    // the next write puts 0 there, the format as it was, so a beta reads it with the drive off
+    Check(ParseMaster("FRIZZ master 1\nfinalizer 600000 750000 500000 250000 700000 450000 550000 "
+                      "200000 400000 1000000 700000 300000 600000 800000\n"
+                      "finalizer_preset3 400000 1000000 1000000 500000 500000 500000 500000 400000 "
+                      "400000 400000 0 500000 500000 500000\nmono 1\n",
+                      b),
+          "file: a beta's, its drive up, is read");
+    const float beta[kNumFinParams] = {.6f, 0.f, 0.f, .25f, .7f, .45f, .55f, 0.f,
+                                       .2f, .4f, 1.f, .7f, .3f, .6f, .8f, 0.f};
+    const float beta_preset[kNumFinParams] = {.4f, 0.f, 0.f, .5f, .5f, .5f, .5f, 0.f,
+                                              .4f, .4f, .4f, 0.f, .5f, .5f, .5f, 0.f};
+    same = b.mono && b.fin_presets_used == 0x04;
+    for (size_t p = 0; p < kNumFinParams; p++)
+        same = same && fabsf(b.fin[p] - beta[p]) < 1e-6f && fabsf(b.fin_presets[2][p] - beta_preset[p]) < 1e-6f;
+    Check(same, "file: a beta's, its drive and type dropped (off), every other knob where it was, its preset's too");
+    FormatMaster(b, buf, sizeof(buf));
+    Check(strstr(buf, "\nfinalizer 600000 0 0 250000 700000 450000 550000 200000 400000 1000000 700000 300000 600000 800000\n")
+              && strstr(buf, "\nfinalizer_preset3 400000 0 0 500000 "),
+          "file: written again in the same format, 0 on Level's knobs 2 and 3");
 
     // a file from before the finalizer, the master compressor's: its lines skipped, the
     // finalizer neutral, every other setting read, and the old lines not written again
