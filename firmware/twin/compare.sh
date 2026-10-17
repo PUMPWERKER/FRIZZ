@@ -13,6 +13,7 @@
 # differs, every scenario compared; anything else is 2, saying what: a twin that didn't build,
 # a scenario the twin crashed in or couldn't read, one compare.py couldn't compare or gave no
 # line for, or this script failing on its way (CI's compare step fails on 2, not on 1)
+source "$(dirname "$0")/../test/hostlock.sh"   # one heavy run at a time (#439)
 set -e -o pipefail
 trap 'echo "compare.sh: line $LINENO failed (exit $?)"; exit 2' ERR
 source "$(dirname "$0")/ref.sh"

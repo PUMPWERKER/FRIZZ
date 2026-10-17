@@ -21,7 +21,19 @@
  *    Parallel mixes the heavily compressed band half and half with the dry, keeping its
  *    transients. No makeup: nothing turns anything up by itself.
  *  - Width: each band's side, 0 (mono) at the left, as it is at the centre, up to kMaxWidth
- *    (the low band kMaxLowWidth) at the right.
+ *    (the low band kMaxLowWidth) at the right. Right of the centre Space comes in too (#455):
+ *    the band's mid through allpasses into its side, up to kSpace of the mid at the right, so
+ *    a mono source gets wider. Only into the side, so L + R keeps the mid's level at every
+ *    frequency, mono-compatible. Mid's and high's a chain of short Schroeder allpasses
+ *    (kSpaceDelays, as the Golden Master's 0.1-2.5ms): each channel alone ripples between
+ *    1 - k and 1 + k over the frequency, too finely to be heard as more than room (a third of
+ *    an octave each, within about 1dB of the two's mean). The low band has too few cycles for
+ *    that: delays short enough not to smear the kick hardly turn the bass and would pan it.
+ *    Its Space is a quarter turn instead, both channels as loud: a pair of first-order
+ *    allpass chains 90 degrees apart from kQuadFrom to kQuadTo (kQuadHz), the first on the whole output
+ *    (Quad, faded in and out over kFadeMs as the low band's Space comes and goes), the second
+ *    on the low band's mid into the side. L + R then keeps the mid's level, its phase turned
+ *    in the bass.
  *  - Drive: a saturation of the type's (Boost soft, Tube asymmetric, Fuzz hard), 0 to +30dB
  *    into it, run at twice the rate (polyphase IIR halfbands, as hiir's) so its harmonics
  *    don't fold back, then a gentle hi-cut. Level-compensated by a fixed gain per drive and
@@ -104,6 +116,13 @@ public:
         Svf::Coeffs(split_[1], kSplitHigh, sample_rate);
         hicut_ = OnePoleCoeff(kHiCutHz, sample_rate);
         dc_ = OnePoleCoeff(kDcHz, sample_rate);
+        // the low band's Space: its quarter turn's first-order allpasses (tan by its series,
+        // x small)
+        for (size_t i = 0; i < kQuadStages; i++)
+        {
+            const float x = PI_F * kQuadHz[i] / sample_rate, t = x * (1.f + x * x * (1.f / 3.f));
+            Sp().quad_a[i] = (t - 1.f) / (t + 1.f);
+        }
         turned_ = update_pending_ = bypass_ = false;
         since_update_ = 0;
         meter_ = kNoMeter;
@@ -217,6 +236,21 @@ private:
     static constexpr float kDriveDb = 30.f;
     static constexpr float kLoudDb = 18.f;
     static constexpr float kMaxWidth = 2.f, kMaxLowWidth = 1.5f;
+    // Space (#455), right of Width's centre: a band's decorrelated mid in its side, up to kSpace
+    // of it at the right (the correlation of a mono source .6); mid's and high's Schroeder
+    // allpasses, their delays in samples and their gain, mid's the first kSpaceMid (picked, the
+    // low band's quarter turn with them, for the channels' levels a third of an octave each:
+    // each within 1.1dB of the two's mean at every frequency from 30Hz to 16kHz, worst at the
+    // low split); the low band's quarter turn, the corners of the output's chain, then the low
+    // band's (90 degrees apart within 3 from kQuadFrom to kQuadTo)
+    static constexpr float kSpace = .5f;
+    static const size_t kSpaceStages = 8, kSpaceMid = 5;
+    static constexpr uint16_t kSpaceDelays[kSpaceStages] = {127, 113, 109, 83, 73, 43, 41, 37};
+    static const size_t kSpaceLen = 127 + 113 + 109 + 83 + 73 + 43 + 41 + 37;
+    static constexpr float kSpaceG = .5f;
+    static const size_t kQuadStages = 4;
+    static constexpr float kQuadHz[kQuadStages] = {16.f, 152.f, 61.f, 591.f};
+    static constexpr float kQuadFrom = 30.f, kQuadTo = 300.f;
     static constexpr float kLowSlower = 1.5f;
     static constexpr float kFadeMs = 10.f;
     static constexpr float kMuteMs = 5.f;
@@ -355,7 +389,10 @@ private:
             mute_[b] = false;
             mute_gain_[b] = 1.f;
             band_peak_[b] = 0.f;
+            Sp().sp[b] = 0.f;
         }
+        Sp().run = Sp().quad_run = false;
+        Sp().quad_mix = Sp().quad_from = 0.f;
         trim_ = 1.f;
         band_mix_ = drive_mix_ = lim_mix_ = 0.f;
         drive_gain_ = 1.f;
@@ -366,6 +403,21 @@ private:
         lim_min_ = 1.f;
         in_peak_ = 0.f;
         ClearLimiter();
+    }
+
+    /** Space's allpasses at rest, as it wakes, so no tail from before comes back */
+    FIN_ONCE void ClearSpace()
+    {
+        SpaceState& st = Sp();
+        for (size_t i = 0; i < kSpaceLen; i++)
+            st.buf[i] = 0.f;
+        for (size_t s = 0; s < kSpaceStages; s++)
+            st.pos[s] = 0;
+    }
+    FIN_ONCE void ClearQuad()
+    {
+        for (size_t i = 0; i < 3 * kQuadStages / 2; i++)
+            Sp().quad[i] = Allpass();
     }
 
     FIN_ONCE void ClearLimiter()
@@ -403,10 +455,16 @@ private:
             const float max = b == 0 ? kMaxLowWidth : kMaxWidth;
             width_[b] = w <= .5f ? 2.f * w : 1.f + (w - .5f) * 2.f * (max - 1.f);
             width_neutral_ &= w == .5f;
+            // Space, as a share of the side before Width scales it: kSpace of the mid at the
+            // right, whatever the band's width there
+            Sp().space[b] = w > .5f ? kSpace * (w - .5f) * 2.f / width_[b] : 0.f;
             character_[b] = static_cast<uint8_t>(fminf(knobs_[CHARACTER_LOW + b].value, 1.f)
                                                      * (kFinCharacters - 1) + .5f);
         }
         depth_ = knobs_[DEPTH].value;
+        taken_[0] = knobs_[TYPE].value;
+        for (size_t b = 0; b < kBands; b++)
+            taken_[1 + b] = knobs_[CHARACTER_LOW + b].value;
         const float drive = knobs_[DRIVE].value;
         drive_on_ = drive > 0.f;
         drive_target_ = daisysp::pow10f(drive * kDriveDb * .05f);
@@ -480,6 +538,11 @@ private:
                 update_pending_ |= knobs_[p].Settle(kFxParamCoeff * n);
                 moving |= knobs_[p].value != knobs_[p].target;
             }
+            // a stepped knob (the type, the characters) lands at once and never slews: worked
+            // out where it isn't what Update took last
+            update_pending_ |= knobs_[TYPE].value != taken_[0];
+            for (size_t b = 0; b < kBands; b++)
+                update_pending_ |= knobs_[CHARACTER_LOW + b].value != taken_[1 + b];
             if (moving)
                 turned_ = true;
         }
@@ -556,9 +619,31 @@ private:
             bands_hold_ -= static_cast<int32_t>(n);
         bands_apply_ = band_from_ > 0.f || band_mix_ > 0.f;
         bands_run_ = bands_apply_ || bands_hold_ > 0 || meter_ == EQ || meter_ == WIDTH;
-        if (!bands_run_)
+        // Space: its allpasses run while a band is right of Width's centre, or gliding back
+        bool space = false;
+        if (bands_run_)
             for (size_t b = 0; b < kBands; b++)
+                space |= Sp().space[b] > 0.f || Sp().sp[b] > 0.f;
+        if (space && !Sp().run)
+            ClearSpace();
+        Sp().run = space;
+        // and the low band's quarter turn, faded in on the output while its Space is there
+        const bool quad = bands_run_ && (Sp().space[0] > 0.f || Sp().sp[0] > 0.f);
+        if (quad && !Sp().quad_run)
+            ClearQuad();
+        Sp().quad_from = Sp().quad_mix;
+        Sp().quad_mix = Toward(Sp().quad_mix, quad ? 1.f : 0.f, step);
+        Sp().quad_run = Sp().quad_from > 0.f || Sp().quad_mix > 0.f;
+        if (!bands_run_)
+        {
+            for (size_t b = 0; b < kBands; b++)
+            {
                 gm_[b] = gs_[b] = 1.f;
+                Sp().sp[b] = 0.f;
+            }
+            Sp().quad_mix = 0.f;
+            Sp().quad_run = false;
+        }
 
         // the trim: there at once, gliding over the block
         trim_from_ = trim_;
@@ -654,12 +739,28 @@ private:
         float mix = band_from_;
         const float dmix = (band_mix_ - mix) * inv;
         const bool apply = bands_apply_;
+        const bool space = Sp().run, quad = Sp().quad_run;
+        float sp[kBands], dsp[kBands];
+        for (size_t b = 0; b < kBands; b++)
+        {
+            sp[b] = Sp().sp[b];
+            dsp[b] = (Sp().space[b] - sp[b]) * inv;
+        }
+        float qmix = Sp().quad_from;
+        const float dqmix = (Sp().quad_mix - qmix) * inv;
         for (size_t i = 0; i < n; i++)
         {
             const float m = .5f * (l[i] + r[i]), s = .5f * (l[i] - r[i]);
             float mb[kBands], sb[kBands];
             splits_[0].Process(split_, m, mb[0], mb[1], mb[2]);
             splits_[1].Process(split_, s, sb[0], sb[1], sb[2]);
+            float low = 0.f; // the low band's Space, before its quarter turn
+            if (space)
+            {
+                low = Space(mb, sb, sp, dsp);
+                pk[0] = fmaxf(pk[0], fabsf(mb[0]) + fabsf(sb[0]) + fabsf(low));
+                es[0] += low * low;
+            }
             float ym = 0.f, ys = 0.f;
             for (size_t b = 0; b < kBands; b++)
             {
@@ -673,6 +774,8 @@ private:
             }
             if (apply)
             {
+                if (quad)
+                    Quad(ym, ys, gs[0] * low, qmix, dqmix);
                 mix += dmix;
                 ym = m + mix * (ym - m);
                 ys = s + mix * (ys - s);
@@ -687,7 +790,83 @@ private:
             pk_[b] = pk[b];
             em_[b] = em[b];
             es_[b] = es[b];
+            Sp().sp[b] = Sp().space[b];
         }
+    }
+
+    /** Space's state: each band's share (Update) and where it glides from, whether its
+     *  allpasses run; mid's and high's delays, one after the other, and where each is; the
+     *  quarter turn's fade, chains and coefficients. Outside the object, so the engine's
+     *  members after the finalizer stay in reach of short offsets (inside, the code was about
+     *  800 bytes larger). There's one finalizer, the engine's */
+    struct SpaceState
+    {
+        float space[kBands], sp[kBands];
+        bool run;
+        float quad_mix, quad_from;
+        bool quad_run;
+        float buf[kSpaceLen];
+        uint16_t pos[kSpaceStages];
+        Allpass quad[3 * kQuadStages / 2]; // the output mid's chain, its side's, the low band's
+        float quad_a[kQuadStages];
+    };
+    static __attribute__((always_inline)) inline SpaceState& Sp()
+    {
+        static SpaceState state;
+        return state;
+    }
+
+    /** One of mid's or high's Schroeder allpasses, s: y = v[n - d] - g v, v = x + g v[n - d] */
+    __attribute__((always_inline)) inline float Schroeder(size_t s, float* d, float x)
+    {
+        uint16_t* pos = Sp().pos;
+        const uint32_t p = pos[s];
+        const float old = d[p];
+        const float v = x + kSpaceG * old;
+        d[p] = v;
+        pos[s] = static_cast<uint16_t>(p + 1 == kSpaceDelays[s] ? 0 : p + 1);
+        return old - kSpaceG * v;
+    }
+
+    /** Space, a sample: mid's and high's mid through their allpasses into their side, by sp;
+     *  the low band's share of its mid back, for Quad */
+    __attribute__((always_inline)) inline float Space(const float* mb, float* sb, float* sp, const float* dsp)
+    {
+        for (size_t b = 0; b < kBands; b++)
+            sp[b] += dsp[b];
+        float* d = Sp().buf;
+        float x = mb[1];
+        for (size_t s = 0; s < kSpaceMid; s++)
+        {
+            x = Schroeder(s, d, x);
+            d += kSpaceDelays[s];
+        }
+        sb[1] += sp[1] * x;
+        x = mb[2];
+        for (size_t s = kSpaceMid; s < kSpaceStages; s++)
+        {
+            x = Schroeder(s, d, x);
+            d += kSpaceDelays[s];
+        }
+        sb[2] += sp[2] * x;
+        return sp[0] * mb[0];
+    }
+
+    /** The low band's Space, a sample: the output's mid and side through the first chain (faded
+     *  in by qmix), the low band's share of its mid (low) through the second into the side */
+    __attribute__((always_inline)) inline void Quad(float& ym, float& ys, float low, float& qmix, float dqmix)
+    {
+        SpaceState& st = Sp();
+        float am = ym, as = ys, al = low;
+        for (size_t i = 0; i < kQuadStages / 2; i++)
+        {
+            am = st.quad[i].Process(st.quad_a[i], am);
+            as = st.quad[kQuadStages / 2 + i].Process(st.quad_a[i], as);
+            al = st.quad[kQuadStages + i].Process(st.quad_a[kQuadStages / 2 + i], al);
+        }
+        qmix += dqmix;
+        ym += qmix * (am - ym);
+        ys += qmix * (as - ys) + al;
     }
 
     __attribute__((always_inline)) inline float Drive1(Drive2x& d, float x, float gain, float comp)
@@ -824,6 +1003,7 @@ private:
     volatile bool bypass_;
     volatile uint8_t meter_;
     bool update_pending_;
+    float taken_[1 + kBands]; // the stepped knobs as Update took them: the type, the characters
     uint32_t since_update_;
     size_t times_n_; // the block the comp's coefficients are for (Times)
     float fade_step_;
@@ -893,5 +1073,7 @@ constexpr Finalizer::Character Finalizer::kCharacters[kFinCharacters];
 constexpr float Finalizer::kHoldMs[Finalizer::kBands];
 constexpr float Finalizer::kHalfband[4];
 constexpr float Finalizer::kMid[Finalizer::kMidTaps / 2];
+constexpr uint16_t Finalizer::kSpaceDelays[Finalizer::kSpaceStages];
+constexpr float Finalizer::kQuadHz[Finalizer::kQuadStages];
 
 } // namespace chompi

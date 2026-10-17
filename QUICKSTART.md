@@ -69,16 +69,16 @@ the loop's steps (see [Chaos key](MANUAL.md#chaos-key)).
 | Effect | Freezer | Shifter | Folder | Crusher | Filter | Flanger | Phaser | Resonator | Slicer | Wow & flutter | Tape stop | Delay | Reverb | Chaos | Finalizer |
 
 White key 7 has a second mode, the [frequency shifter](MANUAL.md#frequency-shifter): hold
-SHIFT and tap the key twice (it turns ice blue); the same again goes back to the phaser.
+SHIFT and tap the key twice (it turns ice blue, latched or not as it was); the same again goes
+back to the phaser.
 
-![Keys: an FX key held, then SHIFT, latches it; SHIFT, then an FX key, picks it for the knobs; SHIFT + a knob turned jumps in big steps; a knob pressed turns to its page 2](images/keys-quickstart.svg)
+![Keys: an FX key held, then SHIFT, latches it; SHIFT, then an FX key, latches it too; SHIFT + a knob turned jumps in big steps; a knob pressed turns to its page 2](images/keys-quickstart.svg)
 
 - **Hold a key:** the effect is on while you hold it.
-- **Hold a key, then SHIFT:** latch the effect on. Do it again, or just tap the key, to turn
-  it off.
-- **SHIFT, then a key:** pick the effect for the knobs without hearing it, to set it up
-  before you punch it in. The key flashes.
-- **Knobs 1-4:** shape the effect whose key you pressed or picked last. Their LEDs show the
+- **SHIFT and a key, in either order:** latch the effect on: hold the key and press SHIFT,
+  or hold SHIFT and tap the key. Do it again to turn it off. Tapping a latched effect's key
+  alone keeps it on.
+- **Knobs 1-4:** shape the effect whose key you pressed last. Their LEDs show the
   settings; a dark knob does nothing for that effect. The knobs follow one pattern: 1 is the
   main control, 2 the feedback, 3 the tone or colour, 4 a setting of the effect's own, or a
   send's ducking (where an effect has no such setting, it puts another one there).
@@ -99,9 +99,9 @@ echoes and a room (their level is knob 4 on their page 2, as every effect's).
 **Finalizer:** press white key 15, and knobs 1-4 set the master section on the outputs,
 neutral at first. They show its Level module: the input, a drive and its type (Boost, Tube,
 Fuzz), and Loud, which pushes the sound into a limiter so it gets louder without clipping.
-Hold SHIFT and tap key 15 twice for the next module: EQ (yellow) for the low, mid and high
-bands, Comp (cyan) to compress them (knob 4, Depth, brings it in), Width (blue) for each
-band's stereo; tap again to go on. Its key turns red when the output is so loud the safety
+Hold SHIFT and tap key 15 for the next module: EQ (yellow) for the low, mid and high bands,
+Comp (cyan) to compress them (knob 4, Depth, brings it in), Width (blue) for each band's
+stereo; SHIFT + key 15 again goes on. Its key turns red when the output is so loud the safety
 limiter has to step in. FRIZZ remembers its settings when you switch off. Press an effect key
 to give the knobs back to the effect. See [Finalizer](MANUAL.md#finalizer).
 
@@ -111,20 +111,20 @@ you switch off, unless you save them as a scene.
 
 Things to try first:
 
-- **Freezer (white key 1)** on a beat: hold SHIFT, tap the key, and keep holding SHIFT while
-  you turn knob 1 down 5 clicks to 1/8 (without SHIFT, a step takes 3 clicks). It grabs that
-  much from the moment you press and repeats it while you hold the key. Turn knob 3 right 3
+- **Freezer (white key 1)** on a beat: tap the key to put it on the knobs, then hold SHIFT
+  and turn knob 1 down 5 clicks to 1/8 (without SHIFT, a step takes 3 clicks). Now hold the
+  key: it grabs that much from the moment you press and repeats it while you hold it. Turn knob 3 right 3
   clicks at a time (with SHIFT, 1) for a roll: each step halves the repeat, and back at off
   it's the whole length again.
-- **Shifter (white key 2):** hold SHIFT, tap the key, and with SHIFT still held turn knob 1 up
-  2 clicks for a fifth, then hold the key to hear it.
+- **Shifter (white key 2):** tap the key, then hold SHIFT and turn knob 1 up 2 clicks for a
+  fifth, then hold the key to hear it.
 - **Resonator (white key 8)** with the crusher or the shifter latched: the ringing goes through
   them on every pass.
 - **Phaser (white key 7):** latch it, turn knob 3 (depth) up to hear the sweep and knob 2 for
   its resonance. Turn knob 1 right past the centre (its LED turns green) and the sweep locks
   to the tempo, 1/16 first, slower as you go on. With the resonator latched too, the sweep
   moves through its ringing. Hold SHIFT and tap the key twice: it turns ice blue, a
-  [frequency shifter](MANUAL.md#frequency-shifter). Knob 1 at a few Hz, knob 2 up and knob 4
+  [frequency shifter](MANUAL.md#frequency-shifter), still latched. Knob 1 at a few Hz, knob 2 up and knob 4
   (the direction) turned to one side make a barber pole that rises, or falls, forever.
 - **Delay + reverb (white keys 12 and 13):** tap them to throw echoes and tails onto single
   notes.

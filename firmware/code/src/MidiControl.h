@@ -61,6 +61,10 @@
 
 // once each and not in a hurry: FRIZZ's code space is tight (SRAM_EXEC), as EventLog's
 #define MIDI_CONTROL_ONCE __attribute__((noinline, optimize("Os")))
+// where the twin brings the audio interrupt in the middle of MainLoop (twin::PreemptAt)
+#ifndef FRIZZ_PREEMPT
+#define FRIZZ_PREEMPT(point)
+#endif
 
 namespace chompi
 {
@@ -230,7 +234,7 @@ enum Sub : uint8_t
                  //    1 -> PC, LR, xPSR, CFSR, HFSR, MMFAR, BFAR (5 each); 2 clears it -> flags
     TEST = 12,   // WHAT: the bench's (FRIZZ-bench.bin) faults on purpose, for the tools to
                  //    check RESET, the crash record and the watchdog: kHangMain, kFaultMain,
-                 //    kHangAudio, kFaultAudio; and the jack's receive, kUartError
+                 //    kHangAudio, kFaultAudio; and the jack's receive, kUartError, kUartRestart
     LOOPS = 0x0D, // PART ...: the loop loader's (LoopLoader::Dev). FRIZZ.bin only
     USB = 0x0E,   // PART ...: USB's counts, the card lent (chompi_main.cpp's UsbDev, #196)
 };
@@ -255,8 +259,11 @@ static const uint8_t kResetKey[] = {'R', 'S', 'T'};
 static const uint8_t kCrashValid = 1;       // CRASH's flags: a crash recorded
 // TEST's: MainLoop hangs; reads where nothing is (a bus fault); the audio callback hangs;
 // runs an undefined instruction in it; the jack's UART at twice its rate for 20 ms, so the
-// bytes coming in meanwhile break their frames: a receive error (#361)
-static const uint8_t kHangMain = 1, kFaultMain = 2, kHangAudio = 3, kFaultAudio = 4, kUartError = 5;
+// bytes coming in meanwhile break their frames: a receive error (#361); HOW COUNT(3): the jack's
+// receive ended as an error ends it while MIDI out sends markers (MidiClock::TestRestarts), ->
+// the markers sent so far (3), COUNT 0 only reads them (#442)
+static const uint8_t kHangMain = 1, kFaultMain = 2, kHangAudio = 3, kFaultAudio = 4, kUartError = 5,
+                     kUartRestart = 6;
 
 /** SIGNAL's test signal in place of the input, and LEVELS' peak meters: off at power-on, in
  *  RAM only, until a restart. The audio callback reads `on` once a block, and off it costs
@@ -565,8 +572,15 @@ public:
     }
 
     /** The white key 0-14 whose knobs the global channel's 14-22 reach: the play page's, as
-     *  the hand selects, and CC 23's at once, so a knob right after it goes to the new one */
-    inline void SetFocus(uint8_t key) { focus_ = key; }
+     *  the hand selects, and CC 23's at once, so a knob right after it goes to the new one.
+     *  Not over a CC 23 MainLoop hasn't taken yet: that one is newer */
+    MIDI_CONTROL_ONCE void SetFocus(uint8_t key)
+    {
+        FRIZZ_PREEMPT("set-focus");
+        daisy::ScopedIrqBlocker irq;
+        if (!focus_changed_)
+            Focus(key);
+    }
 
     /** A SysEx asking for an answer, taken */
     inline bool TakeQuery(Query& q)
@@ -648,6 +662,10 @@ public:
     bool (*xfer_send)() = nullptr;
     /** The clock, for PROBE */
     inline const MidiClock& Clock() const { return *clock_; }
+#if FRIZZ_BENCH
+    /** The clock, for TEST */
+    inline MidiClock& MutableClock() { return *clock_; }
+#endif
     /** MIDI feedback's bytes for the jack: the play page's, sent by MidiOut */
     FeedbackRing feedback_trs;
 
@@ -834,7 +852,7 @@ private:
         case kFocusCC:
             if (v < 1 || v > kBlockChannels)
                 return false;
-            focus_ = v - 1;
+            Focus(v - 1);
             focus_changed_ = true;
             return true;
         case kMorphCC:
@@ -905,6 +923,16 @@ private:
         default:
             return false;
         }
+    }
+
+    /** The focus on white key key: a new one's CC 22 counts from its first value, as on its
+     *  own channel (#444) */
+    void Focus(uint8_t key)
+    {
+        if (key == focus_)
+            return;
+        focus_ = key;
+        known_ &= ~(1u << kFocusLatch);
     }
 
     /** A latch from switch source, for white key key, as it crosses 64 */

@@ -40,12 +40,16 @@ class ChompiEncoder
     inline bool FallingEdge() const { return sw_.FallingEdge(); }
 
   private:
+    /** Debounce's, both kinds: the lines' new samples, and how many a fall takes */
+    void Update(bool a_state, bool b_state, uint8_t mask) __attribute__((noinline));
+
     uint32_t last_update_;
     bool     updated_;
     daisy::Switch   sw_;
     bool     click_ = false; // the switch has a pin: without one, it's never read
     dsy_gpio hw_a_, hw_b_;
     uint8_t  a_, b_;
+    bool     armed_ = false; // A and B were both high since the last count (Update)
     int32_t  inc_;
 };
 } // namespace chompi

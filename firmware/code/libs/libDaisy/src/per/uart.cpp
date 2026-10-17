@@ -1,6 +1,7 @@
 #include <stm32h7xx_hal.h>
 #include "stm32h7xx_ll_dma.h"
 #include "per/uart.h"
+#include "per/uart_listen.h"
 #include "sys/dma.h"
 #include "util/ringbuffer.h"
 #include "util/scopedirqblocker.h"
@@ -375,14 +376,27 @@ UartHandler::Result UartHandler::Impl::InitDma(bool rx, bool tx)
     return UartHandler::Result::OK;
 }
 
+// FRIZZ: the handle listening, for its DMA stream's half and full transfer (DMA1_Stream5_IRQHandler)
+// and its errors (DmaTransferFinished)
+static UartHandler::Impl* volatile dma_listener = nullptr;
+
 void UartHandler::Impl::DmaTransferFinished(UART_HandleTypeDef* huart,
                                             UartHandler::Result result)
 {
     //ScopedIrqBlocker block;
 
     // on an error, reinit the peripheral to clear any flags
+    // FRIZZ: the jack's only cleared (HAL_UART_IRQHandler has), not HAL_UART_Init, which turns
+    // the USART off, cutting the byte MIDI out is sending; DmaListenStart sets up what the
+    // receive needs (#442)
     if(result != UartHandler::Result::OK)
-        HAL_UART_Init(huart);
+    {
+        if(dma_listener && huart == &dma_listener->huart_)
+            huart->Instance->ICR = UART_CLEAR_PEF | UART_CLEAR_FEF | UART_CLEAR_NEF
+                                   | UART_CLEAR_OREF;
+        else
+            HAL_UART_Init(huart);
+    }
 
     dma_active_peripheral_ = -1;
 
@@ -491,9 +505,6 @@ UartHandler::Result UartHandler::Impl::DmaTransmit(
 }
 
 
-// FRIZZ: the handle listening, for its DMA stream's half and full transfer (DMA1_Stream5_IRQHandler)
-static UartHandler::Impl* volatile dma_listener = nullptr;
-
 UartHandler::Result
 UartHandler::Impl::DmaListenStart(uint8_t* buff,
                                   size_t   size,
@@ -531,15 +542,9 @@ UartHandler::Impl::DmaListenStart(uint8_t* buff,
 
     // FRIZZ: a MIDI clock tick (0xF8) hands over what came so far at once, as IDLE does, not
     // only once the bytes right behind it have passed too (#322). Listening is MIDI's alone
-    // (MidiUartTransport::StartRx). ADD is written with the USART off
-    USART_TypeDef* usart = huart_.Instance;
-    const uint32_t cr1   = usart->CR1;
-    usart->CR1           = cr1 & ~USART_CR1_UE;
-    MODIFY_REG(usart->CR2,
-               USART_CR2_ADD | USART_CR2_ADDM7,
-               (0xF8U << USART_CR2_ADD_Pos) | USART_CR2_ADDM7);
-    usart->ICR = USART_ICR_CMCF;
-    usart->CR1 = cr1 | USART_CR1_CMIE;
+    // (MidiUartTransport::StartRx). The USART stays on when it starts again, so MIDI out's
+    // byte goes on (#442)
+    UartListenMatchTick(huart_.Instance);
 
     /** cache maintanence to allow memory from cache-able regions  */
     dsy_dma_invalidate_cache_for_buffer(buff, size);

@@ -32,13 +32,19 @@ One process at a time has the CHOMPI: the first time a tool reaches for it (stat
 to it, a restart), it takes a lock (LOCK, flock) for the process's life, and waits, saying who
 has it, while another holds it; what doesn't touch the CHOMPI (measure.py compare) never
 waits. A tool started by one that holds it (FRIZZ_CHOMPI_HELD set) shares it while that one
-runs (a hold stopped by SIGTERM frees the lock, and what it started takes it again); one that
+runs. A hold runs its command in a process group of its own and keeps the lock until that has
+ended: SIGTERM, SIGINT and SIGHUP go on to the group, and the lock goes only once nothing in it
+runs, so what a tool does when stopped (a lent card taken back: a tool that takes the CHOMPI
+exits on SIGTERM and SIGHUP through its finally) is still done under it; a second signal kills
+the group. Only a hold killed outright (SIGKILL) frees the lock while
+what it started runs on, which takes it again at its next reach for the CHOMPI. One that
 talks to the twin, not the CHOMPI (test/remote.cpp), sets it too, and FRIZZ_NO_DEVICE, which
 stops a host check that reaches for a real device (device_guard). To keep the CHOMPI over several
 tools, or for playing it by hand:
 
     tools/chompi.py hold                 holds it until Ctrl-C
-    tools/chompi.py hold CMD ARGS...     holds it while CMD runs (sh -c for a sequence)
+    tools/chompi.py hold CMD ARGS...     holds it while CMD runs (sh -c for a sequence, or
+                                         bash to type commands: the terminal is CMD's)
 
 Now and then (#88, 2 in ~310 starts) FRIZZ comes up with its USB names garbled, one string
 off (product "Љ", maker "FrizZ"): the tools find it by the Daisy's USB id then, and say so.
@@ -57,6 +63,7 @@ import fcntl
 import glob
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -120,8 +127,8 @@ _lock = None
 
 def _holding(held):
     """Whether HELD (FRIZZ_CHOMPI_HELD: the pid of the process that took the lock) still runs:
-    a hold stopped (SIGTERM) frees the lock while what it started runs on. Not a pid (a check's
-    "1" is init's): taken as held"""
+    a hold killed outright (SIGKILL) frees the lock while what it started runs on. Not a pid (a
+    check's "1" is init's): taken as held"""
     try:
         os.kill(int(held), 0)
     except ValueError:
@@ -137,6 +144,7 @@ def claim():
     """Takes the CHOMPI for this process, waiting while another has it; shared with the hold
     that started it (HELD) while that runs"""
     global _lock
+    _exit_on_stop()
     held = os.environ.get(HELD)
     if _lock or held and _holding(held):
         return
@@ -155,11 +163,23 @@ def claim():
     os.environ[HELD] = str(os.getpid())  # the tools this one starts share it, and know the hold
 
 
+def _exit_on_stop():
+    """SIGTERM and SIGHUP, where a tool left them as they come (ending it on the spot), exit
+    128+N instead, so its finally runs: a lent card taken back (a hold passes them on to what it
+    runs). A tool's own handler is kept"""
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        try:
+            if signal.getsignal(sig) == signal.SIG_DFL:
+                signal.signal(sig, lambda n, frame: sys.exit(128 + n))
+        except ValueError:
+            pass  # not the main thread: its tool's main thread has done it
+
+
 def hold(cmd):
     """Holds the CHOMPI while cmd runs, or until Ctrl-C without one"""
     claim()
     if cmd:
-        sys.exit(subprocess.run(cmd).returncode)
+        sys.exit(_run_held(cmd))
     forget()  # what's started by hand, the tools can't know
     say("holding the CHOMPI; Ctrl-C lets it go")
     try:
@@ -168,6 +188,90 @@ def hold(cmd):
     except KeyboardInterrupt:
         pass
 
+
+HOLD_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+
+
+def _run_held(cmd):
+    """Runs CMD in a process group of its own, under the lock, until it has ended: SIGTERM,
+    SIGINT and SIGHUP go on to that group, and once one came, the lock goes only when nothing in
+    the group runs any more (a tool's child, or what sh -c started in the background, may
+    outlive sh); a second signal kills the group (SIGKILL). Its exit code, 128+N for a
+    signal N"""
+    child, got = [], []
+
+    def tell(what):
+        # straight to the file: a handler mustn't go through sys.stderr's buffer, which the
+        # code it interrupted may be inside of (a reentrant call)
+        try:
+            os.write(2, (what + "\n").encode())
+        except OSError:
+            pass
+
+    def forward(sig, frame):
+        got.append(sig)
+        if not child:
+            return  # not started yet: passed on below
+        try:
+            if len(got) == 1:
+                tell("%s: passed on to what the hold runs; the CHOMPI stays held until it has "
+                     "ended (a second signal kills it)" % signal.Signals(sig).name)
+                os.killpg(child[0].pid, sig)
+            else:
+                tell("killing what the hold runs (SIGKILL)")
+                os.killpg(child[0].pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    for sig in HOLD_SIGNALS:
+        signal.signal(sig, forward)
+    tty = _foreground_tty()
+    p = subprocess.Popen(cmd, process_group=0)
+    child.append(p)
+    try:
+        if tty is not None:
+            # the terminal's to the group (an interactive one, a shell: hold bash), which its
+            # Ctrl-C then reaches itself; started again if it stopped reading it before
+            _give_tty(tty, p.pid)
+            os.killpg(p.pid, signal.SIGCONT)
+        if got:
+            os.killpg(p.pid, got[0])
+    except ProcessLookupError:
+        pass  # ended already
+    code = p.wait()
+    # stopped by a signal, from here or (the terminal's: Ctrl-C at a prompt) straight to it
+    while got or code < 0:
+        try:
+            os.killpg(p.pid, 0)
+        except ProcessLookupError:
+            break
+        except PermissionError:
+            pass
+        time.sleep(0.2)
+    if tty is not None:
+        _give_tty(tty, os.getpgrp())
+    return 128 - code if code < 0 else code
+
+
+def _foreground_tty():
+    """stdin's terminal if this process's group has it (a hold run at a prompt), else None"""
+    try:
+        fd = sys.stdin.fileno()
+        return fd if os.isatty(fd) and os.tcgetpgrp(fd) == os.getpgrp() else None
+    except (OSError, ValueError):
+        return None
+
+
+def _give_tty(fd, group):
+    """Makes GROUP the terminal's foreground, from a group that may no longer be (SIGTTOU held
+    off)"""
+    old = signal.signal(signal.SIGTTOU, signal.SIG_IGN)
+    try:
+        os.tcsetpgrp(fd, group)
+    except OSError:
+        pass
+    finally:
+        signal.signal(signal.SIGTTOU, old)
 
 
 # ---- which slot runs: noted by the tools that start one ----------------------------------
@@ -644,8 +748,29 @@ def reached(wanted, timeout, device=None):
     return False
 
 
+# the slot of the FRIZZ to_launcher() last restarted into the launcher (running_slot()), None
+# when it found the CHOMPI elsewhere: what a tool that then sends nothing (flash.py refusing a
+# key only the launcher can list) starts again
+came_from = None
+
+
+def running_slot(node):
+    """The slot the FRIZZ at NODE runs from: by IDENT and the builds flash.py sent, or else the
+    slot noted as started in this hold; FRIZZ_SLOT when neither tells, and for the bench, which
+    answers as FRIZZ does but is never started again unasked (it measures ~100 s)"""
+    info = ident(node)
+    last, this_hold, _ = last_started()
+    if info:
+        slots = slots_of(info) if info["kind"] == "frizz" else []
+        return slots[0] if len(slots) == 1 else last if last in slots else FRIZZ_SLOT
+    return last if this_hold and last in FRIZZ_SLOTS else FRIZZ_SLOT
+
+
 def to_launcher(timeout=120, device=None):
-    """The launcher's raw MIDI node, from wherever the CHOMPI is"""
+    """The launcher's raw MIDI node, from wherever the CHOMPI is; came_from says which FRIZZ it
+    restarted"""
+    global came_from
+    came_from = None
     now, where = state(device)
     # a FRIZZ that doesn't answer for a while looks like another firmware: the bench, its
     # audio callback over 100 % in a segment, leaves MainLoop no time (BUSY s at most)
@@ -657,6 +782,7 @@ def to_launcher(timeout=120, device=None):
     if now == "launcher":
         return where
     if now == "frizz":
+        came_from = running_slot(where)
         say("restarting FRIZZ into the launcher ...")
         restart(where)
         hint = "no launcher yet: switch the CHOMPI off and on"

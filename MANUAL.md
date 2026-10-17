@@ -675,7 +675,7 @@ and transport](#tempo-and-transport). MIDI comes in over TRS and USB alike, and 
 FRIZZ's clock and the loop's transport: see [Appendix: MIDI](#appendix-midi).
 
 ## Punch-in FX
-<!-- summary: Playing the effects on the white keys: hold, latch, select, knobs. -->
+<!-- summary: Playing the effects on the white keys: hold, latch, knobs. -->
 
 Effects sit on the white keys and act on the whole input/loop mix, before the
 finalizer and VOLUME. The looper records the input before the effects, so an effect is never
@@ -685,29 +685,34 @@ time than there is, heard as crackles (see [Processing load](#processing-load)).
 
 ### Playing an effect
 
-![The panel with the white keys 1 to 14 lit in their effects' colours, the CHOMPI key and knobs 1 to 4: hold a key for its effect, then SHIFT to latch it; SHIFT first selects it; the knobs turn it, a press turns to page 2](images/panel-punch-in.svg)
+![The panel with the white keys 1 to 14 lit in their effects' colours, the CHOMPI key and knobs 1 to 4: hold a key for its effect; SHIFT and the key, in either order, latch it; the knobs turn it, a press turns to page 2](images/panel-punch-in.svg)
 
 | Control | Function |
 |---|---|
-| Hold an FX key | Effect on while held |
+| Hold an FX key | Effect on while held; the knobs edit it |
 | Hold an FX key, then SHIFT | **Latch** on / off: the effect stays on after release. Hold several FX keys, then SHIFT, to latch them all |
-| SHIFT, then an FX key | **Select:** the knobs edit that effect without your hearing it; the key flashes |
-| FX key on a latched effect | Clears the latch; the effect stays on until the key is released |
-| Knobs 1-4 | The parameters of the most recently pressed or selected FX key, 1% per detent, faster when turned fast |
+| SHIFT, then an FX key | **Latch** on / off as well: the order doesn't matter. Keep SHIFT held and tap more FX keys to latch (or unlatch) each |
+| FX key on a latched effect | Stays latched: the knobs edit it. To unlatch it, SHIFT and the key |
+| Knobs 1-4 | The parameters of the most recently pressed FX key, 1% per detent, faster when turned fast |
 | SHIFT + knobs 1-4 | Coarse: the next point of the parameter's grid per detent (see [Coarse steps](#coarse-steps)) |
 | SHIFT + press knobs 1-4 | Resets that parameter to its default, on the page shown |
 | Press knobs 1-4 | The effect's page 2, and back (see [Page 2](#page-2)) |
 
 The details of the timing:
 
-- **Latch or select: the order decides.** The key goes down first, then SHIFT a moment later,
-  to latch. SHIFT first, or within about 15 ms of the key, is a select.
-- **The latch is settled when you let go of the key:** holding an FX key and using SHIFT for
-  something else (a coarse turn, tap tempo, the input/loop mix, selecting another effect)
-  doesn't latch it.
-- **A select** leaves the effect off (or latched, if it was), and letting go of the key does
-  nothing, also after letting go of SHIFT first, even just before the key goes all the way
-  down (up to about 15 ms). The key flashes white, or dark while it's already nearly white.
+- **Latch: SHIFT and the key, in either order.** SHIFT held when the key goes down, or
+  pressed while you hold the key, latches it, or unlatches a latched one. SHIFT let go just
+  before the key goes all the way down (up to about 15 ms) still counts as held.
+- **The latch is settled when you let go of the key:** you hear the effect while you hold
+  the key, whichever came first, and it stays on (or goes off) when you let go, also after
+  letting go of SHIFT first. Holding an FX key and using SHIFT for something else (a coarse
+  turn, tap tempo, the input/loop mix, selecting the finalizer) doesn't latch it. Another FX
+  key in the same SHIFT hold isn't something else: hold the filter, press SHIFT, tap the
+  shifter, and both latch.
+- **A plain press never changes a latch:** it plays the effect while held and puts it on the
+  knobs, so you can edit a latched effect with a tap of its key. There's no way to put an
+  effect on the knobs without hearing it by hand: MIDI's focus does that (CC 23, see
+  [Controllers](#controllers)).
 - **Stepped parameters** move one step per 3 detents: the shifter's shift, the filter's LFO
   and the delay's divisions, the freezer's length and roll, the slicer's pattern and stereo,
   the tape stop's stop and spin-up times, the flanger's polarity, the chaos key's grid, the
@@ -1057,12 +1062,16 @@ longer line up. A few Hz with feedback, and the direction (knob 4) turned to one
 barber pole, a sweep that rises (or falls) and never ends; tens to hundreds of Hz make a sound
 metallic and bell-like. After Mutable Instruments' Warps.
 
-- **Switching:** hold SHIFT and press key 7, which selects the phaser as ever, then press key
-  7 again: the frequency shifter, the key ice blue. Every further press in the same hold switches
-  back and forth, however long you wait between them. Letting go of SHIFT, or pressing any
-  other key, starts over: the next SHIFT + key 7 only selects. Holding key 7 and then pressing
-  SHIFT (the latch) never switches. The key lights up fully for a moment on each switch. It
-  doesn't work on the Loops and Cubbi pages, where the white keys are loops.
+- **Switching:** hold SHIFT and press key 7 twice: the frequency shifter, the key ice blue.
+  SHIFT + key 7 twice switches the mode and leaves the latch as it was: a latched phaser goes
+  on as the frequency shifter (with a short gap between the two presses), an unlatched one
+  stays off. The first press latches (or unlatches) as ever, the second puts that back and
+  switches. Every further press in the same hold switches back and forth, however long you
+  wait between them. The first press can also be key 7 held, then SHIFT. Letting go of SHIFT,
+  or pressing any other key, starts over: the next SHIFT + key 7 latches or unlatches. To
+  latch it and switch, hold SHIFT and press key 7 twice, then once more in a new SHIFT hold.
+  The key lights up fully for a moment on each switch. It doesn't work on the Loops and Cubbi
+  pages, where the white keys are loops.
 - **Playing it:** key 7 plays the effect in the mode it's in, held or latched as ever. The
   knobs stay where they are when you switch, and are read the other way:
 
@@ -1241,7 +1250,7 @@ after you let go.
 
 | Knob | Page 1 | Page 2 |
 |---|---|---|
-| 1 | Division: 1/8, 1/4T, 1/4, 1/2T, 1/4., 1/2, 1/2., 1 bar, 2 bars (default 1/4) | Freeze: the input shut and the echoes held as they are, by degrees; no random events while frozen (default off) |
+| 1 | Division: 1/8, 1/4T, 1/4, 1/2T, 1/4., 1/2, 1/2., 1 bar, 2 bars (default 1/4) | Freeze: the input shut and the echoes held as they are, by degrees, the damping lifted with it; no random events while frozen (default off) |
 | 2 | Feedback (default 40%) | Damping: in the middle none; right, every repeat darker (a high cut); left, every repeat thinner (a low cut) |
 | 3 | Random: left of centre retrigger / reverse / pitch events, right octave-up shimmer with random pan, centre off (default off) | Band: what goes in, right a low cut, left a high cut |
 | 4 | Ducking: the echoes duck under what you play, back up when it stops (default off) | Level: the echoes' level, off at the bottom, then -36 dB to +12 dB (default 0 dB, at 3/4) |
@@ -1345,11 +1354,14 @@ Drive and Loud.
   turn an effect: 1% per detent (more turned fast), SHIFT + turn coarse, SHIFT + press resets. Pressing an FX key
   gives the knobs back to that effect. There's no page 2: a plain knob press does nothing in
   Level, and [mutes a band](#band-mutes) in the other modules.
-- **The modules:** hold SHIFT, tap key 15 (it's selected, as ever), then tap it again: the knobs
-  show the next module, 1 to 4 and round, the key in its colour. Every further tap in the same
-  hold goes on to the next. Letting go of SHIFT, or pressing any other key, starts over: the
-  next SHIFT + key 15 only selects. Holding key 15 and then pressing SHIFT never switches (that's
-  the [bypass](#finalizer-presets-and-bypass)). It doesn't work on the Loops and Cubbi pages.
+- **The modules:** with the finalizer selected, hold SHIFT and tap key 15: the knobs show the
+  next module, 1 to 4 and round, the key in its colour. Every further SHIFT + key 15 goes on to
+  the next, in the same SHIFT hold or a new one. While an effect has the knobs, SHIFT + key 15
+  only selects the finalizer, so you never land in another module unseen; tap key 15 twice in
+  one SHIFT hold to select it and go on. Only SHIFT held first counts: key 15 and SHIFT pressed
+  together, in either order, count as a select, and holding key 15 and then pressing SHIFT never
+  switches (that's the [bypass](#finalizer-presets-and-bypass)). It doesn't work on the Loops
+  and Cubbi pages.
 
 ### Level module
 
@@ -1426,21 +1438,36 @@ Module 3, cyan: a compressor on each band, set by its character, all three by on
 
 ### Width module
 
-Module 4, blue: each band's stereo width.
+Module 4, blue: each band's stereo width, which to the right makes even a mono source wide.
 
 | Knob | Function |
 |---|---|
-| 1 | Low width: mono at the left, as it is at the centre, wider to the right, up to 1.5x (default the centre) |
-| 2 | Mid width: mono at the left, as it is at the centre, wider to the right, up to 2x (default the centre) |
-| 3 | High width: mono at the left, as it is at the centre, wider to the right, up to 2x (default the centre) |
+| 1 | Low width: mono at the left, as it is at the centre, wider to the right, up to 1.5x, with Space (default the centre) |
+| 2 | Mid width: mono at the left, as it is at the centre, wider to the right, up to 2x, with Space (default the centre) |
+| 3 | High width: mono at the left, as it is at the centre, wider to the right, up to 2x, with Space (default the centre) |
 | 4 | — |
 
 - **Width** scales the difference between the channels (the side): at the left there's none,
   so the band is mono, which keeps the bass solid on a club system; to the right the side is
   turned up.
+- **Space** comes in to the right of the centre, more the further right: a copy of the band
+  made slightly different goes into the side, so a mono source gets wide too, a synth or a
+  voice recorded in mono, without an echo or a wobble. Mid and high get a diffusion of very
+  short delays (0.8 to 2.6 ms), heard as room. The low band gets a phase shift between 30 and
+  300 Hz, the two channels a quarter turn apart and equally loud, so a kick isn't smeared and
+  doesn't lean to a side.
+  - **In mono it's gone:** Space goes only into the side, so a mono system, which adds the
+    two channels, hears every frequency as loud as before; nothing cancels. With the low
+    band's Space the bass's phase turns a little, as a crossover's does.
+  - **The channels stay level:** each channel alone wavers a little over the frequency, but
+    averaged over a third of an octave, as the ear hears it, the two stay within about 1 dB
+    of each other, and the whole about as loud on the left as on the right.
+  - **A little louder:** at the right the two channels together are about 1 dB louder, the
+    mono sum the same. Nothing turns that back down, as everywhere in the finalizer.
 - Their LEDs show each band's correlation, how alike the two channels are: green mono or
   nearly, yellow a normal width, pink very wide, red out of phase, where the band would
-  cancel itself on a mono system (watch the low band).
+  cancel itself on a mono system (watch the low band). A mono source with a band at the right
+  reads yellow there: Space alone never turns it pink or red.
 
 ### Band mutes
 
@@ -1503,8 +1530,9 @@ all three.
   input gain.
 - **Kept:** the knobs are saved to `FRIZZ/frizz_master.txt` on the card 2 s after the last
   turn, a preset as you confirm it, and they come back at power-on. They're not part of a scene. Without a card, or
-  when the card can't be written, the key blinks red 3 times instead, and FRIZZ tries again
-  2 s later, up to 3 times; the settings then last until power-off.
+  when the card can't be written, the key blinks red 3 times instead (VOLUME does on the Loops
+  and Cubbi pages, where key 15 is a loop: for the input gain turned there), and FRIZZ tries
+  again 2 s later, up to 3 times; the settings then last until power-off.
 - LEDs: the key is white, yellow, cyan or blue, by its module; the knobs go light blue to
   orange, and those with a centre (Input, the EQ and Width bands) blue, white on it, orange.
 
@@ -1582,8 +1610,8 @@ on the outside, in red as a warning.
 3. **Tap the CHOMPI key**, which blinks in the function's colour once there's something to
    confirm. It confirms when you let go; the slot flashes white and the function ends.
    Holding CHOMPI and using another key or knob is SHIFT as ever and doesn't confirm, so
-   you can still latch or select an effect or turn a knob coarsely before you save. CHOMPI
-   pressed while you hold an FX key latches it and doesn't confirm either.
+   you can still latch an effect (SHIFT and its key, in either order) or turn a knob
+   coarsely before you save.
 
 **To get out without doing anything, tap the function's key again.** Tapping a different
 function key switches to that function.
@@ -1694,9 +1722,10 @@ While it morphs:
 - The scene key blinks on the beat. The scene is the active one from the press: saving
   meanwhile saves the scene as it will land.
 - The knobs and keys already show the scene. Turning a knob changes where that parameter
-  lands. The FX keys work as usual, except on an effect waiting to switch on or off (fading
-  in, fading out, or waiting for the bar line): there they decide whether it's on once
-  that's done. A select (SHIFT, then the key) decides nothing.
+  lands. The FX keys work as usual. On an effect waiting to switch on or off (fading in,
+  fading out, or waiting for the bar line), latching or unlatching it (SHIFT and its key)
+  decides whether it's on once that's done; a plain press decides nothing. With SHIFT still
+  held from the scene key, an FX key latches.
 - A plain scene key ends the morph and recalls that scene at once (the morph's own key
   jumps straight to the end).
 - **SHIFT + its blinking key stops it where it is:** every knob stays at the value the glide
@@ -1844,7 +1873,9 @@ Knob 1 on the settings page sets how bright every LED is, for a dark stage: turn
 detent, from 25% to 100%; SHIFT + turn goes to the next of 25, 50, 75 and 100%; SHIFT +
 press is back to 100%. Its own LED is white and dims with all the others, so it shows where
 you are. The dim colours keep their hue, and nothing lit at 100% goes dark; below 25% they
-would. Saved 2 s after the last turn.
+would. Keys that are off dim less than the rest, so neighbouring keys' colours (keys 1 and 2,
+4 and 5) and the CHOMPI key's bank colour on the Loops and Cubbi pages stay apart: at 25% an
+off key is about half as bright as a lit one. Saved 2 s after the last turn.
 
 ## Input: AUX, the mic or USB
 
@@ -2101,7 +2132,7 @@ each version.
 
 Every gesture on one page; each row links to where it's explained. SHIFT is holding CHOMPI.
 
-![Keys for the gestures to know: an FX key held then SHIFT latches, SHIFT then an FX key selects, SHIFT + LOOP taps the tempo, PLAY held + LOOP records in time, SHIFT + VOLUME turned is the input/loop mix, SHIFT + a scene key morphs, SHIFT + VOLUME held 2 s on the settings page writes a bug report, SHIFT + LOOP held 2 s there lends the card to the computer](images/keys-play.svg)
+![Keys for the gestures to know: an FX key held then SHIFT latches, SHIFT then an FX key latches too, SHIFT + LOOP taps the tempo, PLAY held + LOOP records in time, SHIFT + VOLUME turned is the input/loop mix, SHIFT + a scene key morphs, SHIFT + VOLUME held 2 s on the settings page writes a bug report, SHIFT + LOOP held 2 s there lends the card to the computer](images/keys-play.svg)
 
 ### On the play page
 
@@ -2122,11 +2153,11 @@ Every gesture on one page; each row links to where it's explained. SHIFT is hold
 | SHIFT + press VOLUME | The input/loop mix back to the loop alone, or the input alone without a loop | [VOLUME knob](#volume-knob) |
 | Hold an FX key | The effect on while held | [Playing an effect](#playing-an-effect) |
 | Hold FX keys, then SHIFT | Latch them on, or off | [Playing an effect](#playing-an-effect) |
-| SHIFT, then an FX key | Select it for the knobs, without hearing it | [Playing an effect](#playing-an-effect) |
-| SHIFT + key 7, then key 7 again | The phaser's other mode: the frequency shifter, and back | [Frequency shifter](#frequency-shifter) |
-| An FX key on a latched effect | Unlatch it; on until you let go | [Playing an effect](#playing-an-effect) |
+| SHIFT, then FX keys | Latch them on, or off, as well | [Playing an effect](#playing-an-effect) |
+| SHIFT + key 7, then key 7 again | The phaser's other mode: the frequency shifter, and back; the latch stays as it was | [Frequency shifter](#frequency-shifter) |
+| An FX key on a latched effect | Stays latched; the knobs edit it | [Playing an effect](#playing-an-effect) |
 | White key 15 | The finalizer on the knobs | [Finalizer](#finalizer) |
-| SHIFT + key 15, then key 15 again | The finalizer's next module: Level, EQ, Comp, Width | [Finalizer](#finalizer) |
+| SHIFT + key 15, the finalizer selected | The finalizer's next module: Level, EQ, Comp, Width | [Finalizer](#finalizer) |
 | Hold key 15, then SHIFT | The finalizer bypassed, or on again | [Finalizer presets and bypass](#finalizer-presets-and-bypass) |
 | Hold key 15 + a key of scenes 1-4 | Recall a finalizer preset | [Finalizer presets and bypass](#finalizer-presets-and-bypass) |
 | Hold key 15 + upper F#, G# or A# | Save, copy or delete a finalizer preset | [Finalizer presets and bypass](#finalizer-presets-and-bypass) |
@@ -2241,7 +2272,8 @@ did, key for key.
 - It starts afresh at every start of FRIZZ: after a [restart by itself](#power-and-battery),
   it holds only what came after, so describe what happened before it.
 - It doesn't hold the audio you played in, so a problem that depends on the sound itself
-  needs a description too, nor scenes sent over MIDI. Dense MIDI automation fills it
+  needs a description too, nor scenes sent over MIDI, nor what a computer changed on the card
+  while it was lent (it notes when the card was lent and taken back). Dense MIDI automation fills it
   faster: each controller message is an event. It holds about 260,000 events, hours of playing; a session longer
   than that is cut off at the end.
 - It doesn't send anything anywhere and costs nothing while you play.
@@ -2358,7 +2390,7 @@ save, copy and delete 66, 68 and 70. Below them:
 | CC | Function |
 |---|---|
 | 14-22 | The effect in focus, as on its own channel |
-| 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the finalizer: CC 14-17 reach the module its knobs show, CC 18-22 nothing). It's the effect the knobs edit, as SHIFT + its key picks it, and it follows when you pick one by hand |
+| 23 | Focus: 1-15, the white key whose knobs CC 14-22 reach (15 the finalizer: CC 14-17 reach the module its knobs show, CC 18-22 nothing). It's the effect the knobs edit, as a press of its key picks it, but without switching it on, and it follows when you pick one by hand |
 | 24-27 | The finalizer's Level module: input, drive, type, Loud, as channel 15's 14-17 |
 | 28 | The finalizer's Depth, as channel 15's 27 |
 | 84 | [The input's source](#input-aux-the-mic-or-usb) in thirds: 0-42 AUX, 43-85 the mic, 86-127 USB, as the settings page's upper F# picks it |
@@ -2401,7 +2433,9 @@ module's knobs are four CCs in a row:
   take the nearest step.
 - **Switches act as they change** (latches, CC 3, 81, 82, 83): an automation lane that sends the
   same value again does nothing, so a latch you switched by hand stays as you left it until the
-  lane crosses 64 again. Use 0 and 127.
+  lane crosses 64 again. Use 0 and 127. On the global channel, CC 22 starts afresh when the
+  focus moves to another effect (by CC 23 or by hand): its first value counts,
+  as on that effect's own channel.
 - **Automation isn't saved:** nothing that comes in by CC goes to the card. After a restart the
   finalizer is as you left it by hand (its knobs, its presets, or FRIZZ's SysEx), the
   source (CC 84) as the jack picks it, each source's effects and monitoring (CC 116, 117) as the

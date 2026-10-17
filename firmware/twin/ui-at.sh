@@ -5,6 +5,7 @@
 #   ./ui-at.sh main          # before this branch's fix: the new check fails
 #   ./ui-at.sh work          # with it: everything passes
 #   ./ui-at.sh main sync     # the same for the timing checks
+source "$(dirname "$0")/../test/hostlock.sh"   # one heavy run at a time (#439)
 set -e -o pipefail
 source "$(dirname "$0")/ref.sh"
 [ -n "$1" ] || { echo "usage: ui-at.sh REF [CHECK] (REF a commit, tag, branch, or work)"; exit 2; }

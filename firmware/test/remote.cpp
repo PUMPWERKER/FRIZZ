@@ -132,7 +132,9 @@ static int Remote(const std::vector<std::string>& args, std::string& out,
     std::string cmd = "exec python3 " + Quoted(remote_py) + " --device " + Quoted(usb.path);
     for (const std::string& a : args)
         cmd += " " + Quoted(a);
-    return Exec(cmd, out, 30, {}, interrupt_at, interrupt_at.empty() ? 0 : SIGINT);
+    // the ledger of the loops it put (#438) in the temp folder, never the CHOMPI's
+    return Exec(cmd, out, 30, {{"FRIZZ_LOOP_LEDGER", tmp_dir + "/loops.json"}}, interrupt_at,
+                interrupt_at.empty() ? 0 : SIGINT);
 }
 
 static void Write(const std::string& path, const std::string& text)
@@ -537,6 +539,56 @@ os.remove("image.bin")
     if (rc != 0 || !Has(out, "--other-slot: ok ['launcher', 'sent 12']"))
         printf("%s\n", out.c_str());
 
+    // what's on a key only the launcher lists, so flash.py refuses for that after restarting
+    // FRIZZ into it: the FRIZZ that ran is started again, not left at the picker. Which one,
+    // to_launcher() finds before the restart (came_from): by IDENT and the builds sent, or else
+    // the slot started in this hold; 10 for the bench (never started again unasked) or one it
+    // can't tell; nothing when the CHOMPI was at the launcher already
+    rc = Python(R"(
+import os, sys, chompi, flash, midi_send
+log = []
+states = []
+chompi.state = lambda device=None: states.pop(0) if states else ("launcher", "l")
+chompi.restart = lambda node, hard=False: log.append("restart")
+chompi.reached = lambda *rest: True
+chompi.wait_for = lambda wanted, *rest, **kw: "l"
+chompi.start = lambda slot, *rest: log.append("start %d" % slot)
+chompi.slot_file = lambda device, slot: "12_FRIZZ.bin"
+midi_send.main = lambda: log.append("sent")
+open("image.bin", "wb").write(b"x")
+flash.builds.built = lambda bench: "image.bin"
+idents = {"frizz": {"kind": "frizz", "crc": 1, "length": 1}, "bench": {"kind": "bench", "crc": 1, "length": 1}}
+def case(name, now, info=None, sent=(), last=None):
+    log.clear()
+    states[:] = [now]
+    chompi.ident = lambda node: idents.get(info)
+    chompi.slots_of = lambda i: list(sent)
+    chompi.last_started = lambda: (last, last is not None, "a tool")
+    sys.argv = ["flash.py", "--test", "--no-build"]
+    try:
+        flash.main()
+    except SystemExit as e:
+        print("exit:", e)
+    print("%s: %s, came from %s" % (name, log, chompi.came_from), flush=True)
+case("the beta, by IDENT", ("frizz", "n"), "frizz", sent=(11,))
+case("one sent to two keys, the one started", ("frizz", "n"), "frizz", sent=(10, 12), last=12)
+case("a build not sent", ("frizz", "n"), "frizz", last=11)
+case("the bench", ("frizz", "n"), "bench", sent=(13,), last=13)
+case("no IDENT, started in this hold", ("frizz", "n"), last=11)
+case("at the launcher", ("launcher", "l"))
+os.remove("image.bin")
+)", out);
+    Check(rc == 0 && Has(out, "refused, nothing sent: starting FRIZZ on slot 11, not leaving the CHOMPI at the launcher\nexit: key 12 holds 12_FRIZZ.bin, the user's")
+              && Has(out, "the beta, by IDENT: ['restart', 'start 11'], came from 11\n")
+              && Has(out, "one sent to two keys, the one started: ['restart', 'start 12'], came from 12\n")
+              && Has(out, "a build not sent: ['restart', 'start 10'], came from 10\n")
+              && Has(out, "the bench: ['restart', 'start 10'], came from 10\n")
+              && Has(out, "no IDENT, started in this hold: ['restart', 'start 11'], came from 11\n")
+              && Has(out, "at the launcher: [], came from None\n"),
+          "tools: flash.py refused at the launcher starts the FRIZZ that ran again, the bench never");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
     // nothing restarts FRIZZ while it lends the card to the computer: the drive would go from
     // under it (#196). Its drive seen, or FRIZZ's own word (USB's flags) before the drive shows;
     // sent as before when neither
@@ -924,6 +976,210 @@ print("in_ram:", remote.in_ram(F()))
               && Has(out, "in_ram: no answer to IDENT"),
           "tools: an IDENT cut short is no IDENT, said so, never an IndexError");
     if (rc != 0 || !Has(out, "in_ram:"))
+        printf("%s\n", out.c_str());
+
+    // chompi.py hold CMD keeps the lock until what it runs has ended: a SIGTERM (a closed
+    // terminal's SIGHUP, Ctrl-C's SIGINT) goes on to CMD's process group, and the lock goes only
+    // once nothing in it runs, a child that outlives sh too; a second signal kills the group.
+    // Before, the hold died at once and its sh chain ran on at the CHOMPI without the lock
+    // (2026-10-15). Each sh writes its group's id first, which the finally kills whatever
+    // happened
+    rc = Python(R"(
+import fcntl, os, signal, subprocess, sys, time, chompi
+def free():
+    with open(chompi.LOCK, "a+") as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            return False
+def until(what, s=5):
+    end = time.monotonic() + s
+    while not what() and time.monotonic() < end:
+        time.sleep(0.02)
+    return what()
+def case(name, script, signals=1):
+    for f in ("started", "done", "pgid"):
+        if os.path.exists(f):
+            os.remove(f)
+    with open("hold.err", "w") as err:
+        p = subprocess.Popen([sys.executable, chompi.__file__, "hold", "sh", "-c", "echo $$ > pgid; " + script],
+                             stderr=err, process_group=0)
+    try:
+        ok = until(lambda: os.path.exists("started")) and not free()
+        for _ in range(signals):
+            p.send_signal(signal.SIGTERM)
+            time.sleep(0.2)
+        held = True
+        while p.poll() is None:
+            if free():  # a hold exiting closes the lock a moment before it can be waited for
+                time.sleep(0.2)
+                held = held and p.poll() is not None
+            time.sleep(0.05)
+        done = os.path.exists("done")
+        print("%s: started %s, held while it ran %s, done when it let go %s, exit %d, free after %s"
+              % (name, ok, held, done, p.returncode, free()), flush=True)
+    finally:
+        for group in (open("pgid").read().strip() if os.path.exists("pgid") else "", p.pid):
+            try:
+                os.killpg(int(group), signal.SIGKILL)
+            except (OSError, ValueError):
+                pass
+        p.wait()
+    print(open("hold.err").read(), end="")
+case("trap", "trap 'sleep 1; touch done; sleep 0.3; exit 3' TERM; touch started; while :; do sleep 0.1; done")
+case("grandchild", "(trap '' TERM; touch started; sleep 1.5; touch done; sleep 0.3) & sleep 30")
+case("twice", "trap '' TERM; touch started; sleep 30", signals=2)
+case("plain", "touch started; sleep 0.5; exit 5", signals=0)
+)", out);
+    Check(rc == 0 && Has(out, "trap: started True, held while it ran True, done when it let go True, exit 3, free after True\n")
+              && Has(out, "SIGTERM: passed on to what the hold runs; the CHOMPI stays held until it has ended"),
+          "tools: chompi.py hold passes SIGTERM on to what it runs and keeps the lock until it has ended");
+    Check(Has(out, "grandchild: started True, held while it ran True, done when it let go True, exit 143, free after True\n"),
+          "tools: chompi.py hold keeps the lock while a child sh started runs on after sh");
+    Check(Has(out, "twice: started True, held while it ran True, done when it let go False, exit 137, free after True\n")
+              && Has(out, "killing what the hold runs (SIGKILL)"),
+          "tools: a second signal to chompi.py hold kills what it runs, then lets the lock go");
+    Check(Has(out, "plain: started True, held while it ran True, done when it let go False, exit 5, free after True\n"),
+          "tools: chompi.py hold gives its command's exit code");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
+    // what a hold passes on reaches tools: one that takes the CHOMPI (claim) and left SIGTERM and
+    // SIGHUP as they come exits 128+N on them, its finally run (a lent card taken back), not
+    // ended on the spot; one with a handler of its own keeps it
+    rc = Python(R"(
+import os, signal, subprocess, sys, time
+tool = """
+import signal, sys, time, chompi
+own = []
+if sys.argv[1] == "own":
+    signal.signal(signal.SIGTERM, lambda *_: (own.append(1), sys.exit(3)))
+chompi.claim()
+try:
+    print("claimed", flush=True)
+    time.sleep(10)
+finally:
+    print("its own handler, " * len(own) + "finally ran", flush=True)
+"""
+for kind, sig in (("plain", signal.SIGTERM), ("plain", signal.SIGHUP), ("own", signal.SIGTERM)):
+    p = subprocess.Popen([sys.executable, "-c", tool, kind], stdout=subprocess.PIPE, text=True)
+    try:
+        first = p.stdout.readline().strip()
+        p.send_signal(sig)
+        rest = p.stdout.read().strip().replace("\n", ", ")
+        print("%s, %s: %s, %s, exit %d" % (kind, signal.Signals(sig).name, first, rest, p.wait(5)), flush=True)
+    finally:
+        if p.poll() is None:
+            p.kill()
+)", out);
+    Check(rc == 0 && Has(out, "plain, SIGTERM: claimed, finally ran, exit 143\n")
+              && Has(out, "plain, SIGHUP: claimed, finally ran, exit 129\n")
+              && Has(out, "own, SIGTERM: claimed, its own handler, finally ran, exit 3\n"),
+          "tools: a tool that took the CHOMPI runs its finally on SIGTERM or SIGHUP (a hold's, passed on), "
+          "its own handler kept");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
+    // at a prompt, the hold gives the terminal to its command's group, and takes it back after:
+    // an interactive one (tools/chompi.py hold bash, README.md) reads what's typed, where in a
+    // group without the terminal it would stop (SIGTTIN). Under a pty of its own, as a shell
+    // runs it: sh, the hold, a command that says whether it has the terminal and reads a line
+    rc = Python(R"PY(
+import os, pty, select, signal, sys, time, chompi
+held = ("import os, sys; print('group', os.getpgrp(), 'has the terminal', os.tcgetpgrp(0) == os.getpgrp(), flush=True); "
+        "print('read', sys.stdin.readline().strip(), flush=True)")
+after = "import os; print('terminal back', os.tcgetpgrp(0) == os.getpgrp(), flush=True)"
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp("sh", ["sh", "-c", '"$0" "$1" hold "$0" -c "$2"; "$0" -c "$3"', sys.executable, chompi.__file__, held, after])
+out, typed, end = b"", False, time.monotonic() + 6
+while time.monotonic() < end:
+    if not select.select([fd], [], [], 0.1)[0]:
+        continue
+    try:
+        data = os.read(fd, 4096)
+    except OSError:
+        break
+    if not data:
+        break
+    out += data
+    if not typed and b"has the terminal" in out:
+        os.write(fd, b"typed\n")
+        typed = True
+text = out.decode(errors="replace").replace("\r", "")
+for line in text.splitlines():
+    if line.startswith("group "):
+        try:
+            os.killpg(int(line.split()[1]), signal.SIGKILL)
+        except (OSError, ValueError):
+            pass
+try:
+    os.killpg(pid, signal.SIGKILL)
+except OSError:
+    pass
+os.waitpid(pid, 0)
+print("has the terminal True" in text, "read typed" in text, "terminal back True" in text)
+)PY", out);
+    Check(rc == 0 && Has(out, "True True True\n"),
+          "tools: chompi.py hold gives its command the terminal (hold bash), and takes it back after");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
+    // builds.py hands make only PATH, HOME, TMPDIR and the locale: the Makefiles take what they
+    // don't set from the environment, so GCC_PATH would build with another compiler than the
+    // GCC 10.3 checked on the PATH, USB_SAFETY or ITCM into another directory than the build
+    // flash.py sends, BENCH, DEBUG, C_DEFS or MAKEFLAGS other bytes. make stubbed: its calls
+    // and the environment each got
+    rc = Python(R"(
+import os, subprocess, builds
+os.environ.update(GCC_PATH="/nowhere", USB_SAFETY="1", ITCM="1", BENCH="1", DEBUG="1", C_DEFS="-DX",
+                  LDFLAGS="-s", MAKEFLAGS="-e", CPATH="/nowhere", LANG="C.UTF-8", LC_ALL="C", TMPDIR="/tmp")
+calls = []
+def run(args, env=None, **kw):
+    calls.append((args, env))
+    return subprocess.CompletedProcess(args, 0, "arm-none-eabi-gcc 10.3.1 20210824 (release)\n"
+                                       if args[-1] == "--version" else "", "")
+builds.subprocess.run = run
+builds.build(False)
+builds.stale(builds.image(False))
+given = ("GCC_PATH", "USB_SAFETY", "ITCM", "BENCH", "DEBUG", "C_DEFS", "LDFLAGS", "MAKEFLAGS", "CPATH",
+         "PATH", "HOME", "TMPDIR", "LANG", "LC_ALL")
+for args, env in calls:
+    env = os.environ if env is None else env
+    print("%s: %s" % (" ".join(args), " ".join(k for k in given if k in env)))
+)", out);
+    Check(rc == 0 && Has(out, "arm-none-eabi-gcc --version: PATH HOME TMPDIR LANG LC_ALL\n")
+              && Has(out, "make -j8: PATH HOME TMPDIR LANG LC_ALL\n") && Has(out, "make -q: PATH HOME TMPDIR LANG LC_ALL\n"),
+          "tools: builds.py's make gets no GCC_PATH, USB_SAFETY, ITCM, BENCH, DEBUG, C_DEFS, MAKEFLAGS from the "
+          "environment: the GCC 10.3 checked builds the commit's build, where flash.py takes it");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
+    // loopxfer.py's model answers HELLO with builds.py's kFrizzVersion, read when asked: a
+    // Version.h it can't read fails that HELLO, saying so, not every import of loopxfer (remote.py)
+    rc = Python(R"(
+import os, builds
+real = builds.SRC
+os.makedirs("src", exist_ok=True)
+open("src/Version.h", "w").write("constexpr uint8_t kFrizzVersion[] = {1, 5, 0, 4};\n")
+builds.SRC = os.path.abspath("src")
+import loopxfer
+print("imported, Version.h reshaped", flush=True)
+c = loopxfer.Client(loopxfer.ModelLink(loopxfer.Frizz(loopxfer.Card())))
+try:
+    c.hello()
+except SystemExit as e:
+    print("hello:", e, flush=True)
+builds.SRC = real
+print("hello's version is kFrizzVersion:", c.hello()["version"] == builds.frizz_version(), flush=True)
+builds.frizz_version = lambda: (9, 8, 7, 6)
+print("hello's version:", c.hello()["version"], flush=True)
+)", out);
+    Check(rc == 0 && Has(out, "imported, Version.h reshaped\nhello: code/src/Version.h has no kFrizzVersion\n")
+              && Has(out, "hello's version is kFrizzVersion: True\nhello's version: (9, 8, 7, 6)\n"),
+          "tools: loopxfer.py's HELLO says builds.py's kFrizzVersion, read when asked, not at import");
+    if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 
     // which slot runs, no firmware says (the bench answers as FRIZZ does): the tools note the
@@ -1440,14 +1696,80 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
               "remote: loops cp copies TAPE's cubbi into h4 on the card, the cubbi as it was");
         if (rc != 0)
             printf("%s\n", out.c_str());
-        for (const char* s : {"2", "3", "4"})
+        // only the loops the tools put there (#438): a player's isn't changed, by any way
+        // that would lose it, without --users-loop; the ones put, moved and copied are
+        const std::string players = LoopWav(5000, 48000, 2);
+        CardFiles()["/FRIZZ/a2.wav"] = players;
+        Remote({"loops", "rescan"}, out);
+        std::string refused;
+        for (const std::vector<std::string>& op :
+             std::vector<std::vector<std::string>>{{"rm", "a", "2"},
+                                                   {"swap", "h", "2", "a", "2"},
+                                                   {"swap", "a", "2", "h", "5"},
+                                                   {"mv", "a", "2", "h", "5"},
+                                                   {"mv", "h", "2", "a", "2", "--replace"},
+                                                   {"put", other, "a", "2", "--replace"},
+                                                   {"cp", "cubbi_c", "3", "a", "2", "--replace"}})
+        {
+            std::vector<std::string> args = {"loops"};
+            args.insert(args.end(), op.begin(), op.end());
+            rc = Remote(args, out);
+            if (rc != 1 || !Has(out, "a2 holds a loop the tools didn't put there (" + std::to_string(players.size())
+                                         + " B): a player's"))
+                refused += " " + op[0] + "(" + std::to_string(rc) + "): " + out;
+        }
+        Check(refused.empty() && Card("/FRIZZ/a2.wav") == players && Card("/FRIZZ/h2.wav") == named
+                  && !CardFiles().count("/FRIZZ/h5.wav"),
+              "remote: loops rm, swap, mv and --replace refuse a loop the tools didn't put there: a player's (#438)");
+        if (!refused.empty())
+            printf("     %s\n", refused.c_str());
+        rc = Remote({"loops", "mv", "h", "3", "h", "5"}, out);
+        const int mv5 = rc;
+        rc = Remote({"loops", "put", wav, "h", "5", "--replace"}, out);
+        Check(mv5 == 0 && rc == 0 && Card("/FRIZZ/h5.wav") == named && !CardFiles().count("/FRIZZ/h3.wav"),
+              "remote: and change the ones the tools put there, moved along: put --replace over one moved");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        CardFiles()["/FRIZZ/h5.wav"] = players; // as if a player changed it since
+        Remote({"loops", "rescan"}, out);
+        rc = Remote({"loops", "rm", "h", "5"}, out);
+        Check(rc == 1 && Has(out, "h5 holds a loop the tools didn't put there, or one changed since")
+                  && Card("/FRIZZ/h5.wav") == players,
+              "remote: a slot the tools filled whose file changed since is refused too");
+        rc = Remote({"loops", "rm", "h", "5", "--users-loop"}, out);
+        const int users = rc;
+        rc = Remote({"loops", "rm", "a", "2", "--users-loop"}, out);
+        Check(users == 0 && rc == 0 && !CardFiles().count("/FRIZZ/h5.wav") && !CardFiles().count("/FRIZZ/a2.wav"),
+              "remote: --users-loop lets them (sessions never give it)");
+        for (const char* s : {"2", "4"})
             Remote({"loops", "rm", "h", s}, out);
+        const std::string ledger = Read(tmp_dir + "/loops.json");
         rc = Remote({"loops", "rescan"}, out);
         Check(rc == 0 && CardFiles() == before, "remote: loops rm and rescan: the card as it was, nothing else touched");
+        Check(ledger == "{}", "remote: the ledger empty again once they're gone");
+        if (ledger != "{}")
+            printf("%s\n", ledger.c_str());
         CardFiles().erase("/TAPE/cubbi_c3.wav");
         unlink(wav.c_str());
         unlink(other.c_str());
     }
+    // the ledger's file: beside chompi's lock, the CHOMPI's; a host check's (FRIZZ_NO_DEVICE)
+    // only where it names one (#438)
+    rc = Python(R"(
+import os, remote
+os.environ.pop("FRIZZ_LOOP_LEDGER", None)
+print("ledger:", os.path.relpath(remote.Ledger(None).path))
+del os.environ["FRIZZ_CHOMPI_LOCK"]
+try:
+    remote.Ledger(None)
+except SystemExit as e:
+    print("exit:", e)
+)", out);
+    Check(rc == 0 && Has(out, "ledger: frizz-chompi.loops\n")
+              && Has(out, "exit: loops: a host check names a ledger of its own (FRIZZ_LOOP_LEDGER), not the CHOMPI's"),
+          "tools: the loops' ledger beside chompi's lock, never the CHOMPI's from a host check (#438)");
+    if (rc != 0 || !Has(out, "exit: loops"))
+        printf("%s\n", out.c_str());
     // the crash record (#105): none on the twin; one as the fault handler writes it, read back
     // and cleared; a watchdog's, as the next start records it
     rc = Remote({"crash"}, out);
@@ -2446,11 +2768,30 @@ tag[0] = "v1.5.0"
 case("10 not its release", "--no-build", "--slot", "10")
 print("versions:", builds.tag_version("v1.5.0"), builds.tag_version("v1.5.0-beta.12"), builds.tag_version("v1.0"),
       builds.version_name((1, 5, 0, 1)))
+print("beta 0:", builds.tag_version("v1.5.0-beta.0"), builds.tag_version("v1.5.0-beta.01"))
+tag[0] = "v1.5.0-beta.0"
+builds.frizz_version = lambda: (1, 5, 0, 0)
+case("11 beta.0", "--no-build", "--slot", "11")
+# release.sh (release.yml's last step) takes the same tags: a gh on the PATH that only says so
+os.makedirs("bin", exist_ok=True)
+open("bin/gh", "w").write("#!/bin/sh\necho gh called >&2\nexit 1\n")
+os.chmod("bin/gh", 0o755)
+release = os.path.join(os.path.dirname(builds.FIRMWARE), ".github", "scripts", "release.sh")
+for t in ("v1.5.0-beta.0", "v1.5.0-beta.01", "v1.5.0-beta.1", "v1.5.0"):
+    r = subprocess.run(["bash", release, "/dev/null"], capture_output=True, text=True,
+                       env=dict(os.environ, TAG=t, MD5="d41d8cd98f00b204e9800998ecf8427e", GH_REPO="x/y",
+                                PATH=os.path.abspath("bin") + os.pathsep + os.environ["PATH"]))
+    print("release.sh %s: %s" % (t, "refused" if "isn't a version's tag" in r.stdout + r.stderr
+                                 else "gh called" if "gh called" in r.stderr else "?"))
 tag[0] = None
 case("test", "--test")
 case("file to 12", "other.bin", "--slot", "12")
 case("file to 13", "other.bin", "--slot", "13")
 case("bench", "--bench", "--no-build")
+case("13 without --bench", "--no-build", "--slot", "13")
+case("the bench to 12", "--bench", "--no-build", "--slot", "12")
+case("--test --bench", "--test", "--bench", "--no-build")
+case("--test to 13", "--test", "--slot", "13")
 )", out);
     Check(rc == 0 && Has(out, "tagged beta: None\n") && Has(out, "tagged v9.9.9: v9.9.9\n")
               && Has(out, "tagged, code changed: None\n") && Has(out, "tagged, a file added in code: None\n")
@@ -2481,6 +2822,11 @@ case("bench", "--bench", "--no-build")
               && Has(out, "10 not its release: []\n")
               && Has(out, "versions: (1, 5, 0, 0) (1, 5, 0, 12) None v1.5.0-beta.1\n"),
           "tools: 10 and 11 take a tag's build only where kFrizzVersion is the tag's (the loop transfer's HELLO)");
+    Check(Has(out, "beta 0: None None\n")
+              && Has(out, "exit: v1.5.0-beta.0 isn't a version's tag (vX.Y.Z, vX.Y.Z-beta.N, N from 1)\n11 beta.0: []\n")
+              && Has(out, "release.sh v1.5.0-beta.0: refused\nrelease.sh v1.5.0-beta.01: refused\n"
+                          "release.sh v1.5.0-beta.1: gh called\nrelease.sh v1.5.0: gh called\n"),
+          "tools: a beta's number starts at 1: -beta.0 isn't taken for the release, in builds.py and release.sh");
     Check(Has(out, "test: ['build', 'launcher', 'tag.bin --slot 12 --name FRIZZ-TEST --device l --stay', "
                    "'--color 12 FF0000 --device l', 'run 12']\n")
               && Has(out, "file to 12: ['launcher', 'other.bin --slot 12 --name FRIZZ-TEST --device l --stay', "
@@ -2491,6 +2837,126 @@ case("bench", "--bench", "--no-build")
                           "'--color 13 FF0000 --device l', 'run 13']\n"),
           "tools: a branch's build goes to the test slot as FRIZZ-TEST, the bench and a file to 13 as FRIZZ-BENCH, "
           "both red (#171)");
+    Check(Has(out, "exit: key 13 is the bench's: --bench sends FRIZZ-bench.bin there (FRIZZ.bin goes to the test slot, --test)\n"
+                   "13 without --bench: []\n")
+              && Has(out, "exit: --bench sends the bench (FRIZZ-bench.bin) to its key, 13: not to key 12\nthe bench to 12: []\n")
+              && Has(out, "exit: --bench or --test: the bench goes to key 13, a branch's build to key 12\n--test --bench: []\n")
+              && Has(out, "exit: key 13 is the bench's: --bench sends FRIZZ-bench.bin there (FRIZZ.bin goes to the test slot, --test)\n"
+                          "--test to 13: []\n"),
+          "tools: flash.py sends the bench only to its key and FRIZZ.bin never there, before restarting the CHOMPI: "
+          "neither goes out under the other's name");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
+    // release-check.py (release-check.yml, #440) on releases a fake gh serves, GET only (any
+    // other call fails it): what it checks; a release's FRIZZ.bin against CI's build of the tag;
+    // the rolling beta's against the numbered pre-release on its commit, and its notes' md5
+    rc = Python(R"(
+import builds, hashlib, json, os, shutil, subprocess
+check = os.path.join(os.path.dirname(builds.FIRMWARE), ".github", "scripts", "release-check.py")
+os.makedirs("ghbin", exist_ok=True)
+open("ghbin/gh", "w").write("""#!/usr/bin/env python3
+import os, sys
+a = sys.argv[1:]
+if a[:1] != ["api"] or any(x in a for x in ("--method", "-X", "-f", "-F", "--field", "--raw-field", "--input")):
+    print("WRITE " + " ".join(a), file=sys.stderr)
+    sys.exit(3)
+raw = "Accept: application/octet-stream" in a
+path = os.path.join(os.environ["FAKE_GH"], a[-1].replace("/", "__") + (".bin" if raw else ".json"))
+if not os.path.exists(path):
+    print("gh: Not Found (HTTP 404) " + a[-1], file=sys.stderr)
+    sys.exit(1)
+sys.stdout.buffer.write(open(path, "rb").read())
+""")
+os.chmod("ghbin/gh", 0o755)
+md5 = lambda b: hashlib.md5(b).hexdigest()
+R = "repos/o/r/"
+
+def fake(rels, bins, tags):
+    """releases (tag, draft, prerelease, asset id or None, body), assets {id: bytes}, tags
+    {tag: commit or ("tag", annotated tag's commit)}"""
+    shutil.rmtree("fake", ignore_errors=True)
+    os.makedirs("fake")
+    def put(path, data, raw=False):
+        open("fake/" + path.replace("/", "__") + (".bin" if raw else ".json"), "wb").write(
+            data if raw else json.dumps(data).encode())
+    # two pages, as --paginate prints them
+    listing = [dict(id=i, tag_name=t, draft=d, prerelease=p, name=t, body=b,
+                    assets=[dict(id=a, name="FRIZZ.bin")] if a else [dict(id=99, name="other.zip")])
+               for i, (t, d, p, a, b) in enumerate(rels)]
+    open("fake/" + (R + "releases").replace("/", "__") + ".json", "w").write(
+        json.dumps(listing[:2]) + "\n" + json.dumps(listing[2:]))
+    for i, data in bins.items():
+        put(R + "releases/assets/%s" % i, data, raw=True)
+    for t, c in tags.items():
+        if isinstance(c, tuple):
+            put(R + "git/ref/tags/" + t, dict(object=dict(type="tag", sha="t" + c[1])))
+            put(R + "git/tags/t" + c[1], dict(object=dict(type="commit", sha=c[1])))
+        else:
+            put(R + "git/ref/tags/" + t, dict(object=dict(type="commit", sha=c)))
+
+def run(name, *args):
+    env = dict(os.environ, FAKE_GH=os.path.abspath("fake"), GH_REPO="o/r",
+               PATH=os.path.abspath("ghbin") + os.pathsep + os.environ["PATH"])
+    env.pop("GITHUB_OUTPUT", None)
+    env.pop("GITHUB_STEP_SUMMARY", None)
+    r = subprocess.run(["python3", check] + list(args), capture_output=True, text=True, env=env)
+    print("%s: exit %d: %s" % (name, r.returncode, " | ".join((r.stdout + r.stderr).strip().splitlines())))
+
+B3, B4, ST = b"beta 3", b"beta 4", b"stable"
+notes = "FRIZZ.bin md5 `%s`, v1.5.0-beta.4's build" % md5(B4)
+rels = [("v1.0.1", False, False, 1, ""), ("v1.5.0-beta.3", False, True, 3, ""),
+        ("v1.5.0-beta.4", False, True, 4, ""), ("beta", False, True, 9, notes), ("v1.6.0", True, False, None, "")]
+bins = {1: ST, 3: B3, 4: B4, 9: B4}
+tags = {"v1.0.1": "c1", "v1.5.0-beta.3": "c3", "v1.5.0-beta.4": ("tag", "c4"), "beta": "c4"}
+fake(rels, bins, tags)
+run("plan", "plan")
+run("plan beta", "plan", "beta")
+run("plan v1.5.0-beta.3", "plan", "v1.5.0-beta.3")
+run("plan other", "plan", "nightly")
+run("release right", "release", "v1.5.0-beta.4", md5(B4))
+run("release wrong", "release", "v1.5.0-beta.4", md5(b"else"))
+run("release draft", "release", "v1.6.0", md5(b"else"))
+run("release none", "release", "v9.9.9", md5(b"else"))
+run("beta", "beta")
+fake(rels, {**bins, 9: B3}, tags)
+run("beta another build", "beta")
+fake(rels[:3] + [("beta", False, True, 9, "md5 `%s`" % md5(B3))] + rels[4:], bins, tags)
+run("beta notes", "beta")
+fake(rels, bins, dict(tags, beta="c9"))
+run("beta elsewhere", "beta")
+fake(rels[:3] + [("beta", False, True, 9, "v1.5.0-beta.3, md5 %s" % md5(B3))] + rels[4:], {**bins, 9: B3},
+     dict(tags, beta="c3"))
+run("beta behind", "beta")
+fake([("v1.0.1", False, False, None, "")] + rels[1:], bins, tags)
+run("published without", "release", "v1.0.1", md5(ST))
+fake(rels[:3] + [("beta", False, True, None, notes)] + rels[4:], bins, tags)
+run("beta without", "beta")
+)", out);
+    Check(rc == 0 && Has(out, "plan: exit 0: checking: v1.0.1, v1.5.0-beta.4, and beta | tags=[\"v1.0.1\", \"v1.5.0-beta.4\"] | beta=true\n")
+              && Has(out, "plan beta: exit 0: checking: no release's build, and beta | tags=[] | beta=true\n")
+              && Has(out, "plan v1.5.0-beta.3: exit 0: checking: v1.5.0-beta.3, and beta | tags=[\"v1.5.0-beta.3\"]")
+              && Has(out, "plan other: exit 0: nightly isn't a version's tag nor beta: nothing to check") && Has(out, "beta=false\n"),
+          "tools: release-check.py checks a release event's tag and beta; on the schedule the latest stable and "
+          "the newest numbered pre-release, what the site serves (#440)");
+    Check(Has(out, "release right: exit 0: v1.5.0-beta.4's release carries FRIZZ.bin md5")
+              && Has(out, "release wrong: exit 1: **v1.5.0-beta.4's release carries a FRIZZ.bin that isn't the tag's build")
+              && Has(out, "::error::v1.5.0-beta.4's FRIZZ.bin (md5 ")
+              && Has(out, "release draft: exit 0: v1.6.0's draft release has no FRIZZ.bin yet: nothing to check")
+              && Has(out, "release none: exit 0: No release for v9.9.9")
+              && Has(out, "published without: exit 1: **v1.0.1's release is published without a FRIZZ.bin"),
+          "tools: a release's FRIZZ.bin against CI's build of the tag: the same, or it fails loudly; published "
+          "without one fails, a draft without is left alone");
+    Check(Has(out, "beta: exit 0: The rolling beta carries FRIZZ.bin md5 `")
+              && Has(out, "`: v1.5.0-beta.4's build, on its commit c4, the md5 its notes name.\n")
+              && Has(out, "beta another build: exit 1: **The rolling beta's FRIZZ.bin isn't v1.5.0-beta.4's")
+              && Has(out, "beta notes: exit 1: **The rolling beta's notes don't name its build's md5")
+              && Has(out, "beta elsewhere: exit 1: **The rolling beta is on c9, where no numbered pre-release")
+              && Has(out, "beta behind: exit 0: The rolling beta carries v1.5.0-beta.3, but v1.5.0-beta.4 is newer")
+              && Has(out, "beta without: exit 1: **The rolling beta carries no FRIZZ.bin: its fixed link is dead**"),
+          "tools: the rolling beta's FRIZZ.bin the numbered pre-release's on its commit (an annotated tag's too), "
+          "the md5 its notes name; behind the newest a warning");
+    Check(!Has(out, "WRITE") && !Has(out, "Traceback"), "tools: release-check.py only reads (gh api GETs)");
     if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 

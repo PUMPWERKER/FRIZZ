@@ -59,8 +59,9 @@ void SetClockStartMs(uint32_t ms);
 
 /** The audio interrupt at the firmware's FRIZZ_PREEMPT(point) each time main() passes it, as
  *  the device's may come anywhere (not under a ScopedIrqBlocker): main() gives up the rest of
- *  its block there and goes on after the next callback. nullptr: nowhere (at first) */
-void PreemptAt(const char* point);
+ *  its block there and goes on after the next callback, or after `blocks` of them (main()
+ *  held up there, as by higher-priority work). nullptr: nowhere (at first) */
+void PreemptAt(const char* point, int blocks = 1);
 
 /** Power on: starts the firmware's main(). The card and any keys held should be set first */
 void Boot();
@@ -83,6 +84,11 @@ const char* const* KeyNames();
  *  +1. The detents are played out one after another, ms each: 8 a fast turn (FRIZZ's knobs
  *  speed up from 125 ms down, #375), from 125 the slow one */
 void Turn(int encoder, int detents, int ms = 8);
+
+/** Encoder 1..6's A and B lines as they are from the next block on (true high, both high at
+ *  rest), for a turn played edge by edge: a contact's bounce, a nudge that turns back. False,
+ *  and nothing set, while a Turn() of it plays */
+bool EncoderLines(int encoder, bool a, bool b);
 
 /** The mode switch, as the 4021 reads it (SW_TOG's raw level) */
 void SetToggle(bool raw_level);

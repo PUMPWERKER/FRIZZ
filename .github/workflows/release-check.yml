@@ -1,0 +1,118 @@
+# Release check (#440): what release.yml checks at a tag's push, checked again after it, read-only.
+# A FRIZZ.bin uploaded or replaced on a release after its push run, and the rolling `beta`'s,
+# which release.yml never looks at (the fixed link testers download), are checked here
+# (.github/scripts/release-check.py):
+#
+# - a v* release published or edited (and on the schedule, the latest stable release and the
+#   newest numbered pre-release after it, what the website serves): its FRIZZ.bin must be CI's
+#   build of the tag byte for byte (built again here with the pinned GCC 10.3); a published one
+#   without a FRIZZ.bin fails, a draft without one is left alone;
+# - the rolling `beta` (edited: `gh release edit beta` is the last step of moving it, after the
+#   upload, CLAUDE.md "Releases"; and on the schedule): its FRIZZ.bin must be the numbered
+#   pre-release's on the same commit, and its notes name that md5; beta behind the newest
+#   numbered one is a warning.
+#
+# A mismatch fails loudly. It never publishes, uploads, edits or tags anything, and never
+# touches `beta`: contents: read. An asset uploaded without an edit fires no event; the schedule
+# catches it within a day. Nothing here reaches a CHOMPI.
+name: Release check
+
+on:
+  release:
+    types: [published, edited]
+  schedule:
+    - cron: "37 4 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "a v* tag or beta (empty: as the schedule)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || inputs.tag || 'schedule' }}
+  cancel-in-progress: false
+
+env:
+  FRIZZ_NO_DEVICE: "1"
+
+jobs:
+  plan:
+    name: What to check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tags: ${{ steps.plan.outputs.tags }}
+      beta: ${{ steps.plan.outputs.beta }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/scripts
+      - name: The releases to check
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: .github/scripts/release-check.py plan "$TAG"
+
+  release:
+    name: ${{ matrix.tag }}'s FRIZZ.bin
+    needs: plan
+    if: needs.plan.outputs.tags != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: ${{ fromJSON(needs.plan.outputs.tags) }}
+    steps:
+      # the scripts as the default branch has them, the firmware as the tag has it
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/scripts
+          path: scripts
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ matrix.tag }}
+          path: tag
+      - name: GCC 10.3 from the cache
+        id: gcc
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/opt/gcc-arm-none-eabi-10.3-2021.10
+          key: gcc-arm-none-eabi-10.3-2021.10-x86_64-linux-97dbb4f019ad1650b732faffcc881689cedc14e2b7ee863d390e0a41ef16c9a3
+      - name: GCC 10.3 from ARM
+        if: steps.gcc.outputs.cache-hit != 'true'
+        run: scripts/.github/scripts/gcc-arm.sh
+      - name: The tag's build (its builds.py)
+        id: build
+        run: |
+          tag/firmware/tools/builds.py
+          echo "md5=$(md5sum tag/firmware/code/src/build/FRIZZ.bin | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Its release's FRIZZ.bin against it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ matrix.tag }}
+          MD5: ${{ steps.build.outputs.md5 }}
+        run: scripts/.github/scripts/release-check.py release "$TAG" "$MD5"
+
+  beta:
+    name: The rolling beta's FRIZZ.bin
+    needs: plan
+    if: needs.plan.outputs.beta == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/scripts
+      - name: beta against the numbered pre-release on its commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: .github/scripts/release-check.py beta

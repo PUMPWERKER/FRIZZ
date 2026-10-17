@@ -102,7 +102,9 @@ tap ENC_2_SW
 wait 50
 up KEY_26
 wait 1500
-# the keys let go one by one, page 2 still off its defaults
+# the keys let go one by one with SHIFT held (#456), page 2 still off its defaults
+down KEY_26
+wait 60
 tap KEY_3
 wait 700
 tap KEY_5
@@ -118,4 +120,5 @@ wait 700
 tap KEY_12
 wait 700
 tap KEY_13
+up KEY_26
 wait 3000

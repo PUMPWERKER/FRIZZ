@@ -8,6 +8,10 @@
 //    (1500); a step takes at the next repeat's start, a capture starts on the knob's step
 //  - released, the live signal is back once the gate has faded out
 //  - the key's fade (FxGate) lands on 1, so a repeat carries none of the live input (#45)
+//  - outgrown: the length turned up past what's recorded while it repeats, the tempo slowing
+//    as far, or the roll turned back to off early on, the repeat plays on through the
+//    recording to the new length, then starts again from the capture's start; it doesn't drop
+//    to the live signal and come back off the grid
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -275,11 +279,120 @@ static void TestGate()
     Check(g.Value() == 1.f, "gate: and lands on 1, not short of it");
 }
 
+/** A change while it repeats: at sample `at`, the length knob, the tempo or the roll */
+struct Change
+{
+    enum What
+    {
+        LENGTH,
+        TEMPO,
+        ROLL,
+    } what;
+    size_t at;
+    float to;
+};
+
+/** Pressed at 1000, the 16th at 3000, at a length and a roll, 120 BPM; the ramp in all along
+ *  (the live signal never what it repeats); n samples of the left channel out */
+static Run PlayLive(float length, float roll, Change change, size_t n)
+{
+    static Freezer f;
+    f.Init(kSr, buf_l, buf_r, kFrames);
+    f.SetParam(Freezer::LENGTH, length);
+    f.SetParam(Freezer::ROLL, roll);
+    f.SetTempo(120.f);
+    Run run{{}, 3000};
+    for (size_t i = 0; i < n; i++)
+    {
+        if (i == 1000)
+            f.SetOn(true);
+        if (i == run.start)
+            f.ClockPulse(0);
+        if (i == change.at)
+        {
+            if (change.what == Change::TEMPO)
+                f.SetTempo(change.to);
+            else
+                f.SetParam(change.what == Change::LENGTH ? Freezer::LENGTH : Freezer::ROLL, change.to);
+        }
+        float l = Ramp(i), r = l;
+        f.Process(&l, &r);
+        run.out.push_back(l);
+    }
+    return run;
+}
+
+/** Whether out from `from` to `to` is the ramp `back` samples late, the capture read on */
+static bool Late(const Run& run, size_t from, size_t to, size_t back)
+{
+    for (size_t t = from; t < to; t++)
+        if (Index(run.out[t]) != Index(Ramp(t - back)))
+        {
+            printf("      at +%zu: the ramp's %ld, not %ld (%zu late)\n", t - run.start, Index(run.out[t]),
+                   Index(Ramp(t - back)), back);
+            return false;
+        }
+    return true;
+}
+
+/** The largest step from one sample to the next, from `from` to `to` */
+static float Step(const Run& run, size_t from, size_t to)
+{
+    float step = 0.f;
+    for (size_t t = from; t < to; t++)
+        step = fmaxf(step, fabsf(run.out[t] - run.out[t - 1]));
+    return step;
+}
+
+/** Turned past what's recorded while it repeats (MANUAL: "it plays on through the
+ *  recording until the length is reached"): a 1/4 at 120 BPM (24000), the second repeat at
+ *  6000 when the length goes to 1 bar (96000), or the tempo to 60 BPM (48000); the roll on
+ *  1/4 (6000) turned off in the first repeat, which ends on 6000 with 12000 recorded. It used
+ *  to drop to the live signal there (written_ > len_ as the first pass's test), a click, and
+ *  come back off the grid, where the old repeat had stopped, a 16th late for good */
+static void TestOutgrown()
+{
+    const float quarter = 4.f / 7.f;
+    const size_t s = 3000;
+    {
+        const Run run = PlayLive(quarter, 0.f, {Change::LENGTH, s + 30000, 1.f}, s + 320000);
+        const float step = Step(run, s + 30000 - 100, s + 30000 + 500);
+        printf("      length to 1 bar in a repeat: largest step at the turn %.6f\n", step);
+        Check(step < 1e-4f && Late(run, s + 30000, s + 24000 + 96000, 24000),
+              "outgrown: the length turned past what's recorded, the repeat plays on through the recording");
+        // a bar is longer than the ramp's 65536, so it passes the mark twice: the bar itself,
+        // twice from where it should start again
+        const size_t again = s + 24000 + 96000;
+        Check(Late(run, again + 240, again + 96000, again - s)
+                  && Late(run, again + 96000 + 240, again + 2 * 96000, again + 96000 - s),
+              "outgrown: then it repeats the capture's bar from its start, on the grid");
+    }
+    {
+        const Run run = PlayLive(quarter, 0.f, {Change::TEMPO, s + 30000, 60.f}, s + 200000);
+        Check(Step(run, s + 30000 - 100, s + 30000 + 500) < 1e-4f && Late(run, s + 30000, s + 24000 + 48000, 24000),
+              "outgrown: the tempo halved, the repeat plays on through the recording");
+        const std::vector<size_t> starts = RepeatsFrom(run, s + 30000);
+        Print("then", Lengths(starts));
+        Check(starts.size() >= 2 && starts[0] == s + 24000 + 48000 && starts[1] == starts[0] + 48000,
+              "outgrown: then it repeats the new length from the capture's start");
+    }
+    {
+        const Run run = PlayLive(quarter, .5f, {Change::ROLL, s + 7000, 0.f}, s + 120000);
+        Check(Late(run, s + 12000 + 240, s + 12000 + 24000, 12000),
+              "outgrown: the roll off in the first repeat, the next one plays on through the recording");
+        const std::vector<size_t> starts = RepeatsFrom(run, s + 12000 + 241);
+        Print("then", Lengths(starts));
+        Check(starts.size() >= 2 && starts[0] == s + 12000 + 24000 && starts[1] == starts[0] + 24000,
+              "outgrown: then it repeats the whole length from the capture's start");
+    }
+}
+
 int main()
 {
     TestGate();
     TestCapture();
     TestRoll();
     TestRelease();
+    TestOutgrown();
     return Finish();
 }

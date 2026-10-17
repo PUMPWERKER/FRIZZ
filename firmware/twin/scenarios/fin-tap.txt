@@ -1,0 +1,68 @@
+# SHIFT + key 15 with the finalizer selected (#435): its next module in any SHIFT hold (Comp
+# after two); from another effect it only selects; key 15 held, then SHIFT (the bypass, and
+# back) never switches; the next SHIFT + key 15 is Width. No input: the key rests at its glow
+# in the module's colour. Nothing is saved
+# every knob where the factory has it, whatever the card keeps (#214)
+set fin 0 0.5
+set fin 1 0
+set fin 2 0
+set fin 3 0
+set fin 4 0.5
+set fin 5 0.5
+set fin 6 0.5
+set fin 8 0.4
+set fin 9 0.4
+set fin 10 0.4
+set fin 11 0
+set fin 12 0.5
+set fin 13 0.5
+set fin 14 0.5
+at 6000
+tap KEY_15
+wait 300
+down KEY_26
+wait 100
+tap KEY_15
+wait 100
+up KEY_26
+wait 300
+down KEY_26
+wait 100
+tap KEY_15
+wait 100
+up KEY_26
+wait 1500
+# Comp
+expect led smt 10 005858
+tap KEY_5
+wait 300
+down KEY_26
+wait 100
+tap KEY_15
+wait 100
+up KEY_26
+wait 1500
+# still Comp: from the filter it only selected
+expect led smt 10 005858
+down KEY_15
+wait 100
+tap KEY_26
+wait 100
+up KEY_15
+wait 1000
+down KEY_15
+wait 100
+tap KEY_26
+wait 100
+up KEY_15
+wait 1500
+# still Comp after the bypass and back
+expect led smt 10 005858
+down KEY_26
+wait 100
+tap KEY_15
+wait 100
+up KEY_26
+wait 1500
+# Width
+expect led smt 10 000058

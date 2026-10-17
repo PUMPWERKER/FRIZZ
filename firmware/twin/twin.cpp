@@ -122,14 +122,20 @@ bool InMain() { return in_main; }
 // the audio interrupt in the middle of main() (PreemptAt): main() gives up its block there
 int irq_blocked = 0;
 static const char* preempt_at = nullptr;
-void PreemptAt(const char* point) { preempt_at = point; }
+static int preempt_blocks = 1;
+void PreemptAt(const char* point, int blocks)
+{
+    preempt_at = point;
+    preempt_blocks = blocks;
+}
 void Preempt(const char* point)
 {
     if (in_main && !irq_blocked && preempt_at && !strcmp(preempt_at, point))
-    {
-        main_ns = window_end;
-        Yield();
-    }
+        for (int b = 0; b < preempt_blocks; b++)
+        {
+            main_ns = window_end;
+            Yield();
+        }
 }
 
 uint64_t NowNs()
@@ -683,6 +689,14 @@ void Turn(int encoder, int detents, int ms)
         quad[encoder - 1].pending += detents;
         quad[encoder - 1].step_ns = static_cast<uint64_t>(ms) * 1000000 / 4;
     }
+}
+
+bool EncoderLines(int encoder, bool a, bool b)
+{
+    if (encoder < 1 || encoder > 6 || quad[encoder - 1].step != 0 || quad[encoder - 1].pending != 0)
+        return false;
+    SetEncoderLines(encoder - 1, a, b);
+    return true;
 }
 
 void SetToggle(bool raw_level)

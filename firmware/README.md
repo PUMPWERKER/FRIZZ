@@ -135,7 +135,11 @@ cd firmware/test
 ./unit.sh tempo   # one unit check (each NAME.cpp; ui runs the whole firmware on the twin)
 ```
 
-[`test/README.md`](test/README.md) says what each check covers.
+[`test/README.md`](test/README.md) says what each check covers. The heavy runs (`all.sh`,
+`check.sh`, `twin/compare.sh`, `twin/ui-at.sh`, `tools/builds.py`, a twin's build by hand) take
+the host lock themselves (`test/hostlock.sh`): one at a time on the machine, each under a
+memory cap of 4 GB (`FRIZZ_HOST_MEMORY`) where `systemd-run --user` works, a second one waiting
+and saying which holds it; on Actions (`CI`) they don't. `unit.sh` takes none.
 
 To try a change before flashing it, play it on the virtual CHOMPI: the firmware from
 power-on, keys, knobs, MIDI and audio from a script, the master out as a WAV and the LEDs as
@@ -157,8 +161,10 @@ git clone https://github.com/emscripten-core/emsdk.git ~/opt/emsdk
 cd ~/opt/emsdk && ./emsdk install 6.0.11 && ./emsdk activate 6.0.11
 ```
 
-`web/serve.sh` finds it there by itself. Its first build compiles DaisySP for the browser too,
-so it takes longer; after a change, a reload rebuilds in about 20 s.
+`web/serve.sh` finds it there by itself. Its first build compiles DaisySP for the browser too
+(again when DaisySP or em++ change), so it takes longer; after a change, a reload rebuilds in
+about 20 s. With Emscripten there, `all.sh` builds it too and runs it in node (the check
+`webtwin`); without, it says `SKIP: local only (Emscripten in ~/opt/emsdk)`.
 
 **A bug from a player:** SHIFT + VOLUME press held 2 s on the settings page writes `/FRIZZ/bug-N.txt`
 (MANUAL.md, *Bug reports*), a twin script of everything since power-on with the card's files
@@ -217,6 +223,12 @@ keys and the bench's; another key (1-15: a stock firmware, the storage firmware'
 it first reaches for the CHOMPI, and waits while another has it, saying who; what doesn't
 touch it (`measure.py compare`) never waits. `tools/chompi.py hold CMD` keeps it over a whole
 sequence of tools, `tools/chompi.py hold` until Ctrl-C (for playing it by hand).
+The hold keeps the lock until everything it started has ended. To stop one, send the hold
+SIGTERM: it passes the signal on to the whole chain, the running tool cleans up (a lent card is
+taken back), and a second SIGTERM forces it. Never use SIGKILL, which leaves the chain running
+without the lock. A stopped chain doesn't get to its last `; ./flash.py --run 10`, so run
+`tools/chompi.py hold ./flash.py --run 10` yourself afterwards. Known: Ctrl-Z at a prompt with
+`hold sh -c …` hangs the terminal; `hold bash` is fine.
 
 **Which build runs** FRIZZ says itself (the developers' SysEx's IDENT, below): the CRC-32 and
 length of the image it runs, which `tools/builds.py` prints next to the md5, and whether it's
@@ -386,7 +398,7 @@ first; a knob's value in 14 bits, as `0x21` has them.
 | `0B` CRASH | `00` | flags (1: a crash recorded), its kind (1 the watchdog, else the exception: 3 HardFault, as every fault is, since MemManage, BusFault and UsageFault aren't enabled and escalate; CFSR tells which), how many since cleared (3), uptime ms at the fault (5; the watchdog's: MainLoop's last pass), the CRC-32 (5) and length (3) of the build that crashed, `RCC_RSR` at that start (5), SP (5), and `FLASH_OPTSR_CUR` (5), the option bytes, whether or not one is recorded; zeros for none |
 | | `01` | PC, LR, xPSR, CFSR, HFSR, MMFAR, BFAR (5 each) |
 | | `02` | clears it -> flags |
-| `0C` TEST | WHAT | the bench only (FRIZZ.bin answers status 2): 1 MainLoop hangs (after answering), 2 a bus fault in MainLoop (a read where nothing is), 3 the audio callback hangs, 4 an undefined instruction in it (3 and 4 unanswered, as they come), 5 the MIDI jack's UART at twice its rate for 20 ms, so the bytes coming in meanwhile break their frames: a receive error, for `midisuite.py`'s `trs-relisten` (#361) |
+| `0C` TEST | WHAT | the bench only (FRIZZ.bin answers status 2): 1 MainLoop hangs (after answering), 2 a bus fault in MainLoop (a read where nothing is), 3 the audio callback hangs, 4 an undefined instruction in it (3 and 4 unanswered, as they come), 5 the MIDI jack's UART at twice its rate for 20 ms, so the bytes coming in meanwhile break their frames: a receive error, for `midisuite.py`'s `trs-relisten` (#361); 6 HOW COUNT(3): COUNT times, 4 ms apart, the jack's receive ended as an error ends it while two marker bytes (0xFD) go out of the jack, HOW 0 stopped (Listen starts it again at once), 1 through HAL's error callback (the DMA's request off until the bytes coming in overrun), answering the markers sent so far (3; COUNT 0 only reads them), for `trs-restart-tx`: none may be cut (#442) |
 | `0D` LOOPS | `00` | the loop loader (`LoopLoader.h`, #70; FRIZZ.bin only, status 2 in the bench): its state (0 idle, 1 scanning, 2 loading, 3 loaded, 4 failed, 5 checking, 6 writing, 7 written), the bank and slot loading, the result (`loops::Result`: why a load or the write test stopped, 0 if it didn't), the SD error (5, `HAL_SD_ERROR_*`), bytes read (4) of (4), ms (3: the load's, or the last scan's), runs (3), MainLoop's longest step since the last `00` in µs (3), the SDMMC's CLKCR (5), the card recovered (1) and set up again (1), the file's fragments (2) |
 | | `01` BANK | 1 while the scan runs, then the bank's 15 slots' results (0 empty, 1 mono, 2 stereo, more: refused, why). Banks 0-7 are FRIZZ's a-h (`/FRIZZ/a1.wav` …), 8-12 TAPE's cubbis a-e (`cubbi_a1.wav` … in `/TAPE`, else the root) |
 | | `02` BANK SLOT | the slot's result, frames (4), its data's offset in the file (5) |

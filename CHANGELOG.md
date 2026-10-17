@@ -17,8 +17,8 @@ what FRIZZ does.
   bank's colour instead (#444), as the loop's own key does on the Loops page, so you see it
   coming without going back there. See [Playing loops](MANUAL.md#playing-loops).
 
-- **A frequency shifter** (#306), the phaser's second mode: hold SHIFT, tap white key 7 (it's
-  selected, as ever), then tap it again: the key turns ice blue, and every frequency in the sound
+- **A frequency shifter** (#306), the phaser's second mode: hold SHIFT and tap white key 7
+  twice: the key turns ice blue, latched or not as it was, and every frequency in the sound
   moves up or down by the same number of Hz, so its harmonics no longer line up. A few Hz with
   feedback and the direction to one side make a barber pole that rises (or falls) forever, tens
   to hundreds of Hz a metallic, bell-like sound. Each further tap in the same SHIFT hold switches back and forth. The same
@@ -104,6 +104,31 @@ what FRIZZ does.
 
 ### Changed
 
+- **SHIFT and an FX key latch in either order** (#456): hold the key and press SHIFT, as
+  before, or hold SHIFT and tap the key; the same again unlatches it. You hear the effect while
+  you hold its key either way, and the latch lands when you let go. Keep SHIFT held and tap
+  several keys to latch them all, also after holding one and pressing SHIFT. **A plain press
+  no longer unlatches:** tapping a latched effect's key plays it and puts it on the knobs, and
+  it stays latched; to turn it off, SHIFT and its key. So SHIFT, then a key, no longer picks an
+  effect for the knobs without hearing it (MIDI's focus, CC 23, still does). On key 7, SHIFT +
+  the key twice switches the phaser and the frequency shifter and leaves the latch as it was.
+  Key 15, the finalizer, works as before. MIDI notes act as your hand. See
+  [Playing an effect](MANUAL.md#playing-an-effect).
+
+- **Dim keys stay apart at a low LED brightness** (#444): turned down on the settings page,
+  the keys that are off got so dim that neighbouring ones ran together (at 25% the freezer's
+  and the shifter's, the crusher's and the filter's looked the same), and the CHOMPI key's
+  glow on the Loops and Cubbi pages showed several banks in one colour. Now an off key dims
+  less than the rest, keeping enough of its colour to tell it apart, and the CHOMPI key's glow
+  keeps the bank colours it has at full brightness. At 25% an off key is now about half as
+  bright as a lit one; at 100% nothing changes. See [LED brightness](MANUAL.md#led-brightness).
+- **The global channel's CC 22 starts afresh on each effect** (#444): CC 22 on the global
+  channel latches the effect in focus as its value crosses 64. That crossing used to be shared
+  by every effect, so after moving the focus (CC 23, or an effect's key) a 127 that the
+  last effect had already seen did nothing to the new one. Now the first value after a focus
+  change counts, as on the effect's own channel: a toggle button on the global channel latches
+  whichever effect has the focus. See [Controllers](MANUAL.md#controllers).
+
 - **The FX keys are coloured by their stage in the chain** (#395): the keys of a stage share a
   colour, the two of a pair in neighbouring shades, and the next stage in one well apart.
   Freezer purple and shifter indigo, folder scarlet and crusher orange, filter pink, flanger
@@ -145,9 +170,9 @@ what FRIZZ does.
     Beat FX, Parallel among them), one Depth for all three. No makeup: level comes back
     through Drive and Loud.
   - **Width** (blue): each band's stereo, from mono to twice as wide (the low band to
-    1.5 times).
+    1.5 times), and to the right Space, which makes a mono source wide too.
 
-  Hold SHIFT and tap key 15 twice for the next module; the key shows its colour. At the
+  With the finalizer selected, SHIFT + key 15 shows the next module; the key shows its colour. At the
   defaults it leaves the sound untouched. Its knob LEDs are meters while they rest: the input
   level, each band's level, gain reduction or correlation, the limiter's reduction. A press of
   knob 1-3 in EQ, Comp or Width mutes that band, as a DJ mixer's kill. Hold key 15 and press
@@ -157,6 +182,24 @@ what FRIZZ does.
   time. Over MIDI, channel 15 has every parameter at a fixed CC (CC 14-20 Level and EQ, 24-30
   Comp and Width, 21 a preset, 22 on or bypassed, 23 the module, 102-104 the mutes), the global
   channel CC 24-27 Level's knobs and CC 28 Depth. See [Finalizer](MANUAL.md#finalizer).
+
+- **SHIFT + key 15 switches the finalizer's module once it's selected** (#435): in the betas
+  the module switched only with key 15 tapped twice in one SHIFT hold. Now, with the finalizer
+  on the knobs, every SHIFT + key 15 shows the next module, in the same SHIFT hold or a new one.
+  While an effect has the knobs, SHIFT + key 15 still only selects the finalizer, and the
+  double tap in one hold still selects, then switches. Key 15 and SHIFT pressed together, in
+  either order, count as a select and never switch; key 15 held, then SHIFT, stays the bypass.
+  See [Finalizer](MANUAL.md#finalizer).
+
+- **The finalizer's Width widens a mono source** (#455): in the betas Width only turned up the
+  difference between the channels already there, so a mono synth or voice stayed mono however
+  far right. Now, right of the centre, each band also gets Space, more the further right: a
+  slightly different copy of the band in the side, a diffusion of very short delays for mid
+  and high, a phase shift between the channels for the low band, so the kick isn't smeared
+  and doesn't lean to a side. Summed to mono every frequency stays as loud as it was, and the
+  left and right channels stay level. At the centre and to the left nothing changed; a
+  preset with a band right of the centre now sounds wider. After the widener in Endorphin.es'
+  Golden Master. See [Width module](MANUAL.md#width-module).
 
 - **AUX keeps its bass** (#317): the input's DC blocker, TAPE's, cut AUX's lows from about
   76 Hz down (50 Hz 5 dB quieter, 30 Hz 9 dB); it now takes out only DC, from about 8 Hz down,
@@ -209,6 +252,58 @@ what FRIZZ does.
 
 ### Fixed
 
+- **Turning the reverb's pre-delay no longer chirps**: a turn of it (page 2, knob 2), a MIDI
+  jump or a scene recall slid its read through the last 250 ms of sound at up to 48 times the
+  speed, forwards or backwards, a sped-up burst into the room. Now it crossfades to the new
+  time in 21 ms, and the room goes on as it was, only later or sooner.
+- **A frozen delay keeps its highs** at every tempo: at most tempos the delay's time falls
+  between two samples, and every pass round the frozen loop (page 2, knob 1) took a little off
+  the top, so held echoes went dull within seconds (an 8 kHz tone 12 dB down after 7 s at
+  140 BPM; at 120 BPM it held, by chance). Frozen, the delay now moves to the nearest whole
+  sample, too little to hear, and the echoes hold as they are. The delay unfrozen sounds as
+  before.
+- **A frozen delay holds its echoes with the damping on too** (#444): with the damping (page 2,
+  knob 2) turned either way, every pass round the frozen loop darkened or thinned the echoes
+  again, so they were gone within a few seconds. Now the damping lifts as the freeze comes in,
+  as the reverb's freeze opens its tone, and comes back as it goes.
+- **The freezer's length turned up while it repeats plays on, on the grid**: turned past what
+  it had recorded so far (a 1/4 turned to a bar in its second repeat), or the tempo slowing as
+  far, or the roll turned back to off early on, the freezer dropped to the live signal with a
+  click, then came back where the old repeat had stopped, off the beat for as long as it ran.
+  Now the repeat plays on through what was recorded until the new length is reached, as the
+  manual says, and then starts again from the capture's start, on the grid.
+- **A slight nudge of a knob no longer jumps far** (#447): when a knob's contacts bounced
+  at a click, or a hand nudged it back and forth there, FRIZZ could count each wobble as one
+  more click a few milliseconds after the last, and the faster fast turns (above) took that
+  for a very fast turn: a small nudge of VOLUME could move the level several steps at once
+  (20 % and more), one of knobs 1-4 its value likewise. Now each click counts once, however it
+  wobbles, on the transport knob too. Turning slowly is one step a click, and turning fast
+  speeds up as before.
+- **The finalizer's Type, and a band's character, take effect as you turn them** (#449):
+  turning Type, or a band's character in the Comp module, changed nothing until another
+  finalizer knob moved; a preset recalled or a knob turned after it brought it in.
+- **A bug report notes the card lent to a computer** (audit 2026-10-16): when the card was
+  lent as a USB drive and taken back, the report didn't say so, so a session that edited
+  scenes or settings on the computer played back differently with nothing to show why. Now the
+  report marks each lend and take-back and what FRIZZ read from the card again. See
+  [Bug reports](MANUAL.md#bug-reports).
+- **A failed save shows on the Loops and Cubbi pages** (audit 2026-10-16): the input gain
+  turned there (VOLUME's page 2) is saved to the card like everywhere else, but when the card
+  couldn't be written the red blinks went to key 15, which is a loop on those pages, so nothing
+  showed. Now VOLUME blinks red 3 times there. See [Finalizer LEDs and settings](MANUAL.md#finalizer-leds-and-settings).
+- **CC 23 on the phaser's channel flashes the phaser's key** (audit 2026-10-16): switching
+  between the phaser and the frequency shifter over MIDI flashed the key of whatever effect the
+  knobs edited (an effect that was off lit up as if on, key 15 jumped to full), and the phaser's
+  own key only changed colour. Now the phaser's key flashes in its new colour, as SHIFT + key 7
+  twice does.
+- **Two quick CC 23s leave the focus on the second** (audit 2026-10-16): a CC 23 that came
+  just after another (a DAW's automation, a controller script) could be lost, leaving the
+  global channel's CC 14-22 on the first effect until the next focus change. Now the latest
+  one always wins.
+- **MIDI out passes a clock on at double without losing ticks** (audit 2026-10-16): with the
+  clock factor at x2, a computer's clock that stalled and caught up (three or more ticks
+  arriving at once) lost ticks on the way out, and the gear behind FRIZZ stayed a little out of
+  step until its next Start. Now every tick that comes goes out twice, as it should.
 - **The FX take a MIDI clock's tempo cleanly when it starts** (#413): the first tick
   interval FRIZZ heard is a block off, so a clock starting at a steady 120 BPM put the delay
   and the other FX at 122 or 119 for a moment, and at fast tempos many BPM off (at 300 over
@@ -245,10 +340,11 @@ what FRIZZ does.
   without the shortest pause and without a clock tick in it (a DAW's automation for many
   knobs at once, written back to back) lost whole stretches of it, so knobs it moved stayed
   where they were. Now every message counts, however long the cable stays busy.
-- **MIDI on the TRS jack comes back by itself after a glitch** (#361): a garbled byte on the
-  cable (plugging it in while the other end was sending, a bad contact) stopped FRIZZ hearing
-  MIDI over TRS (clock, notes, CCs) until it was switched off and on. Now it listens again at
-  once.
+- **MIDI on the TRS jack comes back by itself after a glitch** (#361, #442): a garbled byte on
+  the cable (plugging it in while the other end was sending, a bad contact) stopped FRIZZ
+  hearing MIDI over TRS (clock, notes, CCs) until it was switched off and on. Now it listens
+  again at once, and MIDI out on TRS goes on untouched meanwhile (in the betas, listening again
+  could cost the gear behind a clock tick).
 - **The shifter and the flanger no longer click when punched in with the feedback up** (#326):
   the feedback's share of what they had stored came in at once under the key's fade, and
   repeated on every trip. Now it fades in with the key.

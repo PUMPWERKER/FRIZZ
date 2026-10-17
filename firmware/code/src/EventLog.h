@@ -94,6 +94,14 @@ public:
         JACK,      // a cable in AUX or out
         XFER,      // the loop transfer's job (LoopTransfer.h): its begin (id its OP, value its slot
                    // as bank * 15 + key) or end (0x80 | its status, value its DETAIL); a comment
+        CARD,      // the card lent (id kCardLent) or taken back (kCardAsked, kCardGone), value
+                   // what was read again (SceneStore::Reread); a comment
+    };
+    enum CardWhat : uint8_t
+    {
+        kCardLent,
+        kCardAsked, // taken back by the gesture or the developers' SysEx
+        kCardGone,  // the computer let go: an eject, the cable, sleep (usb::TakeCardGone)
     };
 
     void Init(EventLogMem* mem, FATFS* fs, const char* path)
@@ -147,6 +155,9 @@ public:
 
     /** From the audio callback: a cable plugged into AUX (true) or pulled, once debounced */
     EVENT_LOG_ONCE void Jack(bool plugged) { Add(JACK, 0, plugged); }
+    /** From MainLoop: the card lent to the computer, or taken back and what of it was read
+     *  again (CARD) */
+    EVENT_LOG_ONCE void Card(CardWhat what, uint8_t taken) { AddFromMain(CARD, what, taken); }
     /** From MainLoop: the loop transfer's job began or ended (XFER) */
     EVENT_LOG_ONCE void Xfer(uint8_t what, uint16_t value) { AddFromMain(XFER, what, static_cast<int16_t>(value)); }
 
@@ -408,7 +419,8 @@ private:
             "# held, the card's FRIZZ files as they were at power-on. The virtual CHOMPI plays\n"
             "# it again: firmware/twin/run.sh -o out.wav -l leds.txt bug-N.txt\n"
             "# The audio in isn't in it: the replay plays a tone into AUX (the input line).\n"
-            "# Nor are scenes sent over MIDI: the replay has the card's.\n");
+            "# Nor are scenes sent over MIDI, nor what a computer changed on the card lent\n"
+            "# to it: the replay has the card's from power-on.\n");
         if (full_)
             Put("# The log was full: it ends early, and the replay too.\n");
         // the replay puts them where FRIZZ keeps them, /FRIZZ
@@ -461,6 +473,26 @@ private:
                 break;
             case JACK:
                 Put(e.value ? "jack in" : "jack out");
+                break;
+            case CARD:
+                // the replay lends and takes back by the gesture's keys, on the power-on files
+                if (e.id == kCardLent)
+                {
+                    Put("# card lent");
+                    break;
+                }
+                Put(e.id == kCardGone ? "# card taken back, the computer let go (the replay keeps it lent); read:"
+                                      : "# card taken back; read:");
+                if (!e.value)
+                    Put(" nothing");
+                if (e.value & 0x80) // SceneStore::kRereadMaster
+                    Put(" settings");
+                for (int slot = 1; slot < 7; slot++) // bit s: scene slot s, 0 the blank one
+                    if (e.value >> slot & 1)
+                    {
+                        Put(" scene ");
+                        PutNum(slot);
+                    }
                 break;
             case XFER:
                 Put("# loop transfer");

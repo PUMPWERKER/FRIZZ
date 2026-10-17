@@ -1270,6 +1270,63 @@ def trs_relisten(r):
     r.check("after: CC 15 on channel 3 over TRS", up, "%.2f -> %.2f" % (a, b), "moves: TRS MIDI in is back")
 
 
+UART_RESTART = 6  # kCmdDev TEST's kUartRestart (MidiControl.h): FRIZZ-bench.bin only
+MARKER = 0xFD  # what it sends out of the jack around each restart (MidiClock::TestRestarts)
+
+
+def uart_restarts(r, how, n):
+    """TEST kUartRestart: n restarts of the jack's receive (how 0 as Listen does, 1 through
+    HAL's error callback), 4 ms apart, markers going out meanwhile; the markers sent so far"""
+    got = r.f.dev(chompi.TEST, [UART_RESTART, how, n >> 14 & 0x7F, n >> 7 & 0x7F, n & 0x7F], retries=1)
+    if not got or got[0] != chompi.OK or len(got[1]) < 3:
+        raise Skip("TEST %d: %s (FRIZZ-bench.bin from #442 on)" % (
+            UART_RESTART, chompi.DEV_STATUS.get(got[0], got[0]) if got else "no answer"))
+    return chompi.get7(got[1][:3])
+
+
+@case("trs-restart-tx", "8: the jack's receive started again after an error (as trs-relisten's) "
+      "leaves MIDI out on TRS alone: a USB clock in pairs passed on out of the jack, the bench's "
+      "restarts while it sends, none of its bytes cut (#442). FRIZZ-bench.bin only (--slot 13)",
+      needs=("out",))
+def trs_restart_tx(r):
+    uart_restarts(r, 0, 0)  # a SKIP where there's no TEST
+    r.setting(clock_source=SOURCES["usb"], midi_out=OUTS["trs"])
+    c = r.clock("usb", 120, mode="pairs")
+    r.wait_tempo(120, 1, 5)
+    log = r.captured("trs").log
+    n = 200
+    # how 0: stopped, as most errors end it (Listen starts it at once); 1: the DMA's request
+    # off, so the bytes coming in overrun into HAL's error callback (needs the jack's in)
+    for how in (0, 1) if "in" in r.wiring else (0,):
+        what = ("the restart" if how == 0 else "the restart through HAL's error callback")
+        if how == 1:
+            # a dense stream into the jack, the mod wheel on channel 16 (moves nothing), ~1.3 s
+            r.send_trs(b"".join(cc(GLOBAL, 1, k & 0x7F) for k in range(1300)))
+        restarts = trs_restarts(r)
+        sent = uart_restarts(r, how, 0)
+        t0 = time.perf_counter()
+        uart_restarts(r, how, n)
+        time.sleep(2.)
+        t1 = time.perf_counter()
+        sent = uart_restarts(r, how, 0) - sent
+        after = trs_restarts(r)
+        time.sleep(.2)
+        got = count(log, MARKER, t0)
+        other = sorted({"%02X" % m[0] for t, m in log if t >= t0 and m[0] not in (TICK, MARKER)})
+        if restarts is not None and after is not None:
+            r.check("%s: the receive ended and started again" % what, after - restarts >= (n if how == 0 else n // 2),
+                    "%d times" % (after - restarts), "%d%s" % (n, "" if how == 0 else " (/2: bytes coming in)"))
+        r.check("%s: the markers sent meanwhile all came out of the jack" % what, got == sent and sent > 0,
+                "%d of %d" % (got, sent), "all")
+        r.check("%s: nothing garbled" % what, not other, ", ".join(other) or "none", "none")
+        # the clock passed on: as many ticks out as went in (the edges +-1)
+        into = sum(1 for t in c.ticks if t0 + .2 <= t <= t1 - .2)
+        out = len(ticks_after(log, t0 + .2 + .002, t1 - .2 + .002))
+        r.check("%s: the clock passed on, no tick lost" % what, abs(into - out) <= 2,
+                "%d out of %d" % (out, into), "+-2")
+    r.stop_clocks()
+
+
 def runs(ns):
     """Sorted numbers as (first, last) runs"""
     out = []
