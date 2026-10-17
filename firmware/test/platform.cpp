@@ -30,7 +30,7 @@ static bool Has(const std::string& s, const std::string& what) { return s.find(w
 static int Run(const std::string& cmd, std::string& out)
 {
     out.clear();
-    FILE* p = popen((cmd + " 2>&1").c_str(), "r");
+    FILE* p = popen(("{ " + cmd + "; } 2>&1").c_str(), "r");
     char buf[512];
     size_t n;
     while (p && (n = fread(buf, 1, sizeof(buf), p)) > 0)
@@ -122,9 +122,10 @@ static void Layers()
 
 // --- platform-sync.py on repositories of its own ---
 
-/** The environment of each run: git without the user's configuration, commits by a test author */
-static const std::string kGit = "GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=t "
-                                "GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t ";
+/** The environment of each run, for every command in it: git without the machine's configuration,
+ *  commits by a test author (CI's runner has no git identity of its own) */
+static const std::string kGit = "export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=t "
+                                "GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t && ";
 
 /** Check(), with what the runs printed only if it fails (their FAIL and SKIP lines are the cases') */
 static void Says(bool ok, const std::string& what, const std::string& out)
