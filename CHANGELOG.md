@@ -340,13 +340,11 @@ what FRIZZ does.
   without the shortest pause and without a clock tick in it (a DAW's automation for many
   knobs at once, written back to back) lost whole stretches of it, so knobs it moved stayed
   where they were. Now every message counts, however long the cable stays busy.
-- **MIDI on the TRS jack comes back by itself after a glitch** (#361): a garbled byte on the
-  cable (plugging it in while the other end was sending, a bad contact) stopped FRIZZ hearing
-  MIDI over TRS (clock, notes, CCs) until it was switched off and on. Now it listens again at
-  once.
-- **A glitch on TRS MIDI in no longer costs a clock tick on TRS out** (#442): listening again
-  after one could cut the byte MIDI out was sending at that moment, so the gear behind lost a
-  tick (or got a garbled CC). Now MIDI out goes on untouched.
+- **MIDI on the TRS jack comes back by itself after a glitch** (#361, #442): a garbled byte on
+  the cable (plugging it in while the other end was sending, a bad contact) stopped FRIZZ
+  hearing MIDI over TRS (clock, notes, CCs) until it was switched off and on. Now it listens
+  again at once, and MIDI out on TRS goes on untouched meanwhile (in the betas, listening again
+  could cost the gear behind a clock tick).
 - **The shifter and the flanger no longer click when punched in with the feedback up** (#326):
   the feedback's share of what they had stored came in at once under the key's fade, and
   repeated on every trip. Now it fades in with the key.
