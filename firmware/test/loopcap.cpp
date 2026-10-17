@@ -142,6 +142,13 @@ L.time = types.SimpleNamespace(monotonic=lambda: clock[0], sleep=sleep)
 L.subprocess = types.SimpleNamespace(Popen=Rec, run=lambda *a, **k: types.SimpleNamespace(stdout=""))
 L.cmd_feedback(types.SimpleNamespace(out="fb", secs=22))
 print("CALLS " + ", ".join(calls))
+keys = []
+Frizz.key = lambda self, k, down: keys.append(("+" if down else "-") + k)
+L.cmd_feedback(types.SimpleNamespace(out="fbp", secs=40, planned=True))
+k13 = keys.index("+KEY_13")  # after the Loops page's keys
+print("PLANNED " + " ".join(keys[k13:k13 + 12]))
+import json
+print("HAND " + json.dumps([(e["key"], e.get("planned"), e.get("cancel", False)) for e in json.load(open("fbp.json"))["events"]]))
 )";
 
 int main()
@@ -155,6 +162,12 @@ int main()
     // the hand's run, its link closed, then the playback's: the slot started again first
     Check(rc == 0 && Has(out, "CALLS find, frizz, record, close, to_frizz again=True, frizz, record"),
           "loopcap: feedback's playback starts the slot again first, as the hand's run did");
+    // --planned (#401): SHIFT held over one tap, then over two of the next key; one cancelled
+    // in a new SHIFT hold
+    Check(rc == 0 && Has(out, "PLANNED +KEY_13 -KEY_13 +KEY_26 +KEY_14 -KEY_14 -KEY_26 +KEY_26 +KEY_15 -KEY_15 +KEY_15 -KEY_15 -KEY_26"),
+          "loopcap: feedback --planned: SHIFT + the key tapped 1, then 2 times");
+    Check(rc == 0 && Has(out, "HAND [[\"KEY_13\", 0, false], [\"KEY_14\", 1, false], [\"KEY_15\", 2, false], [\"KEY_13\", 1, false], [\"KEY_13\", null, true], [\"KEY_14\", 3, false]]"),
+          "loopcap: feedback --planned: the hand's switches noted, the cancel after its planned switch");
     const std::string venv = std::string(getenv("HOME") ? getenv("HOME") : "") + "/.venvs/frizz/bin";
     if (access((venv + "/python3").c_str(), X_OK) != 0)
     {
