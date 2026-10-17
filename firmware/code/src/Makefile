@@ -1,14 +1,23 @@
 # Project Name
 TARGET = FRIZZ
 
+# The PUMPWERKER platform: FRIZZ's copy of a commit of it (../../tools/platform-sync.py, #477),
+# its layers' own files beside FRIZZ's (core/, daisy/, boards/chompi/), its libraries in daisy/libs/
+PLATFORM = ../../platform
+PLATFORM_LAYERS = $(PLATFORM)/core $(PLATFORM)/daisy $(PLATFORM)/boards/chompi
+
 # make BENCH=1: FRIZZ-bench.bin, which measures the audio callback's load (Bench.h), built
 # apart in build-bench/ so it never mixes with the normal build's objects
 ifeq ($(BENCH),1)
 TARGET = FRIZZ-bench
 # cpu.txt names the source it was built from by a checksum of it, not by the time, so a
-# rebuild of the same source gives the same FRIZZ-bench.bin
-BENCH_SOURCE := $(shell cat $(sort $(wildcard *.h *.c *.cpp)) | cksum | cut -d' ' -f1)
-C_DEFS = -DFRIZZ_BENCH=1 -DFRIZZ_BENCH_SOURCE='"$(BENCH_SOURCE)"'
+# rebuild of the same source gives the same FRIZZ-bench.bin: FRIZZ's files and the platform
+# layers' (not their libraries), sorted by name as if they were in one folder, as they were
+# before the platform moved out (tools/builds.py source_checksum())
+BENCH_FILES := $(wildcard *.h *.c *.cpp $(foreach d,$(PLATFORM_LAYERS),$(d)/*.h $(d)/*.c $(d)/*.cpp))
+BENCH_SOURCE := $(shell cat $(foreach n,$(sort $(notdir $(BENCH_FILES))),$(filter %/$(n) $(n),$(BENCH_FILES))) | cksum | cut -d' ' -f1)
+# PLATFORM_DEV_TESTS: the platform's tests the bench's TEST asks for (MidiClock.h's receive restarts)
+C_DEFS = -DFRIZZ_BENCH=1 -DFRIZZ_BENCH_SOURCE='"$(BENCH_SOURCE)"' -DPLATFORM_DEV_TESTS=1
 override BUILD_DIR = build-bench$(if $(filter 1,$(ITCM)),-itcm)
 endif
 
@@ -26,7 +35,7 @@ endif
 # enumeration that never finishes, or no MIDI for 60 s, restarts into the launcher), built
 # apart in build-usbsafety/ (build-bench-usbsafety/ with BENCH=1). Never a player's build
 ifeq ($(USB_SAFETY),1)
-C_DEFS += -DFRIZZ_USB_SAFETY=1
+C_DEFS += -DPLATFORM_USB_SAFETY=1
 override BUILD_DIR := $(or $(BUILD_DIR),build)-usbsafety
 endif
 
@@ -35,10 +44,10 @@ OPT=-O3
 APP_TYPE=BOOT_SRAM
 # make program-boot installs CHOMPI's own bootloader, not libDaisy's generic one
 BOOT_BIN = ../../bin/CHOMPI_Bootloader_V6_2_0.bin
-LDSCRIPT = chompi_sram.lds
+LDSCRIPT = $(PLATFORM)/boards/chompi/chompi_sram.lds
 
-# TinyUSB (../libs/tinyusb/VERSION): FRIZZ's USB (UsbDevice.h), its classes built for size
-TINYUSB_DIR = ../libs/tinyusb/src
+# TinyUSB (daisy/libs/tinyusb/VERSION): the platform's USB (UsbDevice.h), its classes built for size
+TINYUSB_DIR = $(PLATFORM)/daisy/libs/tinyusb/src
 TINYUSB_SOURCES = $(TINYUSB_DIR)/tusb.c \
 	$(TINYUSB_DIR)/common/tusb_fifo.c \
 	$(TINYUSB_DIR)/device/usbd.c \
@@ -49,23 +58,25 @@ TINYUSB_SOURCES = $(TINYUSB_DIR)/tusb.c \
 	$(TINYUSB_DIR)/portable/synopsys/dwc2/dwc2_common.c
 
 # Sources
-C_SOURCES = $(TINYUSB_SOURCES) usb_descriptors.c
+C_SOURCES = $(TINYUSB_SOURCES) $(PLATFORM)/daisy/usb_descriptors.c
 # FxChain.cpp first: FxChain::Run, the effects' per-sample code, in a translation unit of its
 # own (FxChainRun.h, #286), and the inline functions it shares with chompi_main.cpp taken from
 # its object, not chompi_main.o's (checked after the link: tools/fxchain_tu.py)
 CPP_SOURCES = FxChain.cpp \
 	chompi_main.cpp \
-	encoder.cpp \
-	UsbDevice.cpp
+	$(PLATFORM)/boards/chompi/encoder.cpp \
+	$(PLATFORM)/daisy/UsbDevice.cpp
 
 # FatFs: the FX scenes and master settings on the card (SceneStore.h)
 USE_FATFS = 1
 
 # Libs
-LIBDAISY_DIR = ../libs/libDaisy
-DAISYSP_DIR = ../libs/DaisySP
+LIBDAISY_DIR = $(PLATFORM)/daisy/libs/libDaisy
+DAISYSP_DIR = $(PLATFORM)/daisy/libs/DaisySP
 
-C_INCLUDES = -I. -I$(TINYUSB_DIR)
+# FRIZZ's own folder first; a file's name is in one folder only (the objects are named by it,
+# vpath finds the sources by it: the host check `platform`)
+C_INCLUDES = -I. $(addprefix -I,$(PLATFORM_LAYERS)) -I$(TINYUSB_DIR)
 
 # Core location, and generic Makefile
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core

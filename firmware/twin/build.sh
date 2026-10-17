@@ -4,19 +4,19 @@
 # build.sh wasm: the same for the browser, into web/build/ (needs Emscripten: emsdk in
 # ~/opt/emsdk, or em++ on the PATH).
 #
-# The firmware (code/src) and libDaisy's UI, Switch, 4021 and MIDI code are copied unchanged
-# into build/tree, with host/ (the board's stand-ins) and test/host/fatfs.h (the card) beside
+# The firmware (code/src, and the platform's layers: ../test/sources.sh) and libDaisy's UI,
+# Switch, 4021 and MIDI code are copied unchanged into build/tree, with host/ (the board's stand-ins) and test/host/fatfs.h (the card) beside
 # them, so every include resolves inside it.
 #
-# TWIN_FIRMWARE=DIR builds another firmware (a code/src from another commit, as compare.sh
-# does), TWIN_BUILD=DIR builds into DIR instead of build/, and TWIN_DEFINES adds compiler
+# TWIN_FIRMWARE=DIR builds another firmware (another commit's source, flat, as compare.sh
+# does: ref.sh), TWIN_BUILD=DIR builds into DIR instead of build/, and TWIN_DEFINES adds compiler
 # flags (-DFRIZZ_BENCH=1 for the CPU bench's firmware).
 source "$(dirname "$0")/../test/lib.sh"   # T, REPO, INC (DaisySP), the host DaisySP
 TW=$REPO/firmware/twin
 B=${TWIN_BUILD:-$TW/build}
-FIRMWARE=${TWIN_FIRMWARE:-$REPO/firmware/code/src}
+FIRMWARE=$TWIN_FIRMWARE
 TREE=$B/tree
-LIBDAISY=$REPO/firmware/code/libs/libDaisy/src
+LIBDAISY=$REPO/firmware/platform/daisy/libs/libDaisy/src
 mkdir -p "$B"
 ARGS=("$@")
 # a build that has something to build takes the host lock first (../test/hostlock.sh, #439),
@@ -37,7 +37,13 @@ stage()
     done
     cp -r "$TW/host/." "$TREE.new/lib/"
     cp "$REPO/firmware/test/host/fatfs.h" "$TREE.new/lib/"
-    cp "$FIRMWARE"/*.h "$FIRMWARE"/*.cpp "$TREE.new/src/"
+    if [ -n "$FIRMWARE" ]; then
+        cp "$FIRMWARE"/*.h "$FIRMWARE"/*.cpp "$TREE.new/src/"
+    else
+        firmware_sources work "$TREE.new/firmware"
+        cp "$TREE.new/firmware"/*.h "$TREE.new/firmware"/*.cpp "$TREE.new/src/"
+        rm -rf "$TREE.new/firmware"
+    fi
     cp "$TW"/*.cpp "$TW"/*.h "$TREE.new/src/"
 }
 
@@ -51,7 +57,7 @@ if [ "$1" = wasm ]; then
     command -v em++ > /dev/null || source ~/opt/emsdk/emsdk_env.sh > /dev/null 2>&1 \
         || { echo "no Emscripten: install emsdk to ~/opt/emsdk"; exit 1; }
     WEB=$TW/web/build
-    VERSION=$(git -C "$REPO" rev-parse --short HEAD)$(git -C "$REPO" diff --quiet HEAD -- firmware/code firmware/twin || echo "+changes")
+    VERSION=$(git -C "$REPO" rev-parse --short HEAD)$(git -C "$REPO" diff --quiet HEAD -- firmware/code firmware/platform firmware/twin || echo "+changes")
     FLAGS="-O3 -std=gnu++14 -funsigned-char -I$TREE/lib -I$TREE/src $INC"
     # DaisySP for the browser is rebuilt when its sources or em++ change, as lib.sh's for the
     # host (#441), and the twin with it

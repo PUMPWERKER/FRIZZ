@@ -3,13 +3,14 @@
 # DaisySP include flags) and BUILD, builds DaisySP for the host when needed, and provides
 # daisysp NAME (another build of it, below), units (the unit checks' names), twin_for NAME
 # (below) and unit_test NAME: builds NAME.cpp
-# against the working tree's headers, with the host MidiClock in place of the real one (it
+# against the working tree's headers (FRIZZ's and the platform's: sources.sh), with the host MidiClock in place of the real one (it
 # opens MIDI), and runs it (with C sources of its own, if it names them: unit_test). FRIZZ's code is built with -funsigned-char, as on the CHOMPI, where
 # char is unsigned (on x86 it's signed); DaisySP needn't be, it doesn't depend on it.
 set -e -o pipefail
 T=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(git -C "$T" rev-parse --show-toplevel)
-DAISYSP=$REPO/firmware/code/libs/DaisySP/Source
+source "$T/sources.sh"   # firmware_sources: FRIZZ's source and the platform's, flat
+DAISYSP=$REPO/firmware/platform/daisy/libs/DaisySP/Source
 BUILD=$T/build
 INC=$(find "$DAISYSP" -type d | sed 's/^/-I/' | tr '\n' ' ')
 mkdir -p "$BUILD"
@@ -82,7 +83,7 @@ unit_test()
         "$dir/$name"
         return
     fi
-    cp "$REPO/firmware/code/src"/*.h "$dir/"
+    firmware_sources work "$dir"
     cp "$T/host/MidiClock.h" "$dir/"
     # a line "// unit includes: DIR ..." in NAME.cpp adds those folders, from here, first
     local extra=() d

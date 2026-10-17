@@ -19,7 +19,7 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include "../code/src/Crash.h"
+#include "../platform/daisy/Crash.h"
 #include "check.h"
 #include "script.h"
 #include "twin.h"
@@ -2703,7 +2703,9 @@ def git(*args):
                     "commit.gpgsign=false", "-c", "tag.gpgsign=false"] + list(args), check=True,
                    capture_output=True)
 os.makedirs("repo/code")
+os.makedirs("repo/platform/daisy")
 open("repo/code/a.h", "w").write("1\n")
+open("repo/platform/daisy/p.h", "w").write("1\n")
 open("repo/notes.md", "w").write("1\n")
 git("init", "-q")
 git("add", ".")
@@ -2718,6 +2720,12 @@ git("checkout", "code/a.h")
 open("repo/code/b.h", "w").write("new\n")
 print("tagged, a file added in code:", flash.tagged("repo"))
 os.remove("repo/code/b.h")
+open("repo/platform/daisy/p.h", "w").write("2\n")
+print("tagged, the platform's copy changed:", flash.tagged("repo"))
+git("checkout", "platform/daisy/p.h")
+open("repo/platform/daisy/q.h", "w").write("new\n")
+print("tagged, a file added in the platform's copy:", flash.tagged("repo"))
+os.remove("repo/platform/daisy/q.h")
 open("repo/notes.md", "w").write("2\n")
 print("tagged, outside code changed:", flash.tagged("repo"))
 git("commit", "-qam", "two")
@@ -2795,8 +2803,11 @@ case("--test to 13", "--test", "--slot", "13")
 )", out);
     Check(rc == 0 && Has(out, "tagged beta: None\n") && Has(out, "tagged v9.9.9: v9.9.9\n")
               && Has(out, "tagged, code changed: None\n") && Has(out, "tagged, a file added in code: None\n")
+              && Has(out, "tagged, the platform's copy changed: None\n")
+              && Has(out, "tagged, a file added in the platform's copy: None\n")
               && Has(out, "tagged, outside code changed: v9.9.9\n") && Has(out, "a commit after: None\n"),
-          "tools: flash.py's tagged(): a v* tag on HEAD, nothing changed or added in code/ (#171)");
+          "tools: flash.py's tagged(): a v* tag on HEAD, nothing changed or added in code/ (#171) or in the "
+          "platform's copy, platform/ (#477)");
     Check(Has(out, "exit: which slot?") && Has(out, "bare: []\n")
               && Has(out, "exit: key 10 is the latest release, the user's: only a release's or a beta's build")
               && Has(out, "10 untagged: []\n") && Has(out, "exit: key 11 is the latest beta, the user's")

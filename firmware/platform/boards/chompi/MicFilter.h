@@ -2,7 +2,7 @@
  *  @brief The built-in microphone's filter: TAPE's (TEMPO's is the same) highpass at 150 Hz,
  *  with its input clamp. TAPE follows it with five notches (2, 4, 8, 9 and 12 kHz, SVFs at
  *  resonance .99); they are some 20 Hz narrow and saturate, so they barely touch the sound
- *  but cost five sixths of the filter, and FRIZZ leaves them out (#127). One channel;
+ *  but cost five sixths of the filter, and the platform leaves them out (#127). One channel;
  *  PassthroughEngine runs it only while the mic is heard.
  */
 #pragma once

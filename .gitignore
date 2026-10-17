@@ -8,7 +8,7 @@ Icon?
 .cortex-debug.*.state.json
 .vs/
 
-# Firmware build output (the prebuilt libraries under code/libs/*/build/ stay committed)
+# Firmware build output (the prebuilt libraries under firmware/platform/daisy/libs/*/build/ stay committed)
 firmware/code/src/build/
 firmware/code/src/build-bench/
 firmware/code/src/build-itcm/

@@ -135,7 +135,7 @@ namespace chompi
     }
 
     /** The brightness the settings page sets (SettingsPage.h), in percent: 100 is full, as
-     *  FRIZZ always was, down to 25 (#176) */
+     *  the LEDs always were, down to 25 (#176) */
     static uint8_t led_percent = 100;
 
     /** How dim a key that's off goes, of full: dimly in its colour (PanelLeds.h's

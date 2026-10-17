@@ -2,10 +2,12 @@
 # ref.sh: sourced by compare.sh and ui-at.sh. twin_dir REF builds the twin on REF's firmware (a
 # commit, tag or branch; "work" for the working tree) with the working tree's twin around it,
 # into build/compare/<commit>, kept for next time, and prints that folder; its firmware is in
-# src there (for work, a link to code/src). Fails if it didn't build.
+# src there, FRIZZ's and the platform's flat (../test/sources.sh; for work, the working tree's,
+# copied again each time). Fails if it didn't build.
 TW=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(git -C "$TW" rev-parse --show-toplevel)
 OUT=$TW/build/compare
+source "$TW/../test/sources.sh"
 
 twin_dir()
 {
@@ -15,10 +17,10 @@ twin_dir()
         dir=$OUT/work
         src=$dir/src
         # the working tree's firmware, where the others have theirs
-        mkdir -p "$dir"
-        ln -sfn "$REPO/firmware/code/src" "$src"
+        rm -rf "$src"
+        firmware_sources work "$src"
     else
-        local hash path
+        local hash
         hash=$(git -C "$REPO" rev-parse --short "$ref^{commit}")
         dir=$OUT/$hash
         src=$dir/src
@@ -26,11 +28,7 @@ twin_dir()
             # unpacked beside it, then moved: one that was cut short isn't kept as the firmware
             rm -rf "$src.tmp"
             mkdir -p "$src.tmp"
-            # FRIZZ moved from firmware/frizz/ to firmware/ (CLAUDE.md)
-            path=firmware/code/src
-            git -C "$REPO" cat-file -e "$hash:$path" 2> /dev/null || path=firmware/frizz/code/src
-            git -C "$REPO" archive "$hash" "$path" \
-                | tar -x -C "$src.tmp" --strip-components=$(($(echo "$path" | tr -cd / | wc -c) + 1))
+            firmware_sources "$hash" "$src.tmp"
             mv "$src.tmp" "$src"
         fi
     fi

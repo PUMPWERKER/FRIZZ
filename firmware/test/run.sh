@@ -3,23 +3,19 @@
 # Builds the harness against FRIZZ's engine headers at that git ref (or the working tree) and
 # runs it, writing every output sample and FX meter to <out.bin>. Needs a host g++.
 source "$(dirname "$0")/lib.sh"
-SRC=firmware/code/src
 
-# that version's headers, with the host MidiClock in place of the real one (it opens MIDI)
+# that version's source, FRIZZ's and the platform's (sources.sh), with the host MidiClock in place
+# of the real one (it opens MIDI)
 D=$(mktemp -d)
 trap 'rm -rf "$D"' EXIT
+firmware_sources "$1" "$D"
 # and that version's harness, which drives its engine's interface; the working tree's for refs
 # that don't have one
 HARNESS=$T/harness.cpp
-if [ "$1" = work ]; then
-    cp "$REPO/$SRC"/*.h "$D/"
-else
+if [ "$1" != work ]; then
     # FRIZZ lived in firmware/frizz/ before the repo was reorganized
     TEST=firmware/test
-    git -C "$REPO" cat-file -e "$1:$SRC" 2>/dev/null || { SRC=firmware/frizz/code/src; TEST=firmware/frizz/test; }
-    for f in $(git -C "$REPO" ls-tree --name-only "$1" "$SRC/" | grep '\.h$'); do
-        git -C "$REPO" show "$1:$f" > "$D/$(basename "$f")"
-    done
+    git -C "$REPO" cat-file -e "$1:$TEST" 2>/dev/null || TEST=firmware/frizz/test
     if git -C "$REPO" show "$1:$TEST/harness.cpp" > "$D/harness.cpp" 2>/dev/null; then
         HARNESS=$D/harness.cpp
     fi

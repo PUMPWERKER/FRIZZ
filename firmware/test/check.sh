@@ -17,7 +17,8 @@ WHAT="$(label "$A") against $(label "$B")"
 # with itself (its host/ headers go into both sides alike, so they don't count)
 unchanged()
 {
-    [ -z "$(git -C "$REPO" status --porcelain -- ':(glob)firmware/code/src/*.h' firmware/test/harness.cpp)" ]
+    [ -z "$(git -C "$REPO" status --porcelain -- ':(glob)firmware/code/src/*.h' ':(glob)firmware/platform/core/*.h' \
+        ':(glob)firmware/platform/daisy/*.h' ':(glob)firmware/platform/boards/chompi/*.h' firmware/test/harness.cpp)" ]
 }
 D=$(mktemp -d)
 trap 'rm -rf "$D"' EXIT

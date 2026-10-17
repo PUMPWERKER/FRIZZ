@@ -18,13 +18,13 @@
  *  (chompi_main.cpp), after the boot's card reads and battery checks, and a reset stops it (the
  *  option bytes' IWDG1_SW: started by software, DevInfo's option_bytes says), so the launcher
  *  and the other slots never run with it. The IWDG can't tell the next start anything, so
- *  FRIZZ clears RCC_RSR at boot once read (Boot): its watchdog flag at the next boot means a
- *  watchdog reset since this FRIZZ started, recorded then, with when MainLoop last ran.
+ *  the firmware clears RCC_RSR at boot once read (Boot): its watchdog flag at the next boot means a
+ *  watchdog reset since this firmware started, recorded then, with when MainLoop last ran.
  *
  *  The IWDG runs on in Stop (the option bytes' FZ_IWDG_STOP, as CHOMPI's are): the low-battery
  *  sleep on a weak charger (hardware.h's LowBatteryLockoutCheck) gets one watchdog reset, then
- *  sleeps for good, in the launcher (which has its own) or in FRIZZ's boot-time checks, which
- *  come before the watchdog starts. That reset is recorded as the watchdog's.
+ *  sleeps for good, in the launcher (which has its own) or in the firmware's boot-time checks,
+ *  which come before the watchdog starts. That reset is recorded as the watchdog's.
  */
 #pragma once
 #include <stdint.h>
@@ -140,8 +140,8 @@ inline void Write(Record& r, uint32_t kind, const Running& running, uint32_t ms,
     r.check = Check(r);
 }
 
-/** At boot, RSR as read (then cleared): a watchdog reset since FRIZZ last started is recorded,
- *  with that start's build and MainLoop's last pass; then this build is the one running */
+/** At boot, RSR as read (then cleared): a watchdog reset since the firmware last started is
+ *  recorded, with that start's build and MainLoop's last pass; then this build is the one running */
 inline void Boot(Backup& b, uint32_t rsr, uint32_t crc, uint32_t len)
 {
     if ((rsr & kIwdgResetFlag) && b.running.magic == kMagic)

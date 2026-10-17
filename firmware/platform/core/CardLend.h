@@ -1,7 +1,7 @@
 /** @file CardLend.h
- *  @brief The card lent to the computer as a USB drive while FRIZZ plays on (#196). The idea
- *  and the drive are lost-tty/CHOMPI's TAPE (MIT, commit ab95f98); the gesture and what FRIZZ
- *  holds back meanwhile are FRIZZ's.
+ *  @brief The card lent to the computer as a USB drive while the firmware plays on (#196).
+ *  The idea and the drive are lost-tty/CHOMPI's TAPE (MIT, commit ab95f98); the gesture and what
+ *  the firmware holds back meanwhile are the firmware's, here FRIZZ's:
  *
  *  On the settings page, SHIFT + LOOP held 2 s with a computer on USB lends the card (LOOP
  *  blue there while it's lent; SHIFT's LED stays SHIFT's). The same gesture again, an eject
@@ -11,8 +11,8 @@
  *  being written (a scene, the settings, a bug report). The developers' SysEx asks the same
  *  (kCmdDev's USB); kCmdDev's LOOPS that start something are refused while it's lent.
  *
- *  While it's lent FRIZZ doesn't touch the card: no saves (they wait until it's back), no loop
- *  loads, no bug report (one asked for fails). The loop in RAM and the effects play on. Taken
+ *  While it's lent the firmware doesn't touch the card: no saves (they wait until it's back), no
+ *  loop loads, no bug report (one asked for fails). The loop in RAM and the effects play on. Taken
  *  back, the card is mounted afresh and the loops are scanned again (the computer may have
  *  changed them), and the scenes and the settings the computer changed are read again, as at
  *  boot, unless the device changed its own meanwhile, which then wins (SceneStore::Reread;

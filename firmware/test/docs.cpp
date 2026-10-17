@@ -299,7 +299,20 @@ static Strings Words(const std::string& s)
     return {std::sregex_token_iterator(s.begin(), s.end(), re), std::sregex_token_iterator()};
 }
 
-static std::string Source(const char* file) { return ReadFile(Repo() + "/firmware/code/src/" + file); }
+/** A source file of the firmware's: FRIZZ's own (code/src) or the platform's (its layers) */
+static std::string Source(const char* file)
+{
+    for (const char* dir : {"code/src", "platform/core", "platform/daisy", "platform/boards/chompi"})
+    {
+        const std::string path = Repo() + "/firmware/" + dir + "/" + file;
+        if (FILE* f = fopen(path.c_str(), "r"))
+        {
+            fclose(f);
+            return ReadFile(path);
+        }
+    }
+    return ReadFile(Repo() + "/firmware/code/src/" + file);
+}
 
 /** The KEY_N in a list between from and the next "};" */
 static std::vector<int> KeyList(const std::string& text, const std::string& from)

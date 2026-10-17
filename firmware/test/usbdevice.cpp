@@ -1,4 +1,4 @@
-// usbdevice.cpp: FRIZZ's USB device (code/src/UsbDevice.cpp) itself, against TinyUSB in memory
+// usbdevice.cpp: FRIZZ's USB device (platform/daisy/UsbDevice.cpp) itself, against TinyUSB in memory
 // (usbdevice/tusb.h) and a card in memory, the task's passes run by hand (TIM7's interrupt).
 // The virtual CHOMPI has a USB of its own (twin.cpp), so this is the one host check of the code
 // that talks to TinyUSB (#331):
@@ -31,10 +31,10 @@
 #include "sys/system.h"
 #include "dev/sdram.h"
 // UsbDevice.cpp is the CHOMPI's alone (#if defined(__arm__)); every system header it reaches is
-// in above, so the target's macro reaches nothing but FRIZZ's own (usb_descriptors.h,
-// UsbMidiTransport.h, which it includes from code/src)
+// in above, so the target's macro reaches nothing but the platform's own (usb_descriptors.h,
+// UsbMidiTransport.h, which it includes from beside it, platform/daisy)
 #define __arm__ 1
-#include "../code/src/UsbDevice.cpp"
+#include "../platform/daisy/UsbDevice.cpp"
 #undef __arm__
 
 // ======== TinyUSB, the computer's side ========

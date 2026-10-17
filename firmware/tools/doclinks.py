@@ -71,6 +71,7 @@ HEADING = re.compile(r'^(#{1,6})\s+(.*?)\s*#*\s*$')
 LINK = re.compile(r'(!?)\[(?:[^\[\]]|\[[^\]]*\])*\]\(([^)\s]+)\)')
 DASH = re.compile(r'^[—–-]?$')
 SRC = 'firmware/code/src'
+PANEL = 'firmware/platform/boards/chompi/PanelKeys.h'  # the platform's (#477), read by this check only
 LANDING = 'site/landing.md'
 FEATURES = 'site/features.json'
 FLOAT = r'(\d+\.?\d*|\.\d+)[fF]?'
@@ -392,10 +393,10 @@ def key_colours(root, cells, row_line, errors):
     """The white keys' colours, as fetch-docs reads them: LedColors.h's
     `static const float <name>[3] = {<r>, <g>, <b>};`, FxSlots.h's kFxSlots entries
     `{Hardware::SwId::KEY_<n>, <colour>,` and kCompKey (white), KEY_<n> the n-th white key."""
-    leds, slots, panel = (read(root, f'{SRC}/{f}') for f in ('LedColors.h', 'FxSlots.h', 'PanelKeys.h'))
-    for f, t in (('LedColors.h', leds), ('FxSlots.h', slots), ('PanelKeys.h', panel)):
+    leds, slots, panel = (read(root, f) for f in (f'{SRC}/LedColors.h', f'{SRC}/FxSlots.h', PANEL))
+    for f, t in ((f'{SRC}/LedColors.h', leds), (f'{SRC}/FxSlots.h', slots), (PANEL, panel)):
         if t is None:
-            errors.append(f'{SRC}/{f}: missing (the site reads the keys\' colours from it)')
+            errors.append(f'{f}: missing (the site reads the keys\' colours from it)')
     if None in (leds, slots, panel):
         return
     colours = {}
@@ -433,7 +434,7 @@ def key_colours(root, cells, row_line, errors):
         errors.append(f'{SRC}/FxSlots.h: kCompKey KEY_{comp.group(1)} has an effect slot too')
     white = re.search(r'kWhiteKeys\[\w*\]\s*=\s*\{([^}]*)\}', panel)
     if not white or re.findall(r'KEY_(\d+)', white.group(1)) != [str(n) for n in range(1, 16)]:
-        errors.append(f'{SRC}/PanelKeys.h: kWhiteKeys isn\'t KEY_1 to KEY_15 in order, but the site '
+        errors.append(f'{PANEL}: kWhiteKeys isn\'t KEY_1 to KEY_15 in order, but the site '
                       'takes KEY_<n> for the n-th white key')
     for i, c in enumerate(cells, 1):
         if c in ('–', '-', ''):
@@ -754,7 +755,7 @@ def selftest(root, quiet=False):
         return edit(LANDING, fn)
 
     M, Q, I, S = 'MANUAL.md', 'QUICKSTART.md', 'INSTALL.md', LANDING
-    LED, FX, PK = (f'{SRC}/{f}' for f in ('LedColors.h', 'FxSlots.h', 'PanelKeys.h'))
+    LED, FX, PK = f'{SRC}/LedColors.h', f'{SRC}/FxSlots.h', PANEL
     cases = [
         # the knob tables
         ('a knob table without row 4', after_table(r'^\| 4 \|.*\n', ''), 'has no row 4'),

@@ -531,7 +531,7 @@ void MainLoop(void* data)
         usb_switch_at = now | 1; // 0 is "not yet"
     else if ((now | 1) - usb_switch_at >= kUsbSwitchMs) // now | 1: the same ms ahead of an even now
         usb::SetAudio(ui.UsbAudio());
-#if FRIZZ_USB_SAFETY
+#if PLATFORM_USB_SAFETY
     usb::Watch(now); // make USB_SAFETY=1: an enumeration that hangs restarts into the launcher
 #endif
 

@@ -19,7 +19,7 @@
 
 Keys 10 and 11 are the user's: 10 the latest release, 11 the latest beta (FRIZZ-BETA). A build
 goes there only when the key is named (--slot 10, --slot 11), and only a release's or a beta's:
-this checkout stands on a v* tag, nothing changed in code/, the build is the one make makes
+this checkout stands on a v* tag, nothing changed in code/ or platform/, the build is the one make makes
 there (a FILE too: the same bytes), and its kFrizzVersion is the tag's (code/src/Version.h, what
 the loop transfer's HELLO says: tools/builds.py). So a release goes on from a worktree of its tag
 (git worktree add ../FrizZ-vX.Y.Z vX.Y.Z, CLAUDE.md "Releases"). A bare ./flash.py sends
@@ -77,13 +77,14 @@ import midi_send  # noqa: E402
 
 
 def tagged(where=HERE):
-    """The v* tag the checkout at WHERE stands on, with nothing changed in its code/ (nor a file
-    added there); None if it doesn't"""
+    """The v* tag the checkout at WHERE stands on, with nothing changed in its code/ or platform/
+    (the PUMPWERKER platform's copy, tools/platform-sync.py), nor a file added there; None if it
+    doesn't"""
     def git(*args):
         return subprocess.run(["git", "-C", where] + list(args), capture_output=True,
                               text=True).stdout.strip()
     tag = git("describe", "--exact-match", "--tags", "--match", "v*", "HEAD")
-    return tag if tag and not git("status", "--porcelain", "-unormal", "--", "code") else None
+    return tag if tag and not git("status", "--porcelain", "-unormal", "--", "code", "platform") else None
 
 
 def user_slot(slot, args):
@@ -95,7 +96,7 @@ def user_slot(slot, args):
     tag = tagged()
     if not tag:
         sys.exit("key %d is %s, the user's: only a release's or a beta's build goes there, made "
-                 "in a checkout of its v* tag with nothing changed in code/ (git worktree add "
+                 "in a checkout of its v* tag with nothing changed in code/ or platform/ (git worktree add "
                  "../FrizZ-vX.Y.Z vX.Y.Z): this one isn't. A branch's build goes to the test "
                  "slot: --test" % (slot, what))
     if slot == 10 and "-" in tag:

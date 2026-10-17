@@ -1,0 +1,5 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Vendored libraries: keep the language stats on the platform's own code
+**/libs/**      linguist-vendored
