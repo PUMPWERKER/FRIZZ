@@ -209,6 +209,19 @@ static void SyncCases()
     Says(rc == 0 && Read(tmp_dir + "/fw/platform/PIN") == three + "\n" && Has(check, "file for file")
               && Sh("git -C fw status --porcelain platform/tools") == "D  platform/tools/run.sh", "a commit the clone hasn't, fetched from GitHub, a file it removed removed and staged", out + check);
 
+    // a platform pull request's head: fine to try, noted until it's merged into main
+    Sh("git -C src checkout -q -b pr && printf 'int c;\\n' > src/core/c.h && git -C src add core/c.h"
+       " && git -C src commit -q -m four && git -C src push -q '" + tmp_dir + "/hub.git' pr");
+    const std::string four = Sh("git -C src rev-parse HEAD");
+    rc = Sync(four, out, "none");
+    rc = rc || Sync("--check", check, "none");
+    Says(rc == 0 && Has(check, "file for file") && Has(check, "note: PIN's commit " + four.substr(0, 12) + " isn't on the platform's main"),
+         "a pull request's head copied in, and --check notes it isn't on main", out + check);
+    Sh("git -C src checkout -q main && git -C src merge -q --no-ff -m merge pr && git -C src push -q '" + tmp_dir
+       + "/hub.git' main");
+    rc = Sync("--check", check, "none");
+    Says(rc == 0 && !Has(check, "note"), "merged into main (the cache's main fetched again), no note", check);
+
     // offline: no clone with PIN's commit, GitHub out of reach
     rc = Sync("--check", out, "none", "nohub.git", "cache2.git");
     Says(rc == 0 && Has(out, "SKIP: local only") && !Has(out, "FAIL"), "--check offline: SKIP", out);

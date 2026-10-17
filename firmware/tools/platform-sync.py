@@ -21,6 +21,9 @@ beside the folder that holds FRIZZ's .git; PLATFORM_REPO=DIR names another), if 
 commit, else fetched from GitHub (PLATFORM_URL) into a cache (test/build/platform.git,
 PLATFORM_CACHE). A commit to copy in must be on GitHub, where CI fetches it: one that isn't in
 a branch or tag there is refused (--unpushed copies it anyway, for a try that isn't committed).
+PIN names a commit on the platform's main: a draft may try a platform pull request's head, but
+before the FRIZZ pull request is ready PIN is main's commit again (the platform's pull request
+merged with a merge commit), and --check notes a PIN that isn't on main.
 --check without the network and without the commit in a clone says "SKIP: local only" and
 passes; on GitHub Actions it fails instead. Python 3 and git, nothing else; --dir DIR works on
 another copy than firmware/platform/ (the host check's own cases).
@@ -108,6 +111,25 @@ def pushed(repo, commit):
     if repo == CACHE:
         return True
     return bool(git("for-each-ref", "--contains", commit, "refs/remotes", "refs/tags", cwd=repo).strip())
+
+
+def on_main(repo, commit):
+    """True if commit is on the platform's main (its origin/main as repo has it), None if repo
+    doesn't know main"""
+    main = "refs/remotes/origin/main"
+    if git("rev-parse", "--verify", "-q", main, cwd=repo, check=False).returncode:
+        return None
+    return not git("merge-base", "--is-ancestor", commit, main, cwd=repo, check=False).returncode
+
+
+def fetch_main(commit):
+    """the cache's main fetched again (it may be older than a merge since): on_main(commit) then, None
+    if GitHub couldn't be reached"""
+    with open(CACHE + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if git("fetch", "-q", URL, "+refs/heads/main:refs/remotes/origin/main", cwd=CACHE, check=False).returncode:
+            return None
+    return on_main(CACHE, commit)
 
 
 def tree(repo, commit):
@@ -199,6 +221,10 @@ def check(folder):
     if not pushed(repo, pin):
         print("note: PIN's commit %s isn't in a branch or tag of the platform on GitHub (%s): CI won't find it"
               % (pin[:12], repo))
+    elif on_main(repo, pin) is False and (repo != CACHE or fetch_main(pin) is False):
+        print("note: PIN's commit %s isn't on the platform's main (as %s has it): fine for a draft that "
+              "tries a platform pull request, but PIN names a commit on main before the pull request is "
+              "ready" % (pin[:12], repo))
     print("%s is the platform's commit %s, file for file" % (rel, pin[:12]))
     return 0
 

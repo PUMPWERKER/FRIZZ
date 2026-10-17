@@ -16,7 +16,8 @@ TARGET = FRIZZ-bench
 # before the platform moved out (tools/builds.py source_checksum())
 BENCH_FILES := $(wildcard *.h *.c *.cpp $(foreach d,$(PLATFORM_LAYERS),$(d)/*.h $(d)/*.c $(d)/*.cpp))
 BENCH_SOURCE := $(shell cat $(foreach n,$(sort $(notdir $(BENCH_FILES))),$(filter %/$(n) $(n),$(BENCH_FILES))) | cksum | cut -d' ' -f1)
-C_DEFS = -DFRIZZ_BENCH=1 -DFRIZZ_BENCH_SOURCE='"$(BENCH_SOURCE)"'
+# PLATFORM_DEV_TESTS: the platform's tests the bench's TEST asks for (MidiClock.h's receive restarts)
+C_DEFS = -DFRIZZ_BENCH=1 -DFRIZZ_BENCH_SOURCE='"$(BENCH_SOURCE)"' -DPLATFORM_DEV_TESTS=1
 override BUILD_DIR = build-bench$(if $(filter 1,$(ITCM)),-itcm)
 endif
 
@@ -34,7 +35,7 @@ endif
 # enumeration that never finishes, or no MIDI for 60 s, restarts into the launcher), built
 # apart in build-usbsafety/ (build-bench-usbsafety/ with BENCH=1). Never a player's build
 ifeq ($(USB_SAFETY),1)
-C_DEFS += -DFRIZZ_USB_SAFETY=1
+C_DEFS += -DPLATFORM_USB_SAFETY=1
 override BUILD_DIR := $(or $(BUILD_DIR),build)-usbsafety
 endif
 

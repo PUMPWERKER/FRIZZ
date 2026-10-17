@@ -78,8 +78,12 @@ with a pull request's base) needs nothing else.
   file (content and mode), both ways. FRIZZ runs it in its host checks (`all.sh`, check
   `platform`). Nobody edits the copy inside a firmware: the check fails until the change has
   come through here.
-- **A pinned commit stays reachable:** `main`'s history is never rewritten, as a firmware's tag
-  is built again from its pin.
+- **PIN names a commit on `main`.** While a pull request here is open, a firmware's draft may
+  pin its head to try it; before the firmware's pull request is ready, the platform's is merged
+  and PIN names that commit on `main`. `--check` notes a PIN that isn't on `main`.
+- **A pinned commit stays reachable:** pull requests here are merged with a merge commit (no
+  squash, no rebase), and `main` is protected against force-pushes and deletion, as a
+  firmware's tag is built again from its pin.
 
 Each firmware gives its build these paths (FRIZZ's `firmware/code/src/Makefile`):
 
@@ -98,6 +102,15 @@ platform's: the build finds objects by their file name, and the host checks copy
 folder. The toolchain is GNU Arm Embedded 10.3-2021.10 (GCC 10.3.1): newer GCC intermittently
 breaks the SD card's communication, and the pin makes a build's bytes the same on every
 machine.
+
+## Names
+
+The platform's macros say `PLATFORM_` (`PLATFORM_USB_CHANNELS_RX`, `PLATFORM_USB_SAFETY`,
+`PLATFORM_DEV_TESTS`), its comments "the firmware" or "the device"; FRIZZ is named where a
+fact is FRIZZ's (where the code came from, its settings page, its file names). Still FRIZZ's
+today, configuration points to come: the USB product names ("FrizZ", "FrizZ card"), the
+drive's vendor (`"FrizZ   "`), and the section names `.frizz_after_run*` in the linker
+script, which FRIZZ's `FrizzHot.h` fills.
 
 ## Features are chosen at compile time
 

@@ -1,4 +1,4 @@
-// FRIZZ's USB-C port on TinyUSB (UsbDevice.h). The bring-up (the PHY's pins, CRS, TinyUSB's
+// The USB-C port on TinyUSB (UsbDevice.h). The bring-up (the PHY's pins, CRS, TinyUSB's
 // task on TIM7), the audio FIFOs' glue (fade on start, stop and running dry, n-1/n/n+1 IN
 // packets, the FIFO-count feedback) and the drive's callbacks follow lost-tty/CHOMPI's TAPE
 // (MIT, github.com/lost-tty/CHOMPI, firmware/chompi-tape/code/src/UsbDevice.cpp, commits
@@ -18,7 +18,7 @@
 #include "usb_descriptors.h"
 #include "UsbMidiTransport.h"
 
-// built for size, as FRIZZ's code space is tight (docs/CAPACITY.md): it runs a few thousand
+// built for size, as a firmware's code space is tight (docs/CAPACITY.md): it runs a few thousand
 // times a second at most. Receive and Send, a block's frames in the audio callback, at -O3
 #pragma GCC optimize("Os")
 #define USB_AUDIO_BLOCK __attribute__((optimize("O3")))
@@ -34,17 +34,17 @@ static volatile uint32_t bus_asked = 0; // bumped by each ask
 static uint32_t bus_seen = 0;           // the task's
 static volatile bool on_bus = false;    // the task's
 static uint32_t away_ticks = 0;         // the task's passes off the bus still to go
-// long enough off the bus for any computer to see FRIZZ gone: 300 ms of 4 kHz passes
+// long enough off the bus for any computer to see the device gone: 300 ms of 4 kHz passes
 static const uint32_t kAwayTicks = 1200;
 
 static Stats stats = {};
 
 // ======== audio ========
-static constexpr size_t kBytes = FRIZZ_USB_BYTES_PER_SAMPLE;
+static constexpr size_t kBytes = PLATFORM_USB_BYTES_PER_SAMPLE;
 static constexpr size_t kFrameBytes = kChannels * kBytes;
 static constexpr float kFullScale = 8388608.f;
 static constexpr int32_t kMax24 = 8388607;
-static constexpr float kFadeInStep = 1000.f / FRIZZ_USB_SAMPLE_RATE; // 1 ms
+static constexpr float kFadeInStep = 1000.f / PLATFORM_USB_SAMPLE_RATE; // 1 ms
 // the feedback holds the computer's stream this deep in the OUT FIFO; it plays from there
 static constexpr uint16_t kRxPrime = CFG_TUD_AUDIO_FUNC_1_EP_OUT_SW_BUF_SZ / 2;
 
@@ -198,7 +198,7 @@ void Init()
     // no VBUS pin: the D+/D- switch decides when a computer is there (chompi_main.cpp)
     tud_configure_dwc2_t cfg = CFG_TUD_CONFIGURE_DWC2_DEFAULT;
     cfg.vbus_sensing = false;
-    tud_configure(FRIZZ_USB_RHPORT, TUD_CFGID_DWC2, &cfg);
+    tud_configure(PLATFORM_USB_RHPORT, TUD_CFGID_DWC2, &cfg);
 
     // the audio DMA's priority: the two never preempt each other
     HAL_NVIC_SetPriority(OTG_HS_IRQn, 0, 0);
@@ -206,7 +206,7 @@ void Init()
     tusb_rhport_init_t dev_init = {};
     dev_init.role = TUSB_ROLE_DEVICE;
     dev_init.speed = TUSB_SPEED_FULL;
-    tusb_init(FRIZZ_USB_RHPORT, &dev_init);
+    tusb_init(PLATFORM_USB_RHPORT, &dev_init);
     tud_disconnect(); // off the bus until Start()
 
     // the task's timer: TIM7 at 4 kHz, below the SD card (1), above libDaisy's timers
@@ -434,7 +434,7 @@ static int32_t CardPost(uint32_t lba, uint32_t offset, uint8_t* buffer, uint32_t
     return TUD_MSC_RET_ASYNC;
 }
 
-#if FRIZZ_USB_SAFETY
+#if PLATFORM_USB_SAFETY
 // the frame number the core saw last and when it last moved, since when frames come without
 // a configuration (MainLoop passes many times a 1 ms frame: a computer is there while it
 // moved within kFramesGoneMs)
@@ -472,7 +472,7 @@ void Watch(uint32_t now_ms)
             watch_since = now_ms | 1;
     }
     else if (now_ms - watch_moved > kFramesGoneMs)
-        watch_since = 0; // no frames: no computer (a charger, a battery), or it suspends FRIZZ
+        watch_since = 0; // no frames: no computer (a charger, a battery), or it suspends the device
     if (watch_since && (now_ms | 1) - watch_since > kUnconfiguredMs)
         NVIC_SystemReset(); // as a restart over MIDI: the bootloader starts the launcher
 }
@@ -491,7 +491,7 @@ extern "C"
         Task();
     }
 
-    void OTG_HS_IRQHandler(void) { tusb_int_handler(FRIZZ_USB_RHPORT, true); }
+    void OTG_HS_IRQHandler(void) { tusb_int_handler(PLATFORM_USB_RHPORT, true); }
 
     // ---- the drive (cdc_msc's callbacks) ----
     void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t product_id[16], uint8_t product_rev[4])
@@ -571,7 +571,7 @@ extern "C"
             card_gone = true;
     }
 
-    // unplugged too, as far as FRIZZ can tell: there's no VBUS pin
+    // unplugged too, as far as the device can tell: there's no VBUS pin
     void tud_suspend_cb(bool remote_wakeup_en)
     {
         (void)remote_wakeup_en;
@@ -611,11 +611,11 @@ extern "C"
         (void)rhport;
         (void)ep_out;
         (void)cur_alt_setting;
-        const uint16_t frames = n_bytes_received / (kChannels * FRIZZ_USB_BYTES_PER_SAMPLE);
+        const uint16_t frames = n_bytes_received / (kChannels * PLATFORM_USB_BYTES_PER_SAMPLE);
         Stats& s = stats;
         s.rx_packets++;
-        s.rx_short += frames < FRIZZ_USB_SAMPLE_RATE / 1000;
-        s.rx_long += frames > FRIZZ_USB_SAMPLE_RATE / 1000;
+        s.rx_short += frames < PLATFORM_USB_SAMPLE_RATE / 1000;
+        s.rx_long += frames > PLATFORM_USB_SAMPLE_RATE / 1000;
         const uint16_t fill = tud_audio_n_available(func_id);
         s.rx_full += fill >= CFG_TUD_AUDIO_FUNC_1_EP_OUT_SW_BUF_SZ;
         s.rx_min = fill < s.rx_min ? fill : s.rx_min;
@@ -627,9 +627,9 @@ extern "C"
     {
         (void)func_id;
         (void)alt_itf;
-        // the computer follows FRIZZ's clock: the feedback holds the OUT FIFO half full
+        // the computer follows the device's clock: the feedback holds the OUT FIFO half full
         feedback_param->method = AUDIO_FEEDBACK_METHOD_FIFO_COUNT;
-        feedback_param->sample_freq = FRIZZ_USB_SAMPLE_RATE;
+        feedback_param->sample_freq = PLATFORM_USB_SAMPLE_RATE;
         feedback_param->fifo_count.fifo_threshold = kRxPrime;
     }
 
@@ -639,9 +639,9 @@ extern "C"
         const uint8_t ctrl_sel = TU_U16_HIGH(p_request->wValue);
         if (ctrl_sel != AUDIO10_EP_CTRL_SAMPLING_FREQ || p_request->bRequest != AUDIO10_CS_REQ_GET_CUR)
             return false;
-        const uint8_t freq[3] = {static_cast<uint8_t>(FRIZZ_USB_SAMPLE_RATE),
-                                 static_cast<uint8_t>(FRIZZ_USB_SAMPLE_RATE >> 8),
-                                 static_cast<uint8_t>(FRIZZ_USB_SAMPLE_RATE >> 16)};
+        const uint8_t freq[3] = {static_cast<uint8_t>(PLATFORM_USB_SAMPLE_RATE),
+                                 static_cast<uint8_t>(PLATFORM_USB_SAMPLE_RATE >> 8),
+                                 static_cast<uint8_t>(PLATFORM_USB_SAMPLE_RATE >> 16)};
         return tud_audio_buffer_and_schedule_control_xfer(rhport, p_request, (void*)freq, sizeof(freq));
     }
 
@@ -650,7 +650,7 @@ extern "C"
         (void)rhport;
         const uint8_t ctrl_sel = TU_U16_HIGH(p_request->wValue);
         return ctrl_sel == AUDIO10_EP_CTRL_SAMPLING_FREQ && p_request->bRequest == AUDIO10_CS_REQ_SET_CUR
-               && p_request->wLength == 3 && (buf[0] | buf[1] << 8 | buf[2] << 16) == FRIZZ_USB_SAMPLE_RATE;
+               && p_request->wLength == 3 && (buf[0] | buf[1] << 8 | buf[2] << 16) == PLATFORM_USB_SAMPLE_RATE;
     }
 }
 #endif

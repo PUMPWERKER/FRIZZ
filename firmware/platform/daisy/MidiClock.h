@@ -18,7 +18,7 @@
  *  The UART/USB setup is from WAVE's MidiManager.h. See LOOPER.md 1.4. MIDI out (MidiOut.h)
  *  sends through it too: a byte at a time to the jack's UART (TrsPut), and over USB.
  *
- *  The tempo factor (the settings page, SettingsPage.h) makes FRIZZ follow the clock at half
+ *  The tempo factor (the settings page, SettingsPage.h) makes the firmware follow the clock at half
  *  or double its tempo: what the looper and TempoClock read (the ticks, their period, the
  *  tempo) counts every tick twice, or every other one. TempoClock applies it to the other
  *  tempos (a loop's, a tapped one) itself. The event log keeps what was sent
@@ -27,14 +27,14 @@
  *  One other message is read: the SysEx F0 7D 43 48 10 F7 asks for a restart, so a computer
  *  can get the CHOMPI back to the multi-firmware launcher without the power switch
  *  (firmware/flash.py). The header is the launcher's (7D, non-commercial, then "CH";
- *  github.com/sfaber02/CHOMPI, firmware/chompi-launcher/PROTOCOL.md); 10 is FRIZZ's own
+ *  github.com/sfaber02/CHOMPI, firmware/chompi-launcher/PROTOCOL.md); 10 is the firmware's own
  *  command, above the launcher's 01-07. MainLoop does the restart (chompi_main.cpp).
  */
 #pragma once
 #include <string.h>
 #include "daisy.h"
 #if defined(__arm__)
-#include "UsbDevice.h"        // FRIZZ's USB on TinyUSB (#196)
+#include "UsbDevice.h"        // the USB device on TinyUSB (#196)
 #include "UsbMidiTransport.h"
 #endif
 
@@ -43,7 +43,7 @@ using namespace daisy;
 namespace chompi
 {
 
-// a restart, after the F0: the launcher's header, FRIZZ's command
+// a restart, after the F0: the launcher's header, the firmware's command
 static const uint8_t kRestartSysEx[] = {0x7D, 0x43, 0x48, 0x10};
 
 static const uint32_t kTicksPerBeat = 24;
@@ -52,7 +52,7 @@ static const uint32_t kTicksPerBar = kTicksPerBeat * kBeatsPerBar;
 static const uint32_t kClockTimeoutSamples = 24000;     // 0.5s at 48kHz
 static const float kHold = .125f; // an interval off the period by more waits for the next
 
-// How FRIZZ follows the clock: at half its tempo, as sent, or at double
+// How the firmware follows the clock: at half its tempo, as sent, or at double
 enum class ClockFactor : uint8_t
 {
     HALF,
@@ -144,7 +144,7 @@ public:
         if (source_ != Source::NONE && now - last_tick_ > kClockTimeoutSamples)
             source_ = Source::NONE;
 
-#if FRIZZ_BENCH && defined(__arm__)
+#if PLATFORM_DEV_TESTS && defined(__arm__)
         TestRestart();
 #endif
         // UART disables itself on errors such as overrun; Listen() restarts it (#361)
@@ -180,7 +180,7 @@ public:
     /** How often the jack's receive ended on an error and was started again (#361) */
     inline uint32_t TrsRestarts() const { return trs_restarts_; }
 
-#if FRIZZ_BENCH && defined(__arm__)
+#if PLATFORM_DEV_TESTS && defined(__arm__)
     /** TEST's kUartRestart (NormalPage.h): count times, 4 ms apart, the jack's receive ended
      *  as an error ends it while MIDI out is sending, so the restart's effect on the sending
      *  shows: two marker bytes (0xFD, undefined real-time: receivers ignore it) to the jack,
@@ -275,7 +275,7 @@ public:
         return UsbReady() && usb_midi.GetMutableTransport().Tx(bytes, size);
     }
 
-    /** Whether a host has USB configured: a cable to a computer that knows FRIZZ (not on a
+    /** Whether a host has USB configured: a cable to a computer that knows the firmware (not on a
      *  battery or a charger alone) */
     inline bool UsbHost() const
     {
@@ -464,7 +464,7 @@ private:
     Source transport_from_ = Source::NONE;
     Listener listener_ = nullptr;
     void* listener_context_ = nullptr;
-#if FRIZZ_BENCH && defined(__arm__)
+#if PLATFORM_DEV_TESTS && defined(__arm__)
     static const uint8_t kMarker = 0xFD;
     void TestRestart()
     {

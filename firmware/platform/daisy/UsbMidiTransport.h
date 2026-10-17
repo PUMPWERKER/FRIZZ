@@ -8,9 +8,9 @@
  *  (TIM7) reads what came in into MidiHandler's parser, with the audio callback held off (it
  *  empties MidiHandler's queue and preempts the task), and sends the queue. RxActive() is
  *  false until StartRx: MidiHandler::Listen() starts the receive only while it's false (true
- *  from the start, as lost-tty's, left FRIZZ deaf to USB MIDI: no IDENT, no restart).
+ *  from the start, as lost-tty's, left the device deaf to USB MIDI: no IDENT, no restart).
  *
- *  A computer can have FRIZZ configured and not read it: Linux (and Windows) take MIDI in only
+ *  A computer can have the device configured and not read it: Linux (and Windows) take MIDI in only
  *  while an app has the port open. What waits then is stale, and went out all at once when an
  *  app opened the port (a DAW got ~270 ticks in a burst, and any Start among them). So a queue
  *  that nothing was taken from for kStalePasses is dropped, all but the rest of the message
@@ -60,7 +60,7 @@ public:
     }
     /** The queue's free bytes */
     size_t Room() const { return kTxSize - (head_ - tail_); }
-    /** Nothing taken from the queue for a while (kStuckPasses): no app reads FRIZZ's port */
+    /** Nothing taken from the queue for a while (kStuckPasses): no app reads the device's port */
     bool Stuck() const { return stuck_ >= kStuckPasses; }
 
     /** Whether any MIDI came in over USB since power-on (UsbDevice.cpp's Watch) */

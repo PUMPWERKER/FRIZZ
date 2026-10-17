@@ -305,7 +305,7 @@ uint8_t DMA_BUFFER_MEM_SECTION mp_dma_buff[6];
             // plugged into low current source with low batt: sleeps for good, as the stock
             // firmware does. Nothing in here reads the battery again, and STOP stops the clocks,
             // which a wake-up wouldn't restore; the charger IC goes on charging by itself, and
-            // the power switch starts FRIZZ again
+            // the power switch starts the firmware again
             while(batt_low_bounce == 0xff && (legacy_cable_bounce == 0xff || iindpm_stat_bounce == 0xff))
             {
                 LedsOff();

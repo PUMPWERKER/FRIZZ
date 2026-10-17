@@ -1,17 +1,18 @@
 /** @file UsbDevice.h
- *  @brief FRIZZ's USB-C port on TinyUSB (UsbDevice.cpp, #196): a sound card, USB MIDI, and the
+ *  @brief The USB-C port on TinyUSB (UsbDevice.cpp, #196): a sound card, USB MIDI, and the
  *  card as a drive.
  *
  *  - Audio, USB Audio Class 1, 48 kHz / 24 bit, 2 channels each way (tusb_config.h,
  *    usb_descriptors.c). The computer's stream is the input source USB (passthroughEngine.h,
- *    Receive); the master before VOLUME goes to it (Send). The computer follows FRIZZ's clock
- *    both ways: its stream into FRIZZ is held half a FIFO deep by the feedback endpoint (the
- *    FIFO's count), FRIZZ's to it goes in packets of 47, 48 or 49 frames by its FIFO's fill.
+ *    Receive); the master before VOLUME goes to it (Send). The computer follows the device's clock
+ *    both ways: its stream into the device is held half a FIFO deep by the feedback endpoint (the
+ *    FIFO's count), the device's to it goes in packets of 47, 48 or 49 frames by its FIFO's fill.
  *    CRS trims the USB clock (HSI48) to the computer's start of frame.
- *  - USB audio on or off (SHIFT + the upper F# on the settings page while USB is the source,
- *    saved in frizz_master.txt): off, FRIZZ is MIDI and the drive alone. The layout is chosen
- *    before FRIZZ goes on the bus (Start, after the card's settings are read), and a switch
- *    leaves the bus and comes back with the other one (SetAudio): MIDI is gone meanwhile.
+ *  - USB audio on or off (the firmware's setting; FRIZZ's: SHIFT + the upper F# on the settings
+ *    page while USB is the source, saved in frizz_master.txt): off, the device is MIDI and the
+ *    drive alone. The layout is chosen before the device goes on the bus (Start, after the
+ *    card's settings are read), and a switch leaves the bus and comes back with the other one
+ *    (SetAudio): MIDI is gone meanwhile.
  *  - MIDI (UsbMidiTransport.h): libDaisy's MidiHandler on TinyUSB. What comes in is parsed in
  *    TinyUSB's task, what goes out is queued (MainLoop's answers, MidiOut's bytes) and sent
  *    from the task. MidiOut's USB bytes are queued from the task too (SetTaskHook), so a
@@ -29,7 +30,7 @@
  *
  *  ST's USB stack is gone from the image: libDaisy's system.cpp has no OTG_HS interrupt
  *  handlers any more (THIRD_PARTY.md), UsbDevice.cpp has TinyUSB's. The virtual CHOMPI has
- *  its own of everything here (twin.cpp): what the computer plays, what FRIZZ sends it, the
+ *  its own of everything here (twin.cpp): what the computer plays, what the device sends it, the
  *  layout it comes up with, the card lent.
  */
 #pragma once
@@ -37,8 +38,8 @@
 #include <cstddef>
 #include <cstdint>
 
-#ifndef FRIZZ_USB_SAFETY
-#define FRIZZ_USB_SAFETY 0 // make USB_SAFETY=1: Watch() (a development build for a new stack)
+#ifndef PLATFORM_USB_SAFETY
+#define PLATFORM_USB_SAFETY 0 // make USB_SAFETY=1: Watch() (a development build for a new stack)
 #endif
 
 namespace chompi
@@ -49,7 +50,7 @@ static constexpr size_t kChannels = 2; // each way
 static constexpr size_t kMaxBlock = 48; // the most frames Receive() and Send() take at once
 
 /** Once, as the USB lines are back from the charger (chompi_main.cpp): the port and the task's
- *  timer. FRIZZ isn't on the bus yet */
+ *  timer. The device isn't on the bus yet */
 void Init();
 
 /** Once the card's settings are read: on the bus, with the audio function or without */
@@ -59,15 +60,15 @@ void Start(bool audio);
  *  back with it, MIDI answering again ~1.2 s after (measured for #281). From MainLoop */
 void SetAudio(bool audio);
 
-/** The layout FRIZZ is on the bus with (or will be): true with the sound card */
+/** The layout the device is on the bus with (or will be): true with the sound card */
 bool Audio();
 
-/** A computer has FRIZZ configured and isn't suspending it, and FRIZZ is on the bus */
+/** A computer has the device configured and isn't suspending it, and it is on the bus */
 bool Host();
 
-/** The computer plays to FRIZZ */
+/** The computer plays to the device */
 bool RxStreaming();
-/** The computer records from FRIZZ */
+/** The computer records from the device */
 bool TxStreaming();
 
 /** The computer's audio for this block, kChannels, as it sent it (-1..1); silence while it
@@ -93,7 +94,7 @@ struct Stats
     // lost), its fill's lowest and highest after a packet since the last ask
     uint32_t rx_packets, rx_short, rx_long, rx_full;
     uint16_t rx_min, rx_max;
-    uint32_t enumerations; // times FRIZZ went on the bus
+    uint32_t enumerations; // times the device went on the bus
 };
 const Stats& GetStats();
 /** The fill's extremes start again */
@@ -103,8 +104,9 @@ void ResetFillRange();
  *  tells how many the card has, asked as it's lent (the HAL knows only once FatFs has set the
  *  card up) */
 void SetCard(bool (*io)(bool write, uint8_t* buf, uint32_t sector, uint32_t count), uint32_t (*sectors)());
-/** On: the computer finds the card in the drive, FRIZZ leaves it alone; off: an empty drive. The
- *  first TEST UNIT READY after it's on answers UNIT ATTENTION, the medium changed. From MainLoop */
+/** On: the computer finds the card in the drive, the firmware leaves it alone; off: an empty
+ *  drive. The first TEST UNIT READY after it's on answers UNIT ATTENTION, the medium changed.
+ *  From MainLoop */
 void CardMode(bool on);
 bool InCardMode();
 /** True once when the computer ejected it, or USB went (unplugged, asleep) while it was on */
@@ -124,11 +126,11 @@ const CardStats& GetCardStats();
 /** A function TinyUSB's task calls every pass, before it sends MIDI: MidiOut::FlushUsb (#265) */
 void SetTaskHook(void (*hook)());
 
-#if FRIZZ_USB_SAFETY
+#if PLATFORM_USB_SAFETY
 /** From MainLoop, in a development build only (make USB_SAFETY=1), the ways back to the
  *  launcher without the power switch for a new USB stack: an enumeration that never finishes
- *  (the computer sends frames for 10 s, never configures FRIZZ), or a computer that configured
- *  FRIZZ but sent it no MIDI for 60 s (the tools ask at once: FRIZZ is deaf to them), restarts
+ *  (the computer sends frames for 10 s, never configures the device), or a computer that configured
+ *  it but sent it no MIDI for 60 s (the tools ask at once: the device is deaf to them), restarts
  *  into it. Never in a player's build: a computer that sends no MIDI is no fault */
 void Watch(uint32_t now_ms);
 #endif

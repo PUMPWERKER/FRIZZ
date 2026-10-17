@@ -17,7 +17,7 @@ MEMORY
 	DTCMRAM (RWX) : ORIGIN = 0x20000000, LENGTH = 128K
 	/* FRIZZ moved this split by 40K for code (#26). The image the bootloader and the launcher
 	 * copy is the code plus .data's initial values, which they take up to 480K and 512K of;
-	 * the split is ours. SRAM keeps room for the bench build's .data and .bss. */
+	 * the split is the platform's. SRAM keeps room for the bench build's .data and .bss. */
 	SRAM_EXEC (RWX): ORIGIN = 0x24000000, LENGTH = 272K
 	SRAM (RWX)    : ORIGIN = 0x24000000 + 272K, LENGTH = 240K
 	RAM_D2 (RWX)  : ORIGIN = 0x30000000, LENGTH = 32K
@@ -53,8 +53,8 @@ SECTIONS
 
 		*(.text)
 		*(.text*)
-		/* FRIZZ: per-sample code whose size would move FxChain::Run (FRIZZ_AFTER_RUN,
-		 * FrizzHot.h, #308) */
+		/* a firmware's per-sample code whose size would move its hot code before it (FRIZZ's
+		 * FRIZZ_AFTER_RUN for FxChain::Run, its FrizzHot.h, #308) */
 		*(.frizz_after_run)
 		*(.frizz_after_run_last)
 		*(.rodata)
@@ -113,9 +113,10 @@ SECTIONS
 		PROVIDE(__fini_array_end = .);
 	} > SRAM_EXEC
 
-	/* FRIZZ: the per-sample code (FRIZZ_HOT, FxCommon.h) runs from ITCM, which has no cache
-	 * to miss. A BOOT_SRAM app can't load from flash, so the bootloader copies it into
-	 * SRAM_EXEC with the rest of the image and main() copies it on (CopyItcm, chompi_main.cpp) */
+	/* the per-sample code a firmware puts in .itcmram (FRIZZ's FRIZZ_HOT) runs from ITCM,
+	 * which has no cache to miss. A BOOT_SRAM app can't load from flash, so the bootloader
+	 * copies it into SRAM_EXEC with the rest of the image and main() copies it on (FRIZZ's
+	 * CopyItcm) */
 	_siitcmdata = LOADADDR(.itcmram);
 
 	.itcmram :
@@ -262,8 +263,8 @@ SECTIONS
 		PROVIDE(__sdram_bss_end = _esdram_bss);
 	} > SDRAM
 
-	/* FRIZZ: SDRAM that is always written before it's read, which ZeroSDRAM (from _ssdram_bss
-	 * to _esdram_bss) doesn't clear: the loop and the event log (chompi_main.cpp, SDRAM_NOINIT) */
+	/* SDRAM that is always written before it's read, which ZeroSDRAM (from _ssdram_bss
+	 * to _esdram_bss) doesn't clear: in FRIZZ the loop and the event log (its SDRAM_NOINIT) */
 	.sdram_noinit (NOLOAD) :
 	{
 		. = ALIGN(4);

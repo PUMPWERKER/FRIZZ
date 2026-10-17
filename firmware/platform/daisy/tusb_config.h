@@ -1,6 +1,6 @@
 #pragma once
 
-// TinyUSB on FRIZZ's USB port (UsbDevice.h): the OTG_HS core on its full speed PHY, rhport 1, as
+// TinyUSB on the USB port (UsbDevice.h): the OTG_HS core on its full speed PHY, rhport 1, as
 // a USB Audio Class 1 sound card (48 kHz / 24 bit, 2 channels each way), USB MIDI and the card
 // as a drive (MSC). After TinyUSB's examples uac2_speaker_fb and uac2_headset (their UAC1
 // configurations), midi_test and cdc_msc; the shape of lost-tty/CHOMPI's TAPE (MIT, its
@@ -17,7 +17,7 @@ extern "C" {
 
 #define CFG_TUD_ENABLED            1
 #define CFG_TUD_MAX_SPEED          OPT_MODE_FULL_SPEED
-#define FRIZZ_USB_RHPORT           1
+#define PLATFORM_USB_RHPORT        1
 
 // no DMA (the core's FIFOs are filled by the CPU), so no section and the usual alignment
 #define CFG_TUSB_MEM_SECTION
@@ -33,16 +33,18 @@ extern "C" {
 #define CFG_TUD_VENDOR             0
 
 // ---- audio ----
-#define FRIZZ_USB_SAMPLE_RATE      48000
-#define FRIZZ_USB_BYTES_PER_SAMPLE 3 // 24 bit, packed
-#define FRIZZ_USB_BITS_PER_SAMPLE  24
-#define FRIZZ_USB_CHANNELS_RX      2 // the computer -> FRIZZ: the input source USB
-#define FRIZZ_USB_CHANNELS_TX      2 // FRIZZ -> the computer: the master before VOLUME
+#define PLATFORM_USB_SAMPLE_RATE      48000
+#define PLATFORM_USB_BYTES_PER_SAMPLE 3 // 24 bit, packed
+#define PLATFORM_USB_BITS_PER_SAMPLE  24
+#define PLATFORM_USB_CHANNELS_RX      2 // the computer -> the device: an input (FRIZZ's source USB)
+#define PLATFORM_USB_CHANNELS_TX      2 // the device -> the computer (FRIZZ's master before VOLUME)
 
 #define CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_MAX \
-    TUD_AUDIO_EP_SIZE(false, FRIZZ_USB_SAMPLE_RATE, FRIZZ_USB_BYTES_PER_SAMPLE, FRIZZ_USB_CHANNELS_RX)
+    TUD_AUDIO_EP_SIZE(false, PLATFORM_USB_SAMPLE_RATE, PLATFORM_USB_BYTES_PER_SAMPLE, \
+                      PLATFORM_USB_CHANNELS_RX)
 #define CFG_TUD_AUDIO_FUNC_1_EP_IN_SZ_MAX \
-    TUD_AUDIO_EP_SIZE(false, FRIZZ_USB_SAMPLE_RATE, FRIZZ_USB_BYTES_PER_SAMPLE, FRIZZ_USB_CHANNELS_TX)
+    TUD_AUDIO_EP_SIZE(false, PLATFORM_USB_SAMPLE_RATE, PLATFORM_USB_BYTES_PER_SAMPLE, \
+                      PLATFORM_USB_CHANNELS_TX)
 
 // 4 packets each way, held about half full: the feedback (FIFO count, which needs 4 at least,
 // as uac2_speaker_fb says) and the IN flow control keep them there, ~2 ms each way
