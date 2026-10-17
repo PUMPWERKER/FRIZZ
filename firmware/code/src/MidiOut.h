@@ -7,7 +7,12 @@
  *  settings page's G#; whether the gear behind plays is up to Start, Continue and Stop.
  *  - Passing on: with a MIDI clock coming in and no loop, its ticks go out as MidiClock counts
  *    them, so by the clock factor: at half every other one, at double one more halfway to the
- *    next, timed by the clock's period. Start, Continue and Stop from that input go out too.
+ *    next, timed by the clock's period. Start, Continue, Stop and Song Position from that
+ *    input go out too (without a loop, with a clock or not), a Song Position after a Stop
+ *    and before a Start or Continue of the same block, as a DAW sends it, moved while
+ *    stopped: the gear resumes where the DAW does (#443). The Song Position by the factor
+ *    too, in the 16ths of the ticks that go out: at double twice the DAW's, at half half
+ *    of it (an odd one rounded down, half a 16th early).
  *  - Generating: with a loop, or without a clock, two ticks per pulse of the tempo clock
  *    (TempoClock.h, 12 PPQN), one on the pulse and one halfway to the next, so by the clock
  *    factor as the effects are. With a loop they come from its play position, so beat 1 is
@@ -86,7 +91,8 @@ public:
                                      || engine.looper.Standing());
         const bool passing = clock_->HasClock() && !loop;
         MidiClock::Source in_from;
-        const uint8_t in = clock_->TakeTransport(in_from);
+        uint16_t spp_in;
+        const uint8_t in = clock_->TakeTransport(in_from, spp_in);
         const uint32_t ticks = clock_->GetTicks();
 
         if (ports_ != MidiOutPorts::OFF)
@@ -107,17 +113,27 @@ public:
             else if (loop && !paused && was_paused_)
             {
                 continue_at_ = engine.Next16th();
-                const uint32_t spp = continue_at_ / kPulsesPer16th;
-                const uint8_t msg[3] = {0xF2, static_cast<uint8_t>(spp & 0x7F),
-                                        static_cast<uint8_t>((spp >> 7) & 0x7F)};
-                Send(msg, 3, back);
+                SongPosition(continue_at_ / kPulsesPer16th, Ports(back));
             }
             if (!loop)
             {
                 start_ = 0;
                 continue_at_ = kNone;
-                if (in)
-                    Transport(in, Ports(in_from));
+                // a Song Position goes where the gear stands: after a Stop, before a Start or
+                // Continue (#443)
+                const uint8_t to = Ports(in_from);
+                if (in == kStop)
+                    Transport(in, to);
+                if (spp_in != MidiClock::kNoSpp)
+                {
+                    // in the gear's 16ths, of the ticks it gets: by the clock factor (at half,
+                    // an odd one half a 16th early)
+                    // HALF, ONE, DOUBLE are 0, 1, 2: N/2, N, 2N
+                    const uint32_t at = (spp_in << static_cast<uint8_t>(clock_->Factor())) >> 1;
+                    SongPosition(at < 0x3FFF ? at : 0x3FFF, to);
+                }
+                if (in && in != kStop)
+                    Transport(in, to);
             }
 
             // the ticks: a halfway one due first, then this block's
@@ -190,7 +206,8 @@ public:
     void Skip()
     {
         MidiClock::Source from;
-        clock_->TakeTransport(from);
+        uint16_t spp;
+        clock_->TakeTransport(from, spp);
         last_ticks_ = clock_->GetTicks();
     }
 
@@ -309,6 +326,13 @@ private:
         else
             playing_ |= sent;
         return sent;
+    }
+
+    /** Song Position, in 16ths, to ports. Not inlined: the loop's and one passed on */
+    __attribute__((noinline)) void SongPosition(uint32_t spp, uint8_t ports)
+    {
+        const uint8_t msg[3] = {0xF2, static_cast<uint8_t>(spp & 0x7F), static_cast<uint8_t>((spp >> 7) & 0x7F)};
+        Send(msg, 3, ports);
     }
 
     /** A tick now, unless one went out less than min_gap samples ago, and another one

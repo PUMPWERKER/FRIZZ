@@ -59,7 +59,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(HERE))
 import chompi  # noqa: E402
 
-URL = os.environ.get("FRIZZ_COMPANION_URL", "https://frizz.friedrichwagner.eu/beta/companion/")
+URL = os.environ.get("FRIZZ_COMPANION_URL", "https://pumpwerker.de/frizz/beta/companion/")
 BROWSER = os.environ.get("FRIZZ_CHROMIUM", "flatpak run org.chromium.Chromium").split()
 BANKS = list("abcdefgh") + ["cubbi_" + c for c in "abcde"]
 # the shim that keeps Chromium's ALSA MIDI from miscounting a card's hwdep as an OPL synth

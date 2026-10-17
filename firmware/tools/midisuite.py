@@ -971,6 +971,35 @@ def out_pass(r):
     r.check("no loop again: the DAW's Stop passed on", count(log, STOP, t2) >= 1, count(log, STOP, t2), ">= 1")
 
 
+@case("out-spp", "7: a DAW moves its playhead while stopped and plays on: its Song Position and "
+      "Continue, in over USB, go out of TRS in that order, never back, so the gear behind goes on "
+      "where the DAW does (#443)", needs=("in|out",), literal="out")
+def out_spp(r):
+    src, dst = pass_ports(r)
+    r.setting(clock_source=SOURCES[src], midi_out=OUTS["trs" if dst == "trs" else "all"])
+    c = r.clock(src, 120)
+    r.wait_tempo(120, 1, 5)
+    log, back = r.captured(dst).log, r.captured(src).log
+    c.send([START])
+    time.sleep(1.)
+    c.send([STOP])
+    time.sleep(.5)
+    t0 = time.perf_counter()
+    c.send(spp(300) + bytes([CONTINUE]))  # together, before the next tick, as a DAW sends them
+    time.sleep(.5)
+    t_spp, m = first(log, SPP, t0)
+    t_cont, _ = first(log, CONTINUE, t0)
+    at = m[1] | m[2] << 7 if m else None
+    r.check("Song Position 300 passed on out of %s" % dst.upper(), at == 300, at, 300)
+    r.tcheck("then Continue", t_spp is not None and t_cont is not None and 0 <= t_cont - t_spp <= .05 * r.loose,
+             "%+.1f ms after it" % ((t_cont - t_spp) * 1000) if t_cont and t_spp else "none",
+             "right after it (<= %g ms)" % (50 * r.loose))
+    sent_back = count(back, SPP, t0) + count(back, CONTINUE, t0)
+    r.check("nothing back out of %s" % src.upper(), sent_back == 0, sent_back, 0)
+    c.send([STOP])
+    time.sleep(.2)
+
+
 @case("out-factor", "7: clock factor at double/half with the DAW: the gear runs at FRIZZ's tempo "
       "(#73)", needs=("in|out",), literal="out")
 def out_factor(r):
