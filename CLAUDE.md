@@ -429,8 +429,8 @@ anything else about the chip ([`firmware/twin/README.md`](firmware/twin/README.m
 
 ## The audio callback is CPU-bound
 
-The callback has 0.5 ms per 24-sample block. Idle it uses ~29 %, a loop with every effect
-~73 % on average and ~80 % at worst (~81 % and ~88 % with every finalizer module working); only the bench's page-2 extreme (all 13 effects, page 2
+The callback has 0.5 ms per 24-sample block. Idle it uses ~28 %, a loop with every effect
+~73 % on average and ~82 % at worst (~80 % and ~87 % with every finalizer module working); only the bench's page-2 extreme (all 13 effects, page 2
 off its defaults) goes past 100 % and crackles (#21, settled by the user for 1.0). Effects that are off must stay
 cheap (`FxGate::Asleep`). A change that only shifts the memory layout has made it crackle on
 the device (b5c658c) while the host stayed bit-identical, so suspect the CPU when crackles
@@ -486,7 +486,7 @@ loop and the event log (`SDRAM_NOINIT`) aren't, as they're always written before
 buffers live in internal RAM, 32-byte aligned, written in whole sectors (`EventLog::Flush`).
 
 **Memory**: the firmware runs from SRAM, loaded by CHOMPI's bootloader (`APP_TYPE=BOOT_SRAM`).
-Code has about **5.2 KB** left (`SRAM_EXEC`), the bench build **~6.0 KB** (2026-10-16, v1.5.0-beta.4; after the finalizer, #345: 7 KB, and libdaisy.a `-Os` where no interrupt runs it, #323: −4.5 KB), and data (`SRAM`) ~24.5 KB, the bench build's ~16.6 KB (after the code-room round, #320: FatFs `-Os`, no SPI driver); `docs/CAPACITY.md` lists every
+Code has about **3.7 KB** left (`SRAM_EXEC`), the bench build **~4.2 KB** (2026-10-17, `main` b73bb1d; after the finalizer, #345: 7 KB, its drive gone again, #472: +1.4 KB, and libdaisy.a `-Os` where no interrupt runs it, #323: −4.5 KB), and data (`SRAM`) ~22 KB, the bench build's ~14.1 KB (after the code-room round, #320: FatFs `-Os`, no SPI driver); `docs/CAPACITY.md` lists every
 region and the ways to make room. Never use `make program-boot`, and never swap in upstream
 libDaisy: the vendored copy is patched (`THIRD_PARTY.md`).
 `__attribute__((optimize("-O0")))` and similar per-function overrides (`ProcessAllControls`)
