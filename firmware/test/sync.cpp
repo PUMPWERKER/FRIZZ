@@ -777,8 +777,8 @@ int main()
     // a free loop plays on through Start, and isn't moved by Song Position
     // ======== #175: a drop on the clock's bar line, counted from SHIFT's release ========
 
-    // SHIFT + the blank scene twice, the transport pressed, SHIFT let go: its key lit white (the
-    // blank scene active) on the second bar line from the release, under a sequencer's and a
+    // SHIFT + the blank scene twice, the transport pressed, SHIFT let go: its key lit bright
+    // violet (the blank scene active, #475) on the second bar line from the release, under a sequencer's and a
     // DAW's jitter; the key shows it at the next frame, a few ms on
     for (const Sender* s : {&kSequencer, &kDaw})
         cases.push_back({"drop-line", [s] {
@@ -804,12 +804,13 @@ int main()
                 if (now != pos && now % 48 == 0 && ++lines == 2)
                     second = BlockMs();
                 pos = now;
-                // from the first line on: before it, the key blinks (white until the press shows)
+                // from the first line on: before it, the key blinks (white until the press shows,
+                // then the drop's red); landed, bright violet
                 const Rgb c = SmtLedFull(2);
-                if (lines > 0 && c.r > 200 && c.g > 200 && c.b > 200)
+                if (lines > 0 && c.b > 200 && c.g == 0 && c.r > 60)
                     lit = BlockMs();
             }
-            Report("%sthe second bar line at %.1f ms, the key white at %.1f ms", Name("drop", *s, 120.).c_str(),
+            Report("%sthe second bar line at %.1f ms, the key bright violet at %.1f ms", Name("drop", *s, 120.).c_str(),
                    second, lit);
             Check(second > 0. && lit >= second && lit - second < 20.,
                   (Name("drop-line", *s, 120.) + "the drop lands on the second bar line from the release").c_str());

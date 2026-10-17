@@ -1830,7 +1830,8 @@ int main()
         Check(LoopsShown() && blinks == 3, "loops-no-card-save: the input gain not saved, VOLUME blinks red 3 times on the Loops page");
     }});
 
-    // the scene keys' LEDs: a used slot dim, the active one bright, pulsing once it's edited
+    // the scene keys' LEDs: a used slot dim violet, the active one bright, pulsing once it's
+    // edited, an empty one dim white (#475)
     cases.push_back({"scene-leds", [] {
         RunMs(kReadyMs);
         Latch("KEY_5");
@@ -1842,8 +1843,9 @@ int main()
         const int used = Max(SmtLedFull(kSlot1Led)), active = Max(SmtLedFull(kSlot1Led + 1)),
                   empty = Max(SmtLedFull(kSlot1Led + 2));
         printf("      used %d, active %d, empty %d\n", used, active, empty);
-        Check(active > 240 && used > 20 && used < 60 && empty == 0,
-              "scene-leds: the active scene's key bright, another saved one dim, an empty one dark");
+        Check(active > 240 && used > 20 && used < 60 && Same(SmtLedFull(kSlot1Led), Rgb{12, 0, 36})
+                  && Same(SmtLedFull(kSlot1Led + 2), Rgb{36, 36, 36}),
+              "scene-leds: the active scene's key bright, another saved one dim violet, an empty one dim white");
         Turn(kKnob1Encoder, 10); // the shifter's interval: the scene edited
         RunMs(300);
         const std::vector<int> pulse = Watch(false, kSlot1Led + 1, 2000);
@@ -1863,16 +1865,134 @@ int main()
               "scene-leds: a recall makes its key the bright one, steady, and the other dim");
     }});
 
+    // #475: the scene keys show the slots by colour, nothing written to the card: an empty slot
+    // dim white (where a save can go), a stored one dim violet (the blank scene always is), the
+    // one recalled or saved last bright violet, pulsing once edited; the three apart at every
+    // brightness down to the settings page's 25 % (as #444 B's dim keys are). The raw bytes the
+    // LEDs get, printed for the PR
+    cases.push_back({"slot-colours", [] {
+        RunMs(kReadyMs);
+        auto dim_white = [](const Rgb& c) { return c.r > 0 && c.r == c.g && c.g == c.b; };
+        // violet: no green, more blue than red
+        auto violet = [](const Rgb& c) { return c.g == 0 && c.r > 0 && c.b > c.r; };
+        bool boot = violet(SmtLed(kSlot1Led - 1));
+        for (int s = 0; s < 4; s++)
+            boot &= dim_white(SmtLed(kSlot1Led + s));
+        Check(boot && Same(SmtLed(kSlot1Led), SmtLed(kSlot1Led + 3)) && Card("/FRIZZ/frizz_scenes.txt").empty(),
+              "slot-colours: at power-on the blank scene dim violet, scenes 1-4 empty, dim white; nothing on the card");
+        Latch("KEY_5");
+        Save(1);
+        RunMs(1000);
+        Latch("KEY_2");
+        Save(2);
+        RunMs(1000);
+        bool apart = true;
+        for (int percent : {100, 50, 25})
+        {
+            if (percent != 100)
+            {
+                SetToggle(true);
+                RunMs(300);
+                TurnBrightness(percent == 50 ? -10 : -5);
+                SetToggle(false);
+                RunMs(300);
+            }
+            const Rgb stored = SmtLed(kSlot1Led), active = SmtLed(kSlot1Led + 1), empty = SmtLed(kSlot1Led + 2),
+                      blank = SmtLed(kSlot1Led - 1);
+            printf("      %d %%: empty %d %d %d, stored %d %d %d, active %d %d %d, blank %d %d %d\n", percent,
+                   empty.r, empty.g, empty.b, stored.r, stored.g, stored.b, active.r, active.g, active.b, blank.r,
+                   blank.g, blank.b);
+            // dim white and dim violet as dim as an FX key that's off (its 8 steps at least,
+            // #444), bright violet well above both
+            apart &= dim_white(empty) && Max(empty) >= 8 && violet(stored) && Max(stored) == Max(empty)
+                     && Same(blank, stored) && violet(active) && active.b >= stored.b + 6 && active.r > stored.r;
+        }
+        Check(apart, "slot-colours: empty dim white, stored dim violet, the last saved bright violet, apart at 100, 50 and 25 %");
+        Turn(kKnob1Encoder, 10); // the shifter's interval: the scene edited
+        RunMs(300);
+        int lo = 255, hi = 0;
+        bool hue = true;
+        for (int t = 0; t < 2000; t++)
+        {
+            RunMs(1);
+            const Rgb c = SmtLed(kSlot1Led + 1);
+            lo = std::min(lo, static_cast<int>(c.b));
+            hi = std::max(hi, static_cast<int>(c.b));
+            hue &= violet(c);
+        }
+        printf("      edited at 25 %%: blue %d to %d\n", lo, hi);
+        Check(hue && hi >= 3 * lo && hi > Max(SmtLed(kSlot1Led)),
+              "slot-colours: edited, at 25 % it pulses in violet, its top three times its bottom and above the stored ones");
+        Tap(kSceneKeys[0]);
+        RunMs(300);
+        Check(violet(SmtLed(kSlot1Led - 1)) && SmtLed(kSlot1Led - 1).b >= SmtLed(kSlot1Led).b + 6
+                  && Same(SmtLed(kSlot1Led), SmtLed(kSlot1Led + 1)),
+              "slot-colours: the blank scene recalled: its key bright violet, scenes 1 and 2 dim violet");
+        Check(Card("/FRIZZ/frizz_scenes.txt").find("scene 3") == std::string::npos,
+              "slot-colours: the empty slots stay empty on the card");
+    }});
+
+    // #475: the finalizer's presets the same way while key 15 is held: an empty one dim white,
+    // a stored one dim violet, the one recalled (or saved) last bright violet; the blank
+    // scene's key, no preset, dark; at 100 and 25 %
+    cases.push_back({"fin-preset-colours", [] {
+        RunMs(kReadyMs);
+        auto dim_white = [](const Rgb& c) { return c.r > 0 && c.r == c.g && c.g == c.b; };
+        auto violet = [](const Rgb& c) { return c.g == 0 && c.r > 0 && c.b > c.r; };
+        Press("KEY_15", true);
+        RunMs(300);
+        bool none = Max(SmtLed(kSlot1Led - 1)) == 0;
+        for (int p = 0; p < 4; p++)
+            none &= dim_white(SmtLed(kSlot1Led + p));
+        Press("KEY_15", false);
+        RunMs(300);
+        Check(none, "fin-preset-colours: key 15 held, no preset stored: the four keys dim white, the blank one dark");
+        for (const char* slot : {kSceneKeys[2], kSceneKeys[4]}) // presets 2, then 4
+        {
+            Keys({"+KEY_15", "100", "+KEY_23", "60", "-KEY_23", "100", "-KEY_15", "200"}); // SAVE
+            Tap(slot);
+            RunMs(200);
+            Tap("KEY_26");
+            RunMs(3000);
+        }
+        Keys({"+KEY_15", "100", "+KEY_20", "60", "-KEY_20", "300"}); // preset 2 recalled, 15 still held
+        bool apart = true;
+        for (int percent : {100, 25})
+        {
+            if (percent != 100)
+            {
+                Press("KEY_15", false);
+                RunMs(300);
+                SetToggle(true);
+                RunMs(300);
+                TurnBrightness(-15);
+                SetToggle(false);
+                RunMs(300);
+                Press("KEY_15", true);
+                RunMs(300);
+            }
+            const Rgb empty = SmtLed(kSlot1Led), last = SmtLed(kSlot1Led + 1), empty3 = SmtLed(kSlot1Led + 2),
+                      stored = SmtLed(kSlot1Led + 3);
+            printf("      %d %%: preset 1 (empty) %d %d %d, 2 (recalled) %d %d %d, 4 (stored) %d %d %d\n", percent,
+                   empty.r, empty.g, empty.b, last.r, last.g, last.b, stored.r, stored.g, stored.b);
+            apart &= dim_white(empty) && Same(empty, empty3) && violet(stored) && Max(stored) == Max(empty)
+                     && violet(last) && last.b >= stored.b + 6 && Max(SmtLed(kSlot1Led - 1)) == 0;
+        }
+        Press("KEY_15", false);
+        RunMs(300);
+        Check(apart, "fin-preset-colours: preset 2 recalled bright violet, 4 stored dim violet, 1 and 3 empty dim white, at 100 and 25 %");
+    }});
+
     // the scene keys two dark keys to the right (#67): the blank scene on the lower F#, scenes
     // 1-4 to the upper D#; SAVE green, COPY blue, DELETE red on the upper F#, G#, A#; the lower
     // C# and D# free on the play page, dark, doing nothing
     cases.push_back({"scene-keys", [] {
         RunMs(kReadyMs);
-        const Rgb dim_white{36, 36, 36};
-        Check(Same(SmtLedFull(kSlot1Led - 1), dim_white) && Max(SmtLedFull(kSlot1Led)) == 0
-                  && Max(SmtLedFull(kSlot1Led + 3)) == 0 && Max(SmtLedFull(0)) == 0
+        const Rgb dim_white{36, 36, 36}, dim_violet{12, 0, 36};
+        Check(Same(SmtLedFull(kSlot1Led - 1), dim_violet) && Same(SmtLedFull(kSlot1Led), dim_white)
+                  && Same(SmtLedFull(kSlot1Led + 3), dim_white) && Max(SmtLedFull(0)) == 0
                   && Max(SmtLedFull(1)) == 0,
-              "scene-keys: the blank scene dim on the lower F#, the empty slots dark, the lower C# and D# dark");
+              "scene-keys: the blank scene dim violet on the lower F#, the empty slots dim white, the lower C# and D# dark");
         Check(Same(SmtLedFull(kSaveKeyLed), Rgb{0, 36, 0}) && Same(SmtLedFull(kSaveKeyLed + 1), Rgb{0, 0, 36})
                   && Same(SmtLedFull(kSaveKeyLed + 2), Rgb{36, 0, 0}),
               "scene-keys: SAVE, COPY and DELETE dim green, blue and red on the upper F#, G#, A#");
@@ -2363,8 +2483,10 @@ int main()
         Check(blinks == 3, "clock-wrap: a scene key refused 300 ms before it blinks red 3 times across it");
         RunMs(300);
         const std::vector<int> slot = Watch(false, kSlot1Led + 2, 3000);
-        Check(*std::max_element(slot.begin(), slot.end()) == 0,
-              "clock-wrap: a refused scene key's red blinks just before the wrap end and don't come back");
+        Check(*std::max_element(slot.begin(), slot.end()) == *std::min_element(slot.begin(), slot.end())
+                  && Same(SmtLedFull(kSlot1Led + 2), Rgb{36, 36, 36}),
+              "clock-wrap: a refused scene key's red blinks just before the wrap end and don't come back: "
+              "it stays the empty slot's dim white");
         const std::vector<int> loop = Watch(true, kLoopLed, 500);
         Check(Probe().loop_state == 1 && *std::min_element(loop.begin(), loop.end()) > 100,
               "clock-wrap: LOOP refused before, records on, lit, without blinking");
@@ -3472,8 +3594,8 @@ int main()
     cases.push_back({"card-3", [] {
         TakeCard();
         RunMs(kReadyMs);
-        Check(Max(SmtLedFull(kSlot1Led)) == 0 && Max(SmtLedFull(kSlot1Led + 1)) > 0,
-              "card: after a reboot the card's scene is there, the slot saved without it dark");
+        Check(Same(SmtLedFull(kSlot1Led), Rgb{36, 36, 36}) && Same(SmtLedFull(kSlot1Led + 1), Rgb{12, 0, 36}),
+              "card: after a reboot the card's scene is there (dim violet), the slot saved without it empty (dim white)");
         Latch("KEY_5");
         Save(1);
         RunMs(2500);

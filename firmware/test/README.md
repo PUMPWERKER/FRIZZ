@@ -551,8 +551,10 @@ below 3.3 V at the next 30 s read, white again with the cable (known: red never 
 as the yellow countdown comes first, #43), and the charger plugged in during the countdown
 stopping it. The scene keys where #67 put them (the lower F# to the upper D#; SAVE, COPY,
 DELETE green, blue, red on the upper F#, G#, A#; the lower C# and D# dark and doing nothing,
-no SHIFT combo either; note 56 scene 1): a saved slot dim, the active one bright, pulsing from a fifth up
-to full once a second once edited; a morph's key blinking on the beat, SHIFT + another scene key
+no SHIFT combo either; note 56 scene 1): an empty slot dim white, a saved one dim violet (the
+blank scene too), the active one bright violet, pulsing from a fifth up to full once a second
+once edited, the three apart at 100, 50 and 25 % brightness, and the finalizer's presets the
+same with key 15 held (#475); a morph's key blinking on the beat, SHIFT + another scene key
 during it and a 9th bar each blinking red 3 times. The compressor's key without a card: 3 red
 blinks for the failed save and for each of its 3 retries, 2 s apart. And the controllers the
 other MIDI cases don't send: 18 and 19 (the transport and VOLUME turned), 53-55, 57, 58, 60, 61

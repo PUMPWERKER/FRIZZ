@@ -1481,8 +1481,9 @@ all three.
   the finalizer is on.
 - **Presets:** four, kept on the card with the finalizer, not in the scenes, so the master
   stays as the scenes change. Hold key 15: the keys of scenes 1-4 (the lower G# and A#, the
-  upper C# and D#) show the presets, lit where one is stored, the one recalled last white. Holding key 15 changes
-  nothing in the sound.
+  upper C# and D#) show the presets as they show the scenes: dimly white where a preset is
+  empty, dimly violet where one is stored, bright violet for the one recalled or saved last;
+  the blank scene's key is dark. Holding key 15 changes nothing in the sound.
   - **Recall:** hold key 15 and press a scene key: the knobs glide to the preset, and every
     band is unmuted.
   - **Save, copy and delete** go as for [scenes](#save-copy-and-delete): hold key 15 and press
@@ -1617,10 +1618,10 @@ instead of white when there's no SD card, or the card couldn't be written: the c
 until power-off but isn't stored. The next save, copy or delete tries the card again, also
 one you've put in since.
 
-Outside a function, the scene keys show the slots: dark when empty, dimly white when saved
-(the blank one always is),
-bright for the scene you recalled or saved last, and pulsing once you've turned a knob or
-changed a latch since. The save, copy and delete keys are dimly lit in their colour.
+Outside a function, the scene keys show the slots by colour: dimly white when empty, so you
+see where a save can go; dimly violet when saved (the blank one always is); bright violet for
+the scene you recalled or saved last, pulsing once you've turned a knob or changed a latch
+since. The save, copy and delete keys are dimly lit in their colour.
 
 ## Scene changes in time
 <!-- summary: Morph, drop or crossfade to a scene in time with the music. -->
@@ -1778,7 +1779,7 @@ without a loop, and the bar lines don't count while you hold it.
     (pulsing if you had changed it, steady if not);
   - **in between:** it stays where it is, as stopping a morph leaves it: the knobs where the
     fade got to, the new scene's key pulsing as edited. Save it to keep it.
-- **LEDs:** the two scene keys light in their mix, one brighter as the other dims, and the
+- **LEDs:** the two scene keys light in their mix, one brighter violet as the other dims, and the
   transport LEDs show the position in white instead of the speed: the left one for the old
   scene, the right one for the new.
 - Letting go without turning is a plain morph: it glides to the bar line. While you

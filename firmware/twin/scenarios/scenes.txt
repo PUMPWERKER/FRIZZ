@@ -20,8 +20,8 @@ tap KEY_19
 wait 300
 tap KEY_26
 wait 1000
-# saved to slot 1: its key bright
-expect led smt 3 fcfcfc
+# saved to slot 1: its key bright violet
+expect led smt 3 6400fc
 turn 2 -15
 wait 300
 down KEY_26
@@ -33,9 +33,9 @@ tap KEY_19
 wait 1000
 tap KEY_18
 wait 1000
-# the blank scene recalled: its key bright, slot 1 dim
-expect led smt 2 fcfcfc
-expect led smt 3 242424
+# the blank scene recalled: its key bright violet, slot 1 dim violet
+expect led smt 2 6400fc
+expect led smt 3 0c0024
 down KEY_26
 tap KEY_19
 up KEY_26
@@ -58,7 +58,7 @@ tap KEY_26
 wait 800
 tap KEY_20
 wait 1500
-# slot 2 recalled, slot 1 deleted
-expect led smt 4 fcfcfc
-expect led smt 3 000000
+# slot 2 recalled (bright violet), slot 1 deleted: empty, dim white
+expect led smt 4 6400fc
+expect led smt 3 242424
 expect on
