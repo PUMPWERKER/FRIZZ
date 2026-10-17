@@ -12,7 +12,7 @@ computer on USB.
   in time, at the end of a pass or with a scene change, by hand or over MIDI (bank select and
   program change).
 - **The Companion,** a web page at
-  [frizz.friedrichwagner.eu/companion](https://frizz.friedrichwagner.eu/companion/), that puts
+  [pumpwerker.de/frizz/companion](https://pumpwerker.de/frizz/companion/), that puts
   your loops on the card over the USB cable while FRIZZ plays.
 - **Thirteen punch-in effects on the white keys:** freezer, pitch shifter, wavefolder, bitcrusher,
   DJ filter, flanger, phaser (or frequency shifter), resonator, slicer, wow & flutter, tape stop, tempo-synced delay and reverb. Hold a key to play an effect,

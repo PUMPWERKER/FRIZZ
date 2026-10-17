@@ -1,7 +1,7 @@
 # FRIZZ website: front page
 
 <!--
-The copy of the front page of the FRIZZ website (frizz.friedrichwagner.eu) for this release.
+The copy of the front page of the FRIZZ website (pumpwerker.de/frizz) for this release.
 The website's scripts/fetch-docs.mjs reads it at the release's tag; the rest of the page (the
 keys, their knobs and colours, the download) comes from the manual and the firmware.
 
