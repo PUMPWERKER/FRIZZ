@@ -165,6 +165,10 @@ int main()
     cases.push_back({"trs-relisten", [] {
         Run("trs-relisten", true, true, {"trs-relisten"}, "SKIP", {"FRIZZ-bench.bin only"}, 0);
     }});
+    // trs-restart-tx too, its TEST kUartRestart (#442)
+    cases.push_back({"trs-restart-tx", [] {
+        Run("trs-restart-tx", true, true, {"trs-restart-tx"}, "SKIP", {"FRIZZ-bench.bin from #442 on"}, 0);
+    }});
     // stopped from outside (Ctrl-C) in a case: things put back, the summary, exit 130, not 0
     // (#171)
     cases.push_back({"interrupted", [] {
