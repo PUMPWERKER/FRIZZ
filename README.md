@@ -30,7 +30,7 @@ computer on USB.
 - **A USB sound card:** on a computer, FRIZZ records its master into a DAW and plays the
   computer's sound as its third input, without a driver; and it lends the SD card to the
   computer as a drive while it plays.
-- **A finalizer** on its own key, a master section with input and drive, a 3-band EQ,
+- **A finalizer** on its own key, a master section with an input trim, a 3-band EQ,
   compression and width, and a limiter for loudness; a safety limiter on every output.
 - **MIDI** over TRS or USB: clock for quantized loops and the tempo-synced effects, notes
   playing the keys, CCs setting every parameter, program changes recalling scenes, a MIDI
