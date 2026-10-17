@@ -148,7 +148,8 @@ it with SHIFT held: leave the gaps a hand would.
 | `set GROUP INDEX VALUE` | a value set outright, as `remote.py set` does it (the developers' `SET` over USB, its answer kept from `replies`): GROUP an effect by name (its knobs 0-7, page 1 then page 2), `fin` (the finalizer's 16 knobs, module by module; `comp` the same), `latch` (INDEX an effect), `volume` (`out`, `in`, `mix`, `headphones`) or `settings` (INDEX a line of `frizz_master.txt`); VALUE a knob's 0-1, or a latch's or setting's number (`on`, `off`). It waits for FRIZZ's main loop and its answer (a few ms); one FRIZZ refuses fails |
 | `battery V [plugged] [full]` | the battery's voltage and the charger |
 | `card put PATH FILE` / `card remove` / `card insert` / `card dump` | the SD card: put a file on it before power-on (`/FRIZZ/frizz_scenes.txt`), take it out, print it |
-| `card file PATH`, then lines starting with `\|` | a file on the card before power-on, its text in the script: each line after its `\|` |
+| `card file PATH`, then lines starting with `\|` | a file on the card before power-on, its text in the script: each line after its `\|`; after `booted`, put there at that time (a bug report's lend) |
+| `usbaudio eject` | the computer ejects the card lent to it (CardLend.h) |
 | `leds` | print the LEDs now |
 | `expect led pth\|smt N RRGGBB` / `expect on` / `expect off` | fail (exit 1) unless so; a malformed `expect` fails too |
 
@@ -173,10 +174,13 @@ plays the session again and ends where the combo was pressed (with the twin writ
 file on a fresh twin, and gets the same LEDs every millisecond and the same file back. From a
 device, what the twin can't know differs: the audio (so the FX keys' and VOLUME's meters),
 the MIDI clock's phase (logged as a tempo once it settles, back-dated to its lock), the battery,
-and what a computer changed on the card lent to it: a lend and its take-back are comment lines
-(`# card lent`, `# card taken back; read: settings scene 2`), as the loop transfer's jobs are
-(`# loop transfer`). The replay lends and takes back by the gesture's keys, on the power-on
-files; a take-back by the computer (an eject, the cable) says so and leaves the replay lent.
+and the loops a computer changed on the card lent to it. A lend and its take-back are comment
+lines (`# card lent`, `# card taken back; read: settings scene 2`), as the loop transfer's jobs
+are (`# loop transfer`); the replay lends and takes back by the gesture's keys. What the
+take-back read again (#461), `frizz_master.txt` and `frizz_scenes.txt` as the computer left
+them, follows the lend as `card file` blocks, so the replay's take-back reads the same; a
+take-back by the computer (an eject, the cable) is `usbaudio eject` there. The first 8 lends
+carry their files; a later one says so.
 The browser plays it too (Replay), in its 16 ms steps. Once it shows the bug, make it a case
 in `test/ui.cpp`.
 
