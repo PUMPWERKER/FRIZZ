@@ -23,6 +23,7 @@
 # without naming a failing check, was killed (a signal), or left no exit code at all says so
 # (#107). Every check's whole output of the last run stays in
 # build/all-last/NAME.out.
+source "$(dirname "$0")/hostlock.sh"   # one heavy run at a time (#439)
 source "$(dirname "$0")/lib.sh"
 set +e
 unset CASES

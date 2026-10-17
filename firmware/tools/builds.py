@@ -24,6 +24,9 @@ the bench build also carries. `cpu` files it only if the bench build here carrie
 and the source still has that checksum, so the md5 it adds is that of the build measured.
 It warns when a build is older than the source, and flash.py --no-build refuses to send one. Python 3 without packages; it doesn't touch
 the CHOMPI (flash.py does).
+
+Building takes the host lock first (test/hostlock.sh, #439: one heavy host run at a time, under
+a memory cap), running itself again under it; md5 and cpu don't.
 """
 import argparse
 import glob
@@ -223,6 +226,15 @@ def file_cpu(src):
     print("%s -> %s\n%s" % (short(src), short(CPU_TXT), head))
 
 
+def host_lock():
+    """Runs this again under the host lock (test/hostlock.sh), unless it's taken care of
+    (FRIZZ_HOST_LOCKED set, as inside it) or CI's"""
+    if os.environ.get("FRIZZ_HOST_LOCKED") or os.environ.get("CI"):
+        return
+    lock = os.path.join(FIRMWARE, "test", "hostlock.sh")
+    os.execvp("bash", ["bash", lock, sys.executable, os.path.abspath(__file__)] + sys.argv[1:])
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("what", nargs="?", choices=["md5", "cpu"],
@@ -235,6 +247,7 @@ def main():
         file_cpu(args.file)
         return
     if args.what is None:
+        host_lock()
         tag = head_tag()
         if tag:
             check_version(tag)

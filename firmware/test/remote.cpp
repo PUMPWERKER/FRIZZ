@@ -132,7 +132,9 @@ static int Remote(const std::vector<std::string>& args, std::string& out,
     std::string cmd = "exec python3 " + Quoted(remote_py) + " --device " + Quoted(usb.path);
     for (const std::string& a : args)
         cmd += " " + Quoted(a);
-    return Exec(cmd, out, 30, {}, interrupt_at, interrupt_at.empty() ? 0 : SIGINT);
+    // the ledger of the loops it put (#438) in the temp folder, never the CHOMPI's
+    return Exec(cmd, out, 30, {{"FRIZZ_LOOP_LEDGER", tmp_dir + "/loops.json"}}, interrupt_at,
+                interrupt_at.empty() ? 0 : SIGINT);
 }
 
 static void Write(const std::string& path, const std::string& text)
@@ -1694,14 +1696,80 @@ print("dark", remote.play(Stub([(0, 0, 0), (0, 0, 0)]), "levels.txt", False), fl
               "remote: loops cp copies TAPE's cubbi into h4 on the card, the cubbi as it was");
         if (rc != 0)
             printf("%s\n", out.c_str());
-        for (const char* s : {"2", "3", "4"})
+        // only the loops the tools put there (#438): a player's isn't changed, by any way
+        // that would lose it, without --users-loop; the ones put, moved and copied are
+        const std::string players = LoopWav(5000, 48000, 2);
+        CardFiles()["/FRIZZ/a2.wav"] = players;
+        Remote({"loops", "rescan"}, out);
+        std::string refused;
+        for (const std::vector<std::string>& op :
+             std::vector<std::vector<std::string>>{{"rm", "a", "2"},
+                                                   {"swap", "h", "2", "a", "2"},
+                                                   {"swap", "a", "2", "h", "5"},
+                                                   {"mv", "a", "2", "h", "5"},
+                                                   {"mv", "h", "2", "a", "2", "--replace"},
+                                                   {"put", other, "a", "2", "--replace"},
+                                                   {"cp", "cubbi_c", "3", "a", "2", "--replace"}})
+        {
+            std::vector<std::string> args = {"loops"};
+            args.insert(args.end(), op.begin(), op.end());
+            rc = Remote(args, out);
+            if (rc != 1 || !Has(out, "a2 holds a loop the tools didn't put there (" + std::to_string(players.size())
+                                         + " B): a player's"))
+                refused += " " + op[0] + "(" + std::to_string(rc) + "): " + out;
+        }
+        Check(refused.empty() && Card("/FRIZZ/a2.wav") == players && Card("/FRIZZ/h2.wav") == named
+                  && !CardFiles().count("/FRIZZ/h5.wav"),
+              "remote: loops rm, swap, mv and --replace refuse a loop the tools didn't put there: a player's (#438)");
+        if (!refused.empty())
+            printf("     %s\n", refused.c_str());
+        rc = Remote({"loops", "mv", "h", "3", "h", "5"}, out);
+        const int mv5 = rc;
+        rc = Remote({"loops", "put", wav, "h", "5", "--replace"}, out);
+        Check(mv5 == 0 && rc == 0 && Card("/FRIZZ/h5.wav") == named && !CardFiles().count("/FRIZZ/h3.wav"),
+              "remote: and change the ones the tools put there, moved along: put --replace over one moved");
+        if (rc != 0)
+            printf("%s\n", out.c_str());
+        CardFiles()["/FRIZZ/h5.wav"] = players; // as if a player changed it since
+        Remote({"loops", "rescan"}, out);
+        rc = Remote({"loops", "rm", "h", "5"}, out);
+        Check(rc == 1 && Has(out, "h5 holds a loop the tools didn't put there, or one changed since")
+                  && Card("/FRIZZ/h5.wav") == players,
+              "remote: a slot the tools filled whose file changed since is refused too");
+        rc = Remote({"loops", "rm", "h", "5", "--users-loop"}, out);
+        const int users = rc;
+        rc = Remote({"loops", "rm", "a", "2", "--users-loop"}, out);
+        Check(users == 0 && rc == 0 && !CardFiles().count("/FRIZZ/h5.wav") && !CardFiles().count("/FRIZZ/a2.wav"),
+              "remote: --users-loop lets them (sessions never give it)");
+        for (const char* s : {"2", "4"})
             Remote({"loops", "rm", "h", s}, out);
+        const std::string ledger = Read(tmp_dir + "/loops.json");
         rc = Remote({"loops", "rescan"}, out);
         Check(rc == 0 && CardFiles() == before, "remote: loops rm and rescan: the card as it was, nothing else touched");
+        Check(ledger == "{}", "remote: the ledger empty again once they're gone");
+        if (ledger != "{}")
+            printf("%s\n", ledger.c_str());
         CardFiles().erase("/TAPE/cubbi_c3.wav");
         unlink(wav.c_str());
         unlink(other.c_str());
     }
+    // the ledger's file: beside chompi's lock, the CHOMPI's; a host check's (FRIZZ_NO_DEVICE)
+    // only where it names one (#438)
+    rc = Python(R"(
+import os, remote
+os.environ.pop("FRIZZ_LOOP_LEDGER", None)
+print("ledger:", os.path.relpath(remote.Ledger(None).path))
+del os.environ["FRIZZ_CHOMPI_LOCK"]
+try:
+    remote.Ledger(None)
+except SystemExit as e:
+    print("exit:", e)
+)", out);
+    Check(rc == 0 && Has(out, "ledger: frizz-chompi.loops\n")
+              && Has(out, "exit: loops: a host check names a ledger of its own (FRIZZ_LOOP_LEDGER), not the CHOMPI's"),
+          "tools: the loops' ledger beside chompi's lock, never the CHOMPI's from a host check (#438)");
+    if (rc != 0 || !Has(out, "exit: loops"))
+        printf("%s\n", out.c_str());
     // the crash record (#105): none on the twin; one as the fault handler writes it, read back
     // and cleared; a watchdog's, as the next start records it
     rc = Remote({"crash"}, out);
@@ -2777,6 +2845,118 @@ case("--test to 13", "--test", "--slot", "13")
                           "--test to 13: []\n"),
           "tools: flash.py sends the bench only to its key and FRIZZ.bin never there, before restarting the CHOMPI: "
           "neither goes out under the other's name");
+    if (rc != 0 || failures)
+        printf("%s\n", out.c_str());
+
+    // release-check.py (release-check.yml, #440) on releases a fake gh serves, GET only (any
+    // other call fails it): what it checks; a release's FRIZZ.bin against CI's build of the tag;
+    // the rolling beta's against the numbered pre-release on its commit, and its notes' md5
+    rc = Python(R"(
+import builds, hashlib, json, os, shutil, subprocess
+check = os.path.join(os.path.dirname(builds.FIRMWARE), ".github", "scripts", "release-check.py")
+os.makedirs("ghbin", exist_ok=True)
+open("ghbin/gh", "w").write("""#!/usr/bin/env python3
+import os, sys
+a = sys.argv[1:]
+if a[:1] != ["api"] or any(x in a for x in ("--method", "-X", "-f", "-F", "--field", "--raw-field", "--input")):
+    print("WRITE " + " ".join(a), file=sys.stderr)
+    sys.exit(3)
+raw = "Accept: application/octet-stream" in a
+path = os.path.join(os.environ["FAKE_GH"], a[-1].replace("/", "__") + (".bin" if raw else ".json"))
+if not os.path.exists(path):
+    print("gh: Not Found (HTTP 404) " + a[-1], file=sys.stderr)
+    sys.exit(1)
+sys.stdout.buffer.write(open(path, "rb").read())
+""")
+os.chmod("ghbin/gh", 0o755)
+md5 = lambda b: hashlib.md5(b).hexdigest()
+R = "repos/o/r/"
+
+def fake(rels, bins, tags):
+    """releases (tag, draft, prerelease, asset id or None, body), assets {id: bytes}, tags
+    {tag: commit or ("tag", annotated tag's commit)}"""
+    shutil.rmtree("fake", ignore_errors=True)
+    os.makedirs("fake")
+    def put(path, data, raw=False):
+        open("fake/" + path.replace("/", "__") + (".bin" if raw else ".json"), "wb").write(
+            data if raw else json.dumps(data).encode())
+    # two pages, as --paginate prints them
+    listing = [dict(id=i, tag_name=t, draft=d, prerelease=p, name=t, body=b,
+                    assets=[dict(id=a, name="FRIZZ.bin")] if a else [dict(id=99, name="other.zip")])
+               for i, (t, d, p, a, b) in enumerate(rels)]
+    open("fake/" + (R + "releases").replace("/", "__") + ".json", "w").write(
+        json.dumps(listing[:2]) + "\n" + json.dumps(listing[2:]))
+    for i, data in bins.items():
+        put(R + "releases/assets/%s" % i, data, raw=True)
+    for t, c in tags.items():
+        if isinstance(c, tuple):
+            put(R + "git/ref/tags/" + t, dict(object=dict(type="tag", sha="t" + c[1])))
+            put(R + "git/tags/t" + c[1], dict(object=dict(type="commit", sha=c[1])))
+        else:
+            put(R + "git/ref/tags/" + t, dict(object=dict(type="commit", sha=c)))
+
+def run(name, *args):
+    env = dict(os.environ, FAKE_GH=os.path.abspath("fake"), GH_REPO="o/r",
+               PATH=os.path.abspath("ghbin") + os.pathsep + os.environ["PATH"])
+    env.pop("GITHUB_OUTPUT", None)
+    env.pop("GITHUB_STEP_SUMMARY", None)
+    r = subprocess.run(["python3", check] + list(args), capture_output=True, text=True, env=env)
+    print("%s: exit %d: %s" % (name, r.returncode, " | ".join((r.stdout + r.stderr).strip().splitlines())))
+
+B3, B4, ST = b"beta 3", b"beta 4", b"stable"
+notes = "FRIZZ.bin md5 `%s`, v1.5.0-beta.4's build" % md5(B4)
+rels = [("v1.0.1", False, False, 1, ""), ("v1.5.0-beta.3", False, True, 3, ""),
+        ("v1.5.0-beta.4", False, True, 4, ""), ("beta", False, True, 9, notes), ("v1.6.0", True, False, None, "")]
+bins = {1: ST, 3: B3, 4: B4, 9: B4}
+tags = {"v1.0.1": "c1", "v1.5.0-beta.3": "c3", "v1.5.0-beta.4": ("tag", "c4"), "beta": "c4"}
+fake(rels, bins, tags)
+run("plan", "plan")
+run("plan beta", "plan", "beta")
+run("plan v1.5.0-beta.3", "plan", "v1.5.0-beta.3")
+run("plan other", "plan", "nightly")
+run("release right", "release", "v1.5.0-beta.4", md5(B4))
+run("release wrong", "release", "v1.5.0-beta.4", md5(b"else"))
+run("release draft", "release", "v1.6.0", md5(b"else"))
+run("release none", "release", "v9.9.9", md5(b"else"))
+run("beta", "beta")
+fake(rels, {**bins, 9: B3}, tags)
+run("beta another build", "beta")
+fake(rels[:3] + [("beta", False, True, 9, "md5 `%s`" % md5(B3))] + rels[4:], bins, tags)
+run("beta notes", "beta")
+fake(rels, bins, dict(tags, beta="c9"))
+run("beta elsewhere", "beta")
+fake(rels[:3] + [("beta", False, True, 9, "v1.5.0-beta.3, md5 %s" % md5(B3))] + rels[4:], {**bins, 9: B3},
+     dict(tags, beta="c3"))
+run("beta behind", "beta")
+fake([("v1.0.1", False, False, None, "")] + rels[1:], bins, tags)
+run("published without", "release", "v1.0.1", md5(ST))
+fake(rels[:3] + [("beta", False, True, None, notes)] + rels[4:], bins, tags)
+run("beta without", "beta")
+)", out);
+    Check(rc == 0 && Has(out, "plan: exit 0: checking: v1.0.1, v1.5.0-beta.4, and beta | tags=[\"v1.0.1\", \"v1.5.0-beta.4\"] | beta=true\n")
+              && Has(out, "plan beta: exit 0: checking: no release's build, and beta | tags=[] | beta=true\n")
+              && Has(out, "plan v1.5.0-beta.3: exit 0: checking: v1.5.0-beta.3, and beta | tags=[\"v1.5.0-beta.3\"]")
+              && Has(out, "plan other: exit 0: nightly isn't a version's tag nor beta: nothing to check") && Has(out, "beta=false\n"),
+          "tools: release-check.py checks a release event's tag and beta; on the schedule the latest stable and "
+          "the newest numbered pre-release, what the site serves (#440)");
+    Check(Has(out, "release right: exit 0: v1.5.0-beta.4's release carries FRIZZ.bin md5")
+              && Has(out, "release wrong: exit 1: **v1.5.0-beta.4's release carries a FRIZZ.bin that isn't the tag's build")
+              && Has(out, "::error::v1.5.0-beta.4's FRIZZ.bin (md5 ")
+              && Has(out, "release draft: exit 0: v1.6.0's draft release has no FRIZZ.bin yet: nothing to check")
+              && Has(out, "release none: exit 0: No release for v9.9.9")
+              && Has(out, "published without: exit 1: **v1.0.1's release is published without a FRIZZ.bin"),
+          "tools: a release's FRIZZ.bin against CI's build of the tag: the same, or it fails loudly; published "
+          "without one fails, a draft without is left alone");
+    Check(Has(out, "beta: exit 0: The rolling beta carries FRIZZ.bin md5 `")
+              && Has(out, "`: v1.5.0-beta.4's build, on its commit c4, the md5 its notes name.\n")
+              && Has(out, "beta another build: exit 1: **The rolling beta's FRIZZ.bin isn't v1.5.0-beta.4's")
+              && Has(out, "beta notes: exit 1: **The rolling beta's notes don't name its build's md5")
+              && Has(out, "beta elsewhere: exit 1: **The rolling beta is on c9, where no numbered pre-release")
+              && Has(out, "beta behind: exit 0: The rolling beta carries v1.5.0-beta.3, but v1.5.0-beta.4 is newer")
+              && Has(out, "beta without: exit 1: **The rolling beta carries no FRIZZ.bin: its fixed link is dead**"),
+          "tools: the rolling beta's FRIZZ.bin the numbered pre-release's on its commit (an annotated tag's too), "
+          "the md5 its notes name; behind the newest a warning");
+    Check(!Has(out, "WRITE") && !Has(out, "Traceback"), "tools: release-check.py only reads (gh api GETs)");
     if (rc != 0 || failures)
         printf("%s\n", out.c_str());
 

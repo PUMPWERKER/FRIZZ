@@ -298,7 +298,12 @@ A build handed out for testing goes on GitHub as a **pre-release**, never as Lat
   release never waits for it: make it as above, right after pushing the tag (`gh release
   create <tag> --verify-tag …`); should CI's draft be there first, finish that one (`gh release
   edit`) instead of making a second, and once your `FRIZZ.bin` is on it, run the tag's
-  *Release build* again (`gh run rerun <its run>`) so it checks that md5.
+  *Release build* again (`gh run rerun <its run>`) so it checks that md5. After the push,
+  **Release check** (`.github/workflows/release-check.yml`, #440, read-only) checks a v*
+  release's `FRIZZ.bin` again against a fresh build of its tag when it is published or edited,
+  and the rolling `beta`'s against the numbered pre-release on its commit (and the md5 its notes
+  name) when it is edited, and both nightly (the latest stable and newest numbered pre-release):
+  a mismatch fails loudly; it never uploads, publishes or moves anything.
 
 ## The CHOMPI is shared: the lock and the slots
 
@@ -337,7 +342,9 @@ compressor's knobs (`comp.txt`), the scenes (`scenes.txt`, #78) and the input (`
 FRIZZ without PERSIST (key 10's from before it) is still refused, as before. The card holds
 the user's own settings and loops, which a session never changes. PERSIST 0 doesn't cover the
 loop transfer: `remote.py loops put`, `mv`, `swap`, `rm` and `cp` write the card at once, so on
-the device a session moves only loops it put there itself, in slots the user's loops aren't in; `expect led` lines are judged at the
+the device a session moves only loops it put there itself, in slots the user's loops aren't in
+(`remote.py` keeps a ledger of the slots the tools filled and refuses `rm`, `mv`, `swap` and
+`--replace` on any other loop unless `--users-loop`, which a session never gives, #438); `expect led` lines are judged at the
 card's LED brightness, and on the device `settings.txt` fails the battery's line (VOLUME white
 on USB, green on the twin). The user takes
 the CHOMPI for playing with `tools/chompi.py hold` (until Ctrl-C),
@@ -398,16 +405,19 @@ Actions ~4 minutes, stage 1a): `check.sh` (the engine in the working tree agains
 a commit; after it there's nothing to compare, and its line says so: on Actions it runs against
 the PR's base on its own; a refactor must come out `bit-identical`) and every unit check, `./unit.sh NAME` for one:
 `pitch`, `tape`, `block`, `crusher`, `freezer`, `scenes`, `store`, `clicks`, `delay`, `controls`, `keys`, `looper`, `tempo`,
-`comp`, `level`, `sleep`, `inserts`, `resonator`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `finalizer`, `midisuite`, `reaper`, `lockstep`, `splice`, `usbmidi`, `routing`, `measure`, `loopcap`, `companion`, `loops`, `loopxfer`, `sddisk`, `twinlib`, `compare`, `rtalloc`, `usbtransport`, `usbdevice`, `uartlisten`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
+`comp`, `level`, `sleep`, `inserts`, `resonator`, `ui`, `remote`, `bench`, `midi`, `sync`, `midiout`, `chaos`, `page2`, `phaser`, `finalizer`, `midisuite`, `reaper`, `lockstep`, `splice`, `usbmidi`, `routing`, `measure`, `loopcap`, `companion`, `loops`, `loopxfer`, `sddisk`, `twinlib`, `webtwin`, `hostlock`, `compare`, `rtalloc`, `usbtransport`, `usbdevice`, `uartlisten`, `docs` (and `doclinks`, the docs' format, rule 6 above). A new check is just a new
 `NAME.cpp`; [`firmware/test/README.md`](firmware/test/README.md) says what each covers.
 `check.h`'s `Known()` marks a fault found and not yet fixed: it reports, doesn't fail. A check
 that needs something only a developer's machine has prints `SKIP: local only (what's
 missing)` and checks what it can without; `all.sh` lists those lines under it (stage 1b).
 
 **Several sessions on one machine:** heavy host runs (`all.sh`, `compare.sh`, `check.sh`,
-`ui-at.sh`, `tools/builds.py`, the twin's and the host checks' builds) go one at a time, under
-`flock ~/.cache/frizz-host.lock systemd-run --user --scope -p MemoryMax=4G -p MemorySwapMax=0 …`:
-parallel ones have run the machine out of memory. A single `./unit.sh NAME` may run alongside.
+`ui-at.sh`, `tools/builds.py`, the twin's builds by hand) go one at a time, each under a memory
+cap: parallel ones have run the machine out of memory. They take the host lock themselves
+(`firmware/test/hostlock.sh`, #439: `flock ~/.cache/frizz-host.lock`, then a `systemd-run --user
+--scope -p MemoryMax=4G -p MemorySwapMax=0`), wait while another run holds it, saying which, and
+what they start runs under theirs; nothing to wrap by hand (a wrapper by hand still works). A
+single `./unit.sh NAME` takes none and may run alongside.
 
 `firmware/twin/` is the **virtual CHOMPI**: the whole firmware compiled unchanged for the host
 on a simulated board, deterministic and 13-20x real time. `./run.sh -o out.wav -l - SCRIPT`
