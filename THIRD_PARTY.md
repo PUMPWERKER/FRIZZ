@@ -126,7 +126,9 @@ FRIZZ's copy (`firmware/code/libs/libDaisy/`) is WAVE's with eleven changes:
   which `DmaListenStart` did each time to write `CR2.ADD`. `per/uart_listen.h` (FRIZZ's, for the
   host check `uartlisten`) writes it only when CR2 doesn't hold it already (CR2 keeps it:
   `HAL_UART_Init`'s `UART_SetConfig` writes only STOP there), so only the first start turns the
-  USART off. And an error of the listening handle that reaches `HAL_UART_ErrorCallback`
+  USART off. It clears the receive errors (ORE, NE, FE, PE) in ICR itself, as turning UE off did:
+  bytes that came in while the reception was ended leave an overrun, which
+  `HAL_UART_Receive_DMA` doesn't clear, and it would end the new reception at once. And an error of the listening handle that reaches `HAL_UART_ErrorCallback`
   (`DmaTransferFinished`) clears its flags in ICR instead of `HAL_UART_Init`, which turns it off
   as well; the start after it sets up what the receive needs (#442).
 - Code that no interrupt and not the audio callback runs is built for size (`-Os`), for code
@@ -159,7 +161,7 @@ Its prebuilt `build/libdaisy.a` is WAVE's with only the objects of those changes
 `usbd_desc.o`, `midi_parser.o`, `usb_midi.o`, `usbd_conf.o`, `fatfs.o`, `system.o` (twice, the
 second time without the handlers: from the source before, it disassembled as the archive's),
 `usbd_cdc.o` (whose code changes with `usbd_conf.h`'s macro; of the other objects that include
-it none does), `uart.o` (from the source before #322, and again before #356, it disassembled as the archive's; rebuilt into #323's archive at libDaisy's `-O2`, and for #361 and #442; for #442 only `DmaListenStart`, `DmaTransferFinished` and the callbacks that inline it changed, 108 B less), and
+it none does), `uart.o` (from the source before #322, and again before #356, it disassembled as the archive's; rebuilt into #323's archive at libDaisy's `-O2`, and for #361 and #442; for #442 only `DmaListenStart`, `DmaTransferFinished` and the callbacks that inline it changed, 104 B less), and
 for #323 the fourteen objects built `-Os` (`make OPT=-Os build/src/ui/UI.o`) and the nine with
 the pragmas (at libDaisy's own `-O2`). They were built with GCC 10.3 and libDaisy's own flags (`make
 build/src/hid/midi_parser.o` in its folder, then `arm-none-eabi-ar r build/libdaisy.a

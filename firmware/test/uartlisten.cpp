@@ -2,8 +2,8 @@
 // DmaListenStart's in uart.cpp), on registers of its own that note every write. The first start
 // sets the character match on 0xF8 (#322), with the USART off for it; a start again after a
 // receive error leaves the USART on, as turning UE off stops the transmitter too and cut the
-// byte MIDI out was sending (#442). The chip itself: midisuite.py's trs-restart-tx (the bench
-// build). Run by unit.sh uartlisten.
+// byte MIDI out was sending (#442), and clears the receive errors itself, as UE off did. The
+// chip itself: midisuite.py's trs-restart-tx (the bench build). Run by unit.sh uartlisten.
 // unit includes: ../code/libs/libDaisy/src
 #include <cstdint>
 #include <vector>
@@ -19,6 +19,10 @@
 #define USART_CR2_ADD_Pos 24U
 #define USART_CR2_ADD 0xFF000000UL
 #define USART_ICR_CMCF 0x00020000UL
+#define USART_ICR_PECF 0x00000001UL
+#define USART_ICR_FECF 0x00000002UL
+#define USART_ICR_NECF 0x00000004UL
+#define USART_ICR_ORECF 0x00000008UL
 #include "per/uart_listen.h"
 
 struct Write
@@ -80,8 +84,11 @@ static void Ends(const Usart& u, uint32_t cr2, const char* when)
     Check(u.CR2 == ((cr2 & ~(USART_CR2_ADD | USART_CR2_ADDM7)) | kMatch), what);
     snprintf(what, sizeof what, "%s: CR1 on, the match's interrupt too", when);
     Check(u.CR1 == (kOn | USART_CR1_CMIE), what);
-    snprintf(what, sizeof what, "%s: the match's flag cleared", when);
-    Check(WritesTo('I') == 1 && u.ICR == USART_ICR_CMCF, what);
+    snprintf(what, sizeof what, "%s: the match's flag cleared, and the receive errors' (an overrun "
+             "left from while it was ended would end it at once)", when);
+    Check(WritesTo('I') == 1
+              && u.ICR == (USART_ICR_CMCF | USART_ICR_ORECF | USART_ICR_NECF | USART_ICR_FECF | USART_ICR_PECF),
+          what);
 }
 
 int main()
