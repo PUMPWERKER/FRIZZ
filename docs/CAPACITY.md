@@ -1,6 +1,6 @@
 # Capacity: what's free on the CHOMPI, and how to make room
 
-What a new feature can still use, measured on 2026-10-17 (`main` cae2125 without the
+What a new feature can still use, measured on 2026-10-17 (`main` 864a584 without the
 finalizer's drive: the finalizer, the frequency shifter and 1.5's fixes since the code-room
 round, #320; the history below). `make`
 prints the memory table after every build; the numbers below come from it and from
@@ -10,7 +10,7 @@ prints the memory table after every build; the numbers below come from it and fr
 
 | Region | Size | Used | Free | What's in it |
 |---|---|---|---|---|
-| `SRAM_EXEC` (AXI SRAM) | 272 KB | 274,444 B (99 %) | **~4.0 KB** (4,084 B; the bench build 274,032 B, ~4.4 KB) | all the code, and the initial values of `.data` |
+| `SRAM_EXEC` (AXI SRAM) | 272 KB | 274,692 B (99 %) | **~3.7 KB** (3,836 B; the bench build 274,272 B, ~4.2 KB) | all the code, and the initial values of `.data` |
 | `SRAM` (AXI SRAM) | 240 KB | 223,220 B (91 %) | ~22 KB (the bench build 231,324 B, ~14.1 KB) | `.data` and `.bss`: the engine (101 KB), the two MIDI receive queues (`midi_clock`, 74 KB), the event log's index (9.5 KB), the scene store (5.7 KB), libDaisy's buffers |
 | `DTCMRAM` | 128 KB | 72,816 B | ~58 KB, shared with the stack | the reverb (64 KB), the delay's output lines (6 KB, #185), FRIZZ's copy of the vector table (1 KB, 1 KB aligned: the faults' handler, `Crash.h`, #105); the stack grows down from its top |
 | `RAM_D2` | 32 KB | 22,312 B | ~10 KB | DMA buffers (audio, LEDs, SD), not cached |
@@ -63,7 +63,7 @@ event log).
 **The finalizer's drive gone again (2026-10-17)**, before 1.5 (it was only in the betas): its
 saturation at twice the rate (the halfbands, the three curves, the compensation worked out
 with `sinf`, the hi-cut) freed 1,352 B of code (the bench build 1,392 B) and 192 B of data,
-on `main` cae2125 (275,796 → 274,444 B). Less than its share of the finalizer's 7 KB
+on `main` 864a584 (276,044 → 274,692 B). Less than its share of the finalizer's 7 KB
 suggested: most of that was the bands, the limiter and the play page's part.
 
 **The code-room round (#320, 2026-10-15).** `main` had ~1.5 KB of code left in `FRIZZ.bin`
