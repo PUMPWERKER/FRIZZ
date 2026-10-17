@@ -2530,7 +2530,14 @@ the beat on the settings page's lower G#:
   too: Stop going into it, Song Position and Continue when you turn out of it.
 - A loop taken back to its start by a DAW's Start (with [transport
   following](#start-and-stop) on) sends **Start** with that tick, so the gear starts over with it.
-- Without a loop, Start, Continue and Stop that come in from the clock's input are passed on.
+- Without a loop, Start, Continue, Stop and **Song Position** that come in from the clock's
+  input are passed on, in the order they came: a DAW whose playhead you move while it's
+  stopped sends Song Position and then Continue, and the gear behind FRIZZ goes on where the
+  DAW does. At the [clock factor](#clock-factor)'s double or half, the Song Position is
+  doubled or halved with the clock, so the gear lands where it would have counted to; at half,
+  an odd 16th of the DAW's lands half a 16th early, since Song Position has no finer step. With
+  a loop, a DAW's Song Position isn't passed on: with [transport following](#start-and-stop)
+  it moves the paused loop, and FRIZZ sends its own, where the loop goes on, as PLAY does.
 - Erasing the loop sends nothing: the gear plays on, to the clock that's coming in or the
   loop's tempo.
 

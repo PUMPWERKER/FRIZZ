@@ -86,10 +86,13 @@ inline bool FromSource(ClockSource source, bool usb)
     return source == ClockSource::TRS ? !usb : source == ClockSource::USB ? usb : true;
 }
 
-/** A Start (0xFA), Continue (0xFB) or Stop (0xFC) as its status byte, 0 for any other
- *  message: for MIDI out to pass on (MidiClock) and the loop to follow (MidiControl.h) */
+/** A Start (0xFA), Continue (0xFB), Stop (0xFC) or Song Position (0xF2) as its status
+ *  byte, 0 for any other message: for MIDI out to pass on (MidiClock) and the loop to follow
+ *  (MidiControl.h) */
 inline uint8_t TransportByte(const MidiEvent& e)
 {
+    if (e.type == SystemCommon)
+        return e.sc_type == SongPositionPointer ? 0xF2 : 0;
     if (e.type != SystemRealTime)
         return 0;
     return e.srt_type == Start ? 0xFA : e.srt_type == Continue ? 0xFB : e.srt_type == Stop ? 0xFC : 0;
@@ -316,14 +319,18 @@ public:
     /** A Start (0xFA), Continue (0xFB) or Stop (0xFC) from an input whose clock would count
      *  (the one locked to, or either before a lock: a DAW sends Start before its first tick),
      *  the last of this block's, taken, and the input it came on: for MIDI out to pass on
-     *  (MidiOut.h); 0 for none */
-    inline uint8_t TakeTransport(Source& from)
+     *  (MidiOut.h); 0 for none. spp: a Song Position from there, the last of this block's in
+     *  16ths, kNoSpp for none (#443): it comes with a Continue, often in the same block */
+    inline uint8_t TakeTransport(Source& from, uint16_t& spp)
     {
         const uint8_t t = transport_in_;
         transport_in_ = 0;
+        spp = spp_in_;
+        spp_in_ = kNoSpp;
         from = transport_from_;
         return t;
     }
+    static const uint16_t kNoSpp = 0xFFFF;
 
 private:
     inline float Bpm(float period) const
@@ -348,7 +355,8 @@ private:
         period_ = period_ > 0.f ? period_ + .1f * (interval - period_) : interval;
     }
 
-    void HandleEvent(const MidiEvent& event, Source from, uint32_t now)
+    /** Not inlined: Process calls it for both inputs */
+    __attribute__((noinline)) void HandleEvent(const MidiEvent& event, Source from, uint32_t now)
     {
         // the restart is MainLoop's (chompi_main.cpp): MidiControl doesn't get it
         if (event.type == SystemCommon && event.sc_type == SystemExclusive
@@ -361,7 +369,10 @@ private:
         const uint8_t transport = TransportByte(event);
         if (transport && Counts(from) && (source_ == Source::NONE || from == source_))
         {
-            transport_in_ = transport;
+            if (transport == 0xF2)
+                spp_in_ = static_cast<uint16_t>(event.data[0] | event.data[1] << 7);
+            else
+                transport_in_ = transport;
             transport_from_ = from;
         }
         if (event.type != SystemRealTime || event.srt_type != TimingClock)
@@ -449,6 +460,7 @@ private:
     float held_ = kNoneHeld;
     volatile bool restart_ = false;
     uint8_t transport_in_ = 0; // TakeTransport's
+    uint16_t spp_in_ = kNoSpp;
     Source transport_from_ = Source::NONE;
     Listener listener_ = nullptr;
     void* listener_context_ = nullptr;
