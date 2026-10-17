@@ -19,46 +19,45 @@ The format is fixed, and a file that breaks it fails the website's build:
 
 ## Meta
 
-- Title: FRIZZ, a free looper and effects firmware for the CHOMPI
-- Description: FRIZZ turns the CHOMPI into a stereo looper and effects box: catch a loop, then hold a white key to play an effect over it. Free, installed from the SD card.
+- Title: FRIZZ, a free live looper and effects firmware for the CHOMPI
+- Description: FRIZZ turns the CHOMPI into a live rig in one box: your loops from the card, effects you play on the keys, scenes that land on the bar line. Free, from the SD card.
 
 ## Hero
 
 - Eyebrow: Free firmware for the CHOMPI
-- Title: Loop it, then *mangle* it live
+- Title: Your CHOMPI is a *live* rig now
 - Assure: Free and open source. Installs from the SD card without touching the bootloader; you go back to stock firmware the same way.
 
-**FRIZZ** turns your CHOMPI into a stereo looper and effects box for whatever you plug into its
-AUX input (a synth, a drum machine, anything with a line out), for its built-in mic, or for a
-computer on USB. Catch a loop,
-hold a white key to throw an effect over it, and let go to snap back.
+**FRIZZ** turns your CHOMPI into a small live set in one box. Bring your own loops on the SD
+card, or play in whatever you plug into AUX, its built-in mic or a computer on USB. Hold a white
+key to throw an effect over it, let go to snap back, and drop to the next scene on the bar line.
 
 ## Duties
 
-### A looper
-
-You record a stereo loop of up to 2:45, free or in whole bars of a MIDI clock, and play it
-faster, slower, backwards or scrubbed on the [transport knob](MANUAL.md#transport-knob).
-
 ### Loops from the card
 
-You bring your own WAVs on the SD card, [8 banks of 15](MANUAL.md#loops-on-the-card), and
-the recordings you made with TAPE, and switch between them at once or at the end of a pass.
+You bring your own WAVs, [8 banks of 15](MANUAL.md#loops-on-the-card), and the recordings you
+made with TAPE, and switch between them at once, at the end of a pass or with a scene.
 
 ### Thirteen punch-in effects
 
-You have 13 effects on the white keys, from the freezer to the reverb, each with four knobs and
-a [second page](MANUAL.md#page-2), plus a chaos key and a finalizer on the outputs.
+You play 13 effects on the white keys, from the freezer to the reverb, each with four knobs and
+a [second page](MANUAL.md#page-2): hold a key and it's on, let go and it's gone. Plus a chaos key.
 
 ### Four scenes
 
 You keep every effect's knobs and latches in [four scenes](MANUAL.md#fx-scenes) on the card,
 and recall one at once, drop to it on the bar line or morph there.
 
-### Three inputs
+### A finished sound
 
-You play in from AUX, the built-in mic or a computer on USB, each with its own gain, through
-the effects or [past them](MANUAL.md#input-aux-the-mic-or-usb), heard or only recorded.
+You master the set on the way out: the [finalizer](MANUAL.md#finalizer) on key 15 has an input
+trim, a 3-band EQ, compression, width and a limiter, and a safety limiter guards every output.
+
+### A looper and three inputs
+
+You catch up to 2:45 from AUX, the built-in mic or a computer on USB, free or in whole bars, and
+play it faster, slower, backwards or scrubbed on the [transport knob](MANUAL.md#transport-knob).
 
 ### MIDI and USB
 
@@ -76,30 +75,23 @@ the clean sound, the tape stop halts the lot while the echoes ring on. Pick a ke
 ## Session
 
 - Eyebrow: How it plays
-- Title: From the first loop to the *drop*
+- Title: A set, from the first loop to the *drop*
 
-### Catch a loop
+### Load your set
 
-- Controls: `LOOP`
+- Controls: `SHIFT + lower C#` `White keys`
 
-Press LOOP, play, press LOOP again: up to 2:45 of whatever comes in. The looper records before
-the effects, so nothing you do to the sound is ever printed into it.
+Your loops go on the card from the [Companion](https://pumpwerker.de/frizz/companion/), over
+the USB cable while FRIZZ plays. SHIFT and the lower C# open the Loops page: a white key switches
+to its loop at once and keeps time, SHIFT and a white key at the end of the pass.
 
-### Bend it on the transport knob
-
-- Controls: `Transport knob` `SHIFT + turn`
-
-Turn the transport knob and the loop runs from double speed down to 1/16 in semitones, then
-through a standstill into reverse; hold SHIFT to jump in fifths and octaves. Paused, the knob
-scrubs. Press it for plain speed, forwards.
-
-### Throw effects over it
+### Mangle it on the white keys
 
 - Controls: `White keys` `Knobs 1 to 4`
 
-Hold a key for as long as you want the effect. Most effects start silent, so one turn brings them
-in, and the knobs do the same job on each: 1 is the main control, 2 the feedback where an effect
-has one.
+Hold a key for as long as you want the effect, let go and it's gone; SHIFT leaves it on. Most
+effects start silent, so one turn brings them in, and the knobs do the same job on each: 1 is
+the main control, 2 the feedback where an effect has one.
 
 ### Save the build-up, recall the drop
 
@@ -107,7 +99,23 @@ has one.
 
 Four dark keys hold scenes on the SD card: every effect’s knobs, and which ones are latched.
 Press one and it all lands at once. Hold SHIFT and it morphs there instead, arriving at the end of
-the bar. The dark key left of them is the blank scene: everything off.
+the bar. In the same SHIFT hold on the Loops page, the next loop lands with it.
+
+### Finish it on key 15
+
+- Controls: `Key 15` `SHIFT + key 15`
+
+Key 15 is the finalizer, a master section after the effects: input, a 3-band EQ, compression,
+width and a limiter that makes the set loud. SHIFT and key 15 step through its modules. At its
+defaults it leaves the sound untouched.
+
+### Catch something live
+
+- Controls: `LOOP` `Transport knob`
+
+Press LOOP, play, press LOOP again: up to 2:45 of whatever comes in, recorded before the
+effects, so nothing you do to the sound is printed into it. The transport knob bends it from
+double speed down to 1/16, through a standstill into reverse.
 
 ### Lock it to the rest of your setup
 
