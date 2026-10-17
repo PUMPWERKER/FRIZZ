@@ -156,6 +156,9 @@ int main()
     cases.push_back({"transport", [] {
         Run("transport", true, "daw-transport", {"PASS daw-transport", "wraps)"}, 0);
     }});
+    cases.push_back({"spp", [] {
+        Run("spp", true, "daw-spp", {"PASS daw-spp", "SPP 128 Continue", "SPP 32 Continue"}, 0);
+    }});
     cases.push_back({"monitor", [] {
         Run("monitor", true, "daw-monitor", {"PASS daw-monitor"}, 0);
     }});

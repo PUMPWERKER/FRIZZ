@@ -561,6 +561,60 @@ def fast_trs(r):
     fast_tempo(r, "trs", [174] if r.args.quick else [174, 280])
 
 
+def tempo_start(r, port):
+    """A clock starting, again and again, at 120 and 300 BPM by turns, the delay latched: from
+    its first tick on, the FX's tempo (STATE's) is the one before or the clock's (+-1), never
+    in between or past it, and turns to the clock's within a quarter second; then +10 BPM is
+    followed at once (-10 from 300, FRIZZ's fastest)"""
+    r.setting(clock_source=SOURCES[port])
+    r.send_usb(cc(GLOBAL, 113, 127))  # the delay latched (white key 12)
+    starts = 2 if r.args.quick else 4
+    for n in range(2 * starts):
+        bpm = (120, 300)[n % 2]
+        r.stop_clocks()
+        time.sleep(1.)  # the clock lost (0.5 s): the next one is a new lock
+        old = r.tempo()
+        c = r.clock(port, bpm)
+        t0 = time.monotonic()
+        vals = []
+        while time.monotonic() - t0 < 2.:
+            vals.append((time.monotonic() - t0, r.tempo()))
+            time.sleep(.01)
+        stray = [(t, v) for t, v in vals if abs(v - old) > .5 and abs(v - bpm) > 1.]
+        took = next((t for t, v in vals if abs(v - bpm) <= 1.), None)
+        back = [(t, v) for t, v in vals if took is not None and t > took and abs(v - bpm) > 1.]
+        r.tcheck("%s clock starts at %d BPM (from %.1f): every tempo the FX take" % (port.upper(), bpm, old),
+                 not stray and not back,
+                 "%d readings in 2 s, %s" % (len(vals), "none astray" if not stray and not back else
+                                             "astray: " + ", ".join("%.1f at %.0f ms" % (v, t * 1000)
+                                                                    for t, v in (stray + back)[:4])),
+                 "%.1f or %d +-1, nothing between" % (old, bpm))
+        r.tcheck("... the clock's tempo taken", took is not None and took <= .25 * r.loose,
+                 "after %.0f ms" % (took * 1000) if took is not None else "not in 2 s",
+                 "within %g ms (and a reading's time)" % (250 * r.loose))
+        if n >= 2 * starts - 2:
+            to = bpm + (10 if bpm < 300 else -10)
+            c.bpm = float(to)
+            took, got = r.wait_tempo(to, .5, 3)
+            # as fast-usb's 0.6 s at 174 BPM, and as long as its ticks are apart below (the
+            # smoothed period takes a number of them): 0.68 s from 120 before #417 too
+            limit = .6 * max(1., 174. / bpm)
+            r.tcheck("... then %d BPM: followed" % to, took is not None and took <= limit * r.loose,
+                     "%.2f s" % took if took is not None else "not in 3 s (%.1f)" % got,
+                     "at once (%.2f s, 0.6 s at 174 BPM and the ticks' time)" % limit)
+
+
+@case("tempo-start-usb", "7: no loop, the delay latched: a DAW's clock over USB starting at 120 and 300 BPM: "
+      "the echoes take its tempo from the start, no wobble; a tempo change followed at once (#417)")
+def tempo_start_usb(r):
+    tempo_start(r, "usb")
+
+
+@case("tempo-start-trs", "7: the same with a sequencer's clock into the TRS jack (#417)", needs=("in",))
+def tempo_start_trs(r):
+    tempo_start(r, "trs")
+
+
 @case("usb-late", "7: a DAW's clock over USB, started after FRIZZ is on: the tempo follows the "
       "DAW's, not half of it (#93)")
 def usb_late(r):
@@ -1001,6 +1055,75 @@ def out_spp(r):
     time.sleep(.2)
 
 
+@case("out-spp-factor", "7: the same at the clock factor x2 and x1/2: the Song Position goes out in "
+      "the 16ths of the ticks that go out, 2N at x2, N/2 (rounded down) at x1/2 (#469)",
+      needs=("in|out",), literal="out")
+def out_spp_factor(r):
+    src, dst = pass_ports(r)
+    r.setting(clock_source=SOURCES[src], midi_out=OUTS["trs" if dst == "trs" else "all"])
+    c = r.clock(src, 120)
+    log, back = r.captured(dst).log, r.captured(src).log
+    for value, name, want in ((200, "x2", 602), (50, "x1/2", 150)):
+        r.setting(clock_factor=value)
+        r.wait_tempo(120 * value / 100., 1, 5)
+        c.send([START])
+        time.sleep(1.)
+        c.send([STOP])
+        time.sleep(.5)
+        t0 = time.perf_counter()
+        c.send(spp(301) + bytes([CONTINUE]))  # an odd 16th: x1/2 rounds it down
+        time.sleep(.5)
+        t_spp, m = first(log, SPP, t0)
+        t_cont, _ = first(log, CONTINUE, t0)
+        at = m[1] | m[2] << 7 if m else None
+        r.check("%s: Song Position 301 passed on out of %s" % (name, dst.upper()), at == want, at, want)
+        r.tcheck("%s: then Continue" % name,
+                 t_spp is not None and t_cont is not None and 0 <= t_cont - t_spp <= .05 * r.loose,
+                 "%+.1f ms after it" % ((t_cont - t_spp) * 1000) if t_cont and t_spp else "none",
+                 "right after it (<= %g ms)" % (50 * r.loose))
+        sent_back = count(back, SPP, t0) + count(back, CONTINUE, t0)
+        r.check("%s: nothing back out of %s" % (name, src.upper()), sent_back == 0, sent_back, 0)
+        c.send([STOP])
+        time.sleep(.3)
+
+
+@case("out-spp-loop", "7: with a loop and transport following on, the DAW's playhead moved while "
+      "stopped: the gear gets FRIZZ's own Song Position, where the loop goes on, then Continue, "
+      "not the DAW's (#469)", needs=("in|out",), literal="out")
+def out_spp_loop(r):
+    src, dst = pass_ports(r)
+    r.setting(clock_source=SOURCES[src], midi_transport=1,
+              midi_out=OUTS["trs" if dst == "trs" else "all"])
+    c = r.clock(src, 120)
+    r.wait_tempo(120, 1, 5)
+    r.record_loop(1, 120)  # one bar: 16 16ths
+    time.sleep(1.)
+    log, back = r.captured(dst).log, r.captured(src).log
+    c.send([STOP])
+    time.sleep(.5)
+    r.check("the DAW's Stop: paused", r.state()["looper"] == 3, remote.LOOPER[r.state()["looper"]], "paused")
+    t0 = time.perf_counter()
+    c.send(spp(301) + bytes([CONTINUE]))  # 16th 301: the loop's 13th
+    time.sleep(.5)
+    spps = [(t, m[1] | m[2] << 7) for t, m in log if t >= t0 and m[0] == SPP]
+    conts = count(log, CONTINUE, t0)
+    r.check("one Song Position and one Continue out of %s" % dst.upper(), len(spps) == 1 and conts == 1,
+            "%d and %d" % (len(spps), conts), "1 and 1")
+    at = spps[0][1] if spps else None
+    r.check("the Song Position: where the loop goes on, not the DAW's 301", at in (13, 14), at,
+            "13 or 14 (the loop's 13th 16th, or the next)")
+    t_cont, _ = first(log, CONTINUE, t0)
+    r.tcheck("then Continue", spps and t_cont is not None and 0 <= t_cont - spps[0][0] <= .2,
+             "%+.1f ms after it" % ((t_cont - spps[0][0]) * 1000) if spps and t_cont else "none",
+             "after it, within a 16th (125 ms) and a block")
+    s = r.state()
+    r.check("the loop plays on", s["looper"] == 2, remote.LOOPER[s["looper"]], "playing")
+    sent_back = count(back, SPP, t0) + count(back, CONTINUE, t0)
+    r.check("nothing back out of %s" % src.upper(), sent_back == 0, sent_back, 0)
+    c.send([STOP])
+    time.sleep(.2)
+
+
 @case("out-factor", "7: clock factor at double/half with the DAW: the gear runs at FRIZZ's tempo "
       "(#73)", needs=("in|out",), literal="out")
 def out_factor(r):
@@ -1191,6 +1314,92 @@ def cc_global(r):
 @case("cc-global-trs", "8: a hardware controller over TRS on channel 16: the same (#108)", needs=("in",))
 def cc_global_trs(r):
     global_map(r, "trs")
+
+
+CHOMPI_NOTE, FILTER_NOTE = 45, 55  # SHIFT's note, white key 5's (MANUAL.md "Notes: the keys")
+
+
+def note_latch(r, port):
+    send = lambda n, on: (r.send(port, note(GLOBAL, n, on)), time.sleep(.06))
+    filt = 1 << 4
+    latched = lambda: r.state()["latched"] & filt
+    if latched():
+        raise AssertionError("the filter latched before the case")
+
+    def press(*order):
+        """the notes on in order, then off in reverse (each held while the next goes down),
+        as the twin's latch-either-midi"""
+        for n in order:
+            send(n, True)
+        for n in order[::-1]:
+            send(n, False)
+        time.sleep(.3)
+    # SHIFT's note, then the filter's: latched; the filter's alone: still; the filter's, then
+    # SHIFT's: unlatched; SHIFT's, then the filter's, twice: latched, unlatched
+    press(CHOMPI_NOTE, FILTER_NOTE)
+    r.check("%s: note 45, then the filter's note 55: latched" % port.upper(), latched(), bool(latched()), True)
+    press(FILTER_NOTE)
+    r.check("%s: the filter's note alone: still latched" % port.upper(), latched(), bool(latched()), True)
+    for n, on in ((FILTER_NOTE, True), (CHOMPI_NOTE, True), (FILTER_NOTE, False), (CHOMPI_NOTE, False)):
+        send(n, on)
+    time.sleep(.3)
+    r.check("%s: the filter's note, then 45 (the other order): unlatched" % port.upper(), not latched(),
+            bool(latched()), False)
+    press(CHOMPI_NOTE, FILTER_NOTE)
+    a = latched()
+    press(CHOMPI_NOTE, FILTER_NOTE)
+    r.check("%s: 45 then 55, twice: latched, unlatched" % port.upper(), a and not latched(),
+            "%s, %s" % (bool(a), bool(latched())), "True, False")
+    # CC 23 picks the focus without playing or latching anything
+    before = r.state()
+    r.send(port, cc(GLOBAL, 23, 2))  # the shifter (STATE's focus 1: FxId's order, not the keys')
+    time.sleep(.2)
+    s = r.state()
+    r.check("%s: CC 23 = 2: the shifter in focus, nothing latched" % port.upper(),
+            s["selected"] == 1 and s["latched"] == before["latched"],
+            "focus %d, latched %#x (was %#x)" % (s["selected"], s["latched"], before["latched"]),
+            "focus 1, latches as they were")
+
+
+@case("note-latch", "8: MIDI notes as the hand (#463): note 45 (SHIFT) + an FX key's note in either "
+      "order latches or unlatches it, the FX note alone keeps a latch; CC 23 focuses silently, over USB")
+def note_latch_usb(r):
+    note_latch(r, "usb")
+
+
+@case("note-latch-trs", "8: the same from a controller on the TRS jack (#463)", needs=("in",))
+def note_latch_trs(r):
+    note_latch(r, "trs")
+
+
+@case("focus-latch", "8: the global channel's CC 22 per focus (#444 C): a controller's toggle on CC 22 "
+      "latches the freezer, CC 23 to the shifter, the next 127 latches it at once; a focus by hand "
+      "likewise; the same focus again keeps the crossing")
+def focus_latch(r):
+    lat = lambda: r.state()["latched"]
+    r.send_usb(cc(GLOBAL, 23, 1) + cc(GLOBAL, 22, 127))
+    time.sleep(.15)
+    r.check("CC 23 = 1, CC 22 = 127: the freezer latched", lat() & 1, "%#x" % lat(), "bit 0")
+    r.send_usb(cc(GLOBAL, 23, 2) + cc(GLOBAL, 22, 127))
+    time.sleep(.15)
+    r.check("CC 23 = 2, CC 22 = 127 again: the shifter latched straight away", lat() & 3 == 3, "%#x" % lat(),
+            "bits 0 and 1")
+    r.tap("KEY_5")  # the filter in focus by hand (a plain press: no latch, #456)
+    time.sleep(.3)
+    r.send_usb(cc(GLOBAL, 22, 127))
+    time.sleep(.15)
+    r.check("the filter picked by hand, CC 22 = 127: latched", lat() >> 4 & 1, "%#x" % lat(), "bit 4")
+    r.f.key(SHIFT, True)  # unlatched by hand
+    time.sleep(.1)
+    r.tap("KEY_5")
+    time.sleep(.1)
+    r.f.key(SHIFT, False)
+    time.sleep(.3)
+    r.check("SHIFT + the filter's key: unlatched by hand", not lat() >> 4 & 1, "%#x" % lat(), "bit 4 clear")
+    r.send_usb(cc(GLOBAL, 23, 5) + cc(GLOBAL, 22, 127))
+    time.sleep(.15)
+    r.check("CC 23 = 5, the same focus, 127 again: no new crossing, stays unlatched", not lat() >> 4 & 1,
+            "%#x" % lat(), "bit 4 clear")
 
 
 @case("block-trs", "8: a TRS chain on channels 1-15, the settings page's lower D# off: that "

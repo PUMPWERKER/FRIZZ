@@ -120,9 +120,9 @@ int main()
     // effect channels four of them)
     const std::vector<std::vector<std::string>> both = {
         {"clock-trs", "usb-late", "sources-usb"}, {"sources-trs"}, {"transport-trs", "start-free"},
-        {"start-spp"}, {"factor"}, {"tick-tail"}, {"out-idle", "out-loop", "out-pass"}, {"out-factor", "out-knobs", "out-spp"}, {"out-fin-delay"},
+        {"start-spp"}, {"factor"}, {"tick-tail"}, {"out-idle", "out-loop", "out-pass"}, {"out-factor", "out-knobs", "out-spp"}, {"out-spp-factor", "out-spp-loop"}, {"out-fin-delay"},
         {"loop-drift"}, {"out-x2"}, {"cc-channels", "rpn"},
-        {"cc-global", "cc-global-trs", "block-trs", "cc-burst-trs", "shifter-page", "chaos-cc"}, {"morph-back", "morph-hold"}, {"morph-sequences"},
+        {"cc-global", "cc-global-trs", "block-trs", "cc-burst-trs", "shifter-page", "chaos-cc"}, {"note-latch", "note-latch-trs", "focus-latch"}, {"tempo-start-usb"}, {"tempo-start-trs"}, {"morph-back", "morph-hold"}, {"morph-sequences"},
         {"feedback", "no-double", "sysex-thru", "sysex-cut"}, {"input-cc"}};
     for (const auto& ids : both)
         cases.push_back({ids[0], [ids] { Run("both ways, " + ids[0], true, true, ids, "PASS", {"wiring: both ways (found)"}, 0); }});

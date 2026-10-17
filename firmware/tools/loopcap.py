@@ -13,6 +13,9 @@ in, and the capture read back to the sample.
                                        (at once and at the pass end), FRIZZ's MIDI out recorded,
                                        then played back into FRIZZ: the same switches, the same
                                        moments; then the scenes' program changes
+    tools/loopcap.py feedback --planned OUT
+                                       #401: the same with switches planned with SHIFT + a key
+                                       tapped 1-3 times, and one cancelled (--secs 30)
     tools/loopcap.py fader OUT         #268: the crossfader with two loops (SHIFT + the blank
                                        scene's key, the transport turned, a white key): the two
                                        loops' power at each step, another white key during the
@@ -553,6 +556,13 @@ def cmd_pc(a):
         print("PASS" if ok else "FAIL")
 
 
+# feedback --planned (#401): switches planned with SHIFT + a key tapped 1-3 times (that many
+# pass ends of the loop playing: h13 2 s, h14 4 s, h15 2.4 s), one cancelled in a new SHIFT hold
+# early in h14's first pass, well before its end; then 1, 2 and 3 taps
+PLANNED = (("KEY_14", 0, False, 0.6), ("KEY_13", 1, True, 1.3), ("KEY_15", 1, False, 3.1),
+           ("KEY_13", 2, False, 4.5), ("KEY_14", 3, False, 10.0))
+
+
 def cmd_feedback(a):
     run = Run(a.out)
     r = run.remote
@@ -581,18 +591,30 @@ def cmd_feedback(a):
         th = threading.Thread(target=reader, daemon=True)
         th.start()
         t = run.now() + 0.5
-        for key, planned, gap in (("KEY_13", False, 2.3), ("KEY_14", False, 1.7), ("KEY_15", True, 5.5),
-                                  ("KEY_13", False, 2.9), ("KEY_14", False, 2.1)):
+        # (key, SHIFT + taps: the pass ends it waits for, 0 at once; cancelled after; the gap)
+        plan = PLANNED if getattr(a, "planned", False) else (
+            ("KEY_13", 0, False, 2.3), ("KEY_14", 0, False, 1.7), ("KEY_15", 1, False, 5.5),
+            ("KEY_13", 0, False, 2.9), ("KEY_14", 0, False, 2.1))
+        for key, taps, cancel, gap in plan:
             at(run, t)
-            if planned:
+            if taps:
+                run.f.key("KEY_26", True)
+                for i in range(taps):
+                    time.sleep(0.05 if i == 0 else 0.12)
+                    run.tap(key)
+                time.sleep(0.05)
+                run.f.key("KEY_26", False)
+            else:
+                run.tap(key)
+            hand.append(dict(key=key, planned=taps, sent=run.now()))
+            if cancel:  # in a new SHIFT hold, SHIFT + the blinking key (#401: CC 81 goes out)
+                time.sleep(0.6)
                 run.f.key("KEY_26", True)
                 time.sleep(0.05)
                 run.tap(key)
                 time.sleep(0.05)
                 run.f.key("KEY_26", False)
-            else:
-                run.tap(key)
-            hand.append(dict(key=key, planned=planned, sent=run.now()))
+                hand.append(dict(key=key, cancel=True, sent=run.now()))
             t += gap
         at(run, t + 1)
         stop.set()
@@ -604,6 +626,8 @@ def cmd_feedback(a):
                 if m[0] < 0xF0:
                     msgs.append((tt, list(m)))
         print("FRIZZ sent: " + "; ".join("%.3f %s" % (tt, " ".join("%02X" % b for b in m)) for tt, m in msgs))
+        cc = lambda n: [(round(tt, 3), m[2]) for tt, m in msgs if m[0] & 0xF0 == 0xB0 and m[1] == n]
+        print("its CC 54 (when a switch lands): %s; CC 81 (a cancel): %s" % (cc(54), cc(81)))
         run.wait()
     finally:
         run.end()
@@ -746,6 +770,9 @@ def main():
         p = sub.add_parser(name)
         p.add_argument("out", help="the capture's prefix: OUT.wav, OUT.json")
         p.add_argument("--secs", type=int, default=secs, help="the capture's length")
+        if name == "feedback":
+            p.add_argument("--planned", action="store_true",
+                           help="#401: every switch planned with SHIFT (1-3 taps), one cancelled (--secs 30)")
         if name == "pc":
             p.add_argument("--cubbi", action="store_true", help="then CC 0 = 9, the cubbis' bank: PC 0, 1")
     a = ap.parse_args()
