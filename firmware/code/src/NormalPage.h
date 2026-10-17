@@ -1511,6 +1511,14 @@ namespace chompi
 #if defined(__arm__)
                 else if (group == kUartError)
                     UartAtTwice(20);
+                else if (group == kUartRestart && q.len >= 5 && q.arg[1] <= 1)
+                {
+                    MidiClock& clock = midi_->MutableClock();
+                    const uint32_t count = static_cast<uint32_t>(q.arg[2] << 14 | q.arg[3] << 7 | q.arg[4]);
+                    if (count)
+                        clock.TestRestarts(q.arg[1], count);
+                    n = loopxfer::Put7(d, n, clock.TestMarkers(), 3);
+                }
 #endif
                 else
                     status = BAD;

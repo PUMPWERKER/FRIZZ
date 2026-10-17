@@ -170,7 +170,7 @@ what FRIZZ does.
     Beat FX, Parallel among them), one Depth for all three. No makeup: level comes back
     through Drive and Loud.
   - **Width** (blue): each band's stereo, from mono to twice as wide (the low band to
-    1.5 times).
+    1.5 times), and to the right Space, which makes a mono source wide too.
 
   With the finalizer selected, SHIFT + key 15 shows the next module; the key shows its colour. At the
   defaults it leaves the sound untouched. Its knob LEDs are meters while they rest: the input
@@ -190,6 +190,16 @@ what FRIZZ does.
   double tap in one hold still selects, then switches. Key 15 and SHIFT pressed together, in
   either order, count as a select and never switch; key 15 held, then SHIFT, stays the bypass.
   See [Finalizer](MANUAL.md#finalizer).
+
+- **The finalizer's Width widens a mono source** (#455): in the betas Width only turned up the
+  difference between the channels already there, so a mono synth or voice stayed mono however
+  far right. Now, right of the centre, each band also gets Space, more the further right: a
+  slightly different copy of the band in the side, a diffusion of very short delays for mid
+  and high, a phase shift between the channels for the low band, so the kick isn't smeared
+  and doesn't lean to a side. Summed to mono every frequency stays as loud as it was, and the
+  left and right channels stay level. At the centre and to the left nothing changed; a
+  preset with a band right of the centre now sounds wider. After the widener in Endorphin.es'
+  Golden Master. See [Width module](MANUAL.md#width-module).
 
 - **AUX keeps its bass** (#317): the input's DC blocker, TAPE's, cut AUX's lows from about
   76 Hz down (50 Hz 5 dB quieter, 30 Hz 9 dB); it now takes out only DC, from about 8 Hz down,
@@ -330,10 +340,11 @@ what FRIZZ does.
   without the shortest pause and without a clock tick in it (a DAW's automation for many
   knobs at once, written back to back) lost whole stretches of it, so knobs it moved stayed
   where they were. Now every message counts, however long the cable stays busy.
-- **MIDI on the TRS jack comes back by itself after a glitch** (#361): a garbled byte on the
-  cable (plugging it in while the other end was sending, a bad contact) stopped FRIZZ hearing
-  MIDI over TRS (clock, notes, CCs) until it was switched off and on. Now it listens again at
-  once.
+- **MIDI on the TRS jack comes back by itself after a glitch** (#361, #442): a garbled byte on
+  the cable (plugging it in while the other end was sending, a bad contact) stopped FRIZZ
+  hearing MIDI over TRS (clock, notes, CCs) until it was switched off and on. Now it listens
+  again at once, and MIDI out on TRS goes on untouched meanwhile (in the betas, listening again
+  could cost the gear behind a clock tick).
 - **The shifter and the flanger no longer click when punched in with the feedback up** (#326):
   the feedback's share of what they had stored came in at once under the key's fade, and
   repeated on every trip. Now it fades in with the key.
