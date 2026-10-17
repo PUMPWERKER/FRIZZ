@@ -75,7 +75,7 @@ alone:
 - **By ear and hand:** every release is played with real gear first, from a public
   release-test checklist (the issues labelled `release test`).
 
-The decisions behind each feature are in the [issues](https://github.com/ZUHcYa/FRIZZ/issues)
+The decisions behind each feature are in the [issues](https://github.com/PUMPWERKER/FRIZZ/issues)
 and pull requests.
 
 ## Credits and license
@@ -94,7 +94,7 @@ Its USB audio and the card drive run on TinyUSB and build on lost-tty's
 - [lost-tty](https://github.com/lost-tty): the shape of FRIZZ's USB audio, USB MIDI and card
   drive, and a fix in TinyUSB's USB driver, from [MIXTAPE](https://github.com/lost-tty/CHOMPI).
 - [sfaber02](https://github.com/sfaber02): the mono input switch on the 13th white key
-  ([#1](https://github.com/ZUHcYa/FRIZZ/pull/1)).
+  ([#1](https://github.com/PUMPWERKER/FRIZZ/pull/1)).
 - [ugrossek](https://github.com/ugrossek): the CHOMPI launcher's MIDI sender, which FRIZZ's
   USB tools use ([`firmware/tools/midi_send.py`](firmware/tools/midi_send.py)).
 
